@@ -37,11 +37,10 @@ adapted to Go.
 - `merge-many`/`fan-out` modes exist for the metadata slice — do not
   repurpose them early.
 
-## Naming hygiene (anti-piracy flag)
+## Naming hygiene
 
 - Never commit real release-group, fansub, tracker, indexer or site
-  names in code, tests, fixtures, docs or comments. They read as
-  piracy affiliation and can get the project flagged.
+  names in code, tests, fixtures, docs or comments.
 - Tests and fixtures use clearly fictional placeholders instead:
   `[Fansub-A]`, `[Fansub-B]`, `tracker-exemplo`, and equivalent.
   Generic technical tags (`1080p`, `HEVC`, `Dual-Audio`) are fine.
