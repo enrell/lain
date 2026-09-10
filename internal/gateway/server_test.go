@@ -91,7 +91,7 @@ func TestLibraryScanStreamProgress(t *testing.T) {
 	_ = json.Unmarshal(login.Body.Bytes(), &tok)
 
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "[Erai-raws] Frieren - 12 [1080p].mkv"), bytes.Repeat([]byte("0123456789abcdef"), 64), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "[Fansub-A] Frieren - 12 [1080p].mkv"), bytes.Repeat([]byte("0123456789abcdef"), 64), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "Anime", "type": "anime", "path": root}, tok.Token)

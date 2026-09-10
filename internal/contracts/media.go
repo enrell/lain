@@ -111,6 +111,9 @@ type ScanStats struct {
 	Identified   int   `json:"identified"`
 	Unidentified int   `json:"unidentified"`
 	Errors       int   `json:"errors"`
+	Pruned       int   `json:"pruned"`
+	WalkErrors   int   `json:"walk_errors"`
+	Dirs         int   `json:"dirs"`
 	StartedAt    int64 `json:"started_at"`
 	FinishedAt   int64 `json:"finished_at"`
 }

@@ -3,9 +3,14 @@
 // policies: sources enumerate, identifiers propose, the catalog owns
 // identity. Swapping any of them changes behavior without touching
 // this file.
+//
+// Cost model: one library walk per root (parallel across roots), one
+// catalog persist for all upserts, one more only when pruning removed
+// something. Disk writes per scan are constant in library size.
 package ingest
 
 import (
+	"sync"
 	"time"
 
 	"github.com/enrell/lain/internal/contracts"
@@ -43,40 +48,98 @@ func (r *Runner) Invoke(cap string, input any) (any, error) {
 	return r.Run(in)
 }
 
-// Run walks every library, identifies each candidate through the
-// ordered-many binding, and writes accepted proposals to the catalog.
-// Unidentified files are counted, never dropped with an error.
+// libResult is one root's in-memory outcome. Nothing touches the
+// catalog until every root finished: a crash mid-scan leaves the
+// previous catalog intact instead of half-written.
+type libResult struct {
+	libraryID  string
+	items      []contracts.CatalogItem
+	present    map[string]bool
+	accessible bool
+	cleanWalk  bool
+	candidates int
+	identified int
+	errors     int
+	walkErrors int
+	dirs       int
+}
+
+// Run walks every library root in parallel, identifies each candidate
+// through the ordered-many binding, persists all upserts at once, then
+// prunes files that vanished — but only for roots that were fully
+// walked. An unmounted drive or a mid-walk I/O error never reads as
+// deletions.
 func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 	stats := contracts.ScanStats{StartedAt: time.Now().Unix(), Libraries: len(in.Libraries)}
-	for _, lib := range in.Libraries {
-		cands, err := source.Enumerate(source.EnumerateInput{
-			Root: lib.Path, LibraryID: lib.ID, Type: lib.Type,
-		})
+	results := make([]libResult, len(in.Libraries))
+	var wg sync.WaitGroup
+	for i, lib := range in.Libraries {
+		wg.Add(1)
+		go func(i int, lib contracts.Library) {
+			defer wg.Done()
+			results[i] = r.scanRoot(lib)
+		}(i, lib)
+	}
+	wg.Wait()
+
+	var all []contracts.CatalogItem
+	for i := range results {
+		res := &results[i]
+		stats.Candidates += res.candidates
+		stats.Identified += res.identified
+		stats.Errors += res.errors
+		stats.WalkErrors += res.walkErrors
+		stats.Dirs += res.dirs
+		all = append(all, res.items...)
+	}
+	if err := r.Cat.UpsertBatch(all); err != nil {
+		return stats, err
+	}
+	for i := range results {
+		res := &results[i]
+		if !res.accessible || !res.cleanWalk {
+			continue
+		}
+		n, err := r.Cat.PruneMissing(res.libraryID, res.present)
 		if err != nil {
 			stats.Errors++
 			continue
 		}
-		for _, c := range cands {
-			stats.Candidates++
-			out, _, accepted, err := r.Reg.CallFirst(contracts.CapMediaIdentify, c, func(v any) bool {
-				p, ok := v.(contracts.Proposal)
-				return ok && p.Accepted()
-			})
-			if err != nil || !accepted {
-				stats.Errors++
-				continue
-			}
-			p := out.(contracts.Proposal)
-			if _, err := r.Cat.Upsert(catalog.UpsertInput{
-				LibraryID: lib.ID, Proposal: p, Candidate: c,
-			}); err != nil {
-				stats.Errors++
-				continue
-			}
-			stats.Identified++
-		}
+		stats.Pruned += n
 	}
 	stats.Unidentified = stats.Candidates - stats.Identified
 	stats.FinishedAt = time.Now().Unix()
 	return stats, nil
+}
+
+// scanRoot walks one root to completion in memory.
+func (r *Runner) scanRoot(lib contracts.Library) libResult {
+	res := libResult{libraryID: lib.ID, present: map[string]bool{}}
+	cands, es, err := source.Enumerate(source.EnumerateInput{
+		Root: lib.Path, LibraryID: lib.ID, Type: lib.Type,
+	})
+	res.dirs = es.Dirs
+	res.walkErrors = es.WalkErrors
+	if err != nil {
+		res.errors++
+		return res // root gone: accessible stays false, prune skipped
+	}
+	res.accessible = es.Accessible
+	res.cleanWalk = es.WalkErrors == 0
+	for _, c := range cands {
+		res.candidates++
+		out, _, accepted, err := r.Reg.CallFirst(contracts.CapMediaIdentify, c, func(v any) bool {
+			p, ok := v.(contracts.Proposal)
+			return ok && p.Accepted()
+		})
+		if err != nil || !accepted {
+			res.errors++
+			continue
+		}
+		it := catalog.NewItem(lib.ID, out.(contracts.Proposal), c)
+		res.items = append(res.items, it)
+		res.present[it.ID] = true
+		res.identified++
+	}
+	return res
 }

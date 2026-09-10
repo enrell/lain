@@ -4,7 +4,9 @@
 package source
 
 import (
+	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -58,38 +60,90 @@ func (Provider) Invoke(cap string, input any) (any, error) {
 	if !ok {
 		return nil, &core.Error{Code: "invalid-message", Msg: "EnumerateInput required"}
 	}
-	return Enumerate(in)
+	cands, stats, err := Enumerate(in)
+	if err != nil {
+		return nil, err
+	}
+	return EnumerateOutput{Candidates: cands, Stats: stats}, nil
 }
 
-// Enumerate walks the root and returns recognized files.
-func Enumerate(in EnumerateInput) ([]contracts.Candidate, error) {
+// EnumerateOutput carries files plus walk observations.
+type EnumerateOutput struct {
+	Candidates []contracts.Candidate `json:"candidates"`
+	Stats      EnumStats             `json:"stats"`
+}
+
+// EnumStats observes a walk: counts for progress UI, errors for the
+// prune guard. Accessible==false means the root itself could not be
+// read (unmounted drive, deleted path): the caller must not prune.
+type EnumStats struct {
+	Root       string `json:"root"`
+	Accessible bool   `json:"accessible"`
+	Dirs       int    `json:"dirs"`
+	Entries    int    `json:"entries"`
+	WalkErrors int    `json:"walk_errors"`
+}
+
+// RootError marks an unreadable library root. It is a distinct type so
+// the pipeline can tell "root gone" (skip prune) from "file failed"
+// (count and continue).
+type RootError struct {
+	Root string
+	Err  error
+}
+
+func (e *RootError) Error() string { return "inaccessible root " + e.Root + ": " + e.Err.Error() }
+func (e *RootError) Unwrap() error { return e.Err }
+
+// Enumerate walks the root and returns recognized files with walk stats.
+// Unreadable entries are counted in WalkErrors and skipped; only an
+// unreadable root itself is a hard error. Order is deterministic
+// (lexical walk). Symlinks are never followed, so loops terminate.
+func Enumerate(in EnumerateInput) ([]contracts.Candidate, EnumStats, error) {
+	stats := EnumStats{Root: in.Root}
+	fi, err := os.Stat(in.Root)
+	if err != nil || !fi.IsDir() {
+		return nil, stats, &RootError{Root: in.Root, Err: errOrNotDir(err)}
+	}
+	stats.Accessible = true
 	allow := Exts[strings.ToLower(in.Type)]
 	if allow == nil {
 		allow = Exts["video"]
 	}
 	var out []contracts.Candidate
-	err := filepath.WalkDir(in.Root, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(in.Root, func(path string, d fs.DirEntry, err error) error {
+		stats.Entries++
 		if err != nil {
-			return nil // count walk errors at ingest, never abort the scan
+			stats.WalkErrors++
+			return nil // skip, keep walking
 		}
 		if d.IsDir() {
+			stats.Dirs++
 			return nil
 		}
 		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
 		if !allow[ext] {
 			return nil
 		}
-		fi, err := d.Info()
+		info, err := d.Info()
 		if err != nil {
+			stats.WalkErrors++
 			return nil
 		}
 		out = append(out, contracts.Candidate{
 			Path:      path,
-			Size:      fi.Size(),
-			ModTime:   fi.ModTime().Unix(),
+			Size:      info.Size(),
+			ModTime:   info.ModTime().Unix(),
 			LibraryID: in.LibraryID,
 		})
 		return nil
 	})
-	return out, err
+	return out, stats, err
+}
+
+func errOrNotDir(err error) error {
+	if err == nil {
+		return errors.New("not a directory")
+	}
+	return err
 }

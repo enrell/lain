@@ -97,28 +97,75 @@ func ItemID(libraryID, path string) string {
 	return hex.EncodeToString(h[:])[:16]
 }
 
+// NewItem builds the canonical item for a proposal without touching
+// disk. Pure: same input always yields the same identity.
+func NewItem(libraryID string, p contracts.Proposal, c contracts.Candidate) contracts.CatalogItem {
+	return contracts.CatalogItem{
+		ID: ItemID(libraryID, c.Path), LibraryID: libraryID, Kind: p.Kind,
+		Title: p.Title, Season: p.Season,
+		Episode: p.Episode, Year: p.Year,
+		FilePath: c.Path, Size: c.Size,
+		Confidence: p.Confidence, Origin: p.PluginID,
+		Provenance: "identify:" + p.PluginID,
+		UpdatedAt:  time.Now().Unix(),
+	}
+}
+
 // Upsert inserts or refreshes the item for a candidate. Provenance
 // records which plugin produced the consolidated fields.
 func (s *Service) Upsert(in UpsertInput) (contracts.CatalogItem, error) {
-	id := ItemID(in.LibraryID, in.Candidate.Path)
-	now := time.Now().Unix()
-	it := contracts.CatalogItem{
-		ID: id, LibraryID: in.LibraryID, Kind: in.Proposal.Kind,
-		Title: in.Proposal.Title, Season: in.Proposal.Season,
-		Episode: in.Proposal.Episode, Year: in.Proposal.Year,
-		FilePath: in.Candidate.Path, Size: in.Candidate.Size,
-		Confidence: in.Proposal.Confidence, Origin: in.Proposal.PluginID,
-		Provenance: "identify:" + in.Proposal.PluginID,
-		UpdatedAt:  now,
-	}
+	it := NewItem(in.LibraryID, in.Proposal, in.Candidate)
 	s.mu.Lock()
-	s.items[id] = it
+	s.items[it.ID] = it
 	cp := copyAll(s.items)
 	s.mu.Unlock()
 	if err := s.st.Save("catalog.json", cp); err != nil {
 		return contracts.CatalogItem{}, err
 	}
 	return it, nil
+}
+
+// UpsertBatch stages many items in memory and persists exactly once.
+// Scans use this: disk writes stay constant no matter the library size.
+func (s *Service) UpsertBatch(items []contracts.CatalogItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	for _, it := range items {
+		s.items[it.ID] = it
+	}
+	cp := copyAll(s.items)
+	s.mu.Unlock()
+	return s.st.Save("catalog.json", cp)
+}
+
+// PruneMissing removes items of one library that the scan did not see.
+// The caller must guarantee the root was fully walked (accessible and
+// zero walk errors): a partial walk must never read as deletions.
+// Persists only when something was actually removed.
+func (s *Service) PruneMissing(libraryID string, present map[string]bool) (int, error) {
+	s.mu.Lock()
+	removed := 0
+	for id, it := range s.items {
+		if it.LibraryID != libraryID {
+			continue
+		}
+		if !present[id] {
+			delete(s.items, id)
+			removed++
+		}
+	}
+	if removed == 0 {
+		s.mu.Unlock()
+		return 0, nil
+	}
+	cp := copyAll(s.items)
+	s.mu.Unlock()
+	if err := s.st.Save("catalog.json", cp); err != nil {
+		return 0, err
+	}
+	return removed, nil
 }
 
 // Get returns one item.
