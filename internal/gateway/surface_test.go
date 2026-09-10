@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/plugins/catalog"
@@ -97,13 +98,20 @@ func waitScan(t *testing.T, srv *Server, token string) {
 	t.Helper()
 	var status struct {
 		State string `json:"state"`
+		Error string `json:"error"`
 	}
-	for i := 0; i < 200; i++ {
+	// The scan runs in a goroutine; poll with a real wait so the slower
+	// -race builds do not exhaust the iterations before "done".
+	for i := 0; i < 500; i++ {
 		rec := do(t, srv, "GET", "/api/library/scan", nil, token)
 		_ = json.Unmarshal(rec.Body.Bytes(), &status)
-		if status.State == "done" || status.State == "error" {
+		switch status.State {
+		case "done":
 			return
+		case "error":
+			t.Fatalf("scan failed: %s", status.Error)
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("scan did not finish")
 }
