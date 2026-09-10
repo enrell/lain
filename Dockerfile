@@ -3,7 +3,7 @@
 # ---- frontend: static SPA, built once, never shipped ----
 # Node exists only here. The output is HTML/CSS/JS; no runtime, no
 # node_modules, no SvelteKit server reaches the final image.
-FROM node:24-alpine AS web
+FROM node:26-alpine AS web
 RUN npm install -g pnpm@11.25.0
 WORKDIR /web
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
