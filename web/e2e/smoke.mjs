@@ -611,6 +611,47 @@ try {
 	await navigate(`${BASE}/library`);
 	await waitText('Library', 10000);
 
+	/* ---------------- responsive layouts ---------------- */
+	step('responsive layouts');
+	{
+		const viewports = [
+			{ w: 390, h: 844, name: 'mobile' },
+			{ w: 768, h: 1024, name: 'tablet' },
+			{ w: 1440, h: 900, name: 'desktop' },
+			{ w: 2560, h: 1440, name: 'large desktop' }
+		];
+		for (const vp of viewports) {
+			await page.send('Emulation.setDeviceMetricsOverride', {
+				width: vp.w,
+				height: vp.h,
+				deviceScaleFactor: 1,
+				mobile: vp.w < 600
+			});
+			await navigate(`${BASE}/library`);
+			await waitText('Library', 10000);
+			const overflow = await evalValue(
+				'document.documentElement.scrollWidth - window.innerWidth'
+			);
+			assert(overflow <= 1, `${vp.name} (${vp.w}px): horizontal overflow of ${overflow}px`);
+			if (vp.w < 768) {
+				const bottomNav = await evalValue(`(() => {
+					return [...document.querySelectorAll('nav[aria-label="Primary"]')].some((nav) => {
+						const r = nav.getBoundingClientRect();
+						return r.height > 0 && r.top > window.innerHeight / 2 && r.bottom <= window.innerHeight + 1;
+					});
+				})()`);
+				assert(bottomNav, `${vp.name}: bottom navigation is not visible`);
+			} else {
+				const sidebar = await evalValue(
+					`[...document.querySelectorAll('aside')].some((a) => a.getBoundingClientRect().width > 100)`
+				);
+				assert(sidebar, `${vp.name}: desktop sidebar is not visible`);
+			}
+		}
+		await page.send('Emulation.clearDeviceMetricsOverride');
+		console.log('   390 / 768 / 1440 / 2560 px: no overflow, correct navigation');
+	}
+
 	/* ---------------- quality gates ---------------- */
 	step('console and network quality gate');
 	{
