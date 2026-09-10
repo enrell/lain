@@ -522,6 +522,13 @@ try {
 	await waitFor(`document.body.innerText.includes('Resume from')`, 15000, 'resume label');
 	console.log('   progress persisted and reload resumes');
 
+	step('error states');
+	await navigate(`${BASE}/player/does-not-exist`);
+	await waitText('no longer exists', 10000);
+	await navigate(`${BASE}/item/does-not-exist`);
+	await waitText('That item is gone', 10000);
+	console.log('   missing item and player routes render product error states');
+
 	/* ---------------- admin surfaces ---------------- */
 	step('users, plugins swap and backup');
 	await navigate(`${BASE}/settings/users`);
@@ -607,11 +614,17 @@ try {
 	/* ---------------- quality gates ---------------- */
 	step('console and network quality gate');
 	{
-		const appOriginErrors = consoleErrors.filter((e) => !e.includes('ERR_BLOCKED_BY_CLIENT'));
+		// The error-state step deliberately requests a missing item; a
+		// 404 there is the product contract, tracked separately below.
+		const intentional404 = /\/api\/(catalog|items)\/does-not-exist/;
+		const unexpected404 = [...seen404].filter((u) => !intentional404.test(u));
+		const appOriginErrors = consoleErrors.filter(
+			(e) => !e.includes('ERR_BLOCKED_BY_CLIENT') && !e.includes('status of 404')
+		);
 		const pageErrors = consoleErrors.filter((e) => e.startsWith('exception:'));
 		assert(pageErrors.length === 0, 'uncaught page exceptions:\n' + pageErrors.join('\n'));
 		assert(appOriginErrors.length === 0, 'console errors:\n' + appOriginErrors.join('\n'));
-		assert(seen404.size === 0, 'unexpected 404s:\n' + [...seen404].join('\n'));
+		assert(unexpected404.length === 0, 'unexpected 404s:\n' + unexpected404.join('\n'));
 	}
 	{
 		const loops = [...requestCount.entries()].filter(([, n]) => n > 6);
