@@ -36,6 +36,9 @@ mediated services (gateway-owned writes, scoped secrets).
   the recent event log (`swap`, `swap-rejected`, `fallback`,
   `withdraw`, `withdraw-degraded`).
 - `lain doctor`: runtime + matrix environment report as JSON.
+- `GET /api/admin/backup`: consistent snapshot stream (admin only).
+- `lain backup` / `lain restore`: validated snapshots; restore never
+  overwrites a live database.
 - Data dir documents are atomic JSON; a corrupt file errors loudly at
   load (`store.CorruptError`), pointing at the exact document.
 - Last-known composition persists in `composition.json`; a fresh

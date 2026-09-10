@@ -37,6 +37,10 @@ func main() {
 		err = cmdLogout(os.Args[2:])
 	case "watch":
 		err = cmdWatch(os.Args[2:])
+	case "backup":
+		err = cmdBackup(os.Args[2:])
+	case "restore":
+		err = cmdRestore(os.Args[2:])
 	case "version", "--version", "-V":
 		fmt.Println("lain " + version)
 	default:
@@ -59,6 +63,8 @@ func usage() {
   login     save API credentials (flags: --server, --username; or LAIN_PASSWORD)
   logout    forget saved credentials
   watch     play from the server in mpv ([query] [--next] [--once] [--pick N] [--dry-run])
+  backup    snapshot the database online (flags: --data-dir, --out)
+  restore   restore a backup into an empty data dir (restore DIR [--data-dir])
   version   print version`)
 }
 

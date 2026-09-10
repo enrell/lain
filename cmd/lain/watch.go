@@ -512,8 +512,15 @@ func reportNext(client *apiClient, cur apiItem) {
 	fmt.Printf("next: %s S%02dE%02d\n", next.Title, next.Season, next.Episode)
 }
 
+// valueFlags consume the following arg.
+var valueFlags = map[string]bool{
+	"--pick": true, "--server": true, "--data-dir": true,
+	"--out": true, "--username": true, "--password": true,
+	"--type": true, "--runs": true, "--port": true, "--matrix-bin": true,
+}
+
 // positional returns non-flag args after the subcommand, skipping
-// values consumed by known value-flags (--pick N, --server URL).
+// values consumed by known value-flags (--pick N, --data-dir D...).
 func positional(args []string) []string {
 	var out []string
 	skipNext := false
@@ -522,7 +529,7 @@ func positional(args []string) []string {
 			skipNext = false
 			continue
 		}
-		if a == "--pick" || a == "--server" {
+		if valueFlags[a] {
 			skipNext = true
 			continue
 		}

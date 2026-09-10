@@ -235,6 +235,7 @@ func (s *Server) routes() {
 
 	m.HandleFunc("GET /api/plugins", s.requireAdmin(s.handlePlugins))
 	m.HandleFunc("POST /api/plugins/swap", s.requireAdmin(s.handleSwap))
+	m.HandleFunc("GET /api/admin/backup", s.requireAdmin(s.handleBackup))
 }
 
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
@@ -556,4 +557,20 @@ func (s *Server) handleSwap(w http.ResponseWriter, r *http.Request, _ auth.Verif
 		return
 	}
 	writeJSON(w, 200, map[string]any{"generation": gen, "composition": s.reg.Composition().View()})
+}
+
+// handleBackup streams a consistent database snapshot (admin only).
+// The snapshot comes from one read transaction, so backup works while
+// scans and streams are running. Pair with GET /api/plugins (which
+// carries the composition) for a complete backup set.
+func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="lain.db"`)
+	if err := s.db.View(func(tx *bolt.Tx) error {
+		_, err := tx.WriteTo(w)
+		return err
+	}); err != nil {
+		// Headers already sent; nothing honest left to write.
+		return
+	}
 }

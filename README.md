@@ -30,7 +30,6 @@ mpv "http://localhost:9360/api/items/<id>/stream?token=$TOK"
 ```
 
 ## Watching (`lain watch`)
-
 ```sh
 lain login --server http://127.0.0.1:9360 --username admin  # once; token in ~/.config/lain
 lain watch frieren        # search, pick, play in mpv, save progress
@@ -44,6 +43,19 @@ URL, and reports progress through the same endpoint every client uses.
 A bundled lua script (embedded in the binary) records position on
 pause, every 10 s and on exit; completed episodes (≥95%) auto-play the
 next one on a TTY. No credentials reach the player process.
+
+## Backup & restore
+
+```sh
+lain backup --out backups              # online when the server runs, offline otherwise
+lain restore backups/lain-backup-<ts> --data-dir ~/.local/share/lain
+```
+
+Online backup streams a consistent snapshot from one server read
+transaction (safe mid-scan, mid-stream); offline needs the server
+stopped and fails fast with a clear error instead of hanging on the
+file lock. Restore validates structure first and refuses over a live
+database — move it aside explicitly.
 
 ## Runtime plugin swap (the point of the project)
 

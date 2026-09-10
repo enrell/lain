@@ -3,11 +3,14 @@ package gateway
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 func testServer(t *testing.T) *Server {
@@ -211,3 +214,46 @@ func TestCatalogPagingEnvelope(t *testing.T) {
 		t.Fatalf("search page: %+v", spage)
 	}
 }
+
+func TestAdminBackupStreamsValidDB(t *testing.T) {
+	srv := testServer(t)
+	admin := setupAdmin(t, srv)
+	rec := do(t, srv, "POST", "/api/users", map[string]string{"username": "ana", "password": "password123"}, admin)
+	if rec.Code != 201 {
+		t.Fatalf("create: %d", rec.Code)
+	}
+	ana := loginAs(t, srv, "ana", "password123")
+	if rec := do(t, srv, "GET", "/api/admin/backup", nil, ana); rec.Code != 403 {
+		t.Fatalf("backup as user: %d, want 403", rec.Code)
+	}
+	rec = do(t, srv, "GET", "/api/admin/backup", nil, admin)
+	if rec.Code != 200 {
+		t.Fatalf("backup as admin: %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/octet-stream" {
+		t.Fatalf("content-type %q", ct)
+	}
+	// The stream must be an openable bolt file with our buckets.
+	dir := t.TempDir()
+	snap := filepath.Join(dir, "snap.db")
+	if err := os.WriteFile(snap, rec.Body.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := bolt.Open(snap, 0o600, &bolt.Options{ReadOnly: true})
+	if err != nil {
+		t.Fatalf("snapshot not a bolt db: %v", err)
+	}
+	defer db.Close()
+	if err := db.View(func(tx *bolt.Tx) error {
+		for _, b := range [][]byte{[]byte("users"), []byte("libraries"), []byte("items")} {
+			if tx.Bucket(b) == nil {
+				return errMissingBucket(string(b))
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func errMissingBucket(b string) error { return errors.New("missing bucket " + b) }
