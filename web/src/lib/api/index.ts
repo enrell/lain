@@ -8,6 +8,7 @@ import { playback } from './playback';
 import { plugins } from './plugins';
 import { progress } from './progress';
 import { search } from './search';
+import { thumbnail } from './thumbnail';
 import { users } from './users';
 
 /**
@@ -26,6 +27,7 @@ export const api = {
 	plugins,
 	progress,
 	search,
+	thumbnail,
 	users
 };
 

@@ -448,6 +448,22 @@ try {
 	step('unplayable container degrades honestly');
 	await navigate(`${BASE}/library`);
 	await waitText('Other Show');
+
+	// Unenriched cards fall back to a still extracted and cached by the
+	// server; the network gate below would also catch a 404 here.
+	const thumbDeadline = Date.now() + 15000;
+	while (!requests.some((r) => r.url.includes('/thumbnail')) && Date.now() < thumbDeadline)
+		await sleep(150);
+	const thumbResponses = requests.filter(
+		(r) => r.url.includes('/thumbnail') && r.status !== null
+	);
+	assert(thumbResponses.length > 0, 'no thumbnail fallback requests observed');
+	assert(
+		thumbResponses.every((r) => r.status === 200 || r.status === 304),
+		'thumbnail responses: ' + JSON.stringify(thumbResponses.map((r) => r.status))
+	);
+	console.log(`   ${thumbResponses.length} thumbnail frame(s) served to unenriched cards`);
+
 	await clickText('Other Show');
 	await waitText('cannot play this file directly', 15000);
 	const disabledPlay = await evalValue(

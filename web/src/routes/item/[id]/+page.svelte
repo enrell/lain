@@ -40,6 +40,14 @@
 	let resetting = $state(false);
 	let confirmRemove = $state(false);
 	let removing = $state(false);
+	let backdropFailedId = $state<string | null>(null);
+
+	// Cover, else poster, else a wide still extracted by the server.
+	const backdropSrc = $derived(
+		enrichment?.cover ||
+			enrichment?.poster ||
+			(item ? api.thumbnail.url(item.id, session.token, { at: 30, width: 960 }) : '')
+	);
 
 	async function load(): Promise<void> {
 		loading = true;
@@ -158,14 +166,15 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if item}
 	<article class="space-y-8">
-		<!-- Artwork backdrop: the cover when we have one, quiet otherwise. -->
+		<!-- Artwork backdrop: cover, else poster, else a generated still. -->
 		<div class="relative -mx-4 -mt-5 h-44 overflow-hidden md:-mx-8 md:-mt-8 md:h-60">
-			{#if enrichment?.cover || enrichment?.poster}
+			{#if item && backdropSrc && backdropFailedId !== item.id}
 				<img
-					src={enrichment.cover || enrichment.poster}
+					src={backdropSrc}
 					alt=""
 					class="size-full object-cover opacity-40"
 					referrerpolicy="no-referrer"
+					onerror={() => (backdropFailedId = item?.id ?? null)}
 				/>
 			{:else}
 				<div class="lattice size-full opacity-50"></div>
