@@ -31,6 +31,12 @@ func main() {
 		err = cmdPlugins(os.Args[2:])
 	case "bench":
 		err = cmdBench(os.Args[2:])
+	case "login":
+		err = cmdLogin(os.Args[2:])
+	case "logout":
+		err = cmdLogout(os.Args[2:])
+	case "watch":
+		err = cmdWatch(os.Args[2:])
 	case "version", "--version", "-V":
 		fmt.Println("lain " + version)
 	default:
@@ -50,6 +56,9 @@ func usage() {
   doctor    diagnose runtime + matrix environment (flags: --data-dir, --matrix-bin)
   plugins   list registered providers + composition (flags: --data-dir)
   bench     run a workload benchmark (bench scan --path DIR [--runs N])
+  login     save API credentials (flags: --server, --username; or LAIN_PASSWORD)
+  logout    forget saved credentials
+  watch     play from the server in mpv ([query] [--next] [--once] [--pick N] [--dry-run])
   version   print version`)
 }
 

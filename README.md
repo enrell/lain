@@ -29,6 +29,22 @@ Stream with Range (mpv/desktop or media element, `?token=` fallback):
 mpv "http://localhost:9360/api/items/<id>/stream?token=$TOK"
 ```
 
+## Watching (`lain watch`)
+
+```sh
+lain login --server http://127.0.0.1:9360 --username admin  # once; token in ~/.config/lain
+lain watch frieren        # search, pick, play in mpv, save progress
+lain watch --next         # resume first unfinished entry
+lain watch frieren --once # no auto-next episode
+lain watch silo --pick 2 --dry-run   # inspect without playing
+```
+
+`watch` resolves an item, launches mpv with an authenticated stream
+URL, and reports progress through the same endpoint every client uses.
+A bundled lua script (embedded in the binary) records position on
+pause, every 10 s and on exit; completed episodes (≥95%) auto-play the
+next one on a TTY. No credentials reach the player process.
+
 ## Runtime plugin swap (the point of the project)
 
 ```sh

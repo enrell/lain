@@ -7,6 +7,7 @@ adapted to Go.
 
 - Language: Go (stdlib-first). Dependencies, each justified:
   - `golang.org/x/crypto` (bcrypt) — password hashing.
+  - `golang.org/x/term` (password prompt) — `lain login` only.
   - `go.etcd.io/bbolt` (embedded KV, pure Go, no cgo) — lain.db.
   New dependencies are permanent compile tax — discuss first, and
   never accept cgo or C-transpiled giants: the build must stay seconds.
@@ -59,6 +60,8 @@ go test ./...           # full suite, fast
 go build -o lain ./cmd/lain
 ./lain doctor            # environment report
 ./lain bench scan --path ~/Videos --runs 3   # scan benchmark -> benchmarks/
+./lain login --server http://127.0.0.1:9360   # save API token
+./lain watch --next                           # resume in mpv
 ```
 
 ## Commit discipline
