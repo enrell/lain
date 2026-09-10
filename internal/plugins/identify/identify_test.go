@@ -111,3 +111,29 @@ func TestGenericAlwaysAccepts(t *testing.T) {
 		t.Errorf("flac kind %q, want audio", got)
 	}
 }
+
+// Parser fixture corpus: every real-world shape the hand parser must
+// keep covering. The benchmark below measures all of them; the table
+// in TestAnimeRealLibraryPatterns pins their behavior.
+var benchNames = []string{
+	"[Fansub-A] Darling in the FranXX - 13 [1080p][Multiple Subtitle].mkv",
+	"[Fansub-A] Darling in the FranXX - 24 END [1080p][Multiple Subtitle].mkv",
+	"[Fansub-A] Tensei Shitara Slime Datta Ken 4th Season - 20 [1080p WEBRip HEVC AAC][MultiSub][B19A6FE6].mkv",
+	"[Fansub-D] The Future Diary - S01E16 - 1080p BluRay AV1 Opus 2.0 Dual Audio.mkv",
+	"[Fansub-D] The Future Diary - S00E02 - Redial - 1080p BluRay AV1 Opus 2.0 Dual Audio.mkv",
+	"Lucky.2026.S01E02.1080p.WEB-DL.DUAL.5.1.mkv",
+	"Silo.S01E01.1080p.WEB-DL.mkv.mp4",
+	"アキラ.Akira.1988.REMASTERED.BluRay.1080p.HDR.HEVC.10bit.FLAC.GRPF.mkv",
+	"movie.mp4",
+}
+
+func BenchmarkIdentifyAnime(b *testing.B) {
+	cands := make([]contracts.Candidate, len(benchNames))
+	for i, n := range benchNames {
+		cands[i] = contracts.Candidate{Path: "/lib/" + n, LibraryID: "lib-1"}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		IdentifyAnime(cands[i%len(cands)])
+	}
+}

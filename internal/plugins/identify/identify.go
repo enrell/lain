@@ -1,19 +1,13 @@
-// Package identify holds the two built-in filename identifiers.
-//
-//   - anime: specialized for fansub/release names ("[Group] Title - 12
-//     [1080p][HEVC]"). High confidence only on real release evidence.
-//   - generic: fallback that classifies by extension and cleans the
-//     basename. It always accepts so the pipeline never drops a file.
-//
-// The ordered-many binding tries anime first, then generic. Swapping in
-// a community parser means inserting it before generic; removing anime
-// leaves generic serving with lower confidence, never a failed scan.
+// Hand-rolled release-name parser: one tokenizer pass plus token
+// classification, zero regex. Release names are human-written with a
+// small pattern inventory ([Group], SxxExx, "- N", 4th Season, years,
+// technical tags), so explicit token rules cover them faster and more
+// predictably than stacked regular expressions.
 package identify
 
 import (
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/enrell/lain/internal/contracts"
@@ -25,24 +19,10 @@ const (
 	GenericID = "lain-identify-generic"
 )
 
+// reBrackets/reSep survive for Generic, the extension fallback.
 var (
-	reGroup    = regexp.MustCompile(`^\s*\[([^\]]+)\]`)
-	reSxxExx   = regexp.MustCompile(`(?i)[Ss](\d{1,2})[Ee](\d{1,3})`)
-	reNxM      = regexp.MustCompile(`(\d{1,2})[xX](\d{1,3})`)
-	reDashEp   = regexp.MustCompile(`(?:^|[\s_\.\-\[\(])(?:[Ee](?:p|P)?\.?\s?)?(\d{1,4})(?:v\d+)?(?:\s*[\[\(]|\s|$)`)
-	reRes      = regexp.MustCompile(`(?i)(2160p|1080p|720p|480p)`)
-	reCodec    = regexp.MustCompile(`(?i)(x264|x265|h\.?264|h\.?265|hevc|avc|av1)`)
-	reSrc      = regexp.MustCompile(`(?i)(blu-?ray|web-?dl|webrip|hdtv|dvd)`)
-	reJunk     = regexp.MustCompile(`(?i)[\[\(](1080p|720p|2160p|480p|[^)\]]*(x264|x265|hevc|avc|av1|flac|aac|ac3|opus|8bit|10bit|multi|dual)[^)\]]*)[\]\)]`)
 	reBrackets = regexp.MustCompile(`[\[\(][^\]\)]*[\]\)]`)
 	reSep      = regexp.MustCompile(`[._]+`)
-	// "4th Season", "Season 2": season words used by release groups.
-	reSeasonWord = regexp.MustCompile(`(?i)(?:\b(\d{1,2})(?:st|nd|rd|th)\s+season\b|\bseason\s+(\d{1,2})\b)`)
-	// Isolated 4-digit year (dots, spaces, brackets — never inside 1080p).
-	reYear = regexp.MustCompile(`(?:^|[\s\.\_\-\[\(])((?:19|20)\d{2})(?:$|[\s\.\_\-\]\)])`)
-	// Standalone technical tokens in dot-style scene names
-	// ("Film.2017.1080p.BluRay.AV1"): stripped after tokenization.
-	reTech = regexp.MustCompile(`(?i)\b(2160p|1080p|720p|480p|blu-?ray|web-?dl|webrip|hdtv|dvdrip|x264|x265|h264|h265|hevc|avc|av1|flac|aac|ac3|opus|dts(?:-hd)?|dual(?:-audio)?|multi\d*|hdr\d*|10bit|8bit|remastered|extended|unrated|repack|proper)\b`)
 )
 
 // videoExts are stripped repeatedly: "file.mkv.mp4" names the video,
@@ -50,6 +30,57 @@ var (
 var videoExts = map[string]bool{
 	"mkv": true, "mp4": true, "avi": true, "mov": true,
 	"m4v": true, "webm": true,
+}
+
+// techTokens are release tags, never title words. Dash-split artifacts
+// ("WEB-DL" -> "web","dl") are included as separate entries.
+var techTokens = map[string]bool{
+	"2160p": true, "1080p": true, "720p": true, "480p": true,
+	"1080i": true, "720i": true,
+	"bluray": true, "webdl": true, "web": true, "dl": true,
+	"webrip": true, "hdtv": true, "dvdrip": true, "dvd": true,
+	"bdrip": true, "brrip": true,
+	"x264": true, "x265": true, "h264": true, "h265": true,
+	"hevc": true, "avc": true, "av1": true, "xvid": true, "divx": true,
+	"flac": true, "aac": true, "ac3": true, "opus": true, "dts": true,
+	"hd": true, "vorbis": true, "truehd": true, "atmos": true,
+	"dual": true, "audio": true, "multi": true, "subs": true, "sub": true,
+	"subtitle": true, "subtitles": true, "multiple": true,
+	"dubbed": true, "subbed": true, "dublado": true,
+	"hdr": true, "hdr10": true, "dolby": true, "vision": true,
+	"10bit": true, "8bit": true,
+	"remastered": true, "extended": true, "unrated": true,
+	"repack": true, "proper": true, "uncut": true,
+}
+
+// resTokens / codecTokens / srcTokens feed confidence + evidence with
+// the same meaning the regex version had.
+var resTokens = map[string]bool{
+	"2160p": true, "1080p": true, "720p": true, "480p": true,
+}
+
+var codecTokens = map[string]bool{
+	"x264": true, "x265": true, "h264": true, "h265": true,
+	"hevc": true, "avc": true, "av1": true,
+}
+
+var srcTokens = map[string]bool{
+	"bluray": true, "webdl": true, "web": true, "webrip": true,
+	"hdtv": true, "dvd": true, "dvdrip": true, "bdrip": true, "brrip": true,
+}
+
+// isTech reports release tags, including numbered variants the map
+// holds unnumbered ("multi" covers "multi4", "hdr" covers "hdr10").
+// Pure numbers never qualify: stripping "24" must not erase episodes.
+func isTech(l string) bool {
+	if techTokens[l] {
+		return true
+	}
+	i := len(l)
+	for i > 0 && l[i-1] >= '0' && l[i-1] <= '9' {
+		i--
+	}
+	return i > 0 && i < len(l) && techTokens[l[:i]]
 }
 
 // stemOf removes the extension, then any further trailing video
@@ -84,57 +115,300 @@ func (Anime) Invoke(cap string, input any) (any, error) {
 	return p, nil
 }
 
+// token is one separator-delimited word with its bracket context.
+// Bracketed words feed evidence but never the title: "[1080p]" tags
+// the release without naming it.
+type token struct {
+	text      string // original case, for titles
+	lower     string
+	bracketed bool
+}
+
+// isSep reports tokenizer separators. Brackets split words AND mark
+// context; dash/underscore/dot/space split words.
+func isSep(c byte) bool {
+	switch c {
+	case ' ', '\t', '.', '_', '-', '[', ']', '(', ')':
+		return true
+	}
+	return false
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+// splitTokens cuts s into words in one pass. Digit runs glued to a dot
+// digit ("Opus 2.0", "DUAL 5.1") stay one token so versions never read
+// as episode numbers.
+func splitTokens(s string) []token {
+	var out []token
+	depth := 0
+	i, n := 0, len(s)
+	for i < n {
+		c := s[i]
+		if c == '[' || c == '(' {
+			depth++
+			i++
+			continue
+		}
+		if c == ']' || c == ')' {
+			if depth > 0 {
+				depth--
+			}
+			i++
+			continue
+		}
+		if isSep(c) {
+			i++
+			continue
+		}
+		start := i
+		allDigits := true
+		for i < n && !isSep(s[i]) && s[i] != '[' && s[i] != '(' && s[i] != ']' && s[i] != ')' {
+			if s[i] == '.' && allDigits && i+1 < n && isDigit(s[i+1]) {
+				i++ // glued version: "2.0" stays whole
+				continue
+			}
+			if !isDigit(s[i]) {
+				allDigits = false
+			}
+			i++
+		}
+		_ = allDigits
+		t := s[start:i]
+		out = append(out, token{text: t, lower: strings.ToLower(t), bracketed: depth > 0})
+	}
+	return out
+}
+
+// atoi parses a small ASCII digit run.
+func atoi(s string) (int, bool) {
+	if s == "" || len(s) > 4 {
+		return 0, false
+	}
+	v := 0
+	for i := 0; i < len(s); i++ {
+		if !isDigit(s[i]) {
+			return 0, false
+		}
+		v = v*10 + int(s[i]-'0')
+	}
+	return v, true
+}
+
+// parseSxxExx matches S01E05 (any case, any zero padding).
+func parseSxxExx(t string) (season, episode int, ok bool) {
+	// t is already lowercase.
+	if len(t) < 4 || t[0] != 's' {
+		return 0, 0, false
+	}
+	e := -1
+	for i := 1; i < len(t); i++ {
+		if t[i] == 'e' {
+			e = i
+			break
+		}
+		if !isDigit(t[i]) {
+			return 0, 0, false
+		}
+	}
+	if e < 0 || e+1 >= len(t) {
+		return 0, 0, false
+	}
+	sn, ok1 := atoi(t[1:e])
+	en, ok2 := atoi(t[e+1:])
+	if !ok1 || !ok2 || len(t[1:e]) > 2 || len(t[e+1:]) > 3 {
+		return 0, 0, false
+	}
+	return sn, en, true
+}
+
+// parseNxM matches 2x13 (digits on both sides of x).
+func parseNxM(t string) (a, b int, ok bool) {
+	x := -1
+	for i := 0; i < len(t); i++ {
+		if t[i] == 'x' {
+			x = i
+			break
+		}
+		if !isDigit(t[i]) {
+			return 0, 0, false
+		}
+	}
+	if x <= 0 || x+1 >= len(t) || x > 2 {
+		return 0, 0, false
+	}
+	an, ok1 := atoi(t[:x])
+	bn, ok2 := atoi(t[x+1:])
+	if !ok1 || !ok2 || len(t[x+1:]) > 3 {
+		return 0, 0, false
+	}
+	return an, bn, true
+}
+
+// stripVersionSuffix turns "24v2" into 24.
+func stripVersionSuffix(t string) string {
+	for i := len(t) - 1; i >= 0; i-- {
+		if t[i] == 'v' && i > 0 {
+			if _, ok := atoi(t[:i]); ok {
+				if _, ok := atoi(t[i+1:]); ok {
+					return t[:i]
+				}
+			}
+			return t
+		}
+		if !isDigit(t[i]) {
+			return t
+		}
+	}
+	return t
+}
+
+// isYear reports isolated release years (never inside 1080p: the
+// tokenizer splits those into "1080p", which is tech, not digits).
+func isYear(t string) bool {
+	if len(t) != 4 {
+		return false
+	}
+	y, ok := atoi(t)
+	return ok && y >= 1900 && y <= 2099
+}
+
+// parseOrdinal matches "4th" -> 4.
+func parseOrdinal(t string) (int, bool) {
+	var suf string
+	switch {
+	case strings.HasSuffix(t, "st"):
+		suf = "st"
+	case strings.HasSuffix(t, "nd"):
+		suf = "nd"
+	case strings.HasSuffix(t, "rd"):
+		suf = "rd"
+	case strings.HasSuffix(t, "th"):
+		suf = "th"
+	default:
+		return 0, false
+	}
+	return atoi(t[:len(t)-len(suf)])
+}
+
 // IdentifyAnime returns a proposal and whether it found release evidence.
 // No evidence (plain "movie.mp4") declines so the next provider runs.
 func IdentifyAnime(c contracts.Candidate) (contracts.Proposal, bool) {
-	name := stemOf(filepath.Base(c.Path))
+	stem := stemOf(filepath.Base(c.Path))
 	evidence := []string{}
+	addEvidence := func(e string) {
+		for _, x := range evidence {
+			if x == e {
+				return
+			}
+		}
+		evidence = append(evidence, e)
+	}
 
+	// Leading "[Group]" is the release group, not the title.
 	group := ""
-	if m := reGroup.FindStringSubmatch(name); m != nil {
-		group = m[1]
-		evidence = append(evidence, "release-group")
+	rest := strings.TrimLeft(stem, " \t")
+	if strings.HasPrefix(rest, "[") {
+		if end := strings.IndexByte(rest, ']'); end > 1 {
+			group = rest[1:end]
+			addEvidence("release-group")
+			rest = rest[end+1:]
+		}
 	}
+
+	toks := splitTokens(rest)
 	season, episode := 0, 0
-	strongEp := false // SxxExx/NxM markers are unambiguous; bare numbers are not
-	if m := reSxxExx.FindStringSubmatch(name); m != nil {
-		season, _ = strconv.Atoi(m[1])
-		episode, _ = strconv.Atoi(m[2])
-		evidence = append(evidence, "sxxexx")
-		strongEp = true
-	} else if m := reNxM.FindStringSubmatch(name); m != nil {
-		season, _ = strconv.Atoi(m[1])
-		episode, _ = strconv.Atoi(m[2])
-		evidence = append(evidence, "nxm")
-		strongEp = true
-	} else if m := reDashEp.FindStringSubmatch(name + " "); m != nil {
-		episode, _ = strconv.Atoi(m[1])
-		evidence = append(evidence, "episode-number")
-	}
-	// "4th Season" / "Season 2" words fill a missing season.
-	if season == 0 {
-		if m := reSeasonWord.FindStringSubmatch(name); m != nil {
-			for _, g := range m[1:] {
-				if g == "" {
-					continue
-				}
-				if n, err := strconv.Atoi(g); err == nil {
+	strongEp := false
+	year := 0
+	hasTech, hasRes := false, false
+	epOutIdx := -1 // unbracketed-word count before the episode marker
+	seasonSkip := map[int]bool{}
+
+	outCount := 0
+	for i, tk := range toks {
+		l := tk.lower
+		if resTokens[l] {
+			hasRes, hasTech = true, true
+			addEvidence("resolution")
+		} else if codecTokens[l] {
+			hasTech = true
+			addEvidence("codec")
+		} else if srcTokens[l] {
+			hasTech = true
+			addEvidence("source")
+		} else if isTech(l) {
+			hasTech = true
+		}
+		if isYear(l) && year == 0 {
+			year = mustAtoi(l)
+			addEvidence("year")
+		}
+		if tk.bracketed {
+			continue
+		}
+		// Season words with one-token lookahead ("4th Season",
+		// "Season 2"), unbracketed only.
+		if season == 0 {
+			if n, ok := parseOrdinal(l); ok && n <= 30 && nextIs(toks, i, "season") {
+				season = n
+				seasonSkip[i], seasonSkip[i+1] = true, true
+				addEvidence("season-word")
+			} else if l == "season" && i+1 < len(toks) {
+				if n, ok := atoi(toks[i+1].lower); ok && n <= 30 {
 					season = n
-					evidence = append(evidence, "season-word")
-					break
+					seasonSkip[i], seasonSkip[i+1] = true, true
+					addEvidence("season-word")
 				}
 			}
 		}
+		if epOutIdx < 0 || !strongEp {
+			if sn, en, ok := parseSxxExx(l); ok && !strongEp {
+				season, episode = sn, en
+				strongEp = true
+				epOutIdx = outCount
+				addEvidence("sxxexx")
+			} else if an, bn, ok := parseNxM(l); ok && !strongEp {
+				season, episode = an, bn
+				strongEp = true
+				epOutIdx = outCount
+				addEvidence("nxm")
+			} else if epOutIdx < 0 {
+				if en, ok := weakEpisode(l); ok {
+					episode = en
+					epOutIdx = outCount
+					addEvidence("episode-number")
+				}
+			}
+		}
+		outCount++
 	}
-	year := 0
-	if m := reYear.FindStringSubmatch(name + " "); m != nil {
-		year, _ = strconv.Atoi(m[1])
-		evidence = append(evidence, "year")
+	if epOutIdx < 0 {
+		// Parity fallback: unambiguous markers hidden inside brackets
+		// ("Show [S01E05]"). Title keeps every outside word.
+		for _, tk := range toks {
+			if !tk.bracketed {
+				continue
+			}
+			if sn, en, ok := parseSxxExx(tk.lower); ok {
+				season, episode = sn, en
+				strongEp = true
+				epOutIdx = outCount
+				addEvidence("sxxexx")
+				break
+			}
+			if an, bn, ok := parseNxM(tk.lower); ok {
+				season, episode = an, bn
+				strongEp = true
+				epOutIdx = outCount
+				addEvidence("nxm")
+				break
+			}
+		}
 	}
 	if year > 0 && episode == year && !strongEp {
-		// A lone 4-digit number is a year, not episode 1995: drop the
-		// episode reading so "(1995)" movies decline to generic.
+		// A lone 4-digit number is a year, not episode 1995.
 		episode = 0
+		epOutIdx = -1 // no marker, no title cut either
 		kept := evidence[:0]
 		for _, e := range evidence {
 			if e != "episode-number" {
@@ -143,52 +417,53 @@ func IdentifyAnime(c contracts.Candidate) (contracts.Proposal, bool) {
 		}
 		evidence = kept
 	}
-	title := name
-	if group != "" {
-		title = strings.TrimSpace(strings.TrimPrefix(title, "["+group+"]"))
-	}
-	// Cut at the episode marker, drop technical tags.
-	if idx := episodeMarkerIndex(title, season, episode); idx > 0 {
-		title = title[:idx]
-	}
-	title = reJunk.ReplaceAllString(title, " ")
-	title = reBrackets.ReplaceAllString(title, " ")
-	if year > 0 {
-		title = strings.ReplaceAll(title, strconv.Itoa(year), " ")
-	}
-	if season > 0 {
-		title = reSeasonWord.ReplaceAllString(title, " ")
-	}
-	title = strings.ReplaceAll(title, "-", " ")
-	title = reSep.ReplaceAllString(title, " ")
-	title = reTech.ReplaceAllString(title, " ")
-	title = strings.Join(strings.Fields(title), " ")
-	if title == "" {
-		return contracts.Proposal{}, false
-	}
-	conf := 0.7
-	hasTech := false
-	if group != "" {
-		conf += 0.1
-	}
-	if reRes.MatchString(name) {
-		conf += 0.08
-		evidence = append(evidence, "resolution")
-		hasTech = true
-	}
-	if reCodec.MatchString(name) {
-		evidence = append(evidence, "codec")
-		hasTech = true
-	}
-	if reSrc.MatchString(name) {
-		evidence = append(evidence, "source")
-		hasTech = true
-	}
 	if group == "" && !strongEp && !(year > 0 && hasTech) {
 		// Without a group: only unambiguous episode markers, or a year
 		// corroborated by technical tags (dot-style movie releases),
 		// count. Everything else declines to generic.
 		return contracts.Proposal{}, false
+	}
+
+	// Title: unbracketed words before the episode marker, minus tags.
+	var words []string
+	n := 0
+	for i, tk := range toks {
+		if tk.bracketed {
+			continue
+		}
+		if seasonSkip[i] {
+			n++
+			continue
+		}
+		if epOutIdx >= 0 && n >= epOutIdx {
+			break
+		}
+		l := tk.lower
+		if isTech(l) || resTokens[l] || codecTokens[l] || srcTokens[l] {
+			n++
+			continue
+		}
+		if isYear(l) {
+			n++
+			continue
+		}
+		if _, ok := parseOrdinal(l); ok {
+			n++
+			continue
+		}
+		words = append(words, tk.text)
+		n++
+	}
+	if len(words) == 0 {
+		return contracts.Proposal{}, false
+	}
+
+	conf := 0.7
+	if group != "" {
+		conf += 0.1
+	}
+	if hasRes {
+		conf += 0.08
 	}
 	if conf > 0.96 {
 		conf = 0.96
@@ -198,25 +473,37 @@ func IdentifyAnime(c contracts.Candidate) (contracts.Proposal, bool) {
 		kind = "video"
 	}
 	return contracts.Proposal{
-		Kind: kind, Title: title, Season: season, Episode: episode, Year: year,
+		Kind: kind, Title: strings.Join(words, " "), Season: season,
+		Episode: episode, Year: year,
 		Confidence: conf, Evidence: evidence, PluginID: AnimeID,
 	}, true
 }
 
-func episodeMarkerIndex(title string, season, episode int) int {
-	if episode > 0 {
-		// Specific SxxExx shape first: it is unambiguous, while a bare
-		// number can misfire on technical tags ("Opus 2.0").
-		re2 := regexp.MustCompile(`(?i)S0*` + strconv.Itoa(season) + `E0*` + strconv.Itoa(episode))
-		if loc := re2.FindStringIndex(title); loc != nil {
-			return loc[0]
-		}
-		re := regexp.MustCompile(`[\s_\.\-]0*` + strconv.Itoa(episode) + `(?:v\d+)?(?:$|[\s_\.\-\[\(])`)
-		if loc := re.FindStringIndex(title); loc != nil {
-			return loc[0]
+// nextIs reports whether the following token equals want (unbracketed).
+func nextIs(toks []token, i int, want string) bool {
+	return i+1 < len(toks) && !toks[i+1].bracketed && toks[i+1].lower == want
+}
+
+// weakEpisode matches bare numbers ("12", "24v2") and E-prefixed
+// numbers ("E05", "EP12"). Years never reach here: 4-digit 19xx/20xx
+// tokens classify as year in the main loop (checked first by the
+// caller ordering: weakEpisode itself refuses nothing, so the caller
+// must prefer the year reading — see the year-guard).
+func weakEpisode(l string) (int, bool) {
+	if strings.HasPrefix(l, "ep") {
+		return atoi(l[2:])
+	}
+	if strings.HasPrefix(l, "e") && len(l) > 1 {
+		if n, ok := atoi(l[1:]); ok {
+			return n, true
 		}
 	}
-	return -1
+	return atoi(stripVersionSuffix(l))
+}
+
+func mustAtoi(s string) int {
+	n, _ := atoi(s)
+	return n
 }
 
 // Generic classifies by extension and always accepts.
