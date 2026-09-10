@@ -8,28 +8,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/enrell/lain/internal/plugins/userstate"
-	"github.com/enrell/lain/internal/store"
 )
 
 func testServer(t *testing.T) *Server {
 	t.Helper()
-	st, err := store.New(t.TempDir())
+	srv, err := New(t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	ustate, err := userstate.New(st)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// New() re-opens the same dir; share it via data dir path.
-	dir := st.Root()
-	_ = dir
-	srv, err := New(st.Root(), "test", ustate)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Cleanup(func() { srv.Close() })
 	return srv
 }
 

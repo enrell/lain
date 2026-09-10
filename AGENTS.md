@@ -5,11 +5,17 @@ adapted to Go.
 
 ## Stack (do not change without explicit user instruction)
 
-- Language: Go (stdlib-first). Sole dependency: `golang.org/x/crypto`
-  (bcrypt). New dependencies are permanent compile tax — discuss first.
+- Language: Go (stdlib-first). Dependencies, each justified:
+  - `golang.org/x/crypto` (bcrypt) — password hashing.
+  - `go.etcd.io/bbolt` (embedded KV, pure Go, no cgo) — lain.db.
+  New dependencies are permanent compile tax — discuss first, and
+  never accept cgo or C-transpiled giants: the build must stay seconds.
 - HTTP: stdlib `net/http` with method patterns. No framework.
-- Storage v0.1: atomic JSON via `internal/store`. No ORM, no sqlite yet.
-- JWT: HS256 implemented in `internal/auth` (stdlib hmac/sha256).
+- Storage: bbolt buckets (`users`, `libraries`, `items`, `progress`,
+  `meta`) via `internal/kv`; JSON values, composite keys for scoping.
+  `internal/store` remains for operator config + legacy import only.
+- JWT: HS256 in `internal/auth` (stdlib hmac/sha256) with live role,
+  liveness and password-version checks.
 - No cgo. The whole point is a seconds-long build; keep it that way.
 
 ## Workflow

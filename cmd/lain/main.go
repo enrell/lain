@@ -12,8 +12,6 @@ import (
 
 	"github.com/enrell/lain/internal/gateway"
 	"github.com/enrell/lain/internal/matrix"
-	"github.com/enrell/lain/internal/plugins/userstate"
-	"github.com/enrell/lain/internal/store"
 )
 
 const version = "0.1.0-dev"
@@ -75,25 +73,14 @@ func flag(args []string, name, def string) string {
 	return def
 }
 
-func openUserstate(dataDir string) (*userstate.Service, error) {
-	st, err := store.New(dataDir)
-	if err != nil {
-		return nil, err
-	}
-	return userstate.New(st)
-}
-
 func cmdServe(args []string) error {
 	dataDir := flag(args, "data-dir", defaultDataDir())
 	port := flag(args, "port", "9360")
-	ustate, err := openUserstate(dataDir)
+	srv, err := gateway.New(dataDir, version)
 	if err != nil {
 		return err
 	}
-	srv, err := gateway.New(dataDir, version, ustate)
-	if err != nil {
-		return err
-	}
+	defer srv.Close()
 	httpSrv := &http.Server{
 		Addr:         "127.0.0.1:" + port,
 		Handler:      srv.Handler(),
@@ -135,14 +122,11 @@ func binPresent(name string) bool {
 
 func cmdPlugins(args []string) error {
 	dataDir := flag(args, "data-dir", defaultDataDir())
-	ustate, err := openUserstate(dataDir)
+	srv, err := gateway.New(dataDir, version)
 	if err != nil {
 		return err
 	}
-	srv, err := gateway.New(dataDir, version, ustate)
-	if err != nil {
-		return err
-	}
+	defer srv.Close()
 	out := map[string]any{
 		"composition": srv.Registry().Composition().View(),
 		"providers":   srv.Registry().Providers(),

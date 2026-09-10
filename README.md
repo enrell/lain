@@ -67,17 +67,33 @@ docs/                      ARCHITECTURE, CONTRACTS, PLUGIN, RECOVERY
 
 ```text
 GET  /health  /api/health
-GET  /api/setup/status      POST /api/setup
+GET  /api/setup/status      POST /api/setup          (first admin)
 POST /api/auth/login        GET  /api/me
-GET  /api/libraries         POST /api/libraries
-POST /api/library/scan      GET  /api/library/scan
+PATCH /api/me/password      GET  /api/me/continue
+GET  /api/users             POST /api/users          (admin)
+PATCH /api/users/{id}                                (admin: disable/role/reset)
+GET  /api/libraries         POST /api/libraries      (admin)
+DELETE /api/libraries/{id}                           (admin)
+POST /api/library/scan      GET  /api/library/scan  (start: admin)
 GET  /api/catalog           GET  /api/catalog/{id}
 GET  /api/search?q=&kind=
 GET  /api/items/{id}/playback?client=&network=
 GET  /api/items/{id}/stream            (Range, ?token= ok)
 PUT  /api/items/{id}/progress          GET /api/items/{id}/progress
-GET  /api/plugins           POST /api/plugins/swap
+GET  /api/plugins           POST /api/plugins/swap  (admin)
 ```
+
+## Users & storage
+
+Multi-user with roles (`admin`, `user`). Reads and watching are for
+everyone; libraries, scans, plugins and user administration are
+admin-only. Disabling and password rotation kill live tokens on next
+request (password version rides the JWT and is checked live).
+
+State lives in one embedded database (`lain.db`, bbolt — pure Go, no
+cgo, millisecond builds intact): users, libraries, catalog, progress.
+A v0.1 JSON data dir is imported once on first boot and its files
+renamed to `*.imported`.
 
 ## Non-goals for v0.1
 

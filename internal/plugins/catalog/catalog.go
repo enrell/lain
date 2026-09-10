@@ -1,7 +1,7 @@
 // Package catalog is the authoritative item store (exactly-one).
-// The file-backed implementation persists catalog.json atomically with
-// per-field provenance. A future sqlite-catalog plugin can replace it
-// behind the same caps as long as it honors export/import.
+// Bolt-backed: one read-write transaction per mutation, prefix scans
+// for library scoping. The portable ExportDoc stays the replacement
+// contract for any future catalog provider.
 package catalog
 
 import (
@@ -9,35 +9,30 @@ import (
 	"encoding/hex"
 	"sort"
 	"strings"
-	"sync"
-	"time"
+
+	bolt "go.etcd.io/bbolt"
 
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/core"
-	"github.com/enrell/lain/internal/store"
+	"github.com/enrell/lain/internal/kv"
 )
 
-// ID is the built-in file catalog provider id.
-const ID = "lain-catalog-file"
+// ID is the bolt catalog provider id.
+const ID = "lain-catalog-bolt"
+
+// libSep separates library and item in composite keys.
+const libSep = "\x00"
 
 // Service owns canonical media identity for its scope.
 type Service struct {
-	mu    sync.RWMutex
-	st    *store.Dir
-	items map[string]contracts.CatalogItem
+	db *bolt.DB
 }
 
-func New(st *store.Dir) (*Service, error) {
-	s := &Service{st: st, items: map[string]contracts.CatalogItem{}}
-	var loaded map[string]contracts.CatalogItem
-	if err := st.Load("catalog.json", &loaded); err != nil {
-		if err == store.ErrNotFound {
-			return s, nil
-		}
-		return nil, err
+func New(db *bolt.DB) (*Service, error) {
+	if db == nil {
+		return nil, &core.Error{Code: "internal", Msg: "nil db"}
 	}
-	s.items = loaded
-	return s, nil
+	return &Service{db: db}, nil
 }
 
 func (s *Service) ID() string { return ID }
@@ -101,95 +96,155 @@ func ItemID(libraryID, path string) string {
 // disk. Pure: same input always yields the same identity.
 func NewItem(libraryID string, p contracts.Proposal, c contracts.Candidate) contracts.CatalogItem {
 	return contracts.CatalogItem{
-		ID: ItemID(libraryID, c.Path), LibraryID: libraryID, Kind: p.Kind,
+		ID: idFor(libraryID, c.Path), LibraryID: libraryID, Kind: p.Kind,
 		Title: p.Title, Season: p.Season,
 		Episode: p.Episode, Year: p.Year,
 		FilePath: c.Path, Size: c.Size,
 		Confidence: p.Confidence, Origin: p.PluginID,
 		Provenance: "identify:" + p.PluginID,
-		UpdatedAt:  time.Now().Unix(),
+		UpdatedAt:  nowUnix(),
 	}
 }
 
-// Upsert inserts or refreshes the item for a candidate. Provenance
-// records which plugin produced the consolidated fields.
+func idFor(libraryID, path string) string { return ItemID(libraryID, path) }
+
+func libKey(libraryID, itemID string) []byte {
+	return []byte(libraryID + libSep + itemID)
+}
+
+func libPrefix(libraryID string) []byte {
+	return []byte(libraryID + libSep)
+}
+
+// Upsert inserts or refreshes one item.
 func (s *Service) Upsert(in UpsertInput) (contracts.CatalogItem, error) {
 	it := NewItem(in.LibraryID, in.Proposal, in.Candidate)
-	s.mu.Lock()
-	s.items[it.ID] = it
-	cp := copyAll(s.items)
-	s.mu.Unlock()
-	if err := s.st.Save("catalog.json", cp); err != nil {
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		if err := kv.PutJSON(tx, kv.BItems, []byte(it.ID), it); err != nil {
+			return err
+		}
+		return tx.Bucket(kv.BItemsByLib).Put(libKey(it.LibraryID, it.ID), []byte{})
+	})
+	if err != nil {
 		return contracts.CatalogItem{}, err
 	}
 	return it, nil
 }
 
-// UpsertBatch stages many items in memory and persists exactly once.
-// Scans use this: disk writes stay constant no matter the library size.
+// UpsertBatch stages many items in one transaction. Scans use this:
+// disk writes stay constant no matter the library size.
 func (s *Service) UpsertBatch(items []contracts.CatalogItem) error {
 	if len(items) == 0 {
 		return nil
 	}
-	s.mu.Lock()
-	for _, it := range items {
-		s.items[it.ID] = it
-	}
-	cp := copyAll(s.items)
-	s.mu.Unlock()
-	return s.st.Save("catalog.json", cp)
+	return s.db.Update(func(tx *bolt.Tx) error {
+		ib, lb := tx.Bucket(kv.BItems), tx.Bucket(kv.BItemsByLib)
+		for _, it := range items {
+			raw, err := marshalItem(it)
+			if err != nil {
+				return err
+			}
+			if err := ib.Put([]byte(it.ID), raw); err != nil {
+				return err
+			}
+			if err := lb.Put(libKey(it.LibraryID, it.ID), []byte{}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // PruneMissing removes items of one library that the scan did not see.
-// The caller must guarantee the root was fully walked (accessible and
-// zero walk errors): a partial walk must never read as deletions.
-// Persists only when something was actually removed.
+// The caller must guarantee the root was fully walked: a partial walk
+// must never read as deletions.
 func (s *Service) PruneMissing(libraryID string, present map[string]bool) (int, error) {
-	s.mu.Lock()
 	removed := 0
-	for id, it := range s.items {
-		if it.LibraryID != libraryID {
-			continue
-		}
-		if !present[id] {
-			delete(s.items, id)
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		ib, lb := tx.Bucket(kv.BItems), tx.Bucket(kv.BItemsByLib)
+		cur := lb.Cursor()
+		prefix := libPrefix(libraryID)
+		for k, _ := cur.Seek(prefix); k != nil && hasPrefix(k, prefix); k, _ = cur.Next() {
+			id := string(k[len(prefix):])
+			if present[id] {
+				continue
+			}
+			if err := ib.Delete([]byte(id)); err != nil {
+				return err
+			}
+			if err := cur.Delete(); err != nil {
+				return err
+			}
 			removed++
 		}
-	}
-	if removed == 0 {
-		s.mu.Unlock()
-		return 0, nil
-	}
-	cp := copyAll(s.items)
-	s.mu.Unlock()
-	if err := s.st.Save("catalog.json", cp); err != nil {
-		return 0, err
-	}
-	return removed, nil
+		return nil
+	})
+	return removed, err
 }
 
 // Get returns one item.
 func (s *Service) Get(id string) (contracts.CatalogItem, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	it, ok := s.items[id]
-	return it, ok
+	var it contracts.CatalogItem
+	err := s.db.View(func(tx *bolt.Tx) error {
+		return kv.GetJSON(tx, kv.BItems, []byte(id), &it)
+	})
+	if err != nil {
+		return contracts.CatalogItem{}, false
+	}
+	return it, true
 }
 
 // List returns all items sorted by title.
 func (s *Service) List() []contracts.CatalogItem {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]contracts.CatalogItem, 0, len(s.items))
-	for _, it := range s.items {
-		out = append(out, it)
-	}
+	var out []contracts.CatalogItem
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		return tx.Bucket(kv.BItems).ForEach(func(_, v []byte) error {
+			var it contracts.CatalogItem
+			if err := unmarshalItem(v, &it); err != nil {
+				return nil // skip corrupt records on reads; import path validates
+			}
+			out = append(out, it)
+			return nil
+		})
+	})
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Title == out[j].Title {
 			return out[i].ID < out[j].ID
 		}
 		return out[i].Title < out[j].Title
 	})
+	if out == nil {
+		out = []contracts.CatalogItem{}
+	}
+	return out
+}
+
+// ListByLibrary returns one library's items sorted by title.
+func (s *Service) ListByLibrary(libraryID string) []contracts.CatalogItem {
+	var out []contracts.CatalogItem
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		ib, lb := tx.Bucket(kv.BItems), tx.Bucket(kv.BItemsByLib)
+		cur := lb.Cursor()
+		prefix := libPrefix(libraryID)
+		for k, _ := cur.Seek(prefix); k != nil && hasPrefix(k, prefix); k, _ = cur.Next() {
+			var it contracts.CatalogItem
+			if err := kv.GetJSON(tx, kv.BItems, []byte(string(k[len(prefix):])), &it); err != nil {
+				continue
+			}
+			_ = ib
+			out = append(out, it)
+		}
+		return nil
+	})
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Title == out[j].Title {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].Title < out[j].Title
+	})
+	if out == nil {
+		out = []contracts.CatalogItem{}
+	}
 	return out
 }
 
@@ -207,17 +262,33 @@ func (s *Service) Search(q, kind string) []contracts.CatalogItem {
 		}
 		out = append(out, it)
 	}
+	if out == nil {
+		out = []contracts.CatalogItem{}
+	}
 	return out
+}
+
+// Count returns the total item count without materializing records.
+func (s *Service) Count() int {
+	n := 0
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		n = tx.Bucket(kv.BItems).Stats().KeyN
+		return nil
+	})
+	return n
 }
 
 // Export dumps the portable document a replacement catalog must honor.
 func (s *Service) Export() ExportDoc {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return ExportDoc{Format: "lain.catalog-export", Version: 1, Items: copyAll(s.items)}
+	doc := ExportDoc{Format: "lain.catalog-export", Version: 1, Items: map[string]contracts.CatalogItem{}}
+	for _, it := range s.List() {
+		doc.Items[it.ID] = it
+	}
+	return doc
 }
 
-// Import loads a portable document, replacing contents atomically.
+// Import loads a portable document, replacing contents atomically in
+// one transaction (index rebuilt with the items).
 func (s *Service) Import(doc ExportDoc) error {
 	if doc.Format != "lain.catalog-export" || doc.Version != 1 {
 		return &core.Error{Code: "invalid-message", Msg: "unsupported export format/version"}
@@ -225,17 +296,33 @@ func (s *Service) Import(doc ExportDoc) error {
 	if doc.Items == nil {
 		doc.Items = map[string]contracts.CatalogItem{}
 	}
-	s.mu.Lock()
-	s.items = doc.Items
-	cp := copyAll(s.items)
-	s.mu.Unlock()
-	return s.st.Save("catalog.json", cp)
-}
-
-func copyAll(m map[string]contracts.CatalogItem) map[string]contracts.CatalogItem {
-	cp := make(map[string]contracts.CatalogItem, len(m))
-	for k, v := range m {
-		cp[k] = v
-	}
-	return cp
+	return s.db.Update(func(tx *bolt.Tx) error {
+		ib, lb := tx.Bucket(kv.BItems), tx.Bucket(kv.BItemsByLib)
+		cur := lb.Cursor()
+		for k, _ := cur.First(); k != nil; k, _ = cur.Next() {
+			if err := cur.Delete(); err != nil {
+				return err
+			}
+		}
+		cur2 := ib.Cursor()
+		for k, _ := cur2.First(); k != nil; k, _ = cur2.Next() {
+			if err := cur2.Delete(); err != nil {
+				return err
+			}
+		}
+		for id, it := range doc.Items {
+			it.ID = id
+			raw, err := marshalItem(it)
+			if err != nil {
+				return err
+			}
+			if err := ib.Put([]byte(id), raw); err != nil {
+				return err
+			}
+			if err := lb.Put(libKey(it.LibraryID, id), []byte{}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

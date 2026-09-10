@@ -4,20 +4,27 @@ import (
 	"testing"
 
 	"github.com/enrell/lain/internal/contracts"
-	"github.com/enrell/lain/internal/store"
+	"github.com/enrell/lain/internal/kv"
 )
 
 func testService(t *testing.T) *Service {
 	t.Helper()
-	st, err := store.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, err := New(st)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s, _ := testServiceIn(t, t.TempDir())
 	return s
+}
+
+func testServiceIn(t *testing.T, dir string) (*Service, string) {
+	t.Helper()
+	db, err := kv.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	s, err := New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s, dir
 }
 
 func mkItem(lib, path, title string) contracts.CatalogItem {
@@ -38,7 +45,8 @@ func TestNewItemStableID(t *testing.T) {
 }
 
 func TestBatchRoundtrip(t *testing.T) {
-	s := testService(t)
+	dir := t.TempDir()
+	s, _ := testServiceIn(t, dir)
 	items := []contracts.CatalogItem{
 		mkItem("l", "/x/a.mkv", "A"),
 		mkItem("l", "/x/b.mkv", "B"),
@@ -49,12 +57,14 @@ func TestBatchRoundtrip(t *testing.T) {
 	if got := len(s.List()); got != 2 {
 		t.Fatalf("list=%d, want 2", got)
 	}
-	// Reload from disk through a fresh service: one persist must hold all.
-	st2, err := store.New(s.st.Root())
+	// Close first handle, reopen: one persist must hold all.
+	s.db.Close()
+	db2, err := kv.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s2, err := New(st2)
+	t.Cleanup(func() { db2.Close() })
+	s2, err := New(db2)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,14 +18,18 @@ import (
 	"sync"
 	"time"
 
+	bolt "go.etcd.io/bbolt"
+
 	"github.com/enrell/lain/internal/auth"
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/core"
+	"github.com/enrell/lain/internal/kv"
 	"github.com/enrell/lain/internal/plugins/catalog"
 	"github.com/enrell/lain/internal/plugins/ingest"
 	"github.com/enrell/lain/internal/plugins/playback"
 	"github.com/enrell/lain/internal/plugins/search"
 	"github.com/enrell/lain/internal/plugins/source"
+	"github.com/enrell/lain/internal/plugins/userstate"
 	"github.com/enrell/lain/internal/store"
 )
 
@@ -33,24 +37,20 @@ import (
 type Server struct {
 	reg    *core.Registry
 	auth   *auth.Service
+	db     *bolt.DB
 	st     *store.Dir
 	cat    *catalog.Service
-	ustate progressBackend
+	ustate *userstate.Service
+	libs   *LibraryStore
 	mux    *http.ServeMux
 	ver    string
-
-	libsMu sync.RWMutex
-	libs   map[string]contracts.Library
 
 	scanMu sync.Mutex
 	scan   ScanStatus
 }
 
-// progressBackend is the userstate provider surface the gateway needs.
-// *userstate.Service satisfies it and is registered as a provider.
-type progressBackend interface {
-	core.Provider
-}
+// Close releases the database handle.
+func (s *Server) Close() error { return s.db.Close() }
 
 // ScanStatus is the observable scan state.
 type ScanStatus struct {
@@ -61,24 +61,44 @@ type ScanStatus struct {
 	Error      string               `json:"error,omitempty"`
 }
 
-// New builds the server over a data dir, registering built-ins.
-func New(dataDir, ver string, ustate progressBackend) (*Server, error) {
+// New builds the server over a data dir, registering built-ins. The
+// database is opened here and owned by the server (see Close).
+func New(dataDir, ver string) (*Server, error) {
+	db, err := kv.Open(dataDir)
+	if err != nil {
+		return nil, err
+	}
 	st, err := store.New(dataDir)
 	if err != nil {
+		db.Close()
 		return nil, err
 	}
-	a, err := auth.New(st)
+	if err := kv.ImportLegacy(db, st); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("legacy import: %w", err)
+	}
+	a, err := auth.New(db)
 	if err != nil {
+		db.Close()
 		return nil, err
 	}
-	cat, err := catalog.New(st)
+	cat, err := catalog.New(db)
 	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	ustate, err := userstate.New(db)
+	if err != nil {
+		db.Close()
 		return nil, err
 	}
 	comp := core.DefaultComposition()
 	saved := &core.Composition{}
 	if err := st.Load("composition.json", saved); err == nil && len(saved.Bindings) > 0 {
 		comp = saved
+		if moved := comp.MigrateProviderIDs(); len(moved) > 0 {
+			fmt.Printf("lain: migrated retired providers: %v\n", moved)
+		}
 	}
 	reg := core.NewRegistry(comp)
 	reg.Register(source.Provider{})
@@ -91,22 +111,15 @@ func New(dataDir, ver string, ustate progressBackend) (*Server, error) {
 	runner := &ingest.Runner{Reg: reg, Cat: cat}
 	reg.Register(runner)
 	if err := comp.Validate(knownSet(reg)); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("composition: %w", err)
 	}
 	// Persist the effective composition (first boot writes defaults).
 	if err := st.Save("composition.json", reg.Composition()); err != nil {
+		db.Close()
 		return nil, err
 	}
-	s := &Server{reg: reg, auth: a, st: st, cat: cat, ustate: ustate, mux: http.NewServeMux(), ver: ver, libs: map[string]contracts.Library{}, scan: ScanStatus{State: "idle"}}
-	var libs []contracts.Library
-	if err := st.Load("libraries.json", &libs); err == nil {
-		for _, l := range libs {
-			s.libs[l.ID] = l
-		}
-	}
-	if ustate == nil {
-		return nil, fmt.Errorf("userstate backend required")
-	}
+	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, scan: ScanStatus{State: "idle"}}
 	s.routes()
 	return s, nil
 }
@@ -145,7 +158,7 @@ func (s *Server) decode(w http.ResponseWriter, r *http.Request, v any) bool {
 }
 
 // userOf verifies Bearer or ?token= (media-element fallback, ).
-func (s *Server) userOf(r *http.Request) (string, bool) {
+func (s *Server) userOf(r *http.Request) (auth.Verified, bool) {
 	tok := ""
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		tok = strings.TrimPrefix(h, "Bearer ")
@@ -153,24 +166,36 @@ func (s *Server) userOf(r *http.Request) (string, bool) {
 		tok = r.URL.Query().Get("token")
 	}
 	if tok == "" {
-		return "", false
+		return auth.Verified{}, false
 	}
-	id, err := s.auth.Verify(tok)
+	v, err := s.auth.Verify(tok)
 	if err != nil {
-		return "", false
+		return auth.Verified{}, false
 	}
-	return id, true
+	return v, true
 }
 
-func (s *Server) requireAuth(next func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
+func (s *Server) requireAuth(next func(http.ResponseWriter, *http.Request, auth.Verified)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		id, ok := s.userOf(r)
+		v, ok := s.userOf(r)
 		if !ok {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		next(w, r, id)
+		next(w, r, v)
 	}
+}
+
+// requireAdmin gates operator functions: libraries, scans, plugins,
+// user administration.
+func (s *Server) requireAdmin(next func(http.ResponseWriter, *http.Request, auth.Verified)) http.HandlerFunc {
+	return s.requireAuth(func(w http.ResponseWriter, r *http.Request, v auth.Verified) {
+		if v.Role != auth.RoleAdmin {
+			writeErr(w, http.StatusForbidden, "admin required")
+			return
+		}
+		next(w, r, v)
+	})
 }
 
 func (s *Server) routes() {
@@ -185,10 +210,17 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/setup", s.handleSetup)
 	m.HandleFunc("POST /api/auth/login", s.handleLogin)
 	m.HandleFunc("GET /api/me", s.requireAuth(s.handleMe))
+	m.HandleFunc("PATCH /api/me/password", s.requireAuth(s.handleMyPassword))
+	m.HandleFunc("GET /api/me/continue", s.requireAuth(s.handleContinue))
+
+	m.HandleFunc("GET /api/users", s.requireAdmin(s.handleUsersList))
+	m.HandleFunc("POST /api/users", s.requireAdmin(s.handleUserCreate))
+	m.HandleFunc("PATCH /api/users/{id}", s.requireAdmin(s.handleUserPatch))
 
 	m.HandleFunc("GET /api/libraries", s.requireAuth(s.handleLibsList))
-	m.HandleFunc("POST /api/libraries", s.requireAuth(s.handleLibCreate))
-	m.HandleFunc("POST /api/library/scan", s.requireAuth(s.handleScanStart))
+	m.HandleFunc("POST /api/libraries", s.requireAdmin(s.handleLibCreate))
+	m.HandleFunc("DELETE /api/libraries/{id}", s.requireAdmin(s.handleLibDelete))
+	m.HandleFunc("POST /api/library/scan", s.requireAdmin(s.handleScanStart))
 	m.HandleFunc("GET /api/library/scan", s.requireAuth(s.handleScanStatus))
 
 	m.HandleFunc("GET /api/catalog", s.requireAuth(s.handleCatalogList))
@@ -200,8 +232,8 @@ func (s *Server) routes() {
 	m.HandleFunc("PUT /api/items/{id}/progress", s.requireAuth(s.handleProgressPut))
 	m.HandleFunc("GET /api/items/{id}/progress", s.requireAuth(s.handleProgressGet))
 
-	m.HandleFunc("GET /api/plugins", s.requireAuth(s.handlePlugins))
-	m.HandleFunc("POST /api/plugins/swap", s.requireAuth(s.handleSwap))
+	m.HandleFunc("GET /api/plugins", s.requireAdmin(s.handlePlugins))
+	m.HandleFunc("POST /api/plugins/swap", s.requireAdmin(s.handleSwap))
 }
 
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
@@ -240,8 +272,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"token": tok})
 }
 
-func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, userID string) {
-	u, ok := s.auth.Get(userID)
+func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, v auth.Verified) {
+	u, ok := s.auth.Get(v.UserID)
 	if !ok {
 		writeErr(w, 404, "unknown user")
 		return
@@ -249,27 +281,37 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, userID string)
 	writeJSON(w, 200, u)
 }
 
-func (s *Server) persistLibs() error {
-	s.libsMu.RLock()
-	list := make([]contracts.Library, 0, len(s.libs))
-	for _, l := range s.libs {
-		list = append(list, l)
+func (s *Server) handleMyPassword(w http.ResponseWriter, r *http.Request, v auth.Verified) {
+	var in struct {
+		Old string `json:"old"`
+		New string `json:"new"`
 	}
-	s.libsMu.RUnlock()
-	return s.st.Save("libraries.json", list)
+	if !s.decode(w, r, &in) {
+		return
+	}
+	if err := s.auth.ChangePassword(v.UserID, in.Old, in.New); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleLibsList(w http.ResponseWriter, r *http.Request, _ string) {
-	s.libsMu.RLock()
-	list := make([]contracts.Library, 0, len(s.libs))
-	for _, l := range s.libs {
-		list = append(list, l)
-	}
-	s.libsMu.RUnlock()
-	writeJSON(w, 200, list)
+// handleContinue returns the user's recorded progress newest-first
+// (continue-watching feed).
+func (s *Server) handleContinue(w http.ResponseWriter, r *http.Request, v auth.Verified) {
+	writeJSON(w, 200, s.ustate.List(v.UserID))
 }
 
-func (s *Server) handleLibCreate(w http.ResponseWriter, r *http.Request, _ string) {
+func (s *Server) handleLibsList(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+	libs, err := s.libs.List()
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, libs)
+}
+
+func (s *Server) handleLibCreate(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	var in struct {
 		Name string `json:"name"`
 		Type string `json:"type"`
@@ -278,30 +320,20 @@ func (s *Server) handleLibCreate(w http.ResponseWriter, r *http.Request, _ strin
 	if !s.decode(w, r, &in) {
 		return
 	}
-	if in.Name == "" || in.Path == "" {
-		writeErr(w, 400, "name and path required")
-		return
-	}
-	fi, err := os.Stat(in.Path)
-	if err != nil || !fi.IsDir() {
-		writeErr(w, 400, "path is not a readable directory")
-		return
-	}
-	if in.Type == "" {
-		in.Type = "anime"
-	}
-	lib := contracts.Library{
-		ID: "lib-" + shortID(in.Path), Name: in.Name, Type: in.Type,
-		Path: in.Path, Source: source.ID, CreatedAt: time.Now().Unix(),
-	}
-	s.libsMu.Lock()
-	s.libs[lib.ID] = lib
-	s.libsMu.Unlock()
-	if err := s.persistLibs(); err != nil {
-		writeErr(w, 500, err.Error())
+	lib, err := s.libs.Create(in.Name, in.Type, in.Path)
+	if err != nil {
+		writeErr(w, 400, err.Error())
 		return
 	}
 	writeJSON(w, 201, lib)
+}
+
+func (s *Server) handleLibDelete(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+	if err := s.libs.Delete(r.PathValue("id")); err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "ok"})
 }
 
 func shortID(s string) string {
@@ -316,16 +348,14 @@ func shortID(s string) string {
 }
 
 func (s *Server) libList() []contracts.Library {
-	s.libsMu.RLock()
-	defer s.libsMu.RUnlock()
-	out := make([]contracts.Library, 0, len(s.libs))
-	for _, l := range s.libs {
-		out = append(out, l)
+	libs, err := s.libs.List()
+	if err != nil {
+		return nil
 	}
-	return out
+	return libs
 }
 
-func (s *Server) handleScanStart(w http.ResponseWriter, r *http.Request, _ string) {
+func (s *Server) handleScanStart(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	s.scanMu.Lock()
 	if s.scan.State == "running" {
 		s.scanMu.Unlock()
@@ -338,7 +368,7 @@ func (s *Server) handleScanStart(w http.ResponseWriter, r *http.Request, _ strin
 	writeJSON(w, 202, map[string]string{"state": "running"})
 }
 
-func (s *Server) handleScanStatus(w http.ResponseWriter, r *http.Request, _ string) {
+func (s *Server) handleScanStatus(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()
 	writeJSON(w, 200, s.scan)
@@ -357,12 +387,12 @@ func (s *Server) runScan() {
 	s.scan = ScanStatus{State: "done", StartedAt: s.scan.StartedAt, FinishedAt: stats.FinishedAt, Stats: &stats}
 }
 
-func (s *Server) handleCatalogList(w http.ResponseWriter, r *http.Request, _ string) {
+func (s *Server) handleCatalogList(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	items := s.cat.Search("", "")
 	writeJSON(w, 200, items)
 }
 
-func (s *Server) handleCatalogGet(w http.ResponseWriter, r *http.Request, _ string) {
+func (s *Server) handleCatalogGet(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	it, ok := s.cat.Get(r.PathValue("id"))
 	if !ok {
 		writeErr(w, 404, "unknown item")
@@ -371,7 +401,7 @@ func (s *Server) handleCatalogGet(w http.ResponseWriter, r *http.Request, _ stri
 	writeJSON(w, 200, it)
 }
 
-func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, _ string) {
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	q := r.URL.Query().Get("q")
 	kind := r.URL.Query().Get("kind")
 	out, _, err := s.reg.CallOne(contracts.CapSearchQuery, search.QueryInput{Q: q, Kind: kind})
@@ -382,7 +412,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, _ string) 
 	writeJSON(w, 200, out)
 }
 
-func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, _ string) {
+func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	it, ok := s.cat.Get(r.PathValue("id"))
 	if !ok {
 		writeErr(w, 404, "unknown item")
@@ -449,7 +479,7 @@ func contentType(path string) string {
 	}
 }
 
-func (s *Server) handleProgressPut(w http.ResponseWriter, r *http.Request, userID string) {
+func (s *Server) handleProgressPut(w http.ResponseWriter, r *http.Request, v auth.Verified) {
 	var in contracts.Progress
 	defer r.Body.Close()
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -457,7 +487,7 @@ func (s *Server) handleProgressPut(w http.ResponseWriter, r *http.Request, userI
 		return
 	}
 	in.ItemID = r.PathValue("id")
-	out, _, err := s.reg.CallOne(contracts.CapUserProgress, userStatePut(userID, in))
+	out, _, err := s.reg.CallOne(contracts.CapUserProgress, userStatePut(v.UserID, in))
 	if err != nil {
 		writeErr(w, 503, err.Error())
 		return
@@ -465,8 +495,8 @@ func (s *Server) handleProgressPut(w http.ResponseWriter, r *http.Request, userI
 	writeJSON(w, 200, out)
 }
 
-func (s *Server) handleProgressGet(w http.ResponseWriter, r *http.Request, userID string) {
-	out, _, err := s.reg.CallOne(contracts.CapUserProgress, userStateGet(userID, r.PathValue("id")))
+func (s *Server) handleProgressGet(w http.ResponseWriter, r *http.Request, v auth.Verified) {
+	out, _, err := s.reg.CallOne(contracts.CapUserProgress, userStateGet(v.UserID, r.PathValue("id")))
 	if err != nil {
 		writeErr(w, 503, err.Error())
 		return
@@ -474,7 +504,7 @@ func (s *Server) handleProgressGet(w http.ResponseWriter, r *http.Request, userI
 	writeJSON(w, 200, out)
 }
 
-func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request, _ string) {
+func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	writeJSON(w, 200, map[string]any{
 		"composition": s.reg.Composition().View(),
 		"providers":   s.reg.Providers(),
@@ -482,7 +512,7 @@ func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request, _ string)
 	})
 }
 
-func (s *Server) handleSwap(w http.ResponseWriter, r *http.Request, _ string) {
+func (s *Server) handleSwap(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	var in struct {
 		Capability string   `json:"capability"`
 		Providers  []string `json:"providers"`

@@ -51,9 +51,9 @@ func DefaultComposition() *Composition {
 		Bindings: map[string]*Binding{
 			"lain.source.enumerate@1":   {Mode: ModeExactlyOne, Providers: []string{"lain-source-filesystem"}, Generation: 1},
 			"lain.media.identify@1":     {Mode: ModeOrderedMany, Providers: []string{"lain-identify-anime", "lain-identify-generic"}, Generation: 1},
-			"lain.catalog.read@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-file"}, Generation: 1},
-			"lain.catalog.write@1":      {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-file"}, Generation: 1},
-			"lain.userstate.progress@1": {Mode: ModeExactlyOne, Providers: []string{"lain-userstate-file"}, Generation: 1},
+			"lain.catalog.read@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
+			"lain.catalog.write@1":      {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
+			"lain.userstate.progress@1": {Mode: ModeExactlyOne, Providers: []string{"lain-userstate-bolt"}, Generation: 1},
 			"lain.playback.plan@1":      {Mode: ModeFirstAccepted, Providers: []string{"lain-playback-default"}, Generation: 1},
 			"lain.search.query@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-search-simple"}, Generation: 1},
 			"lain.ingest.scan@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-ingest-default"}, Generation: 1},
@@ -81,6 +81,28 @@ func (c *Composition) Validate(known map[string]bool) error {
 		}
 	}
 	return nil
+}
+
+// LegacyProviderIDs maps retired provider ids to their replacements.
+// Applied once when loading a persisted composition (v0.1 file-backed
+// providers became bolt-backed without changing capabilities).
+var LegacyProviderIDs = map[string]string{
+	"lain-catalog-file":   "lain-catalog-bolt",
+	"lain-userstate-file": "lain-userstate-bolt",
+}
+
+// MigrateProviderIDs rewrites retired ids in place, reporting what moved.
+func (c *Composition) MigrateProviderIDs() []string {
+	var moved []string
+	for _, b := range c.Bindings {
+		for i, id := range b.Providers {
+			if next, ok := LegacyProviderIDs[id]; ok {
+				b.Providers[i] = next
+				moved = append(moved, id+"->"+next)
+			}
+		}
+	}
+	return moved
 }
 
 // BindingSnapshot is a stable sorted view for inspection endpoints.

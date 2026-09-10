@@ -12,11 +12,11 @@ import (
 	"github.com/enrell/lain/internal/bench"
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/core"
+	"github.com/enrell/lain/internal/kv"
 	"github.com/enrell/lain/internal/plugins/catalog"
 	"github.com/enrell/lain/internal/plugins/identify"
 	"github.com/enrell/lain/internal/plugins/ingest"
 	"github.com/enrell/lain/internal/plugins/source"
-	"github.com/enrell/lain/internal/store"
 )
 
 func cmdBench(args []string) error {
@@ -99,10 +99,11 @@ func benchOneScan(path, libType string, run int) (*bench.RunResult, error) {
 	}
 	defer os.RemoveAll(dataDir)
 
-	st, err := store.New(dataDir)
+	st, err := kv.Open(dataDir)
 	if err != nil {
 		return nil, err
 	}
+	defer st.Close()
 	cat, err := catalog.New(st)
 	if err != nil {
 		return nil, err

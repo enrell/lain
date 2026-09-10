@@ -8,10 +8,10 @@ import (
 
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/core"
+	"github.com/enrell/lain/internal/kv"
 	"github.com/enrell/lain/internal/plugins/catalog"
 	"github.com/enrell/lain/internal/plugins/identify"
 	"github.com/enrell/lain/internal/plugins/source"
-	"github.com/enrell/lain/internal/store"
 )
 
 func TestScanEndToEnd(t *testing.T) {
@@ -27,11 +27,12 @@ func TestScanEndToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	st, err := store.New(t.TempDir())
+	db, err := kv.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	cat, err := catalog.New(st)
+	t.Cleanup(func() { db.Close() })
+	cat, err := catalog.New(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,11 +70,12 @@ func TestScanEndToEnd(t *testing.T) {
 }
 
 func TestScanKeepsServingWhenAnimeWithdrawn(t *testing.T) {
-	st, err := store.New(t.TempDir())
+	db, err := kv.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	cat, err := catalog.New(st)
+	t.Cleanup(func() { db.Close() })
+	cat, err := catalog.New(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,11 +103,12 @@ func TestScanKeepsServingWhenAnimeWithdrawn(t *testing.T) {
 
 func testRunner(t *testing.T) (*Runner, *catalog.Service) {
 	t.Helper()
-	st, err := store.New(t.TempDir())
+	db, err := kv.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	cat, err := catalog.New(st)
+	t.Cleanup(func() { db.Close() })
+	cat, err := catalog.New(db)
 	if err != nil {
 		t.Fatal(err)
 	}
