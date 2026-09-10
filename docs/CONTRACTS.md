@@ -56,8 +56,23 @@ catalog write. Unidentified files count, never abort.
 
 ## Declared (next slice)
 
-`lain.playback.transcode@1`, `lain.transform.*@1`, `lain.sync.*@1`.
+`lain.playback.transcode@1`, `lain.sync.*@1`.
 Names are reserved here so first implementers do not collide.
+(`lain.transform.thumbnail@1` was implemented from this reserved
+family; see below.)
+
+## lain.transform.thumbnail@1 (exactly-one)
+
+Input: `{file_path, time_sec, width}`. `file_path` is supplied by the
+gateway after catalog lookup; `width` is clamped to 32..1280. Output:
+`{path, width, cached}` pointing at a JPEG in the provider's cache —
+bytes never enter the call. Keys include source mtime/size, timestamp
+and width, so changed files regenerate without invalidation bookkeeping.
+A seek past the end retries at 0. The gateway streams the file with
+`Cache-Control: private, max-age=86400` and `GET /api/items/{id}/thumbnail?t=&w=`
+accepts `?token=` (image elements cannot attach headers). ffmpeg is
+spawned by the provider with a 20s timeout and at most 2 concurrent
+processes; absence degrades this capability, never the boot.
 
 ## Metadata (merge-many)
 

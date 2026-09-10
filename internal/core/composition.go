@@ -49,16 +49,17 @@ func DefaultComposition() *Composition {
 	return &Composition{
 		Version: 1,
 		Bindings: map[string]*Binding{
-			"lain.source.enumerate@1":   {Mode: ModeExactlyOne, Providers: []string{"lain-source-filesystem"}, Generation: 1},
-			"lain.media.identify@1":     {Mode: ModeOrderedMany, Providers: []string{"lain-identify-anime", "lain-identify-generic"}, Generation: 1},
-			"lain.catalog.read@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
-			"lain.catalog.write@1":      {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
-			"lain.userstate.progress@1": {Mode: ModeExactlyOne, Providers: []string{"lain-userstate-bolt"}, Generation: 1},
-			"lain.playback.plan@1":      {Mode: ModeFirstAccepted, Providers: []string{"lain-playback-default"}, Generation: 1},
-			"lain.search.query@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-search-simple"}, Generation: 1},
-			"lain.ingest.scan@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-ingest-default"}, Generation: 1},
-			"lain.metadata.search@1":    {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan"}, Generation: 1},
-			"lain.metadata.resolve@1":   {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan"}, Generation: 1},
+			"lain.source.enumerate@1":    {Mode: ModeExactlyOne, Providers: []string{"lain-source-filesystem"}, Generation: 1},
+			"lain.media.identify@1":      {Mode: ModeOrderedMany, Providers: []string{"lain-identify-anime", "lain-identify-generic"}, Generation: 1},
+			"lain.catalog.read@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
+			"lain.catalog.write@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
+			"lain.userstate.progress@1":  {Mode: ModeExactlyOne, Providers: []string{"lain-userstate-bolt"}, Generation: 1},
+			"lain.playback.plan@1":       {Mode: ModeFirstAccepted, Providers: []string{"lain-playback-default"}, Generation: 1},
+			"lain.transform.thumbnail@1": {Mode: ModeExactlyOne, Providers: []string{"lain-thumbnail-ffmpeg"}, Generation: 1},
+			"lain.search.query@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-search-simple"}, Generation: 1},
+			"lain.ingest.scan@1":         {Mode: ModeExactlyOne, Providers: []string{"lain-ingest-default"}, Generation: 1},
+			"lain.metadata.search@1":     {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan"}, Generation: 1},
+			"lain.metadata.resolve@1":    {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan"}, Generation: 1},
 		},
 	}
 }

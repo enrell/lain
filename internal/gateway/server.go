@@ -31,6 +31,7 @@ import (
 	"github.com/enrell/lain/internal/plugins/playback"
 	"github.com/enrell/lain/internal/plugins/search"
 	"github.com/enrell/lain/internal/plugins/source"
+	"github.com/enrell/lain/internal/plugins/thumbnail"
 	"github.com/enrell/lain/internal/plugins/userstate"
 	"github.com/enrell/lain/internal/store"
 	"github.com/enrell/lain/internal/webui"
@@ -114,6 +115,7 @@ func New(dataDir, ver string) (*Server, error) {
 	reg.Register(ustate)
 	reg.Register(searchProvider{cat: cat})
 	reg.Register(playback.Planner{})
+	reg.Register(thumbnail.New(filepath.Join(dataDir, "thumbnails")))
 	reg.Register(metadata.NFO{})
 	reg.Register(metadata.NewKitsu())
 	reg.Register(metadata.NewAniList())
@@ -132,6 +134,7 @@ func New(dataDir, ver string) (*Server, error) {
 	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, scan: ScanStatus{State: "idle"}}
 	s.routes()
 	s.routesEnrich()
+	s.routesThumbnail()
 	// The web UI is the least specific pattern: API, health and media
 	// routes registered above keep winning their paths.
 	webui.Mount(s.mux)

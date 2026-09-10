@@ -18,6 +18,7 @@ const (
 	CapIngestScan      = "lain.ingest.scan@1"
 	CapMetadataSearch  = "lain.metadata.search@1"
 	CapMetadataResolve = "lain.metadata.resolve@1"
+	CapTransformThumb  = "lain.transform.thumbnail@1"
 )
 
 // Candidate is a raw discovered file handed to identifiers.
@@ -197,6 +198,24 @@ type Plan struct {
 	Session   string `json:"session,omitempty"`
 	Available bool   `json:"available"`
 	Reason    string `json:"reason,omitempty"`
+}
+
+// ThumbnailRequest asks a transform provider for one still frame of a
+// catalog file. FilePath is supplied by the gateway after catalog
+// lookup, never by a client.
+type ThumbnailRequest struct {
+	FilePath string  `json:"file_path"`
+	TimeSec  float64 `json:"time_sec"`
+	Width    int     `json:"width"`
+}
+
+// Thumbnail is a generated (or cached) still on disk. The provider
+// writes the image and returns its path; the gateway streams the bytes,
+// keeping media out of plugin calls (docs/ARCHITECTURE.md).
+type Thumbnail struct {
+	Path   string `json:"path"`
+	Width  int    `json:"width"`
+	Cached bool   `json:"cached,omitempty"`
 }
 
 // ScanStats summarizes one ingest run.
