@@ -1,6 +1,6 @@
 module github.com/enrell/lain
 
-go 1.26.0
+go 1.27.1
 
 require (
 	go.etcd.io/bbolt v1.5.0

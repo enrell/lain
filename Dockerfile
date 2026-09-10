@@ -4,7 +4,7 @@
 # Node exists only here. The output is HTML/CSS/JS; no runtime, no
 # node_modules, no SvelteKit server reaches the final image.
 FROM node:26-alpine AS web
-RUN npm install -g pnpm@11.25.0
+RUN npm install -g pnpm@12.3.4
 WORKDIR /web
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile

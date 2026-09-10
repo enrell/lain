@@ -1,0 +1,10 @@
+# Toolchain pinning for development. The same versions are used by CI
+# (.github/workflows) and by the Docker build (Dockerfile), so a local
+# `mise install` reproduces the exact toolchain:
+#   go    -> go.mod / setup-go go-version-file
+#   node  -> setup-node, Dockerfile web stage
+#   pnpm  -> pnpm/action-setup, Dockerfile web stage
+[tools]
+go = "1.27.1"
+node = "26.8.2"
+pnpm = "12.3.4"
