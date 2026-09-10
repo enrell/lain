@@ -91,18 +91,19 @@ func flag(args []string, name, def string) string {
 func cmdServe(args []string) error {
 	dataDir := flag(args, "data-dir", defaultDataDir())
 	port := flag(args, "port", "9360")
+	bind := flag(args, "bind", "127.0.0.1")
 	srv, err := gateway.New(dataDir, version)
 	if err != nil {
 		return err
 	}
 	defer srv.Close()
 	httpSrv := &http.Server{
-		Addr:         "127.0.0.1:" + port,
+		Addr:         bind + ":" + port,
 		Handler:      srv.Handler(),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 0, // streams are long-lived; timeouts would cut playback
 	}
-	fmt.Printf("lain %s on http://127.0.0.1:%s (data %s)\n", version, port, dataDir)
+	fmt.Printf("lain %s on http://%s:%s (data %s)\n", version, bind, port, dataDir)
 	return httpSrv.ListenAndServe()
 }
 

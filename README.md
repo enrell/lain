@@ -29,6 +29,17 @@ Stream with Range (mpv/desktop or media element, `?token=` fallback):
 mpv "http://localhost:9360/api/items/<id>/stream?token=$TOK"
 ```
 
+## Docker (Alpine, ~31 MB image, ~5 MiB idle)
+
+```sh
+UID=$(id -u) GID=$(id -g) docker compose up --build -d
+```
+
+Named volume `lain-data` holds the database; mount your media
+read-only and register container paths (`/media/videos`) as libraries.
+Memory is capped soft (`GOMEMLIMIT=256MiB`, GC-driven) and hard
+(`mem_limit: 384m`). Healthcheck hits `/health`.
+
 ## Watching (`lain watch`)
 ```sh
 lain login --server http://127.0.0.1:9360 --username admin  # once; token in ~/.config/lain

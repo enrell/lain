@@ -1,0 +1,6 @@
+.git/
+build/
+benchmarks/
+backups/
+*_test.go
+.DS_Store

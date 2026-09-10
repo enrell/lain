@@ -1,0 +1,32 @@
+services:
+  lain:
+    build: .
+    image: lain:latest
+    container_name: lain
+    restart: unless-stopped
+    # run as your host user so bind-mounted media stays readable:
+    # UID=$(id -u) GID=$(id -g) docker compose up
+    user: "${UID:-1000}:${GID:-1000}"
+    ports:
+      - "9360:9360"
+    volumes:
+      # database, composition, backups of record
+      - lain-data:/data
+      # read-only media roots (add yours; container paths go in libraries)
+      - ~/Videos:/media/videos:ro
+    environment:
+      # soft heap cap: GC works harder instead of growing (bbolt mmap
+      # pages are reclaimable and don't count against this)
+      GOMEMLIMIT: 256MiB
+      GOGC: "100"
+    # hard cap above the soft one; raise for 50k+ file libraries
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9360/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+
+volumes:
+  lain-data:
