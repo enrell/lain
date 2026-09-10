@@ -91,8 +91,9 @@ PATCH /api/users/{id}                                (admin: disable/role/reset)
 GET  /api/libraries         POST /api/libraries      (admin)
 DELETE /api/libraries/{id}                           (admin)
 POST /api/library/scan      GET  /api/library/scan  (start: admin)
-GET  /api/catalog           GET  /api/catalog/{id}
-GET  /api/search?q=&kind=
+GET  /api/catalog?limit=&offset=&sort=  (envelope {items,total}; sort=title|recent)
+GET  /api/catalog/{id}
+GET  /api/search?q=&kind=&limit=&offset=&sort=   (same envelope)
 GET  /api/items/{id}/playback?client=&network=
 GET  /api/items/{id}/stream            (Range, ?token= ok)
 PUT  /api/items/{id}/progress          GET /api/items/{id}/progress

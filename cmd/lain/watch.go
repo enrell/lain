@@ -155,13 +155,13 @@ func apiLogin(server, username, password string) (string, error) {
 
 // apiItem mirrors the catalog JSON the gateway serves.
 type apiItem struct {
-	ID       string  `json:"id"`
-	Title    string  `json:"title"`
-	Kind     string  `json:"kind"`
-	Season   int     `json:"season"`
-	Episode  int     `json:"episode"`
-	Year     int     `json:"year"`
-	FilePath string  `json:"file_path"`
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Kind     string `json:"kind"`
+	Season   int    `json:"season"`
+	Episode  int    `json:"episode"`
+	Year     int    `json:"year"`
+	FilePath string `json:"file_path"`
 }
 
 type apiProgress struct {
@@ -408,8 +408,8 @@ func resolveQuery(client *apiClient, query string, in *os.File, out *os.File) (a
 }
 
 func resolveQueryArgs(client *apiClient, query string, in *os.File, out *os.File, argv []string) (apiItem, error) {
-	var items []apiItem
-	if err := client.get("/api/search", map[string]string{"q": query}, &items); err != nil {
+	items, err := searchItems(client, query)
+	if err != nil {
 		return apiItem{}, err
 	}
 	if len(items) == 0 {
@@ -469,13 +469,29 @@ func pickItem(items []apiItem, in *os.File, out *os.File) (apiItem, error) {
 	return items[idx-1], nil
 }
 
+// apiPage mirrors the paged envelope the gateway serves.
+type apiPage struct {
+	Items []apiItem `json:"items"`
+	Total int       `json:"total"`
+}
+
+// searchItems fetches the full match set (watch is interactive; paging
+// the pick list comes with the desktop client).
+func searchItems(client *apiClient, query string) ([]apiItem, error) {
+	var page apiPage
+	if err := client.get("/api/search", map[string]string{"q": query, "limit": "500"}, &page); err != nil {
+		return nil, err
+	}
+	return page.Items, nil
+}
+
 // findNextEpisode locates same-title, same-season, episode+1.
 func findNextEpisode(client *apiClient, cur apiItem) (apiItem, bool, error) {
 	if cur.Episode == 0 {
 		return apiItem{}, false, nil
 	}
-	var items []apiItem
-	if err := client.get("/api/search", map[string]string{"q": cur.Title}, &items); err != nil {
+	items, err := searchItems(client, cur.Title)
+	if err != nil {
 		return apiItem{}, false, err
 	}
 	wantTitle := strings.ToLower(strings.TrimSpace(cur.Title))

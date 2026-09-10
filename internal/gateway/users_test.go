@@ -119,13 +119,16 @@ func TestProgressIsolatedPerUser(t *testing.T) {
 			break
 		}
 	}
-	var items []map[string]any
-	rec = do(t, srv, "GET", "/api/catalog", nil, admin)
-	_ = json.Unmarshal(rec.Body.Bytes(), &items)
-	if len(items) != 1 {
-		t.Fatalf("catalog: %+v", items)
+	var page struct {
+		Items []map[string]any `json:"items"`
+		Total int              `json:"total"`
 	}
-	id := items[0]["id"].(string)
+	rec = do(t, srv, "GET", "/api/catalog", nil, admin)
+	_ = json.Unmarshal(rec.Body.Bytes(), &page)
+	if len(page.Items) != 1 || page.Total != 1 {
+		t.Fatalf("catalog: %+v", page)
+	}
+	id := page.Items[0]["id"].(string)
 
 	// ana watches halfway; admin sees nothing.
 	rec = do(t, srv, "PUT", "/api/items/"+id+"/progress", map[string]any{"position_sec": 300.0, "duration_sec": 600.0}, user)

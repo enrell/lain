@@ -74,6 +74,39 @@ type CatalogItem struct {
 	UpdatedAt  int64   `json:"updated_at"`
 }
 
+// CatalogPage is the paged envelope for catalog reads. Clients need
+// the total to paginate; default limit 50, hard cap 500.
+type CatalogPage struct {
+	Items  []CatalogItem `json:"items"`
+	Total  int           `json:"total"`
+	Limit  int           `json:"limit"`
+	Offset int           `json:"offset"`
+}
+
+// PageParams carries validated paging input.
+type PageParams struct {
+	Limit  int
+	Offset int
+	Sort   string // "title" (default) or "recent"
+}
+
+// NormalizePage clamps raw query input to safe bounds.
+func NormalizePage(limit, offset int, sort string) PageParams {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if sort != "recent" {
+		sort = "title"
+	}
+	return PageParams{Limit: limit, Offset: offset, Sort: sort}
+}
+
 // Progress is per-user playback state. It lives in userstate, never in
 // the catalog, so reindexing media cannot destroy resume positions.
 type Progress struct {

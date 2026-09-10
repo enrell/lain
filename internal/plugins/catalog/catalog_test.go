@@ -163,3 +163,68 @@ func itoa(i int) string {
 	}
 	return string(b[p:])
 }
+
+func TestPageBoundaries(t *testing.T) {
+	s := testService(t)
+	var items []contracts.CatalogItem
+	for _, title := range []string{"B", "A", "C", "D", "E"} {
+		items = append(items, mkItem("l", "/x/"+title+".mkv", title))
+	}
+	if err := s.UpsertBatch(items); err != nil {
+		t.Fatal(err)
+	}
+	// Title order: A B C D E.
+	p1, err := s.Page(contracts.PageParams{Limit: 2, Offset: 0, Sort: "title"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p1.Total != 5 || len(p1.Items) != 2 || p1.Items[0].Title != "A" || p1.Items[1].Title != "B" {
+		t.Fatalf("page1: %+v", p1)
+	}
+	p2, _ := s.Page(contracts.PageParams{Limit: 2, Offset: 2, Sort: "title"})
+	if len(p2.Items) != 2 || p2.Items[0].Title != "C" {
+		t.Fatalf("page2: %+v", p2)
+	}
+	p3, _ := s.Page(contracts.PageParams{Limit: 2, Offset: 4, Sort: "title"})
+	if len(p3.Items) != 1 || p3.Total != 5 {
+		t.Fatalf("last partial page: %+v", p3)
+	}
+	empty, _ := s.Page(contracts.PageParams{Limit: 2, Offset: 10, Sort: "title"})
+	if len(empty.Items) != 0 || empty.Total != 5 {
+		t.Fatalf("past-end page: %+v", empty)
+	}
+	if empty.Items == nil {
+		t.Fatal("items must be [] not null")
+	}
+}
+
+func TestQueryFiltersAndSorts(t *testing.T) {
+	s := testService(t)
+	if err := s.UpsertBatch([]contracts.CatalogItem{
+		mkItem("l", "/x/show-s1e1.mkv", "Show"),
+		mkItem("l", "/x/show-s1e2.mkv", "Show"),
+		mkItem("l", "/x/other.mp4", "Other"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, total := s.Query("show", "", contracts.PageParams{Limit: 1, Offset: 1, Sort: "title"})
+	if total != 2 || len(got) != 1 {
+		t.Fatalf("query page: total=%d len=%d", total, len(got))
+	}
+	eps, total := s.Query("", "episode", contracts.PageParams{Limit: -1, Sort: "title"})
+	if total != 3 { // mkItem kind is episode for all
+		t.Fatalf("kind filter total=%d", total)
+	}
+	_ = eps
+}
+
+func TestNormalizePage(t *testing.T) {
+	p := contracts.NormalizePage(0, -5, "bogus")
+	if p.Limit != 50 || p.Offset != 0 || p.Sort != "title" {
+		t.Fatalf("defaults: %+v", p)
+	}
+	p = contracts.NormalizePage(99999, 0, "recent")
+	if p.Limit != 500 || p.Sort != "recent" {
+		t.Fatalf("cap: %+v", p)
+	}
+}

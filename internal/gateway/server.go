@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -387,9 +388,22 @@ func (s *Server) runScan() {
 	s.scan = ScanStatus{State: "done", StartedAt: s.scan.StartedAt, FinishedAt: stats.FinishedAt, Stats: &stats}
 }
 
+func pageParams(r *http.Request) contracts.PageParams {
+	return contracts.NormalizePage(atoiQuery(r, "limit"), atoiQuery(r, "offset"), r.URL.Query().Get("sort"))
+}
+
+func atoiQuery(r *http.Request, key string) int {
+	n, _ := strconv.Atoi(r.URL.Query().Get(key))
+	return n
+}
+
 func (s *Server) handleCatalogList(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
-	items := s.cat.Search("", "")
-	writeJSON(w, 200, items)
+	page, err := s.cat.Page(pageParams(r))
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, page)
 }
 
 func (s *Server) handleCatalogGet(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
@@ -404,7 +418,8 @@ func (s *Server) handleCatalogGet(w http.ResponseWriter, r *http.Request, _ auth
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	q := r.URL.Query().Get("q")
 	kind := r.URL.Query().Get("kind")
-	out, _, err := s.reg.CallOne(contracts.CapSearchQuery, search.QueryInput{Q: q, Kind: kind})
+	p := pageParams(r)
+	out, _, err := s.reg.CallOne(contracts.CapSearchQuery, search.QueryInput{Q: q, Kind: kind, Limit: p.Limit, Offset: p.Offset, Sort: p.Sort})
 	if err != nil {
 		writeErr(w, 503, err.Error())
 		return

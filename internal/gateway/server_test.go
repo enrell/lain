@@ -107,12 +107,15 @@ func TestLibraryScanStreamProgress(t *testing.T) {
 	if rec.Code != 200 || !bytes.Contains(rec.Body.Bytes(), []byte("Frieren")) {
 		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
 	}
-	var items []map[string]any
+	var page struct {
+		Items []map[string]any `json:"items"`
+		Total int              `json:"total"`
+	}
 	rec = do(t, srv, "GET", "/api/catalog", nil, tok.Token)
-	if err := json.Unmarshal(rec.Body.Bytes(), &items); err != nil || len(items) != 1 {
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil || len(page.Items) != 1 || page.Total != 1 {
 		t.Fatalf("catalog: %d %s", rec.Code, rec.Body.String())
 	}
-	id := items[0]["id"].(string)
+	id := page.Items[0]["id"].(string)
 
 	rec = do(t, srv, "GET", "/api/items/"+id+"/playback?client=mpv", nil, tok.Token)
 	if rec.Code != 200 || !bytes.Contains(rec.Body.Bytes(), []byte(`"mode":"direct"`)) {
@@ -140,4 +143,71 @@ func TestLibraryScanStreamProgress(t *testing.T) {
 		t.Fatalf("progress get: %d %s", rec.Code, rec.Body.String())
 	}
 	_ = http.StatusOK
+}
+
+func TestCatalogPagingEnvelope(t *testing.T) {
+	srv := testServer(t)
+	do(t, srv, "POST", "/api/setup", map[string]string{"username": "admin", "password": "password123"}, "")
+	tok := func() string {
+		rec := do(t, srv, "POST", "/api/auth/login", map[string]string{"username": "admin", "password": "password123"}, "")
+		var v struct {
+			Token string `json:"token"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &v)
+		return v.Token
+	}()
+
+	root := t.TempDir()
+	for _, f := range []string{"b.mkv", "a.mkv", "c.mkv"} {
+		if err := os.WriteFile(filepath.Join(root, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "L", "type": "anime", "path": root}, tok); rec.Code != 201 {
+		t.Fatalf("library: %d", rec.Code)
+	}
+	if rec := do(t, srv, "POST", "/api/library/scan", nil, tok); rec.Code != 202 {
+		t.Fatalf("scan: %d", rec.Code)
+	}
+	var status struct {
+		State string `json:"state"`
+	}
+	for i := 0; i < 100; i++ {
+		rec := do(t, srv, "GET", "/api/library/scan", nil, tok)
+		_ = json.Unmarshal(rec.Body.Bytes(), &status)
+		if status.State == "done" {
+			break
+		}
+	}
+	var page struct {
+		Items []map[string]any `json:"items"`
+		Total int              `json:"total"`
+		Limit int              `json:"limit"`
+	}
+	rec := do(t, srv, "GET", "/api/catalog?limit=2&offset=1", nil, tok)
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 3 || len(page.Items) != 1+1 || page.Limit != 2 {
+		t.Fatalf("page: %+v", page)
+	}
+	if page.Items[0]["title"] != "b" || page.Items[1]["title"] != "c" {
+		t.Fatalf("order: %+v", page.Items)
+	}
+	// Limit is capped, offset past end yields empty items with exact total.
+	rec = do(t, srv, "GET", "/api/catalog?limit=99999&offset=99", nil, tok)
+	_ = json.Unmarshal(rec.Body.Bytes(), &page)
+	if page.Limit != 500 || len(page.Items) != 0 || page.Total != 3 {
+		t.Fatalf("capped page: %+v", page)
+	}
+	// Search pages through the same envelope.
+	var spage struct {
+		Items []map[string]any `json:"items"`
+		Total int              `json:"total"`
+	}
+	rec = do(t, srv, "GET", "/api/search?q=a&limit=1", nil, tok)
+	_ = json.Unmarshal(rec.Body.Bytes(), &spage)
+	if spage.Total != 1 || len(spage.Items) != 1 {
+		t.Fatalf("search page: %+v", spage)
+	}
 }

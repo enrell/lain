@@ -41,8 +41,10 @@ clients facing non-web containers get `transcode-required` with
 
 ## lain.search.query@1 (exactly-one)
 
-Input: `{q, kind}` → `CatalogItem[]`. v0.1 is case-insensitive substring
-over titles; ranking policy is the replaceable unit.
+Input: `{q, kind, limit, offset, sort}` → `CatalogPage{items, total,
+limit, offset}` (defaults 50 / cap 500 / title|recent). v0.1 is
+case-insensitive substring over titles; ranking policy is the
+replaceable unit. Catalog reads (`Page`) share the same envelope.
 
 ## lain.ingest.scan@1 (exactly-one)
 

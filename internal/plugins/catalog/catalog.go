@@ -196,27 +196,81 @@ func (s *Service) Get(id string) (contracts.CatalogItem, bool) {
 
 // List returns all items sorted by title.
 func (s *Service) List() []contracts.CatalogItem {
+	items, _ := s.Query("", "", contracts.PageParams{Limit: -1, Sort: "title"})
+	return items
+}
+
+// Page returns one title- or recency-sorted slice with the total.
+// Limit < 0 means unbounded (internal callers: export, search index).
+func (s *Service) Page(p contracts.PageParams) (contracts.CatalogPage, error) {
+	items, total := s.Query("", "", p)
+	return contracts.CatalogPage{Items: items, Total: total, Limit: p.Limit, Offset: p.Offset}, nil
+}
+
+// Search is the catalog-side substring match (kind filter optional).
+// Kept for internal callers; the gateway serves Query with paging.
+func (s *Service) Search(q, kind string) []contracts.CatalogItem {
+	items, _ := s.Query(q, kind, contracts.PageParams{Limit: -1, Sort: "title"})
+	return items
+}
+
+// Query filters by substring/kind then pages. The filter is a single
+// cursor walk (no FTS index yet); paging slices after filtering so the
+// total stays exact.
+func (s *Service) Query(q, kind string, p contracts.PageParams) ([]contracts.CatalogItem, int) {
+	ql := strings.ToLower(strings.TrimSpace(q))
+	kl := strings.ToLower(strings.TrimSpace(kind))
 	var out []contracts.CatalogItem
 	_ = s.db.View(func(tx *bolt.Tx) error {
 		return tx.Bucket(kv.BItems).ForEach(func(_, v []byte) error {
 			var it contracts.CatalogItem
 			if err := unmarshalItem(v, &it); err != nil {
-				return nil // skip corrupt records on reads; import path validates
+				return nil
+			}
+			if kl != "" && strings.ToLower(it.Kind) != kl {
+				return nil
+			}
+			if ql != "" && !strings.Contains(strings.ToLower(it.Title), ql) {
+				return nil
 			}
 			out = append(out, it)
 			return nil
 		})
 	})
+	sortItems(out, p.Sort)
+	total := len(out)
+	if p.Limit >= 0 {
+		if p.Offset >= total {
+			return []contracts.CatalogItem{}, total
+		}
+		end := p.Offset + p.Limit
+		if end > total {
+			end = total
+		}
+		out = out[p.Offset:end]
+	}
+	if out == nil {
+		out = []contracts.CatalogItem{}
+	}
+	return out, total
+}
+
+func sortItems(out []contracts.CatalogItem, order string) {
+	if order == "recent" {
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].UpdatedAt == out[j].UpdatedAt {
+				return out[i].ID < out[j].ID
+			}
+			return out[i].UpdatedAt > out[j].UpdatedAt
+		})
+		return
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Title == out[j].Title {
 			return out[i].ID < out[j].ID
 		}
 		return out[i].Title < out[j].Title
 	})
-	if out == nil {
-		out = []contracts.CatalogItem{}
-	}
-	return out
 }
 
 // ListByLibrary returns one library's items sorted by title.
@@ -242,26 +296,6 @@ func (s *Service) ListByLibrary(libraryID string) []contracts.CatalogItem {
 		}
 		return out[i].Title < out[j].Title
 	})
-	if out == nil {
-		out = []contracts.CatalogItem{}
-	}
-	return out
-}
-
-// Search is the catalog-side substring match (kind filter optional).
-func (s *Service) Search(q, kind string) []contracts.CatalogItem {
-	q = strings.ToLower(strings.TrimSpace(q))
-	kind = strings.ToLower(strings.TrimSpace(kind))
-	var out []contracts.CatalogItem
-	for _, it := range s.List() {
-		if kind != "" && strings.ToLower(it.Kind) != kind {
-			continue
-		}
-		if q != "" && !strings.Contains(strings.ToLower(it.Title), q) {
-			continue
-		}
-		out = append(out, it)
-	}
 	if out == nil {
 		out = []contracts.CatalogItem{}
 	}

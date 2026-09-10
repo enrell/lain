@@ -111,7 +111,7 @@ func TestResolveQuerySingleAndPick(t *testing.T) {
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[{"id":"e1","title":"Show","season":1,"episode":1},{"id":"e2","title":"Show","season":1,"episode":2}]`))
+		w.Write([]byte(`{"items":[{"id":"e1","title":"Show","season":1,"episode":1},{"id":"e2","title":"Show","season":1,"episode":2}],"total":2,"limit":500,"offset":0}`))
 	}))
 	defer srv.Close()
 	client := newAPIClient(srv.URL, "tok")
@@ -130,7 +130,7 @@ func TestResolveQuerySingleAndPick(t *testing.T) {
 func TestFindNextEpisode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[{"id":"e1","title":"Show","season":1,"episode":1},{"id":"e2","title":"Show","season":1,"episode":2},{"id":"s2","title":"Show","season":2,"episode":1}]`))
+		w.Write([]byte(`{"items":[{"id":"e1","title":"Show","season":1,"episode":1},{"id":"e2","title":"Show","season":1,"episode":2},{"id":"s2","title":"Show","season":2,"episode":1}],"total":3,"limit":500,"offset":0}`))
 	}))
 	defer srv.Close()
 	client := newAPIClient(srv.URL, "tok")
