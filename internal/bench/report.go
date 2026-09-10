@@ -150,8 +150,8 @@ var reportTmpl = template.Must(template.New("report").Funcs(template.FuncMap{"hu
 <title>lain bench: {{.Report.Target}} — {{.Report.StartedAt.Format "2006-01-02 15:04"}}</title>
 <style>
 body{font-family:system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;color:#1c1e21;background:#fff}
-@media(prefers-color-scheme:dark){body{color:#e4e6eb;background:#18191a}.lbl{fill:#e4e6eb}table{border-color:#3a3b3c}td,th{border-color:#3a3b3c}}
-.lbl{fill:#1c1e21}table{border-collapse:collapse;width:100%;margin:1rem 0}td,th{border:1px solid #ccc;padding:.4rem .6rem;text-align:right;font-variant-numeric:tabular-nums}td:first-child,th:first-child{text-align:left}.meta{color:#666;font-size:.9rem}code{background:#f0f0f0;padding:.1rem .3rem;border-radius:3px}@media(prefers-color-scheme:dark){code{background:#333}}</style>
+.lbl{fill:#1c1e21}table{border-collapse:collapse;width:100%;margin:1rem 0}td,th{border:1px solid #ccc;padding:.4rem .6rem;text-align:right;font-variant-numeric:tabular-nums}td:first-child,th:first-child{text-align:left}.meta{color:#666;font-size:.9rem}code{background:#f0f0f0;padding:.1rem .3rem;border-radius:3px}
+@media(prefers-color-scheme:dark){body{color:#e4e6eb;background:#18191a}.lbl{fill:#e4e6eb}table{border-color:#3a3b3c}td,th{border-color:#3a3b3c}.meta{color:#a0a3a8}code{background:#333}}</style>
 </head><body>
 <h1>lain bench: {{.Report.Target}}</h1>
 <p class="meta">{{.Report.StartedAt.Format "2006-01-02 15:04:05 MST"}} · {{.Report.GoVersion}} · {{.Report.NumCPU}} cpu · path <code>{{.Report.Path}}</code></p>

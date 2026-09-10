@@ -55,6 +55,14 @@ func TestWriteReportSelfContained(t *testing.T) {
 			t.Errorf("report.html must be self-contained, contains %q", banned)
 		}
 	}
+	// Dark-mode override must beat the base label rule: equal
+	// specificity means source order decides, so the media query has
+	// to come after `.lbl{fill:#1c1e21}`.
+	base := strings.Index(string(html), ".lbl{fill:#1c1e21}")
+	dark := strings.Index(string(html), "prefers-color-scheme:dark")
+	if base < 0 || dark < 0 || dark < base {
+		t.Errorf("dark-mode .lbl override must follow the base rule (base=%d dark=%d)", base, dark)
+	}
 	raw, err := os.ReadFile(filepath.Join(dir, "results.json"))
 	if err != nil {
 		t.Fatal(err)
