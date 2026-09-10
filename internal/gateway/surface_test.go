@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -196,5 +197,10 @@ func TestPluginsExposesProviderInfo(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("composition provider must expose its capability in provider_info")
+	}
+	// Empty collections must serialize as [] — a null events log broke
+	// the web UI once.
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"events":[]`)) {
+		t.Fatalf("events must encode as an empty array, got: %s", rec.Body.String())
 	}
 }

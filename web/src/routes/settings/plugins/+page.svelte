@@ -54,6 +54,7 @@
 			? (info?.provider_info ?? []).filter((p) => p.capabilities.includes(swapTarget!.capability))
 			: []
 	);
+	const events = $derived(info?.events ?? []);
 	const availableList = $derived(candidateList.filter((p) => !selected.includes(p.id)));
 	const exactlyOne = $derived(swapTarget?.mode === 'exactly-one');
 	const canSwap = $derived(exactlyOne ? selected.length === 1 : selected.length >= 1);
@@ -199,11 +200,11 @@
 			<h2 class="flex items-center gap-2 text-base font-semibold text-foreground">
 				<Activity class="size-4 text-muted" /> Recent composition events
 			</h2>
-			{#if info.events.length === 0}
+			{#if events.length === 0}
 				<p class="text-sm text-muted">No swaps or fallbacks recorded in this process.</p>
 			{:else}
 				<ul class="divide-y divide-line overflow-hidden rounded-card border border-line">
-					{#each [...info.events].reverse().slice(0, 20) as event, index (event.at + '-' + index)}
+					{#each [...events].reverse().slice(0, 20) as event, index (event.at + '-' + index)}
 						<li class="flex flex-wrap items-baseline gap-x-3 gap-y-1 bg-surface/30 px-4 py-2.5 text-sm">
 							<Badge
 								tone={event.kind.includes('rejected') || event.kind.includes('degraded')

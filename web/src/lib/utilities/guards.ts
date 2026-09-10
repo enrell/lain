@@ -7,6 +7,8 @@ export interface GuardState {
 	ready: boolean;
 	setupRequired: boolean;
 	authenticated: boolean;
+	/** True while the post-setup welcome screen is still on display. */
+	freshSetup: boolean;
 	/** True when the signed-in user has the admin role. */
 	admin: boolean;
 	pathname: string;
@@ -17,12 +19,17 @@ export interface GuardState {
  * root layout effect; keeping it pure makes the loop rules explicit.
  */
 export function routeRedirect(state: GuardState): string | null {
-	const { ready, setupRequired, authenticated, admin, pathname } = state;
+	const { ready, setupRequired, authenticated, freshSetup, admin, pathname } = state;
 	if (!ready) return null;
 	if (setupRequired) {
 		return pathname === '/setup' ? null : '/setup';
 	}
-	if (pathname === '/setup') return '/';
+	if (pathname === '/setup') {
+		// The welcome step may stay while the guard would otherwise
+		// bounce a freshly authenticated admin straight to Home.
+		if (freshSetup && authenticated) return null;
+		return '/';
+	}
 	if (!authenticated) {
 		return pathname === '/login' ? null : '/login';
 	}

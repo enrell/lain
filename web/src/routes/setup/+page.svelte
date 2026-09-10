@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import { session } from '$lib/auth/session.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import Button from '$lib/components/primitives/Button.svelte';
+	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import Input from '$lib/components/primitives/Input.svelte';
 	import SignalMark from '$lib/components/primitives/SignalMark.svelte';
 
@@ -121,12 +121,12 @@
 						Next, point Lain at a directory on this server so it can index your files.
 					</p>
 					<div class="mt-6 flex w-full flex-col gap-2">
-						<Button onclick={() => void goto('/settings/libraries')}>
+						<LinkButton href="/settings/libraries">
 							<FolderPlus class="size-4" /> Add a media library
-						</Button>
-						<Button variant="ghost" onclick={() => void goto('/')}>
+						</LinkButton>
+						<LinkButton href="/" variant="ghost">
 							Explore Lain <ArrowRight class="size-4" />
-						</Button>
+						</LinkButton>
 					</div>
 				</div>
 			{/if}

@@ -19,6 +19,8 @@ class Session {
 	ready = $state(false);
 	/** True while a first-run setup is required by the server. */
 	setupRequired = $state(false);
+	/** True between completing setup and leaving the welcome step. */
+	freshSetup = $state(false);
 	/** Non-null when the server could not be reached during boot. */
 	bootError = $state<string | null>(null);
 	busy = $state(false);
@@ -97,8 +99,21 @@ class Session {
 		} finally {
 			this.busy = false;
 		}
-		await this.login(username, password);
+		// Set before login: the guard must not bounce the welcome step
+		// while `user` flips to authenticated mid-login.
+		this.freshSetup = true;
+		try {
+			await this.login(username, password);
+		} catch (err) {
+			this.freshSetup = false;
+			throw err;
+		}
 		this.setupRequired = false;
+	}
+
+	/** Leaves the post-setup welcome screen (the guard then applies). */
+	acknowledgeSetup(): void {
+		this.freshSetup = false;
 	}
 
 	async refreshUser(): Promise<void> {
@@ -109,6 +124,7 @@ class Session {
 	invalidate(): void {
 		this.token = null;
 		this.user = null;
+		this.freshSetup = false;
 		tokenStorage.clear();
 	}
 

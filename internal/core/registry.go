@@ -324,11 +324,14 @@ func (r *Registry) ProviderInfos() []ProviderInfo {
 	return out
 }
 
-// Events returns the recent composition/recovery log.
+// Events returns the recent composition/recovery log (never nil: an
+// empty log is `[]` on the wire, not `null`).
 func (r *Registry) Events() []Event {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return append([]Event(nil), r.events...)
+	out := make([]Event, len(r.events))
+	copy(out, r.events)
+	return out
 }
 
 // Composition returns the live composition (read-only copy of bindings).

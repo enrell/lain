@@ -5,6 +5,7 @@ const base = {
 	ready: true,
 	setupRequired: false,
 	authenticated: false,
+	freshSetup: false,
 	admin: false,
 	pathname: '/'
 };
@@ -17,6 +18,15 @@ describe('routeRedirect', () => {
 	it('forces first-run setup regardless of path', () => {
 		expect(routeRedirect({ ...base, setupRequired: true, pathname: '/' })).toBe('/setup');
 		expect(routeRedirect({ ...base, setupRequired: true, pathname: '/setup' })).toBeNull();
+	});
+
+	it('keeps the welcome step visible right after setup', () => {
+		expect(
+			routeRedirect({ ...base, authenticated: true, admin: true, freshSetup: true, pathname: '/setup' })
+		).toBeNull();
+		expect(
+			routeRedirect({ ...base, authenticated: true, admin: true, freshSetup: false, pathname: '/setup' })
+		).toBe('/');
 	});
 
 	it('sends anonymous visitors to login, except on auth pages', () => {

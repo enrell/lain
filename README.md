@@ -55,6 +55,24 @@ cd web && pnpm dev        # terminal 2 (UI on :5173)
 `go build ./...` does not need Node: a binary built without `make web`
 serves a "web UI not built" notice on `/` while the API keeps working.
 
+## End-to-end smoke test
+
+A real Chromium (CDP, Node built-ins only) drives a full workflow
+against a fresh data directory:
+
+```sh
+go build -o lain ./cmd/lain
+web/e2e/fixtures.sh /tmp/lain-fixtures      # ffmpeg test media
+./lain serve --data-dir /tmp/lain-e2e --port 9360 &
+node web/e2e/smoke.mjs --media /tmp/lain-fixtures
+```
+
+It covers setup, libraries, scan, browse, search, NFO enrichment,
+playback (Range, keyboard seek, bounded progress writes), Continue
+Watching resume, users, composition swap with generation fencing,
+backup download, non-admin gating, deep-link refresh, and a
+console/network quality gate (no 404s, no request loops).
+
 ## Docker (Alpine, ~31 MB image, ~5 MiB idle)
 
 ```sh
