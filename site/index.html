@@ -10,14 +10,13 @@
 	<meta property="og:description" content="Your data. Your machine. Your rules. Your plugins." />
 	<meta property="og:type" content="website" />
 	<meta property="og:url" content="https://enrell.github.io/lain/" />
-	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2307080a'/%3E%3Cpath d='M10 8v12h9' fill='none' stroke='%237aa2f7' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2307080a'/%3E%3Cpath d='M10 8v12h9' fill='none' stroke='%237aa2f7' stroke-width='3' stroke-linecap='square'/%3E%3C/svg%3E" />
 	<link rel="preload" href="assets/fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin />
 	<link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 	<a class="skip" href="#main">Skip to content</a>
 	<div class="grain" aria-hidden="true"></div>
-	<div class="vignette" aria-hidden="true"></div>
 
 	<header class="nav" id="nav">
 		<div class="nav-progress" id="progress" aria-hidden="true"></div>
@@ -50,26 +49,22 @@
 		<!-- ============================== hero ============================== -->
 		<section class="hero" id="top">
 			<canvas id="constellation" aria-hidden="true"></canvas>
-			<div class="hero-glow" aria-hidden="true"></div>
 			<div class="hero-grid" aria-hidden="true"></div>
 			<div class="hero-inner">
-				<p class="kicker mono reveal" data-d="0">[ local-first media server ]</p>
-				<h1 class="wordmark reveal" data-d="1"><span class="wordmark-text">lain</span><span class="wordmark-caret" aria-hidden="true">_</span></h1>
-				<p class="mantra reveal" data-d="2">Your data. Your machine.<br />Your rules. <em>Your plugins.</em></p>
-				<p class="lede reveal" data-d="3">
+				<p class="kicker mono">[ local-first media server ]</p>
+				<h1 class="wordmark"><span class="wordmark-text">lain</span><span class="wordmark-caret" aria-hidden="true">_</span></h1>
+				<p class="mantra">Your data. Your machine.<br />Your rules. <em>Your plugins.</em></p>
+				<p class="lede">
 					A single static binary in Go. A tiny trusted core hosts replaceable
 					plugins — catalog, playback, search, metadata, thumbnails — and your
 					library streams to the embedded web UI, to <span class="mono">mpv</span> and to the
 					native desktop client.
 				</p>
-				<div class="cta reveal" data-d="4">
-					<a class="btn btn-primary" href="#install">
-						Get started
-						<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M2 8h11m-4.5-4.5L13 8l-4.5 4.5"/></svg>
-					</a>
-					<a class="btn btn-ghost" href="#desktop">Desktop app</a>
+				<div class="cta">
+					<a class="btn" href="#install">Get started</a>
+					<a class="link" href="#desktop">Desktop app</a>
 				</div>
-				<ul class="status mono reveal" data-d="5">
+				<ul class="status mono">
 					<li><span class="dot" aria-hidden="true"></span>v0.1.0</li>
 					<li>Apache-2.0</li>
 					<li>linux amd64 · arm64</li>
@@ -78,19 +73,17 @@
 			</div>
 			<div class="scroll-hint mono" aria-hidden="true">scroll<span class="scroll-arrow">↓</span></div>
 
-			<div class="hero-card mono" aria-hidden="true">
-				<div class="hero-card-bar">
-					<span class="traffic"></span><span class="traffic"></span><span class="traffic"></span>
-					<span class="hero-card-title">lain serve</span>
+			<div class="session mono" aria-hidden="true">
+				<div class="session-bar">
+					<span class="session-label">lain serve</span>
+					<span class="session-state">running</span>
 				</div>
-				<div class="hero-card-body">
-					<span class="hc-line"><span class="hc-prompt">$</span> lain serve --port 9360</span>
-					<span class="hc-line hc-dim">lain v0.1.0 on http://127.0.0.1:9360</span>
-					<span class="hc-line hc-dim">data ~/.local/share/lain</span>
-					<span class="hc-line"><span class="hc-ok">●</span> web ui embedded <span class="hc-sep">·</span> <span class="hc-ok">●</span> 3 plugins healthy</span>
-					<span class="hc-line hc-dim">GET /api/catalog?limit=24 <span class="hc-ok">200</span> 12ms</span>
-					<span class="hc-line hc-dim">GET /api/items/8eb6…/thumbnail <span class="hc-ok">200</span> 84ms</span>
-				</div>
+				<pre class="session-body">$ lain serve --port 9360
+lain v0.1.0 on http://127.0.0.1:9360
+data ~/.local/share/lain
+web ui embedded · 3 plugins healthy
+GET /api/catalog?limit=24  200  12ms
+GET /api/items/8eb6…/thumbnail  200  84ms</pre>
 			</div>
 		</section>
 
@@ -107,106 +100,119 @@
 		<!-- ============================ features ============================ -->
 		<section class="section" id="features">
 			<header class="section-head">
-				<p class="eyebrow mono reveal">[ core ]</p>
-				<h2 class="reveal">Everything beyond the core<br />is a plugin.</h2>
-				<p class="section-lede reveal">Bound to capability names, health-checked, swappable at runtime with generation fencing. The server stays useful even with pieces missing.</p>
+				<p class="section-index mono">01 / core</p>
+				<h2>Everything beyond the core is a plugin.</h2>
+				<p class="section-lede">Bound to capability names, health-checked, swappable at runtime with generation fencing. The server stays useful even with pieces missing.</p>
 			</header>
 
-			<div class="bento">
-				<article class="card card-wide reveal" data-spot>
-					<div class="card-head">
-						<span class="card-tag mono">registry</span>
-						<h3>One invoke surface, many providers</h3>
+			<div class="spec">
+				<article class="spec-entry spec-lead">
+					<div class="spec-key">
+						<span class="spec-no mono">01</span>
+						<h3>Capability registry</h3>
 					</div>
-					<p class="card-copy">Capabilities resolve through a composition: <span class="mono">exactly-one</span>, <span class="mono">ordered-many</span>, <span class="mono">first-accepted</span>, <span class="mono">merge-many</span>. Swaps are fenced by generation so a stale writer can never overwrite newer state.</p>
-					<div class="registry" aria-hidden="true">
-						<div class="registry-chips">
-							<span class="chip is-active">source</span>
-							<span class="chip">identify</span>
-							<span class="chip is-active">catalog</span>
-							<span class="chip">userstate</span>
-							<span class="chip is-active">playback</span>
-							<span class="chip">search</span>
-							<span class="chip is-active">metadata</span>
-							<span class="chip">thumbnail</span>
-						</div>
-						<div class="registry-gen mono">generation <span id="genCount">1</span><span class="gen-fence"> · stale writers fenced</span></div>
-					</div>
-				</article>
-
-				<article class="card reveal" data-spot>
-					<div class="card-head">
-						<span class="card-tag mono">stream</span>
-						<h3>Direct play, Range by Range</h3>
-					</div>
-					<p class="card-copy">Media bytes never cross a plugin call. The gateway authorizes, resolves identity and serves the file with HTTP Range.</p>
-					<div class="range-demo" aria-hidden="true">
-						<div class="range-track"><span class="range-fill"></span></div>
-						<div class="range-meta mono"><span>206 Partial Content</span><span>matroska · hevc</span></div>
-					</div>
-				</article>
-
-				<article class="card reveal" data-spot>
-					<div class="card-head">
-						<span class="card-tag mono">thumbnails</span>
-						<h3>Stills on demand</h3>
-					</div>
-					<p class="card-copy">ffmpeg extracts one frame, the provider caches it on disk, the gateway streams it. No ffmpeg? Only this capability degrades.</p>
-					<div class="thumb-demo" aria-hidden="true">
-						<div class="thumb-frame"><span class="thumb-scan"></span><span class="thumb-time mono">t=08s</span></div>
-						<div class="thumb-req mono">GET /api/items/&lt;id&gt;/thumbnail?t=8&amp;w=480</div>
-					</div>
-				</article>
-
-				<article class="card reveal" data-spot>
-					<div class="card-head">
-						<span class="card-tag mono">metadata</span>
-						<h3>Merged, scored, cached</h3>
-					</div>
-					<p class="card-copy">Local NFO plus remote providers merge by title match and precedence; overlays decorate the catalog without touching identity or progress.</p>
-					<div class="providers" aria-hidden="true">
-						<span class="provider">NFO</span>
-						<span class="provider">Kitsu</span>
-						<span class="provider">AniList</span>
-						<span class="provider">Jikan</span>
-						<span class="provider-merge mono">merge-many → best pick</span>
-					</div>
-				</article>
-
-				<article class="card reveal" data-spot>
-					<div class="card-head">
-						<span class="card-tag mono">progress</span>
-						<h3>Resume that survives reindexing</h3>
-					</div>
-					<p class="card-copy">User state lives outside the catalog. Bounded writes, per user, never on every video event.</p>
-					<div class="resume-demo" aria-hidden="true">
-						<div class="resume-track"><span class="resume-fill"></span><span class="resume-thumb"></span></div>
-						<div class="range-meta mono"><span>S02E04</span><span>resume 18:32</span></div>
-					</div>
-				</article>
-
-				<article class="card card-wide reveal" data-spot>
-					<div class="card-head">
-						<span class="card-tag mono">surfaces</span>
-						<h3>One origin, three clients</h3>
-					</div>
-					<p class="card-copy">The Svelte 5 SPA is compiled into the Go binary — same process, same origin, no Node at runtime. The CLI drives mpv; the desktop client is Qt 6 + libmpv.</p>
-					<div class="surfaces" aria-hidden="true">
-						<div class="browser-mock">
-							<div class="browser-bar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span><span class="browser-url mono">127.0.0.1:9360</span></div>
-							<div class="browser-body">
-								<div class="mock-rail"><span class="on"></span><span></span><span></span><span></span></div>
-								<div class="mock-content">
-									<div class="mock-hero"></div>
-									<div class="mock-row"><i></i><i></i><i></i><i></i><i></i></div>
-								</div>
+					<div class="spec-value">
+						<p>Capabilities resolve through a composition: <span class="mono">exactly-one</span>,
+						<span class="mono">ordered-many</span>, <span class="mono">first-accepted</span>,
+						<span class="mono">merge-many</span>. Swaps are fenced by generation, so a stale
+						writer can never overwrite newer state; a provider that fails at call time falls
+						back to the last-good one, once.</p>
+						<div class="registry" aria-hidden="true">
+							<div class="registry-chips">
+								<span class="chip is-active">source</span>
+								<span class="chip">identify</span>
+								<span class="chip is-active">catalog</span>
+								<span class="chip">userstate</span>
+								<span class="chip is-active">playback</span>
+								<span class="chip">search</span>
+								<span class="chip is-active">metadata</span>
+								<span class="chip">thumbnail</span>
 							</div>
+							<div class="registry-gen mono">generation <span id="genCount">1</span><span class="gen-fence"> · stale writers fenced</span></div>
 						</div>
-						<div class="surface-list mono">
-							<span>web · embedded SPA</span>
-							<span>cli · lain watch --next</span>
-							<span>desktop · qt6 + libmpv</span>
+					</div>
+				</article>
+
+				<article class="spec-entry">
+					<div class="spec-key">
+						<span class="spec-no mono">02</span>
+						<h3>Streaming</h3>
+					</div>
+					<div class="spec-value">
+						<p>Media bytes never cross a plugin call. The gateway authorizes, resolves
+						identity and serves the file over HTTP Range, from the same process as the
+						API and the web UI.</p>
+						<div class="range-demo" aria-hidden="true">
+							<div class="range-track"><span class="range-fill"></span></div>
+							<div class="range-meta mono"><span>206 Partial Content</span><span>matroska · hevc</span></div>
 						</div>
+					</div>
+				</article>
+
+				<article class="spec-entry">
+					<div class="spec-key">
+						<span class="spec-no mono">03</span>
+						<h3>Thumbnails</h3>
+					</div>
+					<div class="spec-value">
+						<p>ffmpeg extracts one frame, the provider caches it on disk keyed by source
+						mtime and size, and the gateway streams it. No ffmpeg installed? Only this
+						capability degrades, and it says so.</p>
+						<div class="reg-line mono"><span class="reg-get">GET</span> /api/items/&lt;id&gt;/thumbnail?t=8&amp;w=480 <span class="reg-ok">200</span> image/jpeg <span class="reg-dim">cached · 84ms</span></div>
+					</div>
+				</article>
+
+				<article class="spec-entry">
+					<div class="spec-key">
+						<span class="spec-no mono">04</span>
+						<h3>Metadata</h3>
+					</div>
+					<div class="spec-value">
+						<p>Local NFO sidecars plus remote providers merge by title match and
+						precedence, scored and cached. Overlays decorate the catalog without
+						touching identity, files or progress.</p>
+						<div class="providers" aria-hidden="true">
+							<span class="provider">NFO</span>
+							<span class="provider">Kitsu</span>
+							<span class="provider">AniList</span>
+							<span class="provider">Jikan</span>
+							<span class="provider-merge mono">merge-many → best pick</span>
+						</div>
+					</div>
+				</article>
+
+				<article class="spec-entry">
+					<div class="spec-key">
+						<span class="spec-no mono">05</span>
+						<h3>Progress</h3>
+					</div>
+					<div class="spec-value">
+						<p>User state lives outside the catalog, so reindexing never loses a resume
+						point. Writes are bounded — pause, seek, every ten seconds, on exit — never
+						on every video event.</p>
+						<figure class="figure">
+							<img src="assets/web-item.webp" width="1400" height="790" loading="lazy" decoding="async"
+								alt="Item page in the embedded web UI showing genres, synopsis, a 1:23:00 progress bar and a Resume button." />
+							<figcaption class="mono">fig. 05 — resume state in the embedded UI</figcaption>
+						</figure>
+					</div>
+				</article>
+
+				<article class="spec-entry">
+					<div class="spec-key">
+						<span class="spec-no mono">06</span>
+						<h3>Surfaces</h3>
+					</div>
+					<div class="spec-value">
+						<p>The Svelte 5 SPA is compiled into the Go binary — same process, same
+						origin, no Node at runtime. The CLI drives mpv with an authenticated stream
+						URL. The desktop client speaks the same API.</p>
+						<figure class="figure">
+							<img src="assets/web-home.webp" width="1400" height="790" loading="lazy" decoding="async"
+								alt="Home screen of the embedded web UI with Continue watching and Recently added rows." />
+							<figcaption class="mono">fig. 06 — the embedded web UI, no separate server</figcaption>
+						</figure>
+						<p class="surface-line mono"><span>web · embedded SPA</span><span>cli · lain watch --next</span><span>desktop · qt6 + libmpv</span></p>
 					</div>
 				</article>
 			</div>
@@ -215,12 +221,12 @@
 		<!-- ============================== how =============================== -->
 		<section class="section section-how" id="how">
 			<header class="section-head">
-				<p class="eyebrow mono reveal">[ pipeline ]</p>
-				<h2 class="reveal">Enumerate. Identify.<br />Catalog. Plan. Stream.</h2>
-				<p class="section-lede reveal">A policy-free ingest pipeline wired from plugins you can replace one by one. Unidentified files count, they never abort a scan.</p>
+				<p class="section-index mono">02 / pipeline</p>
+				<h2>Enumerate. Identify. Catalog. Plan. Stream.</h2>
+				<p class="section-lede">A policy-free ingest pipeline wired from plugins you can replace one by one. Unidentified files count, they never abort a scan.</p>
 			</header>
 
-			<div class="pipeline reveal" aria-hidden="true">
+			<div class="pipeline" aria-hidden="true">
 				<div class="pipeline-line"><span class="pipeline-pulse"></span></div>
 				<ol class="pipeline-steps">
 					<li><span class="pipeline-node"></span><span class="pipeline-label mono">enumerate</span><span class="pipeline-sub">filesystem</span></li>
@@ -238,7 +244,7 @@
 				</div>
 			</div>
 
-			<div class="degrade reveal">
+			<div class="degrade">
 				<p class="degrade-quote">“With no transcoder installed, the planner says <span class="hl">transcode-required</span> instead of faking a stream it cannot produce.”</p>
 				<p class="degrade-note mono">degrade honestly · never silently</p>
 			</div>
@@ -247,117 +253,86 @@
 		<!-- ============================ install ============================= -->
 		<section class="section" id="install">
 			<header class="section-head">
-				<p class="eyebrow mono reveal">[ install ]</p>
-				<h2 class="reveal">Running in<br />under a minute.</h2>
-				<p class="section-lede reveal">No toolchain, no Node, no database to provision. Pick the shape that fits your machine.</p>
+				<p class="section-index mono">03 / install</p>
+				<h2>Running in under a minute.</h2>
+				<p class="section-lede">No toolchain, no Node, no database to provision. Pick the shape that fits your machine.</p>
 			</header>
 
 			<div class="install-grid">
-				<div class="tabs reveal">
+				<div class="tabs">
 					<div class="tab-buttons" role="tablist" aria-label="Install methods">
-					<button class="tab is-active" role="tab" aria-selected="true" aria-controls="panel-docker" id="tab-docker" data-tab="docker">Docker <span class="tab-badge mono">recommended</span></button>
-					<button class="tab" role="tab" aria-selected="false" aria-controls="panel-binary" id="tab-binary" data-tab="binary">Static binary</button>
-					<button class="tab" role="tab" aria-selected="false" aria-controls="panel-installer" id="tab-installer" data-tab="installer">Installer</button>
-				</div>
-
-				<div class="terminal reveal in-view" data-spot>
-					<div class="terminal-bar">
-						<span class="traffic"></span><span class="traffic"></span><span class="traffic"></span>
-						<span class="terminal-title mono" id="termTitle">docker</span>
-						<button class="copy mono" data-copy="docker run -d --name lain -p 9360:9360 \
-  -v lain-data:/data \
-  -v ~/Videos:/media/videos:ro \
-  ghcr.io/enrell/lain:latest">copy</button>
+						<button class="tab is-active" role="tab" aria-selected="true" aria-controls="panel-docker" id="tab-docker" data-tab="docker">Docker <span class="tab-badge mono">recommended</span></button>
+						<button class="tab" role="tab" aria-selected="false" aria-controls="panel-binary" id="tab-binary" data-tab="binary">Static binary</button>
+						<button class="tab" role="tab" aria-selected="false" aria-controls="panel-installer" id="tab-installer" data-tab="installer">Installer</button>
 					</div>
 
-					<div class="tab-panel" id="panel-docker" role="tabpanel" aria-labelledby="tab-docker">
-						<pre class="terminal-body mono" data-command="docker run -d --name lain -p 9360:9360 \
+					<div class="terminal">
+						<div class="terminal-bar">
+							<span class="terminal-title mono" id="termTitle">docker</span>
+							<button class="copy mono" data-copy="">copy</button>
+						</div>
+
+						<div class="tab-panel" id="panel-docker" role="tabpanel" aria-labelledby="tab-docker">
+							<pre class="terminal-body mono" data-command="docker run -d --name lain -p 9360:9360 \
   -v lain-data:/data \
   -v ~/Videos:/media/videos:ro \
   ghcr.io/enrell/lain:latest"></pre>
-						<p class="terminal-note mono">→ open <span class="hl">http://127.0.0.1:9360</span> · or let the installer generate the compose file</p>
-					</div>
+							<p class="terminal-note mono">→ open <span class="hl">http://127.0.0.1:9360</span> · or let the installer generate the compose file</p>
+						</div>
 
-					<div class="tab-panel" id="panel-binary" role="tabpanel" aria-labelledby="tab-binary" hidden>
-						<pre class="terminal-body mono" data-command="curl -fsSLO https://github.com/enrell/lain/releases/latest/download/lain_0.1.0_linux_amd64.tar.gz
+						<div class="tab-panel" id="panel-binary" role="tabpanel" aria-labelledby="tab-binary" hidden>
+							<pre class="terminal-body mono" data-command="curl -fsSLO https://github.com/enrell/lain/releases/latest/download/lain_0.1.0_linux_amd64.tar.gz
 sha256sum -c lain_0.1.0_linux_amd64.tar.gz.sha256
 tar -xzf lain_0.1.0_linux_amd64.tar.gz && ./lain serve --port 9360"></pre>
-						<p class="terminal-note mono">→ static, no cgo · releases carry .sha256 sidecars and build attestations</p>
-					</div>
+							<p class="terminal-note mono">→ static, no cgo · releases carry .sha256 sidecars and build attestations</p>
+						</div>
 
-					<div class="tab-panel" id="panel-installer" role="tabpanel" aria-labelledby="tab-installer" hidden>
-						<pre class="terminal-body mono" data-command="curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh -o lain-install.sh
+						<div class="tab-panel" id="panel-installer" role="tabpanel" aria-labelledby="tab-installer" hidden>
+							<pre class="terminal-body mono" data-command="curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh -o lain-install.sh
 less lain-install.sh   # read it first
 bash lain-install.sh   # server + desktop, docker / binary / daemon"></pre>
-						<p class="terminal-note mono">→ choose components, media paths, port; generates docker-compose.yml</p>
+							<p class="terminal-note mono">→ choose components, media paths, port; generates docker-compose.yml</p>
+						</div>
 					</div>
 				</div>
-			</div>
 
-			<aside class="steps reveal">
-				<p class="steps-title mono">first run</p>
-				<ol>
-					<li><span class="step-no mono">01</span><span>Create the admin account — the first setup wins.</span></li>
-					<li><span class="step-no mono">02</span><span>Add a library path. In Docker the host dir is mounted at <span class="mono">/media/…</span>.</span></li>
-					<li><span class="step-no mono">03</span><span>Scan. Unidentified files are counted, never fatal.</span></li>
-					<li><span class="step-no mono">04</span><span>Watch in the browser, in <span class="mono">mpv</span>, or in the desktop app.</span></li>
-				</ol>
-				<p class="steps-meta mono">image ~220 MB · linux/amd64 · linux/arm64</p>
-			</aside>
-		</div>
+				<aside class="marginalia">
+					<p class="marginalia-title mono">first run</p>
+					<ol>
+						<li><span class="step-no mono">01</span><span>Create the admin account — the first setup wins.</span></li>
+						<li><span class="step-no mono">02</span><span>Add a library path. In Docker the host dir is mounted at <span class="mono">/media/…</span>.</span></li>
+						<li><span class="step-no mono">03</span><span>Scan. Unidentified files are counted, never fatal.</span></li>
+						<li><span class="step-no mono">04</span><span>Watch in the browser, in <span class="mono">mpv</span>, or in the desktop app.</span></li>
+					</ol>
+					<p class="marginalia-meta mono">image ~220 MB · linux/amd64 · linux/arm64</p>
+				</aside>
+			</div>
 		</section>
 
 		<!-- ============================ desktop ============================= -->
 		<section class="section section-desktop" id="desktop">
 			<header class="section-head">
-				<p class="eyebrow mono reveal">[ desktop ]</p>
-				<h2 class="reveal">A native client,<br />not a browser tab.</h2>
-				<p class="section-lede reveal">Qt 6 Quick/QML on libmpv. Direct play for everything the server can serve, resume from saved position, audio and subtitle tracks, server-side thumbnails and in-app metadata enrichment.</p>
+				<p class="section-index mono">04 / desktop</p>
+				<h2>A native client, not a browser tab.</h2>
+				<p class="section-lede">Qt 6 Quick/QML on libmpv. Direct play for everything the server can serve, resume from saved position, audio and subtitle tracks, server-side thumbnails and in-app metadata enrichment.</p>
 			</header>
 
-			<div class="desktop-wrap reveal">
-				<div class="app-mock" data-spot aria-hidden="true">
-					<div class="app-rail">
-						<div class="app-brand mono">lain</div>
-						<span class="app-item on"><i></i>home</span>
-						<span class="app-item"><i></i>movies</span>
-						<span class="app-item"><i></i>shows</span>
-						<span class="app-item"><i></i>collections</span>
-						<span class="app-item app-item-end"><i></i>settings</span>
-					</div>
-					<div class="app-main">
-						<div class="app-hero">
-							<div class="app-hero-art"></div>
-							<div class="app-hero-copy">
-								<span class="app-hero-kicker mono">4K HDR · 2h 35m</span>
-								<span class="app-hero-title">Orbital Drift</span>
-								<span class="app-hero-sub">2026 · Sci-Fi · 2h 35m</span>
-								<div class="app-hero-actions"><span class="app-play">▶ Play</span><span class="app-info">More info</span></div>
-							</div>
-						</div>
-						<div class="app-row">
-							<span class="app-row-title mono">continue watching</span>
-							<div class="app-cards"><i></i><i></i><i></i><i></i></div>
-						</div>
-						<div class="app-player">
-							<span class="app-time mono">42:18</span>
-							<span class="app-seek"><span class="app-seek-fill"></span></span>
-							<span class="app-time mono">2:35:41</span>
-						</div>
-					</div>
+			<div class="desktop-grid">
+				<figure class="figure">
+					<img src="assets/desktop.webp" width="1000" height="805" loading="lazy" decoding="async"
+						alt="The native desktop client on first run: server URL, username and password fields over the Omarchy theme." />
+					<figcaption class="mono">fig. 07 — the native client: first-run setup against your server</figcaption>
+				</figure>
+
+				<div class="desktop-copy">
+					<dl class="plain-list">
+						<div><dt class="mono">qt6</dt><dd>Quick/QML interface that follows your desktop palette live</dd></div>
+						<div><dt class="mono">libmpv</dt><dd>direct playback, shaders, tracks, bounded progress writes</dd></div>
+						<div><dt class="mono">api</dt><dd>first-run setup, login, catalog, search, enrichment, thumbnails</dd></div>
+						<div><dt class="mono">tests</dt><dd>headless Qt Quick Test suite under ctest, no window</dd></div>
+					</dl>
+					<a class="link" href="https://github.com/enrell/lain-desktop" rel="noopener">enrell/lain-desktop on GitHub</a>
 				</div>
-
-				<ul class="desktop-specs">
-					<li class="reveal"><span class="spec mono">qt6</span>Quick/QML interface that follows your desktop palette live</li>
-					<li class="reveal"><span class="spec mono">libmpv</span>direct playback, shaders, tracks and bounded progress writes</li>
-					<li class="reveal"><span class="spec mono">api</span>first-run setup, login, catalog, search, enrichment, thumbnails</li>
-					<li class="reveal"><span class="spec mono">tests</span>headless Qt Quick Test suite under ctest, no window</li>
-				</ul>
-
-				<a class="btn btn-ghost desktop-cta" href="https://github.com/enrell/lain-desktop" rel="noopener">
-					enrell/lain-desktop on GitHub
-					<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M2 8h11m-4.5-4.5L13 8l-4.5 4.5"/></svg>
-				</a>
 			</div>
 		</section>
 	</main>
