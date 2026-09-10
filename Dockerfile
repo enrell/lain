@@ -1,14 +1,29 @@
 # syntax=docker/dockerfile:1
 
+# ---- frontend: static SPA, built once, never shipped ----
+# Node exists only here. The output is HTML/CSS/JS; no runtime, no
+# node_modules, no SvelteKit server reaches the final image.
+FROM node:24-alpine AS web
+RUN npm install -g pnpm@11.25.0
+WORKDIR /web
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY web/ ./
+RUN pnpm build
+
 # ---- build: static Go binary, no cgo anywhere in the graph ----
 FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+COPY --from=web /web/build ./internal/webui/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /lain ./cmd/lain
 
-# ---- run: alpine + binary + CA certs (metadata providers need TLS) ----
+# ---- run: alpine + binary + CA certs ----
+# The frontend is embedded in the binary; the SPA, /api and media
+# streaming all come from the same Lain process and origin. ca-certificates
+# is required for the metadata providers (Kitsu/AniList/Jikan over TLS).
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates \
  && adduser -D -H -h /data lain

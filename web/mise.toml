@@ -1,0 +1,5 @@
+# The web workspace pins its package manager so every machine (and the
+# Docker build) resolves the same pnpm. Node comes from the global mise
+# config; pnpm is scoped here on purpose.
+[tools]
+pnpm = "11.25.0"

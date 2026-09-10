@@ -1,0 +1,31 @@
+{
+  "name": "lain-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^3.0.10",
+    "@sveltejs/kit": "^2.70.3",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.0.0",
+    "svelte": "^5.57.0",
+    "svelte-check": "^4.7.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.9.3",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.44.0",
+    "bits-ui": "^2.19.2"
+  }
+}

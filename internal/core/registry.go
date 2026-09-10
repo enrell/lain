@@ -303,6 +303,27 @@ func (r *Registry) Providers() []string {
 	return out
 }
 
+// ProviderInfo describes one registered provider for operator surfaces:
+// which capabilities it can serve and whether its Health currently
+// passes. Health must be cheap and side-effect free by contract.
+type ProviderInfo struct {
+	ID           string   `json:"id"`
+	Capabilities []string `json:"capabilities"`
+	Healthy      bool     `json:"healthy"`
+}
+
+// ProviderInfos lists provider details sorted by id.
+func (r *Registry) ProviderInfos() []ProviderInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]ProviderInfo, 0, len(r.providers))
+	for id, p := range r.providers {
+		out = append(out, ProviderInfo{ID: id, Capabilities: p.Capabilities(), Healthy: p.Health() == nil})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
 // Events returns the recent composition/recovery log.
 func (r *Registry) Events() []Event {
 	r.mu.RLock()

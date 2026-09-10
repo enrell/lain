@@ -87,9 +87,10 @@ type CatalogPage struct {
 
 // PageParams carries validated paging input.
 type PageParams struct {
-	Limit  int
-	Offset int
-	Sort   string // "title" (default) or "recent"
+	Limit     int
+	Offset    int
+	Sort      string // "title" (default) or "recent"
+	LibraryID string // optional: restrict to one library (empty = all)
 }
 
 // NormalizePage clamps raw query input to safe bounds.

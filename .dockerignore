@@ -4,3 +4,11 @@ benchmarks/
 backups/
 *_test.go
 .DS_Store
+
+# frontend: dependencies and local build output never enter the context;
+# the Docker web stage builds from source. The embedded dist tree is
+# produced by the web stage, not copied from the host.
+web/node_modules/
+web/.svelte-kit/
+web/build/
+internal/webui/dist/

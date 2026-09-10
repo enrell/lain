@@ -4,3 +4,11 @@ benchmarks/*
 !benchmarks/.gitkeep
 *.log
 .DS_Store
+
+# frontend build artifacts: the source in web/ is what gets committed
+web/node_modules/
+web/.svelte-kit/
+web/build/
+# compiled UI embedded into the Go binary (built by `make web` / Docker)
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep

@@ -48,6 +48,28 @@ func (s *Saver) Get(itemID string) (contracts.Enrichment, bool) {
 	return e, true
 }
 
+// GetMany returns the overlays that exist for the given ids in one read
+// transaction. Order follows ids; missing entries are absent.
+func (s *Saver) GetMany(ids []string) []contracts.Enrichment {
+	out := []contracts.Enrichment{}
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(kv.BEnrich)
+		for _, id := range ids {
+			raw := b.Get([]byte(id))
+			if raw == nil {
+				continue
+			}
+			var e contracts.Enrichment
+			if err := json.Unmarshal(raw, &e); err != nil {
+				continue
+			}
+			out = append(out, e)
+		}
+		return nil
+	})
+	return out
+}
+
 // Delete removes one item's overlay (provider removal path).
 func (s *Saver) Delete(itemID string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {

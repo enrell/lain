@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/enrell/lain/internal/auth"
 	"github.com/enrell/lain/internal/contracts"
@@ -14,6 +15,35 @@ func (s *Server) routesEnrich() {
 	s.mux.HandleFunc("POST /api/catalog/{id}/enrich", s.requireAdmin(s.handleEnrich))
 	s.mux.HandleFunc("GET /api/catalog/{id}/enrich", s.requireAuth(s.handleEnrichGet))
 	s.mux.HandleFunc("DELETE /api/catalog/{id}/enrich", s.requireAdmin(s.handleEnrichDelete))
+	s.mux.HandleFunc("GET /api/enrichments", s.requireAuth(s.handleEnrichBatch))
+}
+
+// maxEnrichBatch bounds one batch overlay read: grids ask for a page of
+// items, not the whole catalog.
+const maxEnrichBatch = 200
+
+// handleEnrichBatch returns the overlays that exist for a set of item
+// ids in one read transaction: artwork for a grid without N+1
+// requests. Missing overlays are simply absent from the result.
+func (s *Server) handleEnrichBatch(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+	raw := strings.TrimSpace(r.URL.Query().Get("ids"))
+	if raw == "" {
+		writeErr(w, 400, "ids required")
+		return
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) > maxEnrichBatch {
+		writeErr(w, 400, fmt.Sprintf("too many ids (max %d)", maxEnrichBatch))
+		return
+	}
+	ids := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			ids = append(ids, p)
+		}
+	}
+	saver := metadata.NewSaver(s.db)
+	writeJSON(w, 200, map[string]any{"items": saver.GetMany(ids)})
 }
 
 func (s *Server) handleEnrich(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
@@ -100,10 +130,6 @@ func (s *Server) searchMetadata(query, kind, dir, only string) ([]contracts.Meta
 		_ = cache.PutSearch(kind, query, merged)
 	}
 	return merged, nil
-}
-
-func boxAll(list []contracts.MetadataCandidate) []any {
-	return []any{list}
 }
 
 // resolveMetadata serves from cache, else calls the winning provider

@@ -214,17 +214,21 @@ func (s *Service) Search(q, kind string) []contracts.CatalogItem {
 	return items
 }
 
-// Query filters by substring/kind then pages. The filter is a single
-// cursor walk (no FTS index yet); paging slices after filtering so the
-// total stays exact.
+// Query filters by library/substring/kind then pages. The filter is a
+// single cursor walk (no FTS index yet); paging slices after filtering
+// so the total stays exact.
 func (s *Service) Query(q, kind string, p contracts.PageParams) ([]contracts.CatalogItem, int) {
 	ql := strings.ToLower(strings.TrimSpace(q))
 	kl := strings.ToLower(strings.TrimSpace(kind))
+	ll := strings.TrimSpace(p.LibraryID)
 	var out []contracts.CatalogItem
 	_ = s.db.View(func(tx *bolt.Tx) error {
 		return tx.Bucket(kv.BItems).ForEach(func(_, v []byte) error {
 			var it contracts.CatalogItem
 			if err := unmarshalItem(v, &it); err != nil {
+				return nil
+			}
+			if ll != "" && it.LibraryID != ll {
 				return nil
 			}
 			if kl != "" && strings.ToLower(it.Kind) != kl {

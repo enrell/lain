@@ -33,6 +33,7 @@ import (
 	"github.com/enrell/lain/internal/plugins/source"
 	"github.com/enrell/lain/internal/plugins/userstate"
 	"github.com/enrell/lain/internal/store"
+	"github.com/enrell/lain/internal/webui"
 )
 
 // Server wires the composition to HTTP.
@@ -131,6 +132,9 @@ func New(dataDir, ver string) (*Server, error) {
 	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, scan: ScanStatus{State: "idle"}}
 	s.routes()
 	s.routesEnrich()
+	// The web UI is the least specific pattern: API, health and media
+	// routes registered above keep winning their paths.
+	webui.Mount(s.mux)
 	return s, nil
 }
 
@@ -399,7 +403,9 @@ func (s *Server) runScan() {
 }
 
 func pageParams(r *http.Request) contracts.PageParams {
-	return contracts.NormalizePage(atoiQuery(r, "limit"), atoiQuery(r, "offset"), r.URL.Query().Get("sort"))
+	p := contracts.NormalizePage(atoiQuery(r, "limit"), atoiQuery(r, "offset"), r.URL.Query().Get("sort"))
+	p.LibraryID = r.URL.Query().Get("library_id")
+	return p
 }
 
 func atoiQuery(r *http.Request, key string) int {
@@ -531,9 +537,10 @@ func (s *Server) handleProgressGet(w http.ResponseWriter, r *http.Request, v aut
 
 func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	writeJSON(w, 200, map[string]any{
-		"composition": s.reg.Composition().View(),
-		"providers":   s.reg.Providers(),
-		"events":      s.reg.Events(),
+		"composition":   s.reg.Composition().View(),
+		"providers":     s.reg.Providers(),
+		"provider_info": s.reg.ProviderInfos(),
+		"events":        s.reg.Events(),
 	})
 }
 

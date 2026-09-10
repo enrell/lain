@@ -44,7 +44,9 @@ clients facing non-web containers get `transcode-required` with
 Input: `{q, kind, limit, offset, sort}` → `CatalogPage{items, total,
 limit, offset}` (defaults 50 / cap 500 / title|recent). v0.1 is
 case-insensitive substring over titles; ranking policy is the
-replaceable unit. Catalog reads (`Page`) share the same envelope.
+replaceable unit. Catalog reads (`Page`) share the same envelope and
+also accept a `library_id` scope from the gateway (`PageParams`), so a
+library view never filters client-side.
 
 ## lain.ingest.scan@1 (exactly-one)
 
@@ -74,4 +76,10 @@ resolve through `Registry.InvokeProvider` (still through authority)
 and persist as overlays (`POST /api/catalog/{id}/enrich`), never
 inside the catalog: removing a provider deletes its overlays without
 touching identity, progress or files. Repeat queries hit a TTL cache
-(search 7d, records 30d) instead of the network.
+(search 7d, records 30d) instead of the network. Grids read many
+overlays at once via `GET /api/enrichments?ids=` (bounded, one read
+transaction); missing entries are simply absent.
+
+Operator surfaces can list registered providers with their
+capabilities and live health (`provider_info` on `GET /api/plugins`) so
+a swap UI only ever offers candidates that can serve the capability.
