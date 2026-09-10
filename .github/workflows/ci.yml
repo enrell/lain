@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: go vet, test, build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Placeholder web UI for embed (dist is gitignored)
+        run: mkdir -p internal/webui/dist && touch internal/webui/dist/.gitkeep
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race -shuffle=on ./...
+      - name: Build
+        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=ci" -o /tmp/lain ./cmd/lain
+
+  web:
+    name: web check, test, build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Check
+        working-directory: web
+        run: pnpm check
+      - name: Unit tests
+        working-directory: web
+        run: pnpm test
+      - name: Build
+        working-directory: web
+        run: pnpm build

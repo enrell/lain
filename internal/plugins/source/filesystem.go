@@ -17,8 +17,8 @@ import (
 // ID is the built-in filesystem source provider id.
 const ID = "lain-source-filesystem"
 
-// Exts maps library type to recognized extensions (the inventory both clients
-// implemented inventory so behavior stays comparable).
+// Exts maps library type to recognized extensions (the inventory both
+// clients recognize so behavior stays comparable).
 var Exts = map[string]map[string]bool{
 	"anime": field("mkv", "mp4", "avi", "mov", "m4v", "webm"),
 	"show":  field("mkv", "mp4", "avi", "mov", "m4v", "webm"),

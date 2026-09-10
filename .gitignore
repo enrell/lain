@@ -4,6 +4,12 @@ benchmarks/*
 !benchmarks/.gitkeep
 *.log
 .DS_Store
+backups/
+*.db
+.env
+.env.*
+*.pem
+*.key
 
 # frontend build artifacts: the source in web/ is what gets committed
 web/node_modules/

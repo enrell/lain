@@ -5,6 +5,12 @@ backups/
 *_test.go
 .DS_Store
 
+# not needed to build the binary
+site/
+scripts/
+.github/
+docs/
+
 # frontend: dependencies and local build output never enter the context;
 # the Docker web stage builds from source. The embedded dist tree is
 # produced by the web stage, not copied from the host.

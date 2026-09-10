@@ -67,7 +67,7 @@ func TestAnimeRealLibraryPatterns(t *testing.T) {
 		// Unicode + dots + year (trailing scene signature survives:
 		// metadata slice resolves it).
 		{"\u30a2\u30ad\u30e9.Akira.1988.REMASTERED.BluRay.1080p.HDR.HEVC.10bit.FLAC.GRPF.mkv", "アキラ Akira GRPF", 0, 0, 1988, true},
-		{"Ghost.in.the.Shell.2017.1080p.BluRay.AV1.Opus.Multi4-Fansub-C.mkv", "Ghost in the Shell Fansub-C", 0, 0, 2017, true},
+		{"Ghost.in.the.Shell.2017.1080p.BluRay.AV1.Opus.Multi4-Fansub-C.mkv", "Ghost in the Shell Fansub C", 0, 0, 2017, true},
 		// Year in parens is metadata, not episode 1995.
 		{"1a. Ghost in the Shell - The Movie (1995 - 1080p DUAL Audio).mkv", "1a Ghost in the Shell The Movie", 0, 0, 1995, true},
 	}

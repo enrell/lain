@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lain — local-first media server in Go</title>
+<meta name="description" content="lain is a local-first media server written in Go: one static binary, a tiny core, and replaceable plugins for sources, catalog, playback, search and metadata.">
+<meta name="theme-color" content="#0f1115">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230f1115'/%3E%3Crect%20x='1'%20y='1'%20width='30'%20height='30'%20rx='6'%20fill='none'%20stroke='%23232936'/%3E%3Cpath%20d='M10%209v10.5h8'%20fill='none'%20stroke='%237aa2f7'%20stroke-width='2.6'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body id="top">
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="wordmark" href="#top">lain<span class="cursor" aria-hidden="true">_</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav">menu</button>
+    <nav id="site-nav" class="site-nav" aria-label="Main">
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#install">Install</a></li>
+        <li><a href="#api">API</a></li>
+        <li><a href="#desktop">Desktop</a></li>
+        <li><a href="https://github.com/enrell/lain" rel="noopener">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <p class="kicker">local-first media server</p>
+    <h1 id="hero-title">lain</h1>
+    <p class="tagline">Your data. Your machine. Your rules. <span class="accent">Your plugins.</span></p>
+    <p class="lede">A local-first media server written in Go: stdlib-first, no cgo, one static binary. A tiny core hosts replaceable plugins for sources, catalog, playback, search, metadata and everything else that can be optional.</p>
+    <p class="meta">Go · no cgo · single static binary · Apache-2.0</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#install">Get started</a>
+      <a class="btn" href="#desktop">Desktop app</a>
+    </div>
+  </section>
+
+  <section id="features" aria-labelledby="features-title">
+    <h2 id="features-title"><span class="tok" aria-hidden="true">## </span>Features</h2>
+    <p class="section-sub">Everything beyond the tiny core is a plugin: installed, swapped or left out. The server stays useful either way.</p>
+    <ul class="grid">
+      <li class="card">
+        <p class="tag">[core]</p>
+        <h3>Replaceable plugin core</h3>
+        <p>A capability registry with generation-fenced runtime swap, so providers can be replaced without restarting the server.</p>
+      </li>
+      <li class="card">
+        <p class="tag">[source]</p>
+        <h3>Filesystem source + identify</h3>
+        <p>Enumerate media from filesystem paths, then identify anime or generic filenames into structured items.</p>
+      </li>
+      <li class="card">
+        <p class="tag">[catalog]</p>
+        <h3>Catalog, progress &amp; search</h3>
+        <p>A Bolt-backed catalog with user progress stored separately, plus substring search with replaceable ranking.</p>
+      </li>
+      <li class="card">
+        <p class="tag">[stream]</p>
+        <h3>Direct-play streaming</h3>
+        <p>Media bytes served over HTTP with Range support, from the same process as the API and the web UI.</p>
+      </li>
+      <li class="card">
+        <p class="tag">[playback]</p>
+        <h3>Playback planner</h3>
+        <p>Plans direct-play versus transcode-required per request, and stays honest when no transcoder exists.</p>
+      </li>
+      <li class="card">
+        <p class="tag">[metadata]</p>
+        <h3>Metadata enrichment</h3>
+        <p>Local NFO files plus Kitsu, AniList and Jikan remote providers, merged merge-many and cached with TTLs.</p>
+      </li>
+      <li class="card">
+        <p class="tag">[thumbnail]</p>
+        <h3>ffmpeg thumbnails</h3>
+        <p>A <code>GET /api/items/{id}/thumbnail</code> transform, cached on disk. Without ffmpeg, the capability degrades honestly.</p>
+      </li>
+      <li class="card">
+        <p class="tag">[admin]</p>
+        <h3>Admin surfaces</h3>
+        <p>Libraries, scans, users, plugin swaps and online backup. Reads and watching are for everyone; management is admin-only.</p>
+      </li>
+      <li class="card">
+        <p class="tag">[web ui]</p>
+        <h3>Embedded web UI</h3>
+        <p>A Svelte 5 SPA compiled into the Go binary, served from the same process and origin as the API.</p>
+      </li>
+    </ul>
+  </section>
+
+  <section id="install" aria-labelledby="install-title">
+    <h2 id="install-title"><span class="tok" aria-hidden="true">## </span>Install</h2>
+    <p class="section-sub">Three ways in. Docker is the quickest; the static binary keeps it minimal; the interactive installer walks through server and desktop.</p>
+    <div class="options">
+      <article class="option recommended" aria-labelledby="install-docker">
+        <div class="option-head">
+          <h3 id="install-docker">Docker</h3>
+          <span class="badge">recommended</span>
+        </div>
+        <p>The image contains the server and the embedded web UI. Keep the database in a named volume and mount your media read-only — users only need the image plus a compose file.</p>
+        <div class="code">
+          <pre><code id="cmd-docker">docker run -d --name lain -p 9360:9360 \
+  -v lain-data:/data \
+  -v ~/Videos:/media/videos:ro \
+  ghcr.io/enrell/lain:latest</code></pre>
+          <button class="copy" type="button" data-copy="cmd-docker" aria-label="Copy Docker command">copy</button>
+        </div>
+        <p class="more">Then open <a href="http://127.0.0.1:9360">http://127.0.0.1:9360</a> for first-run setup. The interactive installer below can also generate a <code>docker-compose.yml</code> for you.</p>
+      </article>
+
+      <article class="option" aria-labelledby="install-binary">
+        <div class="option-head">
+          <h3 id="install-binary">Static binary</h3>
+        </div>
+        <p>Static binaries are published per release. Download the one for your platform and run it — no runtime, no Node, no service to install.</p>
+        <div class="code">
+          <pre><code id="cmd-binary">./lain serve --port 9360</code></pre>
+          <button class="copy" type="button" data-copy="cmd-binary" aria-label="Copy static binary command">copy</button>
+        </div>
+        <p class="more"><a href="https://github.com/enrell/lain/releases" rel="noopener">Releases on GitHub →</a></p>
+      </article>
+
+      <article class="option" aria-labelledby="install-script">
+        <div class="option-head">
+          <h3 id="install-script">Interactive installer</h3>
+        </div>
+        <p>An interactive Linux script. It asks what you want — server + desktop, server only or desktop only — whether to use Docker or a CLI/daemon service, and where your media lives.</p>
+        <p class="more">Find it in the <a href="https://github.com/enrell/lain" rel="noopener">lain repository</a>.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="how" aria-labelledby="how-title">
+    <h2 id="how-title"><span class="tok" aria-hidden="true">## </span>How it works</h2>
+    <p class="section-sub">A tiny trusted core, everything optional behind named capabilities.</p>
+    <div class="split">
+      <div>
+        <p>lain is a small trusted core surrounded by replaceable plugins. Every optional part of the server — source, identify, catalog, progress, playback planning, search, metadata, thumbnails — sits behind a named capability, and callers only talk to the registry.</p>
+        <p>Capabilities fan out in one of four modes: exactly-one, ordered-many, first-accepted or merge-many — as when local NFO, Kitsu, AniList and Jikan metadata are merged.</p>
+        <p>Providers are swapped at runtime: candidates are health-checked first, every request is fenced by generation so a stale writer cannot overwrite newer state, and a provider that fails at call time falls back to the last-good one, once.</p>
+        <p>Nothing optional is hardcoded. When a provider is missing, the feature degrades honestly and the core keeps doing its small trusted job.</p>
+      </div>
+      <div class="diagram" role="img" aria-label="Diagram: a tiny lain core with a registry and generation fencing; source, identify, playback and search capabilities resolve to replaceable providers, with merge-many fan-out for metadata.">
+<pre>+--------------------------------------------------+
+|                    lain core                     |
+|          registry . generations . auth           |
++-------------------------+------------------------+
+                          |
+       resolve capability (generation-fenced)
+                          |
+  +---------------+---------------+---------------+
+  v               v               v               v
+  source@1        identify@1      playback@1      search@1
+  filesystem      anime/generic   direct vs       substring
+                  + NFO . Kitsu   transcode plan
+                    AniList . Jikan
+                    (merge-many, TTL)
+
+  swap: source@1 -> source@2  (health-checked, last-good fallback)
+  modes: exactly-one . ordered-many . first-accepted . merge-many</pre>
+      </div>
+    </div>
+  </section>
+
+  <section id="api" aria-labelledby="api-title">
+    <h2 id="api-title"><span class="tok" aria-hidden="true">## </span>API</h2>
+    <p class="section-sub">The same process serves the JSON API, media bytes and the embedded UI. Authenticate once; reads and progress are for every user, admin routes are gated.</p>
+    <ul class="endpoints">
+      <li><code>GET /health</code><span>liveness and database health</span></li>
+      <li><code>POST /api/setup</code><span>create the first admin</span></li>
+      <li><code>POST /api/auth/login</code><span>obtain a bearer token</span></li>
+      <li><code>GET /api/catalog</code><span>paged catalog: limit, offset, sort, library_id</span></li>
+      <li><code>GET /api/search?q=</code><span>substring search</span></li>
+      <li><code>GET /api/items/{id}/playback</code><span>direct-play or transcode-required plan</span></li>
+      <li><code>GET /api/items/{id}/stream</code><span>direct play over HTTP Range, with a ?token= fallback</span></li>
+      <li><code>GET /api/items/{id}/thumbnail?t=&amp;w=</code><span>ffmpeg still, cached on disk</span></li>
+      <li><code>PUT /api/items/{id}/progress</code><span>resume state, written in bounded intervals</span></li>
+      <li><code>GET /api/plugins</code> <code>POST /api/plugins/swap</code><span>inspect and swap capabilities (admin)</span></li>
+    </ul>
+    <div class="code">
+      <pre><code id="api-curl"># log in — the response contains a bearer token
+curl -X POST http://127.0.0.1:9360/api/auth/login \
+  -d '{"username":"admin","password":"change-me"}'
+
+# substring search
+curl "http://127.0.0.1:9360/api/search?q=frieren" \
+  -H "Authorization: Bearer $TOKEN"
+
+# stream with Range — any HTTP player, e.g. mpv
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://127.0.0.1:9360/api/items/&lt;id&gt;/stream"
+
+# swap a capability in place, no restart
+curl -X POST http://127.0.0.1:9360/api/plugins/swap \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"capability":"lain.media.identify@1","providers":["lain-identify-generic"],"generation":1}'</code></pre>
+      <button class="copy" type="button" data-copy="api-curl" aria-label="Copy API examples">copy</button>
+    </div>
+  </section>
+
+  <section id="desktop" aria-labelledby="desktop-title">
+    <h2 id="desktop-title"><span class="tok" aria-hidden="true">## </span>Desktop app</h2>
+    <p class="section-sub">A separate Qt 6 Quick/QML client with libmpv, speaking the same API as the web UI.</p>
+    <div class="desktop-grid">
+      <div>
+        <div class="shot" role="img" aria-label="Stylized placeholder mock of the lain desktop app: navigation sidebar beside a grid of media cards.">
+          <div class="shot-bar" aria-hidden="true">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="shot-title">lain — desktop</span>
+          </div>
+          <div class="shot-body" aria-hidden="true">
+            <div class="shot-side">
+              <span class="active">Home</span>
+              <span>Library</span>
+              <span>Collections</span>
+              <span>Search</span>
+            </div>
+            <div class="shot-main">
+              <div class="skel w-55"></div>
+              <div class="shot-cards">
+                <div class="shot-card">
+                  <div class="skel skel-thumb"></div>
+                  <div class="skel w-80"></div>
+                  <div class="skel w-40"></div>
+                </div>
+                <div class="shot-card">
+                  <div class="skel skel-thumb"></div>
+                  <div class="skel w-65"></div>
+                  <div class="skel w-40"></div>
+                </div>
+                <div class="shot-card">
+                  <div class="skel skel-thumb"></div>
+                  <div class="skel w-80"></div>
+                  <div class="skel w-55"></div>
+                </div>
+              </div>
+              <div class="skel w-40"></div>
+            </div>
+          </div>
+        </div>
+        <p class="shot-caption">Stylized placeholder — the desktop client lives in its own repository.</p>
+      </div>
+      <div>
+        <ul class="checks">
+          <li>Qt 6 Quick/QML interface with libmpv playback</li>
+          <li>Real API integration, with login and first-run setup</li>
+          <li>Home, library, detail, collections and search views</li>
+          <li>Playback with resume and bounded progress writes</li>
+          <li>ffmpeg-free — thumbnails are served by lain</li>
+          <li>Headless test suite</li>
+        </ul>
+        <a class="btn" href="https://github.com/enrell/lain-desktop" rel="noopener">enrell/lain-desktop on GitHub</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <p>
+      <a href="https://github.com/enrell/lain" rel="noopener">github.com/enrell/lain</a> ·
+      <a href="https://github.com/enrell/lain-desktop" rel="noopener">github.com/enrell/lain-desktop</a>
+    </p>
+    <p>Apache-2.0 · Built with Go + Qt</p>
+  </div>
+</footer>
+
+<div class="sr-only" role="status" aria-live="polite" id="copy-status"></div>
+<script src="app.js" defer></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 # Lain — Agent Instructions
 
-Read this file before touching code. The project's discipline applies here,
-adapted to Go.
+Read this file before touching code. The project's discipline applies
+here, adapted to Go.
 
 ## Stack (do not change without explicit user instruction)
 

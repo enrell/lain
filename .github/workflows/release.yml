@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  binaries:
+    name: linux/${{ matrix.goarch }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Build frontend
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Embed frontend
+        run: |
+          rm -rf internal/webui/dist
+          mkdir -p internal/webui/dist
+          cp -r web/build/. internal/webui/dist/
+          touch internal/webui/dist/.gitkeep
+      - name: Build binary and package
+        env:
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" go build -trimpath -buildvcs=false \
+            -ldflags "-s -w -X main.version=v${VERSION}" \
+            -o lain ./cmd/lain
+          tar -czf "lain_${VERSION}_linux_${GOARCH}.tar.gz" lain
+          sha256sum "lain_${VERSION}_linux_${GOARCH}.tar.gz" > "lain_${VERSION}_linux_${GOARCH}.tar.gz.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lain-linux-${{ matrix.goarch }}
+          path: lain_*.tar.gz*
+          if-no-files-found: error
+
+  release:
+    name: GitHub release + attestation
+    needs: binaries
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Combined checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum lain_*.tar.gz > checksums.txt
+          cat checksums.txt
+      - uses: actions/attest@v4
+        with:
+          subject-path: dist/*.tar.gz
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.tar.gz dist/*.sha256 dist/checksums.txt \
+            --generate-notes --verify-tag

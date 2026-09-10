@@ -174,7 +174,7 @@ func (s *Server) decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
-// userOf verifies Bearer or ?token= (media-element fallback, ).
+// userOf verifies Bearer or ?token= (media-element fallback).
 func (s *Server) userOf(r *http.Request) (auth.Verified, bool) {
 	tok := ""
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {

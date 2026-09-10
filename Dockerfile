@@ -23,10 +23,14 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /lain ./cmd/lain
 # ---- run: alpine + binary + CA certs ----
 # The frontend is embedded in the binary; the SPA, /api and media
 # streaming all come from the same Lain process and origin. ca-certificates
-# is required for the metadata providers (Kitsu/AniList/Jikan over TLS).
+# is required for the metadata providers (Kitsu/AniList/Jikan over TLS);
+# ffmpeg backs the thumbnail transform (lain.transform.thumbnail@1) and
+# degrades only that capability when absent.
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates \
- && adduser -D -H -h /data lain
+RUN apk add --no-cache ca-certificates ffmpeg \
+ && adduser -D -H -h /data lain \
+ && mkdir -p /data \
+ && chown lain:lain /data
 COPY --from=build /lain /usr/local/bin/lain
 USER lain
 EXPOSE 9360

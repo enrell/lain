@@ -14,7 +14,9 @@ import (
 	"github.com/enrell/lain/internal/matrix"
 )
 
-const version = "0.1.0-dev"
+// version is stamped by release builds:
+// go build -ldflags "-X main.version=v0.1.0"
+var version = "0.1.0-dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -109,7 +111,7 @@ func cmdServe(args []string) error {
 
 func cmdDoctor(args []string) error {
 	dataDir := flag(args, "data-dir", defaultDataDir())
-	matrixBin := flag(args, "matrix-bin", "matrix-managed")
+	matrixBin := flag(args, "matrix-bin", os.Getenv("LAIN_MATRIX_BIN"))
 	rep := map[string]any{
 		"version":  version,
 		"data_dir": dataDir,
