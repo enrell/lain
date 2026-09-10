@@ -26,7 +26,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /lain ./cmd/lain
 # is required for the metadata providers (Kitsu/AniList/Jikan over TLS);
 # ffmpeg backs the thumbnail transform (lain.transform.thumbnail@1) and
 # degrades only that capability when absent.
-FROM alpine:3.22
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates ffmpeg \
  && adduser -D -H -h /data lain \
  && mkdir -p /data \
