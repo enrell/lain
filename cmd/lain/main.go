@@ -31,6 +31,8 @@ func main() {
 		err = cmdDoctor(os.Args[2:])
 	case "plugins":
 		err = cmdPlugins(os.Args[2:])
+	case "bench":
+		err = cmdBench(os.Args[2:])
 	case "version", "--version", "-V":
 		fmt.Println("lain " + version)
 	default:
@@ -49,6 +51,7 @@ func usage() {
   serve     run the server (flags: --data-dir, --port)
   doctor    diagnose runtime + matrix environment (flags: --data-dir, --matrix-bin)
   plugins   list registered providers + composition (flags: --data-dir)
+  bench     run a workload benchmark (bench scan --path DIR [--runs N])
   version   print version`)
 }
 

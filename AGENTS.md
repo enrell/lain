@@ -52,6 +52,7 @@ go vet ./...
 go test ./...           # full suite, fast
 go build -o lain ./cmd/lain
 ./lain doctor            # environment report
+./lain bench scan --path ~/Videos --runs 3   # scan benchmark -> benchmarks/
 ```
 
 ## Commit discipline

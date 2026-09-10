@@ -1,4 +1,6 @@
 /lain
 lain-data/
+benchmarks/*
+!benchmarks/.gitkeep
 *.log
 .DS_Store

@@ -297,3 +297,41 @@ func itoaFile(i int) string {
 	}
 	return s
 }
+
+func TestTraceCollectsPhases(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "[Fansub-A] Show - 01 [1080p].mkv"))
+	writeFile(t, filepath.Join(root, "plain.mp4"))
+	r, _ := testRunner(t)
+	r.Trace = &ScanTrace{}
+	stats, err := r.Run(ScanInput{Libraries: []contracts.Library{{ID: "l", Type: "anime", Path: root}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Candidates != 2 {
+		t.Fatalf("candidates=%d, want 2", stats.Candidates)
+	}
+	tr := r.Trace.Snapshot()
+	if tr.Enumerate <= 0 {
+		t.Error("enumerate phase untimed")
+	}
+	if tr.Identify <= 0 {
+		t.Error("identify phase untimed")
+	}
+	if tr.Persist <= 0 {
+		t.Error("persist phase untimed")
+	}
+	// Prune phase is timed even when there is nothing to prune.
+}
+
+func TestNilTraceCostsNothing(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "a.mkv"))
+	r, _ := testRunner(t)
+	if r.Trace != nil {
+		t.Fatal("production runner must default to nil trace")
+	}
+	if _, err := r.Run(ScanInput{Libraries: []contracts.Library{{ID: "l", Type: "anime", Path: root}}}); err != nil {
+		t.Fatal(err)
+	}
+}

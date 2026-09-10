@@ -26,6 +26,9 @@ const ID = "lain-ingest-default"
 type Runner struct {
 	Reg *core.Registry
 	Cat *catalog.Service
+	// Trace, when non-nil, collects per-phase durations of Run.
+	// Used by `lain bench scan`; production leaves it nil.
+	Trace *ScanTrace
 }
 
 // ScanInput selects which libraries to walk.
@@ -92,9 +95,12 @@ func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 		stats.Dirs += res.dirs
 		all = append(all, res.items...)
 	}
+	t0 := time.Now()
 	if err := r.Cat.UpsertBatch(all); err != nil {
 		return stats, err
 	}
+	r.Trace.addPersist(time.Since(t0))
+	t0 = time.Now()
 	for i := range results {
 		res := &results[i]
 		if !res.accessible || !res.cleanWalk {
@@ -107,6 +113,7 @@ func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 		}
 		stats.Pruned += n
 	}
+	r.Trace.addPrune(time.Since(t0))
 	stats.Unidentified = stats.Candidates - stats.Identified
 	stats.FinishedAt = time.Now().Unix()
 	return stats, nil
@@ -115,9 +122,11 @@ func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 // scanRoot walks one root to completion in memory.
 func (r *Runner) scanRoot(lib contracts.Library) libResult {
 	res := libResult{libraryID: lib.ID, present: map[string]bool{}}
+	t0 := time.Now()
 	cands, es, err := source.Enumerate(source.EnumerateInput{
 		Root: lib.Path, LibraryID: lib.ID, Type: lib.Type,
 	})
+	r.Trace.addEnumerate(time.Since(t0))
 	res.dirs = es.Dirs
 	res.walkErrors = es.WalkErrors
 	if err != nil {
@@ -126,6 +135,7 @@ func (r *Runner) scanRoot(lib contracts.Library) libResult {
 	}
 	res.accessible = es.Accessible
 	res.cleanWalk = es.WalkErrors == 0
+	t0 = time.Now()
 	for _, c := range cands {
 		res.candidates++
 		out, _, accepted, err := r.Reg.CallFirst(contracts.CapMediaIdentify, c, func(v any) bool {
@@ -141,5 +151,6 @@ func (r *Runner) scanRoot(lib contracts.Library) libResult {
 		res.present[it.ID] = true
 		res.identified++
 	}
+	r.Trace.addIdentify(time.Since(t0))
 	return res
 }
