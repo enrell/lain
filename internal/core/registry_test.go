@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+var errTestFail = errors.New("boom")
+
 type fake struct {
 	id     string
 	caps   []string
@@ -91,5 +93,73 @@ func TestWithdrawFallsBack(t *testing.T) {
 	}
 	if gen != 2 {
 		t.Fatalf("withdraw did not bump generation: %d", gen)
+	}
+}
+
+func TestCallMergeSkipsFailures(t *testing.T) {
+	comp := &Composition{Version: 1, Bindings: map[string]*Binding{
+		"cap.m@1": {Mode: ModeMergeMany, Providers: []string{"ok1", "bad", "ok2"}, Generation: 1},
+	}}
+	r := NewRegistry(comp)
+	r.Register(&fake{id: "ok1", caps: []string{"cap.m@1"}, out: "a"})
+	r.Register(&fake{id: "bad", caps: []string{"cap.m@1"}, fail: errTestFail})
+	r.Register(&fake{id: "ok2", caps: []string{"cap.m@1"}, out: "b"})
+	out, ids, err := r.CallMerge("cap.m@1", nil, func(outputs []any, got []string) any {
+		return outputs
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 2 || ids[0] != "ok1" || ids[1] != "ok2" {
+		t.Fatalf("ids=%v", ids)
+	}
+	if outs := out.([]any); len(outs) != 2 {
+		t.Fatalf("outputs=%v", outs)
+	}
+}
+
+func TestCallMergeAllFail(t *testing.T) {
+	comp := &Composition{Version: 1, Bindings: map[string]*Binding{
+		"cap.m@1": {Mode: ModeMergeMany, Providers: []string{"bad"}, Generation: 1},
+	}}
+	r := NewRegistry(comp)
+	r.Register(&fake{id: "bad", caps: []string{"cap.m@1"}, health: errTestFail})
+	if _, _, err := r.CallMerge("cap.m@1", nil, func(o []any, _ []string) any { return o }); err == nil {
+		t.Fatal("unhealthy-only binding must fail")
+	}
+}
+
+func TestInvokeProviderAuthority(t *testing.T) {
+	r := testReg()
+	r.Register(&fake{id: "v2", caps: []string{"cap.a@1"}, out: "v2"})
+	if _, err := r.InvokeProvider("cap.a@1", "v2", nil); err == nil {
+		t.Fatal("unbound provider must refuse")
+	}
+	if _, err := r.InvokeProvider("cap.a@1", "nope", nil); err == nil {
+		t.Fatal("unknown provider must refuse")
+	}
+	out, err := r.InvokeProvider("cap.a@1", "good", nil)
+	if err != nil || out != "ok" {
+		t.Fatalf("bound call: %v %v", out, err)
+	}
+}
+
+func TestCompositionUpgradeKeepsOverrides(t *testing.T) {
+	saved := &Composition{Version: 1, Bindings: map[string]*Binding{
+		"cap.a@1": {Mode: ModeExactlyOne, Providers: []string{"custom"}, Generation: 9},
+	}}
+	fresh := &Composition{Version: 2, Bindings: map[string]*Binding{
+		"cap.a@1": {Mode: ModeExactlyOne, Providers: []string{"default"}, Generation: 1},
+		"cap.b@1": {Mode: ModeMergeMany, Providers: []string{"x", "y"}, Generation: 1},
+	}}
+	added := saved.Upgrade(fresh)
+	if len(added) != 1 || added[0] != "cap.b@1" {
+		t.Fatalf("added=%v", added)
+	}
+	if got := saved.Bindings["cap.a@1"].Providers[0]; got != "custom" {
+		t.Fatalf("override lost: %s", got)
+	}
+	if saved.Bindings["cap.a@1"].Generation != 9 {
+		t.Fatal("generation must survive upgrade")
 	}
 }

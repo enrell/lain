@@ -57,6 +57,8 @@ func DefaultComposition() *Composition {
 			"lain.playback.plan@1":      {Mode: ModeFirstAccepted, Providers: []string{"lain-playback-default"}, Generation: 1},
 			"lain.search.query@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-search-simple"}, Generation: 1},
 			"lain.ingest.scan@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-ingest-default"}, Generation: 1},
+			"lain.metadata.search@1":    {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan"}, Generation: 1},
+			"lain.metadata.resolve@1":   {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan"}, Generation: 1},
 		},
 	}
 }
@@ -103,6 +105,23 @@ func (c *Composition) MigrateProviderIDs() []string {
 		}
 	}
 	return moved
+}
+
+// Upgrade adds bindings for capabilities the saved composition does
+// not know yet (new Lain versions), keeping every user override.
+// Returns the added capability names.
+func (c *Composition) Upgrade(fresh *Composition) []string {
+	var added []string
+	for cap, b := range fresh.Bindings {
+		if _, ok := c.Bindings[cap]; ok {
+			continue
+		}
+		nb := *b
+		nb.Providers = append([]string(nil), b.Providers...)
+		c.Bindings[cap] = &nb
+		added = append(added, cap)
+	}
+	return added
 }
 
 // BindingSnapshot is a stable sorted view for inspection endpoints.

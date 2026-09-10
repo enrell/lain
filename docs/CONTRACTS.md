@@ -54,6 +54,24 @@ catalog write. Unidentified files count, never abort.
 
 ## Declared (next slice)
 
-`lain.metadata.search@1` / `resolve@1` / `artwork@1` (merge-many),
 `lain.playback.transcode@1`, `lain.transform.*@1`, `lain.sync.*@1`.
 Names are reserved here so first implementers do not collide.
+
+## Metadata (merge-many)
+
+`lain.metadata.search@1`: `{query, kind, limit, dir}` →
+`MetadataCandidate[]` per provider (provider, remote_id, title,
+synonyms, year, poster). `dir` hints local sources; remotes ignore it.
+
+`lain.metadata.resolve@1`: `{provider, remote_id}` → `MetadataRecord`
+(full entry; artwork as URLs, never bytes).
+
+The gateway fans out (`Registry.CallMerge`), dedups by normalized
+title, and scores exact matches first, then binding precedence
+(`nfo → kitsu → anilist → jikan`). Failing providers are skipped, so
+an upstream outage degrades the merge instead of failing it. Winners
+resolve through `Registry.InvokeProvider` (still through authority)
+and persist as overlays (`POST /api/catalog/{id}/enrich`), never
+inside the catalog: removing a provider deletes its overlays without
+touching identity, progress or files. Repeat queries hit a TTL cache
+(search 7d, records 30d) instead of the network.

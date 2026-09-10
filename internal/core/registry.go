@@ -224,6 +224,73 @@ func (r *Registry) CallFirst(capability string, input any, accepted func(any) bo
 	return nil, "", false, lastErr
 }
 
+// CallMerge fans out to every healthy provider of a merge-many
+// capability and hands the collected outputs to merge. Provider
+// failures are skipped (best-effort remotes), never fatal: a failing
+// provider degrades the merge, it does not fail the call. Total
+// failure of all providers is dependency-unavailable.
+func (r *Registry) CallMerge(capability string, input any, merge func(outputs []any, ids []string) any) (any, []string, error) {
+	provs, _, err := r.Ordered(capability)
+	if err != nil {
+		return nil, nil, err
+	}
+	var outputs []any
+	var ids []string
+	for _, p := range provs {
+		out, err := p.Invoke(capability, input)
+		if err != nil {
+			continue
+		}
+		outputs = append(outputs, out)
+		ids = append(ids, p.ID())
+	}
+	if len(outputs) == 0 {
+		return nil, nil, &Error{Code: "dependency-unavailable", Msg: "all providers failed for " + capability}
+	}
+	return merge(outputs, ids), ids, nil
+}
+
+// InvokeProvider calls one named provider of a capability directly,
+// still through authority: the provider must be registered, bound to
+// the capability, and healthy. Used when the caller already chose
+// (e.g. resolving the winning search candidate).
+func (r *Registry) InvokeProvider(capability, providerID string, input any) (any, error) {
+	r.mu.RLock()
+	b, ok := r.comp.Bindings[capability]
+	p, pok := r.providers[providerID]
+	r.mu.RUnlock()
+	if !ok {
+		return nil, &Error{Code: "invalid-message", Msg: "unknown capability " + capability}
+	}
+	if !pok {
+		return nil, &Error{Code: "invalid-message", Msg: "unknown provider " + providerID}
+	}
+	bound := false
+	for _, id := range b.Providers {
+		if id == providerID {
+			bound = true
+			break
+		}
+	}
+	if !bound {
+		return nil, &Error{Code: "invalid-message", Msg: "provider " + providerID + " not bound to " + capability}
+	}
+	serves := false
+	for _, c := range p.Capabilities() {
+		if c == capability {
+			serves = true
+			break
+		}
+	}
+	if !serves {
+		return nil, &Error{Code: "invalid-message", Msg: "provider " + providerID + " does not serve " + capability}
+	}
+	if err := p.Health(); err != nil {
+		return nil, &Error{Code: "dependency-unavailable", Msg: "provider " + providerID + " unhealthy"}
+	}
+	return p.Invoke(capability, input)
+}
+
 // Providers lists registered provider ids sorted.
 func (r *Registry) Providers() []string {
 	r.mu.RLock()

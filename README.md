@@ -109,6 +109,9 @@ GET  /api/search?q=&kind=&limit=&offset=&sort=   (same envelope)
 GET  /api/items/{id}/playback?client=&network=
 GET  /api/items/{id}/stream            (Range, ?token= ok)
 PUT  /api/items/{id}/progress          GET /api/items/{id}/progress
+POST /api/catalog/{id}/enrich          (admin; NFO/Kitsu/AniList/Jikan merge)
+GET  /api/catalog/{id}/enrich
+DELETE /api/catalog/{id}/enrich        (admin)
 GET  /api/plugins           POST /api/plugins/swap  (admin)
 ```
 

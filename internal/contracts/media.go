@@ -16,6 +16,8 @@ const (
 	CapPlaybackPlan    = "lain.playback.plan@1"
 	CapSearchQuery     = "lain.search.query@1"
 	CapIngestScan      = "lain.ingest.scan@1"
+	CapMetadataSearch  = "lain.metadata.search@1"
+	CapMetadataResolve = "lain.metadata.resolve@1"
 )
 
 // Candidate is a raw discovered file handed to identifiers.
@@ -105,6 +107,65 @@ func NormalizePage(limit, offset int, sort string) PageParams {
 		sort = "title"
 	}
 	return PageParams{Limit: limit, Offset: offset, Sort: sort}
+}
+
+// MetadataCandidate is one provider's search hit. Score is populated
+// by the merger (precedence + title match), never by the provider.
+type MetadataCandidate struct {
+	Provider string   `json:"provider"`
+	RemoteID string   `json:"remote_id"`
+	Title    string   `json:"title"`
+	Synonyms []string `json:"synonyms,omitempty"`
+	Year     int      `json:"year,omitempty"`
+	Kind     string   `json:"kind,omitempty"`
+	Poster   string   `json:"poster,omitempty"`
+	Score    float64  `json:"score,omitempty"`
+}
+
+// MetadataSearchInput queries providers. Dir hints local sources
+// (NFO sidecars); remote providers ignore it.
+type MetadataSearchInput struct {
+	Query string `json:"query"`
+	Kind  string `json:"kind"`
+	Limit int    `json:"limit"`
+	Dir   string `json:"dir,omitempty"`
+}
+
+// MetadataRecord is a resolved full entry. Artwork rides as URLs;
+// bytes are the client's business (or a future artwork-cache provider).
+type MetadataRecord struct {
+	Provider string   `json:"provider"`
+	RemoteID string   `json:"remote_id"`
+	Title    string   `json:"title"`
+	Synonyms []string `json:"synonyms,omitempty"`
+	Year     int      `json:"year,omitempty"`
+	Genres   []string `json:"genres,omitempty"`
+	Synopsis string   `json:"synopsis,omitempty"`
+	Poster   string   `json:"poster,omitempty"`
+	Cover    string   `json:"cover,omitempty"`
+	Episodes int      `json:"episodes,omitempty"`
+}
+
+// MetadataResolveInput fetches one record by provider identity.
+type MetadataResolveInput struct {
+	Provider string `json:"provider"`
+	RemoteID string `json:"remote_id"`
+}
+
+// Enrichment is the stored overlay on a catalog item. Identity stays
+// in the catalog; this document only decorates. Removing a provider
+// deletes its overlays without touching identity, progress or files.
+type Enrichment struct {
+	ItemID    string   `json:"item_id"`
+	Provider  string   `json:"provider"`
+	RemoteID  string   `json:"remote_id"`
+	Title     string   `json:"title"`
+	Year      int      `json:"year,omitempty"`
+	Genres    []string `json:"genres,omitempty"`
+	Synopsis  string   `json:"synopsis,omitempty"`
+	Poster    string   `json:"poster,omitempty"`
+	Cover     string   `json:"cover,omitempty"`
+	FetchedAt int64    `json:"fetched_at"`
 }
 
 // Progress is per-user playback state. It lives in userstate, never in

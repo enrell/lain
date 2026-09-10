@@ -27,6 +27,7 @@ import (
 	"github.com/enrell/lain/internal/kv"
 	"github.com/enrell/lain/internal/plugins/catalog"
 	"github.com/enrell/lain/internal/plugins/ingest"
+	"github.com/enrell/lain/internal/plugins/metadata"
 	"github.com/enrell/lain/internal/plugins/playback"
 	"github.com/enrell/lain/internal/plugins/search"
 	"github.com/enrell/lain/internal/plugins/source"
@@ -100,6 +101,9 @@ func New(dataDir, ver string) (*Server, error) {
 		if moved := comp.MigrateProviderIDs(); len(moved) > 0 {
 			fmt.Printf("lain: migrated retired providers: %v\n", moved)
 		}
+		if added := comp.Upgrade(core.DefaultComposition()); len(added) > 0 {
+			fmt.Printf("lain: new capabilities from defaults: %v\n", added)
+		}
 	}
 	reg := core.NewRegistry(comp)
 	reg.Register(source.Provider{})
@@ -109,6 +113,10 @@ func New(dataDir, ver string) (*Server, error) {
 	reg.Register(ustate)
 	reg.Register(searchProvider{cat: cat})
 	reg.Register(playback.Planner{})
+	reg.Register(metadata.NFO{})
+	reg.Register(metadata.NewKitsu())
+	reg.Register(metadata.NewAniList())
+	reg.Register(metadata.NewJikan())
 	runner := &ingest.Runner{Reg: reg, Cat: cat}
 	reg.Register(runner)
 	if err := comp.Validate(knownSet(reg)); err != nil {
@@ -122,6 +130,7 @@ func New(dataDir, ver string) (*Server, error) {
 	}
 	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, scan: ScanStatus{State: "idle"}}
 	s.routes()
+	s.routesEnrich()
 	return s, nil
 }
 

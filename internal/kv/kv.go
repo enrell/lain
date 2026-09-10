@@ -23,6 +23,8 @@ var (
 	BItemsByLib  = []byte("items_by_library")
 	BProgress    = []byte("progress")
 	BMeta        = []byte("meta")
+	BEnrich      = []byte("enrichments")
+	BCache       = []byte("metadata_cache")
 )
 
 // Open opens (creating if needed) the database file with owner-only
@@ -37,7 +39,7 @@ func Open(dataDir string) (*bolt.DB, error) {
 		return nil, err
 	}
 	err = db.Update(func(tx *bolt.Tx) error {
-		for _, b := range [][]byte{BUsers, BUsersByName, BLibraries, BItems, BItemsByLib, BProgress, BMeta} {
+		for _, b := range [][]byte{BUsers, BUsersByName, BLibraries, BItems, BItemsByLib, BProgress, BMeta, BEnrich, BCache} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("bucket %s: %w", b, err)
 			}
