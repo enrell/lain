@@ -68,6 +68,7 @@ lain serve --port 9360          # data: ~/.local/share/lain
 
 ```sh
 git clone https://github.com/enrell/lain && cd lain
+mise install          # go/node/pnpm pinned in .mise.toml (optional)
 make build            # pnpm build -> internal/webui/dist -> go build
 ./lain serve --port 9360
 ```
