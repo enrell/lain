@@ -1996,7 +1996,12 @@ detect_interactive() {
 
 main() {
   parse_args "$@"
-  local self="${BASH_SOURCE[0]:-$0}"
+  # ${#BASH_SOURCE[@]} is safe under set -u; indexing element 0 of an
+  # empty BASH_SOURCE (piped via stdin) is not.
+  local self="$0"
+  if ((${#BASH_SOURCE[@]} > 0)); then
+    self="${BASH_SOURCE[0]}"
+  fi
   if [[ "$self" == /* ]]; then
     SCRIPT_PATH="$self"
   elif [[ -n "$self" && -f "$self" ]]; then
@@ -2097,6 +2102,8 @@ main() {
   fi
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+if ((${#BASH_SOURCE[@]} == 0)); then
+  main "$@" # piped via stdin (curl ... | bash): no file to source
+elif [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   main "$@"
 fi
