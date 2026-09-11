@@ -104,6 +104,31 @@ class InstallerTests(unittest.TestCase):
             self.assertIn("StartupWMClass=lain-desktop\n", desktop.read_text())
             self.assertEqual(installed_icon.read_bytes(), b"test-icon")
 
+    def test_appimage_icon_extraction_marks_download_executable(self):
+        # Regression: curl downloads land 0644, so --appimage-extract fails
+        # unless the installer marks the image executable first.
+        with tempfile.TemporaryDirectory() as root:
+            fake = Path(root, "lain-desktop_0.2.0.AppImage")
+            fake.write_text(
+                "#!/bin/sh\n"
+                'if [ "$1" = "--appimage-extract" ]; then\n'
+                '  mkdir -p "squashfs-root/usr/share/icons/hicolor/256x256/apps"\n'
+                '  printf "fake-icon" > "squashfs-root/usr/share/icons/hicolor/256x256/apps/lain-desktop.png"\n'
+                "fi\n"
+            )
+            fake.chmod(0o644)
+            self.bash('''
+                HOME="$ROOT/home"; INSTALL_DIR="$ROOT/bin"; TMP_DIR="$ROOT/tmp"
+                mkdir -p "$TMP_DIR"
+                warn_if_missing_libs() { :; }
+                check_path() { :; }
+                install_desktop_binary "$ROOT/lain-desktop_0.2.0.AppImage" appimage
+            ''', ROOT=root)
+            installed_icon = Path(
+                root, "home/.local/share/icons/hicolor/256x256/apps/lain-desktop.png"
+            )
+            self.assertEqual(installed_icon.read_bytes(), b"fake-icon")
+
     def test_nested_mount_mapping_and_boundary(self):
         result = self.bash('''
             WIZARD_HOSTS=(/library /library/Films)

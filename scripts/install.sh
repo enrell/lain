@@ -1135,9 +1135,13 @@ install_desktop_binary() {
   fi
   if [[ -z "$icon_source" && "$kind" == 'appimage' ]]; then
     extract_dir="${TMP_DIR}/lain-desktop-icon"
+    # Downloads land non-executable (curl + umask); the image must run
+    # to unpack its own icon, so mark it executable first.
     if mkdir -p -- "$extract_dir" &&
+       chmod +x -- "$bin" 2>/dev/null &&
        (cd "$extract_dir" && "$bin" --appimage-extract \
-         'usr/share/icons/hicolor/256x256/apps/lain-desktop.png' >/dev/null 2>&1); then
+         'usr/share/icons/hicolor/256x256/apps/lain-desktop.png' >/dev/null 2>&1) &&
+       [[ -f "${extract_dir}/squashfs-root/usr/share/icons/hicolor/256x256/apps/lain-desktop.png" ]]; then
       icon_source="${extract_dir}/squashfs-root/usr/share/icons/hicolor/256x256/apps/lain-desktop.png"
     fi
   fi
