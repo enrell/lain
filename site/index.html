@@ -60,6 +60,11 @@
 					library streams to the embedded web UI, to <span class="mono">mpv</span> and to the
 					native desktop client.
 				</p>
+				<div class="install-bar mono">
+					<span class="install-prompt" aria-hidden="true">$</span>
+					<code>curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash</code>
+					<button class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash">copy</button>
+				</div>
 				<div class="cta">
 					<a class="btn" href="#install">Get started</a>
 					<a class="link" href="#desktop">Desktop app</a>
@@ -72,19 +77,6 @@
 				</ul>
 			</div>
 			<div class="scroll-hint mono" aria-hidden="true">scroll<span class="scroll-arrow">↓</span></div>
-
-			<div class="session mono" aria-hidden="true">
-				<div class="session-bar">
-					<span class="session-label">lain serve</span>
-					<span class="session-state">running</span>
-				</div>
-				<pre class="session-body">$ lain serve --port 9360
-lain v0.1.0 on http://127.0.0.1:9360
-data ~/.local/share/lain
-web ui embedded · 3 plugins healthy
-GET /api/catalog?limit=24  200  12ms
-GET /api/items/8eb6…/thumbnail  200  84ms</pre>
-			</div>
 		</section>
 
 		<!-- ============================ manifesto =========================== -->
