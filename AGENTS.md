@@ -67,3 +67,36 @@ go build -o lain ./cmd/lain
 
 Short imperative subjects. This repo (`projects/lain`) is the server;
 the desktop client lives in `projects/lain-desktop`. Do not mix them.
+
+## Repository language
+
+- English is the canonical language for source code, comments, tests, plans,
+  project documentation, contributor instructions, and project wikis.
+- Other languages are allowed only in explicitly identified translations,
+  localization resources, or language-specific documentation variants.
+- User-facing text must be translatable; do not hard-code a second language in
+  source files as a substitute for localization.
+
+## Advisor protocol (mandatory for long tasks)
+
+An `advisor` subagent owns project direction. It reads
+`docs/advisor/decisions.md` (citable `D-XXX`), `docs/advisor/taste.md`,
+`docs/advisor/open-questions.md`, plus this file and `docs/`.
+It has no edit/shell rights; it only answers. Web is for external
+technical facts, never overrides the wiki.
+
+The executor (you) MUST call it via the `subagent` tool with
+`agent: advisor` when any of these appear:
+
+- direction/scope doubt, conflict between decisions, irreversible or
+  permanent-cost choice (dependency, cgo, HTTP framework, public API
+  contract, starting a reserved slice)
+- need for external validation before an important change
+- anything listed in `docs/advisor/taste.md` as never-decide-alone
+
+Call format: objective + current plan + specific questions (max 5) +
+relevant file paths. Load skill `advisor-triage` output contract and
+obey it: `answered` cite `D-XXX` and proceed; `needs-user` append the
+row to `docs/advisor/open-questions.md` and STOP that slice until the
+user answers. Plans MUST cite decisions (`D-001`, ...) for every
+load-bearing choice.
