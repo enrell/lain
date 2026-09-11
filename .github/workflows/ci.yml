@@ -30,6 +30,11 @@ jobs:
         run: go test -race -shuffle=on ./...
       - name: Build
         run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=ci" -o /tmp/lain ./cmd/lain
+      - name: Installer tests
+        run: |
+          bash -n scripts/install.sh
+          shellcheck scripts/install.sh
+          python3 scripts/install_test.py
 
   web:
     name: web check, test, build
