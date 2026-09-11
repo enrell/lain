@@ -8,6 +8,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"sort"
+	"strconv"
 	"strings"
 
 	bolt "go.etcd.io/bbolt"
@@ -86,10 +87,105 @@ type GetInput struct {
 	ID string `json:"id"`
 }
 
-// ItemID derives a stable id from library + path.
+// ItemID derives a stable id from library + path. Fresh items use it as
+// their identity; ReconcileMoves later re-homes the ID onto a new path
+// when a move or rename is detected, so IDs stay stable (D-019).
 func ItemID(libraryID, path string) string {
 	h := sha1.Sum([]byte(libraryID + "\x00" + path))
 	return hex.EncodeToString(h[:])[:16]
+}
+
+// Fingerprint is the move/rename-proof logical key of an item: kind plus
+// normalized title, season, episode, and year. Years match when either
+// side is unknown (0), because identifiers often fill the year in later.
+func Fingerprint(libraryID, kind, title string, season, episode, year int) string {
+	norm := strings.ToLower(strings.Join(strings.Fields(title), " "))
+	return libraryID + "\x00" + kind + "\x00" + norm +
+		"\x00" + strconv.Itoa(season) + "\x00" + strconv.Itoa(episode) +
+		"\x00" + strconv.Itoa(year)
+}
+
+func fingerprintOf(it contracts.CatalogItem) string {
+	return Fingerprint(it.LibraryID, it.Kind, it.Title, it.Season, it.Episode, it.Year)
+}
+
+func sameLogical(a, b contracts.CatalogItem) bool {
+	if a.LibraryID != b.LibraryID || a.Kind != b.Kind {
+		return false
+	}
+	na := strings.ToLower(strings.Join(strings.Fields(a.Title), " "))
+	nb := strings.ToLower(strings.Join(strings.Fields(b.Title), " "))
+	if na != nb || a.Season != b.Season || a.Episode != b.Episode {
+		return false
+	}
+	return a.Year == 0 || b.Year == 0 || a.Year == b.Year
+}
+
+// ReconcileMoves re-homes stable IDs onto moved or renamed files (D-019).
+// For every scanned item whose path-derived ID is unknown, it looks for an
+// existing item in the same library with the same logical fingerprint
+// whose ID is absent from present (the old path is gone from this scan).
+// Matches adopt the existing ID and record the previous path in Aliases;
+// present is updated so pruning keeps the adopted record. Genuine
+// duplicates (both paths present) and cross-library titles never merge.
+// It returns the rewritten items and the migration count.
+func (s *Service) ReconcileMoves(libraryID string, items []contracts.CatalogItem, present map[string]bool) ([]contracts.CatalogItem, int) {
+	if len(items) == 0 {
+		return items, 0
+	}
+	existing := s.ListByLibrary(libraryID)
+	byID := make(map[string]contracts.CatalogItem, len(existing))
+	for _, it := range existing {
+		byID[it.ID] = it
+	}
+	migrated := 0
+	for i, it := range items {
+		if old, ok := byID[it.ID]; ok && old.FilePath == it.FilePath {
+			continue // refresh of a known path: identity already stable
+		}
+		var match *contracts.CatalogItem
+		for _, cand := range existing {
+			if cand.ID == it.ID || present[cand.ID] {
+				continue
+			}
+			if !sameLogical(cand, it) {
+				continue
+			}
+			c := cand
+			if match == nil || c.UpdatedAt < match.UpdatedAt {
+				match = &c
+			}
+		}
+		if match == nil {
+			continue
+		}
+		if match.FilePath != it.FilePath && !hasAlias(it.Aliases, match.FilePath) {
+			it.Aliases = append(it.Aliases, match.FilePath)
+			if len(it.Aliases) > 8 {
+				it.Aliases = it.Aliases[len(it.Aliases)-8:]
+			}
+		}
+		for _, a := range match.Aliases {
+			if !hasAlias(it.Aliases, a) {
+				it.Aliases = append(it.Aliases, a)
+			}
+		}
+		delete(present, it.ID)
+		it.ID = match.ID
+		present[it.ID] = true
+		items[i] = it
+		migrated++
+	}
+	return items, migrated
+}
+
+func hasAlias(aliases []string, path string) bool {
+	for _, a := range aliases {
+		if a == path {
+			return true
+		}
+	}
+	return false
 }
 
 // NewItem builds the canonical item for a proposal without touching
@@ -317,8 +413,9 @@ func (s *Service) Count() int {
 }
 
 // Export dumps the portable document a replacement catalog must honor.
+// Version 2 adds per-item aliases (identity v2, D-019).
 func (s *Service) Export() ExportDoc {
-	doc := ExportDoc{Format: "lain.catalog-export", Version: 1, Items: map[string]contracts.CatalogItem{}}
+	doc := ExportDoc{Format: "lain.catalog-export", Version: 2, Items: map[string]contracts.CatalogItem{}}
 	for _, it := range s.List() {
 		doc.Items[it.ID] = it
 	}
@@ -326,9 +423,10 @@ func (s *Service) Export() ExportDoc {
 }
 
 // Import loads a portable document, replacing contents atomically in
-// one transaction (index rebuilt with the items).
+// one transaction (index rebuilt with the items). Versions 1 (no
+// aliases) and 2 (identity v2 aliases) are accepted.
 func (s *Service) Import(doc ExportDoc) error {
-	if doc.Format != "lain.catalog-export" || doc.Version != 1 {
+	if doc.Format != "lain.catalog-export" || (doc.Version != 1 && doc.Version != 2) {
 		return &core.Error{Code: "invalid-message", Msg: "unsupported export format/version"}
 	}
 	if doc.Items == nil {
