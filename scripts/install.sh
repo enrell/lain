@@ -37,6 +37,9 @@ SCRIPT_PATH=''
 ASSUME_YES=0
 INTERACTIVE=1
 UNINSTALL=0
+UNINSTALL_LEVEL=''
+PURGE_DATA=0
+REMOVE_IMAGE=0
 SERVER=''
 DESKTOP=''
 MODE=''
@@ -1443,42 +1446,119 @@ remove_generated() {
   return 0
 }
 
-uninstall_all() {
+choose_uninstall_level() {
+  local choice=''
+  printf '\nCleanup level (media files are never touched):\n' >&2
+  printf '  1) Stop only: halt the container and the user service, remove nothing\n' >&2
+  printf '  2) Standard: stop everything, remove generated files and installed binaries, keep data\n' >&2
+  printf '  3) Full: standard, plus erase the data directory contents\n' >&2
+  while true; do
+    prompt choice 'Choice' '2'
+    case "$choice" in
+      1) UNINSTALL_LEVEL='stop'; return 0 ;;
+      2) UNINSTALL_LEVEL='standard'; return 0 ;;
+      3) UNINSTALL_LEVEL='full'; return 0 ;;
+      stop|standard|full) UNINSTALL_LEVEL="$choice"; return 0 ;;
+      *) warn "invalid choice: $choice" ;;
+    esac
+    if [[ "$INTERACTIVE" -eq 0 ]]; then
+      die "invalid choice '$choice' and no terminal to retry"
+    fi
+  done
+}
+
+maybe_choose_uninstall_level() {
+  if [[ -n "$UNINSTALL_LEVEL" ]]; then
+    return 0
+  fi
+  if [[ "$INTERACTIVE" -eq 1 ]]; then
+    choose_uninstall_level
+  else
+    UNINSTALL_LEVEL='standard'
+  fi
+}
+
+set_uninstall_level() {
+  case "$1" in
+    stop|standard|full) UNINSTALL_LEVEL="$1" ;;
+    *) die "invalid uninstall level '$1' (stop, standard or full)" ;;
+  esac
+}
+
+container_exists() {
+  command -v docker >/dev/null 2>&1 || return 1
+  docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'lain'
+}
+
+stop_container() {
   local compose_file="${COMPOSE_DIR}/docker-compose.yml"
-  local env_file="${COMPOSE_DIR}/.env"
+  if [[ -f "$compose_file" ]] && docker_ready; then
+    if confirm "Stop the lain container now (docker compose down)?" y; then
+      if compose_run down; then
+        ok "Container stopped"
+        return 0
+      fi
+      warn "docker compose down failed; stop it manually: cd \"${COMPOSE_DIR}\" && docker compose down"
+    fi
+  elif ! docker_ready; then
+    info "Docker is not available; skipping container stop"
+  fi
+  if container_exists; then
+    if confirm "Remove the 'lain' container (docker rm -f lain)?" y; then
+      if docker rm -f lain >/dev/null 2>&1; then
+        ok "Removed container lain"
+      else
+        warn "could not remove the container; run: docker rm -f lain"
+      fi
+    fi
+  fi
+  return 0
+}
+
+disable_user_service() {
   local unit_file="${HOME}/.config/systemd/user/lain.service"
+  if [[ ! -f "$unit_file" ]]; then
+    return 0
+  fi
+  if ! command -v systemctl >/dev/null 2>&1; then
+    info "systemctl not available; the user service (if enabled) stays as-is"
+    return 0
+  fi
+  if confirm "Stop and disable the lain user service?" y; then
+    systemctl --user disable --now lain.service || warn "could not stop the service; run: systemctl --user disable --now lain.service"
+    systemctl --user daemon-reload || warn "could not reload systemd; run: systemctl --user daemon-reload"
+  fi
+  return 0
+}
+
+remove_install_bin() {
+  local bin="$1" label="$2" default_answer="$3"
+  if [[ -z "$bin" || "$bin" != "${INSTALL_DIR}/"* || ! -f "$bin" ]]; then
+    return 0
+  fi
+  if confirm "Remove $bin ($label)?" "$default_answer"; then
+    if rm -f -- "$bin"; then
+      ok "Removed $bin"
+    else
+      warn "could not remove $bin"
+    fi
+  else
+    info "kept $bin; remove it manually with: rm -f -- '$bin'"
+  fi
+  return 0
+}
+
+remove_desktop_integration() {
   local desktop_file="${HOME}/.local/share/applications/lain-desktop.desktop"
   local desktop_icon="${HOME}/.local/share/icons/hicolor/256x256/apps/lain-desktop.png"
-  local desktop_bin="${INSTALL_DIR}/lain-desktop"
-  local server_bin="${INSTALL_DIR}/lain"
-  step "Uninstall"
-  info "Removing only files this installer creates; data and media are never touched."
-  if [[ -f "$compose_file" ]] && grep -qF "$GENERATED_MARKER" "$compose_file"; then
-    if docker_ready && confirm "Stop the lain container now (docker compose down)?" y; then
-      if ! compose_run down; then
-        warn "docker compose down failed; stop it manually: cd \"${COMPOSE_DIR}\" && docker compose down"
-      fi
-    elif ! docker_ready; then
-      warn "Docker is not available; if the container is still running, stop it later with: docker rm -f lain"
-    fi
-    remove_generated "$compose_file"
-  else
-    info "no installer-managed compose file at $compose_file"
-  fi
-  remove_generated "$env_file"
-  if [[ -f "$unit_file" ]] && grep -qF "$GENERATED_MARKER" "$unit_file"; then
-    if command -v systemctl >/dev/null 2>&1 && confirm "Stop and disable the lain user service?" y; then
-      systemctl --user disable --now lain.service || warn "could not stop the service; run: systemctl --user disable --now lain.service"
-      systemctl --user daemon-reload || warn "could not reload systemd; run: systemctl --user daemon-reload"
-    fi
-    remove_generated "$unit_file"
-  else
-    info "no installer-managed systemd unit at $unit_file"
-  fi
   if [[ -f "$desktop_file" ]] && grep -qF "$GENERATED_MARKER" "$desktop_file"; then
     remove_generated "$desktop_file"
     if [[ -f "$desktop_icon" ]]; then
-      rm -f -- "$desktop_icon" || warn "could not remove $desktop_icon"
+      if rm -f -- "$desktop_icon"; then
+        ok "Removed $desktop_icon"
+      else
+        warn "could not remove $desktop_icon"
+      fi
     fi
     if command -v update-desktop-database >/dev/null 2>&1; then
       update-desktop-database "${HOME}/.local/share/applications" || true
@@ -1486,27 +1566,177 @@ uninstall_all() {
   else
     info "no installer-managed desktop entry at $desktop_file"
   fi
-  if [[ -n "$desktop_bin" && "$desktop_bin" == "${INSTALL_DIR}/"* && -f "$desktop_bin" ]]; then
-    if confirm "Remove $desktop_bin?" y; then
-      if rm -f -- "$desktop_bin"; then
-        ok "Removed $desktop_bin"
-      else
-        warn "could not remove $desktop_bin"
-      fi
+  return 0
+}
+
+remove_server_image() {
+  local image="${DOCKER_IMAGE}:${VERSION}"
+  if ! command -v docker >/dev/null 2>&1; then
+    info "Docker is not available; skipping image removal"
+    return 0
+  fi
+  if [[ "$REMOVE_IMAGE" -eq 1 ]]; then
+    : # explicit flag: proceed without a second prompt
+  elif [[ "$INTERACTIVE" -eq 1 ]]; then
+    confirm "Remove the server image ${image}?" n || return 0
+  else
+    return 0
+  fi
+  if docker rmi "$image" >/dev/null 2>&1; then
+    ok "Removed image $image"
+  else
+    warn "could not remove $image (in use or already gone)"
+  fi
+  return 0
+}
+
+# dir_contains PARENT CHILD -- true when CHILD is PARENT or below it.
+dir_contains() {
+  local parent="${1%/}" child="$2"
+  [[ -n "$parent" && -n "$child" ]] || return 1
+  [[ "$child" == "$parent" || "$child" == "$parent/"* ]]
+}
+
+safe_purge_dir() {
+  local dir="$1" media='' unsafe=''
+  if [[ -z "$dir" || "$dir" != /* || "$dir" == '/' ]]; then
+    warn "refusing to erase unsafe path: '${dir:-<empty>}'"
+    return 1
+  fi
+  for unsafe in "$HOME" /home /root /etc /usr /var /opt /srv /mnt /media /data /tmp; do
+    if [[ "$dir" == "$unsafe" ]]; then
+      warn "refusing to erase '$dir' (too broad)"
+      return 1
+    fi
+  done
+  for media in "${MEDIA_DIRS[@]}"; do
+    [[ -n "$media" ]] || continue
+    if dir_contains "$dir" "$media" || dir_contains "$media" "$dir"; then
+      warn "refusing to erase '$dir' (overlaps media directory '$media'); media is never touched"
+      return 1
+    fi
+  done
+  return 0
+}
+
+purge_dir_contents() {
+  local dir="$1"
+  safe_purge_dir "$dir" || return 1
+  if [[ ! -e "$dir" ]]; then
+    info "data directory does not exist: $dir"
+    return 0
+  fi
+  if [[ ! -d "$dir" ]]; then
+    warn "not a directory, keeping it: $dir"
+    return 1
+  fi
+  if find "$dir" -mindepth 1 -delete; then
+    ok "Erased contents of $dir (the directory itself was kept)"
+  else
+    warn "could not fully erase $dir"
+    return 1
+  fi
+  return 0
+}
+
+confirm_purge_data() {
+  local typed='' size=''
+  if [[ -d "$DATA_DIR" ]]; then
+    size="$(du -sh -- "$DATA_DIR" 2>/dev/null | cut -f1)"
+    if [[ -n "$size" ]]; then
+      info "data directory $DATA_DIR currently uses $size"
     fi
   fi
-  if [[ -n "$server_bin" && "$server_bin" == "${INSTALL_DIR}/"* && -f "$server_bin" ]]; then
-    if confirm "Remove $server_bin (server CLI)?" n; then
-      if rm -f -- "$server_bin"; then
-        ok "Removed $server_bin"
-      else
-        warn "could not remove $server_bin"
-      fi
+  warn "Full cleanup erases the database, cache and thumbnails in $DATA_DIR."
+  info "Media files are never touched."
+  if [[ "$PURGE_DATA" -eq 1 ]]; then
+    return 0
+  fi
+  if [[ "$INTERACTIVE" -eq 0 ]]; then
+    die "refusing to erase $DATA_DIR without confirmation (re-run interactively or pass --purge-data)"
+  fi
+  printf 'Type the data directory path to confirm erasure: ' >&2
+  IFS= read -r typed < /dev/tty || return 1
+  if [[ "$typed" != "$DATA_DIR" ]]; then
+    warn "confirmation did not match; keeping $DATA_DIR"
+    return 1
+  fi
+  return 0
+}
+
+remove_compose_backups() {
+  local backup='' count=0
+  local -a patterns=()
+  patterns=("${COMPOSE_DIR}"/docker-compose.yml.bak.* "${COMPOSE_DIR}"/.env.bak.*)
+  for backup in "${patterns[@]}"; do
+    [[ -e "$backup" ]] || continue
+    if rm -f -- "$backup"; then
+      count=$((count + 1))
     else
-      info "kept $server_bin; remove it manually with: rm -f -- '$server_bin'"
+      warn "could not remove $backup"
     fi
+  done
+  if ((count > 0)); then
+    ok "Removed $count backup file(s) in ${COMPOSE_DIR}"
   fi
-  info "data directory kept: $DATA_DIR"
+  return 0
+}
+
+remove_empty_dir() {
+  local dir="$1"
+  if [[ -z "$dir" || "$dir" == '/' ]]; then
+    return 0
+  fi
+  if rmdir -- "$dir" 2>/dev/null; then
+    ok "Removed empty $dir"
+  fi
+  return 0
+}
+
+uninstall_all() {
+  local compose_file="${COMPOSE_DIR}/docker-compose.yml"
+  local env_file="${COMPOSE_DIR}/.env"
+  local unit_file="${HOME}/.config/systemd/user/lain.service"
+  local desktop_bin="${INSTALL_DIR}/lain-desktop"
+  local server_bin="${INSTALL_DIR}/lain"
+  maybe_choose_uninstall_level
+  step "Uninstall (${UNINSTALL_LEVEL})"
+  info "Compose: ${compose_file}"
+  info "Data: ${DATA_DIR} (media is never touched)"
+  stop_container
+  disable_user_service
+  if [[ "$UNINSTALL_LEVEL" == 'stop' ]]; then
+    info "stopped only; everything is still installed"
+    info "resume with: cd \"${COMPOSE_DIR}\" && docker compose up -d"
+    return 0
+  fi
+  if [[ -f "$compose_file" ]] && grep -qF "$GENERATED_MARKER" "$compose_file"; then
+    remove_generated "$compose_file"
+  else
+    info "no installer-managed compose file at $compose_file"
+  fi
+  remove_generated "$env_file"
+  if [[ -f "$unit_file" ]] && grep -qF "$GENERATED_MARKER" "$unit_file"; then
+    remove_generated "$unit_file"
+  else
+    info "no installer-managed systemd unit at $unit_file"
+  fi
+  remove_desktop_integration
+  remove_install_bin "$desktop_bin" 'desktop client' y
+  remove_install_bin "$server_bin" 'server CLI' n
+  remove_server_image
+  if [[ "$UNINSTALL_LEVEL" == 'full' ]]; then
+    if confirm_purge_data && purge_dir_contents "$DATA_DIR"; then
+      :
+    else
+      warn "data directory kept: $DATA_DIR"
+    fi
+    remove_compose_backups
+    remove_empty_dir "$COMPOSE_DIR"
+    remove_empty_dir "$DATA_DIR"
+  else
+    info "data directory kept: $DATA_DIR"
+  fi
   return 0
 }
 
@@ -1533,7 +1763,7 @@ print_summary() {
       printf '  - %s\n' "$item"
     done
   fi
-  printf '\nUninstall later with: %s --uninstall\n' "${SCRIPT_PATH:-install.sh}"
+  printf '\nCleanup later with: %s --uninstall (levels: stop, standard, full)\n' "${SCRIPT_PATH:-install.sh}"
 }
 
 # --- Argument parsing ------------------------------------------------------
@@ -1568,7 +1798,13 @@ General options:
   --install-dir DIR       binary install directory (default: ~/.local/bin)
   --version TAG           release tag: latest, v0.1.0 or 0.1.0 (default: latest)
   -y, --yes               accept defaults; never prompt
-  --uninstall             remove files created by this installer
+  --uninstall[=LEVEL]     remove lain: stop (halt container/service, remove
+                          nothing), standard (default: generated files and
+                          installed binaries, data kept), full (also erases
+                          the data directory contents)
+  --uninstall-level LEVEL same as --uninstall=LEVEL
+  --purge-data            allow non-interactive data erasure with full
+  --remove-image          also remove the server container image
   -h, --help              show this help
 
 Environment:
@@ -1580,6 +1816,7 @@ Examples:
   install.sh --server --server-mode binary --yes
   install.sh --desktop --yes
   install.sh --uninstall --yes
+  install.sh --uninstall=full            # stop + generated files + data (asks first)
 EOF
 }
 
@@ -1702,7 +1939,33 @@ parse_args() {
         shift
         ;;
       -y|--yes) ASSUME_YES=1; shift ;;
+      --uninstall-level)
+        if (($# < 2)) || [[ -z "$2" ]]; then
+          die "--uninstall-level needs a value (stop, standard or full)"
+        fi
+        UNINSTALL=1
+        set_uninstall_level "$2"
+        shift 2
+        ;;
+      --uninstall-level=*)
+        if [[ -z "${1#*=}" ]]; then
+          die "--uninstall-level needs a value (stop, standard or full)"
+        fi
+        UNINSTALL=1
+        set_uninstall_level "${1#*=}"
+        shift
+        ;;
       --uninstall) UNINSTALL=1; shift ;;
+      --uninstall=*)
+        if [[ -z "${1#*=}" ]]; then
+          die "--uninstall needs a value (stop, standard or full)"
+        fi
+        UNINSTALL=1
+        set_uninstall_level "${1#*=}"
+        shift
+        ;;
+      --purge-data) PURGE_DATA=1; shift ;;
+      --remove-image) REMOVE_IMAGE=1; shift ;;
       -h|--help) usage; exit 0 ;;
       --) shift; break ;;
       *) die "unknown option: $1 (try --help)" ;;

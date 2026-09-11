@@ -61,6 +61,19 @@ scan. It translates selected host folders to their mounted container paths,
 never stores the password or token, and falls back to the web setup when
 `curl` or `jq` is unavailable.
 
+Cleanup lives in the same script — no separate uninstaller to audit:
+
+```sh
+bash lain-install.sh --uninstall          # choose: stop, standard or full
+bash lain-install.sh --uninstall --yes    # standard, non-interactive
+```
+
+Stop only halts the container and the user service. Standard also removes
+generated files (compose, unit, desktop entry) and installed binaries but
+always keeps the data directory. Full additionally erases the data
+directory contents after an explicit typed confirmation (`--purge-data`
+for automation). Media directories are never touched at any level.
+
 ### Static binary
 
 ```sh
