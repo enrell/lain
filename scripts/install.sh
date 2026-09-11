@@ -1118,7 +1118,7 @@ configure_desktop() {
 
 configure_docker() {
   local default_media=''
-  local answer=''
+  local media_input=''
   if [[ "$DATA_SET" -eq 0 ]]; then
     prompt DATA_DIR "Data directory (mounted at ${CONTAINER_DATA_DIR})" "$DATA_DIR"
   fi
@@ -1135,8 +1135,8 @@ configure_docker() {
     if [[ -d "$DEFAULT_MEDIA_DIR" ]]; then
       default_media="$DEFAULT_MEDIA_DIR"
     fi
-    prompt answer 'Media directories (comma-separated, empty for none)' "$default_media"
-    parse_media_list "$answer"
+    prompt media_input 'Media directories (comma-separated, empty for none)' "$default_media"
+    parse_media_list "$media_input"
   fi
 }
 
