@@ -35,8 +35,11 @@ pointing at `/media/videos`, and scan. The same image runs on
 `linux/amd64` and `linux/arm64`.
 
 Prefer compose? Start from the shipped [`docker-compose.yml`](docker-compose.yml)
-or let the installer generate a filled-in one (data dir, media dirs,
-port, tag). The image bundles `ffmpeg` for thumbnails and
+or let the installer generate a filled-in, commented one (data dir,
+read-only media mounts, port, tag). It prints the file before applying
+it so you can audit every host mount. Re-running preserves manual edits
+by default; explicitly choosing regeneration creates timestamped backups.
+The image bundles `ffmpeg` for thumbnails and
 `ca-certificates` for remote metadata providers; no Node, no second
 origin — the SPA is embedded in the binary.
 
@@ -44,13 +47,19 @@ origin — the SPA is embedded in the binary.
 
 One script covers server and desktop in all combinations (server +
 desktop, server only, desktop only; Docker, static binary or user
-daemon; media paths, port, compose generation):
+daemon; media paths with Tab completion, port, compose generation):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh -o lain-install.sh
 less lain-install.sh          # read it first, it is yours to run
 bash lain-install.sh
 ```
+
+After Docker starts, the installer optionally completes first-run setup
+in the same terminal: admin account, one or more libraries and the initial
+scan. It translates selected host folders to their mounted container paths,
+never stores the password or token, and falls back to the web setup when
+`curl` or `jq` is unavailable.
 
 ### Static binary
 

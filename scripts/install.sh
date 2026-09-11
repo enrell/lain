@@ -7,7 +7,7 @@
 #   desktop: https://github.com/enrell/lain-desktop   (Qt6/QML + libmpv)
 #
 # Interactive menu by default; every choice is also available as a flag
-# (see --help). Re-running is safe: generated files and binaries are replaced.
+# (see --help). Existing Compose files are reused unless regeneration is chosen.
 #
 # No personal data is embedded; all paths are derived from $HOME or flags.
 # ===========================================================================
@@ -50,6 +50,7 @@ INSTALL_DIR="$DEFAULT_INSTALL_DIR"
 INSTALL_SET=0
 COMPOSE_DIR="$DEFAULT_COMPOSE_DIR"
 COMPOSE_SET=0
+REUSE_COMPOSE=0
 MEDIA_DIRS=()
 MEDIA_GIVEN=0
 TMP_DIR=''
@@ -135,6 +136,23 @@ prompt() {
     answer="$default_value"
   fi
   printf -v "$var_name" '%s' "$answer"
+}
+
+# Readline filename completion, with editable default and literal paths.
+# Output names must not start with _path_. No eval: paths are data.
+prompt_path() {
+  local _path_var="$1" _path_label="$2" _path_default="${3:-}" _path_value=''
+  if [[ "$ASSUME_YES" -eq 1 || "$INTERACTIVE" -eq 0 ]]; then
+    printf -v "$_path_var" '%s' "$_path_default"
+    return 0
+  fi
+  printf '%s (Tab completes paths; clear to skip): ' "$_path_label" >&2
+  # Readline quotes completed names (e.g. Films\ Archive). Let read consume
+  # those escapes. Quote the initial text too, so defaults round-trip.
+  _path_default="${_path_default//\\/\\\\}"
+  # shellcheck disable=SC2162 # intentional: undo Readline's filename quoting
+  IFS= read -e -i "$_path_default" _path_value < /dev/tty || return 1
+  printf -v "$_path_var" '%s' "$_path_value"
 }
 
 # confirm "question" [y|n] -- default is n.
@@ -535,8 +553,8 @@ write_compose_file() {
   local tmp="${compose_file}.tmp.$$"
   local backup=''
   local volume=''
-  if [[ -f "$compose_file" ]] && ! grep -qF "$GENERATED_MARKER" "$compose_file"; then
-    backup="${compose_file}.bak.$(date +%Y%m%d%H%M%S)"
+  if [[ -f "$compose_file" ]]; then
+    backup="${compose_file}.bak.$(date +%Y%m%d%H%M%S).$$"
     if cp -a -- "$compose_file" "$backup"; then
       warn "existing compose file backed up to $backup"
     else
@@ -545,7 +563,12 @@ write_compose_file() {
     fi
   fi
   {
-    printf '# %s -- do not edit; re-run the installer to regenerate.\n' "$GENERATED_MARKER"
+    printf '# %s -- yours to audit and edit.\n' "$GENERATED_MARKER"
+    printf '# Apply edits: docker compose up -d\n'
+    printf '# Volume syntax: HOST_DIRECTORY:CONTAINER_DIRECTORY:ro\n'
+    printf '# Add media mounts below, then register their CONTAINER paths in Lain.\n'
+    printf '# Example: /srv/media/films:/media/films:ro\n'
+    printf '# Re-running the installer reuses this file by default.\n'
     printf 'services:\n'
     printf '  lain:\n'
     printf '    image: %s\n' "$image"
@@ -556,7 +579,9 @@ write_compose_file() {
     printf '    ports:\n'
     printf '      - "%s:%s"\n' "$PORT" "$CONTAINER_PORT"
     printf '    volumes:\n'
+    printf '      # Persistent database and cache (read/write).\n'
     printf '      - %s\n' "$(yaml_quote "${DATA_DIR}:${CONTAINER_DATA_DIR}")"
+    printf '      # Media stays on the host; mount read-only.\n'
     for volume in "$@"; do
       printf '      - %s\n' "$(yaml_quote "$volume")"
     done
@@ -586,8 +611,8 @@ write_env_file() {
   local env_file="${COMPOSE_DIR}/.env"
   local tmp="${env_file}.tmp.$$"
   local backup=''
-  if [[ -f "$env_file" ]] && ! grep -qF "$GENERATED_MARKER" "$env_file"; then
-    backup="${env_file}.bak.$(date +%Y%m%d%H%M%S)"
+  if [[ -f "$env_file" ]]; then
+    backup="${env_file}.bak.$(date +%Y%m%d%H%M%S).$$"
     if cp -a -- "$env_file" "$backup"; then
       warn "existing .env backed up to $backup"
     else
@@ -596,7 +621,7 @@ write_env_file() {
     fi
   fi
   {
-    printf '# %s -- do not edit; re-run the installer to regenerate.\n' "$GENERATED_MARKER"
+    printf '# %s -- host UID/GID; edit to match the media owner.\n' "$GENERATED_MARKER"
     printf 'UID=%s\n' "$(id -u)"
     printf 'GID=%s\n' "$(id -g)"
   } > "$tmp" || {
@@ -632,46 +657,54 @@ install_server_docker() {
   local -A used_names=()
   local dir='' name='' final='' used=0
   step "Server via Docker (${image})"
-  if ! check_docker_path "$DATA_DIR" 'data directory'; then
-    return 1
-  fi
-  if ! mkdir -p -- "$DATA_DIR" "$COMPOSE_DIR"; then
-    warn "could not create ${DATA_DIR} or ${COMPOSE_DIR}"
-    return 1
-  fi
-  for dir in "${MEDIA_DIRS[@]}"; do
-    if ! check_docker_path "$dir" 'media directory'; then
-      continue
+  if [[ "$REUSE_COMPOSE" -eq 0 ]]; then
+    if ! check_docker_path "$DATA_DIR" 'data directory'; then
+      return 1
     fi
-    if [[ ! -d "$dir" ]]; then
-      warn "media directory does not exist: $dir"
-      if confirm "Create it?" y; then
-        if ! mkdir -p -- "$dir"; then
-          warn "could not create $dir; skipping it"
-          continue
-        fi
-      else
-        warn "skipping $dir"
+    if ! mkdir -p -- "$DATA_DIR" "$COMPOSE_DIR"; then
+      warn "could not create ${DATA_DIR} or ${COMPOSE_DIR}"
+      return 1
+    fi
+    for dir in "${MEDIA_DIRS[@]}"; do
+      if ! check_docker_path "$dir" 'media directory'; then
         continue
       fi
-    fi
-    name="$(sanitize_name "$dir")"
-    final="$name"
-    used=1
-    while [[ -n "${used_names[$final]:-}" ]]; do
-      used=$((used + 1))
-      final="${name}-${used}"
+      if [[ ! -d "$dir" ]]; then
+        warn "media directory does not exist: $dir"
+        if confirm "Create it?" y; then
+          if ! mkdir -p -- "$dir"; then
+            warn "could not create $dir; skipping it"
+            continue
+          fi
+        else
+          warn "skipping $dir"
+          continue
+        fi
+      fi
+      name="$(sanitize_name "$dir")"
+      final="$name"
+      used=1
+      while [[ -n "${used_names[$final]:-}" ]]; do
+        used=$((used + 1))
+        final="${name}-${used}"
+      done
+      used_names["$final"]=1
+      targets+=("${dir}:/media/${final}:ro")
     done
-    used_names["$final"]=1
-    targets+=("${dir}:/media/${final}:ro")
-  done
-  if ! write_compose_file "$image" "${targets[@]}"; then
-    warn "could not write ${COMPOSE_DIR}/docker-compose.yml"
-    return 1
-  fi
-  if ! write_env_file; then
-    warn "could not write ${COMPOSE_DIR}/.env"
-    return 1
+    if ! write_compose_file "$image" "${targets[@]}"; then
+      warn "could not write ${COMPOSE_DIR}/docker-compose.yml"
+      return 1
+    fi
+    if ! write_env_file; then
+      warn "could not write ${COMPOSE_DIR}/.env"
+      return 1
+    fi
+  else
+    ok "Reusing ${COMPOSE_DIR}/docker-compose.yml (manual edits preserved)"
+    if [[ ! -f "${COMPOSE_DIR}/.env" ]] && ! write_env_file; then
+      warn "could not create ${COMPOSE_DIR}/.env"
+      return 1
+    fi
   fi
   add_note "server (Docker): ${image}"
   add_note "compose file: ${COMPOSE_DIR}/docker-compose.yml"
@@ -681,9 +714,15 @@ install_server_docker() {
   done
   add_next "Open http://127.0.0.1:${PORT}/ and create the admin account"
   add_next "Register libraries using container paths such as /media/videos"
+  add_next "Edit ${COMPOSE_DIR}/docker-compose.yml to add volumes; apply with docker compose up -d from that directory"
+  info "Compose file (host paths on the left, container paths on the right):"
+  cat -- "${COMPOSE_DIR}/docker-compose.yml"
   if docker_ready; then
-    if confirm "Pull the image and start the container now?" y; then
-      if ! compose_run pull; then
+    if confirm "Is this Compose file ready to validate and apply?" y; then
+      if ! compose_run config --quiet; then
+        warn "invalid Compose configuration; review ${COMPOSE_DIR}/docker-compose.yml"
+        return 1
+      elif ! compose_run pull; then
         warn "docker compose pull failed"
         print_compose_manual
       elif ! compose_run up -d; then
@@ -691,6 +730,7 @@ install_server_docker() {
         print_compose_manual
       else
         ok "Container started: http://127.0.0.1:${PORT}/"
+        offer_terminal_wizard || warn "Terminal setup incomplete; continue in the web UI or re-run the installer"
       fi
     else
       print_compose_manual
@@ -700,6 +740,193 @@ install_server_docker() {
     print_compose_manual
   fi
   return 0
+}
+
+# --- Optional terminal setup (Docker) --------------------------------------
+
+# Values reach jq/curl over stdin, never in process arguments or Compose.
+json_object() {
+  printf '%s\0' "$@" | jq -Rs '
+    split("\u0000")[:-1] as $v |
+    reduce range(0; $v|length; 2) as $i ({}; .[$v[$i]] = $v[$i+1])'
+}
+
+wizard_request() {
+  local method="$1" route="$2" payload="${3:-}"
+  WIZARD_REPLY=''
+  WIZARD_STATUS=''
+  ensure_tmp
+  # The authorization header is delivered through a pipe-backed descriptor.
+  WIZARD_STATUS="$(printf '%s' "$payload" | curl --silent --show-error \
+    --connect-timeout 2 --max-time 15 --noproxy '*' \
+    --request "$method" --header 'Content-Type: application/json' \
+    --header @<(if [[ -n "${WIZARD_TOKEN:-}" ]]; then printf 'Authorization: Bearer %s\n' "$WIZARD_TOKEN"; fi) \
+    --data-binary @- --output "${TMP_DIR}/wizard-response" --write-out '%{http_code}' \
+    "${WIZARD_URL}${route}")" || return 1
+  WIZARD_REPLY="$(cat "${TMP_DIR}/wizard-response")"
+  rm -f -- "${TMP_DIR}/wizard-response"
+  [[ "$WIZARD_STATUS" == 2?? ]]
+}
+
+wizard_error() {
+  local message=''
+  message="$(printf '%s' "$WIZARD_REPLY" | jq -r '.error // "Request failed"' 2>/dev/null)" || message='Invalid server response'
+  warn "HTTP ${WIZARD_STATUS:-unavailable}: $message"
+}
+
+prompt_password() {
+  local _secret=''
+  printf '%s: ' "$2" >&2
+  if ! IFS= read -r -s _secret < /dev/tty; then
+    printf '\n' >&2
+    return 1
+  fi
+  printf '\n' >&2
+  printf -v "$1" '%s' "$_secret"
+}
+
+# Longest matching mount wins; /films must not match /films-other.
+container_path() {
+  local host="$1" best='' target='' i root
+  for i in "${!WIZARD_HOSTS[@]}"; do
+    root="${WIZARD_HOSTS[$i]%/}"
+    if [[ "$host" == "$root" || "$host" == "$root/"* ]]; then
+      if [[ -z "$target" || ${#root} -gt ${#best} ]]; then
+        best="$root"
+        target="${WIZARD_PATHS[$i]%/}${host#"$root"}"
+      fi
+    fi
+  done
+  [[ -n "$target" ]] || return 1
+  printf '%s\n' "$target"
+}
+
+terminal_wizard() {
+  local WIZARD_TOKEN='' WIZARD_REPLY='' WIZARD_STATUS=''
+  local username='' password='' repeated='' credentials='' needs_setup=''
+  local host='' path='' name='' kind='' libraries='' attempt
+  step 'Terminal setup'
+  for ((attempt=0; attempt<30; attempt++)); do
+    if wizard_request GET /api/setup/status; then break; fi
+    sleep 1
+  done
+  if [[ "$WIZARD_STATUS" != 200 ]]; then
+    warn "Server not ready at ${WIZARD_URL}; finish setup in the browser later"
+    return 1
+  fi
+  needs_setup="$(printf '%s' "$WIZARD_REPLY" | jq -er '.setup_required | tostring')" || return 1
+  [[ "$needs_setup" == true || "$needs_setup" == false ]] || return 1
+  if [[ "$needs_setup" == true ]]; then
+    info 'Create the first administrator account.'
+  else
+    info 'Server already configured. Sign in as an administrator to add libraries.'
+  fi
+  while true; do
+    prompt username 'Admin username' admin
+    prompt_password password 'Password' || return 1
+    if [[ "$needs_setup" == true ]]; then
+      prompt_password repeated 'Repeat password' || return 1
+      if [[ "$password" != "$repeated" ]]; then
+        warn 'Passwords do not match'
+        continue
+      fi
+    fi
+    credentials="$(json_object username "$username" password "$password")" || return 1
+    password=''; repeated=''
+    if [[ "$needs_setup" == true ]]; then
+      if ! wizard_request POST /api/setup "$credentials"; then
+        credentials=''
+        wizard_error
+        confirm 'Retry account setup?' y || return 1
+        # Account creation may have succeeded before a connection failure.
+        wizard_request GET /api/setup/status || return 1
+        needs_setup="$(printf '%s' "$WIZARD_REPLY" | jq -er '.setup_required | tostring')" || return 1
+        continue
+      fi
+      needs_setup=false
+    fi
+    if wizard_request POST /api/auth/login "$credentials"; then
+      credentials=''
+      WIZARD_TOKEN="$(printf '%s' "$WIZARD_REPLY" | jq -er '.token | select(type == "string" and length > 0)')" || return 1
+      break
+    fi
+    credentials=''
+    wizard_error
+    confirm 'Retry login?' y || return 1
+  done
+  wizard_request GET /api/me || return 1
+  if ! printf '%s' "$WIZARD_REPLY" | jq -e '.role == "admin"' >/dev/null; then
+    warn 'An administrator account is required to register libraries'
+    return 1
+  fi
+  info 'Choose library folders on the host; their mounted container paths are sent to Lain.'
+  for attempt in "${!WIZARD_HOSTS[@]}"; do
+    info "  ${WIZARD_HOSTS[$attempt]} -> ${WIZARD_PATHS[$attempt]}"
+  done
+  while ((${#WIZARD_HOSTS[@]} > 0)) && confirm 'Register a library now?' y; do
+    prompt_path host 'Library directory (a mounted folder or subfolder)' "${WIZARD_HOSTS[0]}" || return 1
+    [[ -n "$host" ]] || break
+    host="$(abspath "$host")"
+    if [[ ! -d "$host" ]] || ! path="$(container_path "$host")"; then
+      warn 'Choose an existing directory inside a listed mount. To use another root, add its volume to Compose and re-run.'
+      continue
+    fi
+    wizard_request GET /api/libraries || { wizard_error; return 1; }
+    libraries="$WIZARD_REPLY"
+    if printf '%s' "$libraries" | jq -e --arg path "$path" 'any(.[]; .path == $path)' >/dev/null; then
+      info "Already registered: $path"
+      continue
+    fi
+    prompt name 'Library name' "$(basename "$host")"
+    while true; do
+      prompt kind 'Library type (anime / movie / series)' anime
+      case "$kind" in anime|movie|series) break ;; *) warn 'Choose anime, movie or series' ;; esac
+    done
+    info "Registering ${name}: ${host} -> ${path} (${kind})"
+    if wizard_request POST /api/libraries "$(json_object name "$name" type "$kind" path "$path")"; then
+      ok "Library registered: $name"
+    else
+      wizard_error
+    fi
+  done
+  if ((${#WIZARD_HOSTS[@]} == 0)); then
+    info 'No media bind mounts found. Add them to Compose and re-run, or register container paths in the web UI.'
+  fi
+  if confirm 'Start a library scan now?' y; then
+    if wizard_request POST /api/library/scan; then
+      ok 'Scan started; follow its progress in the web UI'
+    elif [[ "$WIZARD_STATUS" == 409 ]]; then
+      info 'A scan is already running'
+    else
+      wizard_error
+      return 1
+    fi
+  fi
+  add_note "Terminal setup finished: ${WIZARD_URL}/"
+}
+
+offer_terminal_wizard() {
+  [[ "$INTERACTIVE" -eq 1 && "$ASSUME_YES" -eq 0 ]] || return 0
+  confirm 'Run the setup wizard here (admin account, libraries and scan)?' y || return 0
+  if ! command -v jq >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+    warn 'The optional terminal wizard needs curl and jq. You can use the web UI instead.'
+    return 0
+  fi
+  local binding='' mounts='' entry=''
+  local WIZARD_URL=''
+  local -a WIZARD_HOSTS=() WIZARD_PATHS=()
+  binding="$(compose_run port lain "$CONTAINER_PORT")" || return 1
+  binding="${binding%%$'\n'*}"
+  [[ "${binding##*:}" =~ ^[0-9]+$ ]] || return 1
+  WIZARD_URL="http://127.0.0.1:${binding##*:}"
+  mounts="$(docker inspect lain --format '{{json .Mounts}}')" || return 1
+  # Read actual mounts, including manually edited Compose volumes.
+  printf '%s' "$mounts" | jq -e 'type == "array"' >/dev/null || return 1
+  while IFS= read -r entry; do
+    WIZARD_HOSTS+=("$(printf '%s' "$entry" | jq -r '.Source')")
+    WIZARD_PATHS+=("$(printf '%s' "$entry" | jq -r '.Destination')")
+  done < <(printf '%s' "$mounts" | jq -c '.[] | select(.Type == "bind" and .Destination != "/data")')
+  terminal_wizard
 }
 
 # --- Server: binary / daemon -----------------------------------------------
@@ -1094,10 +1321,12 @@ parse_media_list() {
 
 configure_server_binary() {
   if [[ "$INSTALL_SET" -eq 0 ]]; then
-    prompt INSTALL_DIR 'Install directory' "$INSTALL_DIR"
+    prompt_path INSTALL_DIR 'Install directory' "$INSTALL_DIR"
+    [[ -n "$INSTALL_DIR" ]] || die 'Install directory is required'
   fi
   if [[ "$DATA_SET" -eq 0 ]]; then
-    prompt DATA_DIR 'Data directory' "$DATA_DIR"
+    prompt_path DATA_DIR 'Data directory' "$DATA_DIR"
+    [[ -n "$DATA_DIR" ]] || die 'Data directory is required'
   fi
   if [[ "$PORT_SET" -eq 0 ]]; then
     prompt_port
@@ -1109,7 +1338,8 @@ configure_server_binary() {
 
 configure_desktop() {
   if [[ "$INSTALL_SET" -eq 0 ]]; then
-    prompt INSTALL_DIR 'Install directory' "$INSTALL_DIR"
+    prompt_path INSTALL_DIR 'Install directory' "$INSTALL_DIR"
+    [[ -n "$INSTALL_DIR" ]] || die 'Install directory is required'
   fi
   if [[ "$VERSION_SET" -eq 0 ]]; then
     prompt VERSION 'Release tag (latest, v0.1.0 or 0.1.0)' "$VERSION"
@@ -1119,11 +1349,29 @@ configure_desktop() {
 configure_docker() {
   local default_media=''
   local media_input=''
-  if [[ "$DATA_SET" -eq 0 ]]; then
-    prompt DATA_DIR "Data directory (mounted at ${CONTAINER_DATA_DIR})" "$DATA_DIR"
-  fi
+  local regenerate_default='n'
   if [[ "$COMPOSE_SET" -eq 0 ]]; then
-    prompt COMPOSE_DIR 'Compose directory' "$COMPOSE_DIR"
+    prompt_path COMPOSE_DIR 'Compose directory' "$COMPOSE_DIR"
+    [[ -n "$COMPOSE_DIR" ]] || die 'Compose directory is required'
+    COMPOSE_DIR="$(abspath "$COMPOSE_DIR")"
+  fi
+  if [[ -f "${COMPOSE_DIR}/docker-compose.yml" ]]; then
+    info "Found ${COMPOSE_DIR}/docker-compose.yml (including any manual edits)."
+    if grep -qF "$GENERATED_MARKER -- do not edit" "${COMPOSE_DIR}/docker-compose.yml"; then
+      info 'This is a legacy generated file; regeneration upgrades it to the auditable format.'
+      regenerate_default='y'
+    elif [[ "$DATA_SET" -eq 1 || "$PORT_SET" -eq 1 || "$VERSION_SET" -eq 1 || "$MEDIA_GIVEN" -eq 1 ]]; then
+      info 'Explicit Docker options were supplied; regeneration applies them.'
+      regenerate_default='y'
+    fi
+    if ! confirm 'Regenerate it from installer options? Existing files will be backed up.' "$regenerate_default"; then
+      REUSE_COMPOSE=1
+      return 0
+    fi
+  fi
+  if [[ "$DATA_SET" -eq 0 ]]; then
+    prompt_path DATA_DIR "Data directory (mounted at ${CONTAINER_DATA_DIR})" "$DATA_DIR"
+    [[ -n "$DATA_DIR" ]] || die 'Data directory is required'
   fi
   if [[ "$PORT_SET" -eq 0 ]]; then
     prompt_port
@@ -1135,8 +1383,15 @@ configure_docker() {
     if [[ -d "$DEFAULT_MEDIA_DIR" ]]; then
       default_media="$DEFAULT_MEDIA_DIR"
     fi
-    prompt media_input 'Media directories (comma-separated, empty for none)' "$default_media"
-    parse_media_list "$media_input"
+    MEDIA_DIRS=()
+    while true; do
+      prompt_path media_input 'Media directory on the host' "$default_media" || break
+      if [[ -n "$media_input" ]]; then
+        MEDIA_DIRS+=("$media_input")
+      fi
+      confirm 'Add another media directory?' n || break
+      default_media=''
+    done
   fi
 }
 
@@ -1550,4 +1805,6 @@ main() {
   fi
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
