@@ -81,6 +81,29 @@ class InstallerTests(unittest.TestCase):
         result = self.bash('json_object username admin password "$VALUE"', VALUE=value)
         self.assertEqual(json.loads(result), {"username": "admin", "password": value})
 
+    def test_desktop_install_includes_icon_and_identity(self):
+        with tempfile.TemporaryDirectory() as root:
+            fake = Path(root, "lain")
+            fake.write_text("#!/bin/sh\nexit 0\n")
+            fake.chmod(0o755)
+            icon = Path(root, "lain-desktop.png")
+            icon.write_bytes(b"test-icon")
+            self.bash('''
+                HOME="$ROOT/home"; INSTALL_DIR="$ROOT/bin"; TMP_DIR="$ROOT/tmp"
+                mkdir -p "$TMP_DIR"
+                warn_if_missing_libs() { :; }
+                check_path() { :; }
+                install_desktop_binary "$ROOT/lain" binary "$ROOT/lain-desktop.png"
+            ''', ROOT=root)
+            desktop = Path(root, "home/.local/share/applications/lain-desktop.desktop")
+            installed_icon = Path(
+                root, "home/.local/share/icons/hicolor/256x256/apps/lain-desktop.png"
+            )
+            self.assertIn("Name=Lain\n", desktop.read_text())
+            self.assertIn("Icon=lain-desktop\n", desktop.read_text())
+            self.assertIn("StartupWMClass=lain-desktop\n", desktop.read_text())
+            self.assertEqual(installed_icon.read_bytes(), b"test-icon")
+
     def test_nested_mount_mapping_and_boundary(self):
         result = self.bash('''
             WIZARD_HOSTS=(/library /library/Films)
