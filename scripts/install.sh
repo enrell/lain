@@ -1110,8 +1110,12 @@ warn_if_missing_libs() {
 install_desktop_binary() {
   local bin="$1"
   local kind="${2:-binary}"
+  local icon_source="${3:-}"
   local app_dir="${HOME}/.local/share/applications"
+  local icon_dir="${HOME}/.local/share/icons/hicolor/256x256/apps"
+  local icon_file="${icon_dir}/lain-desktop.png"
   local desktop_file="${app_dir}/lain-desktop.desktop"
+  local extract_dir=''
   local tmp="${desktop_file}.tmp.$$"
   if ! mkdir -p -- "$INSTALL_DIR"; then
     warn "could not create $INSTALL_DIR"
@@ -1126,19 +1130,40 @@ install_desktop_binary() {
   if [[ "$kind" != 'appimage' ]]; then
     warn_if_missing_libs "${INSTALL_DIR}/lain-desktop"
   fi
-  if ! mkdir -p -- "$app_dir"; then
-    warn "could not create $app_dir"
+  if [[ -z "$icon_source" && "$kind" == 'appimage' ]]; then
+    extract_dir="${TMP_DIR}/lain-desktop-icon"
+    if mkdir -p -- "$extract_dir" &&
+       (cd "$extract_dir" && "$bin" --appimage-extract \
+         'usr/share/icons/hicolor/256x256/apps/lain-desktop.png' >/dev/null 2>&1); then
+      icon_source="${extract_dir}/squashfs-root/usr/share/icons/hicolor/256x256/apps/lain-desktop.png"
+    fi
+  fi
+  if ! mkdir -p -- "$app_dir" "$icon_dir"; then
+    warn "could not create desktop integration directories"
     return 1
+  fi
+  if [[ -n "$icon_source" && -f "$icon_source" ]]; then
+    if ! install -m 0644 "$icon_source" "$icon_file"; then
+      warn "could not install $icon_file"
+      return 1
+    fi
+    ok "Installed $icon_file"
+  else
+    warn "desktop icon was not found in the installation payload"
   fi
   {
     printf '[Desktop Entry]\n'
     printf '# %s -- do not edit; re-run the installer to regenerate.\n' "$GENERATED_MARKER"
     printf 'Type=Application\n'
-    printf 'Name=lain\n'
+    printf 'Name=Lain\n'
+    printf 'GenericName=Media Client\n'
     printf 'Comment=lain media server desktop client\n'
     printf 'Exec=lain-desktop\n'
+    printf 'Icon=lain-desktop\n'
     printf 'Terminal=false\n'
     printf 'Categories=AudioVideo;Player;\n'
+    printf 'Keywords=media;player;lain;\n'
+    printf 'StartupWMClass=lain-desktop\n'
   } > "$tmp" || {
     rm -f -- "$tmp" || true
     warn "could not write $desktop_file"
@@ -1205,7 +1230,7 @@ build_desktop_from_source() {
     warn "built binary not found under $build"
     return 1
   fi
-  if ! install_desktop_binary "$bin"; then
+  if ! install_desktop_binary "$bin" binary "${src}/packaging/lain-desktop.png"; then
     return 1
   fi
   return 0
@@ -1423,6 +1448,7 @@ uninstall_all() {
   local env_file="${COMPOSE_DIR}/.env"
   local unit_file="${HOME}/.config/systemd/user/lain.service"
   local desktop_file="${HOME}/.local/share/applications/lain-desktop.desktop"
+  local desktop_icon="${HOME}/.local/share/icons/hicolor/256x256/apps/lain-desktop.png"
   local desktop_bin="${INSTALL_DIR}/lain-desktop"
   local server_bin="${INSTALL_DIR}/lain"
   step "Uninstall"
@@ -1451,6 +1477,9 @@ uninstall_all() {
   fi
   if [[ -f "$desktop_file" ]] && grep -qF "$GENERATED_MARKER" "$desktop_file"; then
     remove_generated "$desktop_file"
+    if [[ -f "$desktop_icon" ]]; then
+      rm -f -- "$desktop_icon" || warn "could not remove $desktop_icon"
+    fi
     if command -v update-desktop-database >/dev/null 2>&1; then
       update-desktop-database "${HOME}/.local/share/applications" || true
     fi
