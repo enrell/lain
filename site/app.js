@@ -302,7 +302,7 @@
 		button.addEventListener("click", async () => {
 			const panel = panels.find((p) => !p.hidden);
 			const pre = panel ? panel.querySelector("pre[data-command]") : null;
-			const text = pre ? pre.dataset.command : button.dataset.copy || "";
+			const text = button.dataset.copy || (pre ? pre.dataset.command : "");
 			try {
 				if (navigator.clipboard && window.isSecureContext) {
 					await navigator.clipboard.writeText(text);
