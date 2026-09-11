@@ -50,8 +50,14 @@ desktop, server only, desktop only; Docker, static binary or user
 daemon; media paths with Tab completion, port, compose generation):
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash
+```
+
+Prefer to audit first? Download it, read it, then run it:
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh -o lain-install.sh
-less lain-install.sh          # read it first, it is yours to run
+less lain-install.sh          # it is yours to run
 bash lain-install.sh
 ```
 
