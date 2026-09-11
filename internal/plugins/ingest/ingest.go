@@ -93,6 +93,12 @@ func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 		stats.Errors += res.errors
 		stats.WalkErrors += res.walkErrors
 		stats.Dirs += res.dirs
+		// Identity v2 (D-019): re-home stable IDs onto moved or renamed
+		// files before persisting, while every root's present set is
+		// complete so genuine duplicates never merge.
+		reconciled, n := r.Cat.ReconcileMoves(res.libraryID, res.items, res.present)
+		res.items = reconciled
+		stats.Migrated += n
 		all = append(all, res.items...)
 	}
 	t0 := time.Now()

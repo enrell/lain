@@ -338,3 +338,48 @@ func TestNilTraceCostsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A renamed file rescans onto its stable ID (identity v2): no prune,
+// migration reported, previous path kept as an alias.
+func TestRescanRenameMigratesID(t *testing.T) {
+	root := t.TempDir()
+	oldPath := filepath.Join(root, "[Fansub-A] Frieren - 12 [1080p].mkv")
+	writeFile(t, oldPath)
+	r, cat := testRunner(t)
+	libs := []contracts.Library{{ID: "l", Type: "anime", Path: root}}
+	if _, err := r.Run(ScanInput{Libraries: libs}); err != nil {
+		t.Fatal(err)
+	}
+	before := cat.List()
+	if len(before) != 1 {
+		t.Fatalf("list=%d, want 1", len(before))
+	}
+	oldID := before[0].ID
+	newPath := filepath.Join(root, "[Fansub-B] Frieren - 12 [720p].mkv")
+	if err := os.Rename(oldPath, newPath); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := r.Run(ScanInput{Libraries: libs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Migrated != 1 {
+		t.Fatalf("migrated=%d, want 1", stats.Migrated)
+	}
+	if stats.Pruned != 0 {
+		t.Fatalf("pruned=%d, want 0 (move, not delete)", stats.Pruned)
+	}
+	after := cat.List()
+	if len(after) != 1 {
+		t.Fatalf("list=%d, want 1", len(after))
+	}
+	if after[0].ID != oldID {
+		t.Fatalf("id changed %s -> %s", oldID, after[0].ID)
+	}
+	if after[0].FilePath != newPath {
+		t.Fatalf("path=%s, want %s", after[0].FilePath, newPath)
+	}
+	if len(after[0].Aliases) != 1 || after[0].Aliases[0] != oldPath {
+		t.Fatalf("aliases=%v, want [%s]", after[0].Aliases, oldPath)
+	}
+}

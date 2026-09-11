@@ -228,3 +228,79 @@ func TestNormalizePage(t *testing.T) {
 		t.Fatalf("cap: %+v", p)
 	}
 }
+
+func reconcileSetup(t *testing.T) *Service {
+	t.Helper()
+	s := testService(t)
+	if err := s.UpsertBatch([]contracts.CatalogItem{mkItem("l", "/x/a.mkv", "Show")}); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestReconcileRenameKeepsID(t *testing.T) {
+	s := reconcileSetup(t)
+	old := s.List()[0]
+	moved := mkItem("l", "/y/b.mkv", "Show")
+	present := map[string]bool{moved.ID: true}
+	out, n := s.ReconcileMoves("l", []contracts.CatalogItem{moved}, present)
+	if n != 1 {
+		t.Fatalf("migrated=%d, want 1", n)
+	}
+	if out[0].ID != old.ID {
+		t.Fatalf("id=%s, want stable %s", out[0].ID, old.ID)
+	}
+	if len(out[0].Aliases) != 1 || out[0].Aliases[0] != "/x/a.mkv" {
+		t.Fatalf("aliases=%v, want [/x/a.mkv]", out[0].Aliases)
+	}
+	if !present[old.ID] || present[moved.ID] {
+		t.Fatalf("present not rewritten: %v", present)
+	}
+}
+
+func TestReconcileDuplicateBothPresent(t *testing.T) {
+	s := reconcileSetup(t)
+	old := s.List()[0]
+	dup := mkItem("l", "/y/b.mkv", "Show")
+	present := map[string]bool{old.ID: true, dup.ID: true}
+	out, n := s.ReconcileMoves("l", []contracts.CatalogItem{dup}, present)
+	if n != 0 || out[0].ID != dup.ID {
+		t.Fatalf("genuine duplicate must keep its own id: %+v migrated=%d", out[0], n)
+	}
+}
+
+func TestReconcileCrossLibraryNoMerge(t *testing.T) {
+	s := reconcileSetup(t)
+	other := mkItem("other", "/y/b.mkv", "Show")
+	present := map[string]bool{other.ID: true}
+	out, n := s.ReconcileMoves("other", []contracts.CatalogItem{other}, present)
+	if n != 0 || out[0].ID != other.ID {
+		t.Fatalf("cross-library titles must not merge: %+v migrated=%d", out[0], n)
+	}
+}
+
+func TestReconcileRefreshKnownPath(t *testing.T) {
+	s := reconcileSetup(t)
+	same := mkItem("l", "/x/a.mkv", "Show")
+	present := map[string]bool{same.ID: true}
+	out, n := s.ReconcileMoves("l", []contracts.CatalogItem{same}, present)
+	if n != 0 || len(out[0].Aliases) != 0 {
+		t.Fatalf("refresh must not migrate: %+v migrated=%d", out[0], n)
+	}
+}
+
+func TestExportV2AcceptsV1(t *testing.T) {
+	s := reconcileSetup(t)
+	if got := s.Export().Version; got != 2 {
+		t.Fatalf("export version=%d, want 2", got)
+	}
+	v1 := ExportDoc{Format: "lain.catalog-export", Version: 1,
+		Items: map[string]contracts.CatalogItem{mkItem("l", "/x/a.mkv", "Show").ID: mkItem("l", "/x/a.mkv", "Show")}}
+	if err := s.Import(v1); err != nil {
+		t.Fatalf("v1 import rejected: %v", err)
+	}
+	bad := ExportDoc{Format: "lain.catalog-export", Version: 3, Items: map[string]contracts.CatalogItem{}}
+	if err := s.Import(bad); err == nil {
+		t.Fatal("v3 import must fail")
+	}
+}

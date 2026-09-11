@@ -61,20 +61,27 @@ type Library struct {
 // CatalogItem is the canonical identity of one media object plus its
 // provenance. Manual user edits must survive provider swaps, so every
 // consolidated field records its origin.
+//
+// Identity v2 (D-019): the ID stays stable across file moves and renames.
+// When a rescan finds the same logical item under a new path, the catalog
+// adopts the existing ID onto the new path and records the previous path
+// in Aliases instead of minting a fresh ID. Progress and enrichments are
+// keyed by ID, so resume positions and overlays survive the move.
 type CatalogItem struct {
-	ID         string  `json:"id"`
-	LibraryID  string  `json:"library_id"`
-	Kind       string  `json:"kind"`
-	Title      string  `json:"title"`
-	Season     int     `json:"season"`
-	Episode    int     `json:"episode"`
-	Year       int     `json:"year"`
-	FilePath   string  `json:"file_path"`
-	Size       int64   `json:"size"`
-	Confidence float64 `json:"confidence"`
-	Origin     string  `json:"origin"`
-	Provenance string  `json:"provenance"`
-	UpdatedAt  int64   `json:"updated_at"`
+	ID         string   `json:"id"`
+	LibraryID  string   `json:"library_id"`
+	Kind       string   `json:"kind"`
+	Title      string   `json:"title"`
+	Season     int      `json:"season"`
+	Episode    int      `json:"episode"`
+	Year       int      `json:"year"`
+	FilePath   string   `json:"file_path"`
+	Size       int64    `json:"size"`
+	Confidence float64  `json:"confidence"`
+	Origin     string   `json:"origin"`
+	Provenance string   `json:"provenance"`
+	Aliases    []string `json:"aliases,omitempty"`
+	UpdatedAt  int64    `json:"updated_at"`
 }
 
 // CatalogPage is the paged envelope for catalog reads. Clients need
@@ -226,6 +233,7 @@ type ScanStats struct {
 	Unidentified int   `json:"unidentified"`
 	Errors       int   `json:"errors"`
 	Pruned       int   `json:"pruned"`
+	Migrated     int   `json:"migrated"`
 	WalkErrors   int   `json:"walk_errors"`
 	Dirs         int   `json:"dirs"`
 	StartedAt    int64 `json:"started_at"`
