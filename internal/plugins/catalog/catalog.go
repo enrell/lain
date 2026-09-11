@@ -366,11 +366,27 @@ func sortItems(out []contracts.CatalogItem, order string) {
 		return
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Title == out[j].Title {
-			return out[i].ID < out[j].ID
-		}
-		return out[i].Title < out[j].Title
+		return titleOrder(out[i], out[j])
 	})
+}
+
+// titleOrder keeps episodes of one show together and in watch order.
+// Same title falls back to season, episode, year, then ID so the order
+// is deterministic instead of hash-dependent.
+func titleOrder(a, b contracts.CatalogItem) bool {
+	if a.Title != b.Title {
+		return a.Title < b.Title
+	}
+	if a.Season != b.Season {
+		return a.Season < b.Season
+	}
+	if a.Episode != b.Episode {
+		return a.Episode < b.Episode
+	}
+	if a.Year != b.Year {
+		return a.Year < b.Year
+	}
+	return a.ID < b.ID
 }
 
 // ListByLibrary returns one library's items sorted by title.
@@ -391,10 +407,19 @@ func (s *Service) ListByLibrary(libraryID string) []contracts.CatalogItem {
 		return nil
 	})
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Title == out[j].Title {
-			return out[i].ID < out[j].ID
+		if out[i].Title != out[j].Title {
+			return out[i].Title < out[j].Title
 		}
-		return out[i].Title < out[j].Title
+		if out[i].Season != out[j].Season {
+			return out[i].Season < out[j].Season
+		}
+		if out[i].Episode != out[j].Episode {
+			return out[i].Episode < out[j].Episode
+		}
+		if out[i].Year != out[j].Year {
+			return out[i].Year < out[j].Year
+		}
+		return out[i].ID < out[j].ID
 	})
 	if out == nil {
 		out = []contracts.CatalogItem{}

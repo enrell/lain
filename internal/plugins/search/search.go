@@ -89,10 +89,19 @@ func sortFiltered(items []contracts.CatalogItem, order string) {
 		return
 	}
 	sort.Slice(items, func(i, j int) bool {
-		if items[i].Title == items[j].Title {
-			return items[i].ID < items[j].ID
+		if items[i].Title != items[j].Title {
+			return items[i].Title < items[j].Title
 		}
-		return items[i].Title < items[j].Title
+		if items[i].Season != items[j].Season {
+			return items[i].Season < items[j].Season
+		}
+		if items[i].Episode != items[j].Episode {
+			return items[i].Episode < items[j].Episode
+		}
+		if items[i].Year != items[j].Year {
+			return items[i].Year < items[j].Year
+		}
+		return items[i].ID < items[j].ID
 	})
 }
 

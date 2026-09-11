@@ -304,3 +304,45 @@ func TestExportV2AcceptsV1(t *testing.T) {
 		t.Fatal("v3 import must fail")
 	}
 }
+
+func mkEpisode(lib, path, title string, season, episode int) contracts.CatalogItem {
+	return NewItem(lib,
+		contracts.Proposal{Kind: "episode", Title: title, Season: season, Episode: episode, Confidence: 0.9, PluginID: "p"},
+		contracts.Candidate{Path: path, Size: 10, LibraryID: lib})
+}
+
+func TestTitleSortOrdersEpisodes(t *testing.T) {
+	s := testService(t)
+	if err := s.UpsertBatch([]contracts.CatalogItem{
+		mkEpisode("l", "/x/show-e20.mkv", "Show", 1, 20),
+		mkEpisode("l", "/x/show-e9.mkv", "Show", 1, 9),
+		mkEpisode("l", "/x/show-e2s2.mkv", "Show", 2, 2),
+		mkEpisode("l", "/x/show-e1s2.mkv", "Show", 2, 1),
+		mkEpisode("l", "/x/other.mkv", "Other", 0, 0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, total := s.Query("", "", contracts.PageParams{Limit: -1, Sort: "title"})
+	if total != 5 {
+		t.Fatalf("total=%d, want 5", total)
+	}
+	want := []struct {
+		title   string
+		season  int
+		episode int
+	}{
+		{"Other", 0, 0},
+		{"Show", 1, 9},
+		{"Show", 1, 20},
+		{"Show", 2, 1},
+		{"Show", 2, 2},
+	}
+	for i, w := range want {
+		if got[i].Title != w.title || got[i].Season != w.season || got[i].Episode != w.episode {
+			t.Fatalf("pos %d: got %s S%dE%d, want %s S%dE%d", i, got[i].Title, got[i].Season, got[i].Episode, w.title, w.season, w.episode)
+		}
+	}
+	if got2 := s.ListByLibrary("l"); len(got2) != 5 || got2[1].Episode != 9 || got2[2].Episode != 20 {
+		t.Fatalf("ListByLibrary not in episode order: %+v", got2)
+	}
+}
