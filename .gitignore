@@ -18,3 +18,8 @@ web/build/
 # compiled UI embedded into the Go binary (built by `make web` / Docker)
 internal/webui/dist/*
 !internal/webui/dist/.gitkeep
+
+# agent session tooling (never commit)
+.opencode/
+opencode.json
+__pycache__/
