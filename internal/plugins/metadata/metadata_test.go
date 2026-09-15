@@ -49,6 +49,42 @@ func TestKitsuSearchResolve(t *testing.T) {
 	}
 }
 
+func TestKitsuToleratesImageMeta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/edge/anime" {
+			w.Write([]byte(`{"data":[{"id":"21","attributes":{"canonicalTitle":"Darling in the FranXX","titles":{"en":"Darling in the FranXX"},"synopsis":"Mecha.","startDate":"2018-01-13","episodeCount":24,"posterImage":{"tiny":"https://tiny.jpg","small":"https://small.jpg","meta":{"dimensions":{"tiny":{"width":110}}},"original":"https://p.jpg"},"coverImage":{"small":"https://cs.jpg","meta":{"dimensions":{}},"original":"https://c.jpg"}}}]}`))
+			return
+		}
+		if r.URL.Path == "/api/edge/anime/21" {
+			w.Write([]byte(`{"data":{"id":"21","attributes":{"canonicalTitle":"Darling in the FranXX","titles":{"en":"Darling in the FranXX"},"synopsis":"Mecha.","startDate":"2018-01-13","episodeCount":24,"posterImage":{"original":"https://p.jpg","meta":{}},"coverImage":{"original":"https://c.jpg","meta":{}}}}}`))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+	k := NewKitsu()
+	k.BaseURL = srv.URL
+	k.http.minGap = 0
+
+	out, err := k.Invoke(contracts.CapMetadataSearch, contracts.MetadataSearchInput{Query: "Darling in the FranXX"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := out.([]contracts.MetadataCandidate)
+	if len(list) != 1 || list[0].Poster != "https://p.jpg" {
+		t.Fatalf("kitsu meta-tolerant search: %+v", list)
+	}
+	rout, err := k.Invoke(contracts.CapMetadataResolve, contracts.MetadataResolveInput{Provider: k.ID(), RemoteID: "21"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := rout.(contracts.MetadataRecord)
+	if rec.Poster != "https://p.jpg" || rec.Cover != "https://c.jpg" {
+		t.Fatalf("kitsu meta-tolerant resolve: %+v", rec)
+	}
+}
+
 func TestAniListSearchResolve(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -189,6 +225,31 @@ func TestMergeDedupAndPrecedence(t *testing.T) {
 	}
 }
 
+func TestMergeRejectsUnrelated(t *testing.T) {
+	// A generic release name must not adopt an unrelated upstream hit.
+	junk := []contracts.MetadataCandidate{
+		{Provider: "kitsu", RemoteID: "1", Title: "Kikou Souseiki Mospeada"},
+		{Provider: "kitsu", RemoteID: "2", Title: "Free! Movie 1: Timeless Medley", Synonyms: []string{"Eiga Free!"}},
+	}
+	if out := MergeCandidates("Other Show 01", []any{junk}, []string{"kitsu"}, 10); len(out) != 0 {
+		t.Fatalf("unrelated hits must be rejected, got %+v", out)
+	}
+	// A synonym still identifies the show ("romaji" vs "english").
+	withSyn := []contracts.MetadataCandidate{
+		{Provider: "kitsu", RemoteID: "3", Title: "That Time I Got Reincarnated as a Slime", Synonyms: []string{"Tensei Shitara Slime Datta Ken"}},
+	}
+	if out := MergeCandidates("Tensei Shitara Slime Datta Ken", []any{withSyn}, []string{"kitsu"}, 10); len(out) != 1 {
+		t.Fatalf("synonym match must survive, got %+v", out)
+	}
+	// Edition/season suffixes keep matching through prefix containment.
+	seasons := []contracts.MetadataCandidate{
+		{Provider: "kitsu", RemoteID: "4", Title: "Darling in the FranXX"},
+	}
+	if out := MergeCandidates("Darling in the FranXX 2nd Season", []any{seasons}, []string{"kitsu"}, 10); len(out) != 1 {
+		t.Fatalf("prefix match must survive, got %+v", out)
+	}
+}
+
 func TestNormalizeTitle(t *testing.T) {
 	if normalizeTitle("Darling in the FranXX") != normalizeTitle("darling-in-the-franxx") {
 		t.Fatal("punctuation/case must fold")
@@ -283,5 +344,19 @@ func TestCacheSearchRecordTTL(t *testing.T) {
 	}
 	if _, ok := c.GetRecord("p", "2"); ok {
 		t.Fatal("other id must miss")
+	}
+}
+
+func TestCacheIgnoresEmptySearch(t *testing.T) {
+	db, err := openTestDB(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewCache(db)
+	if err := c.PutSearch("anime", "ghost", []contracts.MetadataCandidate{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.GetSearch("anime", "ghost"); ok {
+		t.Fatal("empty cached search must read as miss so outages self-heal")
 	}
 }

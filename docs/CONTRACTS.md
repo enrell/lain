@@ -36,8 +36,11 @@ user+item in its own document; catalog rewrites never touch it.
 Input: `{request{item_id, client, network}, file_path}` → `Plan{mode,
 asset, available, reason?}`. `asset` is opaque (`asset:<id>`); the
 gateway resolves it. mpv/desktop clients always direct-play; browser
-clients facing non-web containers get `transcode-required` with
-`available:false` until a transcode provider exists.
+clients get `direct` for web containers and `transcode` (playable
+through the transcode endpoint) for the rest. Without a healthy
+transcode provider the gateway downgrades those plans to
+`transcode-required` with `available:false` instead of faking a
+stream.
 
 ## lain.search.query@1 (exactly-one)
 
@@ -54,12 +57,66 @@ Input: `{libraries[]}` → `ScanStats{libraries, candidates, identified,
 unidentified, errors, ...}`. Fixed order: enumerate → identify →
 catalog write. Unidentified files count, never abort.
 
+## lain.playback.transcode@1 (exactly-one)
+
+Input: `{file_path}` → `Transcode{path, method?, cached?}`. The ffmpeg
+provider (`lain-transcode-ffmpeg`) prepares a browser-playable MP4 on
+disk: stream-copy remux when the source is already H.264/AAC, else a
+`veryfast` H.264/AAC re-encode with `+faststart`. First video track
+plus all audio tracks are kept; subtitles are dropped in this slice.
+Cache key is source identity (path, mtime, size) plus output profile;
+at most one ffmpeg transcode runs at a time. The gateway serves the
+file at `GET /api/items/{id}/transcode` with Range support. No
+ffmpeg? Health fails, the endpoint 503s and plans downgrade.
+Kept as the synchronous compatibility contract.
+
+## lain.playback.transcode@2 (exactly-one)
+
+Async variant over the same worker and cache. Actions: `inspect` and
+`status` are side-effect free; only `start` enqueues work. States:
+`idle|queued|running|ready|failed`. The session is an opaque,
+deterministic key over source identity, the `web-mp4-sdr-v2` profile
+and selected stream indices. One global worker, bounded FIFO queue
+(8); duplicate sessions converge on one job. HTTP: `POST
+/api/items/{id}/transcode` starts/joins (202 while pending, 200 when
+ready, 429 `queue-full`), `GET .../transcode/status?session=` polls
+without filesystem paths, and `GET .../transcode?session=` resolves
+the ready MP4 (202 + `Retry-After` while pending). `GET
+/api/items/{id}/playback` reports additive `profile`, `session` and
+`state` but never starts work.
+
+Ready artifacts live in a plugin-private 20 GiB LRU cache (default;
+`--transcode-cache-size` / `LAIN_TRANSCODE_CACHE_SIZE`) with atomic
+JSON sidecars tracking identity, method, size and last access.
+Cleanup runs at startup and around admission/completion; stale-source
+and abandoned-temporary entries are removed, active jobs excluded. A
+single artifact larger than the quota is kept as the sole entry with
+a warning.
+
+Stream policy is probe-driven (`lain.media.probe@1`): copy compatible
+H.264 video, encode other SDR video (including HEVC/AV1) to
+H.264/yuv420p, keep one audio track (explicit selection, else default,
+else first; AAC copied, others to AAC). HDR is detected and refused
+with `unsupported-media` until a tone-map profile exists. Convertible
+text subtitles (`SRT`/`ASS`/`SSA`/WebVTT/`mov_text`) are extracted to
+WebVTT sidecars served at `GET /api/items/{id}/subtitles?session=`
+(`text/vtt`); bitmap/styled tracks report unavailable, and ASS loses
+styling. PGS/VobSub and burn-in stay out.
+
+## lain.media.probe@1 (exactly-one)
+
+Input: `{file_path}` → `MediaInfo{format, duration?, streams[]}`.
+ffprobe-backed, bounded metadata only (index, type, codec, profile,
+pixel format, dimensions, channels, language, title, default/forced,
+HDR color markers, subtitle convertibility). Never carries bytes.
+Absence of ffprobe degrades browser planning to the conservative
+extension fallback; the v2 transcode profile requires it.
+
 ## Declared (next slice)
 
-`lain.playback.transcode@1`, `lain.sync.*@1`.
-Names are reserved here so first implementers do not collide.
-(`lain.transform.thumbnail@1` was implemented from this reserved
-family; see below.)
+`lain.sync.*@1`. Names are reserved here so first implementers do not collide.
+(`lain.transform.thumbnail@1` and `lain.playback.transcode@1` were
+implemented from this reserved family; see below.)
 
 ## lain.transform.thumbnail@1 (exactly-one)
 
@@ -85,7 +142,11 @@ synonyms, year, poster). `dir` hints local sources; remotes ignore it.
 
 The gateway fans out (`Registry.CallMerge`), dedups by normalized
 title, and scores exact matches first, then binding precedence
-(`nfo → kitsu → anilist → jikan`). Failing providers are skipped, so
+(`nfo → kitsu → anilist → jikan → tvmaze`). TVMaze is keyless and
+TV-first: it answers series/episode/video/anime kinds and stays
+silent for movies. TMDB and IMDb are deliberately out of this slice
+(TMDB needs a user-supplied key, IMDb has no free official API;
+see Q-010/Q-011). Failing providers are skipped, so
 an upstream outage degrades the merge instead of failing it. Winners
 resolve through `Registry.InvokeProvider` (still through authority)
 and persist as overlays (`POST /api/catalog/{id}/enrich`), never

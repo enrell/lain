@@ -53,33 +53,65 @@ func (s *Server) handleEnrich(w http.ResponseWriter, r *http.Request, _ auth.Ver
 		writeErr(w, 404, "unknown item")
 		return
 	}
-	only := r.URL.Query().Get("provider")
+	saved, code, errMsg := s.enrichOne(item, r.URL.Query().Get("provider"))
+	if errMsg != "" {
+		writeErr(w, code, errMsg)
+		return
+	}
+	writeJSON(w, 200, saved)
+}
+
+// autoEnrichMissing enriches every catalog item that has no overlay yet.
+// Every failure is skipped: a missing match or a down provider must never
+// fail the scan that just succeeded. Items enrich one at a time, so
+// provider APIs see a sequential trickle, never a burst.
+func (s *Server) autoEnrichMissing() int {
+	saver := metadata.NewSaver(s.db)
+	done := 0
+	for _, item := range s.cat.List() {
+		if _, ok := saver.Get(item.ID); ok {
+			continue
+		}
+		if _, _, errMsg := s.enrichOne(item, ""); errMsg != "" {
+			continue
+		}
+		done++
+	}
+	return done
+}
+
+// enrichOne searches, resolves, and saves one overlay with the Auto
+// provider set (only == ""), or a single named provider. It returns the
+// HTTP status its caller should report alongside any error message.
+func (s *Server) enrichOne(item contracts.CatalogItem, only string) (contracts.Enrichment, int, string) {
 	kind := "anime"
 	if item.Kind != "" && item.Kind != "episode" && item.Kind != "video" {
 		kind = item.Kind
 	}
 	merged, err := s.searchMetadata(item.Title, kind, dirOf(item.FilePath), only)
 	if err != nil {
-		writeErr(w, 503, err.Error())
-		return
+		s.logger().Warn("enrich search failed", "item", item.ID, "title", item.Title, "err", err.Error())
+		return contracts.Enrichment{}, 503, err.Error()
 	}
 	best, ok := metadata.BestPick(merged)
 	if !ok {
-		writeErr(w, 404, "no metadata found")
-		return
+		s.logger().Warn("enrich no match", "item", item.ID, "title", item.Title, "kind", kind)
+		return contracts.Enrichment{}, 404, "no metadata found"
 	}
 	rec, err := s.resolveMetadata(best.Provider, best.RemoteID)
 	if err != nil {
-		writeErr(w, 503, err.Error())
-		return
+		s.logger().Warn("enrich resolve failed", "item", item.ID, "title", item.Title,
+			"provider", best.Provider, "remote_id", best.RemoteID, "err", err.Error())
+		return contracts.Enrichment{}, 503, err.Error()
 	}
 	saver := metadata.NewSaver(s.db)
-	saved, err := saver.Save(id, rec)
+	saved, err := saver.Save(item.ID, rec)
 	if err != nil {
-		writeErr(w, 500, err.Error())
-		return
+		s.logger().Error("enrich save failed", "item", item.ID, "title", item.Title, "err", err.Error())
+		return contracts.Enrichment{}, 500, err.Error()
 	}
-	writeJSON(w, 200, saved)
+	s.logger().Debug("enrich ok", "item", item.ID, "title", saved.Title, "provider", saved.Provider)
+	return saved, 200, ""
 }
 
 func (s *Server) handleEnrichGet(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
@@ -102,7 +134,8 @@ func (s *Server) handleEnrichDelete(w http.ResponseWriter, r *http.Request, _ au
 }
 
 // searchMetadata serves from cache, else fans out and caches the merge.
-// only restricts to one provider (empty = all bound).
+// only restricts to one provider (empty = all bound). Empty merges are
+// never cached: a down provider must not poison the next attempt.
 func (s *Server) searchMetadata(query, kind, dir, only string) ([]contracts.MetadataCandidate, error) {
 	cache := metadata.NewCache(s.db)
 	if only == "" {
@@ -111,7 +144,7 @@ func (s *Server) searchMetadata(query, kind, dir, only string) ([]contracts.Meta
 		}
 	}
 	in := contracts.MetadataSearchInput{Query: query, Kind: kind, Limit: 5, Dir: dir}
-	out, _, err := s.reg.CallMerge(contracts.CapMetadataSearch, in, func(outputs []any, ids []string) any {
+	out, ids, skipped, err := s.reg.CallMergeReport(contracts.CapMetadataSearch, in, func(outputs []any, ids []string) any {
 		if only != "" {
 			for i, id := range ids {
 				if id == only {
@@ -122,11 +155,22 @@ func (s *Server) searchMetadata(query, kind, dir, only string) ([]contracts.Meta
 		}
 		return metadata.MergeCandidates(query, outputs, ids, 10)
 	})
+	// Skipped providers degrade the merge silently by contract; the
+	// causes live here at debug so a dead upstream is one grep away.
+	// Logged before the error return so total outages keep attribution.
+	if len(skipped) > 0 {
+		causes := make([]string, 0, len(skipped))
+		for _, f := range skipped {
+			causes = append(causes, f.Provider+": "+f.Err.Error())
+		}
+		s.logger().Debug("metadata providers skipped", "query", query, "kind", kind, "causes", strings.Join(causes, "; "))
+	}
 	if err != nil {
 		return nil, err
 	}
 	merged, _ := out.([]contracts.MetadataCandidate)
-	if only == "" {
+	s.logger().Debug("metadata search", "query", query, "kind", kind, "hits", len(merged), "from", strings.Join(ids, ","))
+	if only == "" && len(merged) > 0 {
 		_ = cache.PutSearch(kind, query, merged)
 	}
 	return merged, nil

@@ -1,8 +1,9 @@
 // Package metadata holds replaceable metadata providers behind
 // lain.metadata.search@1 / resolve@1 (merge-many): local NFO first,
-// then Kitsu, AniList and Jikan over plain HTTPS with the standard
-// library only. No Rust, no FFI: we consume the same upstream sources
-// animedb normalizes, with our own small clients.
+// then Kitsu, AniList and Jikan for anime plus keyless TVMaze for
+// series, over plain HTTPS with the standard library only. No Rust,
+// no FFI: we consume the same upstream sources animedb normalizes,
+// with our own small clients.
 //
 // A failing provider degrades the merge instead of failing the call;
 // locals answer offline; remotes are cached with TTL (see cache.go).

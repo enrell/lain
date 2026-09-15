@@ -11,13 +11,18 @@ import (
 	"github.com/enrell/lain/internal/core"
 )
 
+// LocalProviderID is the user-curated sidecar provider: its hits are
+// already relevant by construction (the filename matched or it is a
+// show/movie root), so the merge never re-filters them.
+const LocalProviderID = "lain-metadata-nfo"
+
 // NFO reads Kodi-style sidecar files next to the media. Fully offline,
 // user-curated, always first in the default precedence: when the user
 // wrote down what something is, the network does not get a vote.
 // RemoteID is the absolute .nfo path (local-only by nature).
 type NFO struct{}
 
-func (NFO) ID() string { return "lain-metadata-nfo" }
+func (NFO) ID() string { return LocalProviderID }
 func (NFO) Capabilities() []string {
 	return []string{contracts.CapMetadataSearch, contracts.CapMetadataResolve}
 }
@@ -93,7 +98,7 @@ func searchNFO(in contracts.MetadataSearchInput) ([]contracts.MetadataCandidate,
 			continue
 		}
 		out = append(out, contracts.MetadataCandidate{
-			Provider: "lain-metadata-nfo", RemoteID: filepath.Join(in.Dir, name),
+			Provider: LocalProviderID, RemoteID: filepath.Join(in.Dir, name),
 			Title: rec.Title, Year: rec.Year, Kind: in.Kind, Poster: rec.Poster,
 		})
 		if len(out) >= in.Limit && in.Limit > 0 {
@@ -145,7 +150,7 @@ func resolveNFO(path string) (contracts.MetadataRecord, error) {
 		cover = strings.TrimSpace(doc.Fanart.Thumbs[0].URL)
 	}
 	return contracts.MetadataRecord{
-		Provider: "lain-metadata-nfo", RemoteID: path, Title: title,
+		Provider: LocalProviderID, RemoteID: path, Title: title,
 		Year: year, Genres: doc.Genres, Synopsis: strings.TrimSpace(doc.Plot),
 		Poster: poster, Cover: cover,
 	}, nil

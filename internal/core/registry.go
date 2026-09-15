@@ -224,30 +224,48 @@ func (r *Registry) CallFirst(capability string, input any, accepted func(any) bo
 	return nil, "", false, lastErr
 }
 
-// CallMerge fans out to every healthy provider of a merge-many
-// capability and hands the collected outputs to merge. Provider
-// failures are skipped (best-effort remotes), never fatal: a failing
-// provider degrades the merge, it does not fail the call. Total
-// failure of all providers is dependency-unavailable.
-func (r *Registry) CallMerge(capability string, input any, merge func(outputs []any, ids []string) any) (any, []string, error) {
+// ProviderError records one provider's failure inside a merge-many
+// fan-out. Failures degrade the merge; this shape exists so callers
+// can log causes without changing merge semantics.
+type ProviderError struct {
+	Provider string
+	Err      error
+}
+
+// CallMergeReport fans out like CallMerge and additionally reports
+// per-provider failures. Callers log them; the merge itself still
+// skips failures and only fails when every provider fails.
+func (r *Registry) CallMergeReport(capability string, input any, merge func(outputs []any, ids []string) any) (any, []string, []ProviderError, error) {
 	provs, _, err := r.Ordered(capability)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var outputs []any
 	var ids []string
+	var failed []ProviderError
 	for _, p := range provs {
 		out, err := p.Invoke(capability, input)
 		if err != nil {
+			failed = append(failed, ProviderError{Provider: p.ID(), Err: err})
 			continue
 		}
 		outputs = append(outputs, out)
 		ids = append(ids, p.ID())
 	}
 	if len(outputs) == 0 {
-		return nil, nil, &Error{Code: "dependency-unavailable", Msg: "all providers failed for " + capability}
+		return nil, nil, failed, &Error{Code: "dependency-unavailable", Msg: "all providers failed for " + capability}
 	}
-	return merge(outputs, ids), ids, nil
+	return merge(outputs, ids), ids, failed, nil
+}
+
+// CallMerge fans out to every healthy provider of a merge-many
+// capability and hands the collected outputs to merge. Provider
+// failures are skipped (best-effort remotes), never fatal: a failing
+// provider degrades the merge, it does not fail the call. Total
+// failure of all providers is dependency-unavailable.
+func (r *Registry) CallMerge(capability string, input any, merge func(outputs []any, ids []string) any) (any, []string, error) {
+	out, ids, _, err := r.CallMergeReport(capability, input, merge)
+	return out, ids, err
 }
 
 // InvokeProvider calls one named provider of a capability directly,

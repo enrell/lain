@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/enrell/lain/internal/contracts"
 )
@@ -66,6 +67,7 @@ func TestEnrichFlow(t *testing.T) {
 		},
 		&fakeMeta{id: "lain-metadata-anilist", failSearch: true},
 		&fakeMeta{id: "lain-metadata-jikan", failSearch: true},
+		&fakeMeta{id: "lain-metadata-tvmaze", failSearch: true},
 	)
 
 	root := t.TempDir()
@@ -141,6 +143,7 @@ func TestEnrichNoMatch(t *testing.T) {
 		&fakeMeta{id: "lain-metadata-kitsu"},
 		&fakeMeta{id: "lain-metadata-anilist"},
 		&fakeMeta{id: "lain-metadata-jikan"},
+		&fakeMeta{id: "lain-metadata-tvmaze"},
 	)
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "Whatever.mkv"), []byte("x"), 0o644); err != nil {
@@ -171,5 +174,187 @@ func TestEnrichNoMatch(t *testing.T) {
 	rec = do(t, srv, "POST", "/api/catalog/"+id+"/enrich", nil, admin)
 	if rec.Code != 404 {
 		t.Fatalf("empty merge must 404, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func scanToDone(t *testing.T, srv *Server, admin string) map[string]any {
+	t.Helper()
+	if rec := do(t, srv, "POST", "/api/library/scan", nil, admin); rec.Code != 202 {
+		t.Fatalf("scan: %d", rec.Code)
+	}
+	var status struct {
+		State string         `json:"state"`
+		Stats map[string]any `json:"stats"`
+	}
+	for i := 0; i < 200; i++ {
+		rec := do(t, srv, "GET", "/api/library/scan", nil, admin)
+		_ = json.Unmarshal(rec.Body.Bytes(), &status)
+		if status.State == "done" || status.State == "error" {
+			break
+		}
+	}
+	if status.State != "done" {
+		t.Fatalf("scan state %q", status.State)
+	}
+	return status.Stats
+}
+
+// Scans enrich overlay-less items by default: the web grid and the
+// desktop show metadata without any manual enrich step.
+func TestScanAutoEnrichesByDefault(t *testing.T) {
+	srv := testServer(t)
+	srv.SetAutoEnrich(true)
+	admin := setupAdmin(t, srv)
+	withFakeMetadata(t, srv,
+		&fakeMeta{id: "lain-metadata-nfo", candidates: []contracts.MetadataCandidate{}},
+		&fakeMeta{
+			id:         "lain-metadata-kitsu",
+			candidates: []contracts.MetadataCandidate{{Provider: "lain-metadata-kitsu", RemoteID: "12", Title: "Frieren", Year: 2023}},
+			record:     contracts.MetadataRecord{Provider: "lain-metadata-kitsu", RemoteID: "12", Title: "Frieren", Year: 2023},
+		},
+		&fakeMeta{id: "lain-metadata-anilist", failSearch: true},
+		&fakeMeta{id: "lain-metadata-jikan", failSearch: true},
+		&fakeMeta{id: "lain-metadata-tvmaze", failSearch: true},
+	)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "Frieren - 12.mkv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "L", "type": "anime", "path": root}, admin); rec.Code != 201 {
+		t.Fatalf("library: %d", rec.Code)
+	}
+	stats := scanToDone(t, srv, admin)
+	if stats["enriched"] != float64(1) {
+		t.Fatalf("enriched=%v, want 1", stats["enriched"])
+	}
+	var page struct {
+		Items []map[string]any `json:"items"`
+	}
+	rec := do(t, srv, "GET", "/api/catalog", nil, admin)
+	_ = json.Unmarshal(rec.Body.Bytes(), &page)
+	id := page.Items[0]["id"].(string)
+	rec = do(t, srv, "GET", "/api/catalog/"+id+"/enrich", nil, admin)
+	if rec.Code != 200 {
+		t.Fatalf("overlay missing: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestScanSkipsAutoEnrichWhenDisabled(t *testing.T) {
+	srv := testServer(t)
+	srv.SetAutoEnrich(false)
+	admin := setupAdmin(t, srv)
+	withFakeMetadata(t, srv,
+		&fakeMeta{
+			id:         "lain-metadata-kitsu",
+			candidates: []contracts.MetadataCandidate{{Provider: "lain-metadata-kitsu", RemoteID: "12", Title: "Frieren", Year: 2023}},
+			record:     contracts.MetadataRecord{Provider: "lain-metadata-kitsu", RemoteID: "12", Title: "Frieren", Year: 2023},
+		},
+		&fakeMeta{id: "lain-metadata-tvmaze"},
+	)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "Frieren - 12.mkv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "L", "type": "anime", "path": root}, admin); rec.Code != 201 {
+		t.Fatalf("library: %d", rec.Code)
+	}
+	stats := scanToDone(t, srv, admin)
+	if stats["enriched"] != float64(0) {
+		t.Fatalf("enriched=%v, want 0", stats["enriched"])
+	}
+}
+
+// Empty merges must not poison the cache: a transient outage followed
+// by a healthy provider still enriches on retry.
+func TestEnrichEmptyNotCached(t *testing.T) {
+	srv := testServer(t)
+	admin := setupAdmin(t, srv)
+	withFakeMetadata(t, srv,
+		&fakeMeta{id: "lain-metadata-nfo", candidates: []contracts.MetadataCandidate{}},
+		&fakeMeta{id: "lain-metadata-kitsu", candidates: []contracts.MetadataCandidate{}},
+		&fakeMeta{id: "lain-metadata-anilist", candidates: []contracts.MetadataCandidate{}},
+		&fakeMeta{id: "lain-metadata-jikan", candidates: []contracts.MetadataCandidate{}},
+		&fakeMeta{id: "lain-metadata-tvmaze", candidates: []contracts.MetadataCandidate{}},
+	)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "Darling in the FranXX - 12.mkv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "L", "type": "anime", "path": root}, admin); rec.Code != 201 {
+		t.Fatalf("library: %d", rec.Code)
+	}
+	stats := scanToDone(t, srv, admin)
+	if stats["enriched"] != float64(0) {
+		t.Fatalf("enriched=%v, want 0 while all providers are empty", stats["enriched"])
+	}
+	var page struct {
+		Items []map[string]any `json:"items"`
+	}
+	rec := do(t, srv, "GET", "/api/catalog", nil, admin)
+	_ = json.Unmarshal(rec.Body.Bytes(), &page)
+	id := page.Items[0]["id"].(string)
+	if rec := do(t, srv, "POST", "/api/catalog/"+id+"/enrich", nil, admin); rec.Code != 404 {
+		t.Fatalf("empty merge must 404, got %d %s", rec.Code, rec.Body.String())
+	}
+	withFakeMetadata(t, srv,
+		&fakeMeta{
+			id:         "lain-metadata-kitsu",
+			candidates: []contracts.MetadataCandidate{{Provider: "lain-metadata-kitsu", RemoteID: "21", Title: "Darling in the FranXX", Year: 2018}},
+			record:     contracts.MetadataRecord{Provider: "lain-metadata-kitsu", RemoteID: "21", Title: "Darling in the FranXX", Year: 2018},
+		},
+	)
+	if rec := do(t, srv, "POST", "/api/catalog/"+id+"/enrich", nil, admin); rec.Code != 200 {
+		t.Fatalf("retry after outage must succeed, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// No per-scan cap: one scan enriches the whole backlog, however large.
+func TestScanEnrichesEverything(t *testing.T) {
+	srv := testServer(t)
+	srv.SetAutoEnrich(true)
+	admin := setupAdmin(t, srv)
+	withFakeMetadata(t, srv,
+		&fakeMeta{id: "lain-metadata-nfo", candidates: []contracts.MetadataCandidate{}},
+		&fakeMeta{
+			id:         "lain-metadata-kitsu",
+			candidates: []contracts.MetadataCandidate{{Provider: "lain-metadata-kitsu", RemoteID: "1", Title: "Bulk", Year: 2024}},
+			record:     contracts.MetadataRecord{Provider: "lain-metadata-kitsu", RemoteID: "1", Title: "Bulk", Year: 2024},
+		},
+		&fakeMeta{id: "lain-metadata-anilist", failSearch: true},
+		&fakeMeta{id: "lain-metadata-jikan", failSearch: true},
+		&fakeMeta{id: "lain-metadata-tvmaze", failSearch: true},
+	)
+	root := t.TempDir()
+	const n = 120
+	for i := 0; i < n; i++ {
+		name := filepath.Join(root, "Bulk S01E"+string(rune('0'+i/100))+string(rune('0'+(i/10)%10))+string(rune('0'+i%10))+".mkv")
+		if err := os.WriteFile(name, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "L", "type": "anime", "path": root}, admin); rec.Code != 201 {
+		t.Fatalf("library: %d", rec.Code)
+	}
+	if rec := do(t, srv, "POST", "/api/library/scan", nil, admin); rec.Code != 202 {
+		t.Fatalf("scan: %d", rec.Code)
+	}
+	var status struct {
+		State string         `json:"state"`
+		Stats map[string]any `json:"stats"`
+	}
+	for i := 0; i < 600; i++ {
+		rec := do(t, srv, "GET", "/api/library/scan", nil, admin)
+		_ = json.Unmarshal(rec.Body.Bytes(), &status)
+		if status.State == "done" || status.State == "error" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if status.State != "done" {
+		t.Fatalf("scan state %q", status.State)
+	}
+	stats := status.Stats
+	if stats["enriched"] != float64(n) {
+		t.Fatalf("enriched=%v, want %d", stats["enriched"], n)
 	}
 }

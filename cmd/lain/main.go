@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/enrell/lain/internal/gateway"
@@ -58,7 +60,7 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage: lain <command> [flags]
 
-  serve     run the server (flags: --data-dir, --port)
+	serve     run the server (flags: --data-dir, --port, --bind, --log-level, --transcode-cache-size)
   doctor    diagnose runtime + matrix environment (flags: --data-dir, --matrix-bin)
   plugins   list registered providers + composition (flags: --data-dir)
   bench     run a workload benchmark (bench scan --path DIR [--runs N])
@@ -94,11 +96,36 @@ func cmdServe(args []string) error {
 	dataDir := flag(args, "data-dir", defaultDataDir())
 	port := flag(args, "port", "9360")
 	bind := flag(args, "bind", "127.0.0.1")
-	srv, err := gateway.New(dataDir, version)
+	logLevel := flag(args, "log-level", "")
+	if logLevel == "" {
+		logLevel = os.Getenv("LAIN_LOG_LEVEL")
+	}
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	cacheSize := flag(args, "transcode-cache-size", os.Getenv("LAIN_TRANSCODE_CACHE_SIZE"))
+	if cacheSize == "" {
+		cacheSize = "20GiB"
+	}
+	cacheBytes, err := parseByteSize(cacheSize)
+	if err != nil {
+		return fmt.Errorf("transcode cache size: %w", err)
+	}
+	level, err := gateway.ParseLogLevel(logLevel)
+	if err != nil {
+		return err
+	}
+	srv, err := gateway.NewWithOptions(dataDir, version, gateway.Options{TranscodeCacheBytes: cacheBytes})
 	if err != nil {
 		return err
 	}
 	defer srv.Close()
+	logger := gateway.NewAgentLogger(os.Stdout, level, "lain", version)
+	srv.SetLogger(logger)
+	logger.Info("log level: " + logLevel)
+	if v := os.Getenv("LAIN_AUTO_ENRICH"); v == "0" || v == "false" || v == "FALSE" {
+		srv.SetAutoEnrich(false)
+	}
 	httpSrv := &http.Server{
 		Addr:         bind + ":" + port,
 		Handler:      srv.Handler(),
@@ -107,6 +134,28 @@ func cmdServe(args []string) error {
 	}
 	fmt.Printf("lain %s on http://%s:%s (data %s)\n", version, bind, port, dataDir)
 	return httpSrv.ListenAndServe()
+}
+
+func parseByteSize(raw string) (int64, error) {
+	s := strings.TrimSpace(raw)
+	multiplier := int64(1)
+	for suffix, value := range map[string]int64{
+		"KiB": 1 << 10,
+		"MiB": 1 << 20,
+		"GiB": 1 << 30,
+		"TiB": 1 << 40,
+	} {
+		if strings.HasSuffix(s, suffix) {
+			multiplier = value
+			s = strings.TrimSpace(strings.TrimSuffix(s, suffix))
+			break
+		}
+	}
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n <= 0 || n > (1<<63-1)/multiplier {
+		return 0, fmt.Errorf("must be a positive byte count with optional KiB, MiB, GiB or TiB suffix")
+	}
+	return n * multiplier, nil
 }
 
 func cmdDoctor(args []string) error {

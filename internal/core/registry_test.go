@@ -163,3 +163,28 @@ func TestCompositionUpgradeKeepsOverrides(t *testing.T) {
 		t.Fatal("generation must survive upgrade")
 	}
 }
+
+func TestCallMergeReportCollectsFailures(t *testing.T) {
+	r := NewRegistry(&Composition{Version: 1, Bindings: map[string]*Binding{
+		"cap.m@1": {Mode: ModeMergeMany, Providers: []string{"ok", "down"}, Generation: 1},
+	}})
+	r.Register(&fake{id: "ok", caps: []string{"cap.m@1"}, out: "v"})
+	r.Register(&fake{id: "down", caps: []string{"cap.m@1"}, fail: errTestFail})
+	out, ids, failed, err := r.CallMergeReport("cap.m@1", nil, func(outputs []any, ids []string) any {
+		return outputs
+	})
+	if err != nil {
+		t.Fatalf("one survivor must succeed: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "ok" || len(out.([]any)) != 1 {
+		t.Fatalf("merge lost the survivor: %+v %+v", out, ids)
+	}
+	if len(failed) != 1 || failed[0].Provider != "down" || failed[0].Err != errTestFail {
+		t.Fatalf("failures unattributed: %+v", failed)
+	}
+	// The legacy entry point keeps its shape and still skips failures.
+	out2, ids2, err := r.CallMerge("cap.m@1", nil, func(outputs []any, ids []string) any { return outputs })
+	if err != nil || len(ids2) != 1 || len(out2.([]any)) != 1 {
+		t.Fatalf("CallMerge changed behavior: %+v %+v %v", out2, ids2, err)
+	}
+}

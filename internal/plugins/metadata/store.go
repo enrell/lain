@@ -129,7 +129,9 @@ func recordKey(provider, id string) []byte {
 	return []byte("r\x00" + provider + "\x00" + id)
 }
 
-// GetSearch returns cached merged candidates when fresh.
+// GetSearch returns cached merged candidates when fresh. Empty
+// results are treated as a miss so a transient outage never poisons
+// future enrichments for seven days.
 func (c *Cache) GetSearch(kind, query string) ([]contracts.MetadataCandidate, bool) {
 	var e cacheEntry
 	err := c.db.View(func(tx *bolt.Tx) error {
@@ -139,7 +141,7 @@ func (c *Cache) GetSearch(kind, query string) ([]contracts.MetadataCandidate, bo
 		return nil, false
 	}
 	var out []contracts.MetadataCandidate
-	if err := json.Unmarshal(e.Data, &out); err != nil {
+	if err := json.Unmarshal(e.Data, &out); err != nil || len(out) == 0 {
 		return nil, false
 	}
 	return out, true
