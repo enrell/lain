@@ -17,11 +17,16 @@ services:
       # Media must be readable by the container user: default umask files
       # (0644/0755) are fine.
       - ~/Videos:/media/videos:ro
+      # Set LAIN_OMARCHY_CURRENT to mirror the host palette in the web UI.
+      - ${LAIN_OMARCHY_CURRENT:-/dev/null}:/omarchy/current:ro
     environment:
       # soft heap cap: GC works harder instead of growing (bbolt mmap
       # pages are reclaimable and don't count against this)
       GOMEMLIMIT: 256MiB
       GOGC: "100"
+      LAIN_OMARCHY_COLORS: /omarchy/current/theme/colors.toml
+      # Ready transcode artifacts use a plugin-private LRU cache.
+      LAIN_TRANSCODE_CACHE_SIZE: ${LAIN_TRANSCODE_CACHE_SIZE:-20GiB}
     # hard cap above the soft one; raise for 50k+ file libraries
     mem_limit: 384m
     healthcheck:

@@ -8,17 +8,23 @@ package contracts
 
 // Capability names served by v0.1 plugins.
 const (
-	CapSourceEnumerate = "lain.source.enumerate@1"
-	CapMediaIdentify   = "lain.media.identify@1"
-	CapCatalogRead     = "lain.catalog.read@1"
-	CapCatalogWrite    = "lain.catalog.write@1"
-	CapUserProgress    = "lain.userstate.progress@1"
-	CapPlaybackPlan    = "lain.playback.plan@1"
-	CapSearchQuery     = "lain.search.query@1"
-	CapIngestScan      = "lain.ingest.scan@1"
-	CapMetadataSearch  = "lain.metadata.search@1"
-	CapMetadataResolve = "lain.metadata.resolve@1"
-	CapTransformThumb  = "lain.transform.thumbnail@1"
+	CapSourceEnumerate   = "lain.source.enumerate@1"
+	CapMediaIdentify     = "lain.media.identify@1"
+	CapCatalogRead       = "lain.catalog.read@1"
+	CapCatalogWrite      = "lain.catalog.write@1"
+	CapUserProgress      = "lain.userstate.progress@1"
+	CapPlaybackPlan      = "lain.playback.plan@1"
+	CapSearchQuery       = "lain.search.query@1"
+	CapIngestScan        = "lain.ingest.scan@1"
+	CapMetadataSearch    = "lain.metadata.search@1"
+	CapMetadataResolve   = "lain.metadata.resolve@1"
+	CapTransformThumb    = "lain.transform.thumbnail@1"
+	CapPlaybackTranscode = "lain.playback.transcode@1"
+	// CapPlaybackTranscodeV2 adds side-effect-free inspection plus
+	// asynchronous start/status operations. V1 remains the synchronous
+	// compatibility contract.
+	CapPlaybackTranscodeV2 = "lain.playback.transcode@2"
+	CapMediaProbe          = "lain.media.probe@1"
 )
 
 // Candidate is a raw discovered file handed to identifiers.
@@ -195,16 +201,55 @@ type PlanRequest struct {
 	Network string `json:"network"`
 }
 
-// Plan is the planner's answer. Mode is "direct" or
-// "transcode-required". Asset is an opaque reference resolved by the
-// data gateway, never a raw filesystem path.
+// Plan is the planner's answer. Mode is "direct" (play the stream
+// bytes as-is), "transcode" (play the prepared MP4 behind the
+// transcode endpoint) or "transcode-required" (no playable output
+// exists for this client). Asset is an opaque reference resolved by
+// the data gateway, never a raw filesystem path.
 type Plan struct {
-	Mode      string `json:"mode"`
-	Asset     string `json:"asset"`
-	Profile   string `json:"profile,omitempty"`
-	Session   string `json:"session,omitempty"`
-	Available bool   `json:"available"`
-	Reason    string `json:"reason,omitempty"`
+	Mode      string        `json:"mode"`
+	Asset     string        `json:"asset"`
+	Profile   string        `json:"profile,omitempty"`
+	Session   string        `json:"session,omitempty"`
+	State     string        `json:"state,omitempty"`
+	Streams   []MediaStream `json:"streams,omitempty"`
+	Available bool          `json:"available"`
+	Reason    string        `json:"reason,omitempty"`
+}
+
+// MediaProbeRequest asks the technical probe provider to inspect a
+// gateway-resolved file. Only bounded metadata crosses the plugin
+// boundary; the source path is not repeated in the result.
+type MediaProbeRequest struct {
+	FilePath string `json:"file_path"`
+}
+
+// MediaStream is one ffprobe stream normalized for planner and player
+// policy. Index is the source-global ffmpeg stream index.
+type MediaStream struct {
+	Index          int    `json:"index"`
+	Type           string `json:"type"`
+	Codec          string `json:"codec"`
+	Profile        string `json:"profile,omitempty"`
+	PixelFormat    string `json:"pixel_format,omitempty"`
+	Width          int    `json:"width,omitempty"`
+	Height         int    `json:"height,omitempty"`
+	Channels       int    `json:"channels,omitempty"`
+	Language       string `json:"language,omitempty"`
+	Title          string `json:"title,omitempty"`
+	Default        bool   `json:"default,omitempty"`
+	Forced         bool   `json:"forced,omitempty"`
+	ColorTransfer  string `json:"color_transfer,omitempty"`
+	ColorPrimaries string `json:"color_primaries,omitempty"`
+	Convertible    bool   `json:"convertible,omitempty"`
+}
+
+// MediaInfo is bounded technical metadata used to decide browser
+// direct-play and stream selection.
+type MediaInfo struct {
+	Format   string        `json:"format"`
+	Duration float64       `json:"duration,omitempty"`
+	Streams  []MediaStream `json:"streams"`
 }
 
 // ThumbnailRequest asks a transform provider for one still frame of a
@@ -225,6 +270,75 @@ type Thumbnail struct {
 	Cached bool   `json:"cached,omitempty"`
 }
 
+// TranscodeRequest asks a transcode provider for a browser-playable
+// MP4 of a catalog file. FilePath is supplied by the gateway after
+// catalog lookup, never by a client.
+type TranscodeRequest struct {
+	FilePath string `json:"file_path"`
+}
+
+// Transcode is a prepared (or cached) MP4 on disk. Method reports how
+// it was produced: "remux" (stream copy, seconds) or "transcode"
+// (re-encode, minutes). The provider writes the file and returns its
+// path; the gateway streams the bytes, keeping media out of plugin
+// calls (docs/ARCHITECTURE.md).
+type Transcode struct {
+	Path   string `json:"path"`
+	Method string `json:"method,omitempty"`
+	Cached bool   `json:"cached,omitempty"`
+}
+
+// Transcode v2 actions. Inspect and status are side-effect free; start
+// is the only operation allowed to enqueue work.
+const (
+	TranscodeInspectAction = "inspect"
+	TranscodeStartAction   = "start"
+	TranscodeStatusAction  = "status"
+	// Resolve is a trusted-plane cache access: it returns the ready path
+	// and updates LRU recency, but never starts work.
+	TranscodeResolveAction = "resolve"
+)
+
+// Stable states returned by lain.playback.transcode@2.
+const (
+	TranscodeIdle    = "idle"
+	TranscodeQueued  = "queued"
+	TranscodeRunning = "running"
+	TranscodeReady   = "ready"
+	TranscodeFailed  = "failed"
+)
+
+// TranscodeV2Request controls one asynchronous preparation. FilePath is
+// always resolved by the gateway. A session supplied by a caller must
+// match the source identity, profile and selected stream indices.
+type TranscodeV2Request struct {
+	Action         string `json:"action"`
+	FilePath       string `json:"file_path"`
+	Session        string `json:"session,omitempty"`
+	Profile        string `json:"profile,omitempty"`
+	AudioStream    *int   `json:"audio_stream,omitempty"`
+	SubtitleStream *int   `json:"subtitle_stream,omitempty"`
+}
+
+// TranscodeStatus is the provider-side result. Path is trusted-plane
+// data for the gateway and must never be serialized directly to an HTTP
+// client. Error contains a safe public message; detailed diagnostics go
+// to the server log.
+type TranscodeStatus struct {
+	Session      string `json:"session"`
+	State        string `json:"state"`
+	Profile      string `json:"profile"`
+	Path         string `json:"path,omitempty"`
+	SubtitlePath string `json:"subtitle_path,omitempty"`
+	Method       string `json:"method,omitempty"`
+	Cached       bool   `json:"cached,omitempty"`
+	ErrorCode    string `json:"error_code,omitempty"`
+	Error        string `json:"error,omitempty"`
+	QueuedAt     int64  `json:"queued_at,omitempty"`
+	StartedAt    int64  `json:"started_at,omitempty"`
+	FinishedAt   int64  `json:"finished_at,omitempty"`
+}
+
 // ScanStats summarizes one ingest run.
 type ScanStats struct {
 	Libraries    int   `json:"libraries"`
@@ -234,6 +348,7 @@ type ScanStats struct {
 	Errors       int   `json:"errors"`
 	Pruned       int   `json:"pruned"`
 	Migrated     int   `json:"migrated"`
+	Enriched     int   `json:"enriched"`
 	WalkErrors   int   `json:"walk_errors"`
 	Dirs         int   `json:"dirs"`
 	StartedAt    int64 `json:"started_at"`

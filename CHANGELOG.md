@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Asynchronous browser transcoding (`lain.playback.transcode@2`,
+  composition v3): `POST /api/items/{id}/transcode` starts or joins an
+  idempotent session, `GET .../transcode/status?session=` polls
+  `idle|queued|running|ready|failed`, and playback reports the opaque
+  session plus profile/state without starting work. One global worker,
+  bounded queue, 202 + `Retry-After` while pending; the synchronous
+  `@1` endpoint stays compatible.
+- Bounded transcode cache: plugin-private 20 GiB LRU (configurable via
+  `--transcode-cache-size` / `LAIN_TRANSCODE_CACHE_SIZE`), atomic
+  sidecars, startup/admission/completion cleanup, stale and abandoned
+  temporary removal.
+- Probe-driven browser compatibility (`lain.media.probe@1`,
+  composition v4): ffprobe stream inspection replaces extension
+  guesses; single-audio selection, WebVTT subtitle sidecars
+  (`GET /api/items/{id}/subtitles?session=`) with player track
+  pickers, and explicit HDR refusal until a tone-map profile exists.
+
 ## [0.2.0] - 2026-09-11
 
 ### Added

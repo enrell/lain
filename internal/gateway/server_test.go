@@ -19,6 +19,11 @@ func testServer(t *testing.T) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Unit tests exercise ingest/catalog in isolation: post-scan
+	// auto-enrichment stays off unless a test opts in, so scans never
+	// touch real provider APIs. Production default is on (see
+	// TestScanAutoEnrichesByDefault).
+	srv.SetAutoEnrich(false)
 	t.Cleanup(func() { srv.Close() })
 	return srv
 }

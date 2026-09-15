@@ -28,7 +28,9 @@ type scored struct {
 
 // MergeCandidates dedups provider outputs by normalized title and
 // scores them: exact title match first, then binding precedence order
-// (ids arrive in binding order). Providers beyond limit per source are
+// (ids arrive in binding order). Candidates that do not plausibly
+// match the searched title are dropped, so a fuzzy upstream hit never
+// replaces the real identity. Providers beyond limit per source are
 // trimmed by the providers themselves; the merge caps the total.
 func MergeCandidates(query string, outputs []any, ids []string, limit int) []contracts.MetadataCandidate {
 	want := normalizeTitle(query)
@@ -40,8 +42,11 @@ func MergeCandidates(query string, outputs []any, ids []string, limit int) []con
 			continue
 		}
 		for _, c := range list {
+			if c.Title == "" || !plausibleCandidate(want, c) {
+				continue
+			}
 			key := c.Provider + "\x00" + normalizeTitle(c.Title)
-			if c.Title == "" || seen[key] {
+			if seen[key] {
 				continue
 			}
 			seen[key] = true
@@ -70,6 +75,36 @@ func MergeCandidates(query string, outputs []any, ids []string, limit int) []con
 		out = []contracts.MetadataCandidate{}
 	}
 	return out
+}
+
+// plausibleCandidate reports whether a hit really answers the search:
+// an exact title, or a title/synonym that is a prefix of the other
+// (season and edition variants) with enough length to matter. Local
+// NFO hits are curated and already pre-filtered, so they always pass.
+func plausibleCandidate(want string, c contracts.MetadataCandidate) bool {
+	if want == "" || c.Provider == LocalProviderID {
+		return true
+	}
+	for _, title := range append([]string{c.Title}, c.Synonyms...) {
+		if plausibleMatch(want, normalizeTitle(title)) {
+			return true
+		}
+	}
+	return false
+}
+
+func plausibleMatch(want, have string) bool {
+	if have == "" {
+		return false
+	}
+	if have == want {
+		return true
+	}
+	shorter, longer := want, have
+	if len(have) < len(want) {
+		shorter, longer = have, want
+	}
+	return len(shorter) >= 4 && strings.HasPrefix(longer, shorter)
 }
 
 func less(a, b scored) bool {

@@ -44,22 +44,28 @@ type Composition struct {
 	Bindings map[string]*Binding `json:"bindings"`
 }
 
-// DefaultComposition is the v0.1 built-in set.
+// DefaultComposition is the built-in set. Version 2 added TVMaze
+// (D-025); version 3 added asynchronous transcode v2 (D-028), and
+// version 4 adds technical media probing (D-030). Upgrade
+// carries saved compositions forward without replacing overrides.
 func DefaultComposition() *Composition {
 	return &Composition{
-		Version: 1,
+		Version: 4,
 		Bindings: map[string]*Binding{
 			"lain.source.enumerate@1":    {Mode: ModeExactlyOne, Providers: []string{"lain-source-filesystem"}, Generation: 1},
 			"lain.media.identify@1":      {Mode: ModeOrderedMany, Providers: []string{"lain-identify-anime", "lain-identify-generic"}, Generation: 1},
+			"lain.media.probe@1":         {Mode: ModeExactlyOne, Providers: []string{"lain-probe-ffprobe"}, Generation: 1},
 			"lain.catalog.read@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
 			"lain.catalog.write@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
 			"lain.userstate.progress@1":  {Mode: ModeExactlyOne, Providers: []string{"lain-userstate-bolt"}, Generation: 1},
 			"lain.playback.plan@1":       {Mode: ModeFirstAccepted, Providers: []string{"lain-playback-default"}, Generation: 1},
+			"lain.playback.transcode@1":  {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
+			"lain.playback.transcode@2":  {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
 			"lain.transform.thumbnail@1": {Mode: ModeExactlyOne, Providers: []string{"lain-thumbnail-ffmpeg"}, Generation: 1},
 			"lain.search.query@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-search-simple"}, Generation: 1},
 			"lain.ingest.scan@1":         {Mode: ModeExactlyOne, Providers: []string{"lain-ingest-default"}, Generation: 1},
-			"lain.metadata.search@1":     {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan"}, Generation: 1},
-			"lain.metadata.resolve@1":    {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan"}, Generation: 1},
+			"lain.metadata.search@1":     {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan", "lain-metadata-tvmaze"}, Generation: 1},
+			"lain.metadata.resolve@1":    {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan", "lain-metadata-tvmaze"}, Generation: 1},
 		},
 	}
 }
@@ -110,7 +116,10 @@ func (c *Composition) MigrateProviderIDs() []string {
 
 // Upgrade adds bindings for capabilities the saved composition does
 // not know yet (new Lain versions), keeping every user override.
-// Returns the added capability names.
+// Version-gated provider additions (v2: TVMaze joins the metadata
+// bindings) append only ids the saved composition could never have
+// removed deliberately, then adopt the fresh version. Returns the
+// added capability names.
 func (c *Composition) Upgrade(fresh *Composition) []string {
 	var added []string
 	for cap, b := range fresh.Bindings {
@@ -121,6 +130,28 @@ func (c *Composition) Upgrade(fresh *Composition) []string {
 		nb.Providers = append([]string(nil), b.Providers...)
 		c.Bindings[cap] = &nb
 		added = append(added, cap)
+	}
+	if c.Version < 2 && fresh.Version >= 2 {
+		for _, cap := range []string{"lain.metadata.search@1", "lain.metadata.resolve@1"} {
+			b, ok := c.Bindings[cap]
+			if !ok {
+				continue
+			}
+			found := false
+			for _, id := range b.Providers {
+				if id == "lain-metadata-tvmaze" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				b.Providers = append(b.Providers, "lain-metadata-tvmaze")
+				b.Generation++
+			}
+		}
+	}
+	if c.Version < fresh.Version {
+		c.Version = fresh.Version
 	}
 	return added
 }

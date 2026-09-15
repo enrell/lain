@@ -11,12 +11,14 @@ package gateway
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -29,9 +31,11 @@ import (
 	"github.com/enrell/lain/internal/plugins/ingest"
 	"github.com/enrell/lain/internal/plugins/metadata"
 	"github.com/enrell/lain/internal/plugins/playback"
+	"github.com/enrell/lain/internal/plugins/probe"
 	"github.com/enrell/lain/internal/plugins/search"
 	"github.com/enrell/lain/internal/plugins/source"
 	"github.com/enrell/lain/internal/plugins/thumbnail"
+	"github.com/enrell/lain/internal/plugins/transcode"
 	"github.com/enrell/lain/internal/plugins/userstate"
 	"github.com/enrell/lain/internal/store"
 	"github.com/enrell/lain/internal/webui"
@@ -39,22 +43,48 @@ import (
 
 // Server wires the composition to HTTP.
 type Server struct {
-	reg    *core.Registry
-	auth   *auth.Service
-	db     *bolt.DB
-	st     *store.Dir
-	cat    *catalog.Service
-	ustate *userstate.Service
-	libs   *LibraryStore
-	mux    *http.ServeMux
-	ver    string
+	reg       *core.Registry
+	auth      *auth.Service
+	db        *bolt.DB
+	st        *store.Dir
+	cat       *catalog.Service
+	ustate    *userstate.Service
+	libs      *LibraryStore
+	mux       *http.ServeMux
+	ver       string
+	themePath string
+	transcode *transcode.Transcoder
+
+	// autoEnrich runs metadata enrichment for overlay-less items after
+	// every scan (default behavior). Disable with SetAutoEnrich(false)
+	// or LAIN_AUTO_ENRICH=0.
+	autoEnrich bool
+
+	// log is the structured server logger (D-026). Discard by
+	// default so tests stay silent; serve installs JSON stdout via
+	// SetLogger, tests inject buffers the same way.
+	log atomic.Pointer[slog.Logger]
+	// reqSeq numbers access-log request ids (server-side only).
+	reqSeq atomic.Uint64
 
 	scanMu sync.Mutex
 	scan   ScanStatus
 }
 
-// Close releases the database handle.
-func (s *Server) Close() error { return s.db.Close() }
+// Close stops background transforms before releasing the database.
+func (s *Server) Close() error {
+	if s.transcode != nil {
+		_ = s.transcode.Close()
+	}
+	return s.db.Close()
+}
+
+// Options controls bounded runtime resources while New retains stable
+// defaults for callers and tests.
+type Options struct {
+	TranscodeCacheBytes int64
+	TranscodeQueueSize  int
+}
 
 // ScanStatus is the observable scan state.
 type ScanStatus struct {
@@ -68,6 +98,11 @@ type ScanStatus struct {
 // New builds the server over a data dir, registering built-ins. The
 // database is opened here and owned by the server (see Close).
 func New(dataDir, ver string) (*Server, error) {
+	return NewWithOptions(dataDir, ver, Options{})
+}
+
+// NewWithOptions builds the server with explicit runtime bounds.
+func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	db, err := kv.Open(dataDir)
 	if err != nil {
 		return nil, err
@@ -115,11 +150,18 @@ func New(dataDir, ver string) (*Server, error) {
 	reg.Register(ustate)
 	reg.Register(searchProvider{cat: cat})
 	reg.Register(playback.Planner{})
+	reg.Register(probe.Provider{})
 	reg.Register(thumbnail.New(filepath.Join(dataDir, "thumbnails")))
+	tr := transcode.NewConfigured(filepath.Join(dataDir, "transcodes"), transcode.Config{
+		MaxCacheBytes: opts.TranscodeCacheBytes,
+		QueueSize:     opts.TranscodeQueueSize,
+	})
+	reg.Register(tr)
 	reg.Register(metadata.NFO{})
 	reg.Register(metadata.NewKitsu())
 	reg.Register(metadata.NewAniList())
 	reg.Register(metadata.NewJikan())
+	reg.Register(metadata.NewTVMaze())
 	runner := &ingest.Runner{Reg: reg, Cat: cat}
 	reg.Register(runner)
 	if err := comp.Validate(knownSet(reg)); err != nil {
@@ -131,10 +173,11 @@ func New(dataDir, ver string) (*Server, error) {
 		db.Close()
 		return nil, err
 	}
-	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, scan: ScanStatus{State: "idle"}}
+	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, themePath: omarchyThemePath(), transcode: tr, autoEnrich: true, scan: ScanStatus{State: "idle"}}
 	s.routes()
 	s.routesEnrich()
 	s.routesThumbnail()
+	s.routesTranscode()
 	// The web UI is the least specific pattern: API, health and media
 	// routes registered above keep winning their paths.
 	webui.Mount(s.mux)
@@ -150,7 +193,7 @@ func knownSet(reg *core.Registry) map[string]bool {
 }
 
 // Handler returns the mux.
-func (s *Server) Handler() http.Handler { return s.mux }
+func (s *Server) Handler() http.Handler { return s.withAccessLog(s.mux) }
 
 // Registry exposes the composition authority (diagnostics/swap).
 func (s *Server) Registry() *core.Registry { return s.reg }
@@ -223,6 +266,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]string{"status": "ok", "version": s.ver})
 	})
+	m.HandleFunc("GET /api/theme", s.handleTheme)
 	m.HandleFunc("GET /api/setup/status", s.handleSetupStatus)
 	m.HandleFunc("POST /api/setup", s.handleSetup)
 	m.HandleFunc("POST /api/auth/login", s.handleLogin)
@@ -237,6 +281,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/libraries", s.requireAuth(s.handleLibsList))
 	m.HandleFunc("POST /api/libraries", s.requireAdmin(s.handleLibCreate))
 	m.HandleFunc("DELETE /api/libraries/{id}", s.requireAdmin(s.handleLibDelete))
+	m.HandleFunc("GET /api/browse", s.requireAdmin(s.handleBrowse))
 	m.HandleFunc("POST /api/library/scan", s.requireAdmin(s.handleScanStart))
 	m.HandleFunc("GET /api/library/scan", s.requireAuth(s.handleScanStatus))
 
@@ -284,6 +329,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	tok, err := s.auth.Login(in.Username, in.Password)
 	if err != nil {
+		// Username only: passwords never enter a log line.
+		s.logger().Warn("login failed", "req", reqIDOf(r), "username", in.Username)
 		writeErr(w, http.StatusUnauthorized, err.Error())
 		return
 	}
@@ -394,15 +441,45 @@ func (s *Server) handleScanStatus(w http.ResponseWriter, r *http.Request, _ auth
 
 func (s *Server) runScan() {
 	libs := s.libList()
+	s.logger().Info("scan started", "libraries", len(libs))
 	out, _, err := s.reg.CallOne(contracts.CapIngestScan, ingest.ScanInput{Libraries: libs})
 	s.scanMu.Lock()
-	defer s.scanMu.Unlock()
 	if err != nil {
 		s.scan = ScanStatus{State: "error", StartedAt: s.scan.StartedAt, FinishedAt: time.Now().Unix(), Error: err.Error()}
+		s.scanMu.Unlock()
+		s.logger().Error("scan failed", "err", err.Error())
 		return
 	}
 	stats := out.(contracts.ScanStats)
-	s.scan = ScanStatus{State: "done", StartedAt: s.scan.StartedAt, FinishedAt: stats.FinishedAt, Stats: &stats}
+	startedAt := s.scan.StartedAt
+	s.scanMu.Unlock()
+	// Enrichment runs outside the scan lock so status reads never block
+	// behind a long backlog pass. State stays "running" throughout.
+	enriched := 0
+	if s.autoEnrichEnabled() {
+		enriched = s.autoEnrichMissing()
+	}
+	stats.Enriched = enriched
+	s.scanMu.Lock()
+	defer s.scanMu.Unlock()
+	s.scan = ScanStatus{State: "done", StartedAt: startedAt, FinishedAt: stats.FinishedAt, Stats: &stats}
+	s.logger().Info("scan done",
+		"candidates", stats.Candidates, "identified", stats.Identified,
+		"unidentified", stats.Unidentified, "migrated", stats.Migrated,
+		"enriched", stats.Enriched, "errors", stats.Errors)
+}
+
+// SetAutoEnrich toggles post-scan metadata enrichment (on by default).
+func (s *Server) SetAutoEnrich(on bool) {
+	s.scanMu.Lock()
+	defer s.scanMu.Unlock()
+	s.autoEnrich = on
+}
+
+func (s *Server) autoEnrichEnabled() bool {
+	s.scanMu.Lock()
+	defer s.scanMu.Unlock()
+	return s.autoEnrich
 }
 
 func pageParams(r *http.Request) contracts.PageParams {
@@ -452,15 +529,52 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, _ auth.V
 		writeErr(w, 404, "unknown item")
 		return
 	}
+	client := r.URL.Query().Get("client")
+	var mediaInfo *contracts.MediaInfo
+	clientLower := strings.ToLower(client)
+	if !strings.Contains(clientLower, "mpv") && !strings.Contains(clientLower, "desktop") {
+		if probed, _, probeErr := s.reg.CallOne(contracts.CapMediaProbe, contracts.MediaProbeRequest{FilePath: it.FilePath}); probeErr == nil {
+			if info, ok := probed.(contracts.MediaInfo); ok {
+				mediaInfo = &info
+			}
+		} else {
+			s.logger().Debug("media probe failed", "req", reqIDOf(r), "item", it.ID, "err", probeErr.Error())
+		}
+	}
 	out, _, err := s.reg.CallOne(contracts.CapPlaybackPlan, playback.PlanInput{
-		Request:  contracts.PlanRequest{ItemID: it.ID, Client: r.URL.Query().Get("client"), Network: r.URL.Query().Get("network")},
-		FilePath: it.FilePath,
+		Request:   contracts.PlanRequest{ItemID: it.ID, Client: client, Network: r.URL.Query().Get("network")},
+		FilePath:  it.FilePath,
+		MediaInfo: mediaInfo,
 	})
 	if err != nil {
 		writeErr(w, 503, err.Error())
 		return
 	}
-	writeJSON(w, 200, out)
+	plan, ok := out.(contracts.Plan)
+	if !ok {
+		writeErr(w, 500, "bad playback plan")
+		return
+	}
+	// The planner advertises composition capability; the gateway keeps
+	// the answer honest at runtime. Without a healthy transcode
+	// provider the plan degrades to transcode-required instead of
+	// pointing the client at an endpoint that can only 503.
+	if plan.Mode == "transcode" {
+		if _, _, err := s.reg.Ordered(contracts.CapPlaybackTranscode); err != nil {
+			plan.Available = false
+			plan.Mode = "transcode-required"
+			plan.Reason = "this container needs transcode for browser clients (no transcode provider installed)"
+		} else if inspected, _, err := s.reg.CallOne(contracts.CapPlaybackTranscodeV2, contracts.TranscodeV2Request{
+			Action: contracts.TranscodeInspectAction, FilePath: it.FilePath,
+		}); err == nil {
+			if status, ok := inspected.(contracts.TranscodeStatus); ok {
+				plan.Profile = status.Profile
+				plan.Session = status.Session
+				plan.State = status.State
+			}
+		}
+	}
+	writeJSON(w, 200, plan)
 }
 
 // handleStream authorizes (header or ?token=) then serves bytes with

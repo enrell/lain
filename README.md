@@ -43,6 +43,11 @@ The image bundles `ffmpeg` for thumbnails and
 `ca-certificates` for remote metadata providers; no Node, no second
 origin — the SPA is embedded in the binary.
 
+On Omarchy, the native server automatically reads the current palette.
+For Docker, set `LAIN_OMARCHY_CURRENT` to
+`$HOME/.local/state/omarchy/current`; Compose mounts it read-only and the
+Svelte UI follows theme changes. Other systems keep the built-in palette.
+
 ### Interactive Linux installer
 
 One script covers server and desktop in all combinations (server +
@@ -96,12 +101,12 @@ lain serve --port 9360          # data: ~/.local/share/lain
 
 ```sh
 git clone https://github.com/enrell/lain && cd lain
-mise install          # go/node/pnpm pinned in .mise.toml (optional)
-make build            # pnpm build -> internal/webui/dist -> go build
+mise install          # go/node/pnpm/just pinned in .mise.toml (optional)
+just build            # pnpm build -> internal/webui/dist -> go build
 ./lain serve --port 9360
 ```
 
-`go build ./...` does not need Node: a binary built without `make web`
+`go build ./...` does not need Node: a binary built without `just web`
 serves a "web UI not built" notice on `/` while the API keeps working.
 
 ## First steps
@@ -129,10 +134,18 @@ mpv "http://localhost:9360/api/items/<id>/stream?token=$TOK"
   is bound in a composition; `POST /api/plugins/swap` replaces the
   provider at runtime with generation fencing and last-good fallback.
 - **Direct play, honest plans.** `GET /api/items/{id}/playback` answers
-  `direct` or `transcode-required`; with no transcoder installed it says
-  so instead of faking a stream. mpv-based clients direct-play mkv/hevc.
+  `direct`, `transcode` or `transcode-required`; browsers prepare MKV
+  and other non-web containers as MP4 through an async session
+  (`POST /api/items/{id}/transcode`, poll `.../transcode/status`,
+  play `.../transcode?session=`), with selectable audio and WebVTT
+  subtitle sidecars (`.../subtitles?session=`). Ready artifacts sit in
+  a bounded 20 GiB LRU cache (`--transcode-cache-size` /
+  `LAIN_TRANSCODE_CACHE_SIZE`). With no transcoder installed the plan
+  says so instead of faking a stream. mpv-based clients direct-play
+  mkv/hevc.
 - **Metadata enrichment.** Local NFO sidecars plus Kitsu/AniList/Jikan
-  (merge-many, scored, TTL cached). Overlays decorate the catalog
+  for anime and keyless TVMaze for series (merge-many, scored, TTL
+  cached). Overlays decorate the catalog
   without touching identity, files or progress; grids read them in one
   batch (`GET /api/enrichments?ids=`).
 - **Thumbnails.** `GET /api/items/{id}/thumbnail?t=&w=` extracts a JPEG
@@ -148,7 +161,8 @@ mpv "http://localhost:9360/api/items/<id>/stream?token=$TOK"
   one read transaction (safe mid-scan, mid-stream); restore validates
   structure and refuses over a live database.
 - **Embedded web UI.** Svelte 5 SPA compiled into the Go binary — same
-  process, same origin, no Node at runtime.
+  process, same origin, no Node at runtime. Its semantic color tokens follow
+  the server host's live Omarchy palette, with a safe built-in fallback.
 
 ## Desktop client
 
@@ -163,6 +177,7 @@ both. Releases provide a Linux tarball; on Arch a source build is one
 
 ```sh
 lain serve --port 9360                  # data: ~/.local/share/lain
+lain serve --log-level debug            # or LAIN_LOG_LEVEL (debug/info/warn/error)
 lain doctor                             # environment report
 lain plugins                            # registered providers + composition
 lain version
@@ -186,6 +201,10 @@ credentials reach the player process.
 cd web && pnpm dev        # terminal 2 (Vite HMR on :5173, API proxied)
 ```
 
+The web client polls the public, read-only `GET /api/theme` palette. A native
+server finds Omarchy automatically; Docker uses `LAIN_OMARCHY_CURRENT` as
+documented in [`.env.example`](.env.example).
+
 ## Runtime plugin swap (the point of the project)
 
 ```sh
@@ -199,6 +218,13 @@ curl -X POST localhost:9360/api/plugins/swap -H "Authorization: Bearer $TOK" \
 A swap health-checks candidates first: an unhealthy provider is rejected
 and the previous generation keeps serving. A provider that fails at call
 time falls back to the last-good one, once, with the incident logged.
+
+## Observability
+
+Machine-first JSONL on stdout, shaped like the OpenTelemetry Logs
+Data Model (one stable schema per line, `req` correlation id, no
+secrets ever). The dev container runs full log; see
+[`docs/LOGGING.md`](docs/LOGGING.md) for the schema and recipes.
 
 ## Layout
 
@@ -214,10 +240,11 @@ internal/plugins/source/    filesystem enumerator
 internal/plugins/identify/  anime release parser + generic fallback
 internal/plugins/catalog/   authoritative file catalog + export/import
 internal/plugins/userstate/ progress, separate from catalog
-internal/plugins/playback/  direct vs transcode-required planner
+internal/plugins/playback/  direct vs transcode planner
+internal/plugins/transcode/ ffmpeg MP4 preparation, on-disk cache
 internal/plugins/search/    substring search (replaceable ranking)
 internal/plugins/ingest/    scan orchestrator (policy-free pipeline)
-internal/plugins/metadata/  NFO + Kitsu/AniList/Jikan, merge-many + cache
+internal/plugins/metadata/  NFO + Kitsu/AniList/Jikan + TVMaze, merge-many + cache
 internal/plugins/thumbnail/ ffmpeg stills, on-disk cache, path not bytes
 internal/webui/             embedded SPA + static handler
 web/                        SvelteKit source (Svelte 5, Tailwind 4)
@@ -230,6 +257,7 @@ docs/                       ARCHITECTURE, CONTRACTS, PLUGIN, RECOVERY
 
 ```text
 GET  /health  /api/health
+GET  /api/theme             (public, normalized semantic colors)
 GET  /api/setup/status      POST /api/setup          (first admin)
 POST /api/auth/login        GET  /api/me
 PATCH /api/me/password      GET  /api/me/continue
@@ -241,11 +269,15 @@ POST /api/library/scan      GET  /api/library/scan  (start: admin)
 GET  /api/catalog?limit=&offset=&sort=&library_id=  (envelope {items,total}; sort=title|recent)
 GET  /api/catalog/{id}
 GET  /api/search?q=&kind=&limit=&offset=&sort=   (same envelope)
-GET  /api/items/{id}/playback?client=&network=
+GET  /api/items/{id}/playback?client=&network=   (reports profile/session/state for transcode)
 GET  /api/items/{id}/stream            (Range, ?token= ok)
+POST /api/items/{id}/transcode         (start/join async session; 202 pending, 200 ready)
+GET  /api/items/{id}/transcode/status?session=   (poll; no filesystem paths)
+GET  /api/items/{id}/transcode?session=          (Range MP4, ?token= ok; no session = sync v1)
+GET  /api/items/{id}/subtitles?session=          (WebVTT sidecar, ?token= ok)
 GET  /api/items/{id}/thumbnail?t=&w=   (JPEG still; ?token= ok, cached on disk)
 PUT  /api/items/{id}/progress          GET /api/items/{id}/progress
-POST /api/catalog/{id}/enrich          (admin; NFO/Kitsu/AniList/Jikan merge)
+POST /api/catalog/{id}/enrich          (admin; NFO/Kitsu/AniList/Jikan/TVMaze merge)
 GET  /api/catalog/{id}/enrich
 GET  /api/enrichments?ids=a,b,c        (batch overlay read, max 200)
 DELETE /api/catalog/{id}/enrich        (admin)
@@ -289,7 +321,7 @@ so raise both for very large libraries or high-resolution stills.
 ```sh
 go test ./...                 # unit + gateway e2e (thumbnail tests skip without ffmpeg)
 go vet ./...
-make web                      # frontend build + embed
+just web                      # frontend build + embed
 web/e2e/smoke.mjs             # Chromium/CDP end-to-end against a fresh data dir
 ```
 

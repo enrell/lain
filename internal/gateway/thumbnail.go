@@ -62,11 +62,13 @@ func (s *Server) handleThumbnail(w http.ResponseWriter, r *http.Request) {
 		Width:    width,
 	})
 	if err != nil {
+		s.logger().Warn("thumbnail failed", "req", reqIDOf(r), "item", it.ID, "err", err.Error())
 		writeErr(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 	thumb, ok := out.(contracts.Thumbnail)
 	if !ok || thumb.Path == "" {
+		s.logger().Error("thumbnail bad result", "req", reqIDOf(r), "item", it.ID)
 		writeErr(w, http.StatusInternalServerError, "bad thumbnail result")
 		return
 	}

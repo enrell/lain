@@ -50,6 +50,27 @@ func (k *Kitsu) Invoke(cap string, input any) (any, error) {
 	}
 }
 
+// kitsuImageMap tolerates Kitsu's mixed image objects: string URLs
+// plus a "meta" object with dimensions. Unknown non-string values
+// are ignored so a new upstream field never breaks search.
+type kitsuImageMap map[string]string
+
+func (m *kitsuImageMap) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	out := make(map[string]string, len(raw))
+	for k, v := range raw {
+		var s string
+		if err := json.Unmarshal(v, &s); err == nil {
+			out[k] = s
+		}
+	}
+	*m = out
+	return nil
+}
+
 type kitsuDoc struct {
 	Data []struct {
 		ID         string `json:"id"`
@@ -59,8 +80,8 @@ type kitsuDoc struct {
 			Synopsis       string            `json:"synopsis"`
 			StartDate      string            `json:"startDate"`
 			EpisodeCount   int               `json:"episodeCount"`
-			PosterImage    map[string]string `json:"posterImage"`
-			CoverImage     map[string]string `json:"coverImage"`
+			PosterImage    kitsuImageMap     `json:"posterImage"`
+			CoverImage     kitsuImageMap     `json:"coverImage"`
 		} `json:"attributes"`
 	} `json:"data"`
 }
@@ -98,7 +119,7 @@ func (k *Kitsu) search(in contracts.MetadataSearchInput) ([]contracts.MetadataCa
 		out = append(out, contracts.MetadataCandidate{
 			Provider: k.ID(), RemoteID: d.ID, Title: title,
 			Synonyms: titleMap(a.Titles), Year: year, Kind: "anime",
-			Poster: firstImage(a.PosterImage),
+			Poster: firstImage(map[string]string(a.PosterImage)),
 		})
 	}
 	if out == nil {
@@ -121,8 +142,8 @@ func (k *Kitsu) resolve(id string) (contracts.MetadataRecord, error) {
 				Synopsis       string            `json:"synopsis"`
 				StartDate      string            `json:"startDate"`
 				EpisodeCount   int               `json:"episodeCount"`
-				PosterImage    map[string]string `json:"posterImage"`
-				CoverImage     map[string]string `json:"coverImage"`
+				PosterImage    kitsuImageMap     `json:"posterImage"`
+				CoverImage     kitsuImageMap     `json:"coverImage"`
 			} `json:"attributes"`
 		} `json:"data"`
 	}
@@ -144,7 +165,7 @@ func (k *Kitsu) resolve(id string) (contracts.MetadataRecord, error) {
 		Provider: k.ID(), RemoteID: doc.Data.ID, Title: title,
 		Synonyms: titleMap(a.Titles), Year: year,
 		Synopsis: strings.TrimSpace(a.Synopsis), Episodes: a.EpisodeCount,
-		Poster: firstImage(a.PosterImage), Cover: firstImage(a.CoverImage),
+		Poster: firstImage(map[string]string(a.PosterImage)), Cover: firstImage(map[string]string(a.CoverImage)),
 	}, nil
 }
 
