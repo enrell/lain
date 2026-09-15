@@ -1,0 +1,68 @@
+# Development stack with hot reload: `just up`.
+#   api → Go server on :9360, restarted on every source edit (bind mount).
+#   web → Vite HMR on :5173, proxied to the API.
+# Data lives in the `lain-dev-data` volume: never the production database.
+# Media is your own ~/Videos, mounted read-only.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /src
+    command: ["go", "run", "./cmd/lain", "serve", "--data-dir", "/data", "--port", "9360", "--bind", "0.0.0.0"]
+    volumes:
+      - .:/src
+      - go-build-cache:/root/.cache/go-build
+      - go-mod-cache:/go/pkg/mod
+      - lain-dev-data:/data
+      - ${HOME}/Videos:/media/videos:ro
+      # Optional Omarchy palette bridge. /dev/null keeps the fallback outside Omarchy.
+      - ${LAIN_OMARCHY_CURRENT:-/dev/null}:/omarchy/current:ro
+    ports:
+      - "${LAIN_DEV_PORT:-9360}:9360"
+    environment:
+      GOMEMLIMIT: 256MiB
+      GOGC: "100"
+      LAIN_OMARCHY_COLORS: /omarchy/current/theme/colors.toml
+      # Dev container runs full log: every request plus provider-level
+      # diagnostics (see docs/LOGGING.md). Agents grep this stream.
+      LAIN_LOG_LEVEL: debug
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9360/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    develop:
+      watch:
+        - path: ./internal
+          action: restart
+        - path: ./cmd
+          action: restart
+        - path: ./go.mod
+          action: rebuild
+        - path: ./go.sum
+          action: rebuild
+
+  web:
+    image: node:26-alpine
+    working_dir: /web
+    # pnpm install runs inside the container on every (re)create; the
+    # install takes ~30s once, then Vite HMR is instant.
+    command: sh -c "npm install -g pnpm@12.3.4 && pnpm install --frozen-lockfile && pnpm dev --host 0.0.0.0 --port 5173"
+    volumes:
+      - ./web:/web
+      - web-modules:/web/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      LAIN_BACKEND: http://api:9360
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  lain-dev-data:
+  go-build-cache:
+  go-mod-cache:
+  web-modules:
