@@ -270,7 +270,7 @@
 						<p class="mt-1 text-muted">
 							{plan?.reason ?? 'No compatible playback plan is available.'}
 							{#if session.isAdmin}
-								A transcode provider is not installed; the desktop/CLI client plays it as-is.
+								The transcoder is unavailable; the desktop/CLI client plays it as-is.
 							{:else}
 								Ask an administrator, or use the desktop/CLI client.
 							{/if}

@@ -88,6 +88,7 @@ function kindForStatus(status: number): ApiErrorKind {
 		case 409:
 			return 'conflict';
 		case 422:
+		case 429:
 		case 503:
 			return 'unavailable';
 		default:

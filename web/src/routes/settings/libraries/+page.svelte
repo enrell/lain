@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
+	import Folder from '@lucide/svelte/icons/folder';
+	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import ScanLine from '@lucide/svelte/icons/scan-line';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import type { Library } from '$lib/api/types';
+	import type { BrowseDir, Library } from '$lib/api/types';
 	import { api } from '$lib/api';
 	import Badge from '$lib/components/primitives/Badge.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
@@ -31,6 +33,45 @@
 	let deleteTarget = $state<Library | null>(null);
 	let deleteOpen = $state(false);
 	let deleting = $state(false);
+
+	let browsePath = $state('');
+	let browseParent = $state('');
+	let browseDirs = $state<BrowseDir[]>([]);
+	let browseLoading = $state(false);
+	let browseError = $state<string | null>(null);
+
+	function openCreate(): void {
+		createOpen = true;
+		formError = null;
+		form = { name: '', type: 'anime', path: '' };
+		void loadBrowse();
+	}
+
+	async function loadBrowse(path?: string): Promise<void> {
+		browseLoading = true;
+		browseError = null;
+		try {
+			const res = await api.libraries.browse(path);
+			browsePath = res.path;
+			browseParent = res.parent;
+			browseDirs = res.dirs;
+		} catch (err) {
+			browseError = errorMessage(err, 'Could not list server folders.');
+		} finally {
+			browseLoading = false;
+		}
+	}
+
+	function useFolder(dir?: BrowseDir): void {
+		const picked = dir ? dir.path : browsePath;
+		if (!picked) return;
+		form.path = picked;
+		formError = null;
+		if (!form.name.trim()) {
+			const base = (dir ? dir.name : picked.split('/').filter(Boolean).pop()) ?? '';
+			if (base) form.name = base;
+		}
+	}
 
 	function askRemove(lib: Library): void {
 		deleteTarget = lib;
@@ -141,7 +182,8 @@
 					Last scan {scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}:
 					<span class="text-foreground">{stats.identified}</span> identified ·
 					<span class="text-foreground">{stats.unidentified}</span> unidentified ·
-					<span class="text-foreground">{stats.pruned}</span> pruned
+					<span class="text-foreground">{stats.pruned}</span> pruned ·
+					<span class="text-foreground">{stats.enriched}</span> enriched
 					{#if stats.walk_errors > 0}· <span class="text-warning">{stats.walk_errors} unreadable</span>{/if}
 					{#if stats.errors > 0}· <span class="text-danger">{stats.errors} errors</span>{/if}
 				</p>
@@ -155,7 +197,7 @@
 	<section class="space-y-4">
 		<div class="flex items-center justify-between gap-3">
 			<h2 class="text-base font-semibold text-foreground">Media libraries</h2>
-			<Button variant="secondary" size="sm" onclick={() => (createOpen = true)}>
+			<Button variant="secondary" size="sm" onclick={() => openCreate()}>
 				<FolderPlus class="size-4" /> Add library
 			</Button>
 		</div>
@@ -170,7 +212,7 @@
 				description="A library is a directory on the server Lain is allowed to read. Nothing is copied or moved."
 			>
 				{#snippet icon()}<FolderPlus class="size-6 text-muted" />{/snippet}
-				<Button onclick={() => (createOpen = true)}>
+				<Button onclick={() => openCreate()}>
 					<FolderPlus class="size-4" /> Add your first library
 				</Button>
 			</EmptyState>
@@ -223,11 +265,57 @@
 		{/if}
 		<Input label="Name" bind:value={form.name} placeholder="Anime" required />
 		<Select label="Type" bind:value={form.type} options={typeOptions} />
+		<div>
+			<span class="mb-1 block text-sm font-medium text-foreground">Server folders</span>
+			{#if browseLoading}
+				<p class="py-2 text-sm text-muted">Listing server folders…</p>
+			{:else if browseError}
+				<div class="flex items-center gap-2 py-1 text-sm">
+					<p class="text-danger" role="alert">{browseError}</p>
+					<Button variant="ghost" size="sm" onclick={() => void loadBrowse()}>Retry</Button>
+				</div>
+			{:else}
+				<p class="truncate font-mono text-xs text-muted" title={browsePath}>{browsePath}</p>
+				<div class="mt-1 flex gap-2">
+					<Button
+						variant="ghost"
+						size="sm"
+						disabled={!browseParent}
+						onclick={() => void loadBrowse(browseParent || undefined)}
+					>
+						<ArrowUp class="size-4" /> Up
+					</Button>
+					<Button variant="secondary" size="sm" onclick={() => useFolder()}>
+						Use this folder
+					</Button>
+				</div>
+				{#if browseDirs.length === 0}
+					<p class="py-2 text-sm text-muted">No subfolders here.</p>
+				{:else}
+					<ul class="mt-1 max-h-44 divide-y divide-line overflow-y-auto rounded-card border border-line">
+						{#each browseDirs as dir (dir.path)}
+							<li class="flex items-center gap-2 bg-surface/40 px-3 py-2">
+								<button
+									type="button"
+									class="flex min-w-0 flex-1 items-center gap-2 text-left"
+									onclick={() => void loadBrowse(dir.path)}
+									title={`Open ${dir.path}`}
+								>
+									<Folder class="size-4 shrink-0 text-muted" />
+									<span class="truncate text-sm text-foreground">{dir.name}</span>
+								</button>
+								<Button variant="ghost" size="sm" onclick={() => useFolder(dir)}>Use</Button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			{/if}
+		</div>
 		<Input
 			label="Server directory path"
 			bind:value={form.path}
 			placeholder="/media/anime"
-			hint="An absolute path on the machine running Lain — not a path in your browser. In Docker, use the container path (for example /media/videos)."
+			hint="Filled in by the folder picker above; type only for paths outside it. In Docker, use the container path."
 			required
 		/>
 		<div class="flex justify-end gap-2 pt-1">

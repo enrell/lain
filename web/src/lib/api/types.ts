@@ -43,6 +43,19 @@ export interface Library {
 	created_at: number;
 }
 
+/** GET /api/browse: server-side folder picker payload. */
+export interface BrowseDir {
+	name: string;
+	path: string;
+}
+
+export interface BrowseResult {
+	path: string;
+	parent: string;
+	detected: boolean;
+	dirs: BrowseDir[];
+}
+
 /** internal/contracts.Progress (media.go). */
 export interface Progress {
 	item_id: string;
@@ -55,12 +68,54 @@ export interface Progress {
 
 /** internal/contracts.Plan (media.go). */
 export interface PlaybackPlan {
-	mode: 'direct' | 'transcode-required' | string;
+	mode: 'direct' | 'transcode' | 'transcode-required' | string;
 	asset: string;
 	profile?: string;
 	session?: string;
+	state?: TranscodeState;
+	streams?: MediaStream[];
 	available: boolean;
 	reason?: string;
+}
+
+export type TranscodeState = 'idle' | 'queued' | 'running' | 'ready' | 'failed';
+
+export interface TranscodeSelection {
+	profile?: string;
+	audio_stream?: number;
+	subtitle_stream?: number;
+}
+
+export interface TranscodeStatus {
+	session: string;
+	state: TranscodeState;
+	profile: string;
+	method?: 'remux' | 'transcode' | string;
+	cached?: boolean;
+	has_subtitle?: boolean;
+	error_code?: string;
+	error?: string;
+	queued_at?: number;
+	started_at?: number;
+	finished_at?: number;
+}
+
+export interface MediaStream {
+	index: number;
+	type: 'video' | 'audio' | 'subtitle' | string;
+	codec: string;
+	profile?: string;
+	pixel_format?: string;
+	width?: number;
+	height?: number;
+	channels?: number;
+	language?: string;
+	title?: string;
+	default?: boolean;
+	forced?: boolean;
+	color_transfer?: string;
+	color_primaries?: string;
+	convertible?: boolean;
 }
 
 /** internal/contracts.ScanStats (media.go). */
@@ -71,6 +126,8 @@ export interface ScanStats {
 	unidentified: number;
 	errors: number;
 	pruned: number;
+	migrated: number;
+	enriched: number;
 	walk_errors: number;
 	dirs: number;
 	started_at: number;
@@ -169,4 +226,23 @@ export interface SwapErrorBody {
 
 export interface EnrichmentBatch {
 	items: Enrichment[];
+}
+/** Public semantic palette resolved from the server host's Omarchy theme. */
+export interface ThemePalette {
+	source: 'omarchy' | 'default';
+	mode: 'dark' | 'light';
+	background: string;
+	surface: string;
+	surface_hover: string;
+	surface_active: string;
+	foreground: string;
+	muted: string;
+	line: string;
+	accent: string;
+	accent_hover: string;
+	accent_foreground: string;
+	danger: string;
+	danger_foreground: string;
+	success: string;
+	warning: string;
 }

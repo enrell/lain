@@ -9,6 +9,7 @@
 	import Toaster from '$lib/components/primitives/Toaster.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { session } from '$lib/auth/session.svelte';
+	import { appearance } from '$lib/stores/appearance';
 	import { isAdminRoute, routeRedirect } from '$lib/utilities/guards';
 
 	let { children } = $props();
@@ -21,7 +22,9 @@
 	});
 
 	onMount(() => {
+		appearance.start();
 		void session.bootstrap();
+		return () => appearance.stop();
 	});
 
 	// Single guard for the whole app: first-run setup, login, admin.

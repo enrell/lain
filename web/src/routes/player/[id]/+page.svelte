@@ -80,8 +80,9 @@
 					{plan.reason ?? 'No playback plan is available for this file in the browser.'}
 				</p>
 				<p class="mt-3 text-xs leading-relaxed text-muted/80">
-					The server only sends bytes it can actually serve: no transcoder is installed yet, so
-					the browser cannot be given this container. The desktop/CLI client plays it directly.
+					The server only sends bytes it can actually serve: the transcoder is unavailable, so
+					there is no browser-playable version of this container. The desktop/CLI client plays
+					it directly.
 				</p>
 				<div class="mt-7 flex flex-wrap items-center justify-center gap-2">
 					<Button variant="secondary" onclick={() => void goto(detailHref)}>
