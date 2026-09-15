@@ -9,6 +9,7 @@ import { plugins } from './plugins';
 import { progress } from './progress';
 import { search } from './search';
 import { thumbnail } from './thumbnail';
+import { theme } from './theme';
 import { users } from './users';
 
 /**
@@ -28,6 +29,7 @@ export const api = {
 	progress,
 	search,
 	thumbnail,
+	theme,
 	users
 };
 

@@ -6,7 +6,7 @@
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
-	import MediaGrid from '$lib/components/media/MediaGrid.svelte';
+	import Hero from '$lib/components/media/Hero.svelte';
 	import MediaRow from '$lib/components/media/MediaRow.svelte';
 	import Badge from '$lib/components/primitives/Badge.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
@@ -15,6 +15,7 @@
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { ensureEnrichments, ensureItems, ensureLibraries } from '$lib/stores/media-cache.svelte';
+	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { isInProgress, sortByRecent } from '$lib/utilities/progress';
@@ -91,87 +92,86 @@
 
 <svelte:head><title>Home — Lain</title></svelte:head>
 
-<div class="space-y-8">
-	<header class="flex flex-wrap items-center justify-between gap-3">
-		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-foreground">Home</h1>
-			<p class="mt-0.5 text-sm text-muted">
-				{catalogTotal} {catalogTotal === 1 ? 'item' : 'items'} in your libraries
-			</p>
-		</div>
-		{#if scan.running}
-			<Badge tone="accent"><ScanLine class="size-3" /> Scanning…</Badge>
-		{:else if scan.status?.state === 'error'}
-			<Badge tone="danger">Last scan failed</Badge>
-		{/if}
-	</header>
-
+<div>
 	{#if loading}
-		<div class="space-y-8">
-			<div class="space-y-3">
-				<Skeleton class="h-5 w-40" />
-				<div class="flex gap-3 overflow-hidden">
-					{#each Array(6) as _}
-						<Skeleton class="h-52 w-36 shrink-0 sm:w-40" />
-					{/each}
-				</div>
-			</div>
-			<div class="space-y-3">
-				<Skeleton class="h-5 w-32" />
-				<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5 xl:grid-cols-6">
-					{#each Array(6) as _}
-						<Skeleton class="h-56" />
+		<div class="space-y-12 pb-20">
+			<Skeleton class="h-[72svh] min-h-[32rem] w-full rounded-none" />
+			<div class="mx-auto w-full max-w-[1800px] space-y-5 px-5 sm:px-8 lg:px-16">
+				<Skeleton class="h-7 w-52" />
+				<div class="flex gap-4 overflow-hidden">
+					{#each Array(5) as _}
+						<Skeleton class="aspect-video w-72 shrink-0 rounded-xl" />
 					{/each}
 				</div>
 			</div>
 		</div>
 	{:else if error}
-		<ErrorState message={error} retry={() => void load()} />
+		<div class="mx-auto w-full max-w-[1600px] px-4 pb-24 pt-24 md:px-8 md:pt-32">
+			<ErrorState message={error} retry={() => void load()} />
+		</div>
 	{:else if libraries.length === 0}
-		<EmptyState
-			title="No media yet"
-			description={session.isAdmin
-				? 'Point Lain at a directory on this server and run a scan. Files stay where they are.'
-				: 'An administrator has not configured a library yet.'}
-		>
-			{#snippet icon()}<Clapperboard class="size-6 text-muted" />{/snippet}
-			{#if session.isAdmin}
-				<LinkButton href="/settings/libraries">
-					<FolderPlus class="size-4" /> Add a library
-				</LinkButton>
-			{/if}
-		</EmptyState>
+		<div class="mx-auto w-full max-w-[1600px] px-4 pb-24 pt-24 md:px-8 md:pt-32">
+			<EmptyState
+				title="No media yet"
+				description={session.isAdmin
+					? 'Point Lain at a directory on this server and run a scan. Files stay where they are.'
+					: 'An administrator has not configured a library yet.'}
+			>
+				{#snippet icon()}<Clapperboard class="size-6 text-muted" />{/snippet}
+				{#if session.isAdmin}
+					<LinkButton href="/settings/libraries">
+						<FolderPlus class="size-4" /> Add a library
+					</LinkButton>
+				{/if}
+			</EmptyState>
+		</div>
 	{:else if catalogTotal === 0}
-		<EmptyState
-			title="Library hasn't been scanned"
-			description="Libraries are configured, but no media has been indexed yet."
-		>
-			{#snippet icon()}<ScanLine class="size-6 text-muted" />{/snippet}
-			{#if session.isAdmin}
-				<Button onclick={() => void startScan()} loading={scan.running}>
-					<ScanLine class="size-4" /> Scan now
-				</Button>
-			{/if}
-		</EmptyState>
+		<div class="mx-auto w-full max-w-[1600px] px-4 pb-24 pt-24 md:px-8 md:pt-32">
+			<EmptyState
+				title="Library hasn't been scanned"
+				description="Libraries are configured, but no media has been indexed yet."
+			>
+				{#snippet icon()}<ScanLine class="size-6 text-muted" />{/snippet}
+				{#if session.isAdmin}
+					<Button onclick={() => void startScan()} loading={scan.running}>
+						<ScanLine class="size-4" /> Scan now
+					</Button>
+				{/if}
+			</EmptyState>
+		</div>
 	{:else}
-		{#if continueItems.length > 0}
-			<MediaRow title="Continue watching" items={continueItems} {progressMap} />
-		{/if}
-
-		{#if recent.length > 0}
-			<section class="space-y-3">
-				<h2 class="text-base font-semibold tracking-tight text-foreground">Recently added</h2>
-				<MediaGrid items={recent.slice(0, 12)} {progressMap} priority />
-			</section>
-		{/if}
-
-		{#each libraryRows as row (row.lib.id)}
-			<MediaRow
-				title={row.lib.name}
-				href={`/library/${row.lib.id}`}
-				items={row.items}
-				{progressMap}
+		{@const hero = continueItems[0] ?? recent[0]}
+		{@const upNext = hero ? (continueItems.find((i) => i.id !== hero.id) ?? null) : null}
+		{#if hero}
+			<Hero
+				item={hero}
+				enrichment={enrichmentCache.get(hero.id) ?? null}
+				resume={progressMap.has(hero.id)}
+				{upNext}
+				upNextEnrichment={upNext ? enrichmentCache.get(upNext.id) ?? null : null}
+				upNextProgress={upNext ? progressMap.get(upNext.id) ?? null : null}
 			/>
-		{/each}
+		{/if}
+		<section id="home-library" class="home-library relative bg-background pb-24 pt-14 sm:pt-18 md:pb-20 md:pt-20">
+			<div class="mx-auto w-full max-w-[1800px] space-y-14 px-5 sm:px-8 md:space-y-16 lg:px-16">
+				{#if scan.running}
+					<div class="flex"><Badge tone="accent"><ScanLine class="size-3" /> Scanning…</Badge></div>
+				{:else if scan.status?.state === 'error'}
+					<div class="flex"><Badge tone="danger">Last scan failed</Badge></div>
+				{/if}
+
+				{#if continueItems.length > 0}
+					<MediaRow title="Continue watching" href="/library" actionLabel="Open library" items={continueItems} {progressMap} layout="landscape" />
+				{/if}
+
+				{#if recent.length > 0}
+					<MediaRow title="Recently added" href="/library" items={recent.slice(0, 12)} {progressMap} layout="landscape" />
+				{/if}
+
+				{#each libraryRows as row (row.lib.id)}
+					<MediaRow title={row.lib.name} href={`/library/${row.lib.id}`} items={row.items} {progressMap} layout={row.lib.type === 'movie' ? 'poster' : 'landscape'} />
+				{/each}
+			</div>
+		</section>
 	{/if}
 </div>

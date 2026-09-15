@@ -40,6 +40,6 @@
 				<p class="mt-0.5 font-mono text-xs text-muted">{library.path}</p>
 			</div>
 		</header>
-		<LibraryBrowser libraryId={library.id} />
+		<LibraryBrowser {libraries} libraryId={library.id} />
 	{/if}
 </div>

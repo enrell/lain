@@ -58,12 +58,36 @@
 	let error = $state<string | null>(null);
 	let resumedFrom = $state(0);
 	let showResume = $state(false);
+	let transcodeReady = $state(false);
+	let preparingTranscode = $state(false);
+	let transcodeSession = $state('');
+	let transcodeError = $state<string | null>(null);
+	let hasSubtitle = $state(false);
+	let selectedAudio = $state('');
+	let selectedSubtitle = $state('');
+
+	const audioTracks = $derived((plan.streams ?? []).filter((s) => s.type === 'audio'));
+	const subtitleTracks = $derived(
+		(plan.streams ?? []).filter((s) => s.type === 'subtitle' && s.convertible)
+	);
+	const subtitleSrc = $derived(
+		plan.mode === 'transcode' && transcodeReady && hasSubtitle && transcodeSession
+			? api.playback.subtitleUrl(item.id, session.token, transcodeSession)
+			: undefined
+	);
 
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
 	let resumeTimer: ReturnType<typeof setTimeout> | null = null;
 	let resumeApplied = false;
+	let transcodeAbort: AbortController | null = null;
 
-	const streamSrc = $derived(api.playback.streamUrl(item.id, session.token));
+	const streamSrc = $derived(
+		plan.mode === 'transcode' && !transcodeReady
+			? undefined
+			: plan.mode === 'transcode'
+			? api.playback.transcodeUrl(item.id, session.token, transcodeSession)
+			: api.playback.streamUrl(item.id, session.token)
+	);
 	const title = $derived(item.title);
 
 	function snapshot(): ProgressSnapshot {
@@ -102,6 +126,13 @@
 	onMount(() => {
 		window.addEventListener('pagehide', onPageHide);
 		document.addEventListener('visibilitychange', onPageHide);
+		if (plan.mode === 'transcode') {
+			transcodeSession = plan.session ?? '';
+			transcodeReady = plan.state === 'ready';
+			if (!transcodeReady) void prepareTranscode();
+		} else {
+			transcodeReady = true;
+		}
 		return () => {
 			window.removeEventListener('pagehide', onPageHide);
 			document.removeEventListener('visibilitychange', onPageHide);
@@ -112,7 +143,76 @@
 		persistNow();
 		if (hideTimer) clearTimeout(hideTimer);
 		if (resumeTimer) clearTimeout(resumeTimer);
+		transcodeAbort?.abort();
 	});
+
+	function delay(ms: number, signal: AbortSignal): Promise<void> {
+		return new Promise((resolve, reject) => {
+			const timer = setTimeout(resolve, ms);
+			signal.addEventListener(
+				'abort',
+				() => {
+					clearTimeout(timer);
+					reject(new DOMException('Aborted', 'AbortError'));
+				},
+				{ once: true }
+			);
+		});
+	}
+
+	async function prepareTranscode(selection?: {
+		audio_stream?: number;
+		subtitle_stream?: number;
+	}): Promise<void> {		transcodeAbort?.abort();
+		const controller = new AbortController();
+		transcodeAbort = controller;
+		preparingTranscode = true;
+		transcodeError = null;
+		try {
+			let status = await api.playback.startTranscode(item.id, {
+				profile: plan.profile,
+				audio_stream: selection?.audio_stream,
+				subtitle_stream: selection?.subtitle_stream
+			});
+			transcodeSession = status.session;
+			hasSubtitle = status.has_subtitle ?? selection?.subtitle_stream !== undefined;
+			let waitMs = 750;
+			while (status.state === 'queued' || status.state === 'running' || status.state === 'idle') {
+				await delay(waitMs, controller.signal);
+				status = await api.playback.transcodeStatus(item.id, transcodeSession, controller.signal);
+				waitMs = Math.min(3000, Math.round(waitMs * 1.4));
+			}
+			if (status.state !== 'ready') {
+				throw new Error(status.error || 'The server could not prepare this video.');
+			}
+			hasSubtitle = status.has_subtitle ?? hasSubtitle;
+			transcodeReady = true;
+		} catch (err) {
+			if (err instanceof DOMException && err.name === 'AbortError') return;
+			transcodeError = err instanceof Error ? err.message : 'The server could not prepare this video.';
+		} finally {
+			if (transcodeAbort === controller) {
+				preparingTranscode = false;
+				transcodeAbort = null;
+			}
+		}
+	}
+
+	async function changeTracks(): Promise<void> {
+		if (plan.mode !== 'transcode') return;
+		const position = video?.currentTime ?? 0;
+		transcodeReady = false;
+		resumeApplied = true;
+		await prepareTranscode({
+			audio_stream: selectedAudio === '' ? undefined : Number(selectedAudio),
+			subtitle_stream: selectedSubtitle === '' ? undefined : Number(selectedSubtitle)
+		});
+		if (video && transcodeReady) {
+			video.load();
+			video.currentTime = position;
+			void video.play().catch(() => undefined);
+		}
+	}
 
 	/* ---------------------------------------------------------------- */
 	/* media element events                                              */
@@ -120,7 +220,7 @@
 
 	function onLoadedMetadata(): void {
 		const el = video;
-		if (!el) return;
+		if (!el || !transcodeReady) return;
 		duration = Number.isFinite(el.duration) ? el.duration : 0;
 		el.volume = volume;
 		el.muted = muted;
@@ -417,11 +517,75 @@
 	>
 		<!-- No captions are transcribed yet; the element keeps native
 		     accessibility semantics without inventing fake tracks. -->
+		{#if subtitleSrc}
+			<track kind="subtitles" srclang="en" label="Subtitles" src={subtitleSrc} default />
+		{/if}
 		<track kind="captions" />
 	</video>
 
+	{#if plan.mode === 'transcode' && transcodeReady && (audioTracks.length > 1 || subtitleTracks.length > 0)}
+		<div class="absolute left-4 top-16 z-10 flex flex-wrap gap-2">
+			{#if audioTracks.length > 1}
+				<label class="flex items-center gap-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/85">
+					Audio
+					<select
+						class="bg-transparent text-xs text-white"
+						bind:value={selectedAudio}
+						onchange={() => void changeTracks()}
+						aria-label="Audio track"
+					>
+						<option value="">Default</option>
+						{#each audioTracks as track (track.index)}
+							<option value={String(track.index)}>
+								{track.language || track.title || `Track ${track.index}`} · {track.codec}
+							</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
+			{#if subtitleTracks.length > 0}
+				<label class="flex items-center gap-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/85">
+					CC
+					<select
+						class="bg-transparent text-xs text-white"
+						bind:value={selectedSubtitle}
+						onchange={() => void changeTracks()}
+						aria-label="Subtitle track"
+					>
+						<option value="">Off</option>
+						{#each subtitleTracks as track (track.index)}
+							<option value={String(track.index)}>
+								{track.language || track.title || `Track ${track.index}`}
+							</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
+		</div>
+	{/if}
+
+	{#if preparingTranscode}
+		<div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 px-6 text-center">
+			<Spinner class="size-10 text-white/80" label="Preparing playback" />
+			<p class="text-sm text-white/70">Preparing a browser-compatible version…</p>
+		</div>
+	{:else if transcodeError}
+		<div class="absolute inset-0 flex items-center justify-center bg-black/80 px-6">
+			<div class="max-w-md text-center">
+				<TriangleAlert class="mx-auto size-8 text-warning" />
+				<p class="mt-3 text-sm text-foreground">{transcodeError}</p>
+				<button
+					class="mt-5 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:bg-accent-hover"
+					onclick={() => void prepareTranscode()}
+				>
+					<RotateCcw class="mr-1.5 inline size-3.5" /> Retry preparation
+				</button>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Buffering -->
-	{#if waiting && !error}
+	{#if waiting && !error && !preparingTranscode}
 		<div class="pointer-events-none absolute inset-0 flex items-center justify-center">
 			<Spinner class="size-10 text-white/80" label="Buffering" />
 		</div>
@@ -452,7 +616,7 @@
 	{/if}
 
 	<!-- Paused start / ended: a large, unmissable play affordance. -->
-	{#if (ended || (!playing && !error && !waiting && currentTime === 0)) && controlsVisible}
+	{#if transcodeReady && (ended || (!playing && !error && !waiting && currentTime === 0)) && controlsVisible}
 		<button
 			class="absolute inset-0 flex items-center justify-center"
 			onclick={togglePlay}

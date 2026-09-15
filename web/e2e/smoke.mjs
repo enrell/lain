@@ -290,6 +290,7 @@ async function fillPlaceholder(placeholder, value) {
 	const filled = await evalValue(`(() => {
 		const el = document.querySelector('input[placeholder=' + ${JSON.stringify(JSON.stringify(placeholder))} + ']');
 		if (!el) return false;
+		el.focus();
 		const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
 		setter.call(el, ${JSON.stringify(value)});
 		el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -383,6 +384,17 @@ try {
 	/* ---------------- setup ---------------- */
 	step('first-run setup');
 	await waitText('Create your account');
+	const publicTheme = await evalValue(`fetch('/api/theme').then((r) => r.json())`);
+	await waitUntil(
+		() => requests.some((r) => r.url.endsWith('/api/theme') && r.status === 200),
+		5000,
+		'public theme request'
+	);
+	await waitFor(
+		`getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() === ${JSON.stringify(publicTheme.accent)}`,
+		5000,
+		'Omarchy theme token'
+	);
 	await fillLabel('Username', ADMIN_USER);
 	await fillLabel('Password', ADMIN_PASS);
 	await fillLabel('Confirm password', ADMIN_PASS);
@@ -421,8 +433,8 @@ try {
 	const cards = await evalValue(`document.querySelectorAll('a[href^="/item/"]').length`);
 	console.log(`   ${cards} media cards on Home`);
 
-	await clickText('Search');
-	await waitText('Search your library');
+	await navigate(`${BASE}/search`);
+	await waitText('Search', 10000);
 	await fillPlaceholder('Titles, not filenames', 'frieren');
 	await waitFor(
 		`document.body.innerText.includes('2 results') || document.body.innerText.includes('1 result')`,
@@ -439,13 +451,27 @@ try {
 	await clickText('Home');
 	await waitText('Recently added');
 	await clickText('Frieren');
+	// Scans auto-enrich now, so strip any existing overlay first: the
+	// manual fetch below must exercise the full NFO path. Either button
+	// proves the controls rendered (enrichment loads async after the item).
+	await waitFor(
+		`document.body.innerText.includes('Refetch metadata') || document.body.innerText.includes('Fetch metadata')`,
+		15000,
+		'enrich controls'
+	);
+	const hasOverlay = await evalValue(`document.body.innerText.includes('Refetch metadata')`);
+	if (hasOverlay) {
+		await clickText('Remove');
+		await clickText('Remove overlay');
+		await waitText('Fetch metadata', 10000);
+	}
 	await waitText('Fetch metadata');
 	await clickText('Fetch metadata');
 	await waitText('Metadata added from', 15000);
 	await waitText("Frieren: Beyond Journey's End", 10000);
 	console.log('   local NFO overlay applied without network providers');
 
-	step('unplayable container degrades honestly');
+	step('mkv container plays through the transcode endpoint');
 	await navigate(`${BASE}/library`);
 	await waitText('Other Show');
 
@@ -465,12 +491,21 @@ try {
 	console.log(`   ${thumbResponses.length} thumbnail frame(s) served to unenriched cards`);
 
 	await clickText('Other Show');
-	await waitText('cannot play this file directly', 15000);
-	const disabledPlay = await evalValue(
-		`[...document.querySelectorAll('button')].some((b) => b.disabled && b.textContent.includes('Play'))`
+	await waitText('Play', 15000);
+	await clickText('Play');
+	await waitFor(`!!document.querySelector('video')`, 15000, 'video element');
+	await waitFor(`document.querySelector('video').duration > 0`, 20000, 'transcoded metadata');
+	const transcodeRequests = requests.filter((r) => r.url.includes('/transcode'));
+	assert(transcodeRequests.length > 0, 'no transcode request observed');
+	const served = transcodeRequests.filter((r) => r.status !== null);
+	assert(served.length > 0, 'no transcode response observed');
+	assert(
+		served.every((r) => r.status === 200 || r.status === 202 || r.status === 206 || r.status === 304),
+		'transcode responses: ' + JSON.stringify(served.map((r) => r.status))
 	);
-	assert(disabledPlay, 'Play button should be disabled for an unplayable container');
-	console.log('   mkv reports transcode-required instead of faking playback');
+	const tranged = transcodeRequests.filter((r) => r.headers && r.headers.Range);
+	assert(tranged.length > 0, 'no Range header observed on transcode requests');
+	console.log('   mkv remuxes to MP4 through /transcode instead of degrading');
 
 	/* ---------------- playback ---------------- */
 	step('playback: start, Range, keyboard seek, progress');
@@ -658,10 +693,13 @@ try {
 				})()`);
 				assert(bottomNav, `${vp.name}: bottom navigation is not visible`);
 			} else {
-				const sidebar = await evalValue(
-					`[...document.querySelectorAll('aside')].some((a) => a.getBoundingClientRect().width > 100)`
-				);
-				assert(sidebar, `${vp.name}: desktop sidebar is not visible`);
+				const topNav = await evalValue(`(() => {
+					const nav = document.querySelector('header nav[aria-label="Primary"]');
+					if (!nav) return false;
+					const r = nav.getBoundingClientRect();
+					return r.width > 100 && r.top < window.innerHeight / 2;
+				})()`);
+				assert(topNav, `${vp.name}: desktop top navigation is not visible`);
 			}
 		}
 		await page.send('Emulation.clearDeviceMetricsOverride');
@@ -684,7 +722,9 @@ try {
 		assert(unexpected404.length === 0, 'unexpected 404s:\n' + unexpected404.join('\n'));
 	}
 	{
-		const loops = [...requestCount.entries()].filter(([, n]) => n > 6);
+		const loops = [...requestCount.entries()].filter(
+			([key, n]) => n > 6 && !key.endsWith('/api/theme')
+		);
 		assert(
 			loops.length === 0,
 			'possible request loops:\n' + loops.map(([k, n]) => `${n}x ${k}`).join('\n')

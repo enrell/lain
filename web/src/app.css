@@ -3,8 +3,8 @@
 /*
  * Lain design tokens. Semantic names only: components talk about
  * background/surface/accent, never raw zinc-800-style values. Dark is
- * the primary experience; tokens are the single place a light mode
- * would plug in later.
+ * the fallback experience. The root layout replaces these variables
+ * with the server host's validated Omarchy palette when available.
  */
 @theme {
 	--color-background: #08090c;
@@ -85,4 +85,74 @@
 @utility lattice {
 	background-image: radial-gradient(circle, var(--color-line) 1px, transparent 1px);
 	background-size: 22px 22px;
+}
+
+/* Monolith home: the image owns the right side while copy stays readable
+ * against every Omarchy palette and every piece of server artwork. */
+.hero-monolith-shade {
+	background:
+		linear-gradient(90deg, #050806 0%, rgb(5 8 6 / 0.96) 22%, rgb(5 8 6 / 0.58) 55%, rgb(5 8 6 / 0.08) 82%),
+		linear-gradient(0deg, #050806 0%, rgb(5 8 6 / 0.12) 42%, rgb(5 8 6 / 0.28) 100%);
+}
+
+.hero-monolith-title {
+	max-width: 12ch;
+	font-size: clamp(2.5rem, 6.5vw, 6.5rem);
+	font-weight: 900;
+	letter-spacing: -0.045em;
+	line-height: 0.95;
+	text-transform: uppercase;
+	text-wrap: balance;
+}
+
+.hero-monolith-art {
+	animation: hero-breathe 1.4s var(--ease-out-quick) both;
+}
+
+.hero-monolith-copy {
+	animation: hero-enter 0.8s 0.08s var(--ease-out-quick) both;
+}
+
+.home-library::before {
+	position: absolute;
+	inset: -5rem 0 auto;
+	height: 5rem;
+	background: linear-gradient(to bottom, transparent, var(--color-background));
+	content: '';
+}
+
+@keyframes hero-enter {
+	from {
+		opacity: 0;
+		transform: translateY(20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes hero-breathe {
+	from {
+		opacity: 0.65;
+		transform: scale(1.035);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@media (max-width: 767px) {
+	.hero-monolith-shade {
+		background:
+			linear-gradient(0deg, #050806 0%, rgb(5 8 6 / 0.82) 42%, rgb(5 8 6 / 0.06) 78%),
+			linear-gradient(90deg, rgb(5 8 6 / 0.48), transparent);
+	}
+
+	.hero-monolith-title {
+		max-width: 12ch;
+		font-size: clamp(2.25rem, 12vw, 3.5rem);
+		line-height: 1;
+	}
 }

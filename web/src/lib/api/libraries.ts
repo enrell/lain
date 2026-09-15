@@ -1,5 +1,5 @@
 import { request } from './client';
-import type { Library, ScanStatus } from './types';
+import type { BrowseResult, Library, ScanStatus } from './types';
 
 export interface CreateLibraryInput {
 	name: string;
@@ -27,5 +27,8 @@ export const libraries = {
 
 	scanStart: () => request<{ state: string }>('/api/library/scan', { method: 'POST' }),
 
-	scanStatus: () => request<ScanStatus>('/api/library/scan')
+	scanStatus: () => request<ScanStatus>('/api/library/scan'),
+
+	browse: (path?: string) =>
+		request<BrowseResult>(path ? `/api/browse?path=${encodeURIComponent(path)}` : '/api/browse')
 };

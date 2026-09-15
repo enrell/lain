@@ -7,6 +7,14 @@
 	import { goto } from '$app/navigation';
 	import { session } from '$lib/auth/session.svelte';
 
+	let {
+		side = 'top',
+		compact = false
+	}: {
+		side?: 'top' | 'bottom';
+		compact?: boolean;
+	} = $props();
+
 	const initial = $derived((session.user?.username ?? '?').slice(0, 1).toUpperCase());
 
 	function signOut(): void {
@@ -17,7 +25,10 @@
 
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger
-		class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-accent"
+		class={[
+			'flex items-center gap-2 rounded-full text-left transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-accent',
+			compact ? 'p-1' : 'w-full px-2 py-2'
+		].join(' ')}
 		aria-label="Account menu"
 	>
 		<span
@@ -25,12 +36,14 @@
 		>
 			{initial}
 		</span>
-		<span class="min-w-0 flex-1 truncate text-sm text-foreground">{session.user?.username}</span>
-		<ChevronsUpDown class="size-3.5 shrink-0 text-muted" />
+		{#if !compact}
+			<span class="min-w-0 flex-1 truncate text-sm text-foreground">{session.user?.username}</span>
+			<ChevronsUpDown class="size-3.5 shrink-0 text-muted" />
+		{/if}
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
 		<DropdownMenu.Content
-			side="top"
+			side={side}
 			sideOffset={6}
 			align="start"
 			class="z-50 min-w-52 rounded-md border border-line bg-surface p-1 shadow-xl"
