@@ -1,0 +1,7 @@
+# Development image: toolchain plus runtime deps, source comes from a
+# bind mount so `docker compose watch` restarts `go run` on every edit.
+FROM golang:1.27-alpine
+RUN apk add --no-cache ca-certificates ffmpeg
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
