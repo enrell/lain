@@ -16,6 +16,8 @@ Edit this freely. The advisor treats it as authoritative over model opinion and 
 - Test behavior first with `go test ./...`; fixtures use fictional placeholders such as `[Fansub-A]` and `tracker-example`.
 - Repository-authored prose is English. Other languages belong only in explicit localization or translated-document variants.
 - Use short imperative commit subjects.
+- For major visual redesigns, prefer choosing from working comparative prototypes over committing to verbal mood-board labels alone.
+- For the WebUI, prefer a clean, modern Monolith-style cinematic foundation: monumental title-first hero, quiet top navigation, generous negative space, and familiar horizontal media rails below it.
 
 ## Never decide without the user (examples)
 
