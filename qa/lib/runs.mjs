@@ -268,7 +268,10 @@ export function applyFixes(state, fix, round) {
 			lines.push(`${finding.id} -> needs-decision (a human must answer)`);
 			continue;
 		}
-		if (change.commit) state.commits.push({ sha: change.commit, id: finding.id, round, summary: change.summary });
+		// The claim is kept on the finding so the auditor can read it. Commit
+		// records themselves come from git only: a sha the runner has not seen on
+		// the branch must never sit in the ledger as if it were recorded work.
+		if (change.commit) finding.fix_claim = { sha: change.commit, summary: change.summary, verification: change.verification };
 		// 'skipped' means the engineer ran out of budget: keep it open for the
 		// next round. 'not-reproduced' goes back to the auditor rather than
 		// closing, so a disagreement is settled by the evidence of whoever is
