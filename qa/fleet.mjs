@@ -789,6 +789,13 @@ async function reconcileCommits(state, { branch, before, round, fixDoc }) {
 		const [sha, subject] = line.split('\t');
 		if (!sha || before.has(sha)) continue;
 		if (state.commits.some((c) => c.sha === sha)) continue;
+		// The runner rebases this branch, so a commit it already recorded can
+		// come back with a new sha. Follow the sha instead of duplicating it.
+		const moved = state.commits.find((c) => c.subject === (subject || '') && c.branch === branch);
+		if (moved) {
+			moved.sha = sha;
+			continue;
+		}
 		const body = await git(['log', '-1', '--format=%b', sha]);
 		const claimed = [...body.matchAll(/QA-Finding:\s*([A-Za-z0-9/_-]+)/g)].map((m) => m[1]);
 		// The brief demands both a `Fix <id>:` subject and a `QA-Finding:` body
