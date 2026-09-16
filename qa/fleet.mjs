@@ -1038,15 +1038,29 @@ function fixVars({ config, run, dir, instance, browser, branch, round, open, sta
 	};
 }
 
+/**
+ * A review branch has to sit on top of the base branch, or the diff a human
+ * reads is yesterday's tree plus the fixes. Rebasing is the runner's job, its
+ * conflicts are not: when the rebase fails the branch is left alone and the run
+ * stops rather than testing code nobody intended.
+ */
+async function rebaseOntoBase(branch) {
+	if ((await gitRun(['merge-base', '--is-ancestor', DEFAULT_BASE, 'HEAD'])).ok) return {};
+	const rebase = await gitRun(['rebase', DEFAULT_BASE]);
+	if (rebase.ok) return { rebased: true };
+	await gitRun(['rebase', '--abort']);
+	return { ok: false, error: `${branch} no longer contains ${DEFAULT_BASE} and cannot be rebased onto it: resolve the conflict by hand` };
+}
+
 async function ensureBranch(branch) {
 	const current = await git(['rev-parse', '--abbrev-ref', 'HEAD']);
 	const dirty = await git(['status', '--porcelain']);
 	if (dirty) return { ok: false, error: 'the working tree is not clean' };
-	if (current === branch) return { ok: true, created: false };
+	if (current === branch) return { ok: true, created: false, ...(await rebaseOntoBase(branch)) };
 	const exists = await git(['rev-parse', '--verify', branch]);
 	if (exists) {
 		const out = await gitRun(['checkout', branch]);
-		return out.ok ? { ok: true, created: false } : { ok: false, error: out.error };
+		return out.ok ? { ok: true, created: false, ...(await rebaseOntoBase(branch)) } : { ok: false, error: out.error };
 	}
 	const out = await gitRun(['checkout', '-b', branch]);
 	return out.ok ? { ok: true, created: true } : { ok: false, error: out.error };
