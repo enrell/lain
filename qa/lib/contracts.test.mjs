@@ -127,6 +127,16 @@ test('resolveConfig refuses to guess a model', () => {
 	assert.equal(config.fixerModel, 'bai/qwen3.8-flash');
 });
 
+test('a #variant picks a reasoning profile without hiding the model name', () => {
+	const config = resolveConfig(ROOT, { LAIN_AGENT_MODEL: 'opencode-go/deepseek-v4.1-flash#high' });
+	assert.equal(config.provider, 'opencode-go');
+	// The provider lists the bare model; the doctor looks it up without the
+	// variant, while the CLI still gets the whole string.
+	assert.equal(config.modelName, 'deepseek-v4.1-flash');
+	assert.equal(config.variant, 'high');
+	assert.equal(config.model, 'opencode-go/deepseek-v4.1-flash#high');
+});
+
 test('resolveConfig validates the knobs a contributor can mistype', () => {
 	const bad = (over, re) =>
 		assert.throws(() => resolveConfig(ROOT, { LAIN_AGENT_MODEL: 'p/m', ...over }), (e) => e instanceof EnvError && re.test(e.message), JSON.stringify(over));

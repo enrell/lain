@@ -70,7 +70,11 @@ export function resolveConfig(root, overrides = {}) {
 		throw EnvError.invalidModel(model);
 	}
 	const [provider, ...rest] = model.split('/');
-	const modelName = rest.join('/');
+	// `#variant` selects a reasoning profile (e.g. #high vs #max). The provider
+	// lists the model without it, so the doctor looks up the bare name, while
+	// the CLI still receives the whole string.
+	const [modelName, ...variantParts] = rest.join('/').split('#');
+	const variant = variantParts.join('#');
 	if (!provider || !modelName) throw EnvError.invalidModel(model);
 
 	const binary = String(get('LAIN_AGENT_OPENCODE', 'opencode2')).trim();
@@ -136,6 +140,7 @@ export function resolveConfig(root, overrides = {}) {
 		model,
 		provider,
 		modelName,
+		variant,
 		fixerModel: String(get('LAIN_AGENT_MODEL_FIXER', model)).trim() || model,
 		auditorModel: String(get('LAIN_AGENT_MODEL_AUDITOR', model)).trim() || model,
 		base,
