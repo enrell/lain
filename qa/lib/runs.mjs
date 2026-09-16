@@ -112,19 +112,41 @@ export function publicAccounts(secrets = {}) {
  */
 export function auditorSessions(dir) {
 	const file = join(dir, 'journal.jsonl');
-	if (!existsSync(file)) return {};
 	const sessions = {};
-	for (const line of readFileSync(file, 'utf8').split('\n')) {
-		let event;
-		try {
-			event = JSON.parse(line);
-		} catch {
-			continue;
+	if (existsSync(file)) {
+		for (const line of readFileSync(file, 'utf8').split('\n')) {
+			let event;
+			try {
+				event = JSON.parse(line);
+			} catch {
+				continue;
+			}
+			// `journal` spreads its payload at the top level, so the last event that
+			// carried both a seed and a session id wins — that is the session the
+			// auditor was still in when it wrote the report.
+			if (event?.seed && event?.session) sessions[event.seed] = event.session;
 		}
-		// `journal` spreads its payload at the top level, so the last event that
-		// carried both a seed and a session id wins — that is the session the
-		// auditor was still in when it wrote the report.
-		if (event?.seed && event?.session) sessions[event.seed] = event.session;
+	}
+	// A run that died before it could journal the auditor-finished event (a
+	// killed CLI, a restart) still left the transcript on disk, and the first
+	// event carries the session id that produced the report. Recovering it here
+	// keeps the verify step able to re-test in the auditor's own session instead
+	// of stranding every finding as cannot-verify.
+	const logs = join(dir, 'logs');
+	if (existsSync(logs)) {
+		for (const name of readdirSync(logs)) {
+			if (!name.endsWith('.jsonl')) continue;
+			const seed = name.slice(0, -'.jsonl'.length);
+			if (sessions[seed]) continue;
+			const first = readFileSync(join(logs, name), 'utf8').split('\n').find((l) => l.includes('"sessionID"'));
+			if (!first) continue;
+			try {
+				const id = JSON.parse(first)?.sessionID;
+				if (id) sessions[seed] = id;
+			} catch {
+				/* not the first event we hoped for; leave it recovered elsewhere */
+			}
+		}
 	}
 	return sessions;
 }
