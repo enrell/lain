@@ -115,15 +115,22 @@ published.
    reverted by the runner, not by a human cleaning up later.
 3. Commits go to `LAIN_AGENT_BRANCH` (default `agent/qa/<UTC timestamp>`), each
    with a `QA-Finding: <id>` body line. The runner attributes work by reading
-   `git log`, not by trusting prose: a claimed sha that is not on the branch
-   reopens the finding, and an edited-but-uncommitted tree is committed under
-   the finding it names and marked `recovered`.
+   `git log`, not by trusting prose: a sha the engineer claimed but that is not
+   on the branch leaves the finding open, work the report claims and the branch
+   lacks is committed under the finding it names and marked `recovered`, and
+   anything nobody reported is written to `recovered/` as a patch and rolled
+   back. The review branch is rebased onto the base branch at the start of each
+   round, so the diff a human reads is only the fixes.
 4. Every specialist that filed an awaiting-verify finding is re-run **in its own
    session** (`--session <id>`), with only its own findings in the brief, and
    must answer `fixed | not-fixed | partially-fixed | cannot-verify |
    not-a-defect | wont-fix` with what it actually saw.
 5. Only a verdict closes a finding. The loop repeats until converged or
    `LAIN_AGENT_MAX_ROUNDS` (default 3) is spent.
+
+A run that converges on the blocking severities while a specialist is still
+missing coverage reports `converged-with-gaps`: green on what was tested, not
+green on the app.
 
 Two outcomes are reported as distinct from "converged":
 
