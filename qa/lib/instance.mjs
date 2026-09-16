@@ -17,6 +17,27 @@ const CACHE = 'qa/.cache';
 
 export class InstanceError extends Error {}
 
+/*
+ * A crash in the runner (an uncaught bug, a killed parent) skips every
+ * stopInstance on the normal path, orphaning the disposable servers it spawned.
+ * Each live child is tracked here and signalled on exit, so an abnormal end
+ * still leaves no `lain serve` behind. `stop` removes the child from the set,
+ * so a clean shutdown is unaffected.
+ */
+const liveChildren = new Set();
+let exitCleanupInstalled = false;
+function installExitCleanup() {
+	if (exitCleanupInstalled) return;
+	exitCleanupInstalled = true;
+	process.on('exit', () => {
+		for (const child of liveChildren) {
+			try {
+				child.kill('SIGTERM');
+			} catch {}
+		}
+	});
+}
+
 export function freePort() {
 	return new Promise((resolve, reject) => {
 		const srv = createServer();
@@ -167,12 +188,15 @@ export async function startInstance(root, { runId, log = () => {}, external, bar
 		env: { ...process.env, LAIN_LOG_LEVEL: process.env.LAIN_LOG_LEVEL || 'warn' },
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});
+	liveChildren.add(child);
+	installExitCleanup();
 	let serverLog = '';
 	child.stdout.on('data', (b) => (serverLog += b.toString()));
 	child.stderr.on('data', (b) => (serverLog += b.toString()));
 	child.on('exit', (code) => log(`QA instance exited with code ${code}`));
 
 	const stop = () => {
+		liveChildren.delete(child);
 		try {
 			child.kill('SIGTERM');
 		} catch {}
