@@ -726,7 +726,7 @@ async function fix() {
 		}
 		await verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc, transcriptNotes });
 
-		const red = await redChecks({ dir, round, instance, config });
+		const red = await redChecks({ dir, round, run, config });
 		if (red === 'hung') {
 			transcriptNotes.push(`round ${round}: web/e2e/smoke.mjs timed out, so the deterministic gate says nothing about this round`);
 		} else if (red) {
@@ -1121,33 +1121,33 @@ function runChecked(argv, logPath, timeoutMs = 900000) {
  * rather than acted on: reverting signed-off fixes because a harness wedged
  * would punish the round for something the gate never asserted.
  */
-async function redChecks({ dir, round, instance, config }) {
+async function redChecks({ dir, round, run, config }) {
 	journal(dir, 'checks-started', { round });
 	const unit = await runChecked(['just', 'check'], join(dir, 'logs', `checks-r${round}.log`));
 	journal(dir, 'checks-finished', { round, suite: 'just check', exit: unit.code, ms: unit.ms });
 	if (unit.code !== 0) return 'just check';
-	if (!instance.fixtures) {
-		log(`round ${round}: external target — skipping web/e2e/smoke.mjs, it writes to the instance`);
-		return null;
-	}
+	// The gate never touches the audited instance, not even when that instance is
+	// somebody's real server: it boots its own virgin one, because smoke.mjs is a
+	// first-run journey and creates the administrator as its first step.
 	const started = Date.now();
 	journal(dir, 'checks-started', { round, suite: 'smoke' });
+	const gate = await startInstance(ROOT, { runId: `${run}-smoke-r${round}`, log: () => {}, bare: true });
 	const port = await freePort();
 	const args = [
 		'node',
 		'web/e2e/smoke.mjs',
 		'--base',
-		instance.base,
+		gate.base,
 		'--media',
-		instance.fixtures,
+		gate.fixtures,
 		'--user',
-		instance.secrets?.admin?.username || config.admin.username,
+		config.admin.username,
 		'--pass',
-		instance.secrets?.admin?.password || config.admin.password,
+		config.admin.password,
 		'--user2',
-		instance.secrets?.member?.username || config.member.username,
+		config.member.username,
 		'--pass2',
-		instance.secrets?.member?.password || config.member.password,
+		config.member.password,
 		'--chromium',
 		config.chromium,
 		'--debug-port',
@@ -1158,6 +1158,7 @@ async function redChecks({ dir, round, instance, config }) {
 		join(dir, 'logs', `smoke-r${round}-failure.png`),
 	];
 	const smoke = await runChecked(args, join(dir, 'logs', `smoke-r${round}.log`), 420000);
+	await gate.stop();
 	journal(dir, 'checks-finished', { round, suite: 'smoke', exit: smoke.code, ms: Date.now() - started });
 	if (smoke.timedOut) {
 		log(`round ${round}: web/e2e/smoke.mjs hung past 7 minutes — recorded as a gap, not a regression`);

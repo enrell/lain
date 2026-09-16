@@ -137,7 +137,7 @@ async function api(base, path, { method = 'GET', token, body } = {}) {
  * Boot an isolated instance, seed accounts, libraries and a finished scan.
  * @returns {Promise<{base:string,pid:number,stop:()=>void,secrets:object}>}
  */
-export async function startInstance(root, { runId, log = () => {}, external } = {}) {
+export async function startInstance(root, { runId, log = () => {}, external, bare = false } = {}) {
 	if (external) {
 		const base = external.replace(/\/$/, '');
 		let health = null;
@@ -192,6 +192,14 @@ export async function startInstance(root, { runId, log = () => {}, external } = 
 		}
 	}
 	if (!health) throw new InstanceError(`QA instance never became healthy:\n${serverLog.slice(-2000)}`);
+
+	if (bare) {
+		// A bare instance answers /api/health and nothing else: no accounts, no
+		// libraries. `web/e2e/smoke.mjs` is a first-run journey that creates the
+		// admin itself, so the deterministic gate needs a virgin server — pointed
+		// at the already-seeded one it fails on the setup screen.
+		return { base, pid: child.pid, stop, fixtures, bare: true, secrets: {}, health: { setup_required: true } };
+	}
 
 	const admin = {
 		username: process.env.LAIN_AGENT_ADMIN_USER || 'qa-admin',
