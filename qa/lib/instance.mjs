@@ -20,9 +20,11 @@ export class InstanceError extends Error {}
 /*
  * A crash in the runner (an uncaught bug, a killed parent) skips every
  * stopInstance on the normal path, orphaning the disposable servers it spawned.
- * Each live child is tracked here and signalled on exit, so an abnormal end
- * still leaves no `lain serve` behind. `stop` removes the child from the set,
- * so a clean shutdown is unaffected.
+ * Each live child is tracked here and killed on exit, so an abnormal end still
+ * leaves no `lain serve` behind. A child leaves the set only when it actually
+ * exits: stop() signals SIGTERM for a graceful shutdown, but a SIGTERM that the
+ * server does not act on (it can wedge while its data dir is being removed) is
+ * then finished by the exit handler's SIGKILL instead of being lost.
  */
 const liveChildren = new Set();
 let exitCleanupInstalled = false;
@@ -32,7 +34,7 @@ function installExitCleanup() {
 	process.on('exit', () => {
 		for (const child of liveChildren) {
 			try {
-				child.kill('SIGTERM');
+				child.kill('SIGKILL');
 			} catch {}
 		}
 	});
@@ -189,6 +191,7 @@ export async function startInstance(root, { runId, log = () => {}, external, bar
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});
 	liveChildren.add(child);
+	child.on('exit', () => liveChildren.delete(child));
 	installExitCleanup();
 	let serverLog = '';
 	child.stdout.on('data', (b) => (serverLog += b.toString()));
@@ -196,7 +199,6 @@ export async function startInstance(root, { runId, log = () => {}, external, bar
 	child.on('exit', (code) => log(`QA instance exited with code ${code}`));
 
 	const stop = () => {
-		liveChildren.delete(child);
 		try {
 			child.kill('SIGTERM');
 		} catch {}
