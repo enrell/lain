@@ -498,6 +498,29 @@ async function stopInstance(instance) {
 	if (instance.stop) instance.stop();
 }
 
+/**
+ * The re-test brief tells the auditor the target is a fresh build of the branch
+ * tip and forbids it from building its own, so the harness has to serve exactly
+ * that. An instance started at the top of this invocation was compiled before
+ * this round's commits landed; without a restart the auditor would re-test the
+ * old bundle and honestly report a fix that is present in the code as missing.
+ * Rebuilding here is cheap when nothing changed (the caches are current) and is
+ * the only thing that makes a single multi-round invocation verifiable.
+ */
+async function restartTarget(prev, { runId, round, log }) {
+	try {
+		await stopInstance(prev);
+	} catch (err) {
+		log(`could not stop the previous target cleanly (${String(err.message).slice(0, 120)})`);
+	}
+	try {
+		const fresh = await startInstance(ROOT, { runId: `${runId}-r${round}`, log });
+		return { ok: true, instance: fresh };
+	} catch (err) {
+		return { ok: false, error: String(err.message).slice(0, 200) };
+	}
+}
+
 function indexFindings(results) {
 	const rows = [];
 	for (const { seed, doc, session } of results) {
@@ -732,6 +755,16 @@ async function fix() {
 		if (!toVerify.length) {
 			transcriptNotes.push(`round ${round}: nothing new to verify`);
 			break;
+		}
+		// Rebuild and restart the target from the branch tip so the re-tests
+		// exercise the commits this round just landed, not the build compiled
+		// when the invocation began (see restartTarget).
+		const restarted = await restartTarget(instance, { runId: run, round, log });
+		if (restarted.ok) {
+			instance = restarted.instance;
+			log(`round ${round}: target restarted from the branch tip for re-test (${instance.base})`);
+		} else {
+			transcriptNotes.push(`round ${round}: target restart failed (${restarted.error}); re-tests ran against the previous build`);
 		}
 		await verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc, transcriptNotes });
 
