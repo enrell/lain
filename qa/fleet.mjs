@@ -526,8 +526,17 @@ async function fix() {
 	const manifest = readJson(join(dir, 'manifest.json'));
 	if (!manifest) fail(`${rel(dir)} has no manifest`);
 	const statePath = join(dir, 'state.json');
-	const state = readJson(statePath);
-	if (!state) fail(`${rel(statePath)} is missing; re-run \`just agent-e2e\``);
+	let state = readJson(statePath);
+	if (!state) {
+		// The run was killed before the audit phase could write its ledger
+		// (a crash or restart lands exactly here). The manifest plus whatever
+		// reports already landed on disk are enough to remediate, so a missing
+		// state is recoverable as long as reports exist; the empty state is
+		// rebuilt from them just below.
+		if (!existsSync(join(dir, 'reports'))) fail(`${rel(statePath)} is missing and no reports were recovered; re-run \`just agent-e2e\``);
+		state = newRunState(manifest);
+		journal(dir, 'state-recovered', { from: 'manifest+reports' });
+	}
 	if (config.branchOverride) manifest.branch = config.branchOverride;
 	const branch = manifest.branch || config.branch;
 
@@ -535,7 +544,7 @@ async function fix() {
 	// reports exist on disk are the ledger. Without this, a salvaged report
 	// would be thrown away together with the findings in it.
 	if (!Object.keys(state.findings).length) {
-		const recovered = recoverReports({ config, dir });
+		const recovered = recoverReports({ config, dir, seeds: manifest.seeds });
 		if (recovered.length) {
 			seedState(state, recovered);
 			state.incomplete_seeds = recovered.map((r) => r.seed);
@@ -1244,10 +1253,10 @@ async function dirtyPaths() {
 }
 
 /** Valid reports already written for this run, in seed order. */
-function recoverReports({ config, dir }) {
+function recoverReports({ config, dir, seeds }) {
 	const sessions = auditorSessions(dir);
 	const reports = [];
-	for (const seed of config.seeds) {
+	for (const seed of seeds || config.seeds) {
 		const artifact = readArtifact(join(dir, 'reports', `${seed}.json`), 'report', seed);
 		if (artifact.ok) reports.push({ seed, doc: artifact.doc, session: sessions[seed] || null, salvaged: true });
 	}
