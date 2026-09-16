@@ -92,6 +92,7 @@ agent-status run='':
 
 # Fleet self-tests (schema, briefs, run store) — no model, no browser.
 agent-test:
+    @for file in $(find qa -name '*.mjs' -not -path 'qa/runs/*' -not -path 'qa/.cache/*'); do node --check $file; done
     @node --test qa/lib/*.test.mjs
 
 # Forget a run (default: every run on disk).
