@@ -8,6 +8,8 @@ backups/
 *.db
 .env
 .env.*
+# ...except the documented contract, which is tracked.
+!.env.example
 *.pem
 *.key
 
