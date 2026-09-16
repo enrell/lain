@@ -476,13 +476,18 @@ try {
 	await waitText('Other Show');
 
 	// Unenriched cards fall back to a still extracted and cached by the
-	// server; the network gate below would also catch a 404 here.
+	// server; the network gate below would also catch a 404 here. A cold
+	// server runs ffmpeg once per still, so wait for the response this
+	// assertion is about, not merely for the request to leave the browser.
 	const thumbDeadline = Date.now() + 15000;
-	while (!requests.some((r) => r.url.includes('/thumbnail')) && Date.now() < thumbDeadline)
+	let thumbResponses = [];
+	while (Date.now() < thumbDeadline) {
+		thumbResponses = requests.filter(
+			(r) => r.url.includes('/thumbnail') && r.status !== null
+		);
+		if (thumbResponses.length > 0) break;
 		await sleep(150);
-	const thumbResponses = requests.filter(
-		(r) => r.url.includes('/thumbnail') && r.status !== null
-	);
+	}
 	assert(thumbResponses.length > 0, 'no thumbnail fallback requests observed');
 	assert(
 		thumbResponses.every((r) => r.status === 200 || r.status === 304),
