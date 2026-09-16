@@ -308,6 +308,33 @@ export function applyFixes(state, fix, round) {
 }
 
 /**
+ * Reopen the findings a rollback just took the commits away from. Verification
+ * runs before the deterministic gate, so by the time a red check rolls a round
+ * back the findings already read `fixed`/`partially-fixed`; leaving them there
+ * would let the report claim work the branch no longer holds. Git is the only
+ * proof of work, so a finding whose attributed commits have all left the branch
+ * goes back to `not-fixed`. A finding with no attributed commit in this ledger
+ * is left alone: on a stacked branch it can legitimately be fixed by an earlier
+ * run's commit this ledger never owned.
+ *
+ * `isLive` answers whether a commit sha is still on the branch; the rollback
+ * passes "everything except the round I just reverted".
+ */
+export function reopenRolledBack(state, isLive) {
+	const reopened = [];
+	for (const finding of Object.values(state.findings)) {
+		if (finding.status !== 'fixed' && finding.status !== 'partially-fixed') continue;
+		const mine = state.commits.filter((c) => (c.ids || []).includes(finding.id));
+		if (!mine.length) continue;
+		if (mine.some((c) => isLive(c.sha))) continue;
+		finding.status = 'not-fixed';
+		reopened.push(finding.id);
+	}
+	if (reopened.length) state.updated_at = new Date().toISOString();
+	return reopened;
+}
+
+/**
  * Convergence: every finding is settled, or the only ones left are severities
  * the run does not treat as blocking.
  */

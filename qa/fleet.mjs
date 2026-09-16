@@ -44,6 +44,7 @@ import {
 	findOpen,
 	applyVerdicts,
 	applyFixes,
+	reopenRolledBack,
 	converged,
 	findAwaiting,
 	findEscalated,
@@ -1215,17 +1216,27 @@ async function redChecks({ dir, round, run, config }) {
 }
 
 async function rollback(state, dir, round) {
-	const last = state.commits.filter((c) => c.round === round).at(-1);
-	if (!last) return 'no commit this round to roll back';
-	const head = await git(['rev-parse', 'HEAD']);
-	if (!head.startsWith(last.sha)) return `HEAD (${head.slice(0, 8)}) is not the round commit (${last.sha}); left alone`;
-	const revert = await gitRun(['revert', '--no-edit', ...state.commits.filter((c) => c.round === round).map((c) => c.sha).reverse()]);
-	if (!revert.ok) return `revert failed: ${revert.error}`;
-	for (const c of state.commits.filter((x) => x.round === round)) {
-		const finding = state.findings[c.id];
-		if (finding && finding.status === 'awaiting-verify') finding.status = 'not-fixed';
+	const roundShas = new Set(state.commits.filter((c) => c.round === round).map((c) => c.sha));
+	if (!roundShas.size) return 'no commit this round to roll back';
+	const head = (await git(['rev-parse', 'HEAD'])).trim();
+	// Only roll back when the tip is this round's work: anything on top (a human
+	// commit, another round) is not ours to revert. The ledger is reconciled
+	// newest-first, so the tip is found by membership, never by array position.
+	if (!roundShas.has(head)) return `HEAD (${head.slice(0, 8)}) is not one of round ${round}'s commits; left alone`;
+	// Newest-first taken from the branch, so each undo lands on the previous one.
+	const order = (await git(['rev-list', head])).split('\n').filter((sha) => roundShas.has(sha));
+	const revert = await gitRun(['revert', '--no-edit', ...order]);
+	if (!revert.ok) {
+		// A conflicted revert still leaves the branch red. The branch is
+		// agent-owned and disposable, so drop back to the pre-round tip instead.
+		const pre = (await git(['rev-parse', `${order[order.length - 1]}^`])).trim();
+		const reset = await gitRun(['reset', '--hard', pre]);
+		if (!reset.ok) return `revert failed (${revert.error}) and reset failed (${reset.error})`;
+		const resetReopened = reopenRolledBack(state, (sha) => !roundShas.has(sha));
+		return `revert conflicted; reset to ${pre.slice(0, 8)} and reopened ${resetReopened.length} finding(s)`;
 	}
-	return 'rolled back';
+	const reopened = reopenRolledBack(state, (sha) => !roundShas.has(sha));
+	return `rolled back${reopened.length ? `, reopened ${reopened.join(', ')}` : ''}`;
 }
 
 /**

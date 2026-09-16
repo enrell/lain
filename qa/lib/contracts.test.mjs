@@ -22,6 +22,7 @@ import {
 	actionable,
 	applyFixes,
 	applyVerdicts,
+	reopenRolledBack,
 	converged,
 	findOpen,
 	findEscalated,
@@ -293,6 +294,33 @@ test('an engineer that reports no commit cannot advance the ledger', () => {
 	assert.equal(state.commits.length, 0);
 	applyFixes(state, { changes: [{ id: 'usability/F-001', status: 'skipped', reason: 'out of budget' }] }, 2);
 	assert.equal(state.findings['usability/F-001'].status, 'open');
+});
+
+test('a rollback reopens only the findings whose commits left the branch', () => {
+	const state = seedState(newRunState({ run: 'r1' }), [
+		{ seed: 'usability', doc: goodReport(), session: 's' },
+		{ seed: 'ui', doc: goodReport({ seed: 'ui', findings: [{ ...goodReport().findings[0], type: 'ui' }] }), session: 's2' },
+	]);
+	const u = 'usability/F-001';
+	const ui = 'ui/F-001';
+	state.commits.push(
+		{ sha: 'c-usability', round: 1, subject: '', ids: [u], branch: 'b' },
+		{ sha: 'c-ui', round: 1, subject: '', ids: [ui], branch: 'b' }
+	);
+	state.findings[u].status = 'fixed';
+	state.findings[ui].status = 'fixed';
+	// Roll back round 1: `c-usability` left the branch, `c-ui` is still live.
+	const reopened = reopenRolledBack(state, (sha) => sha !== 'c-usability');
+	assert.deepEqual(reopened, [u]);
+	assert.equal(state.findings[u].status, 'not-fixed');
+	assert.equal(state.findings[ui].status, 'fixed');
+
+	// A finding fixed with no attributed commit in this ledger (fixed by an
+	// earlier run on a stacked branch) has no proof it was undone: leave it.
+	state.commits.length = 0;
+	state.findings[u].status = 'fixed';
+	assert.deepEqual(reopenRolledBack(state, () => false), []);
+	assert.equal(state.findings[u].status, 'fixed');
 });
 
 test('a verdict from the wrong seed cannot close another agent’s finding', () => {

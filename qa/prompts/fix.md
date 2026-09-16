@@ -15,7 +15,13 @@ you can, honestly, in the smallest correct slice, and commit each one.
   the Svelte app, also run `cd web && pnpm check`.
 - `web/e2e/smoke.mjs` is the reproducible browser gate. Do not delete or weaken
   assertions in it. If your fix changes behaviour it asserts, that is a signal
-  to reconsider the fix, not to edit the test.
+  to reconsider the fix, not to edit the test. The gate drives the real UI and
+  reads text, so it pins wording you might not expect: dialog titles, button
+  labels **and** status text it matches with a regex (for example the plugin
+  swap's `generation N` counter and its `now generation N` confirmation). Keep
+  that exact wording. Renaming `generation` to `revision` — however clearer —
+  breaks an assertion you cannot see in the file at a glance. Improve how a
+  value is described around it, not the token the gate matches.
 - If a finding contradicts a recorded decision in `docs/advisor/decisions.md`
   (frozen contracts, stdout-only logs, no new dependencies, no cgo, catalog vs
   userstate separation, reserved slices), do **not** implement it. Mark it
