@@ -249,6 +249,7 @@ export async function startInstance(root, { runId, log = () => {}, external } = 
 		pid: child.pid,
 		stop,
 		health,
+		fixtures,
 		secrets: {
 			admin: { ...admin, token },
 			member: memberLogin ? { ...member, token: memberLogin.token } : null,
