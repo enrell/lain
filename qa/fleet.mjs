@@ -724,7 +724,7 @@ async function fix() {
 			transcriptNotes.push(`round ${round}: nothing new to verify`);
 			break;
 		}
-		await verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc, transcriptNote });
+		await verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc, transcriptNotes });
 
 		if (await checksFailed(dir, round)) {
 			transcriptNotes.push(`round ${round}: checks are red after verification`);
@@ -839,7 +839,7 @@ async function reconcileCommits(state, { branch, before, round, fixDoc }) {
 	return created;
 }
 
-async function verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc, transcriptNote }) {
+async function verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc, transcriptNotes }) {
 	const bySeed = new Map();
 	for (const finding of toVerify) {
 		if (!bySeed.has(finding.seed)) bySeed.set(finding.seed, []);
@@ -854,7 +854,7 @@ async function verifyRound({ config, run, dir, state, round, toVerify, instance,
 				f.status = 'cannot-verify';
 				f.last_observation = 'the original auditor session was not recorded, so nobody could re-test it';
 			}
-			transcriptNote?.push(`${seed}: no auditor session on record, so ${findings.length} finding(s) could not be re-tested by their author`);
+			transcriptNotes?.push(`${seed}: no auditor session on record, so ${findings.length} finding(s) could not be re-tested by their author`);
 			continue;
 		}
 		const browser = await startBrowser(p.browserState, config);
