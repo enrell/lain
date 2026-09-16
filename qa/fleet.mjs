@@ -726,9 +726,12 @@ async function fix() {
 		}
 		await verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc, transcriptNotes });
 
-		if (await checksFailed(dir, round)) {
-			transcriptNotes.push(`round ${round}: checks are red after verification`);
-			log(`round ${round}: red checks — rolling back to the last green commit`);
+		const red = await redChecks({ dir, round, instance, config });
+		if (red === 'hung') {
+			transcriptNotes.push(`round ${round}: web/e2e/smoke.mjs timed out, so the deterministic gate says nothing about this round`);
+		} else if (red) {
+			transcriptNotes.push(`round ${round}: ${red} is red after verification`);
+			log(`round ${round}: red checks (${red}) — rolling back to the last green commit`);
 			const rolled = await rollback(state, dir, round);
 			transcriptNotes.push(`round ${round}: ${rolled}`);
 		}
@@ -1083,17 +1086,89 @@ function gitRun(argsArray) {
 	});
 }
 
-async function checksFailed(dir, round) {
+/**
+ * Runs a command to a log file, with a wall-clock cap. `timedOut` lets the
+ * caller tell a hang apart from a failure.
+ */
+function runChecked(argv, logPath, timeoutMs = 900000) {
 	const started = Date.now();
+	return new Promise((resolve) => {
+		const child = spawn(argv[0], argv.slice(1), { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+		let out = '';
+		let timedOut = false;
+		const killer = setTimeout(() => {
+			timedOut = true;
+			child.kill('SIGKILL');
+		}, timeoutMs);
+		killer.unref?.();
+		child.stdout.on('data', (b) => (out += b.toString()));
+		child.stderr.on('data', (b) => (out += b.toString()));
+		child.on('close', (code) => {
+			clearTimeout(killer);
+			writeText(logPath, out);
+			resolve({ code, timedOut, ms: Date.now() - started, log: logPath });
+		});
+	});
+}
+
+/**
+ * The floor a round must not fall through. `just check` first, then the
+ * deterministic browser gate against the disposable instance: an agent fix that
+ * breaks what smoke.mjs proves is worse than no fix at all.
+ *
+ * Smoke is skipped on an external target (it writes to the instance, and the
+ * user's library is not the fleet's to mutate) and a smoke *hang* is reported
+ * rather than acted on: reverting signed-off fixes because a harness wedged
+ * would punish the round for something the gate never asserted.
+ */
+async function redChecks({ dir, round, instance, config }) {
 	journal(dir, 'checks-started', { round });
-	const child = spawn('just', ['check'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
-	let out = '';
-	child.stdout.on('data', (b) => (out += b.toString()));
-	child.stderr.on('data', (b) => (out += b.toString()));
-	const code = await new Promise((resolve) => child.on('close', resolve));
-	writeText(join(dir, 'logs', `checks-r${round}.log`), out);
-	journal(dir, 'checks-finished', { round, exit: code, ms: Date.now() - started });
-	return code !== 0;
+	const unit = await runChecked(['just', 'check'], join(dir, 'logs', `checks-r${round}.log`));
+	journal(dir, 'checks-finished', { round, suite: 'just check', exit: unit.code, ms: unit.ms });
+	if (unit.code !== 0) return 'just check';
+	if (!instance.fixtures) {
+		log(`round ${round}: external target — skipping web/e2e/smoke.mjs, it writes to the instance`);
+		return null;
+	}
+	const started = Date.now();
+	journal(dir, 'checks-started', { round, suite: 'smoke' });
+	const port = await freePort();
+	const args = [
+		'node',
+		'web/e2e/smoke.mjs',
+		'--base',
+		instance.base,
+		'--media',
+		instance.fixtures,
+		'--user',
+		instance.secrets?.admin?.username || config.admin.username,
+		'--pass',
+		instance.secrets?.admin?.password || config.admin.password,
+		'--user2',
+		instance.secrets?.member?.username || config.member.username,
+		'--pass2',
+		instance.secrets?.member?.password || config.member.password,
+		'--chromium',
+		config.chromium,
+		'--debug-port',
+		String(port),
+		'--profile',
+		join(dir, 'browser', `smoke-r${round}`),
+		'--screenshot',
+		join(dir, 'logs', `smoke-r${round}-failure.png`),
+	];
+	const smoke = await runChecked(args, join(dir, 'logs', `smoke-r${round}.log`), 420000);
+	journal(dir, 'checks-finished', { round, suite: 'smoke', exit: smoke.code, ms: Date.now() - started });
+	if (smoke.timedOut) {
+		log(`round ${round}: web/e2e/smoke.mjs hung past 7 minutes — recorded as a gap, not a regression`);
+		return 'hung';
+	}
+	if (smoke.code !== 0) {
+		log(`round ${round}: web/e2e/smoke.mjs is red — see ${rel(smoke.log)}`);
+		return 'web/e2e/smoke.mjs';
+	}
+	log(`round ${round}: web/e2e/smoke.mjs green (${Math.round(smoke.ms / 1000)}s)`);
+	return null;
 }
 
 async function rollback(state, dir, round) {
