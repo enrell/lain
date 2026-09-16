@@ -24,4 +24,9 @@ internal/webui/dist/*
 # agent session tooling (never commit)
 .opencode/
 opencode.json
+# QA fleet scratch: runs, disposable instances, chromium profiles
+qa/runs/
+qa/.cache/
+qa/.browser/
+qa/.probe/
 __pycache__/
