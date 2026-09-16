@@ -143,6 +143,7 @@ export function resolveConfig(root, overrides = {}) {
 		maxRounds,
 		timeoutMs: intOf(get('LAIN_AGENT_TIMEOUT_MS', '1500000'), 1500000),
 		fixTimeoutMs: intOf(get('LAIN_AGENT_FIX_TIMEOUT_MS', '1800000'), 1800000),
+		verifyTimeoutMs: intOf(get('LAIN_AGENT_VERIFY_TIMEOUT_MS', '900000'), 900000),
 		retries: intOf(get('LAIN_AGENT_RETRIES', '1'), 1),
 		parallel: get('LAIN_AGENT_PARALLEL', '0') === '1',
 		seeds,
