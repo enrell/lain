@@ -547,6 +547,17 @@ async function fix() {
 
 	const transcriptNotes = [];
 
+	// An interrupted re-test says nothing about the code, so those findings are
+	// queued for verification again instead of being parked as a human question.
+	const retried = Object.values(state.findings).filter((f) => f.status === 'cannot-verify' && f.verification_interrupted);
+	if (retried.length) {
+		for (const f of retried) {
+			f.status = 'awaiting-verify';
+			delete f.verification_interrupted;
+		}
+		log(`re-queueing ${retried.length} finding(s) whose re-test was interrupted: ${retried.map((f) => f.id).join(', ')}`);
+	}
+
 	// Git is the only accepted proof of work, so the ledger starts by reading the
 	// branch: a round killed after committing but before reporting must not
 	// re-offer the finding the engineer already fixed.
@@ -708,7 +719,7 @@ async function fix() {
 			transcriptNotes.push(`round ${round}: nothing new to verify`);
 			break;
 		}
-		await verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc });
+		await verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc, transcriptNote });
 
 		if (await checksFailed(dir, round)) {
 			transcriptNotes.push(`round ${round}: checks are red after verification`);
@@ -816,7 +827,7 @@ async function reconcileCommits(state, { branch, before, round, fixDoc }) {
 	return created;
 }
 
-async function verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc }) {
+async function verifyRound({ config, run, dir, state, round, toVerify, instance, fixDoc, transcriptNote }) {
 	const bySeed = new Map();
 	for (const finding of toVerify) {
 		if (!bySeed.has(finding.seed)) bySeed.set(finding.seed, []);
@@ -826,11 +837,12 @@ async function verifyRound({ config, run, dir, state, round, toVerify, instance,
 		const p = paths(dir, seed);
 		const session = findings.find((f) => f.auditor_session)?.auditor_session;
 		if (!session) {
-			log(`${seed}: no auditor session on record; marking ${findings.map((f) => f.id).join(',')} cannot-verify`);
+			log(`${seed}: no auditor session on record; ${findings.map((f) => f.id).join(', ')} needs a human re-test`);
 			for (const f of findings) {
 				f.status = 'cannot-verify';
 				f.last_observation = 'the original auditor session was not recorded, so nobody could re-test it';
 			}
+			transcriptNote?.push(`${seed}: no auditor session on record, so ${findings.length} finding(s) could not be re-tested by their author`);
 			continue;
 		}
 		const browser = await startBrowser(p.browserState, config);
@@ -849,7 +861,7 @@ async function verifyRound({ config, run, dir, state, round, toVerify, instance,
 				prompt: brief,
 				cwd: ROOT,
 				transcript: p.verdictLog(round),
-				timeoutMs: Math.min(config.timeoutMs, 600000),
+				timeoutMs: config.verifyTimeoutMs,
 			});
 			let verdict = readArtifact(verdictPath, 'verdicts', seed);
 			if (!verdict.ok) {
@@ -878,7 +890,21 @@ async function verifyRound({ config, run, dir, state, round, toVerify, instance,
 		} catch (err) {
 			await stopBrowser(p.browserState);
 			log(`${seed}: re-test session failed: ${String(err.message).slice(0, 200)}`);
-			for (const f of findings) f.status = 'cannot-verify';
+			// The verdict file is written as findings are settled, so a session
+			// killed at the end can still report the ones it already re-tested.
+			const late = readArtifact(verdictPath, 'verdicts', seed);
+			if (late.ok) {
+				const lines = applyVerdicts(state, seed, late.doc, round);
+				journal(dir, 'verified-partial', { round, seed, lines });
+				log(`${seed}: kept ${lines.length} verdict(s) written before the session died`);
+				for (const f of findings) if (f.status === 'awaiting-verify') f.status = 'cannot-verify';
+				continue;
+			}
+			for (const f of findings) {
+				f.status = 'cannot-verify';
+				f.verification_interrupted = true;
+				f.last_observation = `re-test interrupted: ${String(err.message).slice(0, 160)}`;
+			}
 		}
 	}
 }
@@ -908,6 +934,7 @@ function verifyVars({ config, seed, run, dir, p, findings, instance, browser, ro
 		SEED: seed,
 		ROUND: round,
 		RUN: run,
+		VERIFY_BUDGET_MIN: String(Math.max(4, Math.round(config.verifyTimeoutMs / 60000) - 1)),
 		BASE_URL: instance.base,
 		ADMIN_USER: instance.secrets?.admin?.username || config.admin.username,
 		ADMIN_PASSWORD: instance.secrets?.admin?.password || config.admin.password,

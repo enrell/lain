@@ -22,6 +22,21 @@ revision is now `{{REVISION}}`.
 
 {{FIX_BLOCK}}
 
+## Boundaries — read this twice
+
+- You have about **{{VERIFY_BUDGET_MIN}} minutes**. Answer the findings listed
+  above and nothing else: no new journeys, no new audits, no extra screenshots
+  of things that already work.
+- Write `{{VERDICT_JSON}}` after the **first** finding you settle, then overwrite
+  it as you go. A session that is interrupted with a valid partial file is a
+  round that still counted; one with no file is a coverage gap.
+- The target is `{{BASE_URL}}` and it belongs to the harness. Never build,
+  install, start or stop a server, and never re-seed data: if the running build
+  does not contain the fix, that is the engineer's problem to report, not
+  something you solve by running your own binary.
+- Your browser state dir is already running; `qa/runs/` files other than your
+  verdict file are not yours to edit.
+
 ## Protocol
 
 For every finding listed above, in order:

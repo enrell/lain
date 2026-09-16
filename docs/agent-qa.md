@@ -135,11 +135,35 @@ Two outcomes are reported as distinct from "converged":
   recovered from disk is named in `FINAL.md`. Absence of findings from an
   incomplete audit is never read as health (D-035).
 
-Budget: audits get `LAIN_AGENT_TIMEOUT_MS` (default 25 min) and are told to
+Budget: audits get `LAIN_AGENT_TIMEOUT_MS` (default 25 min), re-tests
+`LAIN_AGENT_VERIFY_TIMEOUT_MS` (default 15 min), the engineer
+`LAIN_AGENT_FIX_TIMEOUT_MS` (default 30 min), and all three are told to
 write `reports/<seed>.json` as soon as their first finding is confirmed, then
 overwrite it as they go. If the harness interrupts anyway, the runner continues
 that same session once and asks only for the report; the result is a valid
 report flagged in the ledger as a gap.
+
+## Interruption is not silence
+
+A timed-out session is not stopped by killing the CLI: the agent turn runs on
+OpenCode's background service, so its next tool call can edit files minutes
+after the runner gave up. Three things exist because of that, and none of them
+are optional:
+
+- `qa/lib/opencode.mjs` calls `POST /api/session/<id>/interrupt` before killing
+  its own client, so the server stops thinking.
+- the runner waits for the working tree to stop moving (`waitForQuiescence`)
+  before it judges it clean.
+- whatever is still uncommitted is written to
+  `qa/runs/<run>/recovered/r<N>-<pre|post>-uncommitted.patch` and rolled back,
+  so verification always tests the branch rather than a half-finished edit.
+
+Unreported work is never committed by the runner: an engineer that died without
+a result file leaves a patch, not a commit. Work that the result file claims but
+does not name is saved the same way. Attribution therefore comes from
+`git log` only — by `QA-Finding:` trailer, falling back to the `Fix <id>:`
+subject, and recorded in the ledger as `via: trailer` or `via: subject` so a
+human can see which contract the engineer actually honoured.
 
 ## Configuration
 
@@ -160,6 +184,7 @@ directly so `node qa/fleet.mjs` works from the repo root.
 | `LAIN_AGENT_MAX_ROUNDS` | `3` | fix/verify budget |
 | `LAIN_AGENT_TIMEOUT_MS` | `1500000` | per auditor session |
 | `LAIN_AGENT_FIX_TIMEOUT_MS` | `1800000` | per engineer session |
+| `LAIN_AGENT_VERIFY_TIMEOUT_MS` | `900000` | per re-test session |
 | `LAIN_AGENT_BRANCH` | `agent/qa/<run id>` | review branch, never pushed |
 | `LAIN_AGENT_TARGET_URL` | empty | audit an instance you already run |
 | `LAIN_AGENT_ADMIN_USER` / `_PASSWORD` | `qa-admin` / `Admin-<run>-pw` | seeded (or supplied, for an external target) |

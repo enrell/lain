@@ -91,6 +91,7 @@ function baseVars(over = {}) {
 		REPORT_EXAMPLE: JSON.stringify(REPORT_EXAMPLE, null, 2),
 		SEVERITY_TEXT,
 		TIME_BUDGET_MIN: '23',
+		VERIFY_BUDGET_MIN: '14',
 		FINDINGS_BLOCK: '### usability/F-001',
 		FIX_BLOCK: '{}',
 		FIX_JSON: 'qa/runs/r1/fixes/r1.json',
@@ -381,6 +382,16 @@ test('brief templates resolve every placeholder they mention', () => {
 		assert.equal(/\{\{[A-Z_]+\}\}/.test(out), false, `${name} left a placeholder unresolved`);
 	}
 	assert.throws(() => render('hello {{NOPE}}', {}), /unknown placeholder/);
+});
+
+test('the re-test brief keeps the auditor on the harness target', () => {
+	const brief = renderTemplate(ROOT, 'verify', baseVars());
+	// Learned the hard way: an auditor with time to spare built and ran its own
+	// Lain binary, then timed out before writing a single verdict.
+	assert.match(brief, /belongs to the harness/);
+	assert.match(brief, /Never build,\s+install, start or stop a server/);
+	assert.match(brief, /after the \*\*first\*\* finding/);
+	assert.match(brief, /127\.0\.0\.1:9413/);
 });
 
 test('the audit brief fences the agent to its own run directory', () => {
