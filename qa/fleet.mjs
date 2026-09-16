@@ -25,7 +25,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { resolveConfig, EnvError } from './lib/env.mjs';
 import { installAgents, fleetAgents, SEEDS as DEFAULT_SEEDS, auditAgent } from './lib/agents.mjs';
 import { runAgent, probeBinary } from './lib/opencode.mjs';
-import { startInstance, freePort } from './lib/instance.mjs';
+import { startInstance, freePort, killStrayTargets } from './lib/instance.mjs';
 import {
 	createRun,
 	publicAccounts,
@@ -399,6 +399,8 @@ async function e2e() {
 		].join('\n')
 	);
 	await stopInstance(instance);
+	const strays = await killStrayTargets(run);
+	if (strays.length) log(`killed ${strays.length} stray target(s) an agent left behind: ${strays.join(', ')}`);
 	process.exit(failures.length ? 2 : 0);
 }
 
@@ -813,6 +815,10 @@ async function fix() {
 		].join('\n')
 	);
 	await stopInstance(instance);
+	// A tangled agent can start its own detached target, which the runner never
+	// tracked; sweep it so no 'lain serve' outlives the run.
+	const strays = await killStrayTargets(run);
+	if (strays.length) log(`killed ${strays.length} stray target(s) an agent left behind: ${strays.join(', ')}`);
 	process.exit(manifest.status === 'converged' ? 0 : 3);
 }
 

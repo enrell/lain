@@ -46,6 +46,12 @@ you can, honestly, in the smallest correct slice, and commit each one.
 ## Target
 
 - Base URL: {{BASE_URL}} (disposable instance, safe to mutate)
+- The target serves the build from **before** your edits. A Svelte or Go change is
+  not on screen until the runner rebuilds and restarts it, which it does before
+  the auditor re-tests your commit. So confirm a fix with the checks above and
+  with the code, not by watching the old build — and **never start a server of
+  your own** (`lain serve`, `go run`, `just up`, `setsid … &`). The runner owns
+  the target; a process you detach outlives the round and is not cleaned up.
 - Administrator: username `{{ADMIN_USER}}` password `{{ADMIN_PASSWORD}}`
 - Member: username `{{MEMBER_USER}}` password `{{MEMBER_PASSWORD}}`
 - Browser state dir (already running): `{{BROWSER_STATE}}`

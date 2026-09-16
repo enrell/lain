@@ -7,7 +7,7 @@
  * web/e2e/fixtures.sh, and credentials the fleet knows in advance. The
  * instance is stopped and wiped unless LAIN_AGENT_KEEP_INSTANCE=1.
  */
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { existsSync, readdirSync, statSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -297,4 +297,29 @@ export async function startInstance(root, { runId, log = () => {}, external, bar
 			media_root: fixtures,
 		},
 	};
+}
+
+/**
+ * A tangled agent can start its own detached server (`setsid … &`) to look at
+ * the branch tip; `liveChildren` never sees it, so it outlives the round. Once
+ * the runner has stopped its own targets, anything still serving this run's
+ * data dir is a stray: kill it and return the pids so the caller can say so.
+ * Best-effort and Linux-only; the pattern is the run's own data dir, so a real
+ * contributor server pointed anywhere else is never matched.
+ */
+export function killStrayTargets(runId) {
+	return new Promise((resolve) => {
+		execFile('pgrep', ['-f', `lain serve --data-dir [^ ]*data-${runId} `], (err, stdout) => {
+			const pids = String(stdout || '')
+				.split('\n')
+				.map((line) => Number(line.trim()))
+				.filter(Boolean);
+			for (const pid of pids) {
+				try {
+					process.kill(pid, 'SIGKILL');
+				} catch {}
+			}
+			resolve(pids);
+		});
+	});
 }
