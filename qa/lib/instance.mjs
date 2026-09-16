@@ -17,7 +17,7 @@ const CACHE = 'qa/.cache';
 
 export class InstanceError extends Error {}
 
-function freePort() {
+export function freePort() {
 	return new Promise((resolve, reject) => {
 		const srv = createServer();
 		srv.on('error', reject);

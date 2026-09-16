@@ -25,7 +25,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { resolveConfig, EnvError } from './lib/env.mjs';
 import { installAgents, fleetAgents, SEEDS as DEFAULT_SEEDS, auditAgent } from './lib/agents.mjs';
 import { runAgent, probeBinary } from './lib/opencode.mjs';
-import { startInstance } from './lib/instance.mjs';
+import { startInstance, freePort } from './lib/instance.mjs';
 import {
 	createRun,
 	publicAccounts,
@@ -726,7 +726,7 @@ async function fix() {
 		// The ledger tracks what git says, not what the engineer claims: an agent
 		// that "committed" nothing must not be able to advance a finding.
 		const created = await reconcileCommits(state, { branch, before: commitsBefore, round, fixDoc });
-		journal(dir, 'commits-reconciled', { round, created: created.map((c) => `${c.sha.slice(0, 8)}:${c.id || 'unattributed'}`) });
+		journal(dir, 'commits-reconciled', { round, created: created.map((c) => `${c.sha.slice(0, 8)}:${(c.ids || []).join('+') || 'unattributed'}`) });
 		if (created.length) log(`round ${round}: ${created.length} new commit(s) on ${branch}`);
 		const uncommitted = fixDoc
 			? fixDoc.changes.filter((c) => c.status === 'committed' && !created.some((rec) => rec.ids.includes(resolveFinding(state, c.id)?.id)) && !state.commits.some((rec) => rec.ids?.includes(resolveFinding(state, c.id)?.id)))
