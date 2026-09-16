@@ -271,10 +271,10 @@ test('a finding closes only on the auditor’s verdict', () => {
 	const key = 'usability/F-001';
 	applyFixes(state, { changes: [{ id: key, status: 'committed', commit: 'abc1234', verification: 're-ran the repro' }] }, 1);
 	assert.equal(state.findings[key].status, 'awaiting-verify');
-	assert.deepEqual(
-		state.commits.map((c) => [c.id, c.sha]),
-		[[key, 'abc1234']]
-	);
+	assert.equal(state.findings[key].fix_claim.sha, 'abc1234');
+	// A claimed sha is a claim, not a record: `state.commits` is filled by
+	// reading the branch, so an invented sha can never become ledger truth.
+	assert.deepEqual(state.commits, []);
 	applyVerdicts(state, 'usability', { results: [{ id: key, verdict: 'not-fixed', observations: 'still silent' }] }, 1);
 	assert.equal(state.findings[key].status, 'not-fixed');
 	assert.deepEqual(findOpen(state).map((f) => f.id), [key]);
