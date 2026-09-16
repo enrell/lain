@@ -583,7 +583,9 @@ async function fix() {
 		console.log(`run ${run}: every finding is already settled; nothing to do.`);
 		process.exit(0);
 	}
-	if (!pending.length) {
+	// Findings whose commit is on the branch but that never got a verdict are
+	// work too: bailing out here would strand them after an interrupted round.
+	if (!pending.length && !findAwaiting(state).length) {
 		console.log(`run ${run}: no blocking findings open (${all.length} minor/cosmetic left; see ${rel(statePath)}).`);
 		process.exit(0);
 	}
@@ -694,7 +696,10 @@ async function fix() {
 		const created = await reconcileCommits(state, { branch, before: commitsBefore, round, fixDoc });
 		journal(dir, 'commits-reconciled', { round, created: created.map((c) => `${c.sha.slice(0, 8)}:${c.id || 'unattributed'}`) });
 		if (created.length) log(`round ${round}: ${created.length} new commit(s) on ${branch}`);
-		const uncommitted = fixDoc ? fixDoc.changes.filter((c) => c.status === 'committed' && !created.some((rec) => rec.id === resolveFinding(state, c.id)?.id)).map((c) => c.id) : [];
+		const uncommitted = fixDoc
+			? fixDoc.changes.filter((c) => c.status === 'committed' && !created.some((rec) => rec.ids.includes(resolveFinding(state, c.id)?.id)) && !state.commits.some((rec) => rec.ids?.includes(resolveFinding(state, c.id)?.id)))
+					.map((c) => c.id)
+				: [];
 		if (uncommitted.length) {
 			log(`round ${round}: ${uncommitted.length} change(s) claimed a commit that is not on ${branch}`);
 			transcriptNotes.push(`round ${round}: claimed but absent from the branch: ${uncommitted.join(', ')}`);
