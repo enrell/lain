@@ -90,9 +90,10 @@
 /* Monolith home: the image owns the right side while copy stays readable
  * against every Omarchy palette and every piece of server artwork. */
 .hero-monolith-shade {
+	--shade: var(--color-background);
 	background:
-		linear-gradient(90deg, #050806 0%, rgb(5 8 6 / 0.96) 22%, rgb(5 8 6 / 0.58) 55%, rgb(5 8 6 / 0.08) 82%),
-		linear-gradient(0deg, #050806 0%, rgb(5 8 6 / 0.12) 42%, rgb(5 8 6 / 0.28) 100%);
+		linear-gradient(90deg, var(--shade) 0%, color-mix(in srgb, var(--shade) 96%, transparent) 22%, color-mix(in srgb, var(--shade) 58%, transparent) 55%, color-mix(in srgb, var(--shade) 8%, transparent) 82%),
+		linear-gradient(0deg, var(--shade) 0%, color-mix(in srgb, var(--shade) 12%, transparent) 42%, color-mix(in srgb, var(--shade) 28%, transparent) 100%);
 }
 
 .hero-monolith-title {
@@ -146,8 +147,8 @@
 @media (max-width: 767px) {
 	.hero-monolith-shade {
 		background:
-			linear-gradient(0deg, #050806 0%, rgb(5 8 6 / 0.82) 42%, rgb(5 8 6 / 0.06) 78%),
-			linear-gradient(90deg, rgb(5 8 6 / 0.48), transparent);
+			linear-gradient(0deg, var(--shade) 0%, color-mix(in srgb, var(--shade) 82%, transparent) 42%, color-mix(in srgb, var(--shade) 6%, transparent) 78%),
+			linear-gradient(90deg, color-mix(in srgb, var(--shade) 48%, transparent), transparent);
 	}
 
 	.hero-monolith-title {
