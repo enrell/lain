@@ -27,6 +27,12 @@
 	);
 	const src = $derived(artwork || thumb);
 	const alt = $derived(enrichment?.title || item.title);
+	/*
+	 * The fallback is a 16:9 still, not a poster. Cropping it to a 2:3 slot
+	 * upscaled it 1.83x and threw away most of the picture, so a still is
+	 * letterboxed inside the frame instead.
+	 */
+	const isStill = $derived(src === thumb && thumb !== '');
 
 	function handleError(): void {
 		if (artwork) artworkFailed = true;
@@ -43,7 +49,7 @@
 			decoding="async"
 			fetchpriority={priority ? 'high' : 'auto'}
 			referrerpolicy="no-referrer"
-			class="size-full object-cover"
+			class={['size-full', isStill ? 'object-contain' : 'object-cover'].join(' ')}
 			onerror={handleError}
 		/>
 	{:else}
