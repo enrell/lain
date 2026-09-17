@@ -129,6 +129,32 @@
 		return cap.match(/@\d+$/)?.[0] ?? '';
 	}
 
+	/*
+	 * The rows are capability ids, binding modes and generation counters:
+	 * the machine's own vocabulary. Plain language first, ids second, so an
+	 * admin looking for 'where do metadata titles come from' can find it.
+	 * Unknown capabilities fall back to the id alone.
+	 */
+	const PURPOSES: Record<string, string> = {
+		'lain.source.enumerate': 'Reads the library folders and lists the video files it finds.',
+		'lain.media.identify': 'Turns a filename and path into a title, season and episode.',
+		'lain.ingest.scan': 'Walks every library root and updates the catalog.',
+		'lain.search.query': 'Answers searches over this server\u2019s catalog.',
+		'lain.catalog.read': 'Serves the catalog to the app: lists, rails and item pages.',
+		'lain.catalog.write': 'Stores items in the catalog and retires the ones that are gone.',
+		'lain.userstate.progress': 'Remembers where you stopped watching each item.',
+		'lain.media.probe': 'Reads technical stream details: codecs, tracks, dimensions.',
+		'lain.playback.plan': 'Decides whether a file plays directly or has to be converted.',
+		'lain.playback.transcode': 'Converts a file the browser cannot play and serves the stream.',
+		'lain.metadata.search': 'Searches an external metadata source for a matching title.',
+		'lain.metadata.resolve': 'Fetches the posters, synopsis and year shown on item pages.',
+		'lain.transform.thumbnail': 'Extracts the still frames used as thumbnails and placeholders.'
+	};
+
+	function purposeOf(cap: string): string {
+		return PURPOSES[shortCapability(cap)] ?? '';
+	}
+
 	function modeTone(mode: string): 'neutral' | 'accent' | 'warning' {
 		if (mode === 'exactly-one') return 'accent';
 		if (mode === 'fan-out') return 'warning';
@@ -140,9 +166,11 @@
 
 <div class="space-y-6">
 	<p class="max-w-3xl text-sm leading-relaxed text-muted">
-		The composition decides which provider serves each capability. Replacing one is fenced by
-		generation: a stale write is rejected, and an unhealthy candidate is refused before the active
-		generation changes. A provider that fails at call time falls back to the last good one.
+		Each row is one job this server does &mdash; reading folders, identifying files, storing items,
+		serving playback &mdash; and the plugin currently doing it. Replacing a plugin is safe: the
+		change is refused if the new plugin is unhealthy, and a plugin that fails later falls back to
+		the one that worked. Only replace a row if you know what the job is for; the id underneath is
+		the technical name.
 	</p>
 
 	{#if loading}
@@ -161,8 +189,11 @@
 					<li class="rounded-card border border-line bg-surface/50 p-4">
 						<div class="flex flex-wrap items-center justify-between gap-3">
 							<div class="min-w-0">
-								<p class="truncate font-mono text-sm text-foreground">
-									{shortCapability(binding.capability)}<span class="text-muted"
+								{#if purposeOf(binding.capability)}
+									<p class="text-sm font-medium text-foreground">{purposeOf(binding.capability)}</p>
+								{/if}
+								<p class="truncate font-mono text-xs text-muted">
+									{shortCapability(binding.capability)}<span
 										>{capabilityVersion(binding.capability)}</span
 									>
 								</p>
