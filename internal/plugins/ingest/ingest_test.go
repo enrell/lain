@@ -185,6 +185,47 @@ func TestInaccessibleRootSkipsPrune(t *testing.T) {
 	}
 }
 
+// A root that cannot be read at all is named, not just counted: the
+// operator has to know which drive or path to look at.
+func TestUnreadableRootIsNamed(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "[Fansub-A] Frieren - 12 [1080p].mkv"))
+	r, _ := testRunner(t)
+	libs := []contracts.Library{{ID: "l", Name: "Vanishing QA", Type: "anime", Path: root}}
+	if _, err := r.Run(ScanInput{Libraries: libs}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(root, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(root, 0o755) })
+	stats, err := r.Run(ScanInput{Libraries: libs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats.Unreadable) != 1 {
+		t.Fatalf("unreadable=%+v, want exactly one named root", stats.Unreadable)
+	}
+	got := stats.Unreadable[0]
+	if got.LibraryID != "l" || got.Name != "Vanishing QA" || got.Path != root || got.Reason == "" {
+		t.Fatalf("root not named: %+v", got)
+	}
+}
+
+// A clean scan reports no unreadable roots at all.
+func TestCleanScanHasNoUnreadableRoots(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "[Fansub-A] Frieren - 12 [1080p].mkv"))
+	r, _ := testRunner(t)
+	stats, err := r.Run(ScanInput{Libraries: []contracts.Library{{ID: "l", Name: "Fine", Path: root, Type: "anime"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats.Unreadable) != 0 {
+		t.Fatalf("unreadable=%+v on a clean scan, want none", stats.Unreadable)
+	}
+}
+
 // A mid-walk I/O error blocks pruning for that library only: a partial
 // walk must not delete what it failed to see. Other roots still prune.
 func TestWalkErrorBlocksPruneForThatLibrary(t *testing.T) {
@@ -215,6 +256,9 @@ func TestWalkErrorBlocksPruneForThatLibrary(t *testing.T) {
 	}
 	if stats.WalkErrors == 0 {
 		t.Fatal("expected counted walk errors")
+	}
+	if len(stats.Unreadable) != 1 || stats.Unreadable[0].LibraryID != "bad" || stats.Unreadable[0].Path != bad {
+		t.Fatalf("walk-error root not named: %+v", stats.Unreadable)
 	}
 	// good lib pruned normally...
 	if stats.Pruned != 1 {

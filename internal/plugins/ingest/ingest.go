@@ -10,6 +10,7 @@
 package ingest
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -56,6 +57,8 @@ func (r *Runner) Invoke(cap string, input any) (any, error) {
 // previous catalog intact instead of half-written.
 type libResult struct {
 	libraryID  string
+	name       string
+	path       string
 	items      []contracts.CatalogItem
 	present    map[string]bool
 	accessible bool
@@ -93,6 +96,21 @@ func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 		stats.Errors += res.errors
 		stats.WalkErrors += res.walkErrors
 		stats.Dirs += res.dirs
+		// An operator has to know which root to look at, not just how many
+		// failed. Reasons are the two ways a walk degrades: the root could
+		// not be read at all, or directories inside it could not be read.
+		switch {
+		case !res.accessible:
+			stats.Unreadable = append(stats.Unreadable, contracts.UnreadableRoot{
+				LibraryID: res.libraryID, Name: res.name, Path: res.path,
+				Reason: "the path could not be read",
+			})
+		case res.walkErrors > 0:
+			stats.Unreadable = append(stats.Unreadable, contracts.UnreadableRoot{
+				LibraryID: res.libraryID, Name: res.name, Path: res.path,
+				Reason: fmt.Sprintf("%d directories could not be read", res.walkErrors),
+			})
+		}
 		// Identity v2 (D-019): re-home stable IDs onto moved or renamed
 		// files before persisting, while every root's present set is
 		// complete so genuine duplicates never merge.
@@ -127,7 +145,7 @@ func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 
 // scanRoot walks one root to completion in memory.
 func (r *Runner) scanRoot(lib contracts.Library) libResult {
-	res := libResult{libraryID: lib.ID, present: map[string]bool{}}
+	res := libResult{libraryID: lib.ID, name: lib.Name, path: lib.Path, present: map[string]bool{}}
 	t0 := time.Now()
 	cands, es, err := source.Enumerate(source.EnumerateInput{
 		Root: lib.Path, LibraryID: lib.ID, Type: lib.Type,

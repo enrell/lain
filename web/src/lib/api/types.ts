@@ -129,6 +129,8 @@ export interface ScanStats {
 	migrated: number;
 	enriched: number;
 	walk_errors: number;
+	/** Roots behind walk_errors and any inaccessible root, in library order. */
+	unreadable?: { library_id: string; name: string; path: string; reason: string }[];
 	dirs: number;
 	started_at: number;
 	finished_at: number;
