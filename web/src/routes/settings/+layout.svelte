@@ -10,17 +10,6 @@
 
 	let { children }: { children: Snippet } = $props();
 
-	// The tab strip only scrolls below sm; bring the current section into
-	// view so the active tab is never the one hidden off the right edge.
-	let tabsNav = $state<HTMLElement | null>(null);
-	$effect(() => {
-		void page.url.pathname;
-		tabsNav?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({
-			inline: 'center',
-			block: 'nearest'
-		});
-	});
-
 	const tabs = $derived(
 		[
 			{ href: '/settings', label: 'Account', icon: UserRound, admin: false },
@@ -46,14 +35,7 @@
 		</p>
 	</header>
 
-	<!-- One row on phones: wrapped into three rows the tab strip is 120px of
-	     the 506px a 320x568 screen has, which is what pushed each settings
-	     page's first action under the fixed bottom nav. -->
-	<nav
-		bind:this={tabsNav}
-		class="no-scrollbar flex gap-1 overflow-x-auto border-b border-line sm:flex-wrap"
-		aria-label="Settings sections"
-	>
+	<nav class="flex flex-wrap gap-1 border-b border-line" aria-label="Settings sections">
 		{#each tabs as tab (tab.href)}
 			{@const isActive = active(tab.href)}
 			{@const Icon = tab.icon}
@@ -61,7 +43,7 @@
 				href={tab.href}
 				aria-current={isActive ? 'page' : undefined}
 				class={[
-					'-mb-px flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+					'-mb-px flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
 					isActive
 						? 'border-accent text-foreground'
 						: 'border-transparent text-muted hover:border-line hover:text-foreground'
