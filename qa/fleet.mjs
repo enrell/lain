@@ -796,6 +796,10 @@ async function fix() {
 	} else {
 		manifest.status = done ? (state.incomplete_seeds?.length ? 'converged-with-gaps' : 'converged') : 'stalled';
 	}
+	// The engineer that fixes a run can differ from the one the audit recorded,
+	// so record who actually ran this phase. `auditor_model` stays the model that
+	// filed the findings; the audit-time pair is kept in the run-started entry.
+	manifest.fixer_model = config.fixerModel;
 	manifest.finished_at = new Date().toISOString();
 	writeJson(join(dir, 'manifest.json'), manifest);
 	state.phase = manifest.status;
