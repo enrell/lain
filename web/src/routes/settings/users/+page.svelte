@@ -188,7 +188,7 @@
 								resetOpen = true;
 							}}
 						>
-							<KeyRound class="size-4" /> Reset
+							<KeyRound class="size-4" /> Reset password
 						</Button>
 					</div>
 				</li>
