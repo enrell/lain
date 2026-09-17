@@ -135,7 +135,7 @@
 	{:else}
 		<ul class="divide-y divide-line overflow-hidden rounded-card border border-line">
 			{#each users as user (user.id)}
-				<li class="flex flex-wrap items-center gap-x-4 gap-y-3 bg-surface/40 px-4 py-3.5">
+				<li class="flex flex-wrap items-center gap-x-4 gap-y-2 bg-surface/40 px-4 py-2.5 md:gap-y-3 md:py-3.5">
 					<div class="flex min-w-0 flex-1 items-center gap-3">
 						<span
 							class="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-active text-xs font-semibold text-muted"
