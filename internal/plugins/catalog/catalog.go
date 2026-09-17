@@ -278,6 +278,37 @@ func (s *Service) PruneMissing(libraryID string, present map[string]bool) (int, 
 	return removed, err
 }
 
+// DeleteLibrary removes every catalog item that belongs to a library, plus
+// its by-library index entries. Deleting the library record alone strands
+// them: the scan only walks libraries that still exist, and PruneMissing
+// only ever sees roots it was given, so the items would survive forever.
+// Identity lives in the catalog, so the catalog owns the removal.
+func (s *Service) DeleteLibrary(libraryID string) (int, error) {
+	removed := 0
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		removed = 0
+		ib, lb := tx.Bucket(kv.BItems), tx.Bucket(kv.BItemsByLib)
+		prefix := libPrefix(libraryID)
+		// Collect first: deleting while cursoring skips followers.
+		var ids []string
+		cur := lb.Cursor()
+		for k, _ := cur.Seek(prefix); k != nil && hasPrefix(k, prefix); k, _ = cur.Next() {
+			ids = append(ids, string(k[len(prefix):]))
+		}
+		for _, id := range ids {
+			if err := ib.Delete([]byte(id)); err != nil {
+				return err
+			}
+			if err := lb.Delete(libKey(libraryID, id)); err != nil {
+				return err
+			}
+			removed++
+		}
+		return nil
+	})
+	return removed, err
+}
+
 // Get returns one item.
 func (s *Service) Get(id string) (contracts.CatalogItem, bool) {
 	var it contracts.CatalogItem

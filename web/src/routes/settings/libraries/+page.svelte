@@ -15,7 +15,7 @@
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
-	import { ensureLibraries } from '$lib/stores/media-cache.svelte';
+	import { ensureLibraries, forgetLibrary, rememberLibrary } from '$lib/stores/media-cache.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -329,7 +329,7 @@
 <Modal
 	bind:open={deleteOpen}
 	title="Remove library?"
-	description="The files on disk stay untouched. Catalog entries are pruned on the next scan."
+	description="The files on disk stay untouched. Its catalog entries are removed with it."
 >
 	{#snippet footer()}
 		<Button variant="ghost" onclick={() => (deleteOpen = false)}>Cancel</Button>

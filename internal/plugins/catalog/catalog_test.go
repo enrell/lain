@@ -136,6 +136,46 @@ func TestPruneNothingToRemove(t *testing.T) {
 	}
 }
 
+func TestDeleteLibraryRemovesOnlyItsItems(t *testing.T) {
+	s := testService(t)
+	a := mkItem("lib-a", "/a/1.mkv", "A1")
+	b := mkItem("lib-a", "/a/2.mkv", "A2")
+	c := mkItem("lib-b", "/b/1.mkv", "B1")
+	if err := s.UpsertBatch([]contracts.CatalogItem{a, b, c}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.DeleteLibrary("lib-a")
+	if err != nil || n != 2 {
+		t.Fatalf("DeleteLibrary=%d err=%v, want 2/<nil>", n, err)
+	}
+	if _, ok := s.Get(a.ID); ok {
+		t.Fatal("deleted library item must be gone")
+	}
+	if _, ok := s.Get(b.ID); ok {
+		t.Fatal("deleted library item must be gone")
+	}
+	if _, ok := s.Get(c.ID); !ok {
+		t.Fatal("other library must be untouched")
+	}
+	if got := len(s.ListByLibrary("lib-a")); got != 0 {
+		t.Fatalf("by-library index still has %d entries", got)
+	}
+	if got := len(s.ListByLibrary("lib-b")); got != 1 {
+		t.Fatalf("by-library index of lib-b has %d entries, want 1", got)
+	}
+	// A prune of a still-existing root must not resurrect or miss anything.
+	if n, err := s.PruneMissing("lib-b", map[string]bool{c.ID: true}); err != nil || n != 0 {
+		t.Fatalf("prune=%d err=%v, want 0/<nil>", n, err)
+	}
+}
+
+func TestDeleteLibraryUnknownIsNoop(t *testing.T) {
+	s := testService(t)
+	if n, err := s.DeleteLibrary("nope"); err != nil || n != 0 {
+		t.Fatalf("DeleteLibrary=%d err=%v, want 0/<nil>", n, err)
+	}
+}
+
 func TestBatchLargeStaysFast(t *testing.T) {
 	s := testService(t)
 	var items []contracts.CatalogItem

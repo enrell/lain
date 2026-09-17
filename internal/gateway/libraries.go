@@ -71,8 +71,8 @@ func (l *LibraryStore) Create(name, typ, path string) (contracts.Library, error)
 	return lib, nil
 }
 
-// Delete removes a library. Catalog entries survive (prune happens on
-// the next scan of remaining libraries); userstate is never touched.
+// Delete removes a library. The caller removes its catalog entries; userstate
+// is never touched.
 func (l *LibraryStore) Delete(id string) error {
 	return l.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(kv.BLibraries)
