@@ -589,7 +589,7 @@
 			<p class="text-sm text-white/70">Preparing a browser-compatible version…</p>
 		</div>
 	{:else if transcodeError}
-		<div class="absolute inset-0 flex items-center justify-center bg-black/80 px-6">
+		<div class="absolute inset-0 flex items-center justify-center bg-black/80 px-6" role="alert">
 			<div class="max-w-md text-center">
 				<TriangleAlert class="mx-auto size-8 text-warning" />
 				<p class="mt-3 text-sm text-foreground">{transcodeError}</p>
@@ -612,7 +612,7 @@
 
 	<!-- Error -->
 	{#if error}
-		<div class="absolute inset-0 flex items-center justify-center bg-black/80 px-6">
+		<div class="absolute inset-0 flex items-center justify-center bg-black/80 px-6" role="alert">
 			<div class="max-w-md text-center">
 				<TriangleAlert class="mx-auto size-8 text-warning" />
 				<p class="mt-3 text-sm text-foreground">{error}</p>
