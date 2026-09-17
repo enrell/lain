@@ -92,6 +92,8 @@ export interface TranscodeStatus {
 	profile: string;
 	method?: 'remux' | 'transcode' | string;
 	cached?: boolean;
+	/** Preparation fraction (0..1) while queued or running (D-039). */
+	progress?: number;
 	has_subtitle?: boolean;
 	error_code?: string;
 	error?: string;
