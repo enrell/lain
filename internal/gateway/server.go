@@ -394,11 +394,20 @@ func (s *Server) handleLibCreate(w http.ResponseWriter, r *http.Request, _ auth.
 }
 
 func (s *Server) handleLibDelete(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
-	if err := s.libs.Delete(r.PathValue("id")); err != nil {
+	id := r.PathValue("id")
+	if err := s.libs.Delete(id); err != nil {
 		writeErr(w, 404, err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]string{"status": "ok"})
+	// A library record without its items is a leak: the scan prunes per
+	// root and this root is gone, so nothing would ever collect them.
+	removed, err := s.cat.DeleteLibrary(id)
+	if err != nil {
+		s.logger().Error("library catalog cleanup failed", "req", reqIDOf(r), "library", id, "err", err.Error())
+		writeErr(w, 500, "library removed, but its catalog entries could not be deleted")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"status": "ok", "items_removed": removed})
 }
 
 func shortID(s string) string {
