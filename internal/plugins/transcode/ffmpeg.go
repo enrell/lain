@@ -9,11 +9,14 @@
 package transcode
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,12 +55,25 @@ type stream struct {
 
 type mediaReport struct {
 	Streams []stream `json:"streams"`
+	Format  struct {
+		Duration string `json:"duration"`
+	} `json:"format"`
+}
+
+// durationSeconds is 0 when ffprobe could not report a usable duration;
+// progress is then reported as indeterminate instead of invented.
+func (r mediaReport) durationSeconds() float64 {
+	sec, err := strconv.ParseFloat(r.Format.Duration, 64)
+	if err != nil || sec <= 0 {
+		return 0
+	}
+	return sec
 }
 
 func probeMedia(path string) (mediaReport, error) {
 	cmd := exec.Command("ffprobe",
 		"-v", "error",
-		"-show_entries", "stream=index,codec_type,codec_name,pix_fmt,color_transfer,color_primaries:stream_disposition=default",
+		"-show_entries", "stream=index,codec_type,codec_name,pix_fmt,color_transfer,color_primaries:stream_disposition=default:format=duration",
 		"-of", "json",
 		path)
 	raw, err := cmd.Output()
@@ -219,8 +235,10 @@ func hdrVideo(s stream) bool {
 }
 
 // convertMedia builds the ffmpeg argv from probed streams and runs it,
-// writing atomically: readers only ever see a complete MP4.
-func (t *Transcoder) convertMedia(spec sourceSpec, out string) (string, error) {
+// writing atomically: readers only ever see a complete MP4. When
+// onProgress is non-nil, ffmpeg's -progress stream is drained and the
+// preparation fraction (0..1) is reported as it advances.
+func (t *Transcoder) convertMedia(spec sourceSpec, out string, onProgress func(float64)) (string, error) {
 	report, probeErr := probeMedia(spec.Path)
 	if probeErr != nil && spec.Profile != legacyProfile {
 		return "", &core.Error{Code: "dependency-unavailable", Msg: "ffprobe is required for the browser profile"}
@@ -231,13 +249,30 @@ func (t *Transcoder) convertMedia(spec sourceSpec, out string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if onProgress != nil {
+		args = append([]string{"-progress", "pipe:1", "-nostats"}, args...)
+	}
 
 	ctx, cancel := context.WithTimeout(t.ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
-	if output, err := cmd.CombinedOutput(); err != nil {
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
 		_ = os.Remove(tmp)
-		return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(string(output)))
+		return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	// Drain stdout while ffmpeg runs: the progress stream is written
+	// there, and a full pipe would block the child. stderr keeps the
+	// error text the failure path reports.
+	consumeProgress(stdout, report.durationSeconds(), onProgress)
+	if err := cmd.Wait(); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	fi, err := os.Stat(tmp)
 	if err != nil || fi.Size() == 0 {
@@ -248,6 +283,35 @@ func (t *Transcoder) convertMedia(spec sourceSpec, out string) (string, error) {
 		return "", err
 	}
 	return method, nil
+}
+
+// consumeProgress drains ffmpeg's -progress stream. Each block reports the
+// same position twice (out_time_us and out_time_ms both carry microseconds);
+// positions become a fraction of the probed duration, and an unknown
+// duration simply yields no fraction rather than an invented one.
+func consumeProgress(r io.Reader, totalSec float64, onProgress func(float64)) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		if onProgress == nil {
+			continue
+		}
+		key, value, ok := strings.Cut(strings.TrimSpace(scanner.Text()), "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "out_time_us", "out_time_ms":
+			us, err := strconv.ParseInt(value, 10, 64)
+			if err != nil || us < 0 || totalSec <= 0 {
+				continue
+			}
+			onProgress(min(1, max(0, float64(us)/(totalSec*1e6))))
+		case "progress":
+			if value == "end" {
+				onProgress(1)
+			}
+		}
+	}
 }
 
 func (t *Transcoder) extractSubtitle(spec sourceSpec, out string) error {

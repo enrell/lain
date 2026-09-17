@@ -226,6 +226,35 @@ func TestTranscodeServesMP4(t *testing.T) {
 // TestTranscodeDegradesWithoutFFmpeg proves the honest path survives:
 // no ffmpeg means the endpoint 503s and the plan falls back to
 // transcode-required instead of pointing at bytes that do not exist.
+// TestPublicStatusCarriesProgress pins the additive @2 field: a pending
+// job reports its fraction, terminal states never invent one (D-039).
+func TestPublicStatusCarriesProgress(t *testing.T) {
+	running := publicStatus(contracts.TranscodeStatus{
+		Session: "s", State: contracts.TranscodeRunning, Profile: "web-mp4-sdr-v2", Progress: 0.42,
+	})
+	if running.Progress != 0.42 {
+		t.Fatalf("progress=%v, want 0.42", running.Progress)
+	}
+	raw, err := json.Marshal(running)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"progress":0.42`) {
+		t.Fatalf("payload=%s, want an additive progress field", raw)
+	}
+
+	for _, state := range []string{contracts.TranscodeReady, contracts.TranscodeFailed} {
+		terminal := publicStatus(contracts.TranscodeStatus{Session: "s", State: state, Profile: "web-mp4-sdr-v2"})
+		raw, err := json.Marshal(terminal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "progress") {
+			t.Fatalf("state %s payload=%s, want no progress field", state, raw)
+		}
+	}
+}
+
 func TestTranscodeDegradesWithoutFFmpeg(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
