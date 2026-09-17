@@ -25,12 +25,17 @@
 			.join(' · ')
 	);
 	const ratio = $derived(progress && !progress.completed ? progressRatio(progress) : 0);
+	// The link's aria-label replaces its inner text, so the visual 'Watching'
+	// badge has to be part of the name or a screen reader never hears it.
+	const accessibleName = $derived(
+		[title, subtitle, ratio > 0 ? 'watching' : ''].filter(Boolean).join(', ')
+	);
 </script>
 
 <a
 	href={`/item/${item.id}`}
 	class="group block rounded-card transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-	aria-label={`${title}${subtitle ? `, ${subtitle}` : ''}`}
+	aria-label={accessibleName}
 >
 	<div
 		class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/15"
@@ -55,7 +60,7 @@
 		{/if}
 		{#if ratio > 0}
 			<div class="absolute inset-x-0 bottom-0 p-1.5">
-				<ProgressBar {ratio} class="bg-black/50" />
+				<ProgressBar {ratio} label="Watch progress" class="bg-black/50" />
 			</div>
 		{/if}
 	</div>

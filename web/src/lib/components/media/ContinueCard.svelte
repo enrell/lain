@@ -40,7 +40,7 @@
 <a
 	href={`/item/${item.id}`}
 	class="group block transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-	aria-label={`${title}, ${subtitle}`}
+	aria-label={`${title}, ${subtitle}${ratio > 0 ? ', watching' : ''}`}
 >
 	<div class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/14">
 		<div class="aspect-video">
@@ -66,7 +66,7 @@
 		</div>
 		{#if ratio > 0}
 			<div class="absolute inset-x-0 bottom-0 p-1.5">
-				<ProgressBar {ratio} class="bg-black/50" />
+				<ProgressBar {ratio} label="Watch progress" class="bg-black/50" />
 			</div>
 		{/if}
 	</div>
