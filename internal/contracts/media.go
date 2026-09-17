@@ -339,6 +339,16 @@ type TranscodeStatus struct {
 	FinishedAt   int64  `json:"finished_at,omitempty"`
 }
 
+// UnreadableRoot names one library root an ingest run could not read
+// fully. A bare count tells an operator nothing they can act on; the
+// name and path are the difference between a number and a task.
+type UnreadableRoot struct {
+	LibraryID string `json:"library_id"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Reason    string `json:"reason"`
+}
+
 // ScanStats summarizes one ingest run.
 type ScanStats struct {
 	Libraries    int   `json:"libraries"`
@@ -350,6 +360,9 @@ type ScanStats struct {
 	Migrated     int   `json:"migrated"`
 	Enriched     int   `json:"enriched"`
 	WalkErrors   int   `json:"walk_errors"`
+	// Unreadable names the roots behind WalkErrors and any inaccessible
+	// root, in library order. Empty when every root was walked clean.
+	Unreadable []UnreadableRoot `json:"unreadable,omitempty"`
 	Dirs         int   `json:"dirs"`
 	StartedAt    int64 `json:"started_at"`
 	FinishedAt   int64 `json:"finished_at"`

@@ -189,6 +189,21 @@
 					{#if stats.walk_errors > 0}· <span class="text-warning">{stats.walk_errors} unreadable</span>{/if}
 					{#if stats.errors > 0}· <span class="text-danger">{stats.errors} errors</span>{/if}
 				</p>
+				<!-- A count nobody can attribute is not a task: name the roots
+				     the server could not read, and what to check next. -->
+				{#if stats.unreadable?.length}
+					<ul class="mt-2 space-y-1.5 text-sm" aria-label="Unreadable library roots">
+						{#each stats.unreadable as root (root.library_id)}
+							<li class="text-warning">
+								<span class="font-medium">{root.name}</span>
+								<span class="font-mono text-xs text-muted">{root.path}</span>
+								— {root.reason}. Check that the drive is mounted and the path is readable by the
+								server, then scan again. Nothing was pruned for it, so the catalog still shows what it
+								last saw.
+							</li>
+						{/each}
+					</ul>
+				{/if}
 			{:else}
 				<p class="text-muted">No scan recorded yet.</p>
 			{/if}
@@ -226,6 +241,9 @@
 							<div class="flex items-center gap-2">
 								<p class="truncate font-medium text-foreground">{lib.name}</p>
 								<Badge>{lib.type}</Badge>
+								{#if scan.status?.stats?.unreadable?.some((r) => r.library_id === lib.id)}
+									<Badge tone="warning">unreadable</Badge>
+								{/if}
 							</div>
 							<p class="mt-0.5 truncate font-mono text-xs text-muted">{lib.path}</p>
 						</div>
