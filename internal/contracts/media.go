@@ -337,6 +337,10 @@ type TranscodeStatus struct {
 	QueuedAt     int64  `json:"queued_at,omitempty"`
 	StartedAt    int64  `json:"started_at,omitempty"`
 	FinishedAt   int64  `json:"finished_at,omitempty"`
+
+	// Progress is the preparation fraction (0..1) reported while a job is
+	// queued or running; terminal states leave it absent (D-039).
+	Progress float64 `json:"progress,omitempty"`
 }
 
 // UnreadableRoot names one library root an ingest run could not read

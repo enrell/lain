@@ -153,7 +153,7 @@ func TestAsyncLifecycleDeduplicatesWork(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var calls atomic.Int32
-	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 2}, func(_ sourceSpec, out string) (string, error) {
+	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 2}, func(_ sourceSpec, out string, _ func(float64)) (string, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 		}
@@ -199,7 +199,7 @@ func TestAsyncLifecycleDeduplicatesWork(t *testing.T) {
 func TestAsyncQueueIsBounded(t *testing.T) {
 	root := t.TempDir()
 	block := make(chan struct{})
-	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 1}, func(_ sourceSpec, out string) (string, error) {
+	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 1}, func(_ sourceSpec, out string, _ func(float64)) (string, error) {
 		<-block
 		return "transcode", os.WriteFile(out, []byte("mp4"), 0o600)
 	}, time.Now)
@@ -247,7 +247,7 @@ func TestAsyncQueueIsBounded(t *testing.T) {
 func TestCacheEvictsLeastRecentlyUsed(t *testing.T) {
 	root := t.TempDir()
 	now := time.Unix(100, 0)
-	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 5, QueueSize: 2}, func(_ sourceSpec, out string) (string, error) {
+	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 5, QueueSize: 2}, func(_ sourceSpec, out string, _ func(float64)) (string, error) {
 		return "transcode", os.WriteFile(out, []byte("123"), 0o600)
 	}, func() time.Time { return now })
 	t.Cleanup(func() { _ = tr.Close() })
@@ -342,5 +342,100 @@ func TestV2ExtractsSubtitleSidecar(t *testing.T) {
 	raw, err := os.ReadFile(ready.SubtitlePath)
 	if err != nil || len(raw) < 6 || string(raw[:6]) != "WEBVTT" {
 		t.Fatalf("subtitle=%q err=%v, want WEBVTT", raw, err)
+	}
+}
+
+func TestConsumeProgressReportsFractions(t *testing.T) {
+	var got []float64
+	consumeProgress(strings.NewReader(strings.Join([]string{
+		"out_time_us=5000000",
+		"out_time_ms=5000000",
+		"progress=continue",
+		"out_time=N/A",
+		"out_time_us=60000000",
+		"progress=end",
+		"",
+	}, "\n")), 120, func(frac float64) { got = append(got, frac) })
+
+	// Both keys carry the same microsecond position, the unparsable
+	// out_time is skipped, and progress=end reports completion.
+	want := []float64{5.0 / 120, 5.0 / 120, 0.5, 1}
+	if len(got) != len(want) {
+		t.Fatalf("reports=%v, want %v", got, want)
+	}
+	for i, w := range want {
+		if diff := got[i] - w; diff > 1e-9 || diff < -1e-9 {
+			t.Fatalf("report %d = %v, want %v", i, got[i], w)
+		}
+	}
+}
+
+func TestConsumeProgressWithoutDurationStaysIndeterminate(t *testing.T) {
+	reports := 0
+	consumeProgress(strings.NewReader("out_time_us=5000000\nprogress=continue\n"), 0, func(float64) { reports++ })
+	if reports != 0 {
+		t.Fatalf("reports=%d, want none without a probed duration", reports)
+	}
+}
+
+func TestAsyncStatusReportsProgress(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "show.mkv")
+	if err := os.WriteFile(src, []byte("source"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	var released atomic.Bool
+	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 2}, func(_ sourceSpec, out string, onProgress func(float64)) (string, error) {
+		onProgress(0.25)
+		<-release
+		return "transcode", os.WriteFile(out, []byte("mp4"), 0o600)
+	}, time.Now)
+	t.Cleanup(func() {
+		if released.CompareAndSwap(false, true) {
+			close(release)
+		}
+		_ = tr.Close()
+	})
+
+	out, err := tr.Invoke(contracts.CapPlaybackTranscodeV2, contracts.TranscodeV2Request{
+		Action: contracts.TranscodeInspectAction, FilePath: src,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := out.(contracts.TranscodeStatus).Session
+	if _, err := tr.Invoke(contracts.CapPlaybackTranscodeV2, contracts.TranscodeV2Request{
+		Action: contracts.TranscodeStartAction, FilePath: src, Session: session,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		out, err := tr.Invoke(contracts.CapPlaybackTranscodeV2, contracts.TranscodeV2Request{
+			Action: contracts.TranscodeStatusAction, FilePath: src, Session: session,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		status := out.(contracts.TranscodeStatus)
+		if status.Progress > 0 {
+			if status.Progress != 0.25 {
+				t.Fatalf("progress=%v, want 0.25 while running", status.Progress)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("progress never surfaced: %+v", status)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	released.Store(true)
+	close(release)
+	ready := waitState(t, tr, src, session, contracts.TranscodeReady)
+	if ready.Progress != 0 {
+		t.Fatalf("terminal status carries progress=%v, want none", ready.Progress)
 	}
 }

@@ -23,24 +23,26 @@ func (s *Server) routesTranscode() {
 }
 
 type publicTranscodeStatus struct {
-	Session     string `json:"session"`
-	State       string `json:"state"`
-	Profile     string `json:"profile"`
-	Method      string `json:"method,omitempty"`
-	Cached      bool   `json:"cached,omitempty"`
-	HasSubtitle bool   `json:"has_subtitle,omitempty"`
-	ErrorCode   string `json:"error_code,omitempty"`
-	Error       string `json:"error,omitempty"`
-	QueuedAt    int64  `json:"queued_at,omitempty"`
-	StartedAt   int64  `json:"started_at,omitempty"`
-	FinishedAt  int64  `json:"finished_at,omitempty"`
+	Session     string  `json:"session"`
+	State       string  `json:"state"`
+	Profile     string  `json:"profile"`
+	Method      string  `json:"method,omitempty"`
+	Cached      bool    `json:"cached,omitempty"`
+	Progress    float64 `json:"progress,omitempty"`
+	HasSubtitle bool    `json:"has_subtitle,omitempty"`
+	ErrorCode   string  `json:"error_code,omitempty"`
+	Error       string  `json:"error,omitempty"`
+	QueuedAt    int64   `json:"queued_at,omitempty"`
+	StartedAt   int64   `json:"started_at,omitempty"`
+	FinishedAt  int64   `json:"finished_at,omitempty"`
 }
 
 func publicStatus(s contracts.TranscodeStatus) publicTranscodeStatus {
 	return publicTranscodeStatus{
 		Session: s.Session, State: s.State, Profile: s.Profile,
-		Method: s.Method, Cached: s.Cached, HasSubtitle: s.SubtitlePath != "",
-		ErrorCode: s.ErrorCode, Error: s.Error,
+		Method: s.Method, Cached: s.Cached, Progress: s.Progress,
+		HasSubtitle: s.SubtitlePath != "",
+		ErrorCode:   s.ErrorCode, Error: s.Error,
 		QueuedAt: s.QueuedAt, StartedAt: s.StartedAt, FinishedAt: s.FinishedAt,
 	}
 }

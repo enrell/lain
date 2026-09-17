@@ -85,6 +85,11 @@ the ready MP4 (202 + `Retry-After` while pending). `GET
 /api/items/{id}/playback` reports additive `profile`, `session` and
 `state` but never starts work.
 
+Pending status payloads carry an additive `progress` (0..1) — the
+fraction of the source already prepared — while work is queued or
+running; the terminal states omit it, and the server never promises an
+estimate it cannot keep honest, so any ETA is the client's own (D-039).
+
 Ready artifacts live in a plugin-private 20 GiB LRU cache (default;
 `--transcode-cache-size` / `LAIN_TRANSCODE_CACHE_SIZE`) with atomic
 JSON sidecars tracking identity, method, size and last access.

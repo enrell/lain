@@ -34,7 +34,7 @@ type Config struct {
 	QueueSize     int
 }
 
-type convertFunc func(spec sourceSpec, out string) (string, error)
+type convertFunc func(spec sourceSpec, out string, onProgress func(float64)) (string, error)
 
 type sourceSpec struct {
 	Path           string
@@ -65,6 +65,7 @@ type job struct {
 	spec       sourceSpec
 	state      string
 	method     string
+	progress   float64
 	errCode    string
 	errMessage string
 	queuedAt   int64
@@ -415,7 +416,11 @@ func (t *Transcoder) run(j *job) {
 	t.logger().Info("transcode running", "session", j.spec.Session, "profile", j.spec.Profile)
 
 	out := t.mediaPath(j.spec.Session)
-	method, err := t.runConvert(j.spec, out)
+	method, err := t.runConvert(j.spec, out, func(frac float64) {
+		t.mu.Lock()
+		j.progress = frac
+		t.mu.Unlock()
+	})
 	if err == nil && j.spec.SubtitleStream != nil {
 		err = t.extractSubtitle(j.spec, t.subtitlePath(j.spec.Session))
 	}
@@ -457,19 +462,24 @@ func (t *Transcoder) run(j *job) {
 	}
 }
 
-func (t *Transcoder) runConvert(spec sourceSpec, out string) (string, error) {
+func (t *Transcoder) runConvert(spec sourceSpec, out string, onProgress func(float64)) (string, error) {
 	if t.convert != nil {
-		return t.convert(spec, out)
+		return t.convert(spec, out, onProgress)
 	}
-	return t.convertMedia(spec, out)
+	return t.convertMedia(spec, out, onProgress)
 }
 
 func statusFromJob(j *job) contracts.TranscodeStatus {
-	return contracts.TranscodeStatus{
+	status := contracts.TranscodeStatus{
 		Session: j.spec.Session, State: j.state, Profile: j.spec.Profile,
 		Method: j.method, ErrorCode: j.errCode, Error: j.errMessage,
 		QueuedAt: j.queuedAt, StartedAt: j.startedAt, FinishedAt: j.finishedAt,
 	}
+	// Progress is only meaningful while work is pending (D-039).
+	if j.state == contracts.TranscodeQueued || j.state == contracts.TranscodeRunning {
+		status.Progress = j.progress
+	}
+	return status
 }
 
 func statusFromEntry(e cacheEntry, path string, cached bool) contracts.TranscodeStatus {
