@@ -735,11 +735,11 @@
 				<SkipForward class="size-5" />
 			</IconButton>
 
-			<div class="ml-2 hidden items-center gap-1.5 md:flex">
+			<div class="ml-2 flex items-center gap-1.5">
 				<IconButton label={muted ? 'Unmute' : 'Mute'} class="text-white/85 hover:text-white" onclick={toggleMute}>
 					<VolumeIcon class="size-5" />
 				</IconButton>
-				<div class="w-24">
+				<div class="hidden w-24 md:block">
 					<Slider.Root
 						type="single"
 						value={muted ? 0 : volume}
