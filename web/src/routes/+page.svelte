@@ -96,7 +96,7 @@
 	{#if loading}
 		<div class="space-y-12 pb-20">
 			<Skeleton class="h-[72svh] min-h-[32rem] w-full rounded-none" />
-			<div class="mx-auto w-full max-w-[1800px] space-y-5 px-5 sm:px-8 lg:px-16">
+			<div class="mx-auto w-full max-w-[1800px] space-y-5 px-5 sm:px-8 lg:px-10">
 				<Skeleton class="h-7 w-52" />
 				<div class="flex gap-4 overflow-hidden">
 					{#each Array(5) as _}
@@ -106,11 +106,11 @@
 			</div>
 		</div>
 	{:else if error}
-		<div class="mx-auto w-full max-w-[1600px] px-4 pb-24 pt-24 md:px-8 md:pt-32">
+		<div class="mx-auto w-full max-w-[1800px] px-5 sm:px-8 lg:px-10 pb-24 pt-24 md:pt-32">
 			<ErrorState message={error} retry={() => void load()} />
 		</div>
 	{:else if libraries.length === 0}
-		<div class="mx-auto w-full max-w-[1600px] px-4 pb-24 pt-24 md:px-8 md:pt-32">
+		<div class="mx-auto w-full max-w-[1800px] px-5 sm:px-8 lg:px-10 pb-24 pt-24 md:pt-32">
 			<EmptyState
 				title="No media yet"
 				description={session.isAdmin
@@ -126,7 +126,7 @@
 			</EmptyState>
 		</div>
 	{:else if catalogTotal === 0}
-		<div class="mx-auto w-full max-w-[1600px] px-4 pb-24 pt-24 md:px-8 md:pt-32">
+		<div class="mx-auto w-full max-w-[1800px] px-5 sm:px-8 lg:px-10 pb-24 pt-24 md:pt-32">
 			<EmptyState
 				title="Library hasn't been scanned"
 				description="Libraries are configured, but no media has been indexed yet."
@@ -153,7 +153,7 @@
 			/>
 		{/if}
 		<section id="home-library" class="home-library relative bg-background pb-24 pt-14 sm:pt-18 md:pb-20 md:pt-20">
-			<div class="mx-auto w-full max-w-[1800px] space-y-14 px-5 sm:px-8 md:space-y-16 lg:px-16">
+			<div class="mx-auto w-full max-w-[1800px] space-y-14 md:space-y-16 px-5 sm:px-8 lg:px-10">
 				{#if scan.running}
 					<div class="flex"><Badge tone="accent"><ScanLine class="size-3" /> Scanning…</Badge></div>
 				{:else if scan.status?.state === 'error'}

@@ -66,7 +66,7 @@
 		/>
 	{/if}
 	<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
-	<div class="relative mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-[1800px] flex-col justify-end px-5 pb-20 pt-28 sm:px-8 md:min-h-[min(56rem,100svh)] md:justify-center md:px-10 md:pb-16 md:pt-28 lg:px-16">
+	<div class="relative mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-[1800px] flex-col justify-end px-5 sm:px-8 lg:px-10 pb-20 pt-28 md:min-h-[min(56rem,100svh)] md:justify-center md:pb-16 md:pt-28">
 		<div class="hero-monolith-copy max-w-4xl">
 			<p class="mb-4 font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">
 				{eyebrow}{#if year} / {year}{/if}
