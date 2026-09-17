@@ -21,6 +21,19 @@ function unique(ids: string[]): string[] {
 	return [...new Set(ids.filter((id) => id !== ''))];
 }
 
+/*
+ * Mutations the user just made must land in the shared cache: pages read
+ * `libraryCache` on a plain navigation, and a create/remove that only
+ * updated a page-local list leaves every other surface stale until reload.
+ */
+export function rememberLibrary(lib: Library): void {
+	libraryCache.set(lib.id, lib);
+}
+
+export function forgetLibrary(id: string): void {
+	libraryCache.delete(id);
+}
+
 /** Fetches missing items (parallel) and returns them in input order. */
 export async function ensureItems(ids: string[]): Promise<(CatalogItem | undefined)[]> {
 	const wanted = unique(ids);
