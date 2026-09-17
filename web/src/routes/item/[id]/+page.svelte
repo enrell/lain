@@ -49,6 +49,20 @@
 			(item ? api.thumbnail.url(item.id, session.token, { at: 30, width: 960 }) : '')
 	);
 
+	/*
+	 * The metadata line only renders fields that exist, so the separators
+	 * have to be emitted between them rather than in front of each field:
+	 * a leading middot used to show whenever the year was missing.
+	 */
+	const metaSegments = $derived(
+		[
+			enrichment?.year || item?.year ? String(enrichment?.year || item?.year) : '',
+			item ? mediaSubtitle(item) : '',
+			library?.name ?? '',
+			item && item.size > 0 ? formatBytes(item.size) : ''
+		].filter((segment) => segment !== '')
+	);
+
 	async function load(): Promise<void> {
 		loading = true;
 		error = null;
@@ -199,18 +213,10 @@
 				</div>
 
 				<div class="flex flex-wrap items-center gap-2 text-sm text-muted">
-					{#if enrichment?.year || item.year}
-						<span>{enrichment?.year || item.year}</span>
-					{/if}
-					{#if mediaSubtitle(item)}
-						<span aria-hidden="true">·</span><span>{mediaSubtitle(item)}</span>
-					{/if}
-					{#if library}
-						<span aria-hidden="true">·</span><span>{library.name}</span>
-					{/if}
-					{#if item.size > 0}
-						<span aria-hidden="true">·</span><span>{formatBytes(item.size)}</span>
-					{/if}
+					{#each metaSegments as segment, i (i)}
+						{#if i > 0}<span aria-hidden="true">·</span>{/if}
+						<span>{segment}</span>
+					{/each}
 				</div>
 
 				{#if enrichment?.genres?.length}
