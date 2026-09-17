@@ -31,6 +31,14 @@
 </script>
 
 <div class="min-h-dvh">
+	<!-- First focusable element: the header repeats on every page. -->
+	<a
+		href="#main"
+		class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:border focus:border-line focus:bg-surface focus:px-4 focus:py-2 focus:text-sm focus:text-foreground"
+	>
+		Skip to content
+	</a>
+
 	<header class="fixed inset-x-0 top-0 z-40 hidden border-b border-white/5 bg-background/55 backdrop-blur-xl md:block">
 		<div class="mx-auto grid h-20 w-full max-w-[1800px] grid-cols-[1fr_auto_1fr] items-center px-6 lg:px-10">
 			<a href="/" class="flex shrink-0 items-center gap-2.5 justify-self-start" aria-label="Lain home">
@@ -86,7 +94,7 @@
 		<div class="w-40"><UserMenu /></div>
 	</header>
 
-	<main>
+	<main id="main" tabindex="-1">
 		<div class={page.url.pathname === '/' ? 'w-full pb-24 md:pb-0' : 'mx-auto w-full max-w-[1600px] px-4 pb-28 pt-6 md:px-8 md:pb-14 md:pt-28'}>
 			{@render children()}
 		</div>
