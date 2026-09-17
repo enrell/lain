@@ -166,8 +166,9 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if item}
 	<article class="space-y-8">
-		<!-- Artwork backdrop: cover, else poster, else a generated still. -->
-		<div class="relative -mx-4 -mt-5 h-44 overflow-hidden md:-mx-8 md:-mt-8 md:h-60">
+		<!-- Artwork backdrop: cover, else poster, else a generated still. Kept
+		     short on phones so the primary action clears the fixed bottom nav. -->
+		<div class="relative -mx-4 -mt-5 h-32 overflow-hidden md:-mx-8 md:-mt-8 md:h-60">
 			{#if item && backdropSrc && backdropFailedId !== item.id}
 				<img
 					src={backdropSrc}
@@ -182,8 +183,8 @@
 			<div class="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent"></div>
 		</div>
 
-		<div class="relative -mt-28 flex flex-col gap-6 md:-mt-36 md:flex-row md:gap-8">
-			<div class="w-36 shrink-0 md:w-52">
+		<div class="relative -mt-20 flex flex-col gap-6 md:-mt-36 md:flex-row md:gap-8">
+			<div class="w-28 shrink-0 sm:w-36 md:w-52">
 				<Poster {item} {enrichment} class="aspect-[2/3] rounded-card border border-line shadow-2xl" priority />
 			</div>
 
