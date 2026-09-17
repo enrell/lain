@@ -15,7 +15,7 @@
 	import Volume1 from '@lucide/svelte/icons/volume-1';
 	import Volume2 from '@lucide/svelte/icons/volume-2';
 	import VolumeX from '@lucide/svelte/icons/volume-x';
-	import type { CatalogItem, PlaybackPlan, Progress } from '$lib/api/types';
+	import type { CatalogItem, PlaybackPlan, Progress, TranscodeStatus } from '$lib/api/types';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
@@ -23,7 +23,7 @@
 	import { prefs } from '$lib/auth/storage';
 	import { isCompleted } from '$lib/utilities/progress';
 	import { ProgressReporter, type ProgressSnapshot } from '$lib/utilities/progress-reporter';
-	import { formatTime } from '$lib/utilities/format';
+	import { elapsedSince, formatTime } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
 
 	let {
@@ -65,6 +65,9 @@
 	let preparingTranscode = $state(false);
 	let transcodeSession = $state('');
 	let transcodeError = $state<string | null>(null);
+	let prepareProgress = $state(0);
+	let prepareStartedAt = $state(0);
+	let nowMs = $state(Date.now());
 	let hasSubtitle = $state(false);
 	let selectedAudio = $state('');
 	let selectedSubtitle = $state('');
@@ -163,14 +166,26 @@
 		});
 	}
 
+	// One status reading feeds both the loop and the overlay: the server
+	// owns started_at, so a reload never restarts the elapsed story.
+	function applyPrepareStatus(status: TranscodeStatus): void {
+		prepareProgress = status.progress ?? 0;
+		prepareStartedAt = status.started_at || status.queued_at || prepareStartedAt;
+		nowMs = Date.now();
+	}
+
 	async function prepareTranscode(selection?: {
 		audio_stream?: number;
 		subtitle_stream?: number;
-	}): Promise<void> {		transcodeAbort?.abort();
+	}): Promise<void> {
+		transcodeAbort?.abort();
 		const controller = new AbortController();
 		transcodeAbort = controller;
 		preparingTranscode = true;
 		transcodeError = null;
+		prepareProgress = 0;
+		prepareStartedAt = Date.now() / 1000;
+		nowMs = Date.now();
 		try {
 			let status = await api.playback.startTranscode(item.id, {
 				profile: plan.profile,
@@ -179,10 +194,12 @@
 			});
 			transcodeSession = status.session;
 			hasSubtitle = status.has_subtitle ?? selection?.subtitle_stream !== undefined;
+			applyPrepareStatus(status);
 			let waitMs = 750;
 			while (status.state === 'queued' || status.state === 'running' || status.state === 'idle') {
 				await delay(waitMs, controller.signal);
 				status = await api.playback.transcodeStatus(item.id, transcodeSession, controller.signal);
+				applyPrepareStatus(status);
 				waitMs = Math.min(3000, Math.round(waitMs * 1.4));
 			}
 			if (status.state !== 'ready') {
@@ -422,6 +439,14 @@
 		return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
 	});
 
+	// A live elapsed clock, but only while the preparation overlay is up.
+	$effect(() => {
+		if (!preparingTranscode) return;
+		nowMs = Date.now();
+		const timer = setInterval(() => (nowMs = Date.now()), 1000);
+		return () => clearInterval(timer);
+	});
+
 	function skipResumeToStart(): void {
 		if (video) video.currentTime = 0;
 		showResume = false;
@@ -500,6 +525,11 @@
 	// A zero max collapses the slider's step grid to a single step, so every
 	// playback position would be snapped away and echoed back as a change.
 	const seekMax = $derived(duration > 0 ? duration : 1);
+	// Preparation is the one wait with no media element reporting for it, so
+	// the overlay counts from the server's own start time and shows the
+	// fraction when the server has one (D-038/D-039).
+	const prepareElapsed = $derived(elapsedSince(prepareStartedAt, nowMs));
+	const preparePercent = $derived(Math.round(prepareProgress * 100));
 </script>
 
 <svelte:window
@@ -586,7 +616,38 @@
 	{#if preparingTranscode}
 		<div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 px-6 text-center">
 			<Spinner class="size-10 text-white/80" label="Preparing playback" />
-			<p class="text-sm text-white/70">Preparing a browser-compatible version…</p>
+			<div class="max-w-md">
+				<p class="text-sm text-white/85">Preparing a browser-compatible version…</p>
+				<p class="mt-2 font-mono text-xs tabular-nums text-white/60">
+					{formatTime(prepareElapsed)} elapsed
+				</p>
+				{#if prepareProgress > 0}
+					<div
+						class="mx-auto mt-4 h-1 w-56 overflow-hidden rounded-full bg-white/20"
+						role="progressbar"
+						aria-label="Preparation progress"
+						aria-valuemin="0"
+						aria-valuemax="100"
+						aria-valuenow={preparePercent}
+					>
+						<div class="h-full rounded-full bg-accent" style={`width:${preparePercent}%`}></div>
+					</div>
+					<p class="mt-1.5 text-xs text-white/60">{preparePercent}% prepared</p>
+				{/if}
+				<p class="mt-4 text-xs leading-relaxed text-white/60">
+					The first play prepares a browser-compatible copy of this file. Sources like AV1 or
+					HEVC need a full re-encode and can take several minutes.
+				</p>
+				<p class="mt-2 text-xs leading-relaxed text-white/60">
+					You can leave this page — preparation continues on the server.
+				</p>
+				<button
+					class="mt-5 rounded-md border border-line bg-surface px-4 py-2 text-sm text-foreground hover:bg-surface-hover"
+					onclick={() => void goto(`/item/${item.id}`)}
+				>
+					<ArrowLeft class="mr-1.5 inline size-3.5" /> Back to details
+				</button>
+			</div>
 		</div>
 	{:else if transcodeError}
 		<div class="absolute inset-0 flex items-center justify-center bg-black/80 px-6" role="alert">

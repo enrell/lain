@@ -14,6 +14,16 @@ export function formatTime(seconds: number | null | undefined): string {
 	return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+/**
+ * Seconds elapsed since a server timestamp, clamped at zero so a browser
+ * clock that disagrees with the server never renders a negative wait.
+ * Returns 0 when the caller has no timestamp yet.
+ */
+export function elapsedSince(startUnixSeconds: number | null | undefined, nowMs: number): number {
+	if (!startUnixSeconds || !Number.isFinite(startUnixSeconds)) return 0;
+	return Math.max(0, nowMs / 1000 - startUnixSeconds);
+}
+
 /** "1 h 42 min" for metadata lines (never a clock). */
 export function formatRuntime(seconds: number | null | undefined): string {
 	if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return '';
