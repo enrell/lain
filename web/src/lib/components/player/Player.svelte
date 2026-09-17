@@ -55,6 +55,9 @@
 	let controlsVisible = $state(true);
 	let scrubbing = $state(false);
 	let scrubValue = $state(0);
+	// True only between pointerdown and pointerup on the seek row. Used to
+	// tell a real drag from a stray `onValueChange` echo (see below).
+	let seekEngaged = $state(false);
 	let error = $state<string | null>(null);
 	let resumedFrom = $state(0);
 	let showResume = $state(false);
@@ -247,7 +250,16 @@
 
 	function onTimeUpdate(): void {
 		const el = video;
-		if (!el || scrubbing) return;
+		if (!el) return;
+		/*
+		 * `scrubbing` may only survive while a pointer is actually down on
+		 * the seek row. Slider echoes the controlled value prop through
+		 * `onValueChange` when it re-snaps it to the step grid, and an echo
+		 * that latched `scrubbing` used to freeze the readout for the whole
+		 * session; a stale latch heals here instead.
+		 */
+		if (scrubbing && !seekEngaged) scrubbing = false;
+		if (scrubbing) return;
 		currentTime = el.currentTime;
 		if (el.buffered.length > 0 && el.duration > 0) {
 			buffered = el.buffered.end(el.buffered.length - 1) / el.duration;
@@ -485,9 +497,16 @@
 	}
 
 	const VolumeIcon = $derived(muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2);
+	// A zero max collapses the slider's step grid to a single step, so every
+	// playback position would be snapped away and echoed back as a change.
+	const seekMax = $derived(duration > 0 ? duration : 1);
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window
+	onkeydown={onKeydown}
+	onpointerup={() => (seekEngaged = false)}
+	onpointercancel={() => (seekEngaged = false)}
+/>
 
 <div
 	bind:this={container}
@@ -666,9 +685,20 @@
 			<Slider.Root
 				type="single"
 				value={scrubbing ? scrubValue : currentTime}
-				max={duration || 0}
+				max={seekMax}
 				step={0.1}
+				onpointerdown={() => (seekEngaged = true)}
 				onValueChange={(v) => {
+					/*
+					 * bits-ui also emits this callback when it re-snaps the
+					 * controlled `value` prop onto the step grid — an echo of
+					 * the position we passed in, not a user gesture. Only a
+					 * change that departs from playback starts a scrub;
+					 * latching it on the echo leaves `onValueCommit` forever
+					 * un-called, which used to freeze the readout and keep the
+					 * controls on screen.
+					 */
+					if (!scrubbing && Math.abs(v - currentTime) <= 0.06) return;
 					scrubbing = true;
 					scrubValue = v;
 				}}
