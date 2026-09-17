@@ -6,6 +6,18 @@
 	import Input from '$lib/components/primitives/Input.svelte';
 	import SignalMark from '$lib/components/primitives/SignalMark.svelte';
 
+	/*
+	 * The server answers a wrong pair with a bare 'invalid credentials'. It is
+	 * accurate and useless: it names neither field, rules out nothing and
+	 * offers no next step, so the form says something a person can act on.
+	 */
+	function signInError(err: unknown): string {
+		const message = errorMessage(err, 'Sign in failed.');
+		return message === 'invalid credentials'
+			? 'That username and password do not match. Check both and try again.'
+			: message;
+	}
+
 	let username = $state('');
 	let password = $state('');
 	let showPassword = $state(false);
@@ -21,7 +33,7 @@
 			await session.login(username.trim(), password);
 			await goto('/');
 		} catch (err) {
-			error = errorMessage(err, 'Sign in failed.');
+			error = signInError(err);
 		} finally {
 			busy = false;
 		}
