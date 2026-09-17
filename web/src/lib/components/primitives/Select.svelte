@@ -34,6 +34,18 @@
 		value = v;
 		onValueChange?.(v);
 	}
+
+	/*
+	 * An aria-label overrides the trigger's inner text during name
+	 * computation, so 'aria-label="Sort"' alone announced the purpose and
+	 * dropped the selection. The name carries both, and the trigger shows
+	 * the option's label rather than its raw value token.
+	 */
+	const selectedLabel = $derived(options.find((opt) => opt.value === value)?.label ?? '');
+	const purpose = $derived(ariaLabel ?? label ?? '');
+	const triggerName = $derived(
+		[purpose, selectedLabel].filter(Boolean).join(purpose && selectedLabel ? ': ' : '')
+	);
 </script>
 
 <div class="space-y-1.5">
@@ -42,15 +54,14 @@
 	{/if}
 	<Select.Root type="single" {value} onValueChange={handleChange} {disabled}>
 		<Select.Trigger
-			aria-label={ariaLabel}
-			aria-labelledby={label ? `${uid}-label` : undefined}
+			aria-label={triggerName || undefined}
 			class={[
 				'flex h-10 w-full items-center justify-between gap-2 rounded-md border border-line bg-surface px-3 text-sm text-foreground',
 				'hover:border-muted/40 focus:border-accent/60 focus:outline-none disabled:opacity-50',
 				className
 			].join(' ')}
 		>
-			<Select.Value {placeholder} />
+			<Select.Value {placeholder}>{selectedLabel || placeholder}</Select.Value>
 			<ChevronDown class="size-4 shrink-0 text-muted" aria-hidden="true" />
 		</Select.Trigger>
 		<Select.Portal>
