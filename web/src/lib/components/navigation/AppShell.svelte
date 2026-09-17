@@ -44,7 +44,7 @@
 						href={item.href}
 						aria-current={active(item.href, item.exact) ? 'page' : undefined}
 						class={[
-							'text-[13px] tracking-wide transition-colors',
+							'inline-flex min-h-6 items-center text-[13px] tracking-wide transition-colors',
 							active(item.href, item.exact) ? 'text-foreground' : 'text-muted hover:text-foreground'
 						].join(' ')}
 					>
@@ -56,7 +56,7 @@
 			<div class="flex shrink-0 items-center gap-4 justify-self-end">
 				<a
 					href="/settings"
-					class="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
+					class="flex min-h-6 items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
 					title={`Server ${serverStatus.state}`}
 					aria-label={`Server ${serverStatus.state}`}
 				>
