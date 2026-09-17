@@ -83,7 +83,7 @@
 				/>
 				<button
 					type="button"
-					class="text-xs text-muted hover:text-foreground"
+					class="inline-flex min-h-6 items-center px-1 text-xs text-muted hover:text-foreground"
 					onclick={() => (showPassword = !showPassword)}
 					aria-pressed={showPassword}
 				>

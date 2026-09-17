@@ -31,7 +31,10 @@
 			{/if}
 		</h2>
 		{#if href}
-			<a href={href} class="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted transition-colors hover:text-accent sm:text-xs">
+			<a
+				href={href}
+				class="inline-flex min-h-6 items-center text-[10px] font-semibold uppercase tracking-[0.18em] text-muted transition-colors hover:text-accent sm:text-xs"
+			>
 				{actionLabel}
 			</a>
 		{/if}
