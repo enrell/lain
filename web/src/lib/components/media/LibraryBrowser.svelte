@@ -143,7 +143,7 @@
 			<p class="text-sm text-muted" aria-live="polite">{counts}</p>
 			<div class="flex flex-wrap items-center gap-2">
 				{#if showLibraryFilter}
-					<div class="w-44">
+					<div class="w-full min-w-0 sm:w-44">
 						<Select
 							aria-label="Filter by library"
 							bind:value={selectedLibrary}
@@ -153,7 +153,7 @@
 						/>
 					</div>
 				{/if}
-				<div class="w-44">
+				<div class="w-full min-w-0 sm:w-44">
 					<Select
 						aria-label="Sort"
 						bind:value={sort}
