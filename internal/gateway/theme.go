@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -75,7 +76,10 @@ func (s *Server) handleTheme(w http.ResponseWriter, _ *http.Request) {
 	if path := s.themePath; path != "" {
 		if f, err := os.Open(path); err == nil {
 			if parsed, ok := parseOmarchyTheme(io.LimitReader(f, maxThemeBytes)); ok {
-				palette = parsed
+				// D-037: a host theme can map several roles onto one swatch;
+				// the derivation, not the components, owns the legibility floor.
+				// The built-in fallback keeps its curated values.
+				palette = applyLegibilityFloor(parsed)
 			}
 			_ = f.Close()
 		}
@@ -169,7 +173,81 @@ func colorOr(value, fallback string) string {
 	return fallback
 }
 
-func contrastColor(color string) string {
+// Legibility floor for operator palettes (D-037). A host Omarchy theme can
+// collapse several semantic roles onto one swatch, which renders neutral
+// badges, separators and secondary text invisible; the endpoint must still
+// hand the browser values that can carry text and draw a line.
+const (
+	// minTextContrast is the body-text floor secondary text must clear, both
+	// against the page background and against the fill it is painted on
+	// (neutral badges, avatar monograms).
+	minTextContrast = 4.5
+	// minLineContrast is how far a separator must stand out from the surface
+	// it borders.
+	minLineContrast = 1.25
+)
+
+// applyLegibilityFloor returns p with distinct, contrast-checked roles. It only
+// moves muted, surface-active and line, and only when they violate the floor,
+// so a host theme that already separates them is served unchanged.
+func applyLegibilityFloor(p themePalette) themePalette {
+	// 1. Secondary text clears the body floor against the page.
+	if next, ok := blendUntil(p.Muted, p.Background, p.Foreground, minTextContrast); ok {
+		p.Muted = next
+	}
+	// 2. The fill must still read as a fill and not as the surface it sits on.
+	if next, ok := blendUntil(p.SurfaceActive, p.Surface, p.Background, minLineContrast); ok {
+		p.SurfaceActive = next
+	} else if next, ok := blendUntil(p.SurfaceActive, p.Surface, p.Foreground, minLineContrast); ok {
+		p.SurfaceActive = next
+	}
+	// 3. ...and it must carry the text painted on it (neutral badges, avatar
+	// monograms). The text moves away from the page first, keeping the fill
+	// where step 2 put it; only when the fill is on the wrong side of the
+	// text does the fill give way, because legibility outranks the fill.
+	if next, ok := blendUntil(p.Muted, p.SurfaceActive, p.Foreground, minTextContrast); ok {
+		p.Muted = next
+	} else if next, ok := blendUntil(p.SurfaceActive, p.Muted, p.Background, minTextContrast); ok {
+		p.SurfaceActive = next
+	}
+	// 4. Separators must be visible against the surfaces they border.
+	if next, ok := blendUntil(p.Line, p.Surface, p.Foreground, minLineContrast); ok {
+		p.Line = next
+	}
+	if next, ok := blendUntil(p.Line, p.SurfaceActive, p.Foreground, minLineContrast); ok {
+		p.Line = next
+	}
+	return p
+}
+
+// blendUntil blends c toward target until it clears min contrast against other.
+// It reports whether the floor was reached; a blend that cannot reach it is
+// discarded by the caller rather than forced through an unrelated role.
+func blendUntil(c, other, target string, min float64) (string, bool) {
+	if contrastRatio(c, other) >= min {
+		return c, true
+	}
+	for i := 0; i < 64; i++ {
+		c = mixHex(c, target, 0.08)
+		if contrastRatio(c, other) >= min {
+			return c, true
+		}
+	}
+	return c, false
+}
+
+// mixHex returns a and b blended by t (0 keeps a, 1 keeps b).
+func mixHex(a, b string, t float64) string {
+	mix := func(offset int) int {
+		x, _ := strconv.ParseUint(a[offset:offset+2], 16, 8)
+		y, _ := strconv.ParseUint(b[offset:offset+2], 16, 8)
+		return int(math.Round(float64(x) + (float64(y)-float64(x))*t))
+	}
+	return fmt.Sprintf("#%02x%02x%02x", mix(1), mix(3), mix(5))
+}
+
+// hexLuminance is the WCAG relative luminance of a #rrggbb colour.
+func hexLuminance(color string) float64 {
 	component := func(offset int) float64 {
 		n, _ := strconv.ParseUint(color[offset:offset+2], 16, 8)
 		v := float64(n) / 255
@@ -178,7 +256,20 @@ func contrastColor(color string) string {
 		}
 		return math.Pow((v+0.055)/1.055, 2.4)
 	}
-	luminance := 0.2126*component(1) + 0.7152*component(3) + 0.0722*component(5)
+	return 0.2126*component(1) + 0.7152*component(3) + 0.0722*component(5)
+}
+
+// contrastRatio is the WCAG contrast ratio between two #rrggbb colours.
+func contrastRatio(a, b string) float64 {
+	la, lb := hexLuminance(a), hexLuminance(b)
+	if la < lb {
+		la, lb = lb, la
+	}
+	return (la + 0.05) / (lb + 0.05)
+}
+
+func contrastColor(color string) string {
+	luminance := hexLuminance(color)
 	blackContrast := (luminance + 0.05) / 0.05
 	whiteContrast := 1.05 / (luminance + 0.05)
 	if blackContrast >= whiteContrast {
