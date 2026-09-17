@@ -222,28 +222,11 @@
 					{/each}
 				</div>
 
-				{#if enrichment?.genres?.length}
-					<div class="flex flex-wrap gap-1.5">
-						{#each enrichment.genres as genre (genre)}
-							<Badge>{genre}</Badge>
-						{/each}
-					</div>
-				{/if}
-
-				{#if enrichment?.synopsis}
-					<p class="max-w-3xl text-sm leading-relaxed text-muted">{enrichment.synopsis}</p>
-				{/if}
-
-				{#if progress && ratio > 0 && !progress.completed}
-					<div class="max-w-md space-y-1.5">
-						<ProgressBar {ratio} class="bg-surface-active" />
-						<p class="text-xs text-muted">
-							{formatTime(progress.position_sec)} watched
-							{#if progress.updated_at}· {formatRelative(progress.updated_at)}{/if}
-						</p>
-					</div>
-				{/if}
-
+				<!-- The primary action sits directly under the title, above the
+				     optional prose. Below it, a full metadata block (two-line
+				     title, synopsis, badges) pushed Play under the fixed bottom
+				     nav at 320x568; the title and meta line above it are the only
+				     bounded content. -->
 				<div class="flex flex-wrap items-center gap-3 pt-1">
 					{#if playable}
 						<LinkButton href={`/player/${item.id}`} size="lg">
@@ -284,6 +267,28 @@
 							{:else}
 								Ask an administrator, or use the desktop/CLI client.
 							{/if}
+						</p>
+					</div>
+				{/if}
+
+				{#if enrichment?.genres?.length}
+					<div class="flex flex-wrap gap-1.5">
+						{#each enrichment.genres as genre (genre)}
+							<Badge>{genre}</Badge>
+						{/each}
+					</div>
+				{/if}
+
+				{#if enrichment?.synopsis}
+					<p class="max-w-3xl text-sm leading-relaxed text-muted">{enrichment.synopsis}</p>
+				{/if}
+
+				{#if progress && ratio > 0 && !progress.completed}
+					<div class="max-w-md space-y-1.5">
+						<ProgressBar {ratio} class="bg-surface-active" />
+						<p class="text-xs text-muted">
+							{formatTime(progress.position_sec)} watched
+							{#if progress.updated_at}· {formatRelative(progress.updated_at)}{/if}
 						</p>
 					</div>
 				{/if}
