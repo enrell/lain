@@ -40,7 +40,7 @@
 	</a>
 
 	<header class="fixed inset-x-0 top-0 z-40 hidden border-b border-white/5 bg-background/55 backdrop-blur-xl md:block">
-		<div class="mx-auto grid h-20 w-full max-w-[1800px] grid-cols-[1fr_auto_1fr] items-center px-6 lg:px-10">
+		<div class="mx-auto grid h-20 w-full max-w-[1800px] grid-cols-[1fr_auto_1fr] items-center px-5 sm:px-8 lg:px-10">
 			<a href="/" class="flex shrink-0 items-center gap-2.5 justify-self-start" aria-label="Lain home">
 				<SignalMark class="size-5 text-accent" />
 				<span class="text-base font-bold tracking-[0.24em] text-foreground">lain</span>
@@ -86,7 +86,7 @@
 		</div>
 	</header>
 
-	<header class="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-background/88 px-4 py-3 backdrop-blur-xl md:hidden">
+	<header class="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-background/88 px-5 py-3 backdrop-blur-xl md:hidden">
 		<a href="/" class="flex items-center gap-2" aria-label="Lain home">
 			<SignalMark class="size-5 text-accent" />
 			<span class="font-semibold tracking-[0.2em] text-foreground">lain</span>
@@ -95,7 +95,7 @@
 	</header>
 
 	<main id="main" tabindex="-1">
-		<div class={page.url.pathname === '/' ? 'w-full pb-24 md:pb-0' : 'mx-auto w-full max-w-[1600px] px-4 pb-28 pt-6 md:px-8 md:pb-14 md:pt-28'}>
+		<div class={page.url.pathname === '/' ? 'w-full pb-24 md:pb-0' : 'mx-auto w-full max-w-[1800px] px-5 sm:px-8 lg:px-10 pb-28 pt-6 md:pb-14 md:pt-28'}>
 			{@render children()}
 		</div>
 	</main>
