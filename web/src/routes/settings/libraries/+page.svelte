@@ -109,6 +109,7 @@
 				path: form.path.trim()
 			});
 			libraries = [...libraries, lib].sort((a, b) => a.name.localeCompare(b.name));
+			rememberLibrary(lib);
 			createOpen = false;
 			form = { name: '', type: 'anime', path: '' };
 			toasts.success(`Library “${lib.name}” added.`);
@@ -127,6 +128,7 @@
 		try {
 			await api.libraries.remove(target.id);
 			libraries = libraries.filter((lib) => lib.id !== target.id);
+			forgetLibrary(target.id);
 			deleteOpen = false;
 			deleteTarget = null;
 			toasts.success(`Library “${target.name}” removed.`);
