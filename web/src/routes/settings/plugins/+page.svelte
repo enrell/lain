@@ -119,6 +119,16 @@
 		return cap.replace(/@\d+$/, '');
 	}
 
+	/*
+	 * A composition can hold two generations of one capability
+	 * (lain.playback.transcode@1 and @2). Hiding the version rendered two
+	 * identical rows with two Replace buttons and no way to tell which
+	 * binding a button acts on, so the version stays on screen.
+	 */
+	function capabilityVersion(cap: string): string {
+		return cap.match(/@\d+$/)?.[0] ?? '';
+	}
+
 	function modeTone(mode: string): 'neutral' | 'accent' | 'warning' {
 		if (mode === 'exactly-one') return 'accent';
 		if (mode === 'fan-out') return 'warning';
@@ -152,7 +162,9 @@
 						<div class="flex flex-wrap items-center justify-between gap-3">
 							<div class="min-w-0">
 								<p class="truncate font-mono text-sm text-foreground">
-									{shortCapability(binding.capability)}
+									{shortCapability(binding.capability)}<span class="text-muted"
+										>{capabilityVersion(binding.capability)}</span
+									>
 								</p>
 								<div class="mt-1.5 flex flex-wrap items-center gap-2">
 									<Badge tone={modeTone(binding.mode)}>{binding.mode}</Badge>
