@@ -180,9 +180,12 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if item}
 	<article class="space-y-8">
-		<!-- Artwork backdrop: cover, else poster, else a generated still. Kept
-		     short on phones so the primary action clears the fixed bottom nav. -->
-		<div class="relative -mx-4 -mt-5 h-32 overflow-hidden md:-mx-8 md:-mt-8 md:h-60">
+		<!-- Artwork backdrop: cover, else poster, else a generated still. It is
+		     decorative, so phones drop it: at 320x568 the height it and its
+		     negative overlap cost is the difference between the Play button
+		     being visible on arrival and being hidden behind the fixed bottom
+		     nav. From md up the layered look is unchanged. -->
+		<div class="relative hidden overflow-hidden md:-mx-8 md:-mt-8 md:block md:h-60">
 			{#if item && backdropSrc && backdropFailedId !== item.id}
 				<img
 					src={backdropSrc}
@@ -197,12 +200,12 @@
 			<div class="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent"></div>
 		</div>
 
-		<div class="relative -mt-20 flex flex-col gap-6 md:-mt-36 md:flex-row md:gap-8">
-			<div class="w-28 shrink-0 sm:w-36 md:w-52">
+		<div class="relative flex flex-col gap-4 md:-mt-36 md:flex-row md:gap-8">
+			<div class="w-24 shrink-0 sm:w-36 md:w-52">
 				<Poster {item} {enrichment} class="aspect-[2/3] rounded-card border border-line shadow-2xl" priority />
 			</div>
 
-			<div class="min-w-0 flex-1 space-y-4 pt-1 md:pt-16">
+			<div class="min-w-0 flex-1 space-y-3 pt-1 md:space-y-4 md:pt-16">
 				<div>
 					<h1 class="text-2xl font-semibold leading-tight tracking-tight text-foreground md:text-3xl">
 						{title}
