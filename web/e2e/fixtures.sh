@@ -17,11 +17,27 @@ mkdir -p "$DIR/Anime/Frieren" "$DIR/Anime/Other Show" "$DIR/Movies"
 
 webm() {
 	local out="$1" freq="$2"
+	local vtt
+	vtt="$(mktemp)"
+	cat > "$vtt" <<'EOF'
+WEBVTT
+
+00:00:01.000 --> 00:00:04.000
+Procedural subtitle line one
+
+00:00:05.000 --> 00:00:08.000
+Procedural subtitle line two
+EOF
+	# The WebVTT track makes the file exercise on-the-fly subtitle
+	# extraction (D-047) during direct play, not only transcode sidecars.
 	ffmpeg -hide_banner -loglevel error \
 		-f lavfi -i "testsrc2=size=640x360:rate=24" \
 		-f lavfi -i "sine=frequency=${freq}:sample_rate=48000" \
+		-i "$vtt" \
+		-map 0:v -map 1:a -map 2:s \
 		-t 30 -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -row-mt 1 -b:v 400k \
-		-c:a libopus -b:a 64k "$out"
+		-c:a libopus -b:a 64k -c:s webvtt "$out"
+	rm -f "$vtt"
 }
 
 # Browser-playable direct-play files (webm is decodable everywhere).

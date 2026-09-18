@@ -300,6 +300,18 @@ async function fillPlaceholder(placeholder, value) {
 	assert(filled, `no input with placeholder ${JSON.stringify(placeholder)}`);
 }
 
+/** Set a native <select> (bound with Svelte bind:value) and fire change. */
+async function selectOption(ariaLabel, value) {
+	const ok = await evalValue(`(() => {
+		const el = document.querySelector('select[aria-label=' + ${JSON.stringify(JSON.stringify(ariaLabel))} + ']');
+		if (!el) return false;
+		el.value = ${JSON.stringify(value)};
+		el.dispatchEvent(new Event('change', { bubbles: true }));
+		return el.value === ${JSON.stringify(value)};
+	})()`);
+	assert(ok, `could not set select ${JSON.stringify(ariaLabel)} to ${JSON.stringify(value)}`);
+}
+
 async function pressKey(key, code, keyCode) {
 	for (const type of ['keyDown', 'keyUp']) {
 		await page.send('Input.dispatchKeyEvent', {
@@ -471,7 +483,7 @@ try {
 	await waitText("Frieren: Beyond Journey's End", 10000);
 	console.log('   local NFO overlay applied without network providers');
 
-	step('mkv container plays through the transcode endpoint');
+	step('mkv container plays through the transcode endpoint (HLS fMP4)');
 	await navigate(`${BASE}/library`);
 	await waitText('Other Show');
 
@@ -500,17 +512,216 @@ try {
 	await clickText('Play');
 	await waitFor(`!!document.querySelector('video')`, 15000, 'video element');
 	await waitFor(`document.querySelector('video').duration > 0`, 20000, 'transcoded metadata');
-	const transcodeRequests = requests.filter((r) => r.url.includes('/transcode'));
-	assert(transcodeRequests.length > 0, 'no transcode request observed');
-	const served = transcodeRequests.filter((r) => r.status !== null);
-	assert(served.length > 0, 'no transcode response observed');
-	assert(
-		served.every((r) => r.status === 200 || r.status === 202 || r.status === 206 || r.status === 304),
-		'transcode responses: ' + JSON.stringify(served.map((r) => r.status))
+
+	// The MKV container is not web-safe, so the plan is a transcode and the
+	// shipped delivery is HLS (D-042): the browser must fetch the
+	// server-owned playlist plus fMP4 segments and then actually advance,
+	// not merely receive a 200 on the session start.
+	await waitUntil(
+		() =>
+			requests.some(
+				(r) => r.url.includes('/transcode') && r.method === 'POST' && r.status === 202
+			),
+		20000,
+		'transcode start (202)'
 	);
-	const tranged = transcodeRequests.filter((r) => r.headers && r.headers.Range);
-	assert(tranged.length > 0, 'no Range header observed on transcode requests');
-	console.log('   mkv remuxes to MP4 through /transcode instead of degrading');
+	const hlsPlaylists = () =>
+		requests.filter(
+			(r) =>
+				r.url.includes('/transcode/hls/') && r.url.includes('index.m3u8') && r.status === 200
+		);
+	await waitUntil(() => hlsPlaylists().length > 0, 25000, 'HLS playlist');
+	const hlsSegments = () =>
+		requests.filter(
+			(r) => r.url.includes('/transcode/hls/') && r.url.includes('.m4s') && r.status === 200
+		);
+	await waitUntil(() => hlsSegments().length > 0, 30000, 'HLS media segment');
+	evidence.hlsSegments = hlsSegments().length;
+	await evalValue(`document.querySelector('video').play()`);
+	await waitFor(`document.querySelector('video').currentTime > 0.5`, 30000, 'HLS playback advancing');
+	console.log(
+		`   HLS fMP4: playlist + ${evidence.hlsSegments} segment(s) served, playback advancing`
+	);
+
+	// The quality menu rebuilds the session at the chosen rung: the server
+	// owns the new identity and playback must survive the swap.
+	const sessionFromStatus = () => {
+		const r = [...requests].reverse().find((x) => x.url.includes('/transcode/status'));
+		if (!r) return null;
+		const m = r.url.match(/session=([0-9a-f]+)/);
+		return m ? m[1] : null;
+	};
+	const firstSession = sessionFromStatus();
+	assert(firstSession, 'no transcode session observed before the quality change');
+
+	/* ---------------- cached HLS replay ---------------- */
+	step('a cached HLS session replays through hls.js (not progressive)');
+	await navigate(`${BASE}/library`);
+	// navigate() clears the request log, so count from zero after it.
+	const playlistsBeforeReplay = hlsPlaylists().length;
+	await clickText('Other Show');
+	await waitFor(
+		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
+		15000,
+		'play affordance (replay)'
+	);
+	await clickText(
+		await evalValue(
+			`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`
+		)
+	);
+	await waitFor(`!!document.querySelector('video')`, 15000, 'replay video element');
+	// The plan's ready path used to lose the delivery, so the cached HLS
+	// session was requested as a progressive MP4 and the gateway answered
+	// 409: no playlist, no playback. Assert both halves here.
+	await waitUntil(
+		() => hlsPlaylists().length > playlistsBeforeReplay,
+		25000,
+		'cached HLS replay playlist'
+	);
+	await waitFor(
+		`document.querySelector('video').duration > 0`,
+		20000,
+		'cached HLS replay metadata'
+	);
+	const progressive409 = requests.filter(
+		(r) => r.url.includes('/transcode?') && r.status === 409
+	);
+	assert(
+		progressive409.length === 0,
+		'a cached HLS session was requested as progressive (409): ' + progressive409.length
+	);
+	console.log('   cached HLS replay re-attached through hls.js');
+
+	await waitFor(
+		`!!document.querySelector('select[aria-label="Transcode quality"]')`,
+		15000,
+		'quality menu'
+	);
+	await selectOption('Transcode quality', '360p');
+	await waitUntil(
+		() => sessionFromStatus() && sessionFromStatus() !== firstSession,
+		30000,
+		'quality change rebuilt the session'
+	);
+	await waitFor(
+		`document.querySelector('video').currentTime > 0.5`,
+		30000,
+		'playback continued after the quality change'
+	);
+	evidence.qualitySessionChanged = true;
+	console.log(
+		`   quality menu rebuilt the session (${firstSession.slice(0, 8)}… -> ${sessionFromStatus().slice(0, 8)}…)`
+	);
+
+	/* ---------------- advanced playback settings ---------------- */
+	step('advanced playback settings UI');
+	await navigate(`${BASE}/settings/playback`);
+	// Every section the advanced configuration exposes must render.
+	for (const section of [
+		'Probed capabilities',
+		'Delivery',
+		'Encoding',
+		'Per-codec encoding',
+		'Quality ladder',
+		'Hardware acceleration',
+		'HDR & tone mapping',
+		'Audio & subtitles',
+		'Performance, resources & storage',
+		'Active sessions'
+	]) {
+		await waitText(section, 20000);
+	}
+	// The app-wide Switch bug (a bare `checked` binding) used to paint every
+	// toggle ON regardless of state; assert the real binding by flipping one
+	// and watching data-state move, then prove it survives a reload.
+	const firstSwitch = `document.querySelectorAll('button[role=switch]')[0]`;
+	const beforeState = await evalValue(`(${firstSwitch}).getAttribute('data-state')`);
+	await evalValue(`(${firstSwitch}).click()`);
+	await waitFor(
+		`(${firstSwitch}).getAttribute('data-state') !== ${JSON.stringify(beforeState)}`,
+		5000,
+		'switch toggled'
+	);
+	const flippedState = await evalValue(`(${firstSwitch}).getAttribute('data-state')`);
+	const saveSettings = () =>
+		evalValue(
+			`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save').click()`
+		);
+	await saveSettings();
+	await waitUntil(
+		() =>
+			requests.some(
+				(r) => r.url.includes('/settings/transcode') && r.method === 'PUT' && r.status === 200
+			),
+		10000,
+		'transcode settings save'
+	);
+	await navigate(`${BASE}/settings/playback`);
+	await waitText('Hardware acceleration', 20000);
+	const reloadedState = await evalValue(`(${firstSwitch}).getAttribute('data-state')`);
+	assert(
+		reloadedState === flippedState,
+		`switch did not persist: ${beforeState} -> ${flippedState} -> ${reloadedState}`
+	);
+	// Restore the shipped value so later steps see the default policy.
+	await evalValue(`(${firstSwitch}).click()`);
+	await saveSettings();
+	await waitUntil(
+		() =>
+			requests.some(
+				(r) => r.url.includes('/settings/transcode') && r.method === 'PUT' && r.status === 200
+			),
+		10000,
+		'transcode settings restore'
+	);
+	console.log(`   advanced settings render, toggle ${beforeState} -> ${flippedState} persists`);
+
+	/* ---------------- progressive delivery ---------------- */
+	step('progressive delivery streams a complete MP4 with Range');
+	// The shipped default is HLS, covered above. Flip the operator policy to
+	// progressive and prove the retained path still streams a faststart MP4
+	// with Range in a real browser — the coverage the HLS default replaced.
+	const adminToken = await evalValue(`localStorage.getItem('lain.token')`);
+	assert(adminToken, 'no admin token in localStorage');
+	const readSettings = async () => {
+		const res = await fetch(`${BASE}/api/admin/settings/transcode`, {
+			headers: { Authorization: 'Bearer ' + adminToken }
+		});
+		assert(res.status === 200, `settings get ${res.status}`);
+		return (await res.json()).settings;
+	};
+	const writeDelivery = async (delivery) => {
+		const settings = await readSettings();
+		settings.default_delivery = delivery;
+		const res = await fetch(`${BASE}/api/admin/settings/transcode`, {
+			method: 'PUT',
+			headers: { Authorization: 'Bearer ' + adminToken, 'Content-Type': 'application/json' },
+			body: JSON.stringify(settings)
+		});
+		assert(res.status === 200, `settings put ${res.status}`);
+	};
+	await writeDelivery('progressive');
+	await navigate(`${BASE}/library`);
+	await clickText('Other Show');
+	await waitText('Play', 15000);
+	await clickText('Play');
+	await waitFor(`!!document.querySelector('video')`, 15000, 'video element');
+	await waitFor(`document.querySelector('video').duration > 0`, 30000, 'progressive metadata');
+	await evalValue(`document.querySelector('video').play()`);
+	await waitFor(
+		`document.querySelector('video').currentTime > 0.5`,
+		30000,
+		'progressive playback advancing'
+	);
+	const progressiveRange = requests.filter(
+		(r) => r.url.includes('/transcode') && r.headers && r.headers.Range && r.status === 206
+	);
+	assert(progressiveRange.length > 0, 'no Range request observed on the progressive transcode');
+	evidence.progressiveRange = progressiveRange.length;
+	// Restore the shipped default so later steps see HLS again.
+	await writeDelivery('hls');
+	console.log(`   progressive MP4 streamed with ${progressiveRange.length} Range request(s)`);
 
 	/* ---------------- playback ---------------- */
 	step('playback: start, Range, keyboard seek, progress');
@@ -563,6 +774,65 @@ try {
 		`   ${evidence.rangeRequests} Range requests, ${evidence.progressWrites} bounded progress writes`
 	);
 
+	/* ---------------- direct-play subtitles ---------------- */
+	step('direct-play subtitle extraction serves playable WebVTT');
+	await navigate(`${BASE}/library`);
+	await clickText('Frieren');
+	// A previous step may have left progress, which replaces the Play button
+	// with Resume/Start over; pick whichever affordance is present.
+	await waitFor(
+		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
+		15000,
+		'play affordance'
+	);
+	const affordance = await evalValue(
+		`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`
+	);
+	await clickText(affordance);
+	await waitFor(`!!document.querySelector('video')`, 15000, 'video element');
+	await waitFor(
+		`!!document.querySelector('select[aria-label="Subtitle track"]')`,
+		15000,
+		'subtitle picker'
+	);
+	const subIndex = await evalValue(`(() => {
+		const el = document.querySelector('select[aria-label="Subtitle track"]');
+		if (!el) return null;
+		const opt = [...el.options].find((o) => o.value !== '');
+		return opt ? opt.value : null;
+	})()`);
+	assert(subIndex, 'the subbed webm offers no subtitle track');
+	await selectOption('Subtitle track', subIndex);
+	await waitUntil(
+		() =>
+			requests.some(
+				(r) => r.url.includes('/subtitles') && r.url.includes('stream=') && r.status === 200
+			),
+		15000,
+		'subtitle extraction request'
+	);
+	const trackSrc = await evalValue(`(() => {
+		const t = document.querySelector('video track[src*="/subtitles"]');
+		return t ? t.getAttribute('src') : null;
+	})()`);
+	assert(
+		trackSrc && trackSrc.includes('stream=' + subIndex),
+		'subtitle track src is not the signed extraction URL: ' + trackSrc
+	);
+	// A 200 is not enough: the sidecar must parse into cues the browser can
+	// render, which is the whole point of on-the-fly extraction.
+	await waitFor(
+		`(() => { const v = document.querySelector('video'); const tt = v && v.textTracks && v.textTracks[0]; return !!(tt && tt.cues && tt.cues.length > 0); })()`,
+		15000,
+		'subtitle cues loaded'
+	);
+	evidence.subtitleCues = await evalValue(
+		`document.querySelector('video').textTracks[0].cues.length`
+	);
+	console.log(
+		`   ${evidence.subtitleCues} subtitle cue(s) rendered from /subtitles?stream=${subIndex}`
+	);
+
 	step('continue watching and reload resume');
 	await navigate(`${BASE}/`);
 	await waitText('Continue watching', 20000);
@@ -595,6 +865,51 @@ try {
 	await fillLabel('Password', NORMAL_PASS);
 	await clickText('Create user');
 	await waitText(NORMAL_USER, 10000);
+
+	// The per-user playback limits dialog is part of the requested advanced
+	// configuration; prove it opens, binds its switches and persists. Target
+	// the row button (selector 'button'), never the 'Playback' nav tab.
+	await clickText('Playback', 'button');
+	await waitText('Playback limits', 5000);
+	const limitsSwitch = `document.querySelectorAll('[role=dialog] button[role=switch]')[0]`;
+	const limitsBefore = await evalValue(`(${limitsSwitch}).getAttribute('data-state')`);
+	await evalValue(`(${limitsSwitch}).click()`);
+	await waitFor(
+		`(${limitsSwitch}).getAttribute('data-state') !== ${JSON.stringify(limitsBefore)}`,
+		5000,
+		'limits switch toggled'
+	);
+	const limitsFlipped = await evalValue(`(${limitsSwitch}).getAttribute('data-state')`);
+	await clickText('Save limits');
+	await waitUntil(
+		() =>
+			requests.some(
+				(r) => r.url.includes('/api/users/') && r.method === 'PATCH' && r.status === 200
+			),
+		10000,
+		'playback limits save'
+	);
+	await clickText('Playback', 'button');
+	await waitText('Playback limits', 5000);
+	const limitsAfter = await evalValue(`(${limitsSwitch}).getAttribute('data-state')`);
+	assert(
+		limitsAfter === limitsFlipped,
+		`playback limits did not persist: ${limitsBefore} -> ${limitsFlipped} -> ${limitsAfter}`
+	);
+	// Restore the default so the later non-admin gating step is unaffected.
+	await evalValue(`(${limitsSwitch}).click()`);
+	await clickText('Save limits');
+	await waitUntil(
+		() =>
+			requests.filter(
+				(r) => r.url.includes('/api/users/') && r.method === 'PATCH' && r.status === 200
+			).length >= 2,
+		10000,
+		'playback limits restore'
+	);
+	console.log(
+		`   per-user playback limits toggle ${limitsBefore} -> ${limitsFlipped} persists`
+	);
 
 	await navigate(`${BASE}/settings/plugins`);
 	await waitText('Capabilities');
