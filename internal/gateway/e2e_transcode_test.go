@@ -1715,3 +1715,53 @@ func TestE2EVideoOnlySourceNoAudio(t *testing.T) {
 		t.Fatalf("profile=%+v, want no audio track", profile)
 	}
 }
+
+// TestE2EHLSSidecarAvailableWhileRunning proves an HLS session offers its
+// WebVTT subtitle track from the start, not only once the whole file has
+// been produced.
+func TestE2EHLSSidecarAvailableWhileRunning(t *testing.T) {
+	e2eRequireFFmpeg(t)
+	srv := testServer(t)
+	admin := setupAdmin(t, srv)
+	dir := t.TempDir()
+	name := "[Fansub-A] Procedural Show - 98 [Sidecar].mkv"
+	srt := filepath.Join(dir, "subs.srt")
+	body := "1\n00:00:00,000 --> 00:00:03,000\nFirst line\n\n2\n00:00:03,000 --> 00:00:06,000\nSecond line\n"
+	if err := os.WriteFile(srt, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e2eRunFFmpeg(t,
+		"-f", "lavfi", "-i", "testsrc2=size=320x180:rate=15:duration=20",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=20",
+		"-i", srt,
+		"-map", "0:v", "-map", "1:a", "-map", "2:s",
+		"-c:v", "mpeg4", "-q:v", "6", "-c:a", "libmp3lame", "-c:s", "srt",
+		filepath.Join(dir, name))
+	ids := e2eCatalog(t, srv, admin, dir, []e2eSource{{Name: name}})
+	id := ids[name]
+
+	// A slow preset keeps the session running while the sidecar is checked.
+	e2ePutSettings(t, srv, admin, func(s *contracts.TranscodeSettings) { s.EncoderPreset = "veryslow" })
+
+	status := e2eStartSession(t, srv, admin, id, map[string]any{
+		"delivery":        "hls",
+		"subtitle_mode":   "extract",
+		"subtitle_stream": 2,
+	}, true)
+	session, _ := status["session"].(string)
+
+	rec := do(t, srv, "GET", "/api/items/"+id+"/transcode/status?session="+session, nil, admin)
+	var st map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
+	if state, _ := st["state"].(string); state == contracts.TranscodeRunning {
+		if has, _ := st["has_subtitle"].(bool); !has {
+			t.Fatalf("a running HLS session offers no subtitle track yet: %v", st)
+		}
+	}
+	subRec := do(t, srv, "GET", "/api/items/"+id+"/subtitles?session="+session+"&token="+admin, nil, "")
+	if subRec.Code != 200 || subRec.Body.Len() == 0 {
+		t.Fatalf("sidecar: %d %d bytes", subRec.Code, subRec.Body.Len())
+	}
+}

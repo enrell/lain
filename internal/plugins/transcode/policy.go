@@ -248,7 +248,9 @@ func (t *Transcoder) planV3(spec sourceSpec, in contracts.TranscodeV3Request, ca
 	if err := plan.resolveVideo(in, caps); err != nil {
 		return encodePlan{}, err
 	}
-	plan.resolveAudio(in, settings)
+	if err := plan.resolveAudio(in, settings); err != nil {
+		return encodePlan{}, err
+	}
 	plan.resolveFilters(caps)
 	plan.method = "transcode"
 	if plan.copyVideo && plan.copyAudio {
@@ -360,6 +362,11 @@ func (p *encodePlan) resolveVideo(in contracts.TranscodeV3Request, caps capabili
 		webVideo = false
 		p.reasons = appendReason(p.reasons, "video stream copy disabled by the client")
 	}
+	// A bitrate ceiling cannot be honoured by a copy: when the source video
+	// exceeds it, force a re-encode (Jellyfin's ContainerBitrateExceedsLimit).
+	if p.maxBitrateKbps > 0 && sourceKbps(p.video.BitRate) > p.maxBitrateKbps {
+		webVideo = false
+	}
 	p.copyVideo = webVideo && !wantsDifferentCodec && !hdrStream(p.video) &&
 		!interlacedStream(p.video) && !p.burnImage && !p.burnText &&
 		(p.width == 0 || p.width >= p.video.Width) && (p.height == 0 || p.height >= p.video.Height)
@@ -415,18 +422,27 @@ func joinNotes(a, b string) string {
 	return a + "; " + b
 }
 
-func (p *encodePlan) resolveAudio(in contracts.TranscodeV3Request, settings contracts.TranscodeSettings) {
+func (p *encodePlan) resolveAudio(in contracts.TranscodeV3Request, settings contracts.TranscodeSettings) error {
 	codec := in.AudioCodec
 	if codec == "" {
 		codec = contracts.AudioCodecAAC
+	}
+	switch codec {
+	case contracts.AudioCodecAAC, contracts.AudioCodecAC3, contracts.AudioCodecEAC3:
+	default:
+		// Never let an unvalidated codec reach the ffmpeg argv.
+		return invalid("audio_codec must be aac, ac3 or eac3")
 	}
 	p.audioCodec = codec
 	p.audioBitrateKbps = settings.AudioBitrateKbps
 	if p.audio == nil {
 		p.copyAudio = true
-		return
+		return nil
 	}
-	p.copyAudio = strings.EqualFold(p.audio.CodecName, codec) && codec == contracts.AudioCodecAAC
+	// Copy when the source already is the requested MP4-compatible codec
+	// (aac/ac3/eac3): asking for the source's own codec must not force a
+	// needless re-encode.
+	p.copyAudio = strings.EqualFold(p.audio.CodecName, codec)
 	if !contracts.AllowStreamCopy(in.AllowAudioStreamCopy) {
 		p.copyAudio = false
 		p.reasons = appendReason(p.reasons, "audio stream copy disabled by the client")
@@ -436,6 +452,7 @@ func (p *encodePlan) resolveAudio(in contracts.TranscodeV3Request, settings cont
 		// Downmixing changes the bytes even when the codec matches.
 		p.copyAudio = false
 	}
+	return nil
 }
 
 // needTone is set by resolveVideo; kept on the plan for filter building.
@@ -527,7 +544,7 @@ func (p encodePlan) transcodeReasons(in contracts.TranscodeV3Request) []string {
 	if p.downmix {
 		reasons = appendReason(reasons, "audio downmix")
 	}
-	if p.maxBitrateKbps > 0 {
+	if p.maxBitrateKbps > 0 && !p.copyVideo {
 		reasons = appendReason(reasons, "bitrate limit ("+strconv.Itoa(p.maxBitrateKbps)+" kbps)")
 	}
 	if q, ok := p.settings.Quality(in.Quality); ok {

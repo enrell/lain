@@ -409,6 +409,16 @@ func parseBitrateKbps(value string) (int, error) {
 	return int(kbps + 0.5), nil
 }
 
+// sourceKbps converts ffprobe's stream bit_rate (bits per second) to kbps;
+// 0 when it is absent, so a cap never forces an encode blindly.
+func sourceKbps(raw string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n / 1000
+}
+
 func (t *Transcoder) extractSubtitle(spec sourceSpec, out string) error {
 	if spec.SubtitleStream == nil {
 		return nil

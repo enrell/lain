@@ -586,7 +586,10 @@ func (s *Server) handleSubtitles(w http.ResponseWriter, r *http.Request) {
 		writeTranscodeError(w, err)
 		return
 	}
-	if status.State != contracts.TranscodeReady || status.SubtitlePath == "" {
+	// The sidecar is extracted before the encode, so it is served as soon as
+	// it exists: a running HLS session can offer subtitles from the start
+	// instead of waiting for the whole file to finish.
+	if status.SubtitlePath == "" {
 		writeErr(w, http.StatusNotFound, "subtitles unavailable")
 		return
 	}
