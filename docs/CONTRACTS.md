@@ -219,8 +219,9 @@ passes; `bt2390` without a working probe degrades to `hable` and says
 so. Tone mapping off, or mode `never`, keeps HDR honestly unavailable.
 Hardware (VPP) tone mapping — Jellyfin's `tonemap_vaapi`/`vpp_qsv` — is
 **not implemented**: HDR is always tone-mapped in software, which yields
-correct SDR output at the cost of speed. (Deliberate gap: the hardware
-filter chain cannot be validated without a working VA-API/QSV device, and
+correct SDR output at the cost of speed. (Deliberate gap, D-054: the
+local `vpp_qsv` exposes no `tonemap` option, and `tonemap_vaapi` needs
+VA-API device plumbing that cannot be validated without a device;
 shipping unverified filter syntax would be worse than the honest
 software path.)
 **Deinterlace** applies the configured filter (`deinterlace_method`:
