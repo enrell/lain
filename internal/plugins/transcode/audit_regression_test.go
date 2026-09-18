@@ -546,6 +546,52 @@ func TestAuditCancelIgnoresLegacyJobs(t *testing.T) {
 	}
 }
 
+// TestAuditAudioCodecCopyAndValidation pins the audio fixes: a source that
+// already matches the requested MP4 codec is copied (no needless
+// re-encode), and an unknown audio_codec is rejected before the argv.
+func TestAuditAudioCodecCopyAndValidation(t *testing.T) {
+	report := mediaReport{Streams: []stream{
+		{Index: 0, CodecType: "video", CodecName: "h264", PixelFormat: "yuv420p", Width: 1280, Height: 720},
+		{Index: 1, CodecType: "audio", CodecName: "ac3", Channels: 2, Default: 1},
+	}}
+	copied := advRequirePlan(t, report, testCaps(), func(in *contracts.TranscodeV3Request) {
+		in.AudioCodec = contracts.AudioCodecAC3
+	})
+	if !copied.copyAudio {
+		t.Fatalf("an ac3 source asked to stay ac3 should copy: %+v", copied)
+	}
+
+	if _, err := advPlan(t, report, testCaps(), func(in *contracts.TranscodeV3Request) {
+		in.AudioCodec = "not-a-codec"
+	}); err == nil {
+		t.Fatal("an unknown audio_codec was accepted")
+	}
+}
+
+// TestAuditBitrateCapForcesEncodeOverCopy pins the cap fix: a requested
+// cap below the source bitrate must force a re-encode, not a full-rate
+// remux that reports the cap but ignores it.
+func TestAuditBitrateCapForcesEncodeOverCopy(t *testing.T) {
+	report := mediaReport{Streams: []stream{
+		{Index: 0, CodecType: "video", CodecName: "h264", PixelFormat: "yuv420p", Width: 1920, Height: 1080, BitRate: "12000000"},
+		{Index: 1, CodecType: "audio", CodecName: "aac", Channels: 2, Default: 1, BitRate: "128000"},
+	}}
+	uncapped := advRequirePlan(t, report, testCaps(), nil)
+	if !uncapped.copyVideo {
+		t.Fatalf("a web-safe source should copy without a cap: %+v", uncapped)
+	}
+
+	capped := advRequirePlan(t, report, testCaps(), func(in *contracts.TranscodeV3Request) {
+		in.MaxBitrateKbps = 2000
+	})
+	if capped.copyVideo {
+		t.Fatal("a cap below the source bitrate must force a re-encode, not a copy")
+	}
+	if capped.method != "transcode" {
+		t.Fatalf("method=%q, want transcode", capped.method)
+	}
+}
+
 // TestAuditFallbackFontsToggle pins Jellyfin's "Enable fallback fonts":
 // an explicit false drops the burn-in font options even with a path set,
 // and the profile key tracks the effective permission.

@@ -923,6 +923,17 @@ func (t *Transcoder) runV3Plan(j *job) error {
 			return err
 		}
 	}
+	// Extract the WebVTT sidecar before the encode so an HLS session can
+	// offer its subtitle track from the first segment, instead of only once
+	// the whole file has been produced (which for HLS is the very end).
+	if plan.subtitleMode == contracts.SubtitleModeExtract && plan.subtitle != nil {
+		if err := t.extractSubtitleAs(j.spec, *plan.subtitle, paths.subtitle, "webvtt"); err != nil {
+			return err
+		}
+		t.mu.Lock()
+		j.hasSubtitle = true
+		t.mu.Unlock()
+	}
 
 	onProgress := func(sample progressSample) {
 		t.mu.Lock()
@@ -1005,12 +1016,17 @@ func (t *Transcoder) finalizeV3(j *job) error {
 	plan := *j.plan
 	paths := t.pathsFor(j.spec.Session, j.settings)
 	if plan.subtitleMode == contracts.SubtitleModeExtract && plan.subtitle != nil {
-		if err := t.extractSubtitleAs(j.spec, *plan.subtitle, paths.subtitle, "webvtt"); err != nil {
-			return err
-		}
 		t.mu.Lock()
-		j.hasSubtitle = true
+		already := j.hasSubtitle
 		t.mu.Unlock()
+		if !already {
+			if err := t.extractSubtitleAs(j.spec, *plan.subtitle, paths.subtitle, "webvtt"); err != nil {
+				return err
+			}
+			t.mu.Lock()
+			j.hasSubtitle = true
+			t.mu.Unlock()
+		}
 	}
 	if plan.burnText {
 		_ = os.Remove(paths.burn)

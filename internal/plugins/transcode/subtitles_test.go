@@ -395,7 +395,7 @@ func TestStreamCopyRefusalAddsReason(t *testing.T) {
 
 	audioReport := webSafeReport()
 	audio := encodePlan{spec: testSource(), settings: settings, report: audioReport, audio: &audioReport.Streams[1]}
-	audio.resolveAudio(contracts.TranscodeV3Request{AllowAudioStreamCopy: &no}, settings)
+	_ = audio.resolveAudio(contracts.TranscodeV3Request{AllowAudioStreamCopy: &no}, settings)
 	if audio.copyAudio {
 		t.Fatal("resolveAudio copied despite the client flag")
 	}
