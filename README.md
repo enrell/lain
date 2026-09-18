@@ -134,15 +134,35 @@ mpv "http://localhost:9360/api/items/<id>/stream?token=$TOK"
   is bound in a composition; `POST /api/plugins/swap` replaces the
   provider at runtime with generation fencing and last-good fallback.
 - **Direct play, honest plans.** `GET /api/items/{id}/playback` answers
-  `direct`, `transcode` or `transcode-required`; browsers prepare MKV
-  and other non-web containers as MP4 through an async session
+  `direct`, `transcode` or `transcode-required` and lists *why* a
+  transcode is needed. Browsers get a full session API
   (`POST /api/items/{id}/transcode`, poll `.../transcode/status`,
-  play `.../transcode?session=`), with selectable audio and WebVTT
-  subtitle sidecars (`.../subtitles?session=`). Ready artifacts sit in
-  a bounded 20 GiB LRU cache (`--transcode-cache-size` /
-  `LAIN_TRANSCODE_CACHE_SIZE`). With no transcoder installed the plan
-  says so instead of faking a stream. mpv-based clients direct-play
-  mkv/hevc.
+  play `.../transcode/hls/index.m3u8` or `.../transcode?session=`),
+  with selectable quality, audio and subtitles (WebVTT sidecars at
+  `.../subtitles?session=`). Ready artifacts sit in a bounded 20 GiB LRU
+  cache (`--transcode-cache-size` / `LAIN_TRANSCODE_CACHE_SIZE`, or the
+  admin UI). With no transcoder installed the plan says so instead of
+  faking a stream. mpv-based clients direct-play mkv/hevc.
+- **Transcoding you can actually tune.** HLS delivery (fMP4 or
+  MPEG-TS, playable while ffmpeg still runs) or progressive MP4 with
+  Range; quality
+  ladder, per-codec preset/CRF, H.264/HEVC/AV1 output permissions,
+  hardware acceleration (opt-in, probed, with a visible software
+  fallback), per-codec 10-bit decode toggles, HDR tone mapping,
+  deinterlacing (single or double rate), audio VBR, downmix gain and
+  stereo algorithm, subtitle extraction or burn-in with font fallback,
+  throttling and segment deletion, thread count and muxing queue bounds,
+  and a configurable transcoding temporary path. Everything is
+  runtime-configurable in **Settings → Playback** with a live session
+  list showing fps and output bitrate, and `lain doctor` reports what
+  the local ffmpeg can do. HDR sources are tone-mapped rather than
+  refused; per-user limits (allow video/audio transcode, allow remux,
+  max bitrate, simultaneous streams, subtitle mode) live on the account.
+- **Subtitles without transcoding.** A file that plays directly still
+  gets WebVTT for any chosen track (`GET
+  /api/items/{id}/subtitles?stream=N`, extracted on demand and cached),
+  so subtitles never force a re-encode; image-based tracks are refused
+  honestly and the operator can disable extraction entirely.
 - **Metadata enrichment.** Local NFO sidecars plus Kitsu/AniList/Jikan
   for anime and keyless TVMaze for series (merge-many, scored, TTL
   cached). Overlays decorate the catalog
