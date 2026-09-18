@@ -42,10 +42,14 @@ func (t *Transcoder) specV3(path string, in contracts.TranscodeV3Request) (sourc
 	if err := ensureRelocatedRoot(settings); err != nil {
 		return sourceSpec{}, settings, unavailable(err.Error())
 	}
+	if in.StartSec < 0 {
+		return sourceSpec{}, settings, invalid("start_sec must not be negative")
+	}
 	s := sourceSpec{
 		Path: path, Size: fi.Size(), ModTimeNS: fi.ModTime().UnixNano(),
 		Profile:     contracts.TranscodeProfileKey(settings, in),
 		AudioStream: cloneInt(in.AudioStream), SubtitleStream: cloneInt(in.SubtitleStream),
+		StartSec: in.StartSec,
 		Settings: settings,
 	}
 	s.Session = sessionKey(s)

@@ -85,6 +85,10 @@
 	let selectedQuality = $state('');
 	let delivery = $state<TranscodeDelivery | ''>('');
 	let transcodeReasons = $state<string[]>([]);
+	// baseOffset is the source position the current session starts at (a
+	// resume/seek). The session's own timeline is zero-based, so the
+	// displayed clock and the progress report add it back.
+	let baseOffset = $state(0);
 	let hls: Hls | null = null;
 	// Set on unmount so a late status/attach continuation cannot create an
 	// Hls instance after destroyHLS() has already run.
@@ -120,10 +124,15 @@
 	);
 	const title = $derived(item.title);
 
+	function resumePosition(): number {
+		if (!initialProgress || initialProgress.completed) return 0;
+		return initialProgress.position_sec >= 5 ? initialProgress.position_sec : 0;
+	}
+
 	function snapshot(): ProgressSnapshot {
 		const el = video;
-		const pos = el?.currentTime ?? 0;
-		const dur = el?.duration && Number.isFinite(el.duration) ? el.duration : 0;
+		const pos = (el?.currentTime ?? 0) + baseOffset;
+		const dur = el?.duration && Number.isFinite(el.duration) ? el.duration + baseOffset : 0;
 		return { position_sec: pos, duration_sec: dur, completed: isCompleted(pos, dur) };
 	}
 
@@ -161,8 +170,12 @@
 			transcodeSession = plan.session ?? '';
 			transcodeReasons = plan.reasons ?? [];
 			if (plan.state === 'ready') {
+				// A cached session was produced from the start of the source.
 				void adoptReadySession();
 			} else {
+				// Start a fresh session at the saved position so a resume does
+				// not re-encode from the beginning.
+				baseOffset = resumePosition();
 				void prepareTranscode();
 			}
 		} else {
@@ -289,7 +302,8 @@
 			let status = await api.playback.startTranscode(item.id, {
 				quality: (selection?.quality ?? selectedQuality) || undefined,
 				audio_stream: selection?.audio_stream,
-				subtitle_stream: selection?.subtitle_stream
+				subtitle_stream: selection?.subtitle_stream,
+				start_sec: baseOffset || undefined
 			});
 			transcodeSession = status.session;
 			delivery = status.delivery ?? 'progressive';
@@ -343,13 +357,14 @@
 
 	async function changeTracks(): Promise<void> {
 		if (plan.mode !== 'transcode') return;
-		const position = video?.currentTime ?? 0;
-		// Quality and track changes build a new session identity; stop the
-		// old one so the server does not keep encoding for nobody.
+		// Rebuild the session from the current display position so the swap
+		// keeps the viewer's place (the new session's timeline restarts at 0).
+		const position = currentTime;
 		const oldSession = transcodeSession;
 		destroyHLS();
 		transcodeReady = false;
 		resumeApplied = true;
+		baseOffset = position;
 		if (oldSession) void api.playback.cancelTranscode(item.id, oldSession).catch(() => undefined);
 		await prepareTranscode({
 			audio_stream: selectedAudio === '' ? undefined : Number(selectedAudio),
@@ -357,7 +372,7 @@
 			quality: selectedQuality || undefined
 		});
 		if (video && transcodeReady) {
-			video.currentTime = position;
+			video.currentTime = 0;
 			void video.play().catch(() => undefined);
 		}
 	}
@@ -369,16 +384,20 @@
 	function onLoadedMetadata(): void {
 		const el = video;
 		if (!el || !transcodeReady) return;
-		duration = Number.isFinite(el.duration) ? el.duration : 0;
+		duration = Number.isFinite(el.duration) ? el.duration + baseOffset : 0;
 		el.volume = volume;
 		el.muted = muted;
 		el.playbackRate = rate;
 		if (!resumeApplied) {
 			resumeApplied = true;
-			const resume =
-				initialProgress && !initialProgress.completed && initialProgress.position_sec >= 5
-					? initialProgress.position_sec
-					: 0;
+			if (baseOffset > 0) {
+				// The session already starts at the resume point.
+				resumedFrom = baseOffset;
+				showResume = true;
+				resumeTimer = setTimeout(() => (showResume = false), 7000);
+				return;
+			}
+			const resume = resumePosition();
 			if (resume > 0 && duration > 0 && resume < duration - 5) {
 				el.currentTime = resume;
 				resumedFrom = resume;
@@ -390,7 +409,7 @@
 
 	function onDurationChange(): void {
 		const el = video;
-		if (el && Number.isFinite(el.duration)) duration = el.duration;
+		if (el && Number.isFinite(el.duration)) duration = el.duration + baseOffset;
 	}
 
 	function onTimeUpdate(): void {
@@ -405,7 +424,7 @@
 		 */
 		if (scrubbing && !seekEngaged) scrubbing = false;
 		if (scrubbing) return;
-		currentTime = el.currentTime;
+		currentTime = el.currentTime + baseOffset;
 		if (el.buffered.length > 0 && el.duration > 0) {
 			buffered = el.buffered.end(el.buffered.length - 1) / el.duration;
 		}
@@ -435,7 +454,7 @@
 	}
 
 	function onSeeked(): void {
-		if (video) currentTime = video.currentTime;
+		if (video) currentTime = video.currentTime + baseOffset;
 		void reporter.update(snapshot(), { force: true });
 	}
 
@@ -516,15 +535,15 @@
 		const el = video;
 		if (!el || !Number.isFinite(el.duration)) return;
 		el.currentTime = Math.max(0, Math.min(el.duration, el.currentTime + seconds));
-		currentTime = el.currentTime;
+		currentTime = el.currentTime + baseOffset;
 		revealControls();
 	}
 
 	function seekTo(seconds: number): void {
 		const el = video;
 		if (!el || !Number.isFinite(el.duration)) return;
-		el.currentTime = Math.max(0, Math.min(el.duration, seconds));
-		currentTime = el.currentTime;
+		el.currentTime = Math.max(0, Math.min(el.duration, seconds - baseOffset));
+		currentTime = el.currentTime + baseOffset;
 	}
 
 	function setVolume(next: number): void {

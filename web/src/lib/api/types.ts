@@ -92,6 +92,8 @@ export interface TranscodeSelection {
 	audio_stream?: number;
 	subtitle_stream?: number;
 	subtitle_mode?: SubtitleMode;
+	/** Source position to begin the session at (resume/seek). */
+	start_sec?: number;
 	/** Client-side permissions, mirroring Jellyfin's PlaybackInfo flags. */
 	allow_video_stream_copy?: boolean;
 	allow_audio_stream_copy?: boolean;

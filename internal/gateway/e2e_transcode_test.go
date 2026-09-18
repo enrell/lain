@@ -1765,3 +1765,48 @@ func TestE2EHLSSidecarAvailableWhileRunning(t *testing.T) {
 		t.Fatalf("sidecar: %d %d bytes", subRec.Code, subRec.Body.Len())
 	}
 }
+
+// e2eDuration reads an artifact's container duration in seconds.
+func e2eDuration(t *testing.T, path string) float64 {
+	t.Helper()
+	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path).Output()
+	if err != nil {
+		t.Fatalf("ffprobe duration: %v", err)
+	}
+	d, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil {
+		t.Fatalf("duration %q: %v", out, err)
+	}
+	return d
+}
+
+// TestE2EStartOffsetSeeksTheSource proves the start offset: a session that
+// begins at 2s produces a stream about 2s shorter than the source.
+func TestE2EStartOffsetSeeksTheSource(t *testing.T) {
+	e2eRequireFFmpeg(t)
+	srv := testServer(t)
+	admin := setupAdmin(t, srv)
+	dir := t.TempDir()
+	name := "[Fansub-A] Procedural Show - 99 [Seek].mkv"
+	e2eRunFFmpeg(t,
+		"-f", "lavfi", "-i", "testsrc2=size=320x180:rate=15:duration=6",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=6",
+		"-c:v", "mpeg4", "-q:v", "6", "-c:a", "libmp3lame",
+		filepath.Join(dir, name))
+	ids := e2eCatalog(t, srv, admin, dir, []e2eSource{{Name: name}})
+	id := ids[name]
+
+	status := e2eStartSession(t, srv, admin, id, map[string]any{
+		"delivery":  "progressive",
+		"start_sec": 2.0,
+	}, false)
+	session, _ := status["session"].(string)
+	rec := do(t, srv, "GET", "/api/items/"+id+"/transcode?token="+admin+"&session="+session, nil, "")
+	if rec.Code != 200 {
+		t.Fatalf("fetch: %d %s", rec.Code, rec.Body.String())
+	}
+	duration := e2eDuration(t, e2eWrite(t, "seek.mp4", rec.Body.Bytes()))
+	if duration < 3.0 || duration > 5.0 {
+		t.Fatalf("duration=%.2f, want about 4s for a 6s source started at 2s", duration)
+	}
+}
