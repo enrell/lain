@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import KeyRound from '@lucide/svelte/icons/key-round';
+	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import Users from '@lucide/svelte/icons/users';
 	import type { User } from '$lib/api/types';
@@ -33,6 +34,71 @@
 	let resetOpen = $state(false);
 	let resetPassword = $state('');
 	let resetting = $state(false);
+
+	// Per-user playback limits (D-042).
+	let playbackTarget = $state<User | null>(null);
+	let playbackOpen = $state(false);
+	let playbackSaving = $state(false);
+	let playbackForm = $state({
+		video: true,
+		audio: true,
+		remux: true,
+		maxBitrate: '0',
+		maxStreams: '0',
+		subtitleMode: ''
+	});
+
+	const subtitleModeOptions = [
+		{ value: '', label: 'Server default' },
+		{ value: 'auto', label: 'Auto — extract text, burn image tracks' },
+		{ value: 'extract', label: 'Extract only' },
+		{ value: 'burn', label: 'Always burn in' },
+		{ value: 'off', label: 'Off' }
+	];
+
+	function openPlaybackLimits(user: User): void {
+		playbackTarget = user;
+		playbackForm = {
+			video: user.playback?.allow_video_transcode ?? true,
+			audio: user.playback?.allow_audio_transcode ?? true,
+			remux: user.playback?.allow_remux ?? true,
+			maxBitrate: String(user.playback?.max_bitrate_kbps ?? 0),
+			maxStreams: String(user.playback?.max_streams ?? 0),
+			subtitleMode: user.playback?.subtitle_mode ?? ''
+		};
+		playbackOpen = true;
+	}
+
+	async function savePlaybackLimits(): Promise<void> {
+		const target = playbackTarget;
+		if (!target) return;
+		playbackSaving = true;
+		try {
+			const updated = await api.users.patch(target.id, {
+				playback: {
+					allow_video_transcode: playbackForm.video,
+					allow_audio_transcode: playbackForm.audio,
+					allow_remux: playbackForm.remux,
+					max_bitrate_kbps: Math.max(0, Number(playbackForm.maxBitrate) || 0),
+					max_streams: Math.max(0, Number(playbackForm.maxStreams) || 0),
+					subtitle_mode: (playbackForm.subtitleMode || undefined) as
+						| 'auto'
+						| 'extract'
+						| 'burn'
+						| 'off'
+						| undefined
+				}
+			});
+			users = users.map((u) => (u.id === updated.id ? updated : u));
+			playbackOpen = false;
+			playbackTarget = null;
+			toasts.success(`Playback limits updated for ${target.username}.`);
+		} catch (err) {
+			toasts.error(errorMessage(err, 'Could not update the playback limits.'));
+		} finally {
+			playbackSaving = false;
+		}
+	}
 
 	async function load(): Promise<void> {
 		loading = true;
@@ -183,6 +249,13 @@
 						<Button
 							variant="ghost"
 							size="sm"
+							onclick={() => openPlaybackLimits(user)}
+						>
+							<SlidersHorizontal class="size-4" /> Playback
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
 							onclick={() => {
 								resetTarget = user;
 								resetOpen = true;
@@ -252,6 +325,67 @@
 		<div class="flex justify-end gap-2 pt-1">
 			<Button type="button" variant="ghost" onclick={() => (resetOpen = false)}>Cancel</Button>
 			<Button type="submit" loading={resetting} disabled={resetPassword.length < 8}>Reset password</Button>
+		</div>
+	</form>
+</Modal>
+
+<!-- Playback limits (D-042) -->
+<Modal
+	bind:open={playbackOpen}
+	title="Playback limits"
+	description="Per-user transcoding permissions and the output bitrate cap."
+>
+	<form
+		class="space-y-4"
+		onsubmit={(e) => {
+			e.preventDefault();
+			void savePlaybackLimits();
+		}}
+	>
+		<p class="text-sm text-muted">
+			Limits for <span class="font-medium text-foreground">{playbackTarget?.username}</span>
+		</p>
+		<Switch
+			label="Allow video transcoding"
+			description="A re-encode of the video stream (codec, HDR, quality)."
+			checked={playbackForm.video}
+			onCheckedChange={(checked) => (playbackForm.video = checked)}
+		/>
+		<Switch
+			label="Allow audio transcoding"
+			description="Audio codec conversion or downmix."
+			checked={playbackForm.audio}
+			onCheckedChange={(checked) => (playbackForm.audio = checked)}
+		/>
+		<Switch
+			label="Allow remuxing"
+			description="Container-only conversion with stream copy."
+			checked={playbackForm.remux}
+			onCheckedChange={(checked) => (playbackForm.remux = checked)}
+		/>
+		<Input
+			label="Maximum bitrate (kbps, 0 = unlimited)"
+			type="number"
+			min="0"
+			bind:value={playbackForm.maxBitrate}
+		/>
+		<Input
+			label="Simultaneous stream limit (0 = unlimited)"
+			type="number"
+			min="0"
+			max="32"
+			bind:value={playbackForm.maxStreams}
+			hint="How many transcodes this account may run at once."
+		/>
+		<Select
+			label="Subtitle mode"
+			value={playbackForm.subtitleMode}
+			options={subtitleModeOptions}
+			onValueChange={(value) => (playbackForm.subtitleMode = value)}
+		/>
+		<div class="flex justify-end gap-2 pt-1">
+			<Button type="button" variant="ghost" onclick={() => (playbackOpen = false)}>Cancel</Button>
+			<Button type="submit" loading={playbackSaving}>Save limits</Button>
 		</div>
 	</form>
 </Modal>

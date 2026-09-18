@@ -2,6 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { DropdownMenu, Slider } from 'bits-ui';
+	import Hls from 'hls.js';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Gauge from '@lucide/svelte/icons/gauge';
 	import Maximize from '@lucide/svelte/icons/maximize';
@@ -15,7 +16,14 @@
 	import Volume1 from '@lucide/svelte/icons/volume-1';
 	import Volume2 from '@lucide/svelte/icons/volume-2';
 	import VolumeX from '@lucide/svelte/icons/volume-x';
-	import type { CatalogItem, PlaybackPlan, Progress, TranscodeStatus } from '$lib/api/types';
+	import type {
+		CatalogItem,
+		PlaybackOptions,
+		PlaybackPlan,
+		Progress,
+		TranscodeDelivery,
+		TranscodeStatus
+	} from '$lib/api/types';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
@@ -71,15 +79,29 @@
 	let hasSubtitle = $state(false);
 	let selectedAudio = $state('');
 	let selectedSubtitle = $state('');
+	// v3 session state (D-042): delivery actually used, the quality the
+	// viewer picked, why the server transcodes, and the hls.js instance.
+	let playbackOptions = $state<PlaybackOptions | null>(null);
+	let selectedQuality = $state('');
+	let delivery = $state<TranscodeDelivery | ''>('');
+	let transcodeReasons = $state<string[]>([]);
+	let hls: Hls | null = null;
+	// Set on unmount so a late status/attach continuation cannot create an
+	// Hls instance after destroyHLS() has already run.
+	let destroyed = false;
 
 	const audioTracks = $derived((plan.streams ?? []).filter((s) => s.type === 'audio'));
 	const subtitleTracks = $derived(
 		(plan.streams ?? []).filter((s) => s.type === 'subtitle' && s.convertible)
 	);
+	// Transcode sessions serve the sidecar the session prepared; direct
+	// play asks the server to extract the selected track on the fly.
 	const subtitleSrc = $derived(
 		plan.mode === 'transcode' && transcodeReady && hasSubtitle && transcodeSession
 			? api.playback.subtitleUrl(item.id, session.token, transcodeSession)
-			: undefined
+			: plan.mode !== 'transcode' && selectedSubtitle !== ''
+				? api.playback.streamSubtitleUrl(item.id, session.token, Number(selectedSubtitle))
+				: undefined
 	);
 
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -88,11 +110,13 @@
 	let transcodeAbort: AbortController | null = null;
 
 	const streamSrc = $derived(
-		plan.mode === 'transcode' && !transcodeReady
+		plan.mode === 'transcode' && delivery === 'hls'
 			? undefined
-			: plan.mode === 'transcode'
-			? api.playback.transcodeUrl(item.id, session.token, transcodeSession)
-			: api.playback.streamUrl(item.id, session.token)
+			: plan.mode === 'transcode' && !transcodeReady
+				? undefined
+				: plan.mode === 'transcode'
+					? api.playback.transcodeUrl(item.id, session.token, transcodeSession)
+					: api.playback.streamUrl(item.id, session.token)
 	);
 	const title = $derived(item.title);
 
@@ -132,10 +156,15 @@
 	onMount(() => {
 		window.addEventListener('pagehide', onPageHide);
 		document.addEventListener('visibilitychange', onPageHide);
+		void loadPlaybackOptions();
 		if (plan.mode === 'transcode') {
 			transcodeSession = plan.session ?? '';
-			transcodeReady = plan.state === 'ready';
-			if (!transcodeReady) void prepareTranscode();
+			transcodeReasons = plan.reasons ?? [];
+			if (plan.state === 'ready') {
+				void adoptReadySession();
+			} else {
+				void prepareTranscode();
+			}
 		} else {
 			transcodeReady = true;
 		}
@@ -146,11 +175,57 @@
 	});
 
 	onDestroy(() => {
+		destroyed = true;
 		persistNow();
 		if (hideTimer) clearTimeout(hideTimer);
 		if (resumeTimer) clearTimeout(resumeTimer);
 		transcodeAbort?.abort();
+		destroyHLS();
 	});
+
+	async function loadPlaybackOptions(): Promise<void> {
+		try {
+			playbackOptions = await api.playback.options();
+		} catch {
+			// The player still works without the ladder: Auto only.
+		}
+	}
+
+	// HLS is attached through hls.js (MSE) or the browser's native HLS
+	// (Safari); the server-owned playlist is the only URL involved.
+	function attachHLS(): void {
+		const el = video;
+		if (!el || !transcodeSession) return;
+		const url = api.playback.hlsUrl(item.id, session.token, transcodeSession, 'index.m3u8');
+		destroyHLS();
+		if (Hls.isSupported()) {
+			hls = new Hls({ enableWorker: true });
+			let mediaRecoveries = 0;
+			hls.on(Hls.Events.ERROR, (_event, data) => {
+				if (!data.fatal) return;
+				// One media recovery is the documented remedy; a second fatal
+				// media error means the stream is broken, so report it instead
+				// of looping on recoverMediaError forever.
+				if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 1) {
+					mediaRecoveries++;
+					hls?.recoverMediaError();
+					return;
+				}
+				error = 'HLS playback failed.';
+			});
+			hls.loadSource(url);
+			hls.attachMedia(el);
+		} else if (el.canPlayType('application/vnd.apple.mpegurl')) {
+			el.src = url;
+		} else {
+			error = 'This browser cannot play HLS streams.';
+		}
+	}
+
+	function destroyHLS(): void {
+		hls?.destroy();
+		hls = null;
+	}
 
 	function delay(ms: number, signal: AbortSignal): Promise<void> {
 		return new Promise((resolve, reject) => {
@@ -174,9 +249,33 @@
 		nowMs = Date.now();
 	}
 
+	// A cached session is already prepared; learn its delivery and sidecar
+	// from the status instead of restarting preparation. A cached HLS
+	// session must be attached through hls.js, not fetched as a
+	// progressive MP4 (the gateway rejects that with 409).
+	async function adoptReadySession(): Promise<void> {
+		if (!transcodeSession) {
+			await prepareTranscode();
+			return;
+		}
+		try {
+			const status = await api.playback.transcodeStatus(item.id, transcodeSession);
+			if (destroyed) return;
+			delivery = status.delivery ?? 'progressive';
+			hasSubtitle = status.has_subtitle ?? false;
+			transcodeReasons = status.reasons ?? transcodeReasons;
+			if (delivery === 'hls') attachHLS();
+			transcodeReady = true;
+		} catch {
+			// The cached session is gone: fall back to preparation.
+			await prepareTranscode();
+		}
+	}
+
 	async function prepareTranscode(selection?: {
 		audio_stream?: number;
 		subtitle_stream?: number;
+		quality?: string;
 	}): Promise<void> {
 		transcodeAbort?.abort();
 		const controller = new AbortController();
@@ -188,25 +287,43 @@
 		nowMs = Date.now();
 		try {
 			let status = await api.playback.startTranscode(item.id, {
-				profile: plan.profile,
+				quality: (selection?.quality ?? selectedQuality) || undefined,
 				audio_stream: selection?.audio_stream,
 				subtitle_stream: selection?.subtitle_stream
 			});
 			transcodeSession = status.session;
+			delivery = status.delivery ?? 'progressive';
+			transcodeReasons = status.reasons ?? transcodeReasons;
 			hasSubtitle = status.has_subtitle ?? selection?.subtitle_stream !== undefined;
 			applyPrepareStatus(status);
 			let waitMs = 750;
-			while (status.state === 'queued' || status.state === 'running' || status.state === 'idle') {
+			// HLS starts playing as soon as the playlist is playable; the
+			// progressive path still waits for the complete MP4.
+			const pending = () => status.state === 'queued' || status.state === 'running' || status.state === 'idle';
+			const wantsMore = () => (delivery === 'hls' ? pending() && !status.playable : pending());
+			while (wantsMore()) {
 				await delay(waitMs, controller.signal);
 				status = await api.playback.transcodeStatus(item.id, transcodeSession, controller.signal);
 				applyPrepareStatus(status);
 				waitMs = Math.min(3000, Math.round(waitMs * 1.4));
 			}
-			if (status.state !== 'ready') {
+			if (destroyed) return;
+			if (status.state === 'failed') {
 				throw new Error(status.error || 'The server could not prepare this video.');
 			}
-			hasSubtitle = status.has_subtitle ?? hasSubtitle;
-			transcodeReady = true;
+			if (delivery === 'hls') {
+				if (!status.playable && status.state !== 'ready') {
+					throw new Error(status.error || 'The server could not prepare this video.');
+				}
+				attachHLS();
+				transcodeReady = true;
+			} else {
+				if (status.state !== 'ready') {
+					throw new Error(status.error || 'The server could not prepare this video.');
+				}
+				hasSubtitle = status.has_subtitle ?? hasSubtitle;
+				transcodeReady = true;
+			}
 		} catch (err) {
 			if (err instanceof DOMException && err.name === 'AbortError') return;
 			transcodeError = err instanceof Error ? err.message : 'The server could not prepare this video.';
@@ -218,17 +335,28 @@
 		}
 	}
 
+	// A direct-play subtitle choice only swaps the sidecar; a transcode
+	// choice rebuilds the session, because the track is baked into it.
+	function onSubtitleChoice(): void {
+		if (plan.mode === 'transcode') void changeTracks();
+	}
+
 	async function changeTracks(): Promise<void> {
 		if (plan.mode !== 'transcode') return;
 		const position = video?.currentTime ?? 0;
+		// Quality and track changes build a new session identity; stop the
+		// old one so the server does not keep encoding for nobody.
+		const oldSession = transcodeSession;
+		destroyHLS();
 		transcodeReady = false;
 		resumeApplied = true;
+		if (oldSession) void api.playback.cancelTranscode(item.id, oldSession).catch(() => undefined);
 		await prepareTranscode({
 			audio_stream: selectedAudio === '' ? undefined : Number(selectedAudio),
-			subtitle_stream: selectedSubtitle === '' ? undefined : Number(selectedSubtitle)
+			subtitle_stream: selectedSubtitle === '' ? undefined : Number(selectedSubtitle),
+			quality: selectedQuality || undefined
 		});
 		if (video && transcodeReady) {
-			video.load();
 			video.currentTime = position;
 			void video.play().catch(() => undefined);
 		}
@@ -339,6 +467,13 @@
 
 	function retryPlayback(): void {
 		error = null;
+		// An HLS session lives in an hls.js/MSE instance, not the element's
+		// src: reloading the element would detach it and never re-attach.
+		if (plan.mode === 'transcode' && delivery === 'hls') {
+			attachHLS();
+			transcodeReady = true;
+			return;
+		}
 		video?.load();
 		void video?.play().catch(() => undefined);
 	}
@@ -565,16 +700,38 @@
 		onerror={onMediaError}
 	>
 		<!-- No captions are transcribed yet; the element keeps native
-		     accessibility semantics without inventing fake tracks. -->
+		     accessibility semantics without inventing fake tracks. The key
+		     block rebuilds the element when the sidecar changes, which is
+		     what makes switching tracks during direct play reliable. -->
 		{#if subtitleSrc}
-			<track kind="subtitles" srclang="en" label="Subtitles" src={subtitleSrc} default />
+			{#key subtitleSrc}
+				<track kind="subtitles" srclang="en" label="Subtitles" src={subtitleSrc} default />
+			{/key}
 		{/if}
 		<track kind="captions" />
 	</video>
 
-	{#if plan.mode === 'transcode' && transcodeReady && (audioTracks.length > 1 || subtitleTracks.length > 0)}
+	{#if transcodeReady && (audioTracks.length > 1 || subtitleTracks.length > 0 || (playbackOptions?.qualities.length ?? 0) > 0 || plan.mode === 'transcode')}
 		<div class="absolute left-4 top-16 z-10 flex flex-wrap gap-2">
-			{#if audioTracks.length > 1}
+			{#if plan.mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}
+				<label class="flex items-center gap-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/85">
+					Quality
+					<select
+						class="bg-transparent text-xs text-white"
+						bind:value={selectedQuality}
+						onchange={() => void changeTracks()}
+						aria-label="Transcode quality"
+					>
+						<option value="">Auto</option>
+						{#each playbackOptions?.qualities ?? [] as quality (quality.name)}
+							<option value={quality.name}>
+								{quality.name}{quality.bitrate_kbps ? ` · ${Math.round(quality.bitrate_kbps / 1000)} Mbps` : ''}
+							</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
+			{#if plan.mode === 'transcode' && audioTracks.length > 1}
 				<label class="flex items-center gap-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/85">
 					Audio
 					<select
@@ -598,7 +755,7 @@
 					<select
 						class="bg-transparent text-xs text-white"
 						bind:value={selectedSubtitle}
-						onchange={() => void changeTracks()}
+						onchange={onSubtitleChoice}
 						aria-label="Subtitle track"
 					>
 						<option value="">Off</option>
@@ -732,7 +889,14 @@
 		<IconButton label="Back to details" class="text-white/80 hover:text-white" onclick={() => void goto(`/item/${item.id}`)}>
 			<ArrowLeft class="size-5" />
 		</IconButton>
-		<p class="min-w-0 truncate text-sm font-medium text-white/90">{title}</p>
+		<div class="min-w-0">
+			<p class="truncate text-sm font-medium text-white/90">{title}</p>
+			{#if plan.mode === 'transcode' && transcodeReasons.length > 0}
+				<p class="truncate text-xs text-white/55">
+					Transcoding: {transcodeReasons.join(' · ')}{delivery === 'hls' ? ' · HLS' : ''}
+				</p>
+			{/if}
+		</div>
 	</div>
 
 	<div

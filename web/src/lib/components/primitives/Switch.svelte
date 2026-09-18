@@ -27,7 +27,7 @@
 		{#if description}<p class="mt-0.5 text-xs text-muted">{description}</p>{/if}
 	</div>
 	<Switch.Root
-		checked
+		checked={checked}
 		onCheckedChange={handleChange}
 		{disabled}
 		class="relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border border-line bg-surface-active transition-colors data-[state=checked]:border-accent/40 data-[state=checked]:bg-accent/25 disabled:opacity-50"

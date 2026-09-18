@@ -3,6 +3,7 @@
 	import Blocks from '@lucide/svelte/icons/blocks';
 	import DatabaseBackup from '@lucide/svelte/icons/database-backup';
 	import Library from '@lucide/svelte/icons/library';
+	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import Users from '@lucide/svelte/icons/users';
 	import type { Snippet } from 'svelte';
@@ -26,6 +27,7 @@
 			{ href: '/settings', label: 'Account', icon: UserRound, admin: false },
 			{ href: '/settings/libraries', label: 'Libraries', icon: Library, admin: true },
 			{ href: '/settings/users', label: 'Users', icon: Users, admin: true },
+			{ href: '/settings/playback', label: 'Playback', icon: SlidersHorizontal, admin: true },
 			{ href: '/settings/plugins', label: 'Plugins', icon: Blocks, admin: true },
 			{ href: '/settings/backup', label: 'Backup', icon: DatabaseBackup, admin: true }
 		].filter((tab) => !tab.admin || session.isAdmin)

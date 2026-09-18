@@ -10,6 +10,7 @@ import { progress } from './progress';
 import { search } from './search';
 import { thumbnail } from './thumbnail';
 import { theme } from './theme';
+import { transcodeAdmin } from './transcode-settings';
 import { users } from './users';
 
 /**
@@ -30,6 +31,7 @@ export const api = {
 	search,
 	thumbnail,
 	theme,
+	transcodeAdmin,
 	users
 };
 

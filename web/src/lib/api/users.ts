@@ -1,5 +1,5 @@
 import { request } from './client';
-import type { User } from './types';
+import type { User, UserPlaybackPolicy } from './types';
 
 export interface CreateUserInput {
 	username: string;
@@ -11,6 +11,8 @@ export interface PatchUserInput {
 	disabled?: boolean;
 	role?: 'admin' | 'user';
 	password?: string;
+	/** Per-user playback limits (D-042). */
+	playback?: UserPlaybackPolicy;
 }
 
 /** Gateway routes: GET/POST /api/users, PATCH /api/users/{id} (admin). */
