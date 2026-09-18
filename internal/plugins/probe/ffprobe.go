@@ -73,6 +73,7 @@ type report struct {
 		Channels       int    `json:"channels"`
 		ColorTransfer  string `json:"color_transfer"`
 		ColorPrimaries string `json:"color_primaries"`
+		BitRate        string `json:"bit_rate"`
 		Tags           struct {
 			Language string `json:"language"`
 			Title    string `json:"title"`
@@ -104,6 +105,7 @@ func parse(raw []byte) (contracts.MediaInfo, error) {
 			Language: strings.ToLower(s.Tags.Language), Title: s.Tags.Title,
 			Default: s.Disposition.Default != 0, Forced: s.Disposition.Forced != 0,
 			ColorTransfer: strings.ToLower(s.ColorTransfer), ColorPrimaries: strings.ToLower(s.ColorPrimaries),
+			BitRate:     streamBitRate(s.BitRate),
 			Convertible: s.CodecType == "subtitle" && textSubtitle(s.CodecName),
 		})
 	}
@@ -120,4 +122,14 @@ func textSubtitle(codec string) bool {
 	default:
 		return false
 	}
+}
+
+// streamBitRate parses ffprobe's bit_rate (bits per second, sometimes
+// absent or "N/A") into an int, defaulting to 0 when unknown.
+func streamBitRate(raw string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }

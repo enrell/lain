@@ -46,11 +46,13 @@ type Composition struct {
 
 // DefaultComposition is the built-in set. Version 2 added TVMaze
 // (D-025); version 3 added asynchronous transcode v2 (D-028), and
-// version 4 adds technical media probing (D-030). Upgrade
-// carries saved compositions forward without replacing overrides.
+// version 4 adds technical media probing (D-030), and version 5 adds
+// the Jellyfin-parity transcode v3 session contract (D-042/D-044).
+// Upgrade carries saved compositions forward without replacing
+// overrides.
 func DefaultComposition() *Composition {
 	return &Composition{
-		Version: 4,
+		Version: 5,
 		Bindings: map[string]*Binding{
 			"lain.source.enumerate@1":    {Mode: ModeExactlyOne, Providers: []string{"lain-source-filesystem"}, Generation: 1},
 			"lain.media.identify@1":      {Mode: ModeOrderedMany, Providers: []string{"lain-identify-anime", "lain-identify-generic"}, Generation: 1},
@@ -61,6 +63,7 @@ func DefaultComposition() *Composition {
 			"lain.playback.plan@1":       {Mode: ModeFirstAccepted, Providers: []string{"lain-playback-default"}, Generation: 1},
 			"lain.playback.transcode@1":  {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
 			"lain.playback.transcode@2":  {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
+			"lain.playback.transcode@3":  {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
 			"lain.transform.thumbnail@1": {Mode: ModeExactlyOne, Providers: []string{"lain-thumbnail-ffmpeg"}, Generation: 1},
 			"lain.search.query@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-search-simple"}, Generation: 1},
 			"lain.ingest.scan@1":         {Mode: ModeExactlyOne, Providers: []string{"lain-ingest-default"}, Generation: 1},

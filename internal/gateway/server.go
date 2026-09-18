@@ -50,6 +50,7 @@ type Server struct {
 	cat       *catalog.Service
 	ustate    *userstate.Service
 	libs      *LibraryStore
+	settings  *SettingsStore
 	mux       *http.ServeMux
 	ver       string
 	themePath string
@@ -173,7 +174,20 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 		db.Close()
 		return nil, err
 	}
-	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, themePath: omarchyThemePath(), transcode: tr, autoEnrich: true, scan: ScanStatus{State: "idle"}}
+	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, settings: &SettingsStore{db: db}, mux: http.NewServeMux(), ver: ver, themePath: omarchyThemePath(), transcode: tr, autoEnrich: true, scan: ScanStatus{State: "idle"}}
+	// First boot adopts CLI bounds as the saved policy; later boots keep
+	// the operator's admin-UI choices (D-045).
+	bootSettings := contracts.DefaultTranscodeSettings()
+	if opts.TranscodeCacheBytes > 0 {
+		bootSettings.CacheBytes = opts.TranscodeCacheBytes
+	}
+	if opts.TranscodeQueueSize > 0 {
+		bootSettings.QueueSize = opts.TranscodeQueueSize
+	}
+	if err := s.settings.Ensure(bootSettings); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("transcode settings: %w", err)
+	}
 	s.routes()
 	s.routesEnrich()
 	s.routesThumbnail()
@@ -532,13 +546,14 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, _ auth.Ver
 	writeJSON(w, 200, out)
 }
 
-func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, v auth.Verified) {
 	it, ok := s.cat.Get(r.PathValue("id"))
 	if !ok {
 		writeErr(w, 404, "unknown item")
 		return
 	}
 	client := r.URL.Query().Get("client")
+	settings := s.settings.Transcode()
 	var mediaInfo *contracts.MediaInfo
 	clientLower := strings.ToLower(client)
 	if !strings.Contains(clientLower, "mpv") && !strings.Contains(clientLower, "desktop") {
@@ -550,10 +565,15 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, _ auth.V
 			s.logger().Debug("media probe failed", "req", reqIDOf(r), "item", it.ID, "err", probeErr.Error())
 		}
 	}
+	// Tone mapping is only promised when it is enabled and its probe
+	// passed (D-031/D-042); otherwise HDR stays honestly unavailable.
+	toneMap := settings.ToneMapping && settings.ToneMappingMode != contracts.ToneMapModeNever &&
+		s.transcode.Probe(settings).ToneMapping
 	out, _, err := s.reg.CallOne(contracts.CapPlaybackPlan, playback.PlanInput{
 		Request:   contracts.PlanRequest{ItemID: it.ID, Client: client, Network: r.URL.Query().Get("network")},
 		FilePath:  it.FilePath,
 		MediaInfo: mediaInfo,
+		ToneMap:   toneMap,
 	})
 	if err != nil {
 		writeErr(w, 503, err.Error())
@@ -568,18 +588,36 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, _ auth.V
 	// the answer honest at runtime. Without a healthy transcode
 	// provider the plan degrades to transcode-required instead of
 	// pointing the client at an endpoint that can only 503.
+	policy := s.auth.PlaybackPolicy(v.UserID)
+	maxBitrate := effectiveBitrateLimit(policy.MaxBitrateKbps, settings.RemoteBitrateLimitKbps)
+	// A capped account must not stream above its limit: when the probed
+	// source bitrate exceeds the cap, a direct-play plan is downgraded to
+	// a capped transcode (Jellyfin's remote bitrate limit).
+	if maxBitrate > 0 && plan.Mode == "direct" && sourceBitrateKbps(mediaInfo) > maxBitrate {
+		plan.Mode = "transcode"
+	}
 	if plan.Mode == "transcode" {
-		if _, _, err := s.reg.Ordered(contracts.CapPlaybackTranscode); err != nil {
+		switch {
+		case !policy.AllowsVideoTranscode() && !policy.AllowsRemux():
 			plan.Available = false
 			plan.Mode = "transcode-required"
-			plan.Reason = "this container needs transcode for browser clients (no transcode provider installed)"
-		} else if inspected, _, err := s.reg.CallOne(contracts.CapPlaybackTranscodeV2, contracts.TranscodeV2Request{
-			Action: contracts.TranscodeInspectAction, FilePath: it.FilePath,
-		}); err == nil {
-			if status, ok := inspected.(contracts.TranscodeStatus); ok {
-				plan.Profile = status.Profile
-				plan.Session = status.Session
-				plan.State = status.State
+			plan.Reason = "transcoding is disabled for this user"
+		default:
+			if _, _, err := s.reg.Ordered(contracts.CapPlaybackTranscode); err != nil {
+				plan.Available = false
+				plan.Mode = "transcode-required"
+				plan.Reason = "this container needs transcode for browser clients (no transcode provider installed)"
+			} else if inspected, _, err := s.reg.CallOne(contracts.CapPlaybackTranscodeV3, contracts.TranscodeV3Request{
+				Action: contracts.TranscodeInspectAction, FilePath: it.FilePath,
+				Delivery: settings.DefaultDelivery, MaxBitrateKbps: maxBitrate,
+				Settings: settings,
+			}); err == nil {
+				if status, ok := inspected.(contracts.TranscodeV3Status); ok {
+					plan.Profile = status.Profile
+					plan.Session = status.Session
+					plan.State = status.State
+					plan.Reasons = status.Reasons
+				}
 			}
 		}
 	}

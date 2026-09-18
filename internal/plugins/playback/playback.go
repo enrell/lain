@@ -41,6 +41,10 @@ type PlanInput struct {
 	// MediaInfo is optional so old gateways/providers remain compatible.
 	// When present it replaces extension guesses for browser policy.
 	MediaInfo *contracts.MediaInfo `json:"media_info,omitempty"`
+	// ToneMap reports that the transcode pipeline can convert HDR to
+	// SDR right now (tone mapping enabled and its probe passed). Without
+	// it an HDR browser play stays honestly unavailable (D-030/D-042).
+	ToneMap bool `json:"tone_map,omitempty"`
 }
 
 // Plan decides direct vs transcode. The mpv desktop always direct-plays;
@@ -57,7 +61,10 @@ func Plan(in PlanInput) contracts.Plan {
 	}
 	if in.MediaInfo != nil {
 		if hasHDR(*in.MediaInfo) {
-			return contracts.Plan{Mode: "transcode-required", Asset: asset, Available: false, Reason: "HDR browser playback needs a tone-map profile that is not installed"}
+			if in.ToneMap {
+				return contracts.Plan{Mode: "transcode", Asset: asset, Available: true, Streams: in.MediaInfo.Streams}
+			}
+			return contracts.Plan{Mode: "transcode-required", Asset: asset, Available: false, Reason: "HDR browser playback needs tone mapping, which is unavailable on this server"}
 		}
 		if browserDirect(ext, *in.MediaInfo) {
 			return contracts.Plan{Mode: "direct", Asset: asset, Available: true, Streams: in.MediaInfo.Streams}
