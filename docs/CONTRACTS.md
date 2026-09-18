@@ -220,6 +220,12 @@ collides with the remux. The status reports the outcome per stream as
   same LRU, its staleness is judged on the `.vtt` alone, and it carries
   `playable:false` and `method:"extract"`.
 
+The ready-cache LRU never evicts a session fetched in the last minute: a
+ready HLS session is still playable, so deleting its segments mid-playback
+would break the client. While a viewer holds a session the cache may
+exceed `cache_bytes`; the overage is logged rather than resolved by
+pulling the file away.
+
 **Tone mapping** converts HDR to SDR with `zscale`+`tonemap`
 (`hable|reinhard|mobius|clip|linear`, `npl` from
 `tone_mapping_peak_nits`) or `libplacebo` BT.2390 when the Vulkan probe

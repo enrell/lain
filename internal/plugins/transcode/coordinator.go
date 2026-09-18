@@ -1268,6 +1268,11 @@ func (t *Transcoder) activeSessionsWith(extra string) map[string]bool {
 	return out
 }
 
+// recentAccessGrace protects a recently-fetched session from eviction: a
+// ready HLS session is still playable, so its segments must survive while
+// a client is watching.
+const recentAccessGrace = 60 * time.Second
+
 // cleanup removes abandoned/stale derivatives and then evicts the
 // least-recently-used ready entries until the configured ready-cache
 // budget is met. Active temporary output is intentionally not counted.
@@ -1369,11 +1374,17 @@ func (t *Transcoder) cleanup(startup bool, exclude map[string]bool) error {
 		}
 		return ready[i].AccessedAt < ready[j].AccessedAt
 	})
+	grace := t.now().Add(-recentAccessGrace).Unix()
 	for _, e := range ready {
 		if total <= budget {
 			break
 		}
-		if exclude[e.Session] {
+		// A ready HLS session can still be watched: deleting its segments
+		// mid-playback would break the client, so a session touched within
+		// the grace window is never the eviction victim. The cache may then
+		// exceed its budget while a viewer holds a session, which the
+		// warning below reports rather than pulling the file away silently.
+		if exclude[e.Session] || e.AccessedAt >= grace {
 			continue
 		}
 		t.removeArtifacts(e, t.pathsForEntry(e))

@@ -265,13 +265,45 @@ func TestCacheEvictsLeastRecentlyUsed(t *testing.T) {
 		return prepare(t, tr, src)
 	}
 	first := makeOne("one.mkv")
-	now = now.Add(time.Second)
+	// Move past the recent-access grace so the older session is evictable.
+	now = now.Add(2 * time.Minute)
 	second := makeOne("two.mkv")
 	if _, err := os.Stat(first.Path); !os.IsNotExist(err) {
 		t.Fatalf("oldest artifact still present: %v", err)
 	}
 	if _, err := os.Stat(second.Path); err != nil {
 		t.Fatalf("newest artifact removed: %v", err)
+	}
+}
+
+// TestCacheKeepsRecentlyWatchedSession pins the eviction guard: a session a
+// viewer touched recently is not deleted under them even when the cache is
+// over budget, and becomes evictable again once it goes idle past the grace.
+func TestCacheKeepsRecentlyWatchedSession(t *testing.T) {
+	root := t.TempDir()
+	now := time.Unix(1000, 0)
+	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1, QueueSize: 2}, func(_ sourceSpec, out string, _ func(progressSample)) (string, error) {
+		return "transcode", os.WriteFile(out, []byte("12345"), 0o600)
+	}, func() time.Time { return now })
+	t.Cleanup(func() { _ = tr.Close() })
+
+	src := filepath.Join(root, "one.mkv")
+	if err := os.WriteFile(src, []byte("one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	one := prepare(t, tr, src)
+	if err := tr.cleanup(false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(one.Path); err != nil {
+		t.Fatalf("a recently watched session was evicted: %v", err)
+	}
+	now = now.Add(2 * time.Minute)
+	if err := tr.cleanup(false, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(one.Path); !os.IsNotExist(err) {
+		t.Fatalf("an idle over-budget session was kept: %v", err)
 	}
 }
 
