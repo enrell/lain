@@ -52,7 +52,10 @@ type sourceSpec struct {
 	Profile        string
 	AudioStream    *int
 	SubtitleStream *int
-	Session        string
+	// StartSec is the source position the session begins at; it is part of
+	// the session identity because it changes the produced bytes.
+	StartSec float64
+	Session  string
 	// Settings carries the operator policy for v3 sessions (binary
 	// paths, subtitle extraction); v1/v2 leave it zero.
 	Settings contracts.TranscodeSettings
@@ -489,7 +492,7 @@ func sessionKey(s sourceSpec) string {
 	if s.SubtitleStream != nil {
 		subtitle = fmt.Sprint(*s.SubtitleStream)
 	}
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%d|%s|a:%s|s:%s", s.Path, s.ModTimeNS, s.Size, s.Profile, audio, subtitle)))
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%d|%.3f|%s|a:%s|s:%s", s.Path, s.ModTimeNS, s.Size, s.StartSec, s.Profile, audio, subtitle)))
 	return hex.EncodeToString(h[:])
 }
 

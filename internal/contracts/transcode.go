@@ -654,6 +654,11 @@ type TranscodeV3Request struct {
 	SubtitleStream *int   `json:"subtitle_stream,omitempty"`
 	SubtitleMode   string `json:"subtitle_mode,omitempty"` // "" uses settings default
 
+	// StartSec is the source position a session begins at (a resume or a
+	// seek). ffmpeg seeks the input and the produced timeline starts at
+	// zero, so a client maps its own clock by adding StartSec back.
+	StartSec float64 `json:"start_sec,omitempty"`
+
 	// SegmentIndex is set by the gateway on TranscodePositionAction:
 	// the highest HLS segment the client has fetched.
 	SegmentIndex int `json:"segment_index,omitempty"`

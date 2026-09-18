@@ -127,6 +127,8 @@ type transcodeSelection struct {
 	AudioStream    *int   `json:"audio_stream,omitempty"`
 	SubtitleStream *int   `json:"subtitle_stream,omitempty"`
 	SubtitleMode   string `json:"subtitle_mode,omitempty"`
+	// StartSec is the source position to begin the session at (resume/seek).
+	StartSec float64 `json:"start_sec,omitempty"`
 	// Client-side permissions, mirroring Jellyfin's PlaybackInfo flags.
 	AllowVideoStreamCopy *bool `json:"allow_video_stream_copy,omitempty"`
 	AllowAudioStreamCopy *bool `json:"allow_audio_stream_copy,omitempty"`
@@ -164,6 +166,7 @@ func (s *Server) transcodeRequest(v auth.Verified, filePath string, selection tr
 		AudioStream:    selection.AudioStream,
 		SubtitleStream: selection.SubtitleStream,
 		SubtitleMode:   subtitleMode,
+		StartSec:       selection.StartSec,
 		Policy:         limits,
 		UserID:         v.UserID,
 		Settings:       settings,

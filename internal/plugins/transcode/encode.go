@@ -147,6 +147,11 @@ func (p encodePlan) ffmpegArgs(output, subtitleFile string, onProgress bool) []s
 		args = append(args, "-progress", "pipe:1", "-nostats")
 	}
 	args = append(args, p.hwaccelInputArgs()...)
+	if p.spec.StartSec > 0 {
+		// Input seeking: the session starts at the requested position and
+		// ffmpeg shifts the produced timestamps to zero.
+		args = append(args, "-ss", strconv.FormatFloat(p.spec.StartSec, 'f', 3, 64))
+	}
 	args = append(args, "-i", p.spec.Path)
 
 	if p.complexFilter != "" {
