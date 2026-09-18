@@ -24,6 +24,10 @@ const (
 	// asynchronous start/status operations. V1 remains the synchronous
 	// compatibility contract.
 	CapPlaybackTranscodeV2 = "lain.playback.transcode@2"
+	// CapPlaybackTranscodeV3 adds session options (quality, codecs,
+	// subtitle mode, HLS delivery) and pipeline-fact reporting (encoder,
+	// hardware, fallback, reasons) under D-042..D-045. V1/V2 remain.
+	CapPlaybackTranscodeV3 = "lain.playback.transcode@3"
 	CapMediaProbe          = "lain.media.probe@1"
 )
 
@@ -205,7 +209,8 @@ type PlanRequest struct {
 // bytes as-is), "transcode" (play the prepared MP4 behind the
 // transcode endpoint) or "transcode-required" (no playable output
 // exists for this client). Asset is an opaque reference resolved by
-// the data gateway, never a raw filesystem path.
+// the data gateway, never a raw filesystem path. Reasons lists why a
+// transcode/remux is needed (D-042).
 type Plan struct {
 	Mode      string        `json:"mode"`
 	Asset     string        `json:"asset"`
@@ -215,6 +220,7 @@ type Plan struct {
 	Streams   []MediaStream `json:"streams,omitempty"`
 	Available bool          `json:"available"`
 	Reason    string        `json:"reason,omitempty"`
+	Reasons   []string      `json:"reasons,omitempty"`
 }
 
 // MediaProbeRequest asks the technical probe provider to inspect a
@@ -241,7 +247,11 @@ type MediaStream struct {
 	Forced         bool   `json:"forced,omitempty"`
 	ColorTransfer  string `json:"color_transfer,omitempty"`
 	ColorPrimaries string `json:"color_primaries,omitempty"`
-	Convertible    bool   `json:"convertible,omitempty"`
+	// BitRate is the stream bitrate in bits per second (0 when ffprobe
+	// does not report one); the gateway compares it against the account's
+	// bitrate limit to decide whether direct play is allowed.
+	BitRate     int  `json:"bit_rate,omitempty"`
+	Convertible bool `json:"convertible,omitempty"`
 }
 
 // MediaInfo is bounded technical metadata used to decide browser
@@ -355,19 +365,19 @@ type UnreadableRoot struct {
 
 // ScanStats summarizes one ingest run.
 type ScanStats struct {
-	Libraries    int   `json:"libraries"`
-	Candidates   int   `json:"candidates"`
-	Identified   int   `json:"identified"`
-	Unidentified int   `json:"unidentified"`
-	Errors       int   `json:"errors"`
-	Pruned       int   `json:"pruned"`
-	Migrated     int   `json:"migrated"`
-	Enriched     int   `json:"enriched"`
-	WalkErrors   int   `json:"walk_errors"`
+	Libraries    int `json:"libraries"`
+	Candidates   int `json:"candidates"`
+	Identified   int `json:"identified"`
+	Unidentified int `json:"unidentified"`
+	Errors       int `json:"errors"`
+	Pruned       int `json:"pruned"`
+	Migrated     int `json:"migrated"`
+	Enriched     int `json:"enriched"`
+	WalkErrors   int `json:"walk_errors"`
 	// Unreadable names the roots behind WalkErrors and any inaccessible
 	// root, in library order. Empty when every root was walked clean.
 	Unreadable []UnreadableRoot `json:"unreadable,omitempty"`
-	Dirs         int   `json:"dirs"`
-	StartedAt    int64 `json:"started_at"`
-	FinishedAt   int64 `json:"finished_at"`
+	Dirs       int              `json:"dirs"`
+	StartedAt  int64            `json:"started_at"`
+	FinishedAt int64            `json:"finished_at"`
 }

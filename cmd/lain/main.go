@@ -12,8 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/gateway"
 	"github.com/enrell/lain/internal/matrix"
+	"github.com/enrell/lain/internal/plugins/transcode"
 )
 
 // version is stamped by release builds:
@@ -171,6 +173,11 @@ func cmdDoctor(args []string) error {
 	}
 	for _, bin := range []string{"ffprobe", "ffmpeg"} {
 		rep[bin] = binPresent(bin)
+	}
+	// The transcode report names what the local ffmpeg can actually do:
+	// hardware is opt-in and its probe result is never hidden (D-031).
+	if binPresent("ffmpeg") {
+		rep["transcode"] = transcode.Probe(contracts.DefaultTranscodeSettings())
 	}
 	raw, _ := json.MarshalIndent(rep, "", "  ")
 	fmt.Println(string(raw))

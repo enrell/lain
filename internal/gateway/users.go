@@ -37,14 +37,16 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request, _ auth
 }
 
 // handleUserPatch applies admin user management: disable, role,
-// password reset. At most one semantic per request is too cute;
-// accept any subset, apply in a fixed order, report the result.
+// password reset, playback limits. At most one semantic per request is
+// too cute; accept any subset, apply in a fixed order, report the
+// result.
 func (s *Server) handleUserPatch(w http.ResponseWriter, r *http.Request, v auth.Verified) {
 	id := r.PathValue("id")
 	var in struct {
-		Disabled *bool   `json:"disabled"`
-		Role     *string `json:"role"`
-		Password *string `json:"password"`
+		Disabled *bool                `json:"disabled"`
+		Role     *string              `json:"role"`
+		Password *string              `json:"password"`
+		Playback *auth.PlaybackPolicy `json:"playback"`
 	}
 	if !s.decode(w, r, &in) {
 		return
@@ -71,6 +73,12 @@ func (s *Server) handleUserPatch(w http.ResponseWriter, r *http.Request, v auth.
 	}
 	if in.Password != nil {
 		if err := s.auth.AdminReset(id, *in.Password); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+	}
+	if in.Playback != nil {
+		if err := s.auth.SetPlayback(id, *in.Playback); err != nil {
 			writeErr(w, 400, err.Error())
 			return
 		}

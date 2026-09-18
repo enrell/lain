@@ -13,8 +13,8 @@ func TestUpgradeV1ToV2AppendsTVMaze(t *testing.T) {
 		},
 	}
 	saved.Upgrade(DefaultComposition())
-	if saved.Version != 4 {
-		t.Fatalf("version=%d, want current 4", saved.Version)
+	if saved.Version != DefaultComposition().Version {
+		t.Fatalf("version=%d, want current %d", saved.Version, DefaultComposition().Version)
 	}
 	for _, cap := range []string{"lain.metadata.search@1", "lain.metadata.resolve@1"} {
 		provs := saved.Bindings[cap].Providers
@@ -46,14 +46,17 @@ func TestUpgradeV2AddsAsyncTranscodeWithoutReplacingV1(t *testing.T) {
 		},
 	}
 	added := saved.Upgrade(DefaultComposition())
-	if saved.Version != 4 {
-		t.Fatalf("version=%d, want current 4", saved.Version)
+	if saved.Version != DefaultComposition().Version {
+		t.Fatalf("version=%d, want current %d", saved.Version, DefaultComposition().Version)
 	}
 	if got := saved.Bindings["lain.playback.transcode@1"]; got.Providers[0] != "custom-transcoder" || got.Generation != 7 {
 		t.Fatalf("v1 override replaced: %+v", got)
 	}
 	if got := saved.Bindings["lain.playback.transcode@2"]; got == nil || got.Providers[0] != "lain-transcode-ffmpeg" {
 		t.Fatalf("v2 binding missing: %+v (added %v)", got, added)
+	}
+	if got := saved.Bindings["lain.playback.transcode@3"]; got == nil || got.Providers[0] != "lain-transcode-ffmpeg" {
+		t.Fatalf("v3 binding missing: %+v (added %v)", got, added)
 	}
 }
 

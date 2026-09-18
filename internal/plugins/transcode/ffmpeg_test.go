@@ -28,13 +28,18 @@ func makeMKV(t *testing.T, dir, name, vcodec, acodec string) string {
 	t.Helper()
 	requireFFmpeg(t)
 	out := filepath.Join(dir, name)
+	// All inputs come first, then every output option: -pix_fmt placed
+	// before a later -i is parsed as an input option and ffmpeg exits with
+	// "Option pixel_format not found", silently skipping this test.
 	args := []string{"-hide_banner", "-loglevel", "error",
-		"-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=2",
-		"-c:v", vcodec, "-pix_fmt", "yuv420p"}
+		"-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=2"}
 	if acodec != "" {
 		args = append(args,
-			"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=22050:duration=2",
-			"-c:a", acodec)
+			"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=22050:duration=2")
+	}
+	args = append(args, "-c:v", vcodec, "-pix_fmt", "yuv420p")
+	if acodec != "" {
+		args = append(args, "-c:a", acodec)
 	}
 	args = append(args, "-y", out)
 	if combo, err := exec.Command("ffmpeg", args...).CombinedOutput(); err != nil {
@@ -153,7 +158,7 @@ func TestAsyncLifecycleDeduplicatesWork(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var calls atomic.Int32
-	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 2}, func(_ sourceSpec, out string, _ func(float64)) (string, error) {
+	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 2}, func(_ sourceSpec, out string, _ func(progressSample)) (string, error) {
 		if calls.Add(1) == 1 {
 			close(started)
 		}
@@ -199,7 +204,7 @@ func TestAsyncLifecycleDeduplicatesWork(t *testing.T) {
 func TestAsyncQueueIsBounded(t *testing.T) {
 	root := t.TempDir()
 	block := make(chan struct{})
-	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 1}, func(_ sourceSpec, out string, _ func(float64)) (string, error) {
+	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 1, MaxConcurrent: 1}, func(_ sourceSpec, out string, _ func(progressSample)) (string, error) {
 		<-block
 		return "transcode", os.WriteFile(out, []byte("mp4"), 0o600)
 	}, time.Now)
@@ -247,7 +252,7 @@ func TestAsyncQueueIsBounded(t *testing.T) {
 func TestCacheEvictsLeastRecentlyUsed(t *testing.T) {
 	root := t.TempDir()
 	now := time.Unix(100, 0)
-	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 5, QueueSize: 2}, func(_ sourceSpec, out string, _ func(float64)) (string, error) {
+	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 5, QueueSize: 2}, func(_ sourceSpec, out string, _ func(progressSample)) (string, error) {
 		return "transcode", os.WriteFile(out, []byte("123"), 0o600)
 	}, func() time.Time { return now })
 	t.Cleanup(func() { _ = tr.Close() })
@@ -345,6 +350,10 @@ func TestV2ExtractsSubtitleSidecar(t *testing.T) {
 	}
 }
 
+// TestConsumeProgressReportsFractions pins the block semantics: ffmpeg
+// writes one block per progress interval and ends it with `progress=`,
+// so each position is reported once (out_time_us and out_time_ms carry
+// the same value) and progress=end reports completion.
 func TestConsumeProgressReportsFractions(t *testing.T) {
 	var got []float64
 	consumeProgress(strings.NewReader(strings.Join([]string{
@@ -355,11 +364,11 @@ func TestConsumeProgressReportsFractions(t *testing.T) {
 		"out_time_us=60000000",
 		"progress=end",
 		"",
-	}, "\n")), 120, func(frac float64) { got = append(got, frac) })
+	}, "\n")), 120, func(sample progressSample) { got = append(got, sample.Fraction) })
 
-	// Both keys carry the same microsecond position, the unparsable
-	// out_time is skipped, and progress=end reports completion.
-	want := []float64{5.0 / 120, 5.0 / 120, 0.5, 1}
+	// One report per block: the duplicate key collapses, the unparsable
+	// out_time is skipped, and the terminal block reports completion.
+	want := []float64{5.0 / 120, 1}
 	if len(got) != len(want) {
 		t.Fatalf("reports=%v, want %v", got, want)
 	}
@@ -370,9 +379,35 @@ func TestConsumeProgressReportsFractions(t *testing.T) {
 	}
 }
 
+// TestConsumeProgressCarriesLiveMetrics covers the session-list metrics:
+// fps, encoding speed and output bitrate arrive in the same block as the
+// position and must reach the caller without inventing a fraction.
+func TestConsumeProgressCarriesLiveMetrics(t *testing.T) {
+	var got []progressSample
+	consumeProgress(strings.NewReader(strings.Join([]string{
+		"bitrate=3000.5kbits/s",
+		"fps=42.5",
+		"speed=1.35x",
+		"out_time_us=6000000",
+		"progress=continue",
+		"",
+	}, "\n")), 0, func(sample progressSample) { got = append(got, sample) })
+
+	if len(got) != 1 {
+		t.Fatalf("reports=%v, want one block", got)
+	}
+	if got[0].HasFraction {
+		t.Fatalf("fraction=%v, want none without a probed duration", got[0].Fraction)
+	}
+	if got[0].FPS != 42.5 || got[0].BitrateKbps != 3001 || got[0].Speed != 1.35 {
+		// 3000.5 kbit/s rounds to a whole kbit/s for reporting.
+		t.Fatalf("sample=%+v, want the live metrics", got[0])
+	}
+}
+
 func TestConsumeProgressWithoutDurationStaysIndeterminate(t *testing.T) {
 	reports := 0
-	consumeProgress(strings.NewReader("out_time_us=5000000\nprogress=continue\n"), 0, func(float64) { reports++ })
+	consumeProgress(strings.NewReader("out_time_us=5000000\nprogress=continue\n"), 0, func(progressSample) { reports++ })
 	if reports != 0 {
 		t.Fatalf("reports=%d, want none without a probed duration", reports)
 	}
@@ -386,8 +421,8 @@ func TestAsyncStatusReportsProgress(t *testing.T) {
 	}
 	release := make(chan struct{})
 	var released atomic.Bool
-	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 2}, func(_ sourceSpec, out string, onProgress func(float64)) (string, error) {
-		onProgress(0.25)
+	tr := newWithDeps(filepath.Join(root, "cache"), Config{MaxCacheBytes: 1024, QueueSize: 2}, func(_ sourceSpec, out string, onProgress func(progressSample)) (string, error) {
+		onProgress(progressSample{Fraction: 0.25, HasFraction: true, FPS: 42.5, BitrateKbps: 3000})
 		<-release
 		return "transcode", os.WriteFile(out, []byte("mp4"), 0o600)
 	}, time.Now)

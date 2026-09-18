@@ -31,6 +31,9 @@ const (
 	// profile pins the current output contract. Any encode policy change
 	// must rename it so old cache entries stop matching.
 	profile = "web-mp4-sdr-v2"
+	// subtitleProfile keys an on-demand WebVTT sidecar, which is not a
+	// transcode and never matches a session entry.
+	subtitleProfile = "subs-vtt-v1"
 
 	// timeout bounds one preparation. A detached context (not the
 	// HTTP request's) lets an abandoned first attempt still warm the
@@ -47,6 +50,14 @@ type stream struct {
 	PixelFormat    string `json:"pix_fmt"`
 	ColorTransfer  string `json:"color_transfer"`
 	ColorPrimaries string `json:"color_primaries"`
+	ColorSpace     string `json:"color_space"`
+	FieldOrder     string `json:"field_order"`
+	Width          int    `json:"width"`
+	Height         int    `json:"height"`
+	Channels       int    `json:"channels"`
+	BitRate        string `json:"bit_rate"`
+	FrameRate      string `json:"r_frame_rate"`
+	BitsPerRaw     string `json:"bits_per_raw_sample"`
 	Default        int
 	Disposition    struct {
 		Default int `json:"default"`
@@ -56,8 +67,48 @@ type stream struct {
 type mediaReport struct {
 	Streams []stream `json:"streams"`
 	Format  struct {
-		Duration string `json:"duration"`
+		Duration   string `json:"duration"`
+		BitRate    string `json:"bit_rate"`
+		FormatName string `json:"format_name"`
 	} `json:"format"`
+}
+
+// is10Bit reports whether the stream carries more than 8 bits per
+// sample, which decides whether hardware decoding is allowed (Jellyfin's
+// per-codec 10-bit toggles).
+func (s stream) is10Bit() bool {
+	if bits, err := strconv.Atoi(strings.TrimSpace(s.BitsPerRaw)); err == nil && bits > 8 {
+		return true
+	}
+	pixel := strings.ToLower(s.PixelFormat)
+	return strings.Contains(pixel, "10le") || strings.Contains(pixel, "10be") ||
+		strings.HasPrefix(pixel, "p010") || strings.HasPrefix(pixel, "p410")
+}
+
+// frameRate parses ffprobe's "num/den" rate; 0 means unknown, and the
+// caller then avoids inventing a GOP size.
+func (s stream) frameRate() float64 {
+	num, den, ok := strings.Cut(s.FrameRate, "/")
+	if !ok {
+		return 0
+	}
+	n, err1 := strconv.ParseFloat(num, 64)
+	d, err2 := strconv.ParseFloat(den, 64)
+	if err1 != nil || err2 != nil || d <= 0 || n <= 0 {
+		return 0
+	}
+	return n / d
+}
+
+// progressSample is one reading of ffmpeg's -progress stream: the
+// preparation fraction plus the live pipeline metrics the session list
+// reports (Jellyfin's transcoding info).
+type progressSample struct {
+	Fraction    float64
+	HasFraction bool
+	FPS         float64
+	Speed       float64
+	BitrateKbps int
 }
 
 // durationSeconds is 0 when ffprobe could not report a usable duration;
@@ -71,9 +122,16 @@ func (r mediaReport) durationSeconds() float64 {
 }
 
 func probeMedia(path string) (mediaReport, error) {
-	cmd := exec.Command("ffprobe",
+	return probeMediaWith("ffprobe", path)
+}
+
+func probeMediaWith(ffprobePath, path string) (mediaReport, error) {
+	if ffprobePath == "" {
+		ffprobePath = "ffprobe"
+	}
+	cmd := exec.Command(ffprobePath,
 		"-v", "error",
-		"-show_entries", "stream=index,codec_type,codec_name,pix_fmt,color_transfer,color_primaries:stream_disposition=default:format=duration",
+		"-show_entries", "stream=index,codec_type,codec_name,pix_fmt,color_transfer,color_primaries,color_space,field_order,width,height,channels,bit_rate,r_frame_rate,bits_per_raw_sample:stream_disposition=default:format=duration,bit_rate,format_name",
 		"-of", "json",
 		path)
 	raw, err := cmd.Output()
@@ -236,9 +294,9 @@ func hdrVideo(s stream) bool {
 
 // convertMedia builds the ffmpeg argv from probed streams and runs it,
 // writing atomically: readers only ever see a complete MP4. When
-// onProgress is non-nil, ffmpeg's -progress stream is drained and the
-// preparation fraction (0..1) is reported as it advances.
-func (t *Transcoder) convertMedia(spec sourceSpec, out string, onProgress func(float64)) (string, error) {
+// onSample is non-nil, ffmpeg's -progress stream is drained and the
+// preparation fraction plus live metrics are reported as they advance.
+func (t *Transcoder) convertMedia(spec sourceSpec, out string, onSample func(progressSample)) (string, error) {
 	report, probeErr := probeMedia(spec.Path)
 	if probeErr != nil && spec.Profile != legacyProfile {
 		return "", &core.Error{Code: "dependency-unavailable", Msg: "ffprobe is required for the browser profile"}
@@ -249,7 +307,7 @@ func (t *Transcoder) convertMedia(spec sourceSpec, out string, onProgress func(f
 	if err != nil {
 		return "", err
 	}
-	if onProgress != nil {
+	if onSample != nil {
 		args = append([]string{"-progress", "pipe:1", "-nostats"}, args...)
 	}
 
@@ -269,7 +327,7 @@ func (t *Transcoder) convertMedia(spec sourceSpec, out string, onProgress func(f
 	// Drain stdout while ffmpeg runs: the progress stream is written
 	// there, and a full pipe would block the child. stderr keeps the
 	// error text the failure path reports.
-	consumeProgress(stdout, report.durationSeconds(), onProgress)
+	consumeProgress(stdout, report.durationSeconds(), onSample)
 	if err := cmd.Wait(); err != nil {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
@@ -285,47 +343,95 @@ func (t *Transcoder) convertMedia(spec sourceSpec, out string, onProgress func(f
 	return method, nil
 }
 
-// consumeProgress drains ffmpeg's -progress stream. Each block reports the
-// same position twice (out_time_us and out_time_ms both carry microseconds);
-// positions become a fraction of the probed duration, and an unknown
-// duration simply yields no fraction rather than an invented one.
-func consumeProgress(r io.Reader, totalSec float64, onProgress func(float64)) {
+// consumeProgress drains ffmpeg's -progress stream one block at a time:
+// each block ends with a `progress=` line, and a block is only reported
+// when it carries something true — a fraction of a probed duration or a
+// live metric (fps, output bitrate, encoding speed). An unknown duration
+// never invents a fraction (D-039).
+func consumeProgress(r io.Reader, totalSec float64, onSample func(progressSample)) {
+	if onSample == nil {
+		return
+	}
 	scanner := bufio.NewScanner(r)
+	var block progressSample
+	var positionUS int64
 	for scanner.Scan() {
-		if onProgress == nil {
-			continue
-		}
 		key, value, ok := strings.Cut(strings.TrimSpace(scanner.Text()), "=")
 		if !ok {
 			continue
 		}
 		switch key {
 		case "out_time_us", "out_time_ms":
-			us, err := strconv.ParseInt(value, 10, 64)
-			if err != nil || us < 0 || totalSec <= 0 {
-				continue
+			if us, err := strconv.ParseInt(value, 10, 64); err == nil && us >= 0 {
+				positionUS = us
 			}
-			onProgress(min(1, max(0, float64(us)/(totalSec*1e6))))
+		case "fps":
+			if fps, err := strconv.ParseFloat(value, 64); err == nil && fps > 0 {
+				block.FPS = fps
+			}
+		case "speed":
+			if speed, err := strconv.ParseFloat(strings.TrimSuffix(value, "x"), 64); err == nil && speed > 0 {
+				block.Speed = speed
+			}
+		case "bitrate":
+			if kbps, err := parseBitrateKbps(value); err == nil {
+				block.BitrateKbps = kbps
+			}
 		case "progress":
-			if value == "end" {
-				onProgress(1)
+			sample := block
+			if totalSec > 0 {
+				sample.Fraction = min(1, max(0, float64(positionUS)/(totalSec*1e6)))
+				sample.HasFraction = true
 			}
+			if value == "end" {
+				sample.Fraction = 1
+				sample.HasFraction = true
+			}
+			if sample.HasFraction || sample.FPS > 0 || sample.BitrateKbps > 0 || sample.Speed > 0 {
+				onSample(sample)
+			}
+			block = progressSample{}
 		}
 	}
+}
+
+// parseBitrateKbps reads ffmpeg's "1234.5kbits/s" style bitrate value.
+func parseBitrateKbps(value string) (int, error) {
+	trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(value), "kbits/s"))
+	trimmed = strings.TrimSuffix(trimmed, "kbit/s")
+	if trimmed == "N/A" || trimmed == "" {
+		return 0, strconv.ErrSyntax
+	}
+	kbps, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		return 0, err
+	}
+	return int(kbps + 0.5), nil
 }
 
 func (t *Transcoder) extractSubtitle(spec sourceSpec, out string) error {
 	if spec.SubtitleStream == nil {
 		return nil
 	}
+	return t.extractSubtitleStream(spec, *spec.SubtitleStream, out, "webvtt", "ffmpeg")
+}
+
+// extractSubtitleAs converts one subtitle stream to a standalone file
+// (webvtt sidecar, or ass for burn-in rendering) using the configured
+// ffmpeg binary.
+func (t *Transcoder) extractSubtitleAs(spec sourceSpec, s stream, out, format string) error {
+	return t.extractSubtitleStream(spec, s.Index, out, format, ffmpegBinary(spec.Settings))
+}
+
+func (t *Transcoder) extractSubtitleStream(spec sourceSpec, index int, out, format, ffmpeg string) error {
 	tmp := out + ".tmp"
 	_ = os.Remove(tmp)
 	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "ffmpeg",
+	cmd := exec.CommandContext(ctx, ffmpeg,
 		"-hide_banner", "-loglevel", "error", "-nostdin", "-i", spec.Path,
-		"-map", fmt.Sprintf("0:%d", *spec.SubtitleStream),
-		"-f", "webvtt", "-y", tmp)
+		"-map", fmt.Sprintf("0:%d", index),
+		"-f", format, "-y", tmp)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(output)))
@@ -333,7 +439,7 @@ func (t *Transcoder) extractSubtitle(spec sourceSpec, out string) error {
 	fi, err := os.Stat(tmp)
 	if err != nil || fi.Size() == 0 {
 		_ = os.Remove(tmp)
-		return fmt.Errorf("no WebVTT produced")
+		return fmt.Errorf("no subtitle file produced")
 	}
 	return os.Rename(tmp, out)
 }

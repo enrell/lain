@@ -126,8 +126,14 @@ func catalogOneMKV(t *testing.T, srv *Server, admin, dir, name string) string {
 	if combo, err := cmd.CombinedOutput(); err != nil {
 		t.Skipf("cannot synthesize mkv: %v: %s", err, combo)
 	}
+	return catalogDir(t, srv, admin, dir)
+}
 
-	if rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "MKV", "type": "movie", "path": dir}, admin); rec.Code != 201 {
+// catalogDir registers dir as a library, scans it, and returns the single
+// catalog item id.
+func catalogDir(t *testing.T, srv *Server, admin, dir string) string {
+	t.Helper()
+	if rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "One", "type": "movie", "path": dir}, admin); rec.Code != 201 {
 		t.Fatalf("library: %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := do(t, srv, "POST", "/api/library/scan", nil, admin); rec.Code != 202 {
@@ -141,6 +147,69 @@ func catalogOneMKV(t *testing.T, srv *Server, admin, dir, name string) string {
 		t.Fatalf("catalog: %d %s", rec.Code, rec.Body.String())
 	}
 	return page.Items[0].ID
+}
+
+// catalogOneMP4 synthesizes one browser-direct-playable MP4 (H.264/AAC at
+// a known bitrate) and returns its catalog id.
+func catalogOneMP4(t *testing.T, srv *Server, admin, dir, name string) string {
+	t.Helper()
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	out := filepath.Join(dir, name)
+	cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "testsrc=size=320x240:rate=15:duration=2",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", "2000k",
+		"-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-y", out)
+	if combo, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("cannot synthesize mp4: %v: %s", err, combo)
+	}
+	return catalogDir(t, srv, admin, dir)
+}
+
+// TestBitrateCapForcesTranscode pins the remote bitrate limit on direct
+// play: a capped account must not stream a source above its limit, so the
+// plan is downgraded to a capped transcode.
+func TestBitrateCapForcesTranscode(t *testing.T) {
+	srv := testServer(t)
+	admin := setupAdmin(t, srv)
+	id := catalogOneMP4(t, srv, admin, t.TempDir(), "[Fansub-A] Capped.mp4")
+
+	rec := do(t, srv, "GET", "/api/items/"+id+"/playback?client=web", nil, admin)
+	var adminPlan contracts.Plan
+	if err := json.Unmarshal(rec.Body.Bytes(), &adminPlan); err != nil {
+		t.Fatalf("admin plan: %d %s", rec.Code, rec.Body.String())
+	}
+	if adminPlan.Mode != "direct" {
+		t.Skipf("fixture planned %q, not direct play", adminPlan.Mode)
+	}
+
+	rec = do(t, srv, "POST", "/api/users", map[string]string{"username": "cap", "password": "password123"}, admin)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create user: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil || created.ID == "" {
+		t.Fatalf("created user: %s", rec.Body.String())
+	}
+	if rec := do(t, srv, "PATCH", "/api/users/"+created.ID, map[string]any{
+		"playback": map[string]any{"max_bitrate_kbps": 50},
+	}, admin); rec.Code != http.StatusOK {
+		t.Fatalf("patch: %d %s", rec.Code, rec.Body.String())
+	}
+	user := loginAs(t, srv, "cap", "password123")
+
+	rec = do(t, srv, "GET", "/api/items/"+id+"/playback?client=web", nil, user)
+	var capped contracts.Plan
+	if err := json.Unmarshal(rec.Body.Bytes(), &capped); err != nil {
+		t.Fatalf("capped plan: %d %s", rec.Code, rec.Body.String())
+	}
+	if capped.Mode != "transcode" {
+		t.Fatalf("capped plan mode=%q, want transcode (source exceeds the cap)", capped.Mode)
+	}
 }
 
 // TestTranscodeServesMP4 is the end-to-end slice: an H.264 MKV remuxes
@@ -163,23 +232,28 @@ func TestTranscodeServesMP4(t *testing.T) {
 	}
 
 	// V2 starts explicitly, then status can be polled without exposing
-	// the provider's private cache path.
-	rec = do(t, srv, "POST", "/api/items/"+id+"/transcode", nil, admin)
+	// the provider's private cache path. Progressive delivery is the
+	// retained Range-served path; HLS is the default but covered below.
+	rec = do(t, srv, "POST", "/api/items/"+id+"/transcode", map[string]any{"delivery": "progressive"}, admin)
 	if rec.Code != 200 && rec.Code != 202 {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body.String())
 	}
 	var status struct {
-		Session string `json:"session"`
-		State   string `json:"state"`
-		Path    string `json:"path"`
+		Session  string `json:"session"`
+		State    string `json:"state"`
+		Path     string `json:"path"`
+		Delivery string `json:"delivery"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil || status.Session != plan.Session {
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil || status.Session == "" {
 		t.Fatalf("start status: %d %s", rec.Code, rec.Body.String())
+	}
+	if status.Delivery != contracts.TranscodeDeliveryProgressive {
+		t.Fatalf("delivery=%q, want progressive", status.Delivery)
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for status.State != contracts.TranscodeReady && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
-		rec = do(t, srv, "GET", "/api/items/"+id+"/transcode/status?session="+plan.Session, nil, admin)
+		rec = do(t, srv, "GET", "/api/items/"+id+"/transcode/status?session="+status.Session, nil, admin)
 		if rec.Code != 200 {
 			t.Fatalf("status: %d %s", rec.Code, rec.Body.String())
 		}
@@ -191,7 +265,7 @@ func TestTranscodeServesMP4(t *testing.T) {
 		t.Fatalf("public status leaks path or did not finish: %s", rec.Body.String())
 	}
 
-	streamPath := "/api/items/" + id + "/transcode?token=" + admin + "&session=" + plan.Session
+	streamPath := "/api/items/" + id + "/transcode?token=" + admin + "&session=" + status.Session
 	rec = do(t, srv, "GET", streamPath, nil, "")
 	if rec.Code != 200 {
 		t.Fatalf("transcode: %d %s", rec.Code, rec.Body.String())
@@ -226,11 +300,12 @@ func TestTranscodeServesMP4(t *testing.T) {
 // TestTranscodeDegradesWithoutFFmpeg proves the honest path survives:
 // no ffmpeg means the endpoint 503s and the plan falls back to
 // transcode-required instead of pointing at bytes that do not exist.
-// TestPublicStatusCarriesProgress pins the additive @2 field: a pending
-// job reports its fraction, terminal states never invent one (D-039).
+// TestPublicStatusCarriesProgress pins the additive progress field: a
+// pending job reports its fraction, terminal states never invent one
+// (D-039).
 func TestPublicStatusCarriesProgress(t *testing.T) {
-	running := publicStatus(contracts.TranscodeStatus{
-		Session: "s", State: contracts.TranscodeRunning, Profile: "web-mp4-sdr-v2", Progress: 0.42,
+	running := publicStatusV3(contracts.TranscodeV3Status{
+		Session: "s", State: contracts.TranscodeRunning, Profile: "web-mp4-v3-abcdef", Progress: 0.42,
 	})
 	if running.Progress != 0.42 {
 		t.Fatalf("progress=%v, want 0.42", running.Progress)
@@ -244,7 +319,7 @@ func TestPublicStatusCarriesProgress(t *testing.T) {
 	}
 
 	for _, state := range []string{contracts.TranscodeReady, contracts.TranscodeFailed} {
-		terminal := publicStatus(contracts.TranscodeStatus{Session: "s", State: state, Profile: "web-mp4-sdr-v2"})
+		terminal := publicStatusV3(contracts.TranscodeV3Status{Session: "s", State: state, Profile: "web-mp4-v3-abcdef"})
 		raw, err := json.Marshal(terminal)
 		if err != nil {
 			t.Fatal(err)

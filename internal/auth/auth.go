@@ -42,6 +42,46 @@ type User struct {
 	Disabled  bool   `json:"disabled"`
 	PwdVer    uint64 `json:"pwd_ver"`
 	CreatedAt int64  `json:"created_at"`
+
+	// Playback carries the per-user playback limits (D-042). Zero
+	// values mean "not restricted", so existing accounts keep full
+	// playback after the field is added.
+	Playback PlaybackPolicy `json:"playback,omitempty"`
+}
+
+// PlaybackPolicy is the per-user limit set (Jellyfin parity): which
+// kinds of transcoding are allowed, the maximum output bitrate, how
+// many simultaneous transcodes the account may run, and the subtitle
+// mode new sessions default to.
+type PlaybackPolicy struct {
+	AllowVideoTranscode *bool  `json:"allow_video_transcode,omitempty"`
+	AllowAudioTranscode *bool  `json:"allow_audio_transcode,omitempty"`
+	AllowRemux          *bool  `json:"allow_remux,omitempty"`
+	MaxBitrateKbps      int    `json:"max_bitrate_kbps,omitempty"`
+	MaxStreams          int    `json:"max_streams,omitempty"`
+	SubtitleMode        string `json:"subtitle_mode,omitempty"`
+}
+
+func boolOr(p *bool, def bool) bool {
+	if p == nil {
+		return def
+	}
+	return *p
+}
+
+// AllowsVideoTranscode reports the effective permission (default true).
+func (p PlaybackPolicy) AllowsVideoTranscode() bool { return boolOr(p.AllowVideoTranscode, true) }
+
+// AllowsAudioTranscode reports the effective permission (default true).
+func (p PlaybackPolicy) AllowsAudioTranscode() bool { return boolOr(p.AllowAudioTranscode, true) }
+
+// AllowsRemux reports the effective permission (default true).
+func (p PlaybackPolicy) AllowsRemux() bool { return boolOr(p.AllowRemux, true) }
+
+// Restricted reports whether any limit is set.
+func (p PlaybackPolicy) Restricted() bool {
+	return p.AllowVideoTranscode != nil || p.AllowAudioTranscode != nil || p.AllowRemux != nil ||
+		p.MaxBitrateKbps > 0 || p.MaxStreams > 0 || p.SubtitleMode != ""
 }
 
 // Public hides the password hash.
@@ -229,6 +269,36 @@ func (s *Service) SetRole(id, role string) error {
 	}
 	u.Role = role
 	return s.put(u)
+}
+
+// SetPlayback replaces a user's playback limits (D-042).
+func (s *Service) SetPlayback(id string, policy PlaybackPolicy) error {
+	if policy.MaxBitrateKbps < 0 {
+		return errors.New("max_bitrate_kbps must not be negative")
+	}
+	if policy.MaxStreams < 0 || policy.MaxStreams > 32 {
+		return errors.New("max_streams must be 0..32")
+	}
+	switch policy.SubtitleMode {
+	case "", "auto", "extract", "burn", "off":
+	default:
+		return errors.New("subtitle_mode must be auto, extract, burn or off")
+	}
+	u, err := s.get(id)
+	if err != nil {
+		return errors.New("unknown user")
+	}
+	u.Playback = policy
+	return s.put(u)
+}
+
+// PlaybackPolicy returns the stored limits for one user.
+func (s *Service) PlaybackPolicy(id string) PlaybackPolicy {
+	u, err := s.get(id)
+	if err != nil {
+		return PlaybackPolicy{}
+	}
+	return u.Playback
 }
 
 // ChangePassword verifies the old password, sets the new one and bumps
