@@ -169,6 +169,13 @@ segment). `progressive` keeps the complete `+faststart` MP4 with Range
 support. `subtitle` is not a transcode: it is the sidecar-only entry an
 on-demand subtitle extraction produces (see below).
 
+A session always starts at the beginning of the source: there is no
+start-offset (`-ss`) option, so an HLS resume or seek can only reach what
+ffmpeg has already produced (the progressive path seeks through Range
+once the whole file is complete). Jellyfin carries a start position into
+the transcode (`StartTimeTicks`); lain does not yet — a known limitation,
+not a silent one.
+
 **Throttling** pauses ffmpeg (SIGSTOP) once production runs more than
 `throttle_ahead_sec` ahead of the client's fetched segment and resumes
 it at half that budget; **segment deletion** removes segments fully
