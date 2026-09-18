@@ -97,20 +97,8 @@ func TestLibraryScanStreamProgress(t *testing.T) {
 	if rec.Code != 202 {
 		t.Fatalf("scan start: %d %s", rec.Code, rec.Body.String())
 	}
-	// Scan runs async; poll status briefly.
-	var status struct {
-		State string `json:"state"`
-	}
-	for i := 0; i < 100; i++ {
-		rec = do(t, srv, "GET", "/api/library/scan", nil, tok.Token)
-		_ = json.Unmarshal(rec.Body.Bytes(), &status)
-		if status.State == "done" || status.State == "error" {
-			break
-		}
-	}
-	if status.State != "done" {
-		t.Fatalf("scan state %q", status.State)
-	}
+	// Scan runs async; waitScan polls with a real wait.
+	waitScan(t, srv, tok.Token)
 	rec = do(t, srv, "GET", "/api/search?q=frieren", nil, tok.Token)
 	if rec.Code != 200 || !bytes.Contains(rec.Body.Bytes(), []byte("Frieren")) {
 		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
@@ -177,16 +165,7 @@ func TestCatalogPagingEnvelope(t *testing.T) {
 	if rec := do(t, srv, "POST", "/api/library/scan", nil, tok); rec.Code != 202 {
 		t.Fatalf("scan: %d", rec.Code)
 	}
-	var status struct {
-		State string `json:"state"`
-	}
-	for i := 0; i < 100; i++ {
-		rec := do(t, srv, "GET", "/api/library/scan", nil, tok)
-		_ = json.Unmarshal(rec.Body.Bytes(), &status)
-		if status.State == "done" {
-			break
-		}
-	}
+	waitScan(t, srv, tok)
 	var page struct {
 		Items []map[string]any `json:"items"`
 		Total int              `json:"total"`

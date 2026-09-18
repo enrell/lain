@@ -82,16 +82,7 @@ func TestEnrichFlow(t *testing.T) {
 	if rec.Code != 202 {
 		t.Fatalf("scan: %d", rec.Code)
 	}
-	var status struct {
-		State string `json:"state"`
-	}
-	for i := 0; i < 100; i++ {
-		rec = do(t, srv, "GET", "/api/library/scan", nil, admin)
-		_ = json.Unmarshal(rec.Body.Bytes(), &status)
-		if status.State == "done" {
-			break
-		}
-	}
+	waitScan(t, srv, admin)
 	var page struct {
 		Items []map[string]any `json:"items"`
 	}
@@ -155,16 +146,7 @@ func TestEnrichNoMatch(t *testing.T) {
 	if rec := do(t, srv, "POST", "/api/library/scan", nil, admin); rec.Code != 202 {
 		t.Fatalf("scan: %d", rec.Code)
 	}
-	var status struct {
-		State string `json:"state"`
-	}
-	for i := 0; i < 100; i++ {
-		rec := do(t, srv, "GET", "/api/library/scan", nil, admin)
-		_ = json.Unmarshal(rec.Body.Bytes(), &status)
-		if status.State == "done" {
-			break
-		}
-	}
+	waitScan(t, srv, admin)
 	var page struct {
 		Items []map[string]any `json:"items"`
 	}
