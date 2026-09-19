@@ -111,6 +111,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   beginning, and the player offsets its clock and progress accordingly.
 
 ### Fixed
+- The player's seek bar only ever reached as far as ffmpeg had encoded.
+  An HLS session is an `EVENT` playlist listing just the produced
+  segments, so under MSE the element's duration — and therefore
+  `seekable` — was the produced edge: a 24-minute episode showed a 0:37
+  timeline and refused a drag to minute 13. The plan response now carries
+  the probed media length (`duration_sec`, the same fact Jellyfin's
+  `PlaybackInfo` exposes as `RunTimeTicks`) and the player hands it to
+  hls.js as a MediaSource duration override, so the bar spans the episode
+  and progress is reported against the real length instead of the encoded
+  prefix. A seek past what the encoder has written rebuilds the session
+  at that position through `start_sec`, so it starts playing there rather
+  than waiting for the encoder to arrive; a seek inside the produced range
+  stays an ordinary, instant element seek. The buffered region is now
+  drawn where it actually is, which a resumed or re-seeked session starts
+  partway into. Found by the user watching a real episode.
 - HLS playback in a real browser: the served playlist now signs every
   media URI with the session and the caller's token. A relative URI in
   an m3u8 drops the playlist's query string, so `hls.js` and native
