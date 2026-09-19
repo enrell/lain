@@ -386,3 +386,43 @@ func TestTitleSortOrdersEpisodes(t *testing.T) {
 		t.Fatalf("ListByLibrary not in episode order: %+v", got2)
 	}
 }
+
+// TestEpisodesReturnsTheTitleInWatchOrder pins the title page's source:
+// every file whose title normalizes to the same key, in watch order even
+// when the raw titles disagree on casing or spacing, across libraries;
+// a different title never leaks in, and an unknown id reports ok=false.
+func TestEpisodesReturnsTheTitleInWatchOrder(t *testing.T) {
+	s := testService(t)
+	e1 := mkEpisode("l", "/x/show-s1e1.mkv", "Show", 1, 1)
+	e2 := mkEpisode("l", "/x/show-s1e2.mkv", "  SHOW ", 1, 2)
+	e10 := mkEpisode("l", "/x/show-s1e10.mkv", "Show", 1, 10)
+	other := mkEpisode("l", "/x/other.mkv", "Other Show", 1, 1)
+	// A show split across libraries still opens as one page.
+	far := mkEpisode("m", "/y/show-s2e1.mkv", "show", 2, 1)
+	if err := s.UpsertBatch([]contracts.CatalogItem{e10, e2, e1, other, far}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := s.Episodes(e1.ID)
+	if !ok {
+		t.Fatal("Episodes reported a known id as unknown")
+	}
+	want := []string{e1.ID, e2.ID, e10.ID, far.ID}
+	if len(got) != len(want) {
+		t.Fatalf("episodes=%d, want %d: %+v", len(got), len(want), got)
+	}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Fatalf("pos %d: id=%s, want %s", i, got[i].ID, id)
+		}
+	}
+	for _, it := range got {
+		if it.ID == other.ID {
+			t.Fatal("a different title leaked into the group")
+		}
+	}
+
+	if _, ok := s.Episodes("does-not-exist"); ok {
+		t.Fatal("an unknown id must report ok=false")
+	}
+}

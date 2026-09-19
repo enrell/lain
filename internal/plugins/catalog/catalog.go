@@ -95,11 +95,19 @@ func ItemID(libraryID, path string) string {
 	return hex.EncodeToString(h[:])[:16]
 }
 
+// TitleKey is the grouping key of a title: lowercase, whitespace
+// collapsed. It is the same rule the web Library grid applies, so a
+// show's card and its detail page cannot disagree about what belongs
+// together.
+func TitleKey(title string) string {
+	return strings.ToLower(strings.Join(strings.Fields(title), " "))
+}
+
 // Fingerprint is the move/rename-proof logical key of an item: kind plus
 // normalized title, season, episode, and year. Years match when either
 // side is unknown (0), because identifiers often fill the year in later.
 func Fingerprint(libraryID, kind, title string, season, episode, year int) string {
-	norm := strings.ToLower(strings.Join(strings.Fields(title), " "))
+	norm := TitleKey(title)
 	return libraryID + "\x00" + kind + "\x00" + norm +
 		"\x00" + strconv.Itoa(season) + "\x00" + strconv.Itoa(episode) +
 		"\x00" + strconv.Itoa(year)
@@ -339,6 +347,52 @@ func (s *Service) Page(p contracts.PageParams) (contracts.CatalogPage, error) {
 func (s *Service) Search(q, kind string) []contracts.CatalogItem {
 	items, _ := s.Query(q, kind, contracts.PageParams{Limit: -1, Sort: "title"})
 	return items
+}
+
+// Episodes returns every file of the item's title in watch order
+// (season, episode, year, id). ok is false when the id is unknown. A
+// title is every item whose TitleKey matches, whichever library it
+// lives in, so a show split across two libraries still opens as one
+// page. The gateway serves this to the title page (D-056).
+func (s *Service) Episodes(id string) ([]contracts.CatalogItem, bool) {
+	it, ok := s.Get(id)
+	if !ok {
+		return nil, false
+	}
+	key := TitleKey(it.Title)
+	var out []contracts.CatalogItem
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		return tx.Bucket(kv.BItems).ForEach(func(_, v []byte) error {
+			var candidate contracts.CatalogItem
+			if err := unmarshalItem(v, &candidate); err != nil {
+				return nil
+			}
+			if TitleKey(candidate.Title) == key {
+				out = append(out, candidate)
+			}
+			return nil
+		})
+	})
+	// Watch order only: every item here shares the title key, so sorting
+	// by the raw title would let casing or spacing decide the episode
+	// order (the client's compareEpisodes applies the same rule).
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Season != b.Season {
+			return a.Season < b.Season
+		}
+		if a.Episode != b.Episode {
+			return a.Episode < b.Episode
+		}
+		if a.Year != b.Year {
+			return a.Year < b.Year
+		}
+		return a.ID < b.ID
+	})
+	if out == nil {
+		out = []contracts.CatalogItem{}
+	}
+	return out, true
 }
 
 // Query filters by library/substring/kind then pages. The filter is a

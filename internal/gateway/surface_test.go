@@ -94,6 +94,81 @@ func TestStaticMountDoesNotShadowAPI(t *testing.T) {
 	}
 }
 
+// TestCatalogEpisodesEndpoint pins the title page's read: the gateway
+// answers a title's files in watch order (episode 10 after 2, not after
+// 1 lexically), 404s an unknown id and stays behind auth.
+func TestCatalogEpisodesEndpoint(t *testing.T) {
+	srv := testServer(t)
+	admin := setupAdmin(t, srv)
+
+	root := t.TempDir()
+	// The bracketed group is the fictional placeholder AGENTS.md requires;
+	// it is also what lets the anime identifier accept a bare episode
+	// number instead of declining to the generic "Show 01" reading.
+	for _, f := range []string{
+		"[Fansub-A] Show - 01.mkv",
+		"[Fansub-A] Show - 02.mkv",
+		"[Fansub-A] Show - 10.mkv",
+		"[Fansub-A] Other - 01.mkv",
+	} {
+		if err := os.WriteFile(filepath.Join(root, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "L", "type": "anime", "path": root}, admin)
+	if rec.Code != 201 {
+		t.Fatalf("library: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := do(t, srv, "POST", "/api/library/scan", nil, admin); rec.Code != 202 {
+		t.Fatalf("scan: %d", rec.Code)
+	}
+	waitScan(t, srv, admin)
+
+	var page contracts.CatalogPage
+	rec = do(t, srv, "GET", "/api/catalog", nil, admin)
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 4 {
+		t.Fatalf("catalog total=%d, want 4: %+v", page.Total, page.Items)
+	}
+	first := ""
+	for _, it := range page.Items {
+		if it.Title == "Show" && it.Episode == 1 {
+			first = it.ID
+		}
+	}
+	if first == "" {
+		t.Fatalf("no Show episode 1 in %+v", page.Items)
+	}
+
+	rec = do(t, srv, "GET", "/api/catalog/"+first+"/episodes", nil, admin)
+	if rec.Code != 200 {
+		t.Fatalf("episodes: %d %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Items []contracts.CatalogItem `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Items) != 3 {
+		t.Fatalf("episodes=%d, want 3: %+v", len(body.Items), body.Items)
+	}
+	for i, want := range []int{1, 2, 10} {
+		if body.Items[i].Title != "Show" || body.Items[i].Episode != want {
+			t.Fatalf("pos %d: %s ep %d, want Show ep %d", i, body.Items[i].Title, body.Items[i].Episode, want)
+		}
+	}
+
+	if rec := do(t, srv, "GET", "/api/catalog/does-not-exist/episodes", nil, admin); rec.Code != 404 {
+		t.Fatalf("unknown id: %d, want 404", rec.Code)
+	}
+	if rec := do(t, srv, "GET", "/api/catalog/"+first+"/episodes", nil, ""); rec.Code != 401 {
+		t.Fatalf("unauthenticated: %d, want 401", rec.Code)
+	}
+}
+
 func waitScan(t *testing.T, srv *Server, token string) {
 	t.Helper()
 	var status struct {
