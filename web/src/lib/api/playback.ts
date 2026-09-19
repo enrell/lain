@@ -1,4 +1,5 @@
 import { mediaUrl, request } from './client';
+import { reportCapabilities } from '$lib/utilities/capabilities';
 import type {
 	PlaybackOptions,
 	PlaybackPlan,
@@ -20,10 +21,21 @@ import type {
  * hls.js cannot send Authorization headers.
  */
 export const playback = {
-	plan: (id: string, opts: { client?: string; network?: string } = {}) =>
-		request<PlaybackPlan>(`/api/items/${encodeURIComponent(id)}/playback`, {
-			query: { client: opts.client ?? 'web', network: opts.network }
-		}),
+	/**
+	 * The plan is the playback policy: the UI must honor `available` and
+	 * `mode` instead of reconstructing URLs by itself. The request carries
+	 * what this browser reported it can decode (D-058) — a token list the
+	 * server validates against its own vocabulary — so a browser that
+	 * proves it can decode a Matroska file is not handed a transcode it
+	 * does not need. A client that reports nothing keeps the conservative
+	 * rules: an absent or empty `caps` is never a licence to direct-play.
+	 */
+	plan: async (id: string, opts: { client?: string; network?: string } = {}) => {
+		const caps = await reportCapabilities();
+		return request<PlaybackPlan>(`/api/items/${encodeURIComponent(id)}/playback`, {
+			query: { client: opts.client ?? 'web', network: opts.network, caps }
+		});
+	},
 
 	/** Quality ladder and preferred delivery for the player menu. */
 	options: () => request<PlaybackOptions>('/api/playback/options'),

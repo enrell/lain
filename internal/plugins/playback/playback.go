@@ -48,10 +48,12 @@ type PlanInput struct {
 }
 
 // Plan decides direct vs transcode. The mpv desktop always direct-plays;
-// browsers play mp4/webm directly and get browser-safe MP4s for the rest
-// through the transcode provider (D-023); only when no transcode
-// provider is healthy does the gateway downgrade the plan to an honest
-// transcode-required it cannot produce.
+// browsers play what they can decode themselves and get browser-safe
+// output for the rest through the transcode provider (D-023). What a
+// browser can decode is either guessed conservatively from the container
+// (D-030) or reported by the client itself (D-058) — see directPlay.
+// Only when no transcode provider is healthy does the gateway downgrade
+// the plan to an honest transcode-required it cannot produce.
 func Plan(in PlanInput) contracts.Plan {
 	asset := "asset:" + in.Request.ItemID
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(in.FilePath), "."))
@@ -66,7 +68,7 @@ func Plan(in PlanInput) contracts.Plan {
 			}
 			return contracts.Plan{Mode: "transcode-required", Asset: asset, Available: false, Reason: "HDR browser playback needs tone mapping, which is unavailable on this server"}
 		}
-		if browserDirect(ext, *in.MediaInfo) {
+		if directPlay(ext, *in.MediaInfo, in.Request.Capabilities) {
 			return contracts.Plan{Mode: "direct", Asset: asset, Available: true, Streams: in.MediaInfo.Streams}
 		}
 		return contracts.Plan{Mode: "transcode", Asset: asset, Available: true, Streams: in.MediaInfo.Streams}
@@ -92,9 +94,76 @@ func hasHDR(info contracts.MediaInfo) bool {
 	return false
 }
 
-func browserDirect(ext string, info contracts.MediaInfo) bool {
-	var video *contracts.MediaStream
-	var audio *contracts.MediaStream
+// directPlay answers whether a browser can decode this file as it is.
+//
+// Without a reported capability set — an older client, curl, the desktop
+// — the conservative per-container rules decide (D-030). With one, the
+// client's own claim decides, but only inside this server's vocabulary
+// and only for the tracks a player would actually use (D-058): a claim
+// cannot license a container this server has no Content-Type for, or a
+// profile no browser decodes whatever the client says.
+func directPlay(ext string, info contracts.MediaInfo, caps *contracts.ClientCapabilities) bool {
+	if caps == nil {
+		return browserDirect(ext, info)
+	}
+	return reportedDirect(ext, info, caps)
+}
+
+// reportedDirect applies a client's claim to the probed streams. The
+// container must open and every track the player would use must decode
+// in that container — the pairing is what keeps "HEVC decodes in MP4"
+// from licensing "HEVC in Matroska", which is a black screen.
+//
+// Tracks the player would not select are not consulted: a file whose
+// default audio is AAC and whose second audio track is AC-3 still
+// direct-plays, exactly as the browser ignores the track it cannot use.
+func reportedDirect(ext string, info contracts.MediaInfo, caps *contracts.ClientCapabilities) bool {
+	container, ok := contracts.DirectContainer(ext)
+	if !ok || !caps.Has(container) {
+		return false
+	}
+	video, audio := selectTracks(info)
+	if video == nil && audio == nil {
+		// Nothing was probed, so nothing can be claimed: a container
+		// that opens is not evidence that a stream decodes.
+		return false
+	}
+	if video != nil {
+		family, ok := contracts.CapabilityCodec(video.Codec)
+		if !ok || !caps.Has(container+"/"+family) || !videoDecodable(video) {
+			return false
+		}
+	}
+	if audio != nil {
+		family, ok := contracts.CapabilityCodec(audio.Codec)
+		if !ok || !caps.Has(container+"/"+family) {
+			return false
+		}
+	}
+	return true
+}
+
+// videoDecodable is the floor a client's claim cannot raise. H.264 High
+// 10, 4:2:2 and 4:4:4 have no browser decoder at all, and a codec string
+// cannot express that — the profile bits a client would have to encode
+// are exactly the ones canPlayType does not parse, so it answers
+// "probably" for them. The probed pixel format decides instead. VP9 and
+// AV1 do decode 10-bit, so the check is H.264-only.
+func videoDecodable(video *contracts.MediaStream) bool {
+	if strings.ToLower(video.Codec) != "h264" {
+		return true
+	}
+	switch strings.ToLower(video.PixelFormat) {
+	case "yuv420p", "yuvj420p":
+		return true
+	default:
+		return false
+	}
+}
+
+// selectTracks picks the streams a player would use: the first video
+// track and the default audio track (the first one when none is marked).
+func selectTracks(info contracts.MediaInfo) (video, audio *contracts.MediaStream) {
 	for i := range info.Streams {
 		s := &info.Streams[i]
 		switch s.Type {
@@ -108,6 +177,11 @@ func browserDirect(ext string, info contracts.MediaInfo) bool {
 			}
 		}
 	}
+	return video, audio
+}
+
+func browserDirect(ext string, info contracts.MediaInfo) bool {
+	video, audio := selectTracks(info)
 	if video == nil {
 		return ext == "mp3" || ext == "ogg"
 	}

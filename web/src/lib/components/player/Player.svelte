@@ -46,6 +46,8 @@
 
 	const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 	const HIDE_DELAY_MS = 2600;
+	// How long a direct play has to prove a decoded picture (D-058).
+	const FRAME_PROOF_MS = 3200;
 
 	let container = $state<HTMLDivElement | null>(null);
 	let video = $state<HTMLVideoElement | null>(null);
@@ -99,6 +101,17 @@
 	// Set on unmount so a late status/attach continuation cannot create an
 	// Hls instance after destroyHLS() has already run.
 	let destroyed = false;
+	// A direct plan is a claim until a picture exists. A browser can open
+	// the container, report no error, advance the clock and decode nothing
+	// (measured: HEVC in Matroska paints zero frames at a 0x0 video size),
+	// so a direct play is on probation: without a picture in time the
+	// player switches to the prepared path instead of leaving a black
+	// rectangle (D-058). forcedTranscode is that switch, and `mode` — never
+	// `plan.mode` — is what the rest of this component asks.
+	let forcedTranscode = $state(false);
+	let directFallbackNote = $state(false);
+	let frameCheck: ReturnType<typeof setTimeout> | null = null;
+	const mode = $derived(forcedTranscode ? 'transcode' : plan.mode);
 
 	const audioTracks = $derived((plan.streams ?? []).filter((s) => s.type === 'audio'));
 	const subtitleTracks = $derived(
@@ -107,9 +120,9 @@
 	// Transcode sessions serve the sidecar the session prepared; direct
 	// play asks the server to extract the selected track on the fly.
 	const subtitleSrc = $derived(
-		plan.mode === 'transcode' && transcodeReady && hasSubtitle && transcodeSession
+		mode === 'transcode' && transcodeReady && hasSubtitle && transcodeSession
 			? api.playback.subtitleUrl(item.id, session.token, transcodeSession)
-			: plan.mode !== 'transcode' && selectedSubtitle !== ''
+			: mode !== 'transcode' && selectedSubtitle !== ''
 				? api.playback.streamSubtitleUrl(item.id, session.token, Number(selectedSubtitle))
 				: undefined
 	);
@@ -120,15 +133,18 @@
 	let transcodeAbort: AbortController | null = null;
 
 	const streamSrc = $derived(
-		plan.mode === 'transcode' && delivery === 'hls'
+		mode === 'transcode' && delivery === 'hls'
 			? undefined
-			: plan.mode === 'transcode' && !transcodeReady
+			: mode === 'transcode' && !transcodeReady
 				? undefined
-				: plan.mode === 'transcode'
+				: mode === 'transcode'
 					? api.playback.transcodeUrl(item.id, session.token, transcodeSession)
 					: api.playback.streamUrl(item.id, session.token)
 	);
 	const title = $derived(item.title);
+	// Only a file with a video track can prove itself with a picture:
+	// audio-only direct play has no frame to wait for.
+	const expectsVideo = $derived((plan.streams ?? []).some((s) => s.type === 'video'));
 
 	/*
 	 * How long the media really is, from the plan's probe (D-057). 0 means
@@ -188,7 +204,7 @@
 		window.addEventListener('pagehide', onPageHide);
 		document.addEventListener('visibilitychange', onPageHide);
 		void loadPlaybackOptions();
-		if (plan.mode === 'transcode') {
+		if (mode === 'transcode') {
 			transcodeSession = plan.session ?? '';
 			transcodeReasons = plan.reasons ?? [];
 			if (plan.state === 'ready') {
@@ -202,6 +218,7 @@
 			}
 		} else {
 			transcodeReady = true;
+			startFrameProof();
 		}
 		return () => {
 			window.removeEventListener('pagehide', onPageHide);
@@ -214,6 +231,7 @@
 		persistNow();
 		if (hideTimer) clearTimeout(hideTimer);
 		if (resumeTimer) clearTimeout(resumeTimer);
+		if (frameCheck) clearTimeout(frameCheck);
 		transcodeAbort?.abort();
 		destroyHLS();
 	});
@@ -384,7 +402,7 @@
 	// A direct-play subtitle choice only swaps the sidecar; a transcode
 	// choice rebuilds the session, because the track is baked into it.
 	function onSubtitleChoice(): void {
-		if (plan.mode === 'transcode') void changeTracks();
+		if (mode === 'transcode') void changeTracks();
 	}
 
 	async function changeTracks(): Promise<void> {
@@ -397,7 +415,7 @@
 	// which is how a seek past the produced edge, a quality change and a
 	// track change all keep the viewer where they were.
 	async function rebuildAt(position: number): Promise<void> {
-		if (plan.mode !== 'transcode') return;
+		if (mode !== 'transcode') return;
 		const oldSession = transcodeSession;
 		destroyHLS();
 		transcodeReady = false;
@@ -418,6 +436,58 @@
 			currentTime = position;
 			void video.play().catch(() => undefined);
 		}
+	}
+
+	/* ---------------------------------------------------------------- */
+	/* first-frame verification (D-058)                                  */
+	/* ---------------------------------------------------------------- */
+
+	// decodedPicture is the only honest evidence that a direct play works:
+	// `loadedmetadata` and a resolved `play()` both succeed on a file the
+	// browser cannot decode. totalVideoFrames is Chromium's; where it is
+	// absent the painted size still has to be non-zero.
+	function decodedPicture(el: HTMLVideoElement): boolean {
+		const frames = (el as HTMLVideoElement & { totalVideoFrames?: number }).totalVideoFrames;
+		return el.videoWidth > 0 && (frames === undefined || frames > 0);
+	}
+
+	function startFrameProof(): void {
+		if (mode !== 'direct' || !expectsVideo) return;
+		if (frameCheck) clearTimeout(frameCheck);
+		frameCheck = setTimeout(() => {
+			frameCheck = null;
+			if (video && decodedPicture(video)) return;
+			void fallbackToTranscode();
+		}, FRAME_PROOF_MS);
+	}
+
+	function confirmFrameProof(): void {
+		if (!frameCheck) return;
+		if (video && decodedPicture(video)) {
+			clearTimeout(frameCheck);
+			frameCheck = null;
+		}
+	}
+
+	// fallbackToTranscode is the honesty layer under the capability claim:
+	// the browser said it could decode this file and did not. The viewer
+	// keeps their place and gets the prepared version, with the reason said
+	// out loud instead of a black frame.
+	async function fallbackToTranscode(): Promise<void> {
+		if (forcedTranscode) return;
+		forcedTranscode = true;
+		directFallbackNote = true;
+		destroyHLS();
+		const el = video;
+		const at = el && el.currentTime > 1 ? el.currentTime : resumePosition();
+		el?.pause();
+		baseOffset = at;
+		resumeApplied = true;
+		await prepareTranscode();
+		if (destroyed || !transcodeReady || !video) return;
+		video.currentTime = 0;
+		currentTime = at;
+		void video.play().catch(() => undefined);
 	}
 
 	/* ---------------------------------------------------------------- */
@@ -467,6 +537,7 @@
 		 */
 		if (scrubbing && !seekEngaged) scrubbing = false;
 		if (scrubbing) return;
+		confirmFrameProof();
 		currentTime = el.currentTime + baseOffset;
 		if (el.buffered.length > 0) {
 			bufferedStart = el.buffered.start(0) + baseOffset;
@@ -491,6 +562,7 @@
 
 	function onPlaying(): void {
 		waiting = false;
+		confirmFrameProof();
 	}
 
 	function onWaiting(): void {
@@ -513,6 +585,16 @@
 		playing = false;
 		waiting = false;
 		const code = video?.error?.code;
+		// A direct play that fails to decode is the capability claim being
+		// wrong; the honest answer is the prepared path, not an error the
+		// viewer cannot act on (D-058).
+		if (
+			mode === 'direct' &&
+			(code === MediaError.MEDIA_ERR_DECODE || code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED)
+		) {
+			void fallbackToTranscode();
+			return;
+		}
 		switch (code) {
 			case MediaError.MEDIA_ERR_NETWORK:
 				error = 'The stream connection dropped.';
@@ -532,7 +614,7 @@
 		error = null;
 		// An HLS session lives in an hls.js/MSE instance, not the element's
 		// src: reloading the element would detach it and never re-attach.
-		if (plan.mode === 'transcode' && delivery === 'hls') {
+		if (mode === 'transcode' && delivery === 'hls') {
 			attachHLS();
 			transcodeReady = true;
 			return;
@@ -601,7 +683,7 @@
 	}
 
 	function needsRebuild(target: number): boolean {
-		if (plan.mode !== 'transcode' || delivery !== 'hls' || sourceDuration <= 0) return false;
+		if (mode !== 'transcode' || delivery !== 'hls' || sourceDuration <= 0) return false;
 		if (target < baseOffset - SEEK_PRODUCED_GRACE_SEC) return true;
 		const produced = producedEdge();
 		return produced > 0 && target > produced + SEEK_PRODUCED_GRACE_SEC;
@@ -821,9 +903,9 @@
 		<track kind="captions" />
 	</video>
 
-	{#if transcodeReady && (audioTracks.length > 1 || subtitleTracks.length > 0 || (playbackOptions?.qualities.length ?? 0) > 0 || plan.mode === 'transcode')}
+	{#if transcodeReady && (audioTracks.length > 1 || subtitleTracks.length > 0 || (playbackOptions?.qualities.length ?? 0) > 0 || mode === 'transcode')}
 		<div class="absolute left-4 top-16 z-10 flex flex-wrap gap-2">
-			{#if plan.mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}
+			{#if mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}
 				<label class="flex items-center gap-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/85">
 					Quality
 					<select
@@ -841,7 +923,7 @@
 					</select>
 				</label>
 			{/if}
-			{#if plan.mode === 'transcode' && audioTracks.length > 1}
+			{#if mode === 'transcode' && audioTracks.length > 1}
 				<label class="flex items-center gap-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/85">
 					Audio
 					<select
@@ -1011,7 +1093,12 @@
 		</IconButton>
 		<div class="min-w-0">
 			<p class="truncate text-sm font-medium text-white/90">{title}</p>
-			{#if plan.mode === 'transcode' && transcodeReasons.length > 0}
+			{#if directFallbackNote}
+				<p class="truncate text-xs text-white/55">
+					This browser could not decode this file; preparing a compatible version.
+				</p>
+			{/if}
+			{#if mode === 'transcode' && transcodeReasons.length > 0}
 				<p class="truncate text-xs text-white/55">
 					Transcoding: {transcodeReasons.join(' · ')}{delivery === 'hls' ? ' · HLS' : ''}
 				</p>

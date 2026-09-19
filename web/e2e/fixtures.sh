@@ -13,7 +13,7 @@ command -v ffmpeg >/dev/null || {
 }
 
 rm -rf "$DIR"
-mkdir -p "$DIR/Anime/Frieren" "$DIR/Anime/Other Show" "$DIR/Anime/Long Show" "$DIR/Movies"
+mkdir -p "$DIR/Anime/Frieren" "$DIR/Anime/Other Show" "$DIR/Anime/Long Show" "$DIR/Anime/Direct Show" "$DIR/Movies"
 
 webm() {
 	local out="$1" freq="$2"
@@ -48,26 +48,42 @@ EOF
 webm "$DIR/Anime/Frieren/[Fansub-A] Frieren - 01.webm" 440
 webm "$DIR/Anime/Frieren/[Fansub-A] Frieren - 02.webm" 523
 
-# A container the browser plan honestly reports as transcode-required.
-# Two minutes long on purpose: an HLS session only ever holds what ffmpeg
-# has written so far, and the throttle budget (30s) keeps that well below
-# the total, which is the condition the seek bar has to survive.
+# A container the browser plan must transcode. HEVC in Matroska is the
+# measured trap: the element opens the file, reports no error, advances
+# the clock and paints nothing (0x0 video size, zero frames). No honest
+# client claims mkv/hevc, so the plan is a transcode and the HLS path is
+# what gets exercised — and a client that claims it anyway is what the
+# frame-verification step is about.
 ffmpeg -hide_banner -loglevel error \
 	-f lavfi -i "testsrc2=size=320x180:rate=12" -t 120 \
-	-c:v libx264 -pix_fmt yuv420p -preset ultrafast \
+	-c:v libx265 -preset ultrafast -x265-params log-level=error \
 	"$DIR/Anime/Other Show/[Fansub-A] Other Show - 01.mkv"
 
 # A second transcode-required title, used only by the seek-bar step, with
 # its own session so the produced edge there is unambiguous.
-# VP9 on purpose: an H.264 source is stream-copied, so the session would be
-# finished before a viewer could seek. This one is genuinely re-encoded,
-# and the step slows the encoder down (one thread, veryslow) so the session
-# is still being written when the seek happens. Ten minutes at -g 24 keeps
-# the segments at the 2s the step asks for.
+# 10-bit H.264 on purpose: it is the floor a capability claim cannot
+# raise — a browser answers "probably" for the codec string and still has
+# no High 10 decoder — and, unlike an 8-bit H.264 source, it is genuinely
+# re-encoded rather than stream-copied, so the session is still being
+# written when the seek happens. Ten minutes at -g 24 keeps the segments
+# at the 2s the step asks for.
 ffmpeg -hide_banner -loglevel error \
 	-f lavfi -i "testsrc2=size=320x180:rate=12" -t 600 -g 24 \
-	-c:v libvpx-vp9 -deadline realtime -cpu-used 8 -row-mt 1 -b:v 200k \
+	-c:v libx264 -pix_fmt yuv420p10le -preset ultrafast \
 	"$DIR/Anime/Long Show/[Fansub-A] Long Show - 01.mkv"
+
+# A Matroska file a real browser can decode: H.264 video with AAC audio,
+# the exact pair a Chromium reports it can play inside this container.
+# Ten minutes so the file is large enough that a mid-file seek is a Range
+# request rather than a buffer hit — that seek is the one this slice is
+# about, and it costs the disk instead of a session restart.
+ffmpeg -hide_banner -loglevel error \
+	-f lavfi -i "testsrc2=size=320x180:rate=12" \
+	-f lavfi -i "sine=frequency=440:sample_rate=48000" \
+	-t 600 -g 24 \
+	-c:v libx264 -pix_fmt yuv420p -preset ultrafast -b:v 400k \
+	-c:a aac -b:a 64k \
+	"$DIR/Anime/Direct Show/[Fansub-A] Direct Show - 01.mkv"
 
 # A direct-play mp4 for the movies library.
 ffmpeg -hide_banner -loglevel error \
