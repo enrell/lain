@@ -147,6 +147,65 @@ func TestWriteIndexPlaylistDropsMissingSegments(t *testing.T) {
 	}
 }
 
+// TestHLSDiscontinuityRoundTrip proves a timeline break ffmpeg wrote is
+// attributed to the segment that follows it and re-emitted in the served
+// playlist: dropping it would let a client stitch across the timestamp
+// jump as if the timeline were continuous.
+func TestHLSDiscontinuityRoundTrip(t *testing.T) {
+	tr := hlsTestTranscoder(t)
+	session := "sess-disc"
+	dir := tr.pathsFor(session, contracts.TranscodeSettings{}).hlsDir
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw := strings.Join([]string{
+		"#EXTM3U",
+		"#EXT-X-TARGETDURATION:4",
+		"#EXT-X-MAP:URI=\"init.mp4\"",
+		"#EXTINF:4.000,",
+		"seg00000.m4s",
+		"#EXT-X-DISCONTINUITY",
+		"#EXTINF:4.000,",
+		"seg00001.m4s",
+		"#EXT-X-ENDLIST",
+		"",
+	}, "\n")
+	writeTestFile(t, filepath.Join(dir, hlsRawPlaylist), raw)
+	for _, name := range []string{hlsInitSegment, "seg00000.m4s", "seg00001.m4s"} {
+		writeTestFile(t, filepath.Join(dir, name), "x")
+	}
+
+	segs, _, err := parseHLSPlaylist(filepath.Join(dir, hlsRawPlaylist))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(segs) != 2 {
+		t.Fatalf("segments=%d, want 2", len(segs))
+	}
+	// The tag applies to the segment that follows it, not the one before.
+	if segs[0].IsDiscont || !segs[1].IsDiscont {
+		t.Fatalf("discontinuity flags = [%v %v], want [false true]", segs[0].IsDiscont, segs[1].IsDiscont)
+	}
+
+	if err := writeIndexPlaylist(dir, 4); err != nil {
+		t.Fatalf("writeIndexPlaylist: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(dir, hlsIndexPlaylist))
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := string(body)
+	if strings.Count(index, "#EXT-X-DISCONTINUITY") != 1 {
+		t.Fatalf("want exactly one discontinuity tag:\n%s", index)
+	}
+	tag := strings.Index(index, "#EXT-X-DISCONTINUITY")
+	first := strings.Index(index, "seg00000.m4s")
+	second := strings.Index(index, "seg00001.m4s")
+	if tag < first || tag > second {
+		t.Fatalf("discontinuity must sit between the two segments (first=%d tag=%d second=%d):\n%s", first, tag, second, index)
+	}
+}
+
 // TestParseSegmentIndex pins the only file names the HLS endpoint may
 // treat as progress signals.
 func TestParseSegmentIndex(t *testing.T) {

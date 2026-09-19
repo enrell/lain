@@ -48,6 +48,7 @@ func parseHLSPlaylist(path string) ([]hlsSegment, bool, error) {
 	var out []hlsSegment
 	var pendingDuration float64
 	var pendingSeq int
+	var pendingDiscont bool
 	var elapsed float64
 	mediaSeq := 0
 	ended := false
@@ -66,21 +67,22 @@ func parseHLSPlaylist(path string) ([]hlsSegment, bool, error) {
 			}
 			pendingDuration, _ = strconv.ParseFloat(strings.TrimSpace(value), 64)
 		case line == "#EXT-X-DISCONTINUITY":
-			if len(out) > 0 {
-				out[len(out)-1].IsDiscont = true
-			}
+			// The tag precedes the segment it applies to: the next media
+			// segment starts a new timeline.
+			pendingDiscont = true
 		case line == "#EXT-X-ENDLIST":
 			ended = true
 		case strings.HasPrefix(line, "#"):
 			// header/metadata tags are not needed here
 		default:
-			seg := hlsSegment{URI: line, Duration: pendingDuration, MediaSeq: pendingSeq}
+			seg := hlsSegment{URI: line, Duration: pendingDuration, MediaSeq: pendingSeq, IsDiscont: pendingDiscont}
 			seg.StartSec = elapsed
 			elapsed += pendingDuration
 			seg.EndSec = elapsed
 			out = append(out, seg)
 			pendingSeq++
 			pendingDuration = 0
+			pendingDiscont = false
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -128,7 +130,15 @@ func writeIndexPlaylist(dir string, fallbackTarget int) error {
 	if len(segments) > 0 {
 		fmt.Fprintf(&b, "#EXT-X-MEDIA-SEQUENCE:%d\n", segments[0].MediaSeq)
 	}
-	for _, seg := range segments {
+	for i, seg := range segments {
+		// Re-emit the timeline break ffmpeg wrote, so a client resets its
+		// timestamps exactly where the source broke instead of stitching
+		// across the jump. The first listed segment has nothing before it
+		// to be discontinuous from, so the tag is dropped there (segment
+		// deletion can move the boundary to the front of the playlist).
+		if seg.IsDiscont && i > 0 {
+			b.WriteString("#EXT-X-DISCONTINUITY\n")
+		}
 		fmt.Fprintf(&b, "#EXTINF:%.3f,\n%s\n", seg.Duration, filepath.Base(seg.URI))
 	}
 	if ended {
