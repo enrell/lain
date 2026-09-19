@@ -6,7 +6,6 @@
 	import { api } from '$lib/api';
 	import MediaGrid from '$lib/components/media/MediaGrid.svelte';
 	import ShowCard from '$lib/components/media/ShowCard.svelte';
-	import ShowPanel from '$lib/components/media/ShowPanel.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
@@ -14,14 +13,15 @@
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { ensureEnrichments } from '$lib/stores/media-cache.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
-	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
+	import { groupItems, sortGroups } from '$lib/utilities/grouping';
 
 	const PAGE_SIZE = 60;
 
 	/**
-	 * Plex-style library: the grid lists shows, not files. A show opens
-	 * its own page with seasons and episode rows; single-file titles
-	 * (movies) keep the poster grid and link straight to the item.
+	 * Plex-style library: the grid lists shows, not files. A show card
+	 * opens the show's own page (/item/{id}), which lists its episodes;
+	 * single-file titles (movies) keep the poster grid and link straight
+	 * to their item page.
 	 */
 	let {
 		libraries = [],
@@ -42,7 +42,6 @@
 	let done = $state(false);
 	let sentinel = $state<HTMLElement | null>(null);
 	let progressMap = $state<Map<string, Progress>>(new Map());
-	let openKey = $state<string | null>(null);
 
 	async function loadMore(): Promise<void> {
 		if (loading || done) return;
@@ -71,7 +70,6 @@
 		total = 0;
 		done = false;
 		error = null;
-		openKey = null;
 		await loadMore();
 	}
 
@@ -101,9 +99,6 @@
 		return () => observer.disconnect();
 	});
 
-	// A show opened from the grid is always already loaded; the sentinel
-	// above keeps pulling the remaining pages.
-
 	const libraryOptions = $derived([
 		{ value: '', label: 'All libraries' },
 		...libraries.map((lib) => ({ value: lib.id, label: lib.name }))
@@ -117,7 +112,6 @@
 	const groups = $derived(sortGroups(groupItems(items), sort));
 	const shows = $derived(groups.filter((g) => g.count > 1));
 	const singles = $derived(groups.filter((g) => g.count === 1).flatMap((g) => g.items));
-	const openGroup = $derived(shows.find((g) => g.key === openKey) ?? null);
 	const activeType = $derived(
 		libraries.find((lib) => lib.id === (selectedLibrary || libraryId))?.type ?? ''
 	);
@@ -136,87 +130,82 @@
 </script>
 
 <div class="space-y-5">
-	{#if openGroup}
-		<ShowPanel group={openGroup} {progressMap} {libraries} onback={() => (openKey = null)} />
-	{:else}
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<p class="text-sm text-muted" aria-live="polite">{counts}</p>
-			<div class="flex flex-wrap items-center gap-2">
-				{#if showLibraryFilter}
-					<div class="w-full min-w-0 sm:w-44">
-						<Select
-							aria-label="Filter by library"
-							bind:value={selectedLibrary}
-							options={libraryOptions}
-							placeholder="All libraries"
-							onValueChange={() => void reset()}
-						/>
-					</div>
-				{/if}
+	<div class="flex flex-wrap items-center justify-between gap-3">
+		<p class="text-sm text-muted" aria-live="polite">{counts}</p>
+		<div class="flex flex-wrap items-center gap-2">
+			{#if showLibraryFilter}
 				<div class="w-full min-w-0 sm:w-44">
 					<Select
-						aria-label="Sort"
-						bind:value={sort}
-						options={sortOptions}
+						aria-label="Filter by library"
+						bind:value={selectedLibrary}
+						options={libraryOptions}
+						placeholder="All libraries"
 						onValueChange={() => void reset()}
 					/>
 				</div>
+			{/if}
+			<div class="w-full min-w-0 sm:w-44">
+				<Select
+					aria-label="Sort"
+					bind:value={sort}
+					options={sortOptions}
+					onValueChange={() => void reset()}
+				/>
 			</div>
 		</div>
+	</div>
 
-		{#if error && items.length === 0}
-			<ErrorState message={error} retry={() => void reset()} />
-		{:else if !loading && items.length === 0 && !error}
-			<EmptyState
-				title="Nothing indexed here"
-				description="Once a scan finds files for this library they will appear here."
-			>
-				{#snippet icon()}<Film class="size-6 text-muted" />{/snippet}
-			</EmptyState>
-		{:else}
-			{#if shows.length > 0}
-				<section class="space-y-4">
-					<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{showHeading}</h2>
-					<div class="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-						{#each shows as group, i (group.key)}
-							<ShowCard
-								{group}
-								progress={group.items.map((it) => progressMap.get(it.id)).find(Boolean) ?? null}
-								priority={i < 6}
-								onopen={(g) => (openKey = g.key)}
-							/>
-						{/each}
-					</div>
-				</section>
-			{/if}
-
-			{#if singles.length > 0}
-				<section class="space-y-4">
-					{#if shows.length > 0}
-						<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{singleHeading}</h2>
-					{/if}
-					<MediaGrid items={singles} {progressMap} />
-				</section>
-			{/if}
-
-			{#if loading}
-				<div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-					{#each Array(6) as _}
-						<Skeleton class="aspect-[2/3]" />
+	{#if error && items.length === 0}
+		<ErrorState message={error} retry={() => void reset()} />
+	{:else if !loading && items.length === 0 && !error}
+		<EmptyState
+			title="Nothing indexed here"
+			description="Once a scan finds files for this library they will appear here."
+		>
+			{#snippet icon()}<Film class="size-6 text-muted" />{/snippet}
+		</EmptyState>
+	{:else}
+		{#if shows.length > 0}
+			<section class="space-y-4">
+				<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{showHeading}</h2>
+				<div class="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+					{#each shows as group, i (group.key)}
+						<ShowCard
+							{group}
+							progress={group.items.map((it) => progressMap.get(it.id)).find(Boolean) ?? null}
+							priority={i < 6}
+						/>
 					{/each}
 				</div>
-			{:else if !done}
-				<div class="mt-8 flex justify-center" bind:this={sentinel}>
-					<Button variant="secondary" onclick={() => void loadMore()}>
-						<ArrowDown class="size-4" /> Load more
-					</Button>
-				</div>
-			{:else if items.length > 0}
-				<p class="mt-8 text-center text-xs text-muted">End of library</p>
-			{/if}
-			{#if error && items.length > 0}
-				<p class="mt-4 text-center text-sm text-danger" role="alert">{error}</p>
-			{/if}
+			</section>
+		{/if}
+
+		{#if singles.length > 0}
+			<section class="space-y-4">
+				{#if shows.length > 0}
+					<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{singleHeading}</h2>
+				{/if}
+				<MediaGrid items={singles} {progressMap} />
+			</section>
+		{/if}
+
+		{#if loading}
+			<div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+				{#each Array(6) as _}
+					<Skeleton class="aspect-[2/3]" />
+				{/each}
+			</div>
+		{:else if !done}
+			<div class="mt-8 flex justify-center" bind:this={sentinel}>
+				<Button variant="secondary" onclick={() => void loadMore()}>
+					<ArrowDown class="size-4" /> Load more
+				</Button>
+			</div>
+		{:else if items.length > 0}
+			<p class="mt-8 text-center text-xs text-muted">End of library</p>
+		{/if}
+		{#if error && items.length > 0}
+			<p class="mt-4 text-center text-sm text-danger" role="alert">{error}</p>
 		{/if}
 	{/if}
 </div>

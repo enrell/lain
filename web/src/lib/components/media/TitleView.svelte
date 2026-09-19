@@ -1,33 +1,39 @@
 <script lang="ts">
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import type { Snippet } from 'svelte';
 	import Play from '@lucide/svelte/icons/play';
 	import type { Library, Progress } from '$lib/api/types';
-	import type { SeriesGroup } from '$lib/utilities/grouping';
+	import { episodeLabel, type SeriesGroup } from '$lib/utilities/grouping';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import Poster from '$lib/components/media/Poster.svelte';
+	import { formatTime } from '$lib/utilities/format';
 
 	/**
-	 * Plex-style show page: a full-bleed backdrop with the title block,
-	 * then a poster rail (resume action plus an information card)
-	 * beside an episode card grid. Seasons filter; movies never reach
-	 * here — single titles link straight to their item page.
+	 * The title page body: a cinematic backdrop with the title block, a
+	 * poster rail (resume action, admin actions, information) beside the
+	 * episode grid. Single-file titles (movies, specials) never reach
+	 * here — the item route renders those directly.
+	 *
+	 * Every card plays its episode, which is why there is no per-episode
+	 * page: the title owns the grid, the watch page owns the player.
 	 */
 	let {
 		group,
 		progressMap = null,
 		libraries = [],
-		onback
+		actions = undefined
 	}: {
 		group: SeriesGroup;
 		progressMap?: Map<string, Progress> | null;
 		libraries?: Library[];
-		onback: () => void;
+		actions?: Snippet;
 	} = $props();
 
-	const seasons = $derived([...new Set(group.items.map((i) => i.season).filter((s) => s > 0))].sort((a, b) => a - b));
+	const seasons = $derived(
+		[...new Set(group.items.map((i) => i.season).filter((s) => s > 0))].sort((a, b) => a - b)
+	);
 	let season = $state<number | 'all'>('all');
 
 	const visible = $derived(
@@ -37,16 +43,26 @@
 	const first = $derived(group.items[0]);
 	const artItem = $derived(group.items.find((i) => i.episode > 0) ?? first);
 	const enrichments = $derived(group.items.map((i) => enrichmentCache.get(i.id)));
-	const synopsis = $derived(enrichments.map((e) => e?.synopsis).find((s) => s && s.length > 0) ?? '');
-	const genres = $derived(enrichments.map((e) => e?.genres ?? []).find((g) => g.length > 0)?.slice(0, 3) ?? []);
+	const synopsis = $derived(
+		enrichments.map((e) => e?.synopsis).find((s) => s && s.length > 0) ?? ''
+	);
+	const genres = $derived(
+		enrichments.map((e) => e?.genres ?? []).find((g) => g.length > 0)?.slice(0, 3) ?? []
+	);
 	const backdrop = $derived(enrichments.map((e) => e?.cover).find((c) => c) ?? '');
 	const posterEnrichment = $derived(enrichmentCache.get(artItem.id) ?? null);
+	// The provider's title wins over the parsed one, exactly like the
+	// single-title page: a scan reads "Frieren", the overlay knows
+	// "Frieren: Beyond Journey's End".
+	const displayTitle = $derived(
+		enrichments.map((e) => e?.title).find((t) => t && t.length > 0) ?? group.title
+	);
 
 	const meta = $derived(
 		[
 			group.year > 0 ? String(group.year) : '',
 			'Series',
-			`${group.count} ${group.count === 1 ? 'file' : 'files'}`
+			`${group.count} ${group.count === 1 ? 'episode' : 'episodes'}`
 		]
 			.filter(Boolean)
 			.join('  ·  ')
@@ -59,9 +75,7 @@
 			.filter((name, index, all) => all.indexOf(name) === index)
 	);
 
-	const watched = $derived(
-		group.items.filter((i) => progressMap?.get(i.id)?.completed).length
-	);
+	const watched = $derived(group.items.filter((i) => progressMap?.get(i.id)?.completed).length);
 
 	// Resume at the first started-but-unfinished episode; otherwise play
 	// the show from the top like a fresh watch.
@@ -72,25 +86,20 @@
 		}) ?? first
 	);
 	const resumeProgress = $derived(progressMap?.get(resumeTarget.id) ?? null);
-	const resumeLabel = $derived(
-		resumeProgress && !resumeProgress.completed && resumeProgress.position_sec >= 5
-			? `Resume · ${episodeLabel(resumeTarget)}`
-			: 'Play'
+	const resuming = $derived(
+		!!resumeProgress && !resumeProgress.completed && resumeProgress.position_sec >= 5
 	);
+	// "Resume from 4:12", never "Resume · S01E01": the smoke test and the
+	// item page both key on that phrase, and a bare "Resume" would also
+	// match the cards' "Resume at 42%" text.
+	const resumeLabel = $derived(resuming ? `Resume from ${formatTime(resumeProgress!.position_sec)}` : 'Play');
 	const watchedLine = $derived(
-		resumeProgress && !resumeProgress.completed && resumeProgress.duration_sec > 0
-			? `${Math.round((resumeProgress.position_sec / resumeProgress.duration_sec) * 100)}% watched`
+		resuming && resumeProgress!.duration_sec > 0
+			? `Up next · ${episodeLabel(resumeTarget)} · ${Math.round((resumeProgress!.position_sec / resumeProgress!.duration_sec) * 100)}% watched`
 			: watched > 0
 				? `${watched} of ${group.count} watched`
 				: 'Not started'
 	);
-
-	function episodeLabel(item: { season: number; episode: number; title: string }): string {
-		if (item.season > 0 && item.episode > 0)
-			return `S${String(item.season).padStart(2, '0')}E${String(item.episode).padStart(2, '0')}`;
-		if (item.episode > 0) return `Episode ${item.episode}`;
-		return item.title;
-	}
 
 	function stillUrl(id: string): string {
 		return api.thumbnail.url(id, session.token, { width: 480 });
@@ -114,25 +123,21 @@
 			<img src={backdrop} alt="" aria-hidden="true" class="absolute inset-0 size-full object-cover" referrerpolicy="no-referrer" />
 			<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-background/10"></div>
 		{/if}
-		<button
-			type="button"
-			onclick={onback}
-			class="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-black/45 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur transition-colors hover:bg-black/65"
-		>
-			<ArrowLeft class="size-3.5" aria-hidden="true" /> Library
-		</button>
-		<div class="relative px-5 pb-7 pt-28 sm:px-8 sm:pt-40">
+		<div class="relative px-5 pb-7 pt-20 sm:px-8 sm:pt-32">
 			<p class="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">{meta}</p>
-			<h1 class="mt-2 max-w-4xl text-3xl font-bold tracking-[-0.03em] text-white sm:text-5xl">{group.title}</h1>
+			<h1 class="mt-2 max-w-4xl text-3xl font-bold tracking-[-0.03em] text-foreground sm:text-5xl">{displayTitle}</h1>
+			{#if displayTitle !== group.title}
+				<p class="mt-1 text-sm text-muted">Indexed as “{group.title}”</p>
+			{/if}
 			{#if genres.length > 0}
 				<ul class="mt-4 flex flex-wrap gap-2" aria-label="Genres">
 					{#each genres as genre (genre)}
-						<li class="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-white/90">{genre}</li>
+						<li class="rounded-full border border-line/60 bg-surface/60 px-3 py-1 text-xs font-semibold text-foreground/90">{genre}</li>
 					{/each}
 				</ul>
 			{/if}
 			{#if synopsis}
-				<p class="mt-4 line-clamp-3 max-w-3xl text-sm leading-6 text-white/75">{synopsis}</p>
+				<p class="mt-4 line-clamp-3 max-w-3xl text-sm leading-6 text-muted">{synopsis}</p>
 			{/if}
 		</div>
 	</div>
@@ -148,6 +153,11 @@
 				</LinkButton>
 				<p class="mt-2 text-center text-xs text-muted" aria-live="polite">{watchedLine}</p>
 			</div>
+			{#if actions}
+				<div class="flex flex-col gap-2">
+					{@render actions()}
+				</div>
+			{/if}
 			<div class="rounded-xl border border-line/70 bg-surface/30 p-4">
 				<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">Information</h2>
 				<dl class="mt-2 text-sm">
@@ -215,15 +225,16 @@
 				</div>
 			{/if}
 
-			<ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+			<h2 class="mb-4 text-lg font-semibold tracking-[-0.02em] text-foreground">Episodes</h2>
+			<ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" data-episode-grid>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
 					<li>
 						<a
-							href={`/item/${item.id}`}
+							href={`/player/${item.id}`}
 							class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
-							aria-label={`${episodeLabel(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
+							aria-label={`Play ${episodeLabel(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 						>
 							<div class="relative aspect-video overflow-hidden bg-surface">
 								<img

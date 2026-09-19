@@ -19,9 +19,16 @@
 	import Poster from '$lib/components/media/Poster.svelte';
 	import ProgressBar from '$lib/components/media/ProgressBar.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
-	import { ensureLibraries, applyEnrichment, itemCache } from '$lib/stores/media-cache.svelte';
+	import TitleView from '$lib/components/media/TitleView.svelte';
+	import {
+		applyEnrichment,
+		ensureEnrichments,
+		ensureLibraries,
+		itemCache
+	} from '$lib/stores/media-cache.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { groupFromEpisodes, type SeriesGroup } from '$lib/utilities/grouping';
 	import { formatBytes, formatDate, formatRelative, formatTime, mediaSubtitle } from '$lib/utilities/format';
 	import { progressRatio } from '$lib/utilities/progress';
 
@@ -30,8 +37,13 @@
 	let item = $state<CatalogItem | null>(null);
 	let enrichment = $state<Enrichment | null>(null);
 	let progress = $state<Progress | null>(null);
+	let progressMap = $state<Map<string, Progress>>(new Map());
 	let plan = $state<PlaybackPlan | null>(null);
 	let library = $state<Library | undefined>(undefined);
+	let libraries = $state<Library[]>([]);
+	// The title's other files. Null means "this is a single-file title"
+	// (a movie or a lone special), which renders the plain item page.
+	let series = $state<SeriesGroup | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let notFound = $state(false);
@@ -68,20 +80,25 @@
 		error = null;
 		notFound = false;
 		try {
-			const [it, prog, pl, enr, libs] = await Promise.all([
+			const [it, pl, enr, libs, eps, allProgress] = await Promise.all([
 				api.catalog.get(id),
-				api.progress.get(id),
 				api.playback.plan(id),
 				api.enrich.get(id),
-				ensureLibraries()
+				ensureLibraries(),
+				api.catalog.episodes(id),
+				api.me.continueWatching()
 			]);
 			item = it;
 			itemCache.set(it.id, it);
-			progress = prog;
 			plan = pl;
 			enrichment = enr;
 			if (enr) applyEnrichment(enr);
+			libraries = libs;
 			library = libs.find((lib) => lib.id === it.library_id);
+			progressMap = new Map(allProgress.map((p) => [p.item_id, p]));
+			progress = progressMap.get(it.id) ?? null;
+			series = eps.items.length > 1 ? groupFromEpisodes(eps.items) : null;
+			if (series) await ensureEnrichments(series.items.map((episode) => episode.id));
 		} catch (err) {
 			if (err instanceof ApiError && err.kind === 'not-found') {
 				notFound = true;
@@ -152,7 +169,23 @@
 	}
 </script>
 
-<svelte:head><title>{title || 'Item'} — Lain</title></svelte:head>
+<svelte:head><title>{title || series?.title || 'Item'} — Lain</title></svelte:head>
+
+<!-- Admin overlay controls, shared by the title page (in the poster rail)
+     and the single-title page. They act on the item the route opened, so
+     removing one overlay can never strip a sibling episode's metadata. -->
+{#snippet adminActions()}
+	{#if session.isAdmin}
+		<Button variant="secondary" size="sm" loading={enriching} onclick={() => void fetchMetadata()}>
+			<Sparkles class="size-3.5" /> {enrichment ? 'Refetch metadata' : 'Fetch metadata'}
+		</Button>
+		{#if enrichment}
+			<Button variant="danger" size="sm" onclick={() => (confirmRemove = true)}>
+				<Trash2 class="size-3.5" /> Remove
+			</Button>
+		{/if}
+	{/if}
+{/snippet}
 
 {#if loading}
 	<div class="space-y-6">
@@ -178,6 +211,10 @@
 	</EmptyState>
 {:else if error}
 	<ErrorState message={error} retry={() => void load()} />
+{:else if series}
+	{#key series.key}
+		<TitleView group={series} {progressMap} {libraries} actions={adminActions} />
+	{/key}
 {:else if item}
 	<article class="space-y-8">
 		<!-- Artwork backdrop: cover, else poster, else a generated still. It is
@@ -245,14 +282,7 @@
 					{/if}
 					{#if session.isAdmin}
 						<div class="flex items-center gap-2 md:ml-auto">
-							<Button variant="secondary" size="sm" loading={enriching} onclick={() => void fetchMetadata()}>
-								<Sparkles class="size-3.5" /> {enrichment ? 'Refetch metadata' : 'Fetch metadata'}
-							</Button>
-							{#if enrichment}
-								<Button variant="danger" size="sm" onclick={() => (confirmRemove = true)}>
-									<Trash2 class="size-3.5" /> Remove
-								</Button>
-							{/if}
+							{@render adminActions()}
 						</div>
 					{/if}
 				</div>
@@ -303,16 +333,16 @@
 			</div>
 		</div>
 	</article>
-
-	<Modal bind:open={confirmRemove} title="Remove metadata overlay?" description="Identity, progress and files are untouched — only the fetched artwork and description go away.">
-		{#snippet footer()}
-			<Button variant="ghost" onclick={() => (confirmRemove = false)}>Cancel</Button>
-			<Button variant="danger" loading={removing} onclick={() => void removeMetadata()}>
-				Remove overlay
-			</Button>
-		{/snippet}
-		<p class="text-sm text-muted">
-			Provider: <span class="text-foreground">{enrichment?.provider}</span>. You can fetch it again later.
-		</p>
-	</Modal>
 {/if}
+
+<Modal bind:open={confirmRemove} title="Remove metadata overlay?" description="Identity, progress and files are untouched — only the fetched artwork and description go away.">
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (confirmRemove = false)}>Cancel</Button>
+		<Button variant="danger" loading={removing} onclick={() => void removeMetadata()}>
+			Remove overlay
+		</Button>
+	{/snippet}
+	<p class="text-sm text-muted">
+		Provider: <span class="text-foreground">{enrichment?.provider}</span>. You can fetch it again later.
+	</p>
+</Modal>
