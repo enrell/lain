@@ -13,7 +13,7 @@ command -v ffmpeg >/dev/null || {
 }
 
 rm -rf "$DIR"
-mkdir -p "$DIR/Anime/Frieren" "$DIR/Anime/Other Show" "$DIR/Movies"
+mkdir -p "$DIR/Anime/Frieren" "$DIR/Anime/Other Show" "$DIR/Anime/Long Show" "$DIR/Movies"
 
 webm() {
 	local out="$1" freq="$2"
@@ -49,10 +49,25 @@ webm "$DIR/Anime/Frieren/[Fansub-A] Frieren - 01.webm" 440
 webm "$DIR/Anime/Frieren/[Fansub-A] Frieren - 02.webm" 523
 
 # A container the browser plan honestly reports as transcode-required.
+# Two minutes long on purpose: an HLS session only ever holds what ffmpeg
+# has written so far, and the throttle budget (30s) keeps that well below
+# the total, which is the condition the seek bar has to survive.
 ffmpeg -hide_banner -loglevel error \
-	-f lavfi -i "testsrc2=size=320x180:rate=12" -t 10 \
+	-f lavfi -i "testsrc2=size=320x180:rate=12" -t 120 \
 	-c:v libx264 -pix_fmt yuv420p -preset ultrafast \
 	"$DIR/Anime/Other Show/[Fansub-A] Other Show - 01.mkv"
+
+# A second transcode-required title, used only by the seek-bar step, with
+# its own session so the produced edge there is unambiguous.
+# VP9 on purpose: an H.264 source is stream-copied, so the session would be
+# finished before a viewer could seek. This one is genuinely re-encoded,
+# and the step slows the encoder down (one thread, veryslow) so the session
+# is still being written when the seek happens. Ten minutes at -g 24 keeps
+# the segments at the 2s the step asks for.
+ffmpeg -hide_banner -loglevel error \
+	-f lavfi -i "testsrc2=size=320x180:rate=12" -t 600 -g 24 \
+	-c:v libvpx-vp9 -deadline realtime -cpu-used 8 -row-mt 1 -b:v 200k \
+	"$DIR/Anime/Long Show/[Fansub-A] Long Show - 01.mkv"
 
 # A direct-play mp4 for the movies library.
 ffmpeg -hide_banner -loglevel error \
