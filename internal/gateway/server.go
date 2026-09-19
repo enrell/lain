@@ -637,7 +637,28 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, v auth.V
 			}
 		}
 	}
-	writeJSON(w, 200, plan)
+	// The plan the client receives also carries the media's own length.
+	// An HLS session is an EVENT playlist listing only the segments ffmpeg
+	// has already written, so under MSE the element's duration is the
+	// produced edge, not the episode: a seek bar drawn from it stops at
+	// whatever has been encoded so far. The probed length is what lets the
+	// player span the real timeline (and report progress honestly) — the
+	// same fact Jellyfin's PlaybackInfo carries as RunTimeTicks. It is the
+	// gateway's probe, so the plugin contract stays untouched (D-057).
+	writeJSON(w, 200, struct {
+		contracts.Plan
+		DurationSec float64 `json:"duration_sec,omitempty"`
+	}{Plan: plan, DurationSec: mediaDurationSec(mediaInfo)})
+}
+
+// mediaDurationSec is the probed media length in seconds, 0 when the
+// probe did not run (mpv/desktop clients) or did not report one. A
+// caller must treat 0 as unknown, never as "zero length".
+func mediaDurationSec(info *contracts.MediaInfo) float64 {
+	if info == nil || info.Duration <= 0 {
+		return 0
+	}
+	return info.Duration
 }
 
 // handleStream authorizes (header or ?token=) then serves bytes with

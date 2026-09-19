@@ -168,6 +168,46 @@ func catalogOneMP4(t *testing.T, srv *Server, admin, dir, name string) string {
 	return catalogDir(t, srv, admin, dir)
 }
 
+// TestPlaybackPlanCarriesTheMediaLength pins the fact the seek bar needs.
+// An HLS session is an EVENT playlist listing only the segments ffmpeg has
+// written, so under MSE the element's duration is the produced edge; the
+// plan carries the probed media length (the same fact Jellyfin's
+// PlaybackInfo exposes as RunTimeTicks) so the player can span the real
+// timeline, and reports 0 — unknown, never a guessed length — when no
+// probe ran.
+func TestPlaybackPlanCarriesTheMediaLength(t *testing.T) {
+	srv := testServer(t)
+	admin := setupAdmin(t, srv)
+	id := catalogOneMP4(t, srv, admin, t.TempDir(), "[Fansub-A] Length.mp4")
+
+	rec := do(t, srv, "GET", "/api/items/"+id+"/playback?client=web", nil, admin)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("plan: %d %s", rec.Code, rec.Body.String())
+	}
+	var browserPlan struct {
+		Mode        string  `json:"mode"`
+		DurationSec float64 `json:"duration_sec"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &browserPlan); err != nil {
+		t.Fatal(err)
+	}
+	if browserPlan.DurationSec < 1.5 || browserPlan.DurationSec > 2.5 {
+		t.Fatalf("browser plan duration_sec=%v, want the 2s fixture", browserPlan.DurationSec)
+	}
+
+	// mpv/desktop never probes, and must not be handed a made-up length.
+	rec = do(t, srv, "GET", "/api/items/"+id+"/playback?client=mpv", nil, admin)
+	var desktopPlan struct {
+		DurationSec float64 `json:"duration_sec"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &desktopPlan); err != nil {
+		t.Fatal(err)
+	}
+	if desktopPlan.DurationSec != 0 {
+		t.Fatalf("desktop plan duration_sec=%v, want 0 (no probe)", desktopPlan.DurationSec)
+	}
+}
+
 // TestBitrateCapForcesTranscode pins the remote bitrate limit on direct
 // play: a capped account must not stream a source above its limit, so the
 // plan is downgraded to a capped transcode.
