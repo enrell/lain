@@ -393,17 +393,26 @@ func (p encodePlan) audioQualityArgs() []string {
 	return []string{"-b:a", fmt.Sprintf("%dk", p.audioBitrateKbps)}
 }
 
+// nightmodePan is lain's dialogue-lifting 5.1 -> stereo matrix. It names
+// 5.1 channel positions explicitly, so it is only valid for a 5.1 source.
+const nightmodePan = "pan=stereo|c0=0.4*c0+0.4*c1+0.8*c2+0.2*c4|c1=0.4*c0+0.4*c1+0.8*c2+0.2*c5"
+
 // audioFilters applies the downmix gain and, when selected, lain's own
 // nightmode matrix. `none` leaves ffmpeg's default downmix coefficients
 // alone, so the setting is only ever additive.
 func (p encodePlan) audioFilters() string {
 	var chain []string
-	if p.downmix && p.settings.DownmixStereoAlgorithm == contracts.DownmixNightmode {
+	if p.downmix && p.settings.DownmixStereoAlgorithm == contracts.DownmixNightmode &&
+		p.audio != nil && p.audio.Channels == 6 {
 		// lain's nightmode: lift the centre (dialogue) channel and keep
-		// only a hint of surrounds and LFE. These coefficients are
-		// lain's own, documented here and in docs/CONTRACTS.md; they are
-		// not Jellyfin's Dave750/NightmodeDialogue matrices.
-		chain = append(chain, "pan=stereo|c0=0.4*c0+0.4*c1+0.8*c2+0.2*c4|c1=0.4*c0+0.4*c1+0.8*c2+0.2*c5")
+		// only a hint of surrounds and LFE. It is gated on 6 channels
+		// because the matrix's "centre" slot is only the centre in a 5.1
+		// layout — for a quad it is the back-left, and 7.1 side channels
+		// would be dropped, so another layout uses ffmpeg's own
+		// layout-aware downmix instead. These coefficients are lain's
+		// own, documented here and in docs/CONTRACTS.md; they are not
+		// Jellyfin's Dave750/NightmodeDialogue matrices.
+		chain = append(chain, nightmodePan)
 	}
 	if p.downmix && p.settings.DownmixAudioBoost > 0 && p.settings.DownmixAudioBoost != 1 {
 		chain = append(chain, fmt.Sprintf("volume=%.2f", p.settings.DownmixAudioBoost))
