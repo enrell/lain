@@ -37,7 +37,10 @@ Input: `{request{item_id, client, network}, file_path}` → `Plan{mode,
 asset, available, reason?}`. `asset` is opaque (`asset:<id>`); the
 gateway resolves it. mpv/desktop clients always direct-play; browser
 clients get `direct` for web containers and `transcode` (playable
-through the transcode endpoint) for the rest. A per-account bitrate cap
+through the transcode endpoint) for the rest. An MP4/M4V direct-plays
+only when its video is H.264 yuv420p and its audio is AAC or MP3 —
+AC-3/E-AC-3 are excluded because Chromium on Linux cannot decode them
+(D-030's "verified web-safe streams"). A per-account bitrate cap
 (or the server-wide remote limit) downgrades a `direct` plan to a
 capped `transcode` when the probed source bitrate exceeds it. Without a
 healthy transcode provider the gateway downgrades those plans to
@@ -122,8 +125,10 @@ request, so the plugin never reads a bucket or holds HTTP state
 
 Actions: `inspect` (side-effect free), `start` (the only action that
 enqueues), `status`, `resolve` (trusted-plane cache access that also
-marks LRU recency), `position` (the highest HLS segment the client
-fetched — drives throttling, segment deletion and idle cleanup),
+marks LRU recency), `position` (the segment the client last
+fetched — drives throttling, segment deletion and idle cleanup; the
+latest report wins, so a rewind re-pauses ffmpeg and holds off deletion
+instead of pacing both against a stale high-water mark),
 `cancel`, and `list` (admin view). States remain
 `idle|queued|running|ready|failed`.
 
@@ -162,7 +167,12 @@ handed another account's remux or transcode.
 
 **Delivery.** `hls` writes segments plus a server-owned `index.m3u8`
 (`EVENT` playlist, `ENDLIST` when ffmpeg finished), so playback starts
-while ffmpeg still runs. `hls_segment_container` picks the segment
+while ffmpeg still runs. A `#EXT-X-DISCONTINUITY` ffmpeg wrote is
+preserved: it is attributed to the segment that *follows* it and
+re-emitted between segments, so a client resets its timeline where the
+source broke (the tag is dropped when segment deletion moves that
+boundary to the front of the playlist, where nothing precedes it).
+`hls_segment_container` picks the segment
 format: `fmp4` (the default, CMAF with a `#EXT-X-MAP` init segment and
 `segNNNNN.m4s` files) or `mpegts` (classic `segNNNNN.ts` with no init
 segment). `progressive` keeps the complete `+faststart` MP4 with Range

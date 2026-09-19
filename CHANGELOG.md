@@ -153,6 +153,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   session reasons, falling back to ffmpeg's layout-aware downmix.
 - The reason a copy was refused by a client-side flag was overwritten by
   the later reason pass, so the status hid a cause it had recorded.
+- The served HLS playlist dropped the `#EXT-X-DISCONTINUITY` ffmpeg
+  wrote, and the parser attributed it to the segment *before* it (HLS
+  puts the tag before the segment that starts the new timeline). A
+  client could therefore stitch across a timestamp jump. The tag is now
+  attributed to the following segment and re-emitted between segments.
+- `position` was a high-water mark, so after a rewind ffmpeg kept racing
+  ahead and segment deletion removed the very segments the client was
+  about to re-fetch. The latest report now wins, matching Jellyfin's use
+  of the reported playback position; an out-of-order report only makes
+  the position older, so the change errs toward pausing sooner and
+  keeping more segments, never toward deleting or racing ahead.
+- An H.264/MP3 MP4 was transcoded even though browsers decode MP3 in
+  MP4 as reliably as AAC. MP3 now direct-plays; AC-3/E-AC-3 stay
+  excluded (Chromium on Linux cannot decode them).
 
 ## [0.2.0] - 2026-09-11
 
