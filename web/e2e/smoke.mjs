@@ -370,6 +370,10 @@ try {
 			// session's start_sec is the proof that a far seek started
 			// producing at the target instead of clamping to the edge.
 			postData: e.request.postData ?? null,
+			// Timestamps turn a seek into a timeline: the wait is made of
+			// polling, playlist freshness and the player attaching, and only
+			// measuring tells which one dominates.
+			ts: Date.now(),
 			status: null
 		});
 		const key = e.request.method + ' ' + e.request.url;
@@ -582,8 +586,14 @@ try {
 	console.log(`   ${thumbResponses.length} thumbnail frame(s) served to unenriched cards`);
 
 	await clickText('Other Show');
-	await waitText('Play', 15000);
-	await clickText('Play');
+	await waitFor(
+		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
+		15000,
+		'play affordance'
+	);
+	await clickText(
+		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
+	);
 	await waitFor(`!!document.querySelector('video')`, 15000, 'video element');
 	await waitFor(`document.querySelector('video').duration > 0`, 20000, 'transcoded metadata');
 
@@ -788,8 +798,14 @@ try {
 	await writeDelivery('progressive');
 	await navigate(`${BASE}/library`);
 	await clickText('Other Show');
-	await waitText('Play', 15000);
-	await clickText('Play');
+	await waitFor(
+		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
+		15000,
+		'play affordance (progressive)'
+	);
+	await clickText(
+		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
+	);
 	await waitFor(`!!document.querySelector('video')`, 15000, 'video element');
 	await waitFor(`document.querySelector('video').duration > 0`, 30000, 'progressive metadata');
 	await evalValue(`document.querySelector('video').play()`);
@@ -840,6 +856,7 @@ try {
 	await clickText(
 		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
 	);
+	const longShowId = await evalValue(`location.pathname.split('/').pop()`);
 	await waitFor(`document.querySelector('video')?.duration > 0`, 30000, 'seek bar video');
 	await waitUntil(() => hlsPlaylists().length > 0, 25000, 'seek bar playlist');
 
@@ -903,6 +920,10 @@ try {
 		clickCount: 1
 	});
 
+	// The clock starts at the drag's release: that is when the viewer
+	// starts waiting, and the rebuild it triggers can fire before this
+	// line would otherwise run.
+	const seekStartedAt = Date.now();
 	await sleep(300);
 	// The drag has to move the bar before anything else can be true: a
 	// slider that ignores the gesture would make every later assertion
@@ -939,9 +960,38 @@ try {
 	await waitFor(
 		`Number(document.querySelector('[aria-label="Seek"]')?.getAttribute('aria-valuenow') ?? 0) > ${seekTarget}`,
 		45000,
-		'playback advanced from the seek target'
+		'the seek target reached the bar'
 	);
+	// The wait a viewer feels is until pictures are moving again, not until
+	// the bar moves.
+	await waitFor(
+		`document.querySelector('video').currentTime > 0.5`,
+		45000,
+		'the rebuilt session plays'
+	);
+	const playingAt = Date.now();
 	evidence.seekLandedAt = Math.round(seekTarget);
+	{
+		// The wait a seek costs, phase by phase: the rebuild request, the
+		// moment the client learns the playlist is playable (its first HLS
+		// fetch), the player attaching, and playback actually starting.
+		const after = (predicate) =>
+			requests.find((r) => r.ts >= seekStartedAt && predicate(r))?.ts;
+		const rebuildAt = after(
+			(r) => r.method === 'POST' && (r.postData ?? '').includes('start_sec')
+		);
+		const playlistAt = after((r) => r.url.includes('index.m3u8') && r.status === 200);
+		const segmentAt = after((r) => r.url.includes('.m4s') && r.status === 200);
+		const phases = {
+			request: rebuildAt ? rebuildAt - seekStartedAt : -1,
+			playable: playlistAt && rebuildAt ? playlistAt - rebuildAt : -1,
+			attach: segmentAt && playlistAt ? segmentAt - playlistAt : -1,
+			play: segmentAt ? playingAt - segmentAt : -1,
+			total: playingAt - seekStartedAt
+		};
+		evidence.seekPhases = phases;
+		console.log('   seek phases (ms): ' + JSON.stringify(phases));
+	}
 	console.log(
 		`   dragged past the produced edge: rebuilt at ${seekTarget.toFixed(1)}s and played on from there`
 	);
@@ -951,13 +1001,210 @@ try {
 		hls_segment_seconds: shippedSettings.hls_segment_seconds,
 		throttle_ahead_sec: shippedSettings.throttle_ahead_sec
 	});
+	// The deliberately slow session has served its purpose: leaving it
+	// encoding would queue every later transcode behind it, because the
+	// worker count this step pinned to one is the whole server's budget.
+	{
+		const last = [...requests].reverse().find((r) => r.url.includes('/transcode/status'));
+		const session = last?.url.match(/session=([0-9a-f]+)/)?.[1];
+		if (session) {
+			await fetch(`${BASE}/api/items/${longShowId}/transcode?session=${session}`, {
+				method: 'DELETE',
+				headers: { Authorization: 'Bearer ' + adminToken }
+			});
+		}
+	}
+
+	/* ---------------- direct Matroska (D-058) ---------------- */
+	// A browser that reports what it can decode gets the file as it is: no
+	// session, no encoder, no playlist — just the Range-capable stream
+	// endpoint. Before this, Matroska was transcoded on principle, and a
+	// seek cost the eight seconds a session restart costs.
+	step('a capable browser direct-plays Matroska over Range');
+	await navigate(`${BASE}/library`);
+	await clickText('Direct Show');
+	await waitFor(
+		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
+		15000,
+		'play affordance (direct)'
+	);
+	await clickText(
+		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
+	);
+	await waitFor(`!!document.querySelector('video')`, 15000, 'direct video element');
+	await waitFor(`document.querySelector('video').duration > 0`, 20000, 'direct metadata');
+	await evalValue(`document.querySelector('video').play()`);
+	await waitFor(
+		`document.querySelector('video').currentTime > 0.5`,
+		20000,
+		'direct playback advancing'
+	);
+	// A picture, not merely an advancing clock: the same evidence the
+	// player itself demands before it trusts a direct plan.
+	await waitFor(`document.querySelector('video').videoWidth > 0`, 20000, 'direct picture');
+
+	const planRequest = requests.find((r) => r.url.includes('/playback'));
+	assert(planRequest, 'no playback plan request observed');
+	const planCaps = new URL(planRequest.url).searchParams.get('caps') ?? '';
+	for (const token of ['mkv', 'mkv/h264', 'mkv/aac']) {
+		assert(
+			planCaps.split(',').includes(token),
+			`plan request caps=${JSON.stringify(planCaps)} lacks ${token}`
+		);
+	}
+	assert(
+		!requests.some((r) => r.url.includes('/transcode') && r.method === 'POST'),
+		'a Matroska file this browser can decode still started a transcode session'
+	);
+	const directStreams = requests.filter((r) => r.url.includes('/stream'));
+	assert(directStreams.length > 0, 'no /stream request observed for the direct play');
+	assert(
+		directStreams.some((r) => r.headers && r.headers.Range),
+		'the direct play was not served over Range'
+	);
+	evidence.directCaps = planCaps;
+
+	// The seek this slice is about: on a direct play it is a Range request
+	// into the same file, so the wait is the disk instead of an encoder.
+	// Halfway into a ten-minute file is past anything the element holds.
+	const directSeekAt = Date.now();
+	await evalValue(`document.querySelector('video').currentTime = 300`);
+	await waitFor(
+		`document.querySelector('video').currentTime > 300 && !document.querySelector('video').seeking`,
+		15000,
+		'the direct seek reached the target'
+	);
+	const directSeekMs = Date.now() - directSeekAt;
+	const seekRanges = requests.filter(
+		(r) => r.ts >= directSeekAt && r.url.includes('/stream') && r.headers && r.headers.Range
+	);
+	assert(
+		directSeekMs < 4000,
+		`a direct-play seek took ${directSeekMs}ms; a session restart costs about 8000ms`
+	);
+	evidence.directSeekMs = directSeekMs;
+	evidence.directSeekRanges = seekRanges.length;
+	console.log(
+		`   direct-play seek: ${directSeekMs}ms (${seekRanges.length} Range request(s) after the seek)`
+	);
+
+	/* ---------------- the claim decides the plan ---------------- */
+	// The wire contract, against the real server and the real vocabulary:
+	// the same file answers differently for a claim the server believes, a
+	// claim covering another codec family, a claim of nothing, and no claim
+	// at all. The codec pairing is what keeps "H.264 in Matroska" from
+	// licensing "HEVC in Matroska".
+	step('a capability claim decides the plan and nothing more');
+	{
+		await navigate(`${BASE}/library`);
+		await clickText('Other Show');
+		await waitFor(`location.pathname.startsWith('/item/')`, 15000, 'the HEVC item page');
+		const token = await evalValue(`localStorage.getItem('lain.token')`);
+		const id = await evalValue(`location.pathname.split('/').pop()`);
+		const planFor = async (caps) => {
+			const query = caps === null ? '' : `&caps=${caps}`;
+			const res = await fetch(`${BASE}/api/items/${id}/playback?client=web${query}`, {
+				headers: { Authorization: 'Bearer ' + token }
+			});
+			assert(res.status === 200, `plan request ${res.status}`);
+			return await res.json();
+		};
+		const claimed = await planFor('mkv,mkv/hevc,mkv/aac');
+		const otherCodec = await planFor('mkv,mkv/h264,mkv/aac');
+		const empty = await planFor('');
+		const absent = await planFor(null);
+		assert(claimed.mode === 'direct', `claimed plan=${claimed.mode}, want direct`);
+		assert(
+			otherCodec.mode === 'transcode',
+			`a claim for another codec family planned ${otherCodec.mode}, want transcode`
+		);
+		assert(empty.mode === 'transcode', `empty claim plan=${empty.mode}, want transcode`);
+		assert(absent.mode === 'transcode', `absent claim plan=${absent.mode}, want transcode`);
+		evidence.capabilityGate = {
+			claimed: claimed.mode,
+			otherCodec: otherCodec.mode,
+			empty: empty.mode,
+			absent: absent.mode
+		};
+		console.log(
+			`   claim=${claimed.mode}, other codec=${otherCodec.mode}, empty=${empty.mode}, absent=${absent.mode}`
+		);
+	}
+
+	/* ---------------- the claim can be wrong ---------------- */
+	// A capability list is a claim, and a claim can be wrong: HEVC in
+	// Matroska opens, reports no error and paints nothing (measured: 0x0
+	// video size, zero frames, an advancing clock). A client that claims it
+	// anyway must not leave the viewer on a black rectangle, so the player
+	// proves the first decoded frame and falls back to a transcode. The lie
+	// is injected at document start, the only place a browser could lie
+	// from.
+	step('a lying capability claim falls back to a transcode, never a black screen');
+	const lie = await page.send('Page.addScriptToEvaluateOnNewDocument', {
+		source: `
+			HTMLMediaElement.prototype.canPlayType = () => 'probably';
+			if (navigator.mediaCapabilities) {
+				navigator.mediaCapabilities.decodingInfo = async () => ({
+					supported: true, smooth: true, powerEfficient: true
+				});
+			}
+		`
+	});
+	await navigate(`${BASE}/library`);
+	await clickText('Other Show');
+	await waitFor(
+		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
+		15000,
+		'play affordance (lying client)'
+	);
+	await clickText(
+		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
+	);
+	await waitFor(`!!document.querySelector('video')`, 15000, 'claimed video element');
+	const lyingPlan = requests.find((r) => r.url.includes('/playback'));
+	assert(lyingPlan, 'no playback plan request observed for the lying client');
+	const lyingCaps = new URL(lyingPlan.url).searchParams.get('caps') ?? '';
+	assert(
+		lyingCaps.split(',').includes('mkv/hevc'),
+		`the lying client did not claim mkv/hevc: ${JSON.stringify(lyingCaps)}`
+	);
+	// The server believes the claim, so the first delivery is the file
+	// itself — and the file decodes to nothing. The request is awaited
+	// rather than sampled: the element fetches it once the player mounts.
+	await waitUntil(
+		() => requests.some((r) => r.url.includes('/stream')),
+		15000,
+		'the claimed direct play touched the stream endpoint'
+	);
+	// Then the player notices there is no picture and starts producing a
+	// playable version instead of waiting on a black frame forever.
+	await waitUntil(
+		() => requests.some((r) => r.url.includes('/transcode') && r.method === 'POST'),
+		45000,
+		'the frame check started a transcode'
+	);
+	await waitFor(
+		`document.querySelector('video').videoWidth > 0 && document.querySelector('video').currentTime > 0.5`,
+		60000,
+		'a picture after the fallback'
+	);
+	await waitText('could not decode', 20000);
+	evidence.frameFallback = true;
+	console.log('   the claim was disproved by the first frame and the player fell back');
+	await page.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: lie.identifier });
 
 	/* ---------------- playback ---------------- */
 	step('playback: start, Range, keyboard seek, progress');
 	await navigate(`${BASE}/library`);
 	await clickText('Frieren');
-	await waitText('Play', 15000);
-	await clickText('Play');
+	await waitFor(
+		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
+		15000,
+		'play affordance (frieren)'
+	);
+	await clickText(
+		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
+	);
 	await waitFor(`!!document.querySelector('video')`, 15000, 'video element');
 	await waitFor(`document.querySelector('video').duration > 0`, 20000, 'media metadata');
 	await evalValue(`document.querySelector('video').play()`);

@@ -203,6 +203,11 @@ type PlanRequest struct {
 	ItemID  string `json:"item_id"`
 	Client  string `json:"client"`
 	Network string `json:"network"`
+	// Capabilities is what the client claims it can decode (D-058).
+	// Optional and additive: nil means unknown, and the planner keeps
+	// its conservative per-container browser rules. Non-nil with no
+	// tokens is a claim of nothing — a decision, not an absence.
+	Capabilities *ClientCapabilities `json:"capabilities,omitempty"`
 }
 
 // Plan is the planner's answer. Mode is "direct" (play the stream

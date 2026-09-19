@@ -79,6 +79,53 @@ past the produced edge rebuild the session at the target through
 probe result is the gateway's, so `lain.playback.plan@1` and the plugin
 shape are untouched (D-057).
 
+**Client-reported decode capability.** The same endpoint accepts an
+optional `caps` query parameter: a comma-separated list of the tokens a
+client has verified it can decode (D-058). The plan is requested before
+the client knows the file's streams, so the client reports a vocabulary,
+not a verdict, and the planner applies it to the probed streams. Two
+token shapes, lowercase:
+
+| token | meaning |
+|---|---|
+| `mkv` | the container opens |
+| `mkv/h264` | that codec family decodes inside that container |
+
+The pairing is load-bearing. A browser can decode HEVC through a
+platform decoder inside MP4 and still paint nothing for HEVC inside
+Matroska — measured as no error event, an advancing clock, a 0x0 video
+size and zero decoded frames — so a codec token is only ever claimed for
+a container the client also opened, and the planner requires the
+container *and* every track a player would select (first video, default
+audio) to be covered. Containers: `mp4`, `mkv`, `webm`, `ogg`, `mp3`,
+`flac` (extensions normalize onto them: `m4v`/`mov`/`m4a` are `mp4`).
+Codec families: `h264`, `hevc`, `vp8`, `vp9`, `av1`, `aac`, `mp3`,
+`opus`, `vorbis`, `flac`, `ac3`, `eac3`, `dts`. Anything else is dropped
+on the way in, so a client cannot widen the set the planner reasons
+about; and a codec with no family (`pcm_*`, MPEG-4 part 2) can never be
+claimed, so it always remuxes or transcodes.
+
+An absent `caps` means *unknown* and reproduces the pre-D-058 rules
+exactly, which is what an older client, `curl` and the desktop send. A
+present but empty `caps=` means the client claims nothing, which is a
+decision: it transcodes.
+
+A claim cannot raise the floor: H.264 High 10, 4:2:2 and 4:4:4 have no
+browser decoder, and a codec string cannot express that — `canPlayType`
+answers "probably" for the profile bits it does not parse — so a probed
+non-8-bit H.264 pixel format refuses direct play whatever the client
+claims. VP9 and AV1 do decode 10-bit, so the check is H.264-only.
+
+A claim is trusted no further than the plan decision. On a `direct` plan
+the player demands a decoded picture (`videoWidth > 0` and, where the
+browser reports it, `totalVideoFrames > 0`) within ~3.2s and starts the
+prepared path at the viewer's position when none arrives, saying so in
+the UI. A browser whose decoders change mid-session, and the first
+direct play of a file the browser refuses, therefore cost one extra
+round-trip — never a permanent black frame. Measured end to end on this
+host: a direct-played Matroska seek lands in ~126 ms (one Range request)
+where a session rebuild costs ~2.6s.
+
 ## lain.search.query@1 (exactly-one)
 
 Input: `{q, kind, limit, offset, sort}` → `CatalogPage{items, total,

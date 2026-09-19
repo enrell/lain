@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Browser direct play is decided by what the client says it can decode
+  (D-058). `GET /api/items/{id}/playback` accepts an optional `caps`
+  token list (`mkv`, `mkv/h264`, …) that the web client fills by probing
+  a fixed matrix once per page load with `decodingInfo` **and**
+  `canPlayType`; the planner requires the container *and* every track a
+  player would select to be covered, so a Matroska file a real browser
+  can decode is played as it is — no session, no encoder — and a seek
+  becomes a Range request into the same file. An absent `caps` keeps the
+  pre-D-058 rules exactly; tokens outside the server's vocabulary are
+  dropped; and a `direct` plan is on probation until the first decoded
+  picture, with a transcode fallback that says why instead of leaving a
+  black screen.
 - The web UI is title-centric. `/item/{id}` is now the anime/series/movie
   page — hero, poster rail, season filter and an episode grid — while a
   single-file title (a movie or a lone special) keeps the plain item

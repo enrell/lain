@@ -61,3 +61,33 @@ describe('playback async transcode', () => {
 		expect(fetchMock.mock.calls[1][0]).not.toContain('token');
 	});
 });
+
+describe('playback.plan', () => {
+	it('reports what this browser proved and lets the server decide', async () => {
+		// A browser whose Matroska container opens but whose codecs prove
+		// nothing: the request must carry exactly that claim — the
+		// container, no codec pairs — and the answer stays the server's
+		// (a container alone is not a licence to direct-play, D-058).
+		vi.stubGlobal('document', {
+			createElement: () => ({
+				canPlayType: (type: string) => (type === 'video/x-matroska' ? 'maybe' : '')
+			})
+		});
+		vi.stubGlobal('navigator', {
+			mediaCapabilities: { decodingInfo: async () => ({ supported: false }) }
+		});
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(new Response(JSON.stringify({ mode: 'transcode' }), { status: 200 }));
+		vi.stubGlobal('fetch', fetchMock);
+
+		const plan = await playback.plan('id/one');
+
+		const url = fetchMock.mock.calls[0][0] as string;
+		const query = new URLSearchParams(url.split('?')[1]);
+		expect(url.startsWith('/api/items/id%2Fone/playback?')).toBe(true);
+		expect(query.get('client')).toBe('web');
+		expect(query.get('caps')).toBe('mkv');
+		expect(plan.mode).toBe('transcode');
+	});
+});

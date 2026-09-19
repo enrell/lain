@@ -569,6 +569,10 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, v auth.V
 		return
 	}
 	client := r.URL.Query().Get("client")
+	// The client reports what it can decode (D-058): an absent `caps`
+	// means unknown and keeps the conservative browser rules, while a
+	// present but empty `caps=` claims nothing — a decision to transcode.
+	caps := contracts.ParseCapabilities(r.URL.Query()["caps"])
 	settings := s.settings.Transcode()
 	var mediaInfo *contracts.MediaInfo
 	clientLower := strings.ToLower(client)
@@ -586,7 +590,12 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, v auth.V
 	toneMap := settings.ToneMapping && settings.ToneMappingMode != contracts.ToneMapModeNever &&
 		s.transcode.Probe(settings).ToneMapping
 	out, _, err := s.reg.CallOne(contracts.CapPlaybackPlan, playback.PlanInput{
-		Request:   contracts.PlanRequest{ItemID: it.ID, Client: client, Network: r.URL.Query().Get("network")},
+		Request: contracts.PlanRequest{
+			ItemID:       it.ID,
+			Client:       client,
+			Network:      r.URL.Query().Get("network"),
+			Capabilities: caps,
+		},
 		FilePath:  it.FilePath,
 		MediaInfo: mediaInfo,
 		ToneMap:   toneMap,
