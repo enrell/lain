@@ -262,7 +262,8 @@ func TestV3CancelStopsRunningJob(t *testing.T) {
 }
 
 // TestV3PositionRecordsClientSegment pins the throttle/deletion input:
-// the highest fetched segment is remembered, and a rewind is ignored.
+// the latest fetched segment is remembered, so a rewind moves the
+// position back instead of leaving ffmpeg racing ahead of the viewer.
 func TestV3PositionRecordsClientSegment(t *testing.T) {
 	tr, src := v3Fixture(t, Config{})
 	release := make(chan struct{})
@@ -291,8 +292,18 @@ func TestV3PositionRecordsClientSegment(t *testing.T) {
 	tr.mu.Lock()
 	got = tr.jobs[started.Session].clientSegment
 	tr.mu.Unlock()
-	if got != 5 {
-		t.Fatalf("clientSegment=%d after a lower report, want 5", got)
+	if got != 2 {
+		t.Fatalf("clientSegment=%d after a rewind, want 2", got)
+	}
+
+	v3Invoke(t, tr, contracts.TranscodeV3Request{
+		Action: contracts.TranscodePositionAction, FilePath: src, Session: started.Session, SegmentIndex: 7,
+	})
+	tr.mu.Lock()
+	got = tr.jobs[started.Session].clientSegment
+	tr.mu.Unlock()
+	if got != 7 {
+		t.Fatalf("clientSegment=%d after catching up, want 7", got)
 	}
 
 	close(release)

@@ -154,8 +154,13 @@ func (t *Transcoder) bySessionV3(path, session string, touch bool) (contracts.Tr
 	return t.statusV3FromEntry(entry), nil
 }
 
-// positionV3 records the highest segment the client fetched, driving
-// throttling, segment deletion and idle cleanup.
+// positionV3 records the segment the client last fetched, driving
+// throttling, segment deletion and idle cleanup. The latest report wins,
+// not the highest: after a rewind the client is genuinely behind, so
+// ffmpeg must pause again and the deleter must stop removing segments
+// the client is about to re-fetch. An out-of-order report can only make
+// the position older, which errs toward keeping more segments and
+// pausing sooner — never toward deleting or racing ahead of the viewer.
 func (t *Transcoder) positionV3(session, path string, segmentIndex int) (contracts.TranscodeV3Status, error) {
 	t.mu.Lock()
 	j, ok := t.jobs[session]
@@ -167,7 +172,7 @@ func (t *Transcoder) positionV3(session, path string, segmentIndex int) (contrac
 		t.mu.Unlock()
 		return contracts.TranscodeV3Status{}, invalid("session does not match source")
 	}
-	if segmentIndex > j.clientSegment {
+	if segmentIndex >= 0 {
 		j.clientSegment = segmentIndex
 	}
 	j.lastTouch = t.now().Unix()
