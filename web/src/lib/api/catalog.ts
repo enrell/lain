@@ -12,7 +12,12 @@ export interface CatalogListOptions {
 	signal?: AbortSignal;
 }
 
-/** Gateway routes: GET /api/catalog, GET /api/catalog/{id}. */
+/** Envelope for one title's files (GET /api/catalog/{id}/episodes). */
+export interface CatalogItems {
+	items: CatalogItem[];
+}
+
+/** Gateway routes: GET /api/catalog, GET /api/catalog/{id}, GET /api/catalog/{id}/episodes. */
 export const catalog = {
 	list: (opts: CatalogListOptions = {}) =>
 		request<CatalogPage>('/api/catalog', {
@@ -25,5 +30,10 @@ export const catalog = {
 			signal: opts.signal
 		}),
 
-	get: (id: string) => request<CatalogItem>(`/api/catalog/${encodeURIComponent(id)}`)
+	get: (id: string) => request<CatalogItem>(`/api/catalog/${encodeURIComponent(id)}`),
+
+	/** Every file of the item's title, in watch order. The server owns the
+	 * grouping rule, so the title page never depends on the search plugin. */
+	episodes: (id: string) =>
+		request<CatalogItems>(`/api/catalog/${encodeURIComponent(id)}/episodes`)
 };

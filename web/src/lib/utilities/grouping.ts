@@ -25,6 +25,18 @@ export function compareEpisodes(a: CatalogItem, b: CatalogItem): number {
 }
 
 /**
+ * The label a title page and the player sidebar show for one file:
+ * S01E02 when the file declares a season, Episode 2 when it only
+ * declares an episode, and the title itself otherwise (a movie).
+ */
+export function episodeLabel(item: { season: number; episode: number; title: string }): string {
+	if (item.season > 0 && item.episode > 0)
+		return `S${String(item.season).padStart(2, '0')}E${String(item.episode).padStart(2, '0')}`;
+	if (item.episode > 0) return `Episode ${item.episode}`;
+	return item.title;
+}
+
+/**
  * Collapse a flat catalog page into one group per show. Movies (one
  * file, one title) become single-item groups so the grid below can
  * render everything through the same shape.
@@ -68,6 +80,17 @@ export function groupItems(items: CatalogItem[]): SeriesGroup[] {
 }
 
 export type GroupSort = 'title' | 'recent';
+
+/**
+ * Wrap a server-provided episode list in the SeriesGroup shape the title
+ * page renders. The catalog owns the grouping rule (its TitleKey matches
+ * normalizeSeriesTitle); this only derives the presentation fields, and
+ * through the same code the Library grid uses, so a show's card and its
+ * page cannot disagree about the episode count.
+ */
+export function groupFromEpisodes(episodes: CatalogItem[]): SeriesGroup | null {
+	return groupItems(episodes)[0] ?? null;
+}
 
 /** Order the show sections to match the Library sort control. */
 export function sortGroups(groups: SeriesGroup[], sort: GroupSort): SeriesGroup[] {

@@ -9,18 +9,17 @@
 	 * Plex-style library card: one poster per show, never one per
 	 * episode. The representative item is the first episode that
 	 * already has artwork, so a partially enriched show still shows
-	 * its poster instead of a lone frame.
+	 * its poster instead of a lone frame. The card opens the show's own
+	 * page, which lists the episodes.
 	 */
 	let {
 		group,
 		progress = null,
-		priority = false,
-		onopen
+		priority = false
 	}: {
 		group: SeriesGroup;
 		progress?: Progress | null;
 		priority?: boolean;
-		onopen: (group: SeriesGroup) => void;
 	} = $props();
 
 	const artItem = $derived(group.items.find((i) => i.episode > 0) ?? group.items[0]);
@@ -34,9 +33,8 @@
 	});
 </script>
 
-<button
-	type="button"
-	onclick={() => onopen(group)}
+<a
+	href={`/item/${artItem.id}`}
 	class="group block w-full text-left transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 	aria-label={`${group.title}, ${detail}`}
 >
@@ -72,4 +70,4 @@
 		<p class="line-clamp-2 text-sm font-semibold leading-snug tracking-[-0.015em] text-foreground">{group.title}</p>
 		<p class="mt-1 truncate text-xs text-muted">{detail}</p>
 	</div>
-</button>
+</a>

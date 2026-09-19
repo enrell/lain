@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem } from '$lib/api/types';
-import { compareEpisodes, groupItems, normalizeSeriesTitle, sortGroups } from './grouping';
+import { compareEpisodes, episodeLabel, groupFromEpisodes, groupItems, normalizeSeriesTitle, sortGroups } from './grouping';
 
 function item(partial: Partial<CatalogItem> & { id: string }): CatalogItem {
 	return {
@@ -62,6 +62,34 @@ describe('groupItems', () => {
 			item({ id: 'b', title: 'Show', year: 0 })
 		]);
 		expect(groups[0].year).toBe(0);
+	});
+});
+
+describe('episodeLabel', () => {
+	it('names the season and episode when both are known', () => {
+		expect(episodeLabel(item({ id: 'a', season: 1, episode: 2 }))).toBe('S01E02');
+		expect(episodeLabel(item({ id: 'b', season: 12, episode: 10 }))).toBe('S12E10');
+	});
+
+	it('falls back to the episode, then the title', () => {
+		expect(episodeLabel(item({ id: 'c', episode: 7 }))).toBe('Episode 7');
+		expect(episodeLabel(item({ id: 'd', title: 'Some Movie', kind: 'movie' }))).toBe('Some Movie');
+	});
+});
+
+describe('groupFromEpisodes', () => {
+	it('wraps a title list in one group in watch order', () => {
+		const group = groupFromEpisodes([
+			item({ id: 'e2', title: 'Show', episode: 2 }),
+			item({ id: 'e1', title: 'Show', episode: 1 })
+		]);
+		expect(group?.count).toBe(2);
+		expect(group?.key).toBe('show');
+		expect(group?.items.map((i) => i.id)).toEqual(['e1', 'e2']);
+	});
+
+	it('is null for an empty list', () => {
+		expect(groupFromEpisodes([])).toBeNull();
 	});
 });
 
