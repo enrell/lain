@@ -301,6 +301,7 @@ func (s *Server) routes() {
 
 	m.HandleFunc("GET /api/catalog", s.requireAuth(s.handleCatalogList))
 	m.HandleFunc("GET /api/catalog/{id}", s.requireAuth(s.handleCatalogGet))
+	m.HandleFunc("GET /api/catalog/{id}/episodes", s.requireAuth(s.handleCatalogEpisodes))
 	m.HandleFunc("GET /api/search", s.requireAuth(s.handleSearch))
 
 	m.HandleFunc("GET /api/items/{id}/playback", s.requireAuth(s.handlePlayback))
@@ -532,6 +533,21 @@ func (s *Server) handleCatalogGet(w http.ResponseWriter, r *http.Request, _ auth
 		return
 	}
 	writeJSON(w, 200, it)
+}
+
+// handleCatalogEpisodes answers the title page: every file of the same
+// title in watch order. The catalog owns the grouping rule and the
+// client only renders it, so the detail page never depends on the
+// search plugin (D-056).
+func (s *Server) handleCatalogEpisodes(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+	items, ok := s.cat.Episodes(r.PathValue("id"))
+	if !ok {
+		writeErr(w, 404, "unknown item")
+		return
+	}
+	writeJSON(w, 200, struct {
+		Items []contracts.CatalogItem `json:"items"`
+	}{Items: items})
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
