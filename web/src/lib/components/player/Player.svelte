@@ -55,7 +55,10 @@
 	let ended = $state(false);
 	let currentTime = $state(0);
 	let duration = $state(0);
-	let buffered = $state(0);
+	// The buffered range in the source timeline, so a session that starts
+	// partway in paints its ready region where it actually is.
+	let bufferedStart = $state(0);
+	let bufferedEnd = $state(0);
 	let volume = $state(prefs.getNumber('player.volume', 1));
 	let muted = $state(prefs.getBool('player.muted', false));
 	let rate = $state(prefs.getNumber('player.rate', 1));
@@ -89,6 +92,9 @@
 	// resume/seek). The session's own timeline is zero-based, so the
 	// displayed clock and the progress report add it back.
 	let baseOffset = $state(0);
+	// seekTarget is the position a rebuild is preparing from, so the overlay
+	// can say "seeking" instead of telling the first-play story.
+	let seekTarget = $state(0);
 	let hls: Hls | null = null;
 	// Set on unmount so a late status/attach continuation cannot create an
 	// Hls instance after destroyHLS() has already run.
@@ -123,6 +129,22 @@
 					: api.playback.streamUrl(item.id, session.token)
 	);
 	const title = $derived(item.title);
+
+	/*
+	 * How long the media really is, from the plan's probe (D-057). 0 means
+	 * the server did not probe, so the element's own duration is all we
+	 * have. This is what makes the seek bar span the episode under HLS: an
+	 * EVENT playlist lists only the segments ffmpeg has written, so hls.js
+	 * sets the MediaSource duration to the produced edge.
+	 */
+	const sourceDuration = $derived(
+		plan.duration_sec && plan.duration_sec > 0 ? plan.duration_sec : 0
+	);
+	const totalDuration = $derived(sourceDuration > 0 ? sourceDuration : duration);
+	// What the current session still has to produce, in its own timeline.
+	const sessionDuration = $derived(
+		sourceDuration > 0 ? Math.max(0, sourceDuration - baseOffset) : 0
+	);
 
 	function resumePosition(): number {
 		if (!initialProgress || initialProgress.completed) return 0;
@@ -227,7 +249,17 @@
 				error = 'HLS playback failed.';
 			});
 			hls.loadSource(url);
-			hls.attachMedia(el);
+			// hls.js would otherwise set the MediaSource duration to the
+			// playlist edge — which is why the bar used to stop at whatever
+			// ffmpeg had encoded. Handing it the real length is the supported
+			// way (MediaOverrides.duration); endOfStream stays hls.js's call,
+			// driven by the playlist's ENDLIST, so this can never end the
+			// stream early.
+			if (sessionDuration > 0) {
+				hls.attachMedia({ media: el, overrides: { duration: sessionDuration } });
+			} else {
+				hls.attachMedia(el);
+			}
 		} else if (el.canPlayType('application/vnd.apple.mpegurl')) {
 			el.src = url;
 		} else {
@@ -356,23 +388,34 @@
 	}
 
 	async function changeTracks(): Promise<void> {
-		if (plan.mode !== 'transcode') return;
 		// Rebuild the session from the current display position so the swap
 		// keeps the viewer's place (the new session's timeline restarts at 0).
-		const position = currentTime;
+		await rebuildAt(currentTime);
+	}
+
+	// rebuildAt starts a fresh session whose timeline begins at position,
+	// which is how a seek past the produced edge, a quality change and a
+	// track change all keep the viewer where they were.
+	async function rebuildAt(position: number): Promise<void> {
+		if (plan.mode !== 'transcode') return;
 		const oldSession = transcodeSession;
 		destroyHLS();
 		transcodeReady = false;
 		resumeApplied = true;
 		baseOffset = position;
 		if (oldSession) void api.playback.cancelTranscode(item.id, oldSession).catch(() => undefined);
-		await prepareTranscode({
-			audio_stream: selectedAudio === '' ? undefined : Number(selectedAudio),
-			subtitle_stream: selectedSubtitle === '' ? undefined : Number(selectedSubtitle),
-			quality: selectedQuality || undefined
-		});
+		try {
+			await prepareTranscode({
+				audio_stream: selectedAudio === '' ? undefined : Number(selectedAudio),
+				subtitle_stream: selectedSubtitle === '' ? undefined : Number(selectedSubtitle),
+				quality: selectedQuality || undefined
+			});
+		} finally {
+			seekTarget = 0;
+		}
 		if (video && transcodeReady) {
 			video.currentTime = 0;
+			currentTime = position;
 			void video.play().catch(() => undefined);
 		}
 	}
@@ -425,8 +468,9 @@
 		if (scrubbing && !seekEngaged) scrubbing = false;
 		if (scrubbing) return;
 		currentTime = el.currentTime + baseOffset;
-		if (el.buffered.length > 0 && el.duration > 0) {
-			buffered = el.buffered.end(el.buffered.length - 1) / el.duration;
+		if (el.buffered.length > 0) {
+			bufferedStart = el.buffered.start(0) + baseOffset;
+			bufferedEnd = el.buffered.end(el.buffered.length - 1) + baseOffset;
 		}
 		void reporter.update(snapshot());
 	}
@@ -531,19 +575,57 @@
 		}
 	}
 
+	/*
+	 * A seek inside what the session has already produced is a plain element
+	 * seek: hls.js holds the segment and playback continues without a
+	 * hiccup. Past that, waiting for the encoder to reach the target would
+	 * take as long as watching it, so the session is rebuilt at the target
+	 * instead — the contract's start_sec, the same machinery a resume and a
+	 * track change already use.
+	 */
+	const SEEK_PRODUCED_GRACE_SEC = 3;
+
+	/*
+	 * A session only holds the range it was started for: it begins at
+	 * baseOffset and has produced as far as its playlist reaches. A target
+	 * outside that range has nothing to fetch, so it needs a new session
+	 * rather than an element seek the browser would clamp.
+	 *
+	 * hls.js owns the parsed playlist, so the produced edge is read from it
+	 * on demand instead of mirrored in component state: no subscription to
+	 * keep in sync, and a destroyed instance simply reports nothing.
+	 */
+	function producedEdge(): number {
+		const edge = hls?.latestLevelDetails?.edge;
+		return edge === undefined ? 0 : edge + baseOffset;
+	}
+
+	function needsRebuild(target: number): boolean {
+		if (plan.mode !== 'transcode' || delivery !== 'hls' || sourceDuration <= 0) return false;
+		if (target < baseOffset - SEEK_PRODUCED_GRACE_SEC) return true;
+		const produced = producedEdge();
+		return produced > 0 && target > produced + SEEK_PRODUCED_GRACE_SEC;
+	}
+
 	function seekBy(seconds: number): void {
-		const el = video;
-		if (!el || !Number.isFinite(el.duration)) return;
-		el.currentTime = Math.max(0, Math.min(el.duration, el.currentTime + seconds));
-		currentTime = el.currentTime + baseOffset;
-		revealControls();
+		seekTo(currentTime + seconds);
 	}
 
 	function seekTo(seconds: number): void {
 		const el = video;
-		if (!el || !Number.isFinite(el.duration)) return;
-		el.currentTime = Math.max(0, Math.min(el.duration, seconds - baseOffset));
-		currentTime = el.currentTime + baseOffset;
+		if (!el) return;
+		// The authoritative ceiling is the media's own length; the element's
+		// duration is the fallback when the server could not probe.
+		const ceiling = totalDuration > 0 ? totalDuration : el.duration + baseOffset;
+		const target = Math.max(0, Math.min(Number.isFinite(ceiling) ? ceiling : seconds, seconds));
+		revealControls();
+		if (needsRebuild(target)) {
+			seekTarget = target;
+			void rebuildAt(target);
+			return;
+		}
+		el.currentTime = Math.max(0, target - baseOffset);
+		currentTime = target;
 	}
 
 	function setVolume(next: number): void {
@@ -678,7 +760,16 @@
 	const VolumeIcon = $derived(muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2);
 	// A zero max collapses the slider's step grid to a single step, so every
 	// playback position would be snapped away and echoed back as a change.
-	const seekMax = $derived(duration > 0 ? duration : 1);
+	// The bar spans the media, not what the encoder has reached so far.
+	const seekMax = $derived(totalDuration > 0 ? totalDuration : 1);
+	const bufferedLeft = $derived(
+		seekMax > 0 ? Math.min(100, Math.max(0, (bufferedStart / seekMax) * 100)) : 0
+	);
+	const bufferedWidth = $derived(
+		seekMax > 0
+			? Math.max(0, Math.min(100 - bufferedLeft, ((bufferedEnd - bufferedStart) / seekMax) * 100))
+			: 0
+	);
 	// Preparation is the one wait with no media element reporting for it, so
 	// the overlay counts from the server's own start time and shows the
 	// fraction when the server has one (D-038/D-039).
@@ -793,7 +884,11 @@
 		<div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 px-6 text-center">
 			<Spinner class="size-10 text-white/80" label="Preparing playback" />
 			<div class="max-w-md">
-				<p class="text-sm text-white/85">Preparing a browser-compatible version…</p>
+				<p class="text-sm text-white/85">
+					{seekTarget > 0
+						? `Seeking to ${formatTime(seekTarget)}…`
+						: 'Preparing a browser-compatible version…'}
+				</p>
 				<p class="mt-2 font-mono text-xs tabular-nums text-white/60">
 					{formatTime(prepareElapsed)} elapsed
 				</p>
@@ -810,10 +905,16 @@
 					</div>
 					<p class="mt-1.5 text-xs text-white/60">{preparePercent}% prepared</p>
 				{/if}
-				<p class="mt-4 text-xs leading-relaxed text-white/60">
-					The first play prepares a browser-compatible copy of this file. Sources like AV1 or
-					HEVC need a full re-encode and can take several minutes.
-				</p>
+				{#if seekTarget > 0}
+					<p class="mt-4 text-xs leading-relaxed text-white/60">
+						The server starts producing this session from that point, so playback resumes shortly.
+					</p>
+				{:else}
+					<p class="mt-4 text-xs leading-relaxed text-white/60">
+						The first play prepares a browser-compatible copy of this file. Sources like AV1 or
+						HEVC need a full re-encode and can take several minutes.
+					</p>
+				{/if}
 				<p class="mt-2 text-xs leading-relaxed text-white/60">
 					You can leave this page — preparation continues on the server.
 				</p>
@@ -953,7 +1054,12 @@
 				class="relative flex h-6 w-full touch-none select-none items-center"
 			>
 				<span class="relative h-1.5 w-full grow overflow-hidden rounded-full bg-white/20">
-					<span class="absolute inset-y-0 left-0 rounded-full bg-white/25" style={`width:${Math.min(100, buffered * 100)}%`}></span>
+					<!-- The ready range sits where it actually is: a resumed or
+					     re-seeked session begins partway into the episode. -->
+					<span
+						class="absolute inset-y-0 rounded-full bg-white/25"
+						style={`left:${bufferedLeft}%;width:${bufferedWidth}%`}
+					></span>
 					<Slider.Range class="absolute h-full rounded-full bg-accent" />
 				</span>
 				<Slider.Thumb
@@ -963,7 +1069,7 @@
 				/>
 			</Slider.Root>
 			<span class="shrink-0 font-mono text-xs tabular-nums text-white/80">
-				{formatTime(scrubbing ? scrubValue : currentTime)} / {formatTime(duration)}
+				{formatTime(scrubbing ? scrubValue : currentTime)} / {formatTime(totalDuration)}
 			</span>
 		</div>
 

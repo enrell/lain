@@ -78,6 +78,10 @@ export interface PlaybackPlan {
 	reason?: string;
 	/** Why a transcode/remux is needed (D-042). */
 	reasons?: string[];
+	/** The probed media length in seconds (0/absent = the server did not
+	 * probe). An HLS EVENT playlist only lists produced segments, so this
+	 * is the only source of the real timeline while ffmpeg still runs. */
+	duration_sec?: number;
 }
 
 export type TranscodeState = 'idle' | 'queued' | 'running' | 'ready' | 'failed';
