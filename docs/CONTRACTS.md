@@ -64,6 +64,21 @@ healthy transcode provider the gateway downgrades those plans to
 `transcode-required` with `available:false` instead of faking a
 stream.
 
+**Media length.** The gateway adds `duration_sec` to the plan response:
+the probed length of the file, 0/absent when no probe ran (mpv/desktop)
+or when the probe reported none. It is the same fact Jellyfin's
+`PlaybackInfo` carries as `RunTimeTicks`, and it exists because an HLS
+session cannot express its own total: an `EVENT` playlist lists only the
+segments ffmpeg has already written, so hls.js sets the MediaSource
+duration to the produced edge (`buffer-controller.getDurationAndRange`)
+and, per MSE §10.1, `seekable` becomes `[0, that edge]`. The player
+hands hls.js the real length instead (`attachMedia(media, {overrides:
+{duration}})`), which makes the seek bar span the episode and a seek
+past the produced edge rebuild the session at the target through
+`start_sec` — the same mechanism a resume and a track change use. The
+probe result is the gateway's, so `lain.playback.plan@1` and the plugin
+shape are untouched (D-057).
+
 ## lain.search.query@1 (exactly-one)
 
 Input: `{q, kind, limit, offset, sort}` → `CatalogPage{items, total,
