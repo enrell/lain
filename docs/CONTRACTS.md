@@ -26,6 +26,23 @@ Write input: `{library_id, proposal, candidate}` → `CatalogItem` with
 
 Portable document `lain.catalog-export@1` is the replacement contract.
 
+### Gateway read: one title's files
+
+`GET /api/catalog/{id}/episodes` (auth) → `{items: CatalogItem[]}`, 404
+for an unknown id. It answers the web title page: every item whose
+`title` normalizes to the same key — lowercase, whitespace collapsed —
+in watch order (season, episode, year, id), whichever library it lives
+in. `catalog.TitleKey` is the one grouping rule, mirrored by the web
+Library grid's `normalizeSeriesTitle`, so a show's card and its own page
+cannot disagree about the episode count (D-056). The plugin capability
+`lain.catalog.read@1` is untouched: the gateway already reads the
+concrete catalog service for `Page`/`Get`.
+
+The web UI renders `/item/{id}` as the *title* page (hero, poster rail,
+season filter, episode grid; a single-file title keeps the plain item
+page) and `/player/{id}` as the watch page — video with the title's
+episodes listed beside it, so switching never leaves playback.
+
 ## lain.userstate.progress@1 (exactly-one)
 
 `PutInput{user_id, progress}` / `GetInput{user_id, item_id}`. Keyed by
