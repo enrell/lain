@@ -483,6 +483,76 @@ try {
 	await waitText("Frieren: Beyond Journey's End", 10000);
 	console.log('   local NFO overlay applied without network providers');
 
+	/* ---------------- title page + watch sidebar ---------------- */
+	// The detail route is a *title* page, not an episode page: it lists the
+	// show's episodes and every card plays one. The player then keeps that
+	// list beside the video so switching episodes never leaves the page.
+	step('a show opens a title page with an episode grid');
+	await page.send('Emulation.setDeviceMetricsOverride', {
+		width: 1440,
+		height: 900,
+		deviceScaleFactor: 1,
+		mobile: false
+	});
+	await navigate(`${BASE}/library`);
+	await clickText('Frieren');
+	await waitText('Episodes', 15000);
+	const grid = await evalValue(`(() => {
+		const links = [...document.querySelectorAll('[data-episode-grid] a[href^="/player/"]')];
+		return { count: links.length, hrefs: links.map((a) => a.getAttribute('href')) };
+	})()`);
+	assert(grid.count >= 2, `episode grid lists ${grid.count} episode(s), want >= 2`);
+	const gridHeading = await evalValue(`document.querySelector('h1')?.textContent?.trim() ?? ''`);
+	assert(gridHeading.includes('Frieren'), `title page heading: ${JSON.stringify(gridHeading)}`);
+	console.log(`   title page: ${grid.count} episode cards, heading ${JSON.stringify(gridHeading)}`);
+
+	step('the player lists the title episodes beside the video');
+	await navigate(`${BASE}${grid.hrefs[1]}`);
+	await waitFor(`!!document.querySelector('video')`, 15000, 'watch page video');
+	const sidebar = await evalValue(`(() => {
+		const aside = document.querySelector('aside[aria-label="Episodes"]');
+		if (!aside) return null;
+		return {
+			episodes: aside.querySelectorAll('a[href^="/player/"]').length,
+			width: aside.getBoundingClientRect().width,
+			current: aside.querySelector('a[aria-current="true"]')?.getAttribute('href') ?? null
+		};
+	})()`);
+	assert(sidebar, 'no episode sidebar on the watch page');
+	assert(sidebar.episodes >= 2, `sidebar lists ${sidebar.episodes} episode(s), want >= 2`);
+	assert(sidebar.width > 100, `sidebar is ${sidebar.width}px wide at 1440px`);
+	assert(sidebar.current === grid.hrefs[1], `current episode marker: ${sidebar.current}`);
+
+	// Clicking another episode changes the route without a page load, so the
+	// page has to follow the param: onMount alone would leave the previous
+	// episode's state on screen with the marker on the old row.
+	const otherRow = await evalValue(`(() => {
+		const a = document.querySelector('aside[aria-label="Episodes"] a[href="${grid.hrefs[0]}"]');
+		if (!a) return null;
+		a.scrollIntoView({ block: 'center' });
+		const r = a.getBoundingClientRect();
+		return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+	})()`);
+	assert(otherRow, `no sidebar row for ${grid.hrefs[0]}`);
+	for (const type of ['mousePressed', 'mouseReleased']) {
+		await page.send('Input.dispatchMouseEvent', {
+			type,
+			x: otherRow.x,
+			y: otherRow.y,
+			button: 'left',
+			clickCount: 1
+		});
+	}
+	await waitFor(`location.pathname === '${grid.hrefs[0]}'`, 15000, 'sidebar switched episode');
+	await waitFor(
+		`document.querySelector('aside[aria-label="Episodes"] a[aria-current="true"]')?.getAttribute('href') === '${grid.hrefs[0]}'`,
+		15000,
+		'current marker followed the switch'
+	);
+	await waitFor(`document.querySelector('video').duration > 0`, 20000, 'switched episode loaded');
+	await page.send('Emulation.clearDeviceMetricsOverride');
+	console.log(`   sidebar switched to ${grid.hrefs[0]} in place, video loaded`);
+
 	step('mkv container plays through the transcode endpoint (HLS fMP4)');
 	await navigate(`${BASE}/library`);
 	await waitText('Other Show');

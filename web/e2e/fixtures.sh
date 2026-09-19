@@ -41,14 +41,18 @@ EOF
 }
 
 # Browser-playable direct-play files (webm is decodable everywhere).
-webm "$DIR/Anime/Frieren/Frieren - 01.webm" 440
-webm "$DIR/Anime/Frieren/Frieren - 02.webm" 523
+# The bracketed group is a fictional placeholder (AGENTS.md naming
+# hygiene); it is also what makes the identifier read these as one show
+# with episodes instead of two unrelated "Frieren 01/02" files, which is
+# what the title page and the player sidebar are about.
+webm "$DIR/Anime/Frieren/[Fansub-A] Frieren - 01.webm" 440
+webm "$DIR/Anime/Frieren/[Fansub-A] Frieren - 02.webm" 523
 
 # A container the browser plan honestly reports as transcode-required.
 ffmpeg -hide_banner -loglevel error \
 	-f lavfi -i "testsrc2=size=320x180:rate=12" -t 10 \
 	-c:v libx264 -pix_fmt yuv420p -preset ultrafast \
-	"$DIR/Anime/Other Show/Other Show - 01.mkv"
+	"$DIR/Anime/Other Show/[Fansub-A] Other Show - 01.mkv"
 
 # A direct-play mp4 for the movies library.
 ffmpeg -hide_banner -loglevel error \
