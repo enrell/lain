@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- The web UI is title-centric. `/item/{id}` is now the anime/series/movie
+  page — hero, poster rail, season filter and an episode grid — while a
+  single-file title (a movie or a lone special) keeps the plain item
+  page. `/player/{id}` becomes the watch page: the video with the title's
+  episodes listed beside it, and the route follows the id param instead
+  of loading once, so switching episodes cannot leave the previous
+  episode's state or its marker on screen. Backed by a new additive read,
+  `GET /api/catalog/{id}/episodes`, returning every file of the same
+  title in watch order; the catalog owns the grouping rule (D-056).
 - On-the-fly subtitle extraction (D-047): `GET
   /api/items/{id}/subtitles?stream=N` serves WebVTT for a chosen track
   of a **directly played** file, cached like any other derivative, so
