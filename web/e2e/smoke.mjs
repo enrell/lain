@@ -366,6 +366,10 @@ try {
 			url: e.request.url,
 			method: e.request.method,
 			headers: e.request.headers,
+			// POST bodies matter for the transcode session: the rebuilt
+			// session's start_sec is the proof that a far seek started
+			// producing at the target instead of clamping to the edge.
+			postData: e.request.postData ?? null,
 			status: null
 		});
 		const key = e.request.method + ' ' + e.request.url;
@@ -771,6 +775,16 @@ try {
 		});
 		assert(res.status === 200, `settings put ${res.status}`);
 	};
+	const writeTranscodeSettings = async (patch) => {
+		const settings = await readSettings();
+		Object.assign(settings, patch);
+		const res = await fetch(`${BASE}/api/admin/settings/transcode`, {
+			method: 'PUT',
+			headers: { Authorization: 'Bearer ' + adminToken, 'Content-Type': 'application/json' },
+			body: JSON.stringify(settings)
+		});
+		assert(res.status === 200, `settings put ${res.status}`);
+	};
 	await writeDelivery('progressive');
 	await navigate(`${BASE}/library`);
 	await clickText('Other Show');
@@ -792,6 +806,151 @@ try {
 	// Restore the shipped default so later steps see HLS again.
 	await writeDelivery('hls');
 	console.log(`   progressive MP4 streamed with ${progressiveRange.length} Range request(s)`);
+
+	/* ---------------- the seek bar spans the media ---------------- */
+	// An HLS session is an EVENT playlist that lists only the segments
+	// ffmpeg has already written, so under MSE the element's own duration is
+	// the produced edge — the bar used to stop there. The probed length from
+	// the plan is what makes it span the episode, and a seek past the
+	// produced edge has to start producing at the target instead of waiting
+	// for the encoder to arrive.
+	step('the seek bar spans the episode and a far seek rebuilds the session');
+	// A lagging transcode is the condition the bug needs, and the only
+	// honest way to reproduce it in a test is to make the encoder slow: a
+	// tiny fixture is finished before the first progress report, which
+	// leaves nothing to lag behind. "Long Show" has its own session so the
+	// produced edge here belongs to this step alone.
+	const shippedSettings = await readSettings();
+	// Measured on this fixture: veryslow with a single thread encodes about
+	// 64 fps, so ten minutes of source needs ~110s — comfortably longer than
+	// this step, which is what keeps the session partial.
+	await writeTranscodeSettings({
+		h264_preset: 'veryslow',
+		thread_count: 1,
+		hls_segment_seconds: 2,
+		throttle_ahead_sec: 5
+	});
+	await navigate(`${BASE}/library`);
+	await clickText('Long Show');
+	await waitFor(
+		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
+		15000,
+		'play affordance (seek bar)'
+	);
+	await clickText(
+		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
+	);
+	await waitFor(`document.querySelector('video')?.duration > 0`, 30000, 'seek bar video');
+	await waitUntil(() => hlsPlaylists().length > 0, 25000, 'seek bar playlist');
+
+	const timeline = await evalValue(`(() => {
+		const video = document.querySelector('video');
+		const thumb = document.querySelector('[aria-label="Seek"]');
+		if (!video || !thumb) return null;
+		return {
+			media: video.duration,
+			max: Number(thumb.getAttribute('aria-valuemax'))
+		};
+	})()`);
+	assert(timeline, 'no seek bar on the HLS player');
+	// The fixture is ten minutes long and the encoder is deliberately slow,
+	// so only a fraction of it exists when the viewer seeks: the bar used to
+	// stop at that fraction.
+	assert(timeline.media > 500, `media duration ${timeline.media}s, want the 600s source`);
+	assert(timeline.max > 500, `seek bar max ${timeline.max}s, want the 600s source`);
+	evidence.seekBarMax = Math.round(timeline.max);
+	console.log(
+		`   seek bar spans ${timeline.max.toFixed(1)}s of a ${timeline.media.toFixed(1)}s episode`
+	);
+
+	// Drag the thumb to ~70%: past everything produced, so the player has to
+	// start a session there rather than clamp to the edge.
+	const drag = await evalValue(`(() => {
+		const thumb = document.querySelector('[aria-label="Seek"]');
+		const root = thumb.parentElement;
+		const r = root.getBoundingClientRect();
+		const t = thumb.getBoundingClientRect();
+		return {
+			from: { x: t.left + t.width / 2, y: t.top + t.height / 2 },
+			to: { x: r.left + r.width * 0.7, y: r.top + r.height / 2 }
+		};
+	})()`);
+	await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: drag.from.x, y: drag.from.y });
+	await page.send('Input.dispatchMouseEvent', {
+		type: 'mousePressed',
+		x: drag.from.x,
+		y: drag.from.y,
+		button: 'left',
+		buttons: 1,
+		clickCount: 1
+	});
+	for (let move = 1; move <= 6; move++) {
+		await page.send('Input.dispatchMouseEvent', {
+			type: 'mouseMoved',
+			x: drag.from.x + ((drag.to.x - drag.from.x) * move) / 6,
+			y: drag.to.y,
+			button: 'left',
+			buttons: 1
+		});
+		await sleep(40);
+	}
+	await page.send('Input.dispatchMouseEvent', {
+		type: 'mouseReleased',
+		x: drag.to.x,
+		y: drag.to.y,
+		button: 'left',
+		buttons: 0,
+		clickCount: 1
+	});
+
+	await sleep(300);
+	// The drag has to move the bar before anything else can be true: a
+	// slider that ignores the gesture would make every later assertion
+	// meaningless.
+	await waitFor(
+		`Number(document.querySelector('[aria-label="Seek"]')?.getAttribute('aria-valuenow') ?? 0) > 300`,
+		15000,
+		'the drag moved the seek bar'
+	);
+
+	// A rebuilt session is a server fact: a second POST /transcode whose body
+	// carries the target as start_sec. It is also the only way the frames at
+	// the target can exist, so it proves the seek rather than the bar's
+	// arithmetic.
+	await waitUntil(
+		() =>
+			requests.some(
+				(r) =>
+					r.url.includes('/transcode') &&
+					r.method === 'POST' &&
+					/"start_sec":\s*(\d+(\.\d+)?)/.test(r.postData ?? '') &&
+					Number((r.postData.match(/"start_sec":\s*(\d+(\.\d+)?)/) ?? [0, 0])[1]) > 300
+			),
+		45000,
+		'a session rebuilt at the seek target'
+	);
+	const rebuild = requests.find(
+		(r) => r.method === 'POST' && /"start_sec":\s*(\d+(\.\d+)?)/.test(r.postData ?? '')
+	);
+	const seekTarget = Number((rebuild.postData.match(/"start_sec":\s*(\d+(\.\d+)?)/) ?? [0, 0])[1]);
+
+	// The bar comes back at the target and keeps moving: frames there only
+	// exist because the session was rebuilt for that position.
+	await waitFor(
+		`Number(document.querySelector('[aria-label="Seek"]')?.getAttribute('aria-valuenow') ?? 0) > ${seekTarget}`,
+		45000,
+		'playback advanced from the seek target'
+	);
+	evidence.seekLandedAt = Math.round(seekTarget);
+	console.log(
+		`   dragged past the produced edge: rebuilt at ${seekTarget.toFixed(1)}s and played on from there`
+	);
+	await writeTranscodeSettings({
+		h264_preset: shippedSettings.h264_preset,
+		thread_count: shippedSettings.thread_count,
+		hls_segment_seconds: shippedSettings.hls_segment_seconds,
+		throttle_ahead_sec: shippedSettings.throttle_ahead_sec
+	});
 
 	/* ---------------- playback ---------------- */
 	step('playback: start, Range, keyboard seek, progress');
@@ -1133,6 +1292,9 @@ try {
 	}
 	if (seen404.size) {
 		console.error('404s:\n' + [...seen404].join('\n'));
+	}
+	if (allConsole.length) {
+		console.error('page console:\n' + allConsole.slice(-25).join('\n'));
 	}
 	console.error(
 		'last requests:\n' +
