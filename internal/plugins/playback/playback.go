@@ -119,11 +119,25 @@ func browserDirect(ext string, info contracts.MediaInfo) bool {
 	case "mp4", "m4v":
 		pixel := strings.ToLower(video.PixelFormat)
 		videoOK := strings.ToLower(video.Codec) == "h264" && (pixel == "yuv420p" || pixel == "yuvj420p")
-		return videoOK && (audio == nil || audioCodec == "aac")
+		return videoOK && (audio == nil || webSafeMP4Audio(audioCodec))
 	case "webm":
 		videoCodec := strings.ToLower(video.Codec)
 		videoOK := videoCodec == "vp8" || videoCodec == "vp9" || videoCodec == "av1"
 		return videoOK && (audio == nil || audioCodec == "opus" || audioCodec == "vorbis")
+	default:
+		return false
+	}
+}
+
+// webSafeMP4Audio is the audio set a browser is trusted to decode inside
+// an MP4 without re-encoding: AAC and MP3 are universal. AC-3/E-AC-3 are
+// deliberately excluded even though Jellyfin's web profile lists them —
+// Chromium on Linux cannot decode them, and D-030 only direct-plays
+// verified web-safe streams.
+func webSafeMP4Audio(codec string) bool {
+	switch codec {
+	case "aac", "mp3":
+		return true
 	default:
 		return false
 	}

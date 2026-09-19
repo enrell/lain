@@ -53,6 +53,10 @@ func TestPlanUsesProbedCodecCompatibility(t *testing.T) {
 	if got := Plan(base); got.Mode != "direct" {
 		t.Fatalf("H.264/AAC MP4 plan=%+v, want direct", got)
 	}
+	base.MediaInfo.Streams[1].Codec = "mp3"
+	if got := Plan(base); got.Mode != "direct" {
+		t.Fatalf("H.264/MP3 MP4 plan=%+v, want direct", got)
+	}
 	base.MediaInfo.Streams[1].Codec = "ac3"
 	if got := Plan(base); got.Mode != "transcode" {
 		t.Fatalf("H.264/AC3 MP4 plan=%+v, want transcode", got)
