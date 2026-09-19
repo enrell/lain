@@ -268,7 +268,12 @@ func (t *Transcoder) planV3(spec sourceSpec, in contracts.TranscodeV3Request, ca
 		}
 	}
 	plan.profile = contracts.TranscodeProfileKey(settings, in)
-	plan.reasons = plan.transcodeReasons(in)
+	// Merge rather than replace: resolveVideo/resolveAudio already recorded
+	// why a copy was refused (a client-side flag), and the reason list is a
+	// user-facing explanation, so dropping those entries would hide a cause.
+	for _, r := range plan.transcodeReasons(in) {
+		plan.reasons = appendReason(plan.reasons, r)
+	}
 	return plan, nil
 }
 
@@ -543,6 +548,12 @@ func (p encodePlan) transcodeReasons(in contracts.TranscodeV3Request) []string {
 	}
 	if p.downmix {
 		reasons = appendReason(reasons, "audio downmix")
+		// lain's nightmode matrix names 5.1 channel positions, so it is only
+		// applied to a real 5.1 source; other layouts fall back to ffmpeg's
+		// own layout-aware coefficients, and the status says why.
+		if p.settings.DownmixStereoAlgorithm == contracts.DownmixNightmode && (p.audio == nil || p.audio.Channels != 6) {
+			reasons = appendReason(reasons, "nightmode needs a 5.1 source")
+		}
 	}
 	if p.maxBitrateKbps > 0 && !p.copyVideo {
 		reasons = appendReason(reasons, "bitrate limit ("+strconv.Itoa(p.maxBitrateKbps)+" kbps)")

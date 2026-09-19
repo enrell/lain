@@ -97,6 +97,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   guesses; single-audio selection, WebVTT subtitle sidecars
   (`GET /api/items/{id}/subtitles?session=`) with player track
   pickers, and explicit HDR refusal until a tone-map profile exists.
+- Transcode sessions can begin at a source position (`start_sec`): a
+  resume or a seek now seeks the input instead of re-encoding from the
+  beginning, and the player offsets its clock and progress accordingly.
 
 ### Fixed
 - HLS playback in a real browser: the served playlist now signs every
@@ -130,6 +133,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   cleaned `filters` but not the burn-in `complexFilter`, so a failed
   hardware attempt failed again instead of falling back. The upload tokens
   are now stripped from both. Found by an adversarial subagent test.
+- The requested bitrate cap was ignored whenever the plan chose a copy, so
+  a web-safe source above the cap was remuxed at full bitrate while the
+  status reported the cap; a cap below the probed source bitrate now
+  forces a re-encode.
+- An HLS session extracted its WebVTT sidecar only after the whole file
+  had been produced, so it never offered a subtitle track while running
+  (and the endpoint refused any session that was not ready). The sidecar
+  is now extracted before the encode and served as soon as it exists.
+- A source that already matched the requested MP4 audio codec was
+  re-encoded unless the codec was AAC, and an unknown `audio_codec`
+  reached the `ffmpeg` argv verbatim; matching codecs are copied and
+  unknown ones are rejected.
+- The ready-cache LRU could delete a fully produced HLS session while a
+  client was still fetching its segments. A session accessed in the last
+  minute is no longer an eviction victim (the overage is logged instead).
+- `nightmode` downmixing applied its 5.1 coefficient matrix to any
+  surround source; it now requires a real 5.1 source and says so in the
+  session reasons, falling back to ffmpeg's layout-aware downmix.
+- The reason a copy was refused by a client-side flag was overwritten by
+  the later reason pass, so the status hid a cause it had recorded.
 
 ## [0.2.0] - 2026-09-11
 

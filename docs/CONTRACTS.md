@@ -304,7 +304,11 @@ a linear gain applied only while downmixing (default 2, Jellyfin's
 default); `downmix_stereo_algorithm` is `none` (ffmpeg's own downmix) or
 `nightmode`, which is **lain's own** documented matrix
 (`pan=stereo|c0=0.4*c0+0.4*c1+0.8*c2+0.2*c4|c1=…`) and is explicitly not
-Jellyfin's Dave750/NightmodeDialogue coefficients. `deinterlace_double_rate`
+Jellyfin's Dave750/NightmodeDialogue coefficients. Because the matrix
+names 5.1 channel positions it is applied only to a 6-channel source;
+another surround layout (quad, 7.1) uses ffmpeg's layout-aware downmix
+and the session reason says `nightmode needs a 5.1 source`.
+`deinterlace_double_rate`
 keeps both fields as frames (`yadif=mode=send_field`), doubling the
 output frame rate. `fallback_font_path`/`fallback_font_name` add
 `fontsdir=`/`force_style='Fontname=…'` to burned-in subtitles (the

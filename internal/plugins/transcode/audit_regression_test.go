@@ -592,6 +592,59 @@ func TestAuditBitrateCapForcesEncodeOverCopy(t *testing.T) {
 	}
 }
 
+// TestAuditNightmodeDownmixNeedsSurround pins the layout guard: lain's
+// nightmode matrix names 5.1 positions, so it is only applied to a real
+// 5.1 source, and the status explains the fallback.
+func TestAuditNightmodeDownmixNeedsSurround(t *testing.T) {
+	report := func(channels int) mediaReport {
+		return mediaReport{Streams: []stream{
+			{Index: 0, CodecType: "video", CodecName: "h264", PixelFormat: "yuv420p", Width: 1280, Height: 720},
+			{Index: 1, CodecType: "audio", CodecName: "aac", Channels: channels, Default: 1},
+		}}
+	}
+	nightmode := func(in *contracts.TranscodeV3Request) {
+		in.Settings.DownmixStereoAlgorithm = contracts.DownmixNightmode
+	}
+
+	surround := advRequirePlan(t, report(6), testCaps(), nightmode)
+	if !strings.Contains(surround.audioFilters(), "pan=stereo") {
+		t.Fatalf("a 5.1 source should use the nightmode matrix: %q", surround.audioFilters())
+	}
+
+	quad := advRequirePlan(t, report(4), testCaps(), nightmode)
+	if strings.Contains(quad.audioFilters(), "pan=stereo") {
+		t.Fatalf("a quad source must not use the 5.1 matrix: %q", quad.audioFilters())
+	}
+	noted := false
+	for _, r := range quad.reasons {
+		if strings.Contains(r, "nightmode needs a 5.1 source") {
+			noted = true
+		}
+	}
+	if !noted {
+		t.Fatalf("reasons=%v, want the nightmode fallback note", quad.reasons)
+	}
+}
+
+// TestAuditReasonsSurvivePlanBuild pins the merge fix: a cause recorded
+// while resolving streams (a client-side copy flag) still reaches the
+// status reason list instead of being replaced by the later pass.
+func TestAuditReasonsSurvivePlanBuild(t *testing.T) {
+	no := false
+	plan := advRequirePlan(t, webSafeReport(), testCaps(), func(in *contracts.TranscodeV3Request) {
+		in.AllowVideoStreamCopy = &no
+	})
+	found := false
+	for _, r := range plan.reasons {
+		if strings.Contains(r, "video stream copy disabled by the client") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("reasons=%v, want the client copy note", plan.reasons)
+	}
+}
+
 // TestAuditFallbackFontsToggle pins Jellyfin's "Enable fallback fonts":
 // an explicit false drops the burn-in font options even with a path set,
 // and the profile key tracks the effective permission.
