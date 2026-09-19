@@ -694,7 +694,7 @@
 
 <div
 	bind:this={container}
-	class="relative h-dvh w-full overflow-hidden bg-black"
+	class="relative h-full w-full overflow-hidden bg-black"
 	role="region"
 	aria-label={`Player — ${title}`}
 	onpointermove={revealControls}
