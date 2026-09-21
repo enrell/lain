@@ -33,6 +33,9 @@
 	import { ProgressReporter, type ProgressSnapshot } from '$lib/utilities/progress-reporter';
 	import { elapsedSince, formatTime } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { VideoRenderer } from '$lib/player/webgpu/engine';
+	import { PASSTHROUGH_PASS } from '$lib/player/webgpu/shaders';
+	import { ANIME4K_DOG_X2 } from '$lib/player/webgpu/packs/anime4k';
 
 	let {
 		item,
@@ -51,6 +54,14 @@
 
 	let container = $state<HTMLDivElement | null>(null);
 	let video = $state<HTMLVideoElement | null>(null);
+	let renderCanvas = $state<HTMLCanvasElement | null>(null);
+	let gpuRenderer: VideoRenderer | null = null;
+	let rendererActive = $state(false);
+	let rendererGeneration = 0;
+	let selectedEffect = $state<'off' | 'anime4k-dog-x2'>('off');
+	const rendererPasses = $derived(
+		selectedEffect === 'anime4k-dog-x2' ? ANIME4K_DOG_X2 : [PASSTHROUGH_PASS]
+	);
 
 	let playing = $state(false);
 	let waiting = $state(false);
@@ -228,12 +239,71 @@
 
 	onDestroy(() => {
 		destroyed = true;
+		stopRenderer();
 		persistNow();
 		if (hideTimer) clearTimeout(hideTimer);
 		if (resumeTimer) clearTimeout(resumeTimer);
 		if (frameCheck) clearTimeout(frameCheck);
 		transcodeAbort?.abort();
 		destroyHLS();
+	});
+
+	/* ---------------------------------------------------------------- */
+	/* optional WebGPU presentation layer                                */
+	/* ---------------------------------------------------------------- */
+
+	function stopRenderer(): void {
+		rendererGeneration++;
+		gpuRenderer?.stop();
+		gpuRenderer = null;
+		rendererActive = false;
+	}
+
+	// The browser media engine remains authoritative. WebGPU starts only
+	// after playback has a usable source and yields the picture only after
+	// its first successful GPU submission. Native text tracks temporarily
+	// return presentation to <video>, whose caption renderer owns them.
+	$effect(() => {
+		const el = video;
+		const canvas = renderCanvas;
+		const ready = transcodeReady;
+		const nativeSubtitle = subtitleSrc;
+		const passes = rendererPasses;
+		if (!el || !canvas || !ready || nativeSubtitle) {
+			stopRenderer();
+			return;
+		}
+
+		const generation = ++rendererGeneration;
+		let cancelled = false;
+		void VideoRenderer.create({
+			video: el,
+			canvas,
+			passes,
+			onActiveChange: (active) => {
+				if (!cancelled && generation === rendererGeneration) rendererActive = active;
+			},
+			onFailure: (reason) => {
+				if (cancelled || generation !== rendererGeneration) return;
+				gpuRenderer = null;
+				rendererActive = false;
+				if (import.meta.env.DEV) console.warn('[lain-player] WebGPU renderer disabled', reason);
+			}
+		}).then((result) => {
+			if (cancelled || generation !== rendererGeneration) {
+				result.renderer?.stop();
+				return;
+			}
+			gpuRenderer = result.renderer;
+			if (!result.renderer && import.meta.env.DEV) {
+				console.info('[lain-player] native video renderer', result.reason);
+			}
+		});
+
+		return () => {
+			cancelled = true;
+			if (generation === rendererGeneration) stopRenderer();
+		};
 	});
 
 	async function loadPlaybackOptions(): Promise<void> {
@@ -857,6 +927,46 @@
 	// fraction when the server has one (D-038/D-039).
 	const prepareElapsed = $derived(elapsedSince(prepareStartedAt, nowMs));
 	const preparePercent = $derived(Math.round(prepareProgress * 100));
+
+	/*
+	 * Terminal chrome facts, derived only from what the session already
+	 * reports — the bar names the delivery and the chosen quality, never a
+	 * number the client invented. `mode` is the post-fallback truth (D-058),
+	 * so a file that failed its direct-play probation reads as transcoding.
+	 */
+	const telemetry = $derived(
+		mode === 'transcode'
+			? [
+					delivery === 'hls' ? 'HLS' : delivery === 'progressive' ? 'MP4' : 'Session',
+					selectedQuality || 'Auto'
+				].join(' · ')
+			: 'Direct play'
+	);
+	const stateDot = $derived(
+		waiting
+			? 'animate-pulse bg-muted'
+			: playing
+				? 'bg-success shadow-[0_0_12px_var(--color-success)]'
+				: 'bg-muted'
+	);
+	// The bar has no room for a sentence, so the two things the old top scrim
+	// carried get their own lines: the decode fallback in the interface's own
+	// voice (D-058, sentence case — an uppercase paragraph is not a
+	// micro-label), then the pipeline facts as monospace chrome.
+	const sessionNote = $derived(
+		[
+			mode === 'transcode' && transcodeReasons.length > 0
+				? `Transcoding · ${transcodeReasons.join(' · ')}`
+				: '',
+			mode === 'transcode' && delivery
+				? delivery === 'hls'
+					? 'HLS delivery'
+					: 'Progressive MP4'
+				: ''
+		]
+			.filter(Boolean)
+			.join('  ·  ')
+	);
 </script>
 
 <svelte:window
@@ -867,157 +977,140 @@
 
 <div
 	bind:this={container}
-	class="relative h-full w-full overflow-hidden bg-black"
+	class="relative flex h-full w-full flex-col overflow-hidden bg-background"
 	role="region"
 	aria-label={`Player — ${title}`}
 	onpointermove={revealControls}
 	onpointerdown={revealControls}
 >
-	<video
-		bind:this={video}
-		src={streamSrc}
-		class="size-full object-contain"
-		preload="metadata"
-		playsinline
-		onclick={togglePlay}
-		onloadedmetadata={onLoadedMetadata}
-		ondurationchange={onDurationChange}
-		ontimeupdate={onTimeUpdate}
-		onpause={onPause}
-		onplay={onPlay}
-		onplaying={onPlaying}
-		onwaiting={onWaiting}
-		onseeked={onSeeked}
-		onended={onEnded}
-		onerror={onMediaError}
+	<!-- Terminal chrome: the player's own bar, built like the rest of the
+	     app. Hairline rules and monospace micro-labels instead of scrims, so
+	     it reads on every host palette — `surface` is not always darker than
+	     `background`, and a host theme may collapse several roles onto one
+	     swatch (D-020/D-037). Nothing floats over the picture. -->
+	<header
+		class="grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line/40 bg-surface/70 px-4"
 	>
-		<!-- No captions are transcribed yet; the element keeps native
-		     accessibility semantics without inventing fake tracks. The key
-		     block rebuilds the element when the sidecar changes, which is
-		     what makes switching tracks during direct play reliable. -->
-		{#if subtitleSrc}
-			{#key subtitleSrc}
-				<track kind="subtitles" srclang="en" label="Subtitles" src={subtitleSrc} default />
-			{/key}
-		{/if}
-		<track kind="captions" />
-	</video>
+		<button
+			type="button"
+			class="inline-flex items-center gap-1.5 justify-self-start font-mono text-[11px] uppercase tracking-[0.16em] text-muted transition-colors hover:text-foreground"
+			onclick={() => void goto(`/item/${item.id}`)}
+		>
+			<ArrowLeft class="size-3.5" aria-hidden="true" /> Back to details
+		</button>
+		<p
+			class="max-w-[36ch] truncate justify-self-center font-mono text-xs font-semibold uppercase tracking-[0.2em] text-foreground"
+		>
+			{title}
+		</p>
+		<p
+			class="flex items-center gap-2 justify-self-end font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
+		>
+			<span class={['size-1.5 rounded-full', stateDot].join(' ')} aria-hidden="true"></span>
+			{telemetry}
+		</p>
+	</header>
 
-	{#if transcodeReady && (audioTracks.length > 1 || subtitleTracks.length > 0 || (playbackOptions?.qualities.length ?? 0) > 0 || mode === 'transcode')}
-		<div class="absolute left-4 top-16 z-10 flex flex-wrap gap-2">
-			{#if mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}
-				<label class="flex items-center gap-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/85">
-					Quality
-					<select
-						class="bg-transparent text-xs text-white"
-						bind:value={selectedQuality}
-						onchange={() => void changeTracks()}
-						aria-label="Transcode quality"
-					>
-						<option value="">Auto</option>
-						{#each playbackOptions?.qualities ?? [] as quality (quality.name)}
-							<option value={quality.name}>
-								{quality.name}{quality.bitrate_kbps ? ` · ${Math.round(quality.bitrate_kbps / 1000)} Mbps` : ''}
-							</option>
-						{/each}
-					</select>
-				</label>
+	<div class="relative mx-4 mt-4 min-h-0 flex-1 overflow-hidden border border-line/40 letterbox">
+		<video
+			bind:this={video}
+			src={streamSrc}
+			class={[
+				'absolute inset-0 size-full object-contain transition-opacity duration-100',
+				rendererActive ? 'opacity-0' : 'opacity-100'
+			].join(' ')}
+			preload="metadata"
+			playsinline
+			onclick={togglePlay}
+			onloadedmetadata={onLoadedMetadata}
+			ondurationchange={onDurationChange}
+			ontimeupdate={onTimeUpdate}
+			onpause={onPause}
+			onplay={onPlay}
+			onplaying={onPlaying}
+			onwaiting={onWaiting}
+			onseeked={onSeeked}
+			onended={onEnded}
+			onerror={onMediaError}
+		>
+			<!-- No captions are transcribed yet; the element keeps native
+			     accessibility semantics without inventing fake tracks. The key
+			     block rebuilds the element when the sidecar changes, which is
+			     what makes switching tracks during direct play reliable. -->
+			{#if subtitleSrc}
+				{#key subtitleSrc}
+					<track kind="subtitles" srclang="en" label="Subtitles" src={subtitleSrc} default />
+				{/key}
 			{/if}
-			{#if mode === 'transcode' && audioTracks.length > 1}
-				<label class="flex items-center gap-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/85">
-					Audio
-					<select
-						class="bg-transparent text-xs text-white"
-						bind:value={selectedAudio}
-						onchange={() => void changeTracks()}
-						aria-label="Audio track"
-					>
-						<option value="">Default</option>
-						{#each audioTracks as track (track.index)}
-							<option value={String(track.index)}>
-								{track.language || track.title || `Track ${track.index}`} · {track.codec}
-							</option>
-						{/each}
-					</select>
-				</label>
-			{/if}
-			{#if subtitleTracks.length > 0}
-				<label class="flex items-center gap-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white/85">
-					CC
-					<select
-						class="bg-transparent text-xs text-white"
-						bind:value={selectedSubtitle}
-						onchange={onSubtitleChoice}
-						aria-label="Subtitle track"
-					>
-						<option value="">Off</option>
-						{#each subtitleTracks as track (track.index)}
-							<option value={String(track.index)}>
-								{track.language || track.title || `Track ${track.index}`}
-							</option>
-						{/each}
-					</select>
-				</label>
-			{/if}
-		</div>
-	{/if}
+			<track kind="captions" />
+		</video>
+		<canvas
+			bind:this={renderCanvas}
+			class={[
+				'pointer-events-none absolute inset-0 size-full object-contain transition-opacity duration-100',
+				rendererActive ? 'opacity-100' : 'opacity-0'
+			].join(' ')}
+			aria-hidden="true"
+		></canvas>
 
 	{#if preparingTranscode}
-		<div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 px-6 text-center">
-			<Spinner class="size-10 text-white/80" label="Preparing playback" />
+		<div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/85 px-6 text-center">
+			<Spinner class="size-10 text-muted" label="Preparing playback" />
 			<div class="max-w-md">
-				<p class="text-sm text-white/85">
+				<p class="text-sm text-foreground">
 					{seekTarget > 0
 						? `Seeking to ${formatTime(seekTarget)}…`
 						: 'Preparing a browser-compatible version…'}
 				</p>
-				<p class="mt-2 font-mono text-xs tabular-nums text-white/60">
+				<p class="mt-2 font-mono text-xs uppercase tracking-[0.14em] tabular-nums text-muted">
 					{formatTime(prepareElapsed)} elapsed
 				</p>
 				{#if prepareProgress > 0}
 					<div
-						class="mx-auto mt-4 h-1 w-56 overflow-hidden rounded-full bg-white/20"
+						class="mx-auto mt-4 h-[3px] w-56 overflow-hidden bg-line/30"
 						role="progressbar"
 						aria-label="Preparation progress"
 						aria-valuemin="0"
 						aria-valuemax="100"
 						aria-valuenow={preparePercent}
 					>
-						<div class="h-full rounded-full bg-accent" style={`width:${preparePercent}%`}></div>
+						<div class="h-full bg-accent" style={`width:${preparePercent}%`}></div>
 					</div>
-					<p class="mt-1.5 text-xs text-white/60">{preparePercent}% prepared</p>
+					<p class="mt-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+						{preparePercent}% prepared
+					</p>
 				{/if}
 				{#if seekTarget > 0}
-					<p class="mt-4 text-xs leading-relaxed text-white/60">
+					<p class="mt-4 text-xs leading-relaxed text-muted">
 						The server starts producing this session from that point, so playback resumes shortly.
 					</p>
 				{:else}
-					<p class="mt-4 text-xs leading-relaxed text-white/60">
+					<p class="mt-4 text-xs leading-relaxed text-muted">
 						The first play prepares a browser-compatible copy of this file. Sources like AV1 or
 						HEVC need a full re-encode and can take several minutes.
 					</p>
 				{/if}
-				<p class="mt-2 text-xs leading-relaxed text-white/60">
+				<p class="mt-2 text-xs leading-relaxed text-muted">
 					You can leave this page — preparation continues on the server.
 				</p>
 				<button
-					class="mt-5 rounded-md border border-line bg-surface px-4 py-2 text-sm text-foreground hover:bg-surface-hover"
+					class="mt-5 inline-flex items-center gap-1.5 border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
 					onclick={() => void goto(`/item/${item.id}`)}
 				>
-					<ArrowLeft class="mr-1.5 inline size-3.5" /> Back to details
+					<ArrowLeft class="size-3.5" aria-hidden="true" /> Back to details
 				</button>
 			</div>
 		</div>
 	{:else if transcodeError}
-		<div class="absolute inset-0 flex items-center justify-center bg-black/80 px-6" role="alert">
+		<div class="absolute inset-0 flex items-center justify-center bg-background/85 px-6" role="alert">
 			<div class="max-w-md text-center">
 				<TriangleAlert class="mx-auto size-8 text-warning" />
 				<p class="mt-3 text-sm text-foreground">{transcodeError}</p>
 				<button
-					class="mt-5 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:bg-accent-hover"
+					class="mt-5 inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
 					onclick={() => void prepareTranscode()}
 				>
-					<RotateCcw class="mr-1.5 inline size-3.5" /> Retry preparation
+					<RotateCcw class="size-3.5" aria-hidden="true" /> Retry preparation
 				</button>
 			</div>
 		</div>
@@ -1026,26 +1119,26 @@
 	<!-- Buffering -->
 	{#if waiting && !error && !preparingTranscode}
 		<div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-			<Spinner class="size-10 text-white/80" label="Buffering" />
+			<Spinner class="size-10 text-muted" label="Buffering" />
 		</div>
 	{/if}
 
 	<!-- Error -->
 	{#if error}
-		<div class="absolute inset-0 flex items-center justify-center bg-black/80 px-6" role="alert">
+		<div class="absolute inset-0 flex items-center justify-center bg-background/85 px-6" role="alert">
 			<div class="max-w-md text-center">
 				<TriangleAlert class="mx-auto size-8 text-warning" />
 				<p class="mt-3 text-sm text-foreground">{error}</p>
 				<div class="mt-5 flex justify-center gap-2">
 					<button
-						class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:bg-accent-hover"
+						class="inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
 						onclick={retryPlayback}
 					>
-						<RotateCcw class="mr-1.5 inline size-3.5" /> Retry
+						<RotateCcw class="size-3.5" aria-hidden="true" /> Retry
 					</button>
 					<a
 						href={`/item/${item.id}`}
-						class="rounded-md border border-line bg-surface px-4 py-2 text-sm text-foreground hover:bg-surface-hover"
+						class="inline-flex items-center border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
 					>
 						Back to details
 					</a>
@@ -1062,7 +1155,7 @@
 			aria-label={ended ? 'Play again' : 'Play'}
 		>
 			<span
-				class="flex size-20 items-center justify-center rounded-full bg-black/55 text-foreground backdrop-blur transition-transform duration-150 hover:scale-105"
+				class="flex size-20 items-center justify-center rounded-full border border-foreground/25 bg-background/60 text-foreground backdrop-blur transition-transform duration-150 hover:scale-105"
 			>
 				<Play class="size-9 translate-x-0.5" />
 			</span>
@@ -1072,46 +1165,108 @@
 	<!-- Resume banner -->
 	{#if showResume && resumedFrom > 0}
 		<div
-			class="absolute left-1/2 top-16 -translate-x-1/2 rounded-card border border-line bg-black/75 px-4 py-3 text-sm text-foreground backdrop-blur"
+			class="absolute left-1/2 top-4 -translate-x-1/2 border border-line/40 bg-background/85 px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.12em] text-foreground"
 		>
 			Resuming from {formatTime(resumedFrom)}
-			<button class="ml-3 text-xs font-medium text-accent hover:text-accent-hover" onclick={skipResumeToStart}>
+			<button class="ml-3 text-accent hover:text-accent-hover" onclick={skipResumeToStart}>
 				Start over
 			</button>
 		</div>
 	{/if}
 
-	<!-- Chrome -->
-	<div
-		class={[
-			'absolute inset-x-0 top-0 flex items-center gap-3 bg-gradient-to-b from-black/70 to-transparent p-4 transition-opacity duration-200',
-			controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
-		].join(' ')}
-	>
-		<IconButton label="Back to details" class="text-white/80 hover:text-white" onclick={() => void goto(`/item/${item.id}`)}>
-			<ArrowLeft class="size-5" />
-		</IconButton>
-		<div class="min-w-0">
-			<p class="truncate text-sm font-medium text-white/90">{title}</p>
-			{#if directFallbackNote}
-				<p class="truncate text-xs text-white/55">
-					This browser could not decode this file; preparing a compatible version.
-				</p>
-			{/if}
-			{#if mode === 'transcode' && transcodeReasons.length > 0}
-				<p class="truncate text-xs text-white/55">
-					Transcoding: {transcodeReasons.join(' · ')}{delivery === 'hls' ? ' · HLS' : ''}
-				</p>
-			{/if}
-		</div>
 	</div>
 
-	<div
-		class={[
-			'absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-4 pb-4 pt-16 transition-opacity duration-200',
-			controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
-		].join(' ')}
-	>
+	<!-- Track choices: the one row that follows the idle state, because the
+	     bar and the deck are structural chrome in this layout. -->
+	{#if transcodeReady && (rendererActive || audioTracks.length > 1 || subtitleTracks.length > 0 || (playbackOptions?.qualities.length ?? 0) > 0 || mode === 'transcode')}
+		<div
+			class={[
+				'flex flex-wrap items-center gap-1.5 px-4 pt-3 transition-opacity duration-200',
+				controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+			].join(' ')}
+		>
+			{#if rendererActive}
+				<label class="chrome-chip">
+					Effects
+					<select class="chrome-select" bind:value={selectedEffect} aria-label="Video effects">
+						<option value="off">Off</option>
+						<option value="anime4k-dog-x2">Anime4K DoG ×2</option>
+					</select>
+				</label>
+			{/if}
+			{#if mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}
+				<label class="chrome-chip">
+					Quality
+					<select
+						class="chrome-select"
+						bind:value={selectedQuality}
+						onchange={() => void changeTracks()}
+						aria-label="Transcode quality"
+					>
+						<option value="">Auto</option>
+						{#each playbackOptions?.qualities ?? [] as quality (quality.name)}
+							<option value={quality.name}>
+								{quality.name}{quality.bitrate_kbps ? ` · ${Math.round(quality.bitrate_kbps / 1000)} Mbps` : ''}
+							</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
+			{#if mode === 'transcode' && audioTracks.length > 1}
+				<label class="chrome-chip">
+					Audio
+					<select
+						class="chrome-select"
+						bind:value={selectedAudio}
+						onchange={() => void changeTracks()}
+						aria-label="Audio track"
+					>
+						<option value="">Default</option>
+						{#each audioTracks as track (track.index)}
+							<option value={String(track.index)}>
+								{track.language || track.title || `Track ${track.index}`} · {track.codec}
+							</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
+			{#if subtitleTracks.length > 0}
+				<label class="chrome-chip">
+					CC
+					<select
+						class="chrome-select"
+						bind:value={selectedSubtitle}
+						onchange={onSubtitleChoice}
+						aria-label="Subtitle track"
+					>
+						<option value="">Off</option>
+						{#each subtitleTracks as track (track.index)}
+							<option value={String(track.index)}>
+								{track.language || track.title || `Track ${track.index}`}
+							</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- The bar has no room for a sentence, so the two things the old top
+	     scrim carried get their own lines. -->
+	{#if directFallbackNote}
+		<p class="px-4 pt-2 text-xs leading-relaxed text-muted">
+			This browser could not decode this file; preparing a compatible version.
+		</p>
+	{/if}
+	{#if sessionNote}
+		<p class="px-4 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+			{sessionNote}
+		</p>
+	{/if}
+
+	<!-- Transport deck: structural chrome, so it stays put — the seek bar must
+	     always be reachable, and it spans the whole media (D-057). -->
+	<footer class="mt-3 shrink-0 border-t border-line/40 bg-surface/70 px-4 pb-4 pt-3">
 		<!-- Seek -->
 		<div class="group/seek flex items-center gap-3">
 			<Slider.Root
@@ -1140,40 +1295,40 @@
 				}}
 				class="relative flex h-6 w-full touch-none select-none items-center"
 			>
-				<span class="relative h-1.5 w-full grow overflow-hidden rounded-full bg-white/20">
+				<span class="relative h-[3px] w-full grow overflow-hidden bg-line/25">
 					<!-- The ready range sits where it actually is: a resumed or
 					     re-seeked session begins partway into the episode. -->
 					<span
-						class="absolute inset-y-0 rounded-full bg-white/25"
+						class="absolute inset-y-0 bg-foreground/25"
 						style={`left:${bufferedLeft}%;width:${bufferedWidth}%`}
 					></span>
-					<Slider.Range class="absolute h-full rounded-full bg-accent" />
+					<Slider.Range class="absolute h-full bg-accent" />
 				</span>
 				<Slider.Thumb
 					index={0}
 					aria-label="Seek"
-					class="block size-3.5 rounded-full bg-accent shadow transition-transform duration-150 hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+					class="block size-3.5 rounded-full bg-accent transition-transform duration-150 hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 				/>
 			</Slider.Root>
-			<span class="shrink-0 font-mono text-xs tabular-nums text-white/80">
+			<span class="shrink-0 font-mono text-xs tabular-nums text-foreground">
 				{formatTime(scrubbing ? scrubValue : currentTime)} / {formatTime(totalDuration)}
 			</span>
 		</div>
 
 		<!-- Transport -->
 		<div class="mt-1 flex items-center gap-1.5">
-			<IconButton label="Back 10 seconds" class="text-white/85 hover:text-white" onclick={() => seekBy(-10)}>
+			<IconButton label="Back 10 seconds" onclick={() => seekBy(-10)}>
 				<SkipBack class="size-5" />
 			</IconButton>
-			<IconButton label={playing ? 'Pause' : 'Play'} class="text-white hover:text-white" onclick={togglePlay}>
+			<IconButton label={playing ? 'Pause' : 'Play'} class="text-foreground" onclick={togglePlay}>
 				{#if playing}<Pause class="size-6" />{:else}<Play class="size-6" />{/if}
 			</IconButton>
-			<IconButton label="Forward 10 seconds" class="text-white/85 hover:text-white" onclick={() => seekBy(10)}>
+			<IconButton label="Forward 10 seconds" onclick={() => seekBy(10)}>
 				<SkipForward class="size-5" />
 			</IconButton>
 
 			<div class="ml-2 flex items-center gap-1.5">
-				<IconButton label={muted ? 'Unmute' : 'Mute'} class="text-white/85 hover:text-white" onclick={toggleMute}>
+				<IconButton label={muted ? 'Unmute' : 'Mute'} onclick={toggleMute}>
 					<VolumeIcon class="size-5" />
 				</IconButton>
 				<div class="hidden w-24 md:block">
@@ -1185,13 +1340,13 @@
 						onValueChange={setVolume}
 						class="relative flex h-6 touch-none select-none items-center"
 					>
-						<span class="relative h-1 w-full grow overflow-hidden rounded-full bg-white/20">
-							<Slider.Range class="absolute h-full rounded-full bg-white" />
+						<span class="relative h-[3px] w-full grow overflow-hidden bg-line/25">
+							<Slider.Range class="absolute h-full bg-foreground" />
 						</span>
 						<Slider.Thumb
 							index={0}
 							aria-label="Volume"
-							class="block size-3 rounded-full bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+							class="block size-3 rounded-full bg-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 						/>
 					</Slider.Root>
 				</div>
@@ -1199,22 +1354,19 @@
 
 			<div class="ml-auto flex items-center gap-1.5">
 				<DropdownMenu.Root>
-					<DropdownMenu.Trigger
-						class="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-white/85 hover:bg-white/10 hover:text-white"
-						aria-label={`Playback speed ${rate}x`}
-					>
-						<Gauge class="size-4" /> {rate}x
+					<DropdownMenu.Trigger class="chrome-chip" aria-label={`Playback speed ${rate}x`}>
+						<Gauge class="size-3.5" aria-hidden="true" /> {rate}x
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Portal>
 						<DropdownMenu.Content
 							side="top"
 							align="end"
 							sideOffset={8}
-							class="z-50 min-w-28 rounded-md border border-line bg-surface p-1 shadow-xl"
+							class="z-50 min-w-28 border border-line/40 bg-surface p-1 shadow-xl"
 						>
 							{#each RATES as option (option)}
 								<DropdownMenu.Item
-									class="flex cursor-default items-center justify-between rounded-sm px-2.5 py-1.5 text-sm text-foreground outline-none data-[highlighted]:bg-surface-hover"
+									class="flex cursor-default items-center justify-between rounded-sm px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.1em] text-foreground outline-none data-[highlighted]:bg-surface-hover"
 									onSelect={() => setRate(option)}
 								>
 									{option}x {#if option === rate}<span class="text-accent">•</span>{/if}
@@ -1225,12 +1377,11 @@
 				</DropdownMenu.Root>
 				<IconButton
 					label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-					class="text-white/85 hover:text-white"
 					onclick={() => void toggleFullscreen()}
 				>
 					{#if fullscreen}<Minimize class="size-5" />{:else}<Maximize class="size-5" />{/if}
 				</IconButton>
 			</div>
 		</div>
-	</div>
+	</footer>
 </div>

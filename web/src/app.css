@@ -87,6 +87,36 @@
 	background-size: 22px 22px;
 }
 
+/* The player's letterbox: the picture's own darkness, still palette-owned, so
+ * a light host theme does not put a black rectangle inside a light app. */
+@utility letterbox {
+	background: color-mix(in srgb, var(--color-background) 62%, #000);
+}
+
+/* Terminal chrome for the watch page: hairline micro-label controls. Panels
+ * read by their rule, never by a fill difference — on some host palettes
+ * `surface` equals `background`, and several roles collapse onto one swatch. */
+@utility chrome-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.3rem 0.6rem;
+	border: 1px solid color-mix(in srgb, var(--color-line) 40%, transparent);
+	color: var(--color-muted);
+	font-family: var(--font-mono);
+	font-size: 0.625rem;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+@utility chrome-select {
+	background: transparent;
+	color: var(--color-foreground);
+	font: inherit;
+	letter-spacing: inherit;
+	text-transform: inherit;
+}
+
 /* Monolith home: the image owns the right side while copy stays readable
  * against every Omarchy palette and every piece of server artwork. */
 .hero-monolith-shade {

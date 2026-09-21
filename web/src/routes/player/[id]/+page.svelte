@@ -84,18 +84,18 @@
 <svelte:head><title>{item?.title ? `Playing ${item.title} — Lain` : 'Player — Lain'}</title></svelte:head>
 
 {#if loading && !item}
-	<div class="flex h-dvh items-center justify-center bg-black">
-		<Spinner class="size-8 text-white/70" label="Preparing playback" />
+	<div class="flex h-dvh items-center justify-center bg-background">
+		<Spinner class="size-8 text-muted" label="Preparing playback" />
 	</div>
 {:else if notFound}
-	<div class="flex h-dvh flex-col items-center justify-center gap-4 bg-black px-6 text-center">
+	<div class="flex h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
 		<p class="text-sm text-muted">That item no longer exists in the catalog.</p>
 		<Button variant="secondary" onclick={() => void goto('/library')}>
 			<ArrowLeft class="size-4" /> Back to library
 		</Button>
 	</div>
 {:else if error}
-	<div class="flex h-dvh items-center justify-center bg-black px-6">
+	<div class="flex h-dvh items-center justify-center bg-background px-6">
 		<ErrorState message={error} retry={() => void load()} />
 	</div>
 {:else if item && plan}
@@ -109,7 +109,7 @@
 					<Player {item} {plan} initialProgress={progress} />
 				{/key}
 			{:else}
-				<div class="relative flex h-full items-center justify-center overflow-hidden bg-black px-6">
+				<div class="relative flex h-full items-center justify-center overflow-hidden bg-background px-6">
 					<div class="lattice absolute inset-0 opacity-30"></div>
 					<div class="relative max-w-lg text-center">
 						<MonitorPlay class="mx-auto size-10 text-muted" />
@@ -135,10 +135,10 @@
 
 		{#if episodes.length > 1}
 			<aside
-				class="hidden w-80 shrink-0 flex-col border-l border-line/60 bg-surface/10 lg:flex"
+				class="hidden w-80 shrink-0 flex-col border-l border-line/40 bg-surface/60 lg:flex"
 				aria-label="Episodes"
 			>
-				<div class="border-b border-line/60 px-4 py-3">
+				<div class="border-b border-line/40 px-4 py-3">
 					<p class="truncate text-sm font-semibold text-foreground">{item.title}</p>
 					<p class="mt-0.5 text-xs text-muted">{episodes.length} episodes</p>
 				</div>
@@ -151,11 +151,11 @@
 								aria-current={current ? 'true' : undefined}
 								aria-label={`${episodeLabel(episode)}${current ? ', playing' : ''}`}
 								class={[
-									'flex items-center gap-3 rounded-lg p-2 transition-colors',
-									current ? 'bg-surface-active' : 'hover:bg-surface-hover'
+									'flex items-center gap-3 p-2 transition-colors',
+									current ? 'bg-foreground/5' : 'hover:bg-foreground/8'
 								].join(' ')}
 							>
-								<span class="relative block h-12 w-20 shrink-0 overflow-hidden rounded-md bg-surface">
+								<span class="relative block h-12 w-20 shrink-0 overflow-hidden border border-line/40 bg-surface">
 									<img
 										src={stillUrl(episode.id)}
 										alt=""
