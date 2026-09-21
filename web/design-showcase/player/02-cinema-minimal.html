@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>02 — Cinema Minimal</title><link rel="stylesheet" href="player.css"></head>
+<body class="c2" data-state="play" data-chrome="shown">
+<div class="watch">
+  <section class="stage">
+    <div class="frame">
+      <div class="still" data-code=""></div>
+      <header class="top">
+        <div class="stack">
+          <span class="eyebrow">S01E09 · 1080p HEVC · Dual-Audio</span>
+          <h1 class="name">Frieren</h1>
+          <p class="eyebrow meta">Aura the Guillotine · 24 min · Transcoding · HLS</p>
+        </div>
+        <div class="right"><a class="btn" href="index.html">← Details</a></div>
+      </header>
+      <button class="bigplay" type="button" aria-label="Play"><span>▶</span></button>
+      <div class="overlay prepare">
+        <span class="spinner" aria-hidden="true"></span>
+        <p class="title">Preparing a browser-compatible version…</p>
+        <p class="note">00:37 elapsed · 46% prepared</p>
+        <span class="bar-track" role="progressbar" aria-label="Preparation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="46"><i></i></span>
+        <p class="note">The first play prepares a browser-compatible copy of this file. Sources like AV1 or HEVC need a full re-encode and can take several minutes.</p>
+        <p class="note">You can leave this page — preparation continues on the server.</p>
+        <div class="actions"><button class="btn" type="button">← Back to details</button></div>
+      </div>
+      <div class="overlay error" role="alert">
+        <p class="title">Preparation failed</p>
+        <p class="note">The encoder exited before producing a playable stream.</p>
+        <div class="actions"><button class="btn primary" type="button">Retry preparation</button><button class="btn" type="button">Back to details</button></div>
+      </div>
+      <div class="overlay resume">
+        <p class="title">Resuming from 00:12:04</p>
+        <div class="actions"><button class="btn" type="button">Start over</button><button class="btn primary" type="button">Continue</button></div>
+      </div>
+      <footer class="floating">
+        <div class="surface">
+          <div class="row">
+            <div class="seek"><span class="track"><span class="buf"></span><span class="fill"></span></span><span class="thumb"></span></div>
+            <span class="time">00:14:32 / 00:24:00</span>
+          </div>
+          <div class="row">
+            <button class="icon" type="button" aria-label="Back 10 seconds">⏪</button>
+            <button class="icon" type="button" aria-label="Pause">⏸</button>
+            <button class="icon" type="button" aria-label="Forward 10 seconds">⏩</button>
+            <button class="icon" type="button" aria-label="Mute">🔊</button>
+            <span class="meta">Buffered 62% · 4.2 MB/s</span>
+            <span class="cluster">
+              <span class="chip">Audio <b>Japanese</b></span>
+              <span class="chip">CC <b>Portuguese</b></span>
+              <span class="chip">1.0×</span>
+              <button class="icon" type="button" aria-label="Fullscreen">⛶</button>
+            </span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </section>
+  <aside class="episodes" aria-label="Episodes">
+    <header><b>Frieren</b><span>28 episodes · Season 1</span></header>
+    <ul>
+      <li><a href="#"><span class="still thumb"></span><span><span class="code">S01E07</span><span class="sub">Watched</span></span></a></li>
+      <li><a href="#"><span class="still thumb"></span><span><span class="code">S01E08</span><span class="sub">Watched</span></span></a></li>
+      <li><a href="#" aria-current="true"><span class="still thumb"></span><span><span class="code">S01E09</span><span class="sub">Resume at 60%</span></span></a></li>
+      <li><a href="#"><span class="still thumb"></span><span><span class="code">S01E10</span><span class="sub">Not watched</span></span></a></li>
+      <li><a href="#"><span class="still thumb"></span><span><span class="code">S01E11</span><span class="sub">Not watched</span></span></a></li>
+    </ul>
+  </aside>
+</div>
+<script src="player.js"></script>
+</body>
+</html>

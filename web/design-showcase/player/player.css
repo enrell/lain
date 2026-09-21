@@ -1,0 +1,315 @@
+/*
+ * Lain — Player study 003. Non-binding design prototypes.
+ *
+ * Isolation per D-021: no production route, no build entry, no dependency.
+ *
+ * The tokens below are the LIVE Omarchy palette this host actually serves,
+ * copied verbatim from `GET /api/theme` (internal/gateway/theme.go, D-020 +
+ * D-037 legibility floor). A study drawn on invented colours would be a mood
+ * board; this one shows what the real player would look like next to the real
+ * app. Note the host theme's quirks, because every concept has to survive
+ * them: `surface == background`, and `surface-hover`/`surface-active`/
+ * `danger` all collapse onto the accent (#9a778a). Panels therefore read by
+ * their hairline border, never by a fill difference.
+ */
+:root {
+  --bg: #151623;
+  --surface: #151623;
+  --surface-hover: #9a778a;
+  --surface-active: #9a778a;
+  --fg: #bac5cd;
+  --muted: #7c8289;
+  --line: #a38d9d;
+  --accent: #9a778a;
+  --accent-hover: #abb7cf;
+  --accent-fg: #000000;
+  --success: #b4c9ab;
+  --warning: #8f7f62;
+  --danger: #9a778a;
+
+  /* Derived, still palette-owned: hairlines and panel lifts the token set
+   * does not carry. Same `color-mix` idiom app.css already uses. */
+  --hair: color-mix(in srgb, var(--line) 30%, transparent);
+  --hair-soft: color-mix(in srgb, var(--line) 15%, transparent);
+  --panel: color-mix(in srgb, var(--fg) 5%, var(--bg));
+  --panel-strong: color-mix(in srgb, var(--fg) 9%, var(--bg));
+  --void: color-mix(in srgb, var(--bg) 62%, #000);
+
+  --radius: 0.625rem;
+  --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button, select { color: inherit; font: inherit; cursor: pointer; }
+button { background: none; border: 0; padding: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--accent) 40%, transparent); }
+
+.mono { font-family: var(--mono); }
+.eyebrow {
+  font: 600 0.66rem/1 var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 1.75rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--hair);
+  font: 600 0.62rem/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.chip b { color: var(--fg); font-weight: 600; }
+.chip.solid { border-color: transparent; background: var(--accent); color: var(--accent-fg); }
+.chip.solid b { color: var(--accent-fg); }
+
+/* ---- Index ------------------------------------------------------------ */
+.index-wrap { max-width: 1100px; margin: 0 auto; padding: 4rem 1.5rem 5rem; }
+.index-wrap header { max-width: 62ch; }
+.index-wrap h1 {
+  margin: 0.9rem 0 0;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  font-weight: 900;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+  text-transform: uppercase;
+}
+.index-wrap header p { margin: 1.1rem 0 0; color: var(--muted); line-height: 1.65; }
+.palette { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 2rem; }
+.palette span {
+  display: flex; align-items: center; gap: 0.5rem;
+  border: 1px solid var(--hair); padding: 0.35rem 0.6rem;
+  font: 600 0.6rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+}
+.palette i { width: 0.7rem; height: 0.7rem; display: block; border: 1px solid var(--hair-soft); }
+.variants { display: grid; gap: 1rem; margin-top: 3rem; }
+.variant {
+  display: grid; grid-template-columns: 3rem 1fr auto; gap: 1.25rem; align-items: baseline;
+  padding: 1.4rem 1.5rem; border: 1px solid var(--hair); transition: background 0.2s;
+}
+.variant:hover { background: var(--panel); }
+.variant b { font: 700 0.8rem/1 var(--mono); color: var(--accent); }
+.variant h2 { margin: 0; font-size: 1.15rem; letter-spacing: -0.02em; }
+.variant p { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.86rem; line-height: 1.6; }
+.variant span { color: var(--accent); font-size: 1.1rem; }
+.index-notes { margin-top: 3rem; border-top: 1px solid var(--hair); padding-top: 1.5rem; color: var(--muted); font-size: 0.85rem; line-height: 1.7; }
+
+/* ---- Shared watch-page scaffolding ----------------------------------- */
+.watch { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; height: 100vh; }
+.stage { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; position: relative; }
+.frame { position: relative; overflow: hidden; }
+.frame > .still { position: absolute; inset: 0; }
+
+/* A stand-in for a decoded frame: a lattice on the letterbox shade, so the
+ * chrome is judged against picture darkness rather than against the page. */
+.still {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 22% 18%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 58%),
+    radial-gradient(90% 70% at 82% 76%, color-mix(in srgb, var(--fg) 14%, transparent), transparent 60%),
+    radial-gradient(circle, color-mix(in srgb, var(--fg) 7%, transparent) 1px, transparent 1px),
+    var(--void);
+  background-size: auto, auto, 22px 22px, auto;
+}
+.still::after {
+  content: attr(data-code);
+  position: absolute; left: 1.1rem; bottom: 1rem;
+  font: 700 0.7rem/1 var(--mono); letter-spacing: 0.2em; color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+.bigplay {
+  position: absolute; inset: 0; display: grid; place-items: center;
+}
+.bigplay span {
+  display: grid; place-items: center; width: 4.5rem; height: 4.5rem;
+  border: 1px solid color-mix(in srgb, var(--fg) 35%, transparent);
+  border-radius: 50%; color: var(--fg);
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  backdrop-filter: blur(6px);
+  font-size: 1.4rem; transition: transform 0.15s ease;
+}
+.bigplay:hover span { transform: scale(1.06); }
+
+/* Overlays that every concept must carry: the honest preparation wait
+ * (D-038), the decode fallback note (D-058) and the error/retry state. */
+.overlay {
+  position: absolute; inset: 0; display: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem;
+  padding: 2rem; text-align: center;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(2px);
+}
+body[data-state='prepare'] .overlay.prepare,
+body[data-state='error'] .overlay.error,
+body[data-state='resume'] .overlay.resume { display: flex; }
+body[data-state='prepare'] .bigplay,
+body[data-state='error'] .bigplay,
+body[data-state='resume'] .bigplay { display: none; }
+.overlay .title { font-size: 0.92rem; }
+.overlay .note { max-width: 44ch; color: var(--muted); font-size: 0.78rem; line-height: 1.65; }
+.bar-track { width: 14rem; height: 2px; background: var(--hair); margin-top: 0.9rem; overflow: hidden; }
+.bar-track i { display: block; height: 100%; width: 46%; background: var(--accent); }
+.overlay .actions { display: flex; gap: 0.6rem; margin-top: 1.3rem; }
+.btn {
+  display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.25rem; padding: 0 1rem;
+  border: 1px solid var(--hair); font-size: 0.8rem; color: var(--fg);
+}
+.btn:hover { background: var(--panel-strong); }
+.btn.primary { background: var(--accent); border-color: transparent; color: var(--accent-fg); font-weight: 600; }
+.spinner {
+  width: 2rem; height: 2rem; border-radius: 50%;
+  border: 2px solid var(--hair); border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Seek: the bar spans the whole media (D-057); the buffered range is drawn
+ * where it really is, and the produced edge is the brighter segment. */
+.seek { position: relative; flex: 1; height: 1.25rem; display: flex; align-items: center; }
+.seek .track { position: relative; width: 100%; height: 3px; background: var(--hair); overflow: hidden; }
+.seek .buf { position: absolute; inset: 0 auto 0 0; width: 62%; background: color-mix(in srgb, var(--fg) 24%, transparent); }
+.seek .fill { position: absolute; inset: 0 auto 0 0; width: 60%; background: var(--accent); }
+.seek .thumb {
+  position: absolute; top: 50%; left: 60%; width: 0.7rem; height: 0.7rem;
+  transform: translate(-50%, -50%); background: var(--accent); border-radius: 50%;
+}
+.time { font: 500 0.72rem/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--fg); white-space: nowrap; }
+.icon { display: inline-grid; place-items: center; min-width: 2.25rem; min-height: 2.25rem; color: var(--fg); font-size: 0.95rem; }
+.icon:hover { background: var(--panel-strong); }
+
+/* Episode sidebar (D-056): the title's other files beside the video. */
+.episodes { display: flex; flex-direction: column; border-left: 1px solid var(--hair); min-height: 0; background: var(--panel); }
+.episodes > header { padding: 0.85rem 1rem; border-bottom: 1px solid var(--hair); }
+.episodes > header b { display: block; font-size: 0.88rem; }
+.episodes > header span { color: var(--muted); font-size: 0.72rem; }
+.episodes ul { list-style: none; margin: 0; padding: 0.4rem; overflow-y: auto; flex: 1; }
+.episodes li a { display: flex; gap: 0.75rem; align-items: center; padding: 0.5rem; }
+.episodes li a:hover { background: var(--panel-strong); }
+.episodes li a[aria-current] { background: var(--panel-strong); }
+.episodes .thumb { width: 4.6rem; height: 2.7rem; flex: none; border: 1px solid var(--hair-soft); }
+.episodes .code { font: 600 0.62rem/1 var(--mono); letter-spacing: 0.14em; color: var(--muted); }
+.episodes li a[aria-current] .code { color: var(--accent); }
+.episodes .sub { display: block; margin-top: 0.3rem; color: var(--muted); font-size: 0.72rem; }
+
+/* Chrome visibility: the real player hides its controls when idle. The study
+ * toolbar can force the idle state so each concept is judged both ways. */
+.bar, .deck, .floating, .top, .tracks { transition: opacity 0.2s ease; }
+body[data-chrome='hidden'] .bar,
+body[data-chrome='hidden'] .deck,
+body[data-chrome='hidden'] .floating,
+body[data-chrome='hidden'] .top,
+body[data-chrome='hidden'] .tracks { opacity: 0; pointer-events: none; }
+
+/* ---- 01 · Terminal Chrome -------------------------------------------- */
+.c1 .bar {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  height: 3rem; padding: 0 1rem;
+  border-bottom: 1px solid var(--hair);
+  background: var(--panel);
+}
+.c1 .bar .back { color: var(--muted); font: 600 0.66rem/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; }
+.c1 .bar .back:hover { color: var(--fg); }
+.c1 .bar .name { justify-self: center; font: 700 0.72rem/1 var(--mono); letter-spacing: 0.2em; text-transform: uppercase; }
+.c1 .bar .telemetry { justify-self: end; display: flex; align-items: center; gap: 0.55rem; color: var(--muted); font: 600 0.64rem/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.c1 .bar .dot { width: 0.42rem; height: 0.42rem; border-radius: 50%; background: var(--success); box-shadow: 0 0 10px var(--success); }
+.c1 .frame { position: relative; margin: 1rem; border: 1px solid var(--hair); }
+.c1 .tracks { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0 1rem 0.75rem; }
+.c1 .deck { border-top: 1px solid var(--hair); background: var(--panel); padding: 0.7rem 1rem 0.9rem; }
+.c1 .deck .row1 { display: flex; align-items: center; gap: 0.9rem; }
+.c1 .deck .row2 { display: flex; align-items: center; gap: 0.15rem; margin-top: 0.5rem; }
+.c1 .deck .cluster { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; }
+.c1 .volume { display: flex; align-items: center; gap: 0.5rem; margin-left: 0.9rem; }
+.c1 .volume .rail { width: 5rem; height: 3px; background: var(--hair); position: relative; }
+.c1 .volume .rail i { position: absolute; inset: 0 auto 0 0; width: 70%; background: var(--fg); }
+.c1 .reason { padding: 0.5rem 1rem 0; color: var(--muted); font: 500 0.68rem/1 var(--mono); letter-spacing: 0.06em; }
+
+/* ---- 02 · Cinema Minimal --------------------------------------------- */
+.c2 .stage { grid-template-rows: minmax(0, 1fr); }
+.c2 .frame { position: relative; margin: 0; }
+.c2 .top {
+  position: absolute; inset: 0 0 auto; display: flex; align-items: flex-start; gap: 1.1rem;
+  padding: 1.6rem 1.75rem;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 88%, transparent), transparent);
+}
+.c2 .top .name { font-size: clamp(1.4rem, 3vw, 2.2rem); font-weight: 800; letter-spacing: -0.035em; text-transform: uppercase; line-height: 1; }
+.c2 .top .meta { margin-top: 0.5rem; }
+.c2 .top .stack { min-width: 0; }
+.c2 .top .right { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+.c2 .floating {
+  position: absolute; inset: auto 0 0; padding: 0 1.75rem 1.5rem;
+  background: linear-gradient(to top, color-mix(in srgb, var(--bg) 92%, transparent), transparent);
+}
+.c2 .floating .surface {
+  display: flex; flex-direction: column; gap: 0.6rem;
+  padding: 0.9rem 1.1rem 1rem;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(18px);
+}
+.c2 .floating .row { display: flex; align-items: center; gap: 1rem; }
+.c2 .floating .cluster { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
+.c2 .floating .meta { color: var(--muted); font-size: 0.72rem; }
+.c2 .seek .track { height: 4px; border-radius: 999px; }
+.c2 .seek .buf { border-radius: 999px; }
+.c2 .seek .fill { border-radius: 999px; }
+.c2 .bigplay span { border-radius: 50%; width: 5rem; height: 5rem; font-size: 1.6rem; }
+
+/* ---- 03 · Control Deck ----------------------------------------------- */
+.c3 .stage { grid-template-rows: minmax(0, 1fr) auto; }
+.c3 .deck {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  border-top: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+.c3 .deck .controls { padding: 0.85rem 1.1rem 1rem; border-right: 1px solid var(--hair); }
+.c3 .deck .controls .row1 { display: flex; align-items: center; gap: 0.9rem; }
+.c3 .deck .controls .row2 { display: flex; align-items: center; gap: 0.15rem; margin-top: 0.55rem; }
+.c3 .deck .controls .cluster { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; }
+.c3 .readout { display: grid; grid-template-columns: auto auto; gap: 0.35rem 1.1rem; align-content: center; padding: 0.85rem 1.1rem; }
+.c3 .readout dt { font: 600 0.58rem/1.5 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.c3 .readout dd { margin: 0; font: 600 0.66rem/1.5 var(--mono); letter-spacing: 0.06em; text-align: right; }
+.c3 .frame { position: relative; margin: 0; border-bottom: 1px solid var(--line); }
+.c3 .seek .track { height: 2px; }
+.c3 .seek .thumb { width: 0.55rem; height: 0.9rem; border-radius: 0; }
+.c3 .episodes { background: var(--bg); }
+.c3 .episodes > header { display: flex; align-items: baseline; justify-content: space-between; }
+
+/* ---- Study toolbar (prototype-only; never ships) --------------------- */
+.studybar {
+  position: fixed; left: 50%; bottom: 0.75rem; transform: translateX(-50%);
+  z-index: 90; display: flex; align-items: center; gap: 0.35rem;
+  padding: 0.35rem; border: 1px solid var(--hair); background: var(--panel-strong);
+  font: 600 0.6rem/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase;
+}
+.studybar span { color: var(--muted); padding: 0 0.5rem; }
+.studybar button { padding: 0.4rem 0.6rem; color: var(--muted); border: 1px solid transparent; }
+.studybar button:hover { color: var(--fg); }
+.studybar button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); }
+
+@media (max-width: 900px) {
+  .watch { grid-template-columns: 1fr; }
+  .episodes { display: none; }
+  .c1 .bar .telemetry { display: none; }
+  .c3 .deck { grid-template-columns: 1fr; }
+  .c3 .readout { display: none; }
+}

@@ -1,17 +1,18 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { DropdownMenu, Slider } from 'bits-ui';
+	import { Slider } from 'bits-ui';
 	import Hls from 'hls.js';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-	import Gauge from '@lucide/svelte/icons/gauge';
+	import Settings from '@lucide/svelte/icons/settings';
+	import X from '@lucide/svelte/icons/x';
 	import Maximize from '@lucide/svelte/icons/maximize';
 	import Minimize from '@lucide/svelte/icons/minimize';
 	import Pause from '@lucide/svelte/icons/pause';
 	import Play from '@lucide/svelte/icons/play';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
-	import SkipBack from '@lucide/svelte/icons/skip-back';
-	import SkipForward from '@lucide/svelte/icons/skip-forward';
+	import SkipBack from '@lucide/svelte/icons/rotate-ccw';
+	import SkipForward from '@lucide/svelte/icons/rotate-cw';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Volume1 from '@lucide/svelte/icons/volume-1';
 	import Volume2 from '@lucide/svelte/icons/volume-2';
@@ -77,6 +78,11 @@
 	let rate = $state(prefs.getNumber('player.rate', 1));
 	let fullscreen = $state(false);
 	let controlsVisible = $state(true);
+	let settingsOpen = $state(false);
+	let settingsButton = $state<HTMLButtonElement | null>(null);
+	$effect(() => {
+		if (settingsOpen) void tick().then(() => chromeTailEl?.querySelector<HTMLSelectElement>('select')?.focus());
+	});
 	// The chrome's own elements. The reveal zones are measured from these, so
 	// the layout decides where the pointer may wake the chrome instead of a
 	// hardcoded height that another palette, viewport or font would break.
@@ -760,7 +766,7 @@
 	// failure the viewer has to act on, a resume banner, a drag in progress, or
 	// focus inside the chrome itself.
 	function chromePinned(): boolean {
-		return scrubbing || !!error || preparingTranscode || showResume || chromeFocused();
+		return settingsOpen || scrubbing || !!error || preparingTranscode || showResume || chromeFocused();
 	}
 
 	function scheduleHide(): void {
@@ -945,6 +951,12 @@
 	}
 
 	function onKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape' && settingsOpen) {
+			event.preventDefault();
+			settingsOpen = false;
+			settingsButton?.focus();
+			return;
+		}
 		if (!shortcutsAllowed(event)) return;
 		switch (event.key) {
 			case ' ':
@@ -1014,12 +1026,7 @@
 	const prepareElapsed = $derived(elapsedSince(prepareStartedAt, nowMs));
 	const preparePercent = $derived(Math.round(prepareProgress * 100));
 
-	/*
-	 * Terminal chrome facts, derived only from what the session already
-	 * reports — the bar names the delivery and the chosen quality, never a
-	 * number the client invented. `mode` is the post-fallback truth (D-058),
-	 * so a file that failed its direct-play probation reads as transcoding.
-	 */
+	// Optional playback information uses the actual post-fallback session.
 	const telemetry = $derived(
 		mode === 'transcode'
 			? [
@@ -1028,17 +1035,7 @@
 				].join(' · ')
 			: 'Direct play'
 	);
-	const stateDot = $derived(
-		waiting
-			? 'animate-pulse bg-muted'
-			: playing
-				? 'bg-success shadow-[0_0_12px_var(--color-success)]'
-				: 'bg-muted'
-	);
-	// The bar has no room for a sentence, so the two things the old top scrim
-	// carried get their own lines: the decode fallback in the interface's own
-	// voice (D-058, sentence case — an uppercase paragraph is not a
-	// micro-label), then the pipeline facts as monospace chrome.
+	// Technical details stay available without competing with the picture.
 	const sessionNote = $derived(
 		[
 			mode === 'transcode' && transcodeReasons.length > 0
@@ -1074,10 +1071,13 @@
 	role="region"
 	aria-label={`Player — ${title}`}
 	onpointermove={onStagePointerMove}
-	onpointerdown={revealControls}
+	onpointerdown={(event) => {
+		if (settingsOpen && event.target instanceof Node && !chromeTailEl?.contains(event.target) && !settingsButton?.contains(event.target)) settingsOpen = false;
+		revealControls();
+	}}
 	onfocusin={revealControls}
 >
-	<!-- Terminal chrome, floating over the picture (D-065): the bar over the top
+	<!-- Palette-owned chrome, floating over the picture (D-065/D-066): the bar over the top
 	     edge and the deck over the bottom one, each on the palette's own
 	     background at 90% with a blur — the idiom the app's own nav already uses,
 	     and the opacity that keeps `muted` text above the 4.5:1 floor even when
@@ -1085,27 +1085,21 @@
 	<header
 		bind:this={headerEl}
 		class={[
-			'absolute inset-x-0 top-0 z-20 grid h-12 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line/40 bg-background/90 px-4 backdrop-blur-xl',
+			'absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-4 bg-background/90 px-4 backdrop-blur-xl sm:px-6',
 			chromeClass
 		].join(' ')}
 	>
 		<button
 			type="button"
-			class="inline-flex items-center gap-1.5 justify-self-start font-mono text-[11px] uppercase tracking-[0.16em] text-muted transition-colors hover:text-foreground"
+			class="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-2 text-sm text-foreground transition-colors hover:bg-surface-hover"
 			onclick={() => void goto(`/item/${item.id}`)}
 		>
-			<ArrowLeft class="size-3.5" aria-hidden="true" /> Back to details
+			<ArrowLeft class="size-5" aria-hidden="true" /> Back
 		</button>
 		<p
-			class="max-w-[36ch] truncate justify-self-center font-mono text-xs font-semibold uppercase tracking-[0.2em] text-foreground"
+			class="min-w-0 truncate text-base font-medium text-foreground sm:text-lg"
 		>
 			{title}
-		</p>
-		<p
-			class="flex items-center gap-2 justify-self-end font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
-		>
-			<span class={['size-1.5 rounded-full', stateDot].join(' ')} aria-hidden="true"></span>
-			{telemetry}
 		</p>
 	</header>
 
@@ -1262,7 +1256,7 @@
 	<!-- Resume banner -->
 	{#if showResume && resumedFrom > 0}
 		<div
-			class="absolute left-1/2 top-4 -translate-x-1/2 border border-line/40 bg-background/85 px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.12em] text-foreground"
+			class="absolute left-4 top-20 rounded-md border border-line/40 bg-background/95 px-4 py-3 text-sm text-foreground"
 		>
 			Resuming from {formatTime(resumedFrom)}
 			<button class="ml-3 text-accent hover:text-accent-hover" onclick={skipResumeToStart}>
@@ -1273,16 +1267,25 @@
 
 	</div>
 
-	<!-- Track choices: the top of the bottom chrome, floating over the picture
-	     with the rest of the deck. -->
-	{#if transcodeReady && (rendererActive || audioTracks.length > 1 || subtitleTracks.length > 0 || (playbackOptions?.qualities.length ?? 0) > 0 || mode === 'transcode')}
+	<!-- Keep settings inside the player so they also work in fullscreen. -->
+	{#if settingsOpen}
 		<div
 			bind:this={chromeTailEl}
-			class={[
-				'relative z-20 flex flex-wrap items-center gap-1.5 bg-background/90 px-4 pt-3 backdrop-blur-xl',
-				chromeClass
-			].join(' ')}
+			id="player-settings"
+			role="region"
+			aria-label="Playback settings"
+			class="player-settings absolute bottom-28 right-3 z-30 max-h-[calc(100%-12rem)] w-[min(22rem,calc(100%-1.5rem))] overflow-y-auto rounded-lg border border-line/60 bg-background p-4 text-foreground shadow-xl sm:right-6"
 		>
+			<div class="mb-3 flex items-center justify-between">
+				<h2 class="text-base font-semibold">Playback settings</h2>
+				<IconButton label="Close settings" onclick={() => { settingsOpen = false; settingsButton?.focus(); }}><X class="size-5" /></IconButton>
+			</div>
+			<label class="chrome-chip">
+				Speed
+				<select class="chrome-select" value={rate} onchange={(event) => setRate(Number(event.currentTarget.value))} aria-label="Playback speed">
+					{#each RATES as option (option)}<option value={option}>{option === 1 ? 'Normal' : `${option}×`}</option>{/each}
+				</select>
+			</label>
 			{#if rendererActive}
 				<label class="chrome-chip">
 					Effects
@@ -1322,7 +1325,7 @@
 						<option value="">Default</option>
 						{#each audioTracks as track (track.index)}
 							<option value={String(track.index)}>
-								{track.language || track.title || `Track ${track.index}`} · {track.codec}
+								{track.language || track.title || `Track ${track.index}`}
 							</option>
 						{/each}
 					</select>
@@ -1330,7 +1333,7 @@
 			{/if}
 			{#if subtitleTracks.length > 0}
 				<label class="chrome-chip">
-					CC
+					Subtitles
 					<select
 						class="chrome-select"
 						bind:value={selectedSubtitle}
@@ -1346,11 +1349,14 @@
 					</select>
 				</label>
 			{/if}
+			<details class="mt-4 border-t border-line/40 pt-3 text-xs leading-relaxed text-muted">
+				<summary class="cursor-pointer py-2 text-sm">Playback information</summary>
+				<p class="mt-2 font-mono">{telemetry}</p>
+				{#if sessionNote}<p class="mt-2">{sessionNote}</p>{/if}
+			</details>
 		</div>
 	{/if}
 
-	<!-- The bar has no room for a sentence, so the two things the old top
-	     scrim carried get their own lines. -->
 	{#if directFallbackNote}
 		<p
 			class={[
@@ -1358,17 +1364,7 @@
 				chromeClass
 			].join(' ')}
 		>
-			This browser could not decode this file; preparing a compatible version.
-		</p>
-	{/if}
-	{#if sessionNote}
-		<p
-			class={[
-				'relative z-20 bg-background/90 px-4 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted backdrop-blur-xl',
-				chromeClass
-			].join(' ')}
-		>
-			{sessionNote}
+			Preparing this video for your browser.
 		</p>
 	{/if}
 
@@ -1378,7 +1374,7 @@
 	<footer
 		bind:this={chromeFootEl}
 		class={[
-			'relative z-20 mt-3 border-t border-line/40 bg-background/90 px-4 pb-4 pt-3 backdrop-blur-xl',
+			'relative z-20 bg-background/90 px-3 pb-3 pt-2 backdrop-blur-xl sm:px-6 sm:pb-4',
 			chromeClass
 		].join(' ')}
 	>
@@ -1425,28 +1421,28 @@
 					class="block size-3.5 rounded-full bg-accent transition-transform duration-150 hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 				/>
 			</Slider.Root>
-			<span class="shrink-0 font-mono text-xs tabular-nums text-foreground">
-				{formatTime(scrubbing ? scrubValue : currentTime)} / {formatTime(totalDuration)}
+			<span class="shrink-0 text-xs tabular-nums text-foreground sm:text-sm">
+				{formatTime(scrubbing ? scrubValue : currentTime)} <span class="text-muted">/ {formatTime(totalDuration)}</span>
 			</span>
 		</div>
 
 		<!-- Transport -->
 		<div class="mt-1 flex items-center gap-1.5">
-			<IconButton label="Back 10 seconds" onclick={() => seekBy(-10)}>
-				<SkipBack class="size-5" />
-			</IconButton>
-			<IconButton label={playing ? 'Pause' : 'Play'} class="text-foreground" onclick={togglePlay}>
+			<IconButton label={playing ? 'Pause' : 'Play'} class="size-11 bg-accent text-accent-fg hover:bg-accent-hover hover:text-accent-fg" onclick={togglePlay}>
 				{#if playing}<Pause class="size-6" />{:else}<Play class="size-6" />{/if}
 			</IconButton>
-			<IconButton label="Forward 10 seconds" onclick={() => seekBy(10)}>
-				<SkipForward class="size-5" />
+			<IconButton label="Back 10 seconds" class="relative size-11" onclick={() => seekBy(-10)}>
+				<SkipBack class="size-6" /><span class="absolute text-[9px] font-semibold">10</span>
+			</IconButton>
+			<IconButton label="Forward 10 seconds" class="relative size-11" onclick={() => seekBy(10)}>
+				<SkipForward class="size-6" /><span class="absolute text-[9px] font-semibold">10</span>
 			</IconButton>
 
-			<div class="ml-2 flex items-center gap-1.5">
+			<div class="flex items-center gap-1">
 				<IconButton label={muted ? 'Unmute' : 'Mute'} onclick={toggleMute}>
 					<VolumeIcon class="size-5" />
 				</IconButton>
-				<div class="hidden w-24 md:block">
+				<div class="hidden w-20 md:block">
 					<Slider.Root
 						type="single"
 						value={muted ? 0 : volume}
@@ -1468,28 +1464,10 @@
 			</div>
 
 			<div class="ml-auto flex items-center gap-1.5">
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger class="chrome-chip" aria-label={`Playback speed ${rate}x`}>
-						<Gauge class="size-3.5" aria-hidden="true" /> {rate}x
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Portal>
-						<DropdownMenu.Content
-							side="top"
-							align="end"
-							sideOffset={8}
-							class="z-50 min-w-28 border border-line/40 bg-surface p-1 shadow-xl"
-						>
-							{#each RATES as option (option)}
-								<DropdownMenu.Item
-									class="flex cursor-default items-center justify-between rounded-sm px-2.5 py-1.5 font-mono text-xs uppercase tracking-[0.1em] text-foreground outline-none data-[highlighted]:bg-surface-hover"
-									onSelect={() => setRate(option)}
-								>
-									{option}x {#if option === rate}<span class="text-accent">•</span>{/if}
-								</DropdownMenu.Item>
-							{/each}
-						</DropdownMenu.Content>
-					</DropdownMenu.Portal>
-				</DropdownMenu.Root>
+				<button bind:this={settingsButton} type="button" aria-label="Playback settings" aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground hover:bg-surface-hover" onclick={() => (settingsOpen = !settingsOpen)}>
+					<Settings class="size-5" />
+					<span class="sr-only">Playback settings</span>
+				</button>
 				<IconButton
 					label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
 					onclick={() => void toggleFullscreen()}
@@ -1500,3 +1478,32 @@
 		</div>
 	</footer>
 </div>
+
+<style>
+	.player-settings .chrome-chip {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.75rem 0;
+		border: 0;
+		font-family: inherit;
+		font-size: 0.875rem;
+		letter-spacing: normal;
+		text-transform: none;
+		color: var(--color-foreground);
+	}
+	.player-settings .chrome-select {
+		max-width: 65%;
+		min-height: 2.25rem;
+		padding: 0.25rem 0.5rem;
+		border: 1px solid var(--color-line);
+		border-radius: 0.375rem;
+		background: var(--color-background);
+	}
+	@media (max-width: 420px) {
+		footer > div:last-child { gap: 0; }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		header, footer { transition: none; }
+	}
+</style>
