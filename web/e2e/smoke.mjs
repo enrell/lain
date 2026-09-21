@@ -26,6 +26,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { verifyPlayerControls } from './player-controls.mjs';
 
 const args = process.argv.slice(2);
 const arg = (name, fallback) => {
@@ -1517,6 +1518,9 @@ try {
 	writeFileSync(SCREENSHOT.replace('.png', '-player.png'), Buffer.from(playerShot.data, 'base64'));
 	await pressKey('Escape', 'Escape', 27);
 	assert(await evalValue(`!document.querySelector('#player-settings') && document.activeElement?.getAttribute('aria-label') === 'Playback settings'`), 'Escape did not close settings and restore focus');
+
+	step('player controls and fullscreen regression checks');
+	await verifyPlayerControls({ page, evalValue, pressKey, waitFor, assert });
 
 	step('direct-play subtitle extraction serves playable WebVTT');
 	await navigate(`${BASE}/library`);
