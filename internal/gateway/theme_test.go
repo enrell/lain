@@ -121,6 +121,24 @@ yellow = "#cccc44"
 `,
 		},
 		{
+			// The host this run found: `selection` is a mid-tone highlight, so
+			// surface-active was a fill no text could sit on (even the palette's
+			// own foreground stops at 2.2:1 on it) and muted landed on it as soon
+			// as it cleared the body floor, at 1.0:1. Its shade keys are named
+			// differently, so surface falls back to the background here.
+			name: "selection is a mid-tone highlight",
+			colors: `mode = "dark"
+background = "#151623"
+foreground = "#bac5cd"
+muted = "#4b4d53"
+selection = "#9a778a"
+accent = "#9a778a"
+red = "#9a778a"
+green = "#b4c9ab"
+yellow = "#8f7f62"
+`,
+		},
+		{
 			// Secondary text that is simply too dim for body copy.
 			name: "muted is below the body floor",
 			colors: `mode = "light"
@@ -158,6 +176,9 @@ yellow = "#D0A215"
 			}
 			if r := contrastRatio(got.Muted, got.SurfaceActive); r < minTextContrast {
 				t.Fatalf("muted %s on surface_active %s = %.2f:1, want >= %.1f (neutral badge text on its fill)", got.Muted, got.SurfaceActive, r, minTextContrast)
+			}
+			if r := contrastRatio(got.SurfaceActive, got.Surface); r < minLineContrast {
+				t.Fatalf("surface_active %s on surface %s = %.2f:1, want >= %.2f (a fill must read as a fill)", got.SurfaceActive, got.Surface, r, minLineContrast)
 			}
 			if r := contrastRatio(got.Line, got.Surface); r < minLineContrast {
 				t.Fatalf("line %s on surface %s = %.2f:1, want >= %.2f", got.Line, got.Surface, r, minLineContrast)

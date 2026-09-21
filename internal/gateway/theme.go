@@ -191,49 +191,51 @@ const (
 // moves muted, surface-active and line, and only when they violate the floor,
 // so a host theme that already separates them is served unchanged.
 func applyLegibilityFloor(p themePalette) themePalette {
-	// 1. Secondary text clears the body floor against the page.
-	if next, ok := blendUntil(p.Muted, p.Background, p.Foreground, minTextContrast); ok {
-		p.Muted = next
+	// 1. The fill. Operator themes hand this role their text-selection
+	// highlight, and a mid tone carries no text at all: on a #9a778a fill even
+	// the palette's own foreground stops at 2.2:1, so a neutral badge stays
+	// unreadable whichever text role is chosen. When neither secondary nor
+	// primary text clears the floor on the host value, re-derive the fill as
+	// the smallest lift off the surface — which is what the role means and what
+	// the built-in palette does — so badges, switch tracks and skeletons stay a
+	// fill instead of a wash.
+	if contrastRatio(p.SurfaceActive, p.Muted) < minTextContrast &&
+		contrastRatio(p.SurfaceActive, p.Foreground) < minTextContrast {
+		p.SurfaceActive = p.Surface
 	}
-	// 2. The fill must still read as a fill and not as the surface it sits on.
-	if next, ok := blendUntil(p.SurfaceActive, p.Surface, p.Background, minLineContrast); ok {
-		p.SurfaceActive = next
-	} else if next, ok := blendUntil(p.SurfaceActive, p.Surface, p.Foreground, minLineContrast); ok {
-		p.SurfaceActive = next
-	}
-	// 3. ...and it must carry the text painted on it (neutral badges, avatar
-	// monograms). The text moves away from the page first, keeping the fill
-	// where step 2 put it; only when the fill is on the wrong side of the
-	// text does the fill give way, because legibility outranks the fill.
-	if next, ok := blendUntil(p.Muted, p.SurfaceActive, p.Foreground, minTextContrast); ok {
-		p.Muted = next
-	} else if next, ok := blendUntil(p.SurfaceActive, p.Muted, p.Background, minTextContrast); ok {
-		p.SurfaceActive = next
-	}
+	// 2. ...and it must read as a fill and not as the surface it sits on.
+	p.SurfaceActive = blendTo(p.SurfaceActive, p.Surface, p.Foreground, minLineContrast)
+	// 3. Secondary text clears the body floor against the page and against the
+	// fill it is painted on (neutral badges, avatar monograms).
+	p.Muted = blendTo(p.Muted, p.SurfaceActive, p.Foreground, minTextContrast)
+	p.Muted = blendTo(p.Muted, p.Background, p.Foreground, minTextContrast)
 	// 4. Separators must be visible against the surfaces they border.
-	if next, ok := blendUntil(p.Line, p.Surface, p.Foreground, minLineContrast); ok {
-		p.Line = next
-	}
-	if next, ok := blendUntil(p.Line, p.SurfaceActive, p.Foreground, minLineContrast); ok {
-		p.Line = next
-	}
+	p.Line = blendTo(p.Line, p.Surface, p.Foreground, minLineContrast)
+	p.Line = blendTo(p.Line, p.SurfaceActive, p.Foreground, minLineContrast)
 	return p
 }
 
-// blendUntil blends c toward target until it clears min contrast against other.
-// It reports whether the floor was reached; a blend that cannot reach it is
-// discarded by the caller rather than forced through an unrelated role.
-func blendUntil(c, other, target string, min float64) (string, bool) {
+// blendTo blends c toward target until it clears min contrast against other, and
+// always moves. A palette whose two roles meet at a knife edge (muted exactly
+// at the floor on the page, so the fill can only reach 4.35:1 on the way to the
+// background) used to fall short of the floor by a rounding step and be
+// discarded, which served the very collapse D-037 forbids; the pole is now the
+// last resort, because it is the most separation those two roles allow.
+func blendTo(c, other, target string, min float64) string {
 	if contrastRatio(c, other) >= min {
-		return c, true
+		return c
 	}
-	for i := 0; i < 64; i++ {
-		c = mixHex(c, target, 0.08)
+	for i := 0; i < 256; i++ {
+		next := mixHex(c, target, 0.08)
+		if next == c {
+			break
+		}
+		c = next
 		if contrastRatio(c, other) >= min {
-			return c, true
+			return c
 		}
 	}
-	return c, false
+	return target
 }
 
 // mixHex returns a and b blended by t (0 keeps a, 1 keeps b).
