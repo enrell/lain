@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/enrell/lain/internal/contracts"
+	"github.com/enrell/lain/internal/plugins/transcode"
 )
 
 // transcodeSettingsPayload mirrors the admin endpoint response: the
@@ -128,7 +129,7 @@ func TestTranscodeSettingsReadWrite(t *testing.T) {
 // operator choice lives in the meta bucket, not in process memory.
 func TestTranscodeSettingsSurviveRestart(t *testing.T) {
 	dir := t.TempDir()
-	srv, err := NewWithOptions(dir, "test", Options{})
+	srv, err := NewWithOptions(dir, "test", Options{transcodeProbe: noTranscodeProbe})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +153,7 @@ func TestTranscodeSettingsSurviveRestart(t *testing.T) {
 	}
 	closed = true
 
-	srv2, err := NewWithOptions(dir, "test", Options{})
+	srv2, err := NewWithOptions(dir, "test", Options{transcodeProbe: noTranscodeProbe})
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -170,6 +171,55 @@ func TestTranscodeSettingsSurviveRestart(t *testing.T) {
 	if got.Settings.CRF != 27 || got.Settings.EncoderPreset != "slow" ||
 		got.Settings.DefaultDelivery != contracts.TranscodeDeliveryProgressive {
 		t.Fatalf("settings lost across restart: %+v", got.Settings)
+	}
+}
+
+func TestFreshSettingsAdoptBestProbedHardware(t *testing.T) {
+	dir := t.TempDir()
+	probe := func(contracts.TranscodeSettings) transcode.CapabilitiesReport {
+		return transcode.CapabilitiesReport{Hardware: map[string]bool{
+			contracts.HWVAAPI: true,
+			contracts.HWNVENC: false,
+			contracts.HWQSV:   true,
+		}}
+	}
+	srv, err := NewWithOptions(dir, "test", Options{transcodeProbe: probe})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+
+	got := srv.settings.Transcode()
+	if got.HardwareAcceleration != contracts.HWQSV || !got.HardwareEncode {
+		t.Fatalf("fresh hardware defaults = %q encode=%v, want qsv enabled", got.HardwareAcceleration, got.HardwareEncode)
+	}
+}
+
+func TestSavedSoftwareChoiceSurvivesHardwareDetection(t *testing.T) {
+	dir := t.TempDir()
+	probe := func(contracts.TranscodeSettings) transcode.CapabilitiesReport {
+		return transcode.CapabilitiesReport{Hardware: map[string]bool{contracts.HWVAAPI: true}}
+	}
+	srv, err := NewWithOptions(dir, "test", Options{transcodeProbe: probe})
+	if err != nil {
+		t.Fatal(err)
+	}
+	software := contracts.DefaultTranscodeSettings()
+	if err := srv.settings.SaveTranscode(software); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	srv2, err := NewWithOptions(dir, "test", Options{transcodeProbe: probe})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv2.Close() })
+	got := srv2.settings.Transcode()
+	if got.HardwareAcceleration != contracts.HWNone || got.HardwareEncode {
+		t.Fatalf("saved software choice was overwritten: %q encode=%v", got.HardwareAcceleration, got.HardwareEncode)
 	}
 }
 

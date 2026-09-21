@@ -11,11 +11,20 @@ import (
 	"testing"
 
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/enrell/lain/internal/contracts"
+	"github.com/enrell/lain/internal/plugins/transcode"
 )
+
+func noTranscodeProbe(contracts.TranscodeSettings) transcode.CapabilitiesReport {
+	return transcode.CapabilitiesReport{FFmpeg: "test-ffmpeg", Hardware: map[string]bool{}}
+}
 
 func testServer(t *testing.T) *Server {
 	t.Helper()
-	srv, err := New(t.TempDir(), "test")
+	srv, err := NewWithOptions(t.TempDir(), "test", Options{
+		transcodeProbe: noTranscodeProbe,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

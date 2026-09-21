@@ -3,27 +3,36 @@
 
 set dotenv-load
 
+# Expose the Linux render nodes to the development API when this host has
+# one. Keeping the device mapping in an override lets the same recipes run
+# on GPU-less builders and developer machines without /dev/dri.
+dev-compose := if path_exists("/dev/dri/renderD128") == "true" {
+    "docker compose -f docker-compose.dev.yml -f docker-compose.dev.gpu.yml"
+} else {
+    "docker compose -f docker-compose.dev.yml"
+}
+
 # List recipes.
 default:
     @just --list
 
 # Full dev stack with hot reload (API :9360, web HMR :5173).
 up:
-    docker compose -f docker-compose.dev.yml up --build --watch
+    {{dev-compose}} up --build --watch
 
 # Same, detached, then show where everything lives.
 upd:
-    docker compose -f docker-compose.dev.yml up --build -d
+    {{dev-compose}} up --build -d
     @echo 'API (embedded UI, rebuilt image only): http://127.0.0.1:9360/'
     @echo 'Web dev UI (hot reload, edit Svelte here): http://127.0.0.1:5173/'
 
 # Stop the dev stack (data volume kept).
 down:
-    docker compose -f docker-compose.dev.yml down
+    {{dev-compose}} down
 
 # Follow API logs.
 logs:
-    docker compose -f docker-compose.dev.yml logs -f api
+    {{dev-compose}} logs -f api
 
 # Native Go run without Docker (same :9360; stop the stack first).
 server:

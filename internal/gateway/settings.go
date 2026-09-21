@@ -20,6 +20,20 @@ type SettingsStore struct {
 	db *bolt.DB
 }
 
+// HasTranscode distinguishes a fresh install from an operator who explicitly
+// saved the software backend. That distinction is load-bearing for D-063:
+// detection chooses a first-boot default but never rewrites a saved choice.
+func (st *SettingsStore) HasTranscode() (bool, error) {
+	var out contracts.TranscodeSettings
+	err := st.db.View(func(tx *bolt.Tx) error {
+		return kv.GetJSON(tx, kv.BMeta, []byte(transcodeSettingsKey), &out)
+	})
+	if kv.IsNotFound(err) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // Transcode returns the effective transcode settings (defaults when
 // nothing was saved yet).
 func (st *SettingsStore) Transcode() contracts.TranscodeSettings {
@@ -57,11 +71,37 @@ func (st *SettingsStore) Ensure(base contracts.TranscodeSettings) error {
 	return st.SaveTranscode(base)
 }
 
+// automaticHardwarePreference is deterministic when a machine exposes more
+// than one API for the same GPU: vendor-native encoders win over generic
+// Linux APIs, and dedicated SoC media paths win over V4L2's fallback wrapper.
+var automaticHardwarePreference = []string{
+	contracts.HWNVENC,
+	contracts.HWQSV,
+	contracts.HWVAAPI,
+	contracts.HWVideoToolbox,
+	contracts.HWAMF,
+	contracts.HWRKMPP,
+	contracts.HWV4L2M2M,
+}
+
+func withAutomaticHardware(settings contracts.TranscodeSettings, available map[string]bool) contracts.TranscodeSettings {
+	settings.HardwareAcceleration = contracts.HWNone
+	settings.HardwareEncode = false
+	for _, backend := range automaticHardwarePreference {
+		if available[backend] {
+			settings.HardwareAcceleration = backend
+			settings.HardwareEncode = true
+			break
+		}
+	}
+	return settings
+}
+
 func (s *Server) handleTranscodeSettingsGet(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	settings := s.settings.Transcode()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"settings":     settings,
-		"capabilities": s.transcode.Probe(settings),
+		"capabilities": s.probeTranscode(settings),
 	})
 }
 
@@ -82,7 +122,7 @@ func (s *Server) handleTranscodeSettingsPut(w http.ResponseWriter, r *http.Reque
 	s.logger().Info("transcode settings updated", "req", reqIDOf(r))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"settings":     settings,
-		"capabilities": s.transcode.Probe(settings),
+		"capabilities": s.probeTranscode(settings),
 	})
 }
 

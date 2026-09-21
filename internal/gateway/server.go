@@ -43,18 +43,19 @@ import (
 
 // Server wires the composition to HTTP.
 type Server struct {
-	reg       *core.Registry
-	auth      *auth.Service
-	db        *bolt.DB
-	st        *store.Dir
-	cat       *catalog.Service
-	ustate    *userstate.Service
-	libs      *LibraryStore
-	settings  *SettingsStore
-	mux       *http.ServeMux
-	ver       string
-	themePath string
-	transcode *transcode.Transcoder
+	reg            *core.Registry
+	auth           *auth.Service
+	db             *bolt.DB
+	st             *store.Dir
+	cat            *catalog.Service
+	ustate         *userstate.Service
+	libs           *LibraryStore
+	settings       *SettingsStore
+	mux            *http.ServeMux
+	ver            string
+	themePath      string
+	transcode      *transcode.Transcoder
+	probeTranscode func(contracts.TranscodeSettings) transcode.CapabilitiesReport
 
 	// autoEnrich runs metadata enrichment for overlay-less items after
 	// every scan (default behavior). Disable with SetAutoEnrich(false)
@@ -85,6 +86,9 @@ func (s *Server) Close() error {
 type Options struct {
 	TranscodeCacheBytes int64
 	TranscodeQueueSize  int
+	// transcodeProbe is a deterministic test seam. Production leaves it nil
+	// and uses the transcoder's real one-frame capability probe.
+	transcodeProbe func(contracts.TranscodeSettings) transcode.CapabilitiesReport
 }
 
 // ScanStatus is the observable scan state.
@@ -174,7 +178,11 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 		db.Close()
 		return nil, err
 	}
-	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, settings: &SettingsStore{db: db}, mux: http.NewServeMux(), ver: ver, themePath: omarchyThemePath(), transcode: tr, autoEnrich: true, scan: ScanStatus{State: "idle"}}
+	probeTranscode := tr.Probe
+	if opts.transcodeProbe != nil {
+		probeTranscode = opts.transcodeProbe
+	}
+	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, settings: &SettingsStore{db: db}, mux: http.NewServeMux(), ver: ver, themePath: omarchyThemePath(), transcode: tr, probeTranscode: probeTranscode, autoEnrich: true, scan: ScanStatus{State: "idle"}}
 	// First boot adopts CLI bounds as the saved policy; later boots keep
 	// the operator's admin-UI choices (D-045).
 	bootSettings := contracts.DefaultTranscodeSettings()
@@ -183,6 +191,14 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	}
 	if opts.TranscodeQueueSize > 0 {
 		bootSettings.QueueSize = opts.TranscodeQueueSize
+	}
+	hasSettings, err := s.settings.HasTranscode()
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("transcode settings: %w", err)
+	}
+	if !hasSettings {
+		bootSettings = withAutomaticHardware(bootSettings, s.probeTranscode(bootSettings).Hardware)
 	}
 	if err := s.settings.Ensure(bootSettings); err != nil {
 		db.Close()
@@ -588,7 +604,7 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, v auth.V
 	// Tone mapping is only promised when it is enabled and its probe
 	// passed (D-031/D-042); otherwise HDR stays honestly unavailable.
 	toneMap := settings.ToneMapping && settings.ToneMappingMode != contracts.ToneMapModeNever &&
-		s.transcode.Probe(settings).ToneMapping
+		s.probeTranscode(settings).ToneMapping
 	out, _, err := s.reg.CallOne(contracts.CapPlaybackPlan, playback.PlanInput{
 		Request: contracts.PlanRequest{
 			ItemID:       it.ID,
