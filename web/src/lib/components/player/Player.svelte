@@ -77,6 +77,7 @@
 	let muted = $state(prefs.getBool('player.muted', false));
 	let rate = $state(prefs.getNumber('player.rate', 1));
 	let fullscreen = $state(false);
+	let fullscreenNotice = $state<string | null>(null);
 	let controlsVisible = $state(true);
 	let settingsOpen = $state(false);
 	let settingsButton = $state<HTMLButtonElement | null>(null);
@@ -786,6 +787,16 @@
 		scheduleHide();
 	}
 
+	// Escape puts the chrome away without leaving the episode (D-066). Focus
+	// inside the chrome still pins it: hiding it would take the focused control
+	// off screen with the keyboard still on it.
+	function hideChrome(): void {
+		if (hideTimer) clearTimeout(hideTimer);
+		hideTimer = null;
+		if (chromePinned()) return;
+		controlsVisible = false;
+	}
+
 	/*
 	 * A pin that clears has to hand the chrome back to the idle timer. The
 	 * resume banner owns its own clock and can outlast `onPlay`, and a scrub
@@ -895,18 +906,28 @@
 		prefs.set('player.rate', String(next));
 	}
 
+	/*
+	 * Fullscreen is a request, not a guarantee: a browser can refuse it (a
+	 * permission policy, a container that forbids it) or not offer the API at
+	 * all. A refusal is reported in the player instead of swallowed (D-011),
+	 * and playback continues windowed.
+	 */
 	async function toggleFullscreen(): Promise<void> {
 		const el = container;
 		if (!el) return;
+		const request = el.requestFullscreen?.bind(el);
 		try {
 			if (document.fullscreenElement) {
 				await document.exitFullscreen();
+			} else if (request) {
+				await request();
 			} else {
-				await el.requestFullscreen();
+				fullscreenNotice = 'Fullscreen is not available in this browser.';
+				return;
 			}
+			fullscreenNotice = null;
 		} catch {
-			// Fullscreen can be denied (permissions, iOS): the video
-			// element's native fullscreen remains available.
+			fullscreenNotice = 'Fullscreen is not available in this browser.';
 		}
 	}
 
@@ -938,23 +959,66 @@
 	/* keyboard                                                          */
 	/* ---------------------------------------------------------------- */
 
+	/*
+	 * Which keys still belong to the player when a control has focus (D-066).
+	 * A focused button or link keeps the two keys that activate it — Space and
+	 * Enter — because that is what those keys mean on a control, and a viewer
+	 * who clicks fullscreen must not lose the keyboard afterwards. The seek bar
+	 * is the one slider the player owns, so its arrows seek by five seconds
+	 * instead of nudging a tenth-of-a-second step grid; every other slider
+	 * keeps its own keys. Text entry and dropdowns keep everything.
+	 */
 	function shortcutsAllowed(event: KeyboardEvent): boolean {
 		if (event.metaKey || event.ctrlKey || event.altKey) return false;
 		const target = event.target;
 		if (isTypingTarget(target)) return false;
 		if (target instanceof HTMLElement) {
 			const tag = target.tagName;
-			if (tag === 'BUTTON' || tag === 'A' || tag === 'SELECT') return false;
-			if (target.getAttribute('role') === 'slider') return false;
+			const activationKey = event.key === ' ' || event.key === 'Enter';
+			if ((tag === 'BUTTON' || tag === 'A') && activationKey) return false;
+			const slider = target.getAttribute('role') === 'slider';
+			if (slider && !target.closest('[data-player-seek]')) return false;
 		}
 		return true;
 	}
 
-	function onKeydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape' && settingsOpen) {
-			event.preventDefault();
+	/*
+	 * The player listens on the capture phase, so a key it owns is claimed
+	 * before the control under the focus acts on it: the slider moves its own
+	 * value on an arrow key without asking whether the event was already
+	 * handled, and the player's five-second seek would land on top of that
+	 * step.
+	 */
+	function consume(event: KeyboardEvent): void {
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	/*
+	 * Escape dismisses what the player is showing — the settings panel, then a
+	 * fullscreen notice, then the chrome — and never leaves the episode: Back is
+	 * the way out, and a viewer reaching for Escape must not lose playback.
+	 */
+	function onEscape(event: KeyboardEvent): void {
+		if (settingsOpen) {
+			consume(event);
 			settingsOpen = false;
 			settingsButton?.focus();
+			return;
+		}
+		if (fullscreenNotice) {
+			consume(event);
+			fullscreenNotice = null;
+			return;
+		}
+		if (!controlsVisible || !shortcutsAllowed(event)) return;
+		consume(event);
+		hideChrome();
+	}
+
+	function onKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			onEscape(event);
 			return;
 		}
 		if (!shortcutsAllowed(event)) return;
@@ -962,16 +1026,16 @@
 			case ' ':
 			case 'k':
 			case 'K':
-				event.preventDefault();
+				consume(event);
 				togglePlay();
 				revealControls();
 				break;
 			case 'ArrowLeft':
-				event.preventDefault();
+				consume(event);
 				seekBy(-5);
 				break;
 			case 'ArrowRight':
-				event.preventDefault();
+				consume(event);
 				seekBy(5);
 				break;
 			case 'j':
@@ -983,12 +1047,12 @@
 				seekBy(10);
 				break;
 			case 'ArrowUp':
-				event.preventDefault();
+				consume(event);
 				setVolume(volume + 0.05);
 				revealControls();
 				break;
 			case 'ArrowDown':
-				event.preventDefault();
+				consume(event);
 				setVolume(volume - 0.05);
 				revealControls();
 				break;
@@ -1000,9 +1064,6 @@
 			case 'f':
 			case 'F':
 				void toggleFullscreen();
-				break;
-			case 'Escape':
-				if (!document.fullscreenElement) void goto(`/item/${item.id}`);
 				break;
 		}
 	}
@@ -1053,7 +1114,7 @@
 </script>
 
 <svelte:window
-	onkeydown={onKeydown}
+	onkeydowncapture={onKeydown}
 	onpointerup={() => (seekEngaged = false)}
 	onpointercancel={() => (seekEngaged = false)}
 />
@@ -1265,6 +1326,24 @@
 		</div>
 	{/if}
 
+	<!-- A refused fullscreen request is a failure the viewer asked for: it is
+	     reported where they are looking, and playback keeps going windowed. -->
+	{#if fullscreenNotice}
+		<div
+			data-fullscreen-notice
+			role="status"
+			class="absolute right-4 top-20 z-30 flex max-w-sm items-start gap-2 rounded-md border border-line/40 bg-background/95 px-4 py-2.5 text-sm text-foreground shadow-lg backdrop-blur-xl sm:right-6"
+		>
+			<span>{fullscreenNotice}</span>
+			<IconButton
+				label="Dismiss fullscreen notice"
+				onclick={() => (fullscreenNotice = null)}
+			>
+				<X class="size-4" />
+			</IconButton>
+		</div>
+	{/if}
+
 	</div>
 
 	<!-- Keep settings inside the player so they also work in fullscreen. -->
@@ -1385,6 +1464,7 @@
 				value={scrubbing ? scrubValue : currentTime}
 				max={seekMax}
 				step={0.1}
+				data-player-seek
 				onpointerdown={() => (seekEngaged = true)}
 				onValueChange={(v) => {
 					/*
