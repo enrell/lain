@@ -704,7 +704,7 @@
 	/* ---------------------------------------------------------------- */
 
 	/*
-	 * The chrome fades in place (D-063). It is never unmounted: an unmount
+	 * The chrome fades in place (D-064). It is never unmounted: an unmount
 	 * reflows the picture and moves the very rows the pointer has to find, so
 	 * the reveal zone would slide out from under the cursor trying to wake it.
 	 * Opacity keeps the geometry exact — which is what keeps D-061's no-reflow
@@ -746,9 +746,13 @@
 	// Keyboard focus lands on chrome that is only faded, so focus has to reveal
 	// it and hold it there: the seek bar stays reachable without a pointer, and
 	// a fade must not pull the button out from under a keyboard user (D-061).
+	// Only keyboard focus counts: a mouse click leaves focus on the button it
+	// hit, and pinning on that would mean the deck never fades again after the
+	// first click on it — which is exactly what the fullscreen button did.
 	function chromeFocused(): boolean {
 		const active = document.activeElement;
-		if (!active) return false;
+		if (!(active instanceof HTMLElement)) return false;
+		if (!active.matches(':focus-visible')) return false;
 		return headerEl?.contains(active) === true || chromeFootEl?.contains(active) === true;
 	}
 
@@ -775,6 +779,26 @@
 		controlsVisible = true;
 		scheduleHide();
 	}
+
+	/*
+	 * A pin that clears has to hand the chrome back to the idle timer. The
+	 * resume banner owns its own clock and can outlast `onPlay`, and a scrub
+	 * can end without another pointer event: without this effect the early
+	 * return above arms nothing and the chrome stays on screen for the rest of
+	 * the episode, which is the very report this slice came from. Reading the
+	 * pin's inputs here is what makes the release reactive; `controlsVisible`
+	 * is only written, so the effect cannot re-trigger itself.
+	 */
+	$effect(() => {
+		if (!playing) return;
+		if (chromePinned()) {
+			if (hideTimer) clearTimeout(hideTimer);
+			hideTimer = null;
+			controlsVisible = true;
+			return;
+		}
+		scheduleHide();
+	});
 
 	function togglePlay(): void {
 		const el = video;
@@ -1039,22 +1063,29 @@
 
 <div
 	bind:this={container}
-	class="relative flex h-full w-full flex-col overflow-hidden bg-background"
+	class={[
+		// The picture is the whole region and the chrome floats over it, so the
+		// chrome rows are the only children in the flow, pinned to the bottom.
+		'relative flex h-full w-full flex-col justify-end overflow-hidden bg-background',
+		// An idle pointer over a full-bleed picture is an arrow with nothing to
+		// point at; it comes back with the chrome.
+		controlsVisible ? '' : 'cursor-none'
+	].join(' ')}
 	role="region"
 	aria-label={`Player — ${title}`}
 	onpointermove={onStagePointerMove}
 	onpointerdown={revealControls}
 	onfocusin={revealControls}
 >
-	<!-- Terminal chrome: the player's own bar, built like the rest of the
-	     app. Hairline rules and monospace micro-labels instead of scrims, so
-	     it reads on every host palette — `surface` is not always darker than
-	     `background`, and a host theme may collapse several roles onto one
-	     swatch (D-020/D-037). Nothing floats over the picture. -->
+	<!-- Terminal chrome, floating over the picture (D-065): the bar over the top
+	     edge and the deck over the bottom one, each on the palette's own
+	     background at 90% with a blur — the idiom the app's own nav already uses,
+	     and the opacity that keeps `muted` text above the 4.5:1 floor even when
+	     the frame behind it is white (D-020/D-037). -->
 	<header
 		bind:this={headerEl}
 		class={[
-			'grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line/40 bg-surface/70 px-4',
+			'absolute inset-x-0 top-0 z-20 grid h-12 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line/40 bg-background/90 px-4 backdrop-blur-xl',
 			chromeClass
 		].join(' ')}
 	>
@@ -1078,7 +1109,7 @@
 		</p>
 	</header>
 
-	<div class="relative mx-4 mt-4 min-h-0 flex-1 overflow-hidden border border-line/40 letterbox">
+	<div class="absolute inset-0 letterbox">
 		<video
 			bind:this={video}
 			src={streamSrc}
@@ -1242,9 +1273,16 @@
 
 	</div>
 
-	<!-- Track choices: the top of the chrome that follows the idle state. -->
+	<!-- Track choices: the top of the bottom chrome, floating over the picture
+	     with the rest of the deck. -->
 	{#if transcodeReady && (rendererActive || audioTracks.length > 1 || subtitleTracks.length > 0 || (playbackOptions?.qualities.length ?? 0) > 0 || mode === 'transcode')}
-		<div bind:this={chromeTailEl} class={['flex flex-wrap items-center gap-1.5 px-4 pt-3', chromeClass].join(' ')}>
+		<div
+			bind:this={chromeTailEl}
+			class={[
+				'relative z-20 flex flex-wrap items-center gap-1.5 bg-background/90 px-4 pt-3 backdrop-blur-xl',
+				chromeClass
+			].join(' ')}
+		>
 			{#if rendererActive}
 				<label class="chrome-chip">
 					Effects
@@ -1314,23 +1352,35 @@
 	<!-- The bar has no room for a sentence, so the two things the old top
 	     scrim carried get their own lines. -->
 	{#if directFallbackNote}
-		<p class={['px-4 pt-2 text-xs leading-relaxed text-muted', chromeClass].join(' ')}>
+		<p
+			class={[
+				'relative z-20 bg-background/90 px-4 pt-2 text-xs leading-relaxed text-muted backdrop-blur-xl',
+				chromeClass
+			].join(' ')}
+		>
 			This browser could not decode this file; preparing a compatible version.
 		</p>
 	{/if}
 	{#if sessionNote}
-		<p class={['px-4 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted', chromeClass].join(' ')}>
+		<p
+			class={[
+				'relative z-20 bg-background/90 px-4 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted backdrop-blur-xl',
+				chromeClass
+			].join(' ')}
+		>
 			{sessionNote}
 		</p>
 	{/if}
 
-	<!-- Transport deck: it spans the whole media (D-057), it keeps its place in
-	     the layout, and it fades with the rest of the chrome (D-063). -->
+	<!-- Transport deck: it spans the whole media (D-057), it floats over the
+	     picture's bottom edge (D-065), and it fades with the rest of the chrome
+	     (D-064). -->
 	<footer
 		bind:this={chromeFootEl}
-		class={['mt-3 shrink-0 border-t border-line/40 bg-surface/70 px-4 pb-4 pt-3', chromeClass].join(
-			' '
-		)}
+		class={[
+			'relative z-20 mt-3 border-t border-line/40 bg-background/90 px-4 pb-4 pt-3 backdrop-blur-xl',
+			chromeClass
+		].join(' ')}
 	>
 		<!-- Seek -->
 		<div class="group/seek flex items-center gap-3">
