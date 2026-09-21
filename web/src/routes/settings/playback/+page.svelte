@@ -1,9 +1,18 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import Activity from '@lucide/svelte/icons/activity';
+	import AudioLines from '@lucide/svelte/icons/audio-lines';
 	import Clapperboard from '@lucide/svelte/icons/clapperboard';
 	import Cpu from '@lucide/svelte/icons/cpu';
+	import Gauge from '@lucide/svelte/icons/gauge';
+	import HardDrive from '@lucide/svelte/icons/hard-drive';
+	import Radio from '@lucide/svelte/icons/radio';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Save from '@lucide/svelte/icons/save';
+	import Search from '@lucide/svelte/icons/search';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import WandSparkles from '@lucide/svelte/icons/wand-sparkles';
 	import type {
 		TranscodeCapabilities,
 		TranscodeQuality,
@@ -18,6 +27,12 @@
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import Switch from '$lib/components/primitives/Switch.svelte';
+	import {
+		applySafeAutomaticPolicy,
+		availableHardwareBackends,
+		cloneTranscodeSettings,
+		settingsEqual
+	} from '$lib/settings/playback-policy';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 
@@ -25,10 +40,45 @@
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 	let settings = $state<TranscodeSettings | null>(null);
+	let persistedSettings = $state<TranscodeSettings | null>(null);
 	let capabilities = $state<TranscodeCapabilities | null>(null);
 	let sessions = $state<TranscodeStatus[]>([]);
 	let sessionBusy = $state<string | null>(null);
+	let searchQuery = $state('');
 	let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+	const dirty = $derived(!settingsEqual(settings, persistedSettings));
+	const readyHardware = $derived(availableHardwareBackends(capabilities));
+	const activeSessions = $derived(
+		sessions.filter((session) => session.state === 'queued' || session.state === 'running').length
+	);
+	const normalizedSearch = $derived(searchQuery.trim().toLowerCase());
+	const hasSearchResults = $derived(
+		!normalizedSearch ||
+		'diagnostics capabilities ffmpeg encoder probe delivery stream hls segment timeout throttle encoding quality codec crf preset hevc av1 deinterlace hardware acceleration gpu vaapi nvenc qsv decode hdr processing tone mapping luminance audio subtitle captions downmix font bitrate performance resources storage cache queue path threads active sessions running fps'.includes(
+			normalizedSearch
+		)
+	);
+	const hardwareActive = $derived(
+		!!settings && settings.hardware_acceleration !== 'none'
+	);
+	const customEncodingActive = $derived(
+		!!settings &&
+		(settings.allow_hevc ||
+			settings.allow_av1 ||
+			!!settings.h264_preset ||
+			!!settings.h265_preset ||
+			!!settings.av1_preset ||
+			settings.deinterlace_double_rate)
+	);
+	const customResourcesActive = $derived(
+		!!settings &&
+		(!!settings.transcode_temp_path ||
+			settings.remote_bitrate_limit_kbps > 0 ||
+			!!settings.ffmpeg_path ||
+			!!settings.ffprobe_path ||
+			settings.thread_count > 0)
+	);
 
 	const presets = [
 		'ultrafast',
@@ -72,6 +122,21 @@
 		{ value: 'videotoolbox', label: 'VideoToolbox (macOS)' },
 		{ value: 'rkmpp', label: 'Rockchip RKMPP' }
 	];
+	const probedHardwareOptions = $derived(
+		hardwareOptions.map((option) => ({
+			...option,
+			disabled:
+				option.value !== 'none' &&
+				capabilities !== null &&
+				capabilities.hardware[option.value] !== true,
+			label:
+				option.value !== 'none' &&
+				capabilities !== null &&
+				capabilities.hardware[option.value] !== true
+					? `${option.label} — unavailable`
+					: option.label
+		}))
+	);
 	const subtitleModes = [
 		{ value: 'auto', label: 'Auto — extract text, burn image tracks' },
 		{ value: 'extract', label: 'Extract only (reject image tracks)' },
@@ -127,7 +192,8 @@
 		error = null;
 		try {
 			const response = await api.transcodeAdmin.settings();
-			settings = response.settings;
+			settings = cloneTranscodeSettings(response.settings);
+			persistedSettings = cloneTranscodeSettings(response.settings);
 			capabilities = response.capabilities;
 			sessions = (await api.transcodeAdmin.sessions()).sessions;
 		} catch (err) {
@@ -163,7 +229,8 @@
 		saving = true;
 		try {
 			const response = await api.transcodeAdmin.saveSettings(current);
-			settings = response.settings;
+			settings = cloneTranscodeSettings(response.settings);
+			persistedSettings = cloneTranscodeSettings(response.settings);
 			capabilities = response.capabilities;
 			toasts.success('Transcoding settings saved. New sessions use them immediately.');
 		} catch (err) {
@@ -204,6 +271,41 @@
 		return Number.isFinite(value) ? value : 0;
 	}
 
+	function resetChanges(): void {
+		if (!persistedSettings) return;
+		settings = cloneTranscodeSettings(persistedSettings);
+		toasts.info('Unsaved playback changes were reset.');
+	}
+
+	function stageAutomaticPolicy(): void {
+		if (!settings) return;
+		settings = applySafeAutomaticPolicy(settings, capabilities);
+		toasts.info('Automatic settings are staged from the server probe. Review and save when ready.');
+	}
+
+	function stageHardware(backend: string): void {
+		if (!settings || !readyHardware.includes(backend)) return;
+		settings.hardware_acceleration = backend;
+		settings.hardware_encode = true;
+		toasts.info(`${backend.toUpperCase()} is staged. The server will still fall back visibly if it fails.`);
+	}
+
+	function stageSoftware(): void {
+		if (!settings) return;
+		settings.hardware_acceleration = 'none';
+		settings.hardware_encode = false;
+		settings.hardware_low_power = false;
+	}
+
+	function sectionMatches(...keywords: string[]): boolean {
+		if (!normalizedSearch) return true;
+		return keywords.some((keyword) => keyword.toLowerCase().includes(normalizedSearch));
+	}
+
+	function scrollToSection(id: string): void {
+		document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+
 	function setQualityField(index: number, field: keyof TranscodeQuality, value: string | number): void {
 		if (!settings) return;
 		const next = [...settings.qualities];
@@ -227,52 +329,163 @@
 
 <svelte:head><title>Playback — Settings — Lain</title></svelte:head>
 
-<div class="space-y-6">
+<div class="mx-auto max-w-[1500px] space-y-5">
 	{#if loading}
-		<div class="h-40 animate-pulse rounded-card bg-surface-active/50"></div>
+		<div class="grid gap-4 lg:grid-cols-[16rem_1fr]">
+			<div class="h-72 animate-pulse rounded-card bg-surface-active/50"></div>
+			<div class="h-96 animate-pulse rounded-card bg-surface-active/50"></div>
+		</div>
 	{:else if error}
 		<ErrorState message={error} retry={() => void load()} />
 	{:else if settings}
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<p class="max-w-2xl text-sm text-muted">
-				Runtime transcoding policy. Changes apply to new sessions without a restart; hardware
-				acceleration is opt-in and only used when its probe passes — otherwise the server falls
-				back to software and reports it on the session.
-			</p>
-			<Button loading={saving} onclick={() => void save()}>
-				<Save class="size-4" /> Save
-			</Button>
-		</div>
+		<header class="flex flex-col gap-3 border-b border-line/70 pb-5 lg:flex-row lg:items-end lg:justify-between">
+			<div>
+				<p class="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">Playback policy</p>
+				<h2 class="mt-2 text-2xl font-semibold tracking-tight text-foreground">A clear path from file to screen.</h2>
+				<p class="mt-1 max-w-3xl text-sm leading-6 text-muted">
+					Set the everyday behavior here. Expert controls remain available below, without competing
+					with the choices that affect every stream.
+				</p>
+			</div>
+			<div class="flex items-center gap-2 lg:justify-end">
+				<span class="size-2 rounded-full bg-success"></span>
+				<p class="max-w-sm text-xs leading-5 text-muted lg:text-right">
+					Saved policy · changes affect new sessions; running sessions keep their current policy.
+				</p>
+			</div>
+		</header>
 
-		{#if capabilities}
-			<section class="rounded-card border border-line bg-surface/40 p-4">
-				<div class="flex items-center gap-2">
-					<Cpu class="size-4 text-muted" />
-					<h2 class="text-sm font-semibold text-foreground">Probed capabilities</h2>
+		<div class="grid items-start gap-5 xl:grid-cols-[16rem_minmax(0,1fr)]">
+			<aside class="min-w-0 space-y-4 xl:sticky xl:top-24">
+				<section class="overflow-hidden rounded-card border border-accent/30 bg-accent/5">
+					<div class="border-b border-accent/20 p-4">
+						<div class="flex items-center gap-2 text-accent">
+							<Sparkles class="size-4" />
+							<h2 class="text-sm font-semibold">Automatic setup</h2>
+						</div>
+						<p class="mt-2 text-xs leading-5 text-muted">
+							Stages HLS, browser-safe codecs, detected hardware, HDR, subtitles, deinterlacing and thread count.
+							The best backend that passed the server probe is selected automatically.
+						</p>
+					</div>
+					<div class="p-3">
+						<Button class="w-full" variant="secondary" size="sm" onclick={stageAutomaticPolicy}>
+							<WandSparkles class="size-4" /> Apply Auto
+						</Button>
+					</div>
+				</section>
+
+				{#if readyHardware.length > 0}
+					<section class="rounded-card border border-line bg-surface/40 p-4">
+						<p class="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Acceleration found</p>
+						<p class="mt-2 text-sm font-medium text-foreground">
+							{readyHardware.map((backend) => backend.toUpperCase()).join(' · ')}
+						</p>
+						<p class="mt-1 text-xs leading-5 text-muted">The first ready backend is automatic; you can override it here.</p>
+						<div class="mt-3 flex flex-wrap gap-2">
+							{#each readyHardware as backend (backend)}
+								<Button variant="ghost" size="sm" onclick={() => stageHardware(backend)}>
+									Use {backend.toUpperCase()}
+								</Button>
+							{/each}
+						</div>
+					</section>
+				{/if}
+
+				<div class="relative">
+					<Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+					<input
+						bind:value={searchQuery}
+						aria-label="Find a playback setting"
+						placeholder="Find a setting…"
+						class="h-10 w-full rounded-md border border-line bg-surface pl-9 pr-3 text-sm text-foreground placeholder:text-muted/60 focus:border-accent/60 focus:outline-none"
+					/>
 				</div>
-				<p class="mt-1 text-xs text-muted">ffmpeg: {capabilities.ffmpeg || 'system PATH'}</p>
-				<div class="mt-3 flex flex-wrap gap-1.5">
-					<Badge tone={capabilities.tone_mapping ? 'success' : 'danger'}>
-						tone mapping {capabilities.tone_mapping ? 'available' : 'unavailable'}
-					</Badge>
-					<Badge tone={capabilities.tone_mapping_bt2390 ? 'success' : 'neutral'}>
-						BT.2390 {capabilities.tone_mapping_bt2390 ? 'available' : 'fallback to hable'}
-					</Badge>
-					{#each Object.entries(capabilities.hardware) as [backend, ok] (backend)}
-						<Badge tone={ok ? 'success' : 'danger'}>{backend} {ok ? 'ready' : 'probe failed'}</Badge>
+
+				<nav class="no-scrollbar flex gap-1 overflow-x-auto pb-1 xl:block xl:space-y-1" aria-label="Playback settings sections">
+					{#each [
+						['overview', 'Overview'],
+						['delivery', 'Delivery'],
+						['encoding', 'Encoding'],
+						['hardware', 'Hardware'],
+						['processing', 'HDR & processing'],
+						['audio', 'Audio & subtitles'],
+						['resources', 'Resources'],
+						['sessions', 'Active sessions']
+					] as item (item[0])}
+						<button
+							type="button"
+							onclick={() => scrollToSection(item[0])}
+							class="flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium text-muted transition-colors hover:bg-surface-hover hover:text-foreground xl:w-full"
+						>
+							<span class="size-1 rounded-full bg-line"></span>{item[1]}
+						</button>
 					{/each}
-					{#each capabilities.encoders as encoder (encoder)}
-						<Badge>{encoder}</Badge>
-					{/each}
-				</div>
-			</section>
-		{/if}
+				</nav>
+			</aside>
+
+			<main class="min-w-0 space-y-5">
+				<section id="overview" class="scroll-mt-24 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+					<div class="rounded-card border border-line bg-surface/40 p-4">
+						<Radio class="size-4 text-accent" />
+						<p class="mt-4 text-xs text-muted">Default stream</p>
+						<p class="mt-1 text-sm font-semibold text-foreground">{settings.default_delivery === 'hls' ? 'HLS · starts early' : 'Progressive · full file'}</p>
+					</div>
+					<div class="rounded-card border border-line bg-surface/40 p-4">
+						<Cpu class="size-4 text-accent" />
+						<p class="mt-4 text-xs text-muted">Video engine</p>
+						<p class="mt-1 text-sm font-semibold text-foreground">{hardwareActive ? settings.hardware_acceleration.toUpperCase() : 'Software-safe'}</p>
+					</div>
+					<div class="rounded-card border border-line bg-surface/40 p-4">
+						<Gauge class="size-4 text-accent" />
+						<p class="mt-4 text-xs text-muted">HDR policy</p>
+						<p class="mt-1 text-sm font-semibold text-foreground">{settings.tone_mapping ? (settings.tone_mapping_mode === 'auto' ? 'Automatic' : settings.tone_mapping_mode) : 'Disabled'}</p>
+					</div>
+					<div class="rounded-card border border-line bg-surface/40 p-4">
+						<Activity class="size-4 text-accent" />
+						<p class="mt-4 text-xs text-muted">Now preparing</p>
+						<p class="mt-1 text-sm font-semibold text-foreground">{activeSessions} active {activeSessions === 1 ? 'session' : 'sessions'}</p>
+					</div>
+				</section>
+
+				{#if capabilities && sectionMatches('diagnostics', 'capabilities', 'ffmpeg', 'encoder', 'probe')}
+					<details class="group rounded-card border border-line bg-surface/30" open={!!normalizedSearch}>
+						<summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+							<div class="flex items-center gap-2">
+								<Cpu class="size-4 text-muted" />
+								<div>
+									<h2 class="text-sm font-semibold text-foreground">Probed capabilities</h2>
+									<p class="text-xs text-muted">Detailed diagnostics from the server's current ffmpeg.</p>
+								</div>
+							</div>
+							<Badge tone={capabilities.tone_mapping ? 'success' : 'warning'}>{capabilities.tone_mapping ? 'ready' : 'limited'}</Badge>
+						</summary>
+						<div class="border-t border-line px-4 py-4">
+							<p class="text-xs text-muted">ffmpeg: {capabilities.ffmpeg || 'system PATH'}</p>
+							<div class="mt-3 flex flex-wrap gap-1.5">
+								<Badge tone={capabilities.tone_mapping ? 'success' : 'danger'}>tone mapping {capabilities.tone_mapping ? 'available' : 'unavailable'}</Badge>
+								<Badge tone={capabilities.tone_mapping_bt2390 ? 'success' : 'neutral'}>BT.2390 {capabilities.tone_mapping_bt2390 ? 'available' : 'fallback to hable'}</Badge>
+								{#each Object.entries(capabilities.hardware) as [backend, ok] (backend)}
+									<Badge tone={ok ? 'success' : 'neutral'}>{backend} {ok ? 'ready' : 'not available'}</Badge>
+								{/each}
+							</div>
+							<p class="mt-4 font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Encoders</p>
+							<div class="mt-2 flex flex-wrap gap-1.5">
+								{#each capabilities.encoders as encoder (encoder)}<Badge>{encoder}</Badge>{/each}
+							</div>
+						</div>
+					</details>
+				{/if}
 
 		<!-- Delivery -->
-		<section class="space-y-4 rounded-card border border-line bg-surface/40 p-4">
+		{#if sectionMatches('delivery', 'stream', 'hls', 'segment', 'timeout', 'throttle')}
+		<section id="delivery" class="scroll-mt-24 space-y-5 rounded-card border border-line bg-surface/40 p-5">
 			<div class="flex items-center gap-2">
 				<Clapperboard class="size-4 text-muted" />
-				<h2 class="text-sm font-semibold text-foreground">Delivery</h2>
+				<div>
+					<h2 class="text-sm font-semibold text-foreground">Delivery</h2>
+					<p class="mt-0.5 text-xs text-muted">How playback starts, advances and releases work.</p>
+				</div>
 			</div>
 			<Select
 				label="Default delivery"
@@ -339,10 +552,18 @@
 				/>
 			{/if}
 		</section>
+		{/if}
 
 		<!-- Encoding -->
-		<section class="space-y-4 rounded-card border border-line bg-surface/40 p-4">
-			<h2 class="text-sm font-semibold text-foreground">Encoding</h2>
+		{#if sectionMatches('encoding', 'quality', 'codec', 'crf', 'preset', 'hevc', 'av1', 'deinterlace')}
+		<section id="encoding" class="scroll-mt-24 space-y-5 rounded-card border border-line bg-surface/40 p-5">
+			<div class="flex items-center gap-2">
+				<Gauge class="size-4 text-muted" />
+				<div>
+					<h2 class="text-sm font-semibold text-foreground">Encoding</h2>
+					<p class="mt-0.5 text-xs text-muted">Quality defaults and the resolution ladder exposed to viewers.</p>
+				</div>
+			</div>
 			<div class="grid gap-4 sm:grid-cols-2">
 				<Select
 					label="Encoder preset"
@@ -460,16 +681,34 @@
 				<p class="mt-1 text-xs text-muted">Name · max width · max height · bitrate (kbps).</p>
 			</div>
 		</section>
+		{/if}
 
 		<!-- Hardware -->
-		<section class="space-y-4 rounded-card border border-line bg-surface/40 p-4">
-			<h2 class="text-sm font-semibold text-foreground">Hardware acceleration</h2>
+		{#if sectionMatches('hardware', 'acceleration', 'gpu', 'vaapi', 'nvenc', 'qsv', 'decode')}
+		<details id="hardware" class="group scroll-mt-24 rounded-card border border-line bg-surface/40" open={hardwareActive || !!normalizedSearch}>
+			<summary class="flex cursor-pointer list-none items-center justify-between gap-3 p-5">
+				<div class="flex items-center gap-2">
+					<Cpu class="size-4 text-muted" />
+					<div>
+						<h2 class="text-sm font-semibold text-foreground">Hardware acceleration</h2>
+						<p class="mt-0.5 text-xs text-muted">Automatic GPU encode and decode, guarded by the server probe.</p>
+					</div>
+				</div>
+				<Badge tone={hardwareActive ? 'accent' : 'neutral'}>{hardwareActive ? settings.hardware_acceleration.toUpperCase() : 'software'}</Badge>
+			</summary>
+			<div class="space-y-4 border-t border-line p-5">
 			<Select
 				label="Backend"
 				value={settings.hardware_acceleration}
-				options={hardwareOptions}
+				options={probedHardwareOptions}
 				onValueChange={(value) => (settings!.hardware_acceleration = value)}
 			/>
+			{#if settings.hardware_acceleration !== 'none'}
+				<div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent/20 bg-accent/5 p-3">
+					<p class="text-xs leading-5 text-muted">A failed runtime attempt falls back to software and is reported on the session.</p>
+					<Button variant="ghost" size="sm" onclick={stageSoftware}>Use software</Button>
+				</div>
+			{/if}
 			{#if settings.hardware_acceleration === 'vaapi'}
 				<div class="space-y-1.5">
 					<Input
@@ -522,11 +761,20 @@
 				checked={settings.hardware_decode_10bit_vp9}
 				onCheckedChange={(checked) => (settings!.hardware_decode_10bit_vp9 = checked)}
 			/>
-		</section>
+			</div>
+		</details>
+		{/if}
 
 		<!-- HDR -->
-		<section class="space-y-4 rounded-card border border-line bg-surface/40 p-4">
-			<h2 class="text-sm font-semibold text-foreground">HDR & tone mapping</h2>
+		{#if sectionMatches('hdr', 'processing', 'tone mapping', 'luminance', 'deinterlace')}
+		<section id="processing" class="scroll-mt-24 space-y-4 rounded-card border border-line bg-surface/40 p-5">
+			<div class="flex items-center gap-2">
+				<WandSparkles class="size-4 text-muted" />
+				<div>
+					<h2 class="text-sm font-semibold text-foreground">HDR & tone mapping</h2>
+					<p class="mt-0.5 text-xs text-muted">Automatic is recommended: process HDR only when the source needs it.</p>
+				</div>
+			</div>
 			<Switch
 				label="Enable tone mapping"
 				description="HDR sources become SDR when the chain executes; without it HDR browser playback stays unavailable."
@@ -558,10 +806,18 @@
 				/>
 			{/if}
 		</section>
+		{/if}
 
 		<!-- Audio & subtitles -->
-		<section class="space-y-4 rounded-card border border-line bg-surface/40 p-4">
-			<h2 class="text-sm font-semibold text-foreground">Audio & subtitles</h2>
+		{#if sectionMatches('audio', 'subtitle', 'captions', 'downmix', 'font', 'bitrate')}
+		<section id="audio" class="scroll-mt-24 space-y-4 rounded-card border border-line bg-surface/40 p-5">
+			<div class="flex items-center gap-2">
+				<AudioLines class="size-4 text-muted" />
+				<div>
+					<h2 class="text-sm font-semibold text-foreground">Audio & subtitles</h2>
+					<p class="mt-0.5 text-xs text-muted">Prefer extraction and direct playback; burn only when a track requires it.</p>
+				</div>
+			</div>
 			<div class="grid gap-4 sm:grid-cols-2">
 				<Input
 					label="Audio bitrate (kbps)"
@@ -638,10 +894,22 @@
 				/>
 			</div>
 		</section>
+		{/if}
 
 		<!-- Resources & paths -->
-		<section class="space-y-4 rounded-card border border-line bg-surface/40 p-4">
-			<h2 class="text-sm font-semibold text-foreground">Performance, resources & storage</h2>
+		{#if sectionMatches('performance', 'resources', 'storage', 'cache', 'queue', 'path', 'ffmpeg', 'threads', 'bitrate')}
+		<details id="resources" class="group scroll-mt-24 rounded-card border border-line bg-surface/40" open={customResourcesActive || !!normalizedSearch}>
+			<summary class="flex cursor-pointer list-none items-center justify-between gap-3 p-5">
+				<div class="flex items-center gap-2">
+					<HardDrive class="size-4 text-muted" />
+					<div>
+						<h2 class="text-sm font-semibold text-foreground">Performance, resources & storage</h2>
+						<p class="mt-0.5 text-xs text-muted">Capacity limits, cache, process paths and temporary storage.</p>
+					</div>
+				</div>
+				<Badge tone={customResourcesActive ? 'accent' : 'neutral'}>{customResourcesActive ? 'configured' : 'automatic'}</Badge>
+			</summary>
+			<div class="space-y-4 border-t border-line p-5">
 			<div class="grid gap-4 sm:grid-cols-2">
 				<Input
 					label="Transcoding thread count (0 = auto)"
@@ -715,10 +983,13 @@
 					oninput={(e) => (settings!.ffprobe_path = (e.currentTarget as HTMLInputElement).value)}
 				/>
 			</div>
-		</section>
+			</div>
+		</details>
+		{/if}
 
 		<!-- Sessions -->
-		<section class="space-y-3 rounded-card border border-line bg-surface/40 p-4">
+		{#if sectionMatches('active sessions', 'session', 'running', 'queue', 'fps', 'encoder')}
+		<section id="sessions" class="scroll-mt-24 space-y-3 rounded-card border border-line bg-surface/40 p-5">
 			<div class="flex items-center justify-between">
 				<h2 class="text-sm font-semibold text-foreground">Active sessions</h2>
 				<Button variant="ghost" size="sm" onclick={() => void refreshSessions()}>Refresh</Button>
@@ -758,11 +1029,36 @@
 				</ul>
 			{/if}
 		</section>
+		{/if}
 
-		<div class="flex justify-end">
-			<Button loading={saving} onclick={() => void save()}>
-				<Save class="size-4" /> Save
-			</Button>
+				{#if normalizedSearch && !hasSearchResults}
+					<div class="rounded-card border border-dashed border-line p-8 text-center">
+						<Search class="mx-auto size-5 text-muted" />
+						<p class="mt-3 text-sm font-medium text-foreground">No setting matches “{searchQuery.trim()}”</p>
+						<p class="mt-1 text-xs text-muted">Try a feature, codec, resource or delivery term.</p>
+					</div>
+				{/if}
+			</main>
 		</div>
+
+		{#if dirty}
+			<div class="fixed bottom-20 left-4 right-4 z-40 flex items-center justify-between gap-3 rounded-card border border-warning/40 bg-background/95 p-3 shadow-2xl backdrop-blur sm:bottom-6 sm:left-auto sm:right-6 sm:w-[min(30rem,calc(100vw-3rem))]">
+				<div class="flex min-w-0 items-center gap-3">
+					<span class="size-2 shrink-0 rounded-full bg-warning"></span>
+					<div class="min-w-0">
+						<p class="text-sm font-medium text-foreground">Unsaved changes</p>
+						<p class="truncate text-xs text-muted">Review, reset or save from anywhere on this page.</p>
+					</div>
+				</div>
+				<div class="flex shrink-0 items-center gap-1">
+					<Button variant="ghost" size="sm" disabled={saving} onclick={resetChanges}>
+						<RotateCcw class="size-4" /> Reset
+					</Button>
+					<Button size="sm" loading={saving} onclick={() => void save()}>
+						<Save class="size-4" /> Save
+					</Button>
+				</div>
+			</div>
+		{/if}
 	{/if}
 </div>

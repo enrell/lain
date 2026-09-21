@@ -703,6 +703,8 @@ try {
 	await navigate(`${BASE}/settings/playback`);
 	// Every section the advanced configuration exposes must render.
 	for (const section of [
+		'Automatic setup',
+		'A clear path from file to screen.',
 		'Probed capabilities',
 		'Delivery',
 		'Encoding',
@@ -716,6 +718,33 @@ try {
 	]) {
 		await waitText(section, 20000);
 	}
+	// The redesign keeps a compact navigator and makes large settings pages
+	// searchable without removing any control from the underlying contract.
+	const settingsSearch = `document.querySelector('input[aria-label="Find a playback setting"]')`;
+	await evalValue(`(() => { const input = ${settingsSearch}; input.value = 'hardware'; input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+	await waitFor(
+		`!!document.getElementById('hardware') && !document.getElementById('delivery')`,
+		5000,
+		'playback settings search filtered sections'
+	);
+	await evalValue(`(() => { const input = ${settingsSearch}; input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+	await waitFor(
+		`!!document.getElementById('hardware') && !!document.getElementById('delivery')`,
+		5000,
+		'playback settings search restored sections'
+	);
+	await page.send('Emulation.setDeviceMetricsOverride', {
+		width: 390,
+		height: 844,
+		deviceScaleFactor: 1,
+		mobile: true
+	});
+	await sleep(150);
+	assert(
+		await evalValue(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`),
+		'playback settings overflow horizontally at 390px'
+	);
+	await page.send('Emulation.clearDeviceMetricsOverride');
 	// The app-wide Switch bug (a bare `checked` binding) used to paint every
 	// toggle ON regardless of state; assert the real binding by flipping one
 	// and watching data-state move, then prove it survives a reload.
