@@ -1336,8 +1336,34 @@ try {
 	assert(darkState.paused === false, 'the chrome faded only because playback stopped');
 	evidence.chromeVideoHeight = darkState.videoHeight;
 
+	// The chrome floats over the picture now (D-065): the picture owns the whole
+	// player region and the deck's top edge sits inside it, which is the
+	// geometry the tiled layout could not have.
+	const geometry = await evalValue(`(() => {
+		const region = document.querySelector('[aria-label^="Player"]').getBoundingClientRect();
+		const video = document.querySelector('video').getBoundingClientRect();
+		const footer = document.querySelector('footer').getBoundingClientRect();
+		return {
+			regionTop: Math.round(region.top),
+			regionBottom: Math.round(region.bottom),
+			videoTop: Math.round(video.top),
+			videoBottom: Math.round(video.bottom),
+			footerTop: Math.round(footer.top)
+		};
+	})()`);
+	assert(
+		Math.abs(geometry.videoTop - geometry.regionTop) <= 1 &&
+			Math.abs(geometry.videoBottom - geometry.regionBottom) <= 1,
+		`the picture does not own the player region: video ${geometry.videoTop}..${geometry.videoBottom} vs region ${geometry.regionTop}..${geometry.regionBottom}`
+	);
+	assert(
+		geometry.footerTop < geometry.videoBottom,
+		`the deck is not over the picture: deck top ${geometry.footerTop}, picture bottom ${geometry.videoBottom}`
+	);
+	evidence.chromeOverPicturePx = geometry.videoBottom - geometry.footerTop;
+
 	// A click on the picture wakes the chrome and must not pause: pause is the
-	// deck button or Space (D-063).
+	// deck button or Space (D-064).
 	for (const type of ['mousePressed', 'mouseReleased']) {
 		await page.send('Input.dispatchMouseEvent', {
 			type,
@@ -1370,6 +1396,93 @@ try {
 	assert(
 		await evalValue(`getComputedStyle(document.querySelector('footer')).opacity === '0'`),
 		'a move across the picture kept the chrome on screen'
+	);
+
+	// A mouse click leaves focus on the button it hit, and that must not pin the
+	// chrome: only keyboard focus does, or the deck would never fade again after
+	// the first click on it (the fullscreen button is the one that showed it).
+	const deckButton = await evalValue(`(() => {
+		const el = document.querySelector('footer button[aria-label="Back 10 seconds"]');
+		if (!el) return null;
+		const r = el.getBoundingClientRect();
+		return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+	})()`);
+	assert(deckButton, 'no deck button to click');
+	await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: deckButton.x, y: deckButton.y });
+	for (const type of ['mousePressed', 'mouseReleased']) {
+		await page.send('Input.dispatchMouseEvent', {
+			type,
+			x: deckButton.x,
+			y: deckButton.y,
+			button: 'left',
+			buttons: type === 'mousePressed' ? 1 : 0,
+			clickCount: 1
+		});
+	}
+	await waitFor(
+		`getComputedStyle(document.querySelector('footer')).opacity === '1'`,
+		5000,
+		'the deck click woke the chrome'
+	);
+	assert(
+		await evalValue(
+			`document.activeElement === document.querySelector('footer button[aria-label="Back 10 seconds"]')`
+		),
+		'the deck click left focus elsewhere, so this step would not prove anything'
+	);
+	await waitFor(
+		`getComputedStyle(document.querySelector('footer')).opacity === '0'`,
+		8000,
+		'chrome faded again after a click on the deck'
+	);
+
+	// A scrub pins the chrome — a drag must not have the controls fade under the
+	// hand — and letting go has to hand the chrome back to the idle timer. The
+	// drag itself is the last pointer event, so nothing else would re-arm it and
+	// the deck would stay on screen for the rest of the episode.
+	const thumb = await evalValue(`(() => {
+		const el = document.querySelector('[aria-label="Seek"]');
+		if (!el) return null;
+		const r = el.getBoundingClientRect();
+		return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+	})()`);
+	assert(thumb, 'no seek thumb to drag');
+	await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: thumb.x, y: thumb.y });
+	await page.send('Input.dispatchMouseEvent', {
+		type: 'mousePressed',
+		x: thumb.x,
+		y: thumb.y,
+		button: 'left',
+		buttons: 1,
+		clickCount: 1
+	});
+	for (let step = 1; step <= 4; step++) {
+		await page.send('Input.dispatchMouseEvent', {
+			type: 'mouseMoved',
+			x: thumb.x + step * 4,
+			y: thumb.y,
+			button: 'left',
+			buttons: 1
+		});
+		await sleep(40);
+	}
+	await page.send('Input.dispatchMouseEvent', {
+		type: 'mouseReleased',
+		x: thumb.x + 16,
+		y: thumb.y,
+		button: 'left',
+		buttons: 0,
+		clickCount: 1
+	});
+	await waitFor(
+		`getComputedStyle(document.querySelector('footer')).opacity === '1'`,
+		5000,
+		'the drag kept the chrome on screen'
+	);
+	await waitFor(
+		`getComputedStyle(document.querySelector('footer')).opacity === '0'`,
+		8000,
+		'chrome faded again after a scrub'
 	);
 	console.log(
 		`   chrome faded in place over a ${darkState.videoHeight}px picture, woke on a click and near the deck`
