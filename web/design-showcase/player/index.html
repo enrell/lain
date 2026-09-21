@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lain — Player Directions</title><link rel="stylesheet" href="player.css"></head>
+<body>
+<main class="index-wrap">
+  <header>
+    <span class="eyebrow">Lain / Player study 003 · non-binding</span>
+    <h1>Three ways the player joins the app.</h1>
+    <p>The player is the one screen that never adopted the app's design language: it paints pure black and pure white while the rest of the interface is drawn from the live Omarchy palette the server already serves. All three concepts below consume that palette, keep every behaviour the player owes the user, and differ only in how the chrome is composed.</p>
+  </header>
+
+  <div class="palette" aria-label="Live Omarchy palette served on this host">
+    <span><i style="background:#151623"></i>background #151623</span>
+    <span><i style="background:#bac5cd"></i>foreground #bac5cd</span>
+    <span><i style="background:#9a778a"></i>accent #9a778a</span>
+    <span><i style="background:#7c8289"></i>muted #7c8289</span>
+    <span><i style="background:#a38d9d"></i>line #a38d9d</span>
+    <span><i style="background:#b4c9ab"></i>success #b4c9ab</span>
+  </div>
+
+  <section class="variants" aria-label="Player concepts">
+    <a class="variant" href="01-terminal-chrome.html">
+      <b>01</b>
+      <div>
+        <h2>Terminal Chrome</h2>
+        <p>The chrome is an Omarchy bar: hairline rules, no fills, monospace micro-labels for title, session telemetry and every track choice. Square corners, information always visible, nothing floats over the picture.</p>
+      </div>
+      <span>↗</span>
+    </a>
+    <a class="variant" href="02-cinema-minimal.html">
+      <b>02</b>
+      <div>
+        <h2>Cinema Minimal</h2>
+        <p>The production direction carried through: monumental uppercase title over the frame, one floating glass control surface, accent spent only on progress and active state. Closest to the home page and the title page as they exist today.</p>
+      </div>
+      <span>↗</span>
+    </a>
+    <a class="variant" href="03-control-deck.html">
+      <b>03</b>
+      <div>
+        <h2>Control Deck</h2>
+        <p>The bottom of the window becomes an instrument panel: transport on the left, a live session readout (delivery, encoder, bitrate, buffer, reason) on the right, episodes in the rail above it. Densest of the three, and the most honest about what the server is doing.</p>
+      </div>
+      <span>↗</span>
+    </a>
+  </section>
+
+  <section class="index-notes">
+    <p><strong>What every concept keeps.</strong> The seek bar spans the whole episode with the produced range drawn where it actually is; the honest preparation wait with elapsed time, progress and a way out; the visible fallback note when a browser cannot decode the file; the episode rail beside the video; keyboard, fullscreen, speed, track selection.</p>
+    <p><strong>How to review.</strong> The toolbar at the bottom of each page switches between playing, preparing, failed and resume states, and can hide the chrome the way the idle player does. Pick a number, or name the parts worth taking from the others — the final player does not have to be one concept verbatim.</p>
+    <p><strong>Palette.</strong> These are the real values <code>GET /api/theme</code> returns on this host, including its quirks: <code>surface</code> equals <code>background</code>, and <code>surface-hover</code>, <code>surface-active</code> and <code>danger</code> all collapse onto the accent. Panels therefore read by their hairline border, never by a fill difference.</p>
+  </section>
+</main>
+</body>
+</html>
