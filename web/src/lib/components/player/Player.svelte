@@ -77,6 +77,12 @@
 	let rate = $state(prefs.getNumber('player.rate', 1));
 	let fullscreen = $state(false);
 	let controlsVisible = $state(true);
+	// The chrome's own elements. The reveal zones are measured from these, so
+	// the layout decides where the pointer may wake the chrome instead of a
+	// hardcoded height that another palette, viewport or font would break.
+	let headerEl = $state<HTMLElement | null>(null);
+	let chromeTailEl = $state<HTMLElement | null>(null);
+	let chromeFootEl = $state<HTMLElement | null>(null);
 	let scrubbing = $state(false);
 	let scrubValue = $state(0);
 	// True only between pointerdown and pointerup on the seek row. Used to
@@ -697,15 +703,71 @@
 	/* controls                                                          */
 	/* ---------------------------------------------------------------- */
 
+	/*
+	 * The chrome fades in place (D-063). It is never unmounted: an unmount
+	 * reflows the picture and moves the very rows the pointer has to find, so
+	 * the reveal zone would slide out from under the cursor trying to wake it.
+	 * Opacity keeps the geometry exact — which is what keeps D-061's no-reflow
+	 * premise true — and `pointer-events-none` keeps an invisible row from
+	 * swallowing a click meant for the picture.
+	 */
+	const REVEAL_MARGIN_PX = 56;
+
+	const chromeClass = $derived(
+		[
+			'transition-opacity duration-200',
+			controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+		].join(' ')
+	);
+
+	// The pointer wakes the chrome only where the chrome lives: a move over the
+	// middle of the picture is watching, not a request for controls.
+	function pointerNearChrome(event: PointerEvent): boolean {
+		for (const el of [headerEl, chromeTailEl, chromeFootEl]) {
+			if (!el) continue;
+			const box = el.getBoundingClientRect();
+			if (
+				event.clientY >= box.top - REVEAL_MARGIN_PX &&
+				event.clientY <= box.bottom + REVEAL_MARGIN_PX
+			) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	function onStagePointerMove(event: PointerEvent): void {
+		// While the chrome is up, any movement re-arms the hide: a viewer moving
+		// the pointer across the picture must not watch it fade under their hand.
+		if (!controlsVisible && !pointerNearChrome(event)) return;
+		revealControls();
+	}
+
+	// Keyboard focus lands on chrome that is only faded, so focus has to reveal
+	// it and hold it there: the seek bar stays reachable without a pointer, and
+	// a fade must not pull the button out from under a keyboard user (D-061).
+	function chromeFocused(): boolean {
+		const active = document.activeElement;
+		if (!active) return false;
+		return headerEl?.contains(active) === true || chromeFootEl?.contains(active) === true;
+	}
+
+	// States the chrome must not fade out of: a wait that owns an overlay, a
+	// failure the viewer has to act on, a resume banner, a drag in progress, or
+	// focus inside the chrome itself.
+	function chromePinned(): boolean {
+		return scrubbing || !!error || preparingTranscode || showResume || chromeFocused();
+	}
+
 	function scheduleHide(): void {
 		if (hideTimer) clearTimeout(hideTimer);
-		if (!playing || scrubbing) {
+		if (!playing || chromePinned()) {
 			controlsVisible = true;
 			return;
 		}
 		hideTimer = setTimeout(() => {
 			hideTimer = null;
-			if (playing && !scrubbing) controlsVisible = false;
+			if (playing && !chromePinned()) controlsVisible = false;
 		}, HIDE_DELAY_MS);
 	}
 
@@ -980,8 +1042,9 @@
 	class="relative flex h-full w-full flex-col overflow-hidden bg-background"
 	role="region"
 	aria-label={`Player — ${title}`}
-	onpointermove={revealControls}
+	onpointermove={onStagePointerMove}
 	onpointerdown={revealControls}
+	onfocusin={revealControls}
 >
 	<!-- Terminal chrome: the player's own bar, built like the rest of the
 	     app. Hairline rules and monospace micro-labels instead of scrims, so
@@ -989,7 +1052,11 @@
 	     `background`, and a host theme may collapse several roles onto one
 	     swatch (D-020/D-037). Nothing floats over the picture. -->
 	<header
-		class="grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line/40 bg-surface/70 px-4"
+		bind:this={headerEl}
+		class={[
+			'grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line/40 bg-surface/70 px-4',
+			chromeClass
+		].join(' ')}
 	>
 		<button
 			type="button"
@@ -1021,7 +1088,6 @@
 			].join(' ')}
 			preload="metadata"
 			playsinline
-			onclick={togglePlay}
 			onloadedmetadata={onLoadedMetadata}
 			ondurationchange={onDurationChange}
 			ontimeupdate={onTimeUpdate}
@@ -1176,15 +1242,9 @@
 
 	</div>
 
-	<!-- Track choices: the one row that follows the idle state, because the
-	     bar and the deck are structural chrome in this layout. -->
+	<!-- Track choices: the top of the chrome that follows the idle state. -->
 	{#if transcodeReady && (rendererActive || audioTracks.length > 1 || subtitleTracks.length > 0 || (playbackOptions?.qualities.length ?? 0) > 0 || mode === 'transcode')}
-		<div
-			class={[
-				'flex flex-wrap items-center gap-1.5 px-4 pt-3 transition-opacity duration-200',
-				controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
-			].join(' ')}
-		>
+		<div bind:this={chromeTailEl} class={['flex flex-wrap items-center gap-1.5 px-4 pt-3', chromeClass].join(' ')}>
 			{#if rendererActive}
 				<label class="chrome-chip">
 					Effects
@@ -1254,19 +1314,24 @@
 	<!-- The bar has no room for a sentence, so the two things the old top
 	     scrim carried get their own lines. -->
 	{#if directFallbackNote}
-		<p class="px-4 pt-2 text-xs leading-relaxed text-muted">
+		<p class={['px-4 pt-2 text-xs leading-relaxed text-muted', chromeClass].join(' ')}>
 			This browser could not decode this file; preparing a compatible version.
 		</p>
 	{/if}
 	{#if sessionNote}
-		<p class="px-4 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+		<p class={['px-4 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted', chromeClass].join(' ')}>
 			{sessionNote}
 		</p>
 	{/if}
 
-	<!-- Transport deck: structural chrome, so it stays put — the seek bar must
-	     always be reachable, and it spans the whole media (D-057). -->
-	<footer class="mt-3 shrink-0 border-t border-line/40 bg-surface/70 px-4 pb-4 pt-3">
+	<!-- Transport deck: it spans the whole media (D-057), it keeps its place in
+	     the layout, and it fades with the rest of the chrome (D-063). -->
+	<footer
+		bind:this={chromeFootEl}
+		class={['mt-3 shrink-0 border-t border-line/40 bg-surface/70 px-4 pb-4 pt-3', chromeClass].join(
+			' '
+		)}
+	>
 		<!-- Seek -->
 		<div class="group/seek flex items-center gap-3">
 			<Slider.Root
