@@ -1,0 +1,7 @@
+# Automatically included by the Justfile on Linux hosts with a render node.
+# This lets the real ffmpeg probe discover VA-API/QSV; a fresh installation
+# selects the best backend that actually passes the probe (D-063).
+services:
+  api:
+    devices:
+      - /dev/dri:/dev/dri

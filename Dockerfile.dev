@@ -1,7 +1,10 @@
 # Development image: toolchain plus runtime deps, source comes from a
 # bind mount so `docker compose watch` restarts `go run` on every edit.
 FROM golang:1.27-alpine
-RUN apk add --no-cache ca-certificates ffmpeg
+# ffmpeg ships the VA-API encoder, while Mesa supplies the userspace driver
+# needed to open AMD render nodes passed through by the optional GPU compose
+# override. The application enables a backend only after its real probe passes.
+RUN apk add --no-cache ca-certificates ffmpeg mesa-va-gallium
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

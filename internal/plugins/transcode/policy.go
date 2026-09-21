@@ -714,7 +714,11 @@ func streamCodecName(report mediaReport) string {
 // hardware backend. Results are cached briefly because probing spawns
 // ffmpeg.
 func (t *Transcoder) probeCapabilities(settings contracts.TranscodeSettings) capabilities {
-	key := settings.FFmpegPath + "|" + settings.HardwareAcceleration
+	// Discovery must not depend on the current selection: otherwise a fresh
+	// install configured for software can never learn which hardware choices
+	// it is allowed to select. The VA-API device does affect the probe and is
+	// therefore part of this short-lived cache key (not the session identity).
+	key := settings.FFmpegPath + "|" + hardwareDevice(settings)
 	t.capMu.Lock()
 	if t.caps.ProbedAt.After(t.now().Add(-capTTL)) && t.capKey == key {
 		caps := t.caps
@@ -754,10 +758,44 @@ func probeBuild(settings contracts.TranscodeSettings, now func() time.Time) capa
 	}
 	caps.ToneMap = probeToneMap(ffmpeg, false)
 	caps.ToneMap2390 = probeToneMap(ffmpeg, true)
-	if backend := settings.HardwareAcceleration; backend != contracts.HWNone {
-		caps.Hardware[backend] = probeHardware(ffmpeg, backend, caps, hardwareDevice(settings))
+	for _, backend := range []string{
+		contracts.HWVAAPI,
+		contracts.HWNVENC,
+		contracts.HWQSV,
+		contracts.HWAMF,
+		contracts.HWV4L2M2M,
+		contracts.HWVideoToolbox,
+		contracts.HWRKMPP,
+	} {
+		caps.Hardware[backend] = hardwareCandidate(backend, caps) &&
+			probeHardware(ffmpeg, backend, caps, hardwareDevice(settings))
 	}
 	return caps
+}
+
+// hardwareCandidate avoids launching probes which the ffmpeg build cannot
+// possibly satisfy. A listed encoder is necessary but not sufficient: the
+// one-frame encode below remains the authority because drivers and devices
+// can still be absent at runtime.
+func hardwareCandidate(backend string, caps capabilities) bool {
+	switch backend {
+	case contracts.HWVAAPI:
+		return caps.hasEncoder("h264_vaapi") && caps.Hwaccels["vaapi"]
+	case contracts.HWNVENC:
+		return caps.hasEncoder("h264_nvenc") && caps.Hwaccels["cuda"]
+	case contracts.HWQSV:
+		return caps.hasEncoder("h264_qsv") && caps.Hwaccels["qsv"]
+	case contracts.HWAMF:
+		return caps.hasEncoder("h264_amf") && caps.Hwaccels["amf"]
+	case contracts.HWV4L2M2M:
+		return caps.hasEncoder("h264_v4l2m2m")
+	case contracts.HWVideoToolbox:
+		return caps.hasEncoder("h264_videotoolbox")
+	case contracts.HWRKMPP:
+		return caps.hasEncoder("h264_rkmpp") && caps.Hwaccels["rkmpp"]
+	default:
+		return false
+	}
 }
 
 // Probe runs the capability probe without a server, for `lain doctor`.
@@ -806,28 +844,28 @@ func probeHardware(ffmpeg, backend string, caps capabilities, device string) boo
 	switch backend {
 	case contracts.HWVAAPI:
 		args = []string{"-init_hw_device", "vaapi=va:" + device,
-			"-f", "lavfi", "-i", "testsrc2=size=64x64:rate=5:duration=0.2",
+			"-f", "lavfi", "-i", "testsrc2=size=128x128:rate=5:duration=0.2",
 			"-vf", "format=nv12,hwupload", "-c:v", "h264_vaapi", "-frames:v", "1", "-f", "null", "-"}
 	case contracts.HWNVENC:
 		args = []string{"-init_hw_device", "cuda",
-			"-f", "lavfi", "-i", "testsrc2=size=64x64:rate=5:duration=0.2",
+			"-f", "lavfi", "-i", "testsrc2=size=128x128:rate=5:duration=0.2",
 			"-c:v", "h264_nvenc", "-frames:v", "1", "-f", "null", "-"}
 	case contracts.HWQSV:
 		args = []string{"-init_hw_device", "qsv=hw",
-			"-f", "lavfi", "-i", "testsrc2=size=64x64:rate=5:duration=0.2",
+			"-f", "lavfi", "-i", "testsrc2=size=128x128:rate=5:duration=0.2",
 			"-c:v", "h264_qsv", "-frames:v", "1", "-f", "null", "-"}
 	case contracts.HWAMF:
-		args = []string{"-f", "lavfi", "-i", "testsrc2=size=64x64:rate=5:duration=0.2",
+		args = []string{"-f", "lavfi", "-i", "testsrc2=size=128x128:rate=5:duration=0.2",
 			"-c:v", "h264_amf", "-frames:v", "1", "-f", "null", "-"}
 	case contracts.HWV4L2M2M:
-		args = []string{"-f", "lavfi", "-i", "testsrc2=size=64x64:rate=5:duration=0.2",
+		args = []string{"-f", "lavfi", "-i", "testsrc2=size=128x128:rate=5:duration=0.2",
 			"-c:v", "h264_v4l2m2m", "-frames:v", "1", "-f", "null", "-"}
 	case contracts.HWVideoToolbox:
-		args = []string{"-f", "lavfi", "-i", "testsrc2=size=64x64:rate=5:duration=0.2",
+		args = []string{"-f", "lavfi", "-i", "testsrc2=size=128x128:rate=5:duration=0.2",
 			"-c:v", "h264_videotoolbox", "-frames:v", "1", "-f", "null", "-"}
 	case contracts.HWRKMPP:
 		args = []string{"-init_hw_device", "rkmpp=hw",
-			"-f", "lavfi", "-i", "testsrc2=size=64x64:rate=5:duration=0.2",
+			"-f", "lavfi", "-i", "testsrc2=size=128x128:rate=5:duration=0.2",
 			"-vf", "format=nv12,hwupload", "-c:v", "h264_rkmpp", "-frames:v", "1", "-f", "null", "-"}
 	default:
 		return false
