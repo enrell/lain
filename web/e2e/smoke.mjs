@@ -1279,6 +1279,102 @@ try {
 		`   ${evidence.rangeRequests} Range requests, ${evidence.progressWrites} bounded progress writes`
 	);
 
+	/* ---------------- player chrome idle (D-063) ---------------- */
+	step('the player chrome fades while playing and wakes on the pointer or a click');
+	// The chrome is a fade, never an unmount: the rows keep their place so the
+	// picture never reflows and the zones the pointer has to find stay put
+	// (D-063 supersedes D-061's no-fade clause).
+	const chromeState = `(() => {
+		const header = document.querySelector('header');
+		const footer = document.querySelector('footer');
+		const video = document.querySelector('video');
+		return {
+			header: header ? getComputedStyle(header).opacity : null,
+			footer: footer ? getComputedStyle(footer).opacity : null,
+			footerPointer: footer ? getComputedStyle(footer).pointerEvents : null,
+			videoHeight: video ? Math.round(video.getBoundingClientRect().height) : 0,
+			paused: video ? video.paused : null
+		};
+	})()`;
+	const middle = await evalValue(`(() => {
+		const box = document.querySelector('video').getBoundingClientRect();
+		return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) };
+	})()`);
+	const footerY = await evalValue(
+		`Math.round(document.querySelector('footer').getBoundingClientRect().top + 6)`
+	);
+	// Wake it first, so the step proves both directions rather than inheriting
+	// whatever the previous step left on screen.
+	await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: middle.x, y: footerY });
+	await waitFor(
+		`getComputedStyle(document.querySelector('footer')).opacity === '1'`,
+		5000,
+		'the pointer near the deck woke the chrome'
+	);
+	const litState = await evalValue(chromeState);
+
+	// Park the pointer on the picture and leave it there: the chrome has to
+	// fade on its own while playback continues.
+	await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: middle.x, y: middle.y });
+	await waitFor(
+		`getComputedStyle(document.querySelector('footer')).opacity === '0'`,
+		8000,
+		'chrome faded while playing'
+	);
+	const darkState = await evalValue(chromeState);
+	assert(darkState.header === '0', `the bar stayed on screen: opacity ${darkState.header}`);
+	assert(
+		darkState.footerPointer === 'none',
+		`hidden chrome still swallows clicks: pointer-events ${darkState.footerPointer}`
+	);
+	// The rows keep their place: the picture must be the same size faded or
+	// not, which is the constraint D-061 recorded and D-063 has to honour.
+	assert(
+		darkState.videoHeight === litState.videoHeight,
+		`the picture reflowed while the chrome faded: ${litState.videoHeight}px -> ${darkState.videoHeight}px`
+	);
+	assert(darkState.paused === false, 'the chrome faded only because playback stopped');
+	evidence.chromeVideoHeight = darkState.videoHeight;
+
+	// A click on the picture wakes the chrome and must not pause: pause is the
+	// deck button or Space (D-063).
+	for (const type of ['mousePressed', 'mouseReleased']) {
+		await page.send('Input.dispatchMouseEvent', {
+			type,
+			x: middle.x,
+			y: middle.y,
+			button: 'left',
+			buttons: type === 'mousePressed' ? 1 : 0,
+			clickCount: 1
+		});
+	}
+	await waitFor(
+		`getComputedStyle(document.querySelector('footer')).opacity === '1'`,
+		5000,
+		'click on the picture woke the chrome'
+	);
+	assert(
+		await evalValue(`document.querySelector('video').paused === false`),
+		'clicking the picture paused playback; only the deck button and Space may'
+	);
+
+	// A move across the middle of the picture leaves the chrome hidden: the
+	// pointer wakes it near the controls, not anywhere.
+	await waitFor(
+		`getComputedStyle(document.querySelector('footer')).opacity === '0'`,
+		8000,
+		'chrome faded again'
+	);
+	await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: middle.x, y: middle.y });
+	await sleep(3200);
+	assert(
+		await evalValue(`getComputedStyle(document.querySelector('footer')).opacity === '0'`),
+		'a move across the picture kept the chrome on screen'
+	);
+	console.log(
+		`   chrome faded in place over a ${darkState.videoHeight}px picture, woke on a click and near the deck`
+	);
+
 	/* ---------------- direct-play subtitles ---------------- */
 	step('direct-play subtitle extraction serves playable WebVTT');
 	await navigate(`${BASE}/library`);
