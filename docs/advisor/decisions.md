@@ -3,6 +3,10 @@
 Use these IDs in plans and advisor calls: `D-001`, etc.
 Update this file when the user answers a `needs-user` question.
 
+## Familiar player controls
+
+- `D-066` — Replace D-061's terminal-style micro-labels and always-visible session telemetry with familiar playback controls for nontechnical viewers: readable sentence-case title/back navigation, play/pause, explicit ten-second skip controls, volume, time, settings and fullscreen. Group speed, quality, audio, subtitles and optional effects in an in-player settings panel; technical playback information remains available through progressive disclosure. Preserve the host's semantic Omarchy palette (D-020/D-037), overlay geometry and idle fade, and picture clicks that only reveal controls (D-064/D-065). An open settings panel pins the controls and Escape closes it. Existing playback/session, episode, and shader contracts remain unchanged. No dependency is added. Source: explicit user request for a modern, standard player for nontechnical users retaining Omarchy style, plus advisor `answered`, 2026-09-21.
+
 ## Stack and build
 
 - `D-001` — Prefer the Go standard library. The only three justified dependencies are `golang.org/x/crypto` for bcrypt, `golang.org/x/term` for login, and `go.etcd.io/bbolt` for `lain.db`. A new dependency is a permanent cost and must be discussed first. Source: `AGENTS.md:6`.
