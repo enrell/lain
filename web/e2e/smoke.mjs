@@ -225,6 +225,13 @@ async function waitFor(expression, timeoutMs = 15000, label = expression) {
 
 /** Real trusted click at the element's center, retried while a dialog
  * overlay finishes its exit transition. */
+async function openPlayerSettings() {
+	const y = await evalValue(`document.querySelector('footer').getBoundingClientRect().top + 8`);
+	await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 100, y });
+	await waitFor(`getComputedStyle(document.querySelector('footer')).opacity === '1'`, 5000, 'controls revealed');
+	await clickText('Playback settings', 'button[aria-label="Playback settings"]');
+}
+
 async function clickText(text, selector = 'button, a') {
 	await settle();
 	const deadline = Date.now() + 5000;
@@ -677,6 +684,7 @@ try {
 	);
 	console.log('   cached HLS replay re-attached through hls.js');
 
+	await openPlayerSettings();
 	await waitFor(
 		`!!document.querySelector('select[aria-label="Transcode quality"]')`,
 		15000,
@@ -1072,7 +1080,7 @@ try {
 	// player itself demands before it trusts a direct plan.
 	await waitFor(`document.querySelector('video').videoWidth > 0`, 20000, 'direct picture');
 
-	const planRequest = requests.find((r) => r.url.includes('/playback'));
+	const planRequest = requests.find((r) => /\/api\/items\/[^/]+\/playback\?/.test(r.url));
 	assert(planRequest, 'no playback plan request observed');
 	const planCaps = new URL(planRequest.url).searchParams.get('caps') ?? '';
 	for (const token of ['mkv', 'mkv/h264', 'mkv/aac']) {
@@ -1190,7 +1198,7 @@ try {
 		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
 	);
 	await waitFor(`!!document.querySelector('video')`, 15000, 'claimed video element');
-	const lyingPlan = requests.find((r) => r.url.includes('/playback'));
+	const lyingPlan = requests.find((r) => /\/api\/items\/[^/]+\/playback\?/.test(r.url));
 	assert(lyingPlan, 'no playback plan request observed for the lying client');
 	const lyingCaps = new URL(lyingPlan.url).searchParams.get('caps') ?? '';
 	assert(
@@ -1217,7 +1225,7 @@ try {
 		60000,
 		'a picture after the fallback'
 	);
-	await waitText('could not decode', 20000);
+	await waitText('Preparing this video for your browser', 20000);
 	evidence.frameFallback = true;
 	console.log('   the claim was disproved by the first frame and the player fell back');
 	await page.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: lie.identifier });
@@ -1489,6 +1497,27 @@ try {
 	);
 
 	/* ---------------- direct-play subtitles ---------------- */
+	step('familiar player settings stay usable while playback advances');
+	await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: middle.x, y: footerY });
+	await openPlayerSettings();
+	await waitFor(`!!document.querySelector('#player-settings')`, 5000, 'settings panel opened');
+	await selectOption('Playback speed', '1.25');
+	assert(await evalValue(`document.querySelector('video').playbackRate === 1.25`), 'speed did not apply');
+	await sleep(3000);
+	assert(await evalValue(`getComputedStyle(document.querySelector('footer')).opacity === '1'`), 'settings faded while open');
+	await selectOption('Playback speed', '1');
+	await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+	await sleep(300);
+	assert(await evalValue(`(() => { const r = document.querySelector('#player-settings').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0; })()`), 'settings overflow mobile viewport');
+	const mobileShot = await page.send('Page.captureScreenshot', { format: 'png' });
+	writeFileSync(SCREENSHOT.replace('.png', '-mobile.png'), Buffer.from(mobileShot.data, 'base64'));
+	await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+	await sleep(300);
+	const playerShot = await page.send('Page.captureScreenshot', { format: 'png' });
+	writeFileSync(SCREENSHOT.replace('.png', '-player.png'), Buffer.from(playerShot.data, 'base64'));
+	await pressKey('Escape', 'Escape', 27);
+	assert(await evalValue(`!document.querySelector('#player-settings') && document.activeElement?.getAttribute('aria-label') === 'Playback settings'`), 'Escape did not close settings and restore focus');
+
 	step('direct-play subtitle extraction serves playable WebVTT');
 	await navigate(`${BASE}/library`);
 	await clickText('Frieren');
@@ -1504,6 +1533,7 @@ try {
 	);
 	await clickText(affordance);
 	await waitFor(`!!document.querySelector('video')`, 15000, 'video element');
+	await openPlayerSettings();
 	await waitFor(
 		`!!document.querySelector('select[aria-label="Subtitle track"]')`,
 		15000,
