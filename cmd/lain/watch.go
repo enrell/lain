@@ -9,7 +9,6 @@ package main
 
 import (
 	"bufio"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,10 +23,9 @@ import (
 	"time"
 
 	"golang.org/x/term"
-)
 
-//go:embed mpv_lain_progress.lua
-var progressLua string
+	"github.com/enrell/lain/internal/localplay"
+)
 
 // clientConfig is ~/.config/lain/config.json (0600).
 type clientConfig struct {
@@ -440,7 +438,7 @@ func playOneWithPlayer(client *apiClient, cfg clientConfig, item apiItem, player
 	socketFile := filepath.Join(stateDir, "vlc.sock")
 	if player == "mpv" {
 		scriptFile := filepath.Join(stateDir, "lain-progress.lua")
-		if err := os.WriteFile(scriptFile, []byte(progressLua), 0o600); err != nil {
+		if err := os.WriteFile(scriptFile, []byte(localplay.MPVScript), 0o600); err != nil {
 			return playedResult{}, err
 		}
 		args = append(args, "--script="+scriptFile, "--script-opts=lain-state="+stateFile, "--title="+label)

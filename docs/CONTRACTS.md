@@ -69,6 +69,31 @@ process. Each entry is associated with its own existing progress record.
 each CLI installation or browser account storage; the link still names
 the selected player explicitly.
 
+### Local playback
+
+When the browser and a natively running server share a machine, the
+server launches the player itself (D-072) — no handler install and no
+second login, because nothing crosses a process boundary the server
+does not already own.
+
+`GET /api/localplay` → `{"players":["mpv","vlc"]}` lists the player
+binaries usable right now: present in PATH plus a graphical session
+(`DISPLAY`/`WAYLAND_DISPLAY`). Remote peers, forwarded requests and
+Docker deployments get an empty list.
+
+`POST /api/items/{id}/play-local` with optional `{"player":"mpv|vlc"}`
+→ `200 {"status":"playing","player":"mpv","count":N}`. The peer must be
+loopback and the request must carry no `Forwarded`, `X-Forwarded-For`
+or `X-Real-IP` header — otherwise 403. Other typed failures: 401
+unauthenticated, 400 unknown player, 404 unknown item, 409 missing
+file (D-068) or playback already running, 503 no usable player.
+
+Playback opens local file paths; no token rides a URL. A series plays
+the ordered episode list from the chosen episode onward (D-056), and
+measured progress lands in userstate under the authenticated account —
+the same shape `PUT /api/items/{id}/progress` writes. One local
+playback runs at a time and server shutdown stops the player.
+
 ### Account playback language
 
 `GET /api/me` includes optional `preferred_language` on the public

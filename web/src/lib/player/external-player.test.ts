@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { externalPlayerUrl } from './external-player';
+import { externalPlayerUrl, playbackHref } from './external-player';
 
 describe('externalPlayerUrl', () => {
 	it('sends the origin and item ID without a credential', () => {
@@ -11,5 +11,17 @@ describe('externalPlayerUrl', () => {
 		expect(url.searchParams.get('id')).toBe('id with space');
 		expect(url.searchParams.get('player')).toBe('vlc');
 		expect([...url.searchParams.keys()]).toEqual(['server', 'id', 'player']);
+	});
+});
+
+describe('playbackHref', () => {
+	it('keeps "local" on the web player href so bare navigation still works', () => {
+		expect(playbackHref('https://media.example', 'it1', 'local')).toBe('/player/it1');
+		expect(playbackHref('https://media.example', 'it1', 'browser')).toBe('/player/it1');
+	});
+	it('hands external players the lain:// protocol link', () => {
+		expect(playbackHref('https://media.example', 'it1', 'mpv')).toBe(
+			externalPlayerUrl('https://media.example', 'it1', 'mpv')
+		);
 	});
 });

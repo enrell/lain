@@ -94,10 +94,11 @@
 		<label class="mt-4 block text-sm font-medium text-foreground" for="preferred-player">Player</label>
 		<select id="preferred-player" class="mt-2 w-full rounded-md border border-line bg-background p-2 text-foreground" value={preferredPlayer} onchange={(e) => changePlayer(e.currentTarget.value)}>
 			<option value="browser">Web player</option>
+			<option value="local">Player on this machine</option>
 			<option value="mpv">mpv</option>
 			<option value="vlc">VLC</option>
 		</select>
-		<p class="mt-2 text-xs text-muted">For mpv or VLC, run <code>lain login</code> and <code>lain install-player-handler</code> on this computer.</p>
+		<p class="mt-2 text-xs text-muted">"This machine" asks the Lain server to open mpv or VLC locally — it works when the server runs natively on the same computer as this browser. For mpv or VLC on a different machine, run <code>lain login</code> and <code>lain install-player-handler</code> there.</p>
 	</section>
 	<section class="rounded-card border border-line bg-surface/60 p-5">
 		<h2 class="text-base font-semibold text-foreground">Preferred playback language</h2>

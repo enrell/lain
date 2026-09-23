@@ -13,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/enrell/lain/internal/contracts"
+	"github.com/enrell/lain/internal/localplay"
 )
 
 // episodeQueue uses the catalog's title grouping and watch order (D-056).
@@ -63,24 +66,6 @@ type mediaStream struct {
 	Language string `json:"language"`
 }
 
-func sameLanguage(actual, preferred string) bool {
-	aliases := map[string]string{
-		"fre": "fra", "ger": "deu", "chi": "zho", "dut": "nld",
-		"gre": "ell", "rum": "ron", "cze": "ces", "slo": "slk",
-		"per": "fas", "may": "msa", "alb": "sqi", "arm": "hye",
-		"baq": "eus", "bur": "mya", "ice": "isl", "mac": "mkd",
-	}
-	actual = strings.ToLower(strings.Split(actual, "-")[0])
-	preferred = strings.ToLower(preferred)
-	if mapped := aliases[actual]; mapped != "" {
-		actual = mapped
-	}
-	if mapped := aliases[preferred]; mapped != "" {
-		preferred = mapped
-	}
-	return actual != "" && actual == preferred
-}
-
 // A tagged audio match wins. Otherwise show only a subtitle in the
 // preferred language. Unknown probe data leaves native VLC defaults.
 func vlcSubtitleOff(client *apiClient, item apiItem, language string) (bool, error) {
@@ -93,24 +78,11 @@ func vlcSubtitleOff(client *apiClient, item apiItem, language string) (bool, err
 	if len(plan.Streams) == 0 {
 		return false, nil
 	}
-	known := false
-	for _, stream := range plan.Streams {
-		if (stream.Type == "audio" || stream.Type == "subtitle") && stream.Language != "" {
-			known = true
-		}
-		if stream.Type == "audio" && sameLanguage(stream.Language, language) {
-			return true, nil
-		}
+	streams := make([]contracts.MediaStream, len(plan.Streams))
+	for i, s := range plan.Streams {
+		streams[i] = contracts.MediaStream{Type: s.Type, Language: s.Language}
 	}
-	if !known {
-		return false, nil
-	}
-	for _, stream := range plan.Streams {
-		if stream.Type == "subtitle" && sameLanguage(stream.Language, language) {
-			return false, nil
-		}
-	}
-	return true, nil
+	return localplay.SubtitleOff(streams, language), nil
 }
 
 func (m *episodeMonitor) save(index int, pos, dur float64) error {
@@ -190,7 +162,7 @@ func playEpisodeQueue(client *apiClient, cfg clientConfig, items []apiItem, play
 	var cmd *exec.Cmd
 	if player == "mpv" {
 		scriptFile := filepath.Join(dir, "lain-progress.lua")
-		if err := os.WriteFile(scriptFile, []byte(progressLua), 0o600); err != nil {
+		if err := os.WriteFile(scriptFile, []byte(localplay.MPVScript), 0o600); err != nil {
 			return err
 		}
 		resumeFile := filepath.Join(dir, "resume.json")
