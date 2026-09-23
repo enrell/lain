@@ -1,6 +1,5 @@
 package gateway
 
-// mutation-clean
 
 import (
 	"bytes"

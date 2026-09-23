@@ -1,6 +1,5 @@
 package transcode
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
 
 // Round 3 mutation killers: config boundaries, lifecycle edges, cache
 // eviction order, argv detail branches, playlist parsing and the v3
@@ -1006,9 +1005,8 @@ func TestKillRunNonQueuedGuard(t *testing.T) {
 	if j.state != contracts.TranscodeReady {
 		t.Fatalf("a non-queued job must not run, got state %q", j.state)
 	}
-	// A queued job must leave the queued state; the `!=` -> `==` mutant
-	// returns early and the job would sit queued forever (gremlins saw
-	// TIMED OUT only because waiters blocked on done).
+	// A queued job must leave the queued state; an early return here
+	// would leave the job queued forever while waiters block on done.
 	j2 := &job{spec: sourceSpec{Session: "q", Path: "/media/none.mkv"},
 		state: contracts.TranscodeQueued, done: make(chan struct{})}
 	tr.run(j2)

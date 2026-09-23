@@ -1,6 +1,5 @@
 package gateway
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
 
 // Mutation killers for gateway pure helpers and handler branches that
 // the behavioural suites exercise but never assert precisely.

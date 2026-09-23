@@ -1,6 +1,5 @@
 package gateway
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
 
 // Adversarial audit of the newest HLS signing surface: the playlist the
 // gateway serves must sign every media URI with the session and the

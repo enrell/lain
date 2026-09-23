@@ -1,6 +1,5 @@
 package userstate
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-23
 
 // Fault-injection: a closed database must surface as an error or a
 // miss — never a panic. Progress rows are precious; a store failure is

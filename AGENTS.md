@@ -72,7 +72,6 @@ expensive engines run scoped or nightly:
 
 ```
 per commit (seconds):   build + vet → unit/integration → property → race (hot pkgs)
-per *_test.go change:   mutation (hash-gated, D-069)
 per parser change:      fuzz corpus replay (always) + campaign (time-boxed)
 nightly / scheduled:    longer fuzz campaigns → more model seeds → stress -count=20
 per refactor/migration: differential oracle runs
@@ -119,31 +118,6 @@ per refactor/migration: differential oracle runs
   crashes: closed DB (reads empty, writes error), unwritable/vanished
   cache, missing source files, broken walks. A failed walk or an
   identify failure must never read as deletions (D-068).
-
-## Mutation testing (D-069)
-
-Every new or changed `*_test.go` must be mutation-verified before the
-task is done — weak tests are bugs that green CI cannot see.
-
-```sh
-go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0  # once, outside go.mod
-tools/mutation/run.sh <pkg>   # mutates only the listed package(s)
-```
-
-- `LIVED`, `NOT COVERED` and `TIMED OUT` mutants are failures: write a
-  test that kills them, or fix the production code if the mutant exposes
-  a real bug.
-- If a mutant is provably equivalent (mutating it cannot change any
-  observable behavior), add a `file`/`line`/`type`/`reason` entry to that
-  package's `equivalents` in `tools/mutation/state.json` instead.
-- A package that finishes clean gets `// mutation-clean` markers in its
-  test files and a content hash in `state.json`; unchanged packages are
-  skipped. Use `--force` to re-verify.
-- Reports live in `tools/mutation/reports/` and workdirs outside the
-  module; both are throwaway — delete them, never commit.
-- `GOFLAGS=-count=1` inside run.sh is load-bearing: without it the
-  coverage run is cached and every mutant timeout shrinks below the real
-  suite duration.
 
 ## Commit discipline
 

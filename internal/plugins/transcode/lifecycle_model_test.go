@@ -1,6 +1,5 @@
 package transcode
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-23
 
 // Model-based test of the v2 job lifecycle. A seeded random walk mixes
 // start / status / resolve / finish / fail / retry / stop / queue-full

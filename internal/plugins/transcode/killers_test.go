@@ -1,6 +1,5 @@
 package transcode
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
 
 // Mutation-killer tests: narrow cases aimed at branches the broader
 // suites exercise but never assert on.

@@ -1,6 +1,5 @@
 package catalog
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-23
 
 // Fault-injection tests: every public surface must degrade to an error
 // or an empty result on a closed database — never panic, never hang.
