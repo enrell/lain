@@ -32,6 +32,10 @@
 	import { groupFromEpisodes, type SeriesGroup } from '$lib/utilities/grouping';
 	import { formatBytes, formatDate, formatRelative, formatTime, mediaSubtitle } from '$lib/utilities/format';
 	import { progressRatio } from '$lib/utilities/progress';
+	import { loadPreferredPlayer, playbackHref, type PreferredPlayer } from '$lib/player/external-player';
+	let preferredPlayer = $state<PreferredPlayer>('browser');
+	let origin = $state('');
+	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer); }
 
 	const id = $derived(page.params.id ?? '');
 
@@ -112,6 +116,8 @@
 	}
 
 	onMount(() => {
+		origin = window.location.origin;
+		if (session.user) preferredPlayer = loadPreferredPlayer(session.user.id);
 		void load();
 	});
 
@@ -266,8 +272,8 @@
 				     nav at 320x568; the title and meta line above it are the only
 				     bounded content. -->
 				<div class="flex flex-wrap items-center gap-3 pt-1">
-					{#if playable}
-						<LinkButton href={`/player/${item.id}`} size="lg">
+					{#if playable || (!item.missing && preferredPlayer !== 'browser')}
+						<LinkButton href={playHref(item.id)} size="lg">
 							<Play class="size-4" />
 							{resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
 						</LinkButton>

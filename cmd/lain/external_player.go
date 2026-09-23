@@ -50,7 +50,7 @@ func cmdOpenURL(args []string) error {
 	if err != nil {
 		return err
 	}
-	return cmdWatch([]string{"--id", id, "--player", player, "--once"})
+	return cmdWatch([]string{"--id", id, "--player", player})
 }
 
 func cmdInstallPlayerHandler() error {

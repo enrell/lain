@@ -313,6 +313,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/setup", s.handleSetup)
 	m.HandleFunc("POST /api/auth/login", s.handleLogin)
 	m.HandleFunc("GET /api/me", s.requireAuth(s.handleMe))
+	m.HandleFunc("PATCH /api/me/preferences", s.requireAuth(s.handleMyPreferences))
 	m.HandleFunc("PATCH /api/me/password", s.requireAuth(s.handleMyPassword))
 	m.HandleFunc("GET /api/me/continue", s.requireAuth(s.handleContinue))
 
@@ -387,6 +388,24 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, v auth.Verifie
 		return
 	}
 	writeJSON(w, 200, u)
+}
+
+func (s *Server) handleMyPreferences(w http.ResponseWriter, r *http.Request, v auth.Verified) {
+	var in struct {
+		PreferredLanguage *string `json:"preferred_language"`
+	}
+	if !s.decode(w, r, &in) {
+		return
+	}
+	if in.PreferredLanguage == nil {
+		writeErr(w, http.StatusBadRequest, "preferred_language is required")
+		return
+	}
+	if err := s.auth.SetPreferredLanguage(v.UserID, *in.PreferredLanguage); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.handleMe(w, r, v)
 }
 
 func (s *Server) handleMyPassword(w http.ResponseWriter, r *http.Request, v auth.Verified) {

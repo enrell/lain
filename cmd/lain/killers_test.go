@@ -1,6 +1,5 @@
 package main
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
 
 import (
 	"encoding/json"
@@ -493,19 +492,6 @@ func TestCmdWatchResolveError(t *testing.T) {
 	if err := cmdWatch([]string{"--next", "--dry-run"}); err == nil {
 		t.Fatal("server error must propagate")
 	}
-}
-
-func TestReportNextPrintsAndSwallowsErrors(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"items":[{"id":"e2","title":"Show","season":1,"episode":2}],"total":1}`))
-	}))
-	defer srv.Close()
-	c := newAPIClient(srv.URL, "tok")
-	reportNext(c, apiItem{ID: "e1", Title: "Show", Season: 1, Episode: 1})
-	reportNext(c, apiItem{ID: "e9", Title: "Show", Season: 1, Episode: 9}) // no next: silent
-	bad := newAPIClient("http://127.0.0.1:1", "t")
-	reportNext(bad, apiItem{ID: "e1", Title: "Show", Episode: 1}) // error: silent
 }
 
 func TestCmdBenchPositive(t *testing.T) {

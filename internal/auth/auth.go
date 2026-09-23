@@ -42,6 +42,9 @@ type User struct {
 	Disabled  bool   `json:"disabled"`
 	PwdVer    uint64 `json:"pwd_ver"`
 	CreatedAt int64  `json:"created_at"`
+	// PreferredLanguage is an ISO 639-2 code for automatic audio/subtitle
+	// selection. Empty preserves the player's current defaults (D-071).
+	PreferredLanguage string `json:"preferred_language,omitempty"`
 
 	// Playback carries the per-user playback limits (D-042). Zero
 	// values mean "not restricted", so existing accounts keep full
@@ -290,6 +293,33 @@ func (s *Service) SetPlayback(id string, policy PlaybackPolicy) error {
 	}
 	u.Playback = policy
 	return s.put(u)
+}
+
+// SetPreferredLanguage changes the viewing preference without touching
+// credentials, role, or playback limits. Empty clears the preference.
+func (s *Service) SetPreferredLanguage(id, language string) error {
+	language = strings.ToLower(strings.TrimSpace(language))
+	if language != "" {
+		if len(language) != 3 {
+			return errors.New("preferred_language must be a three-letter ISO 639-2 code")
+		}
+		for _, char := range language {
+			if char < 'a' || char > 'z' {
+				return errors.New("preferred_language must be a three-letter ISO 639-2 code")
+			}
+		}
+	}
+	return s.db.Update(func(tx *bolt.Tx) error {
+		var u User
+		if err := kv.GetJSON(tx, kv.BUsers, []byte(id), &u); err != nil {
+			if errors.Is(err, kv.ErrNotFound) {
+				return errors.New("unknown user")
+			}
+			return err
+		}
+		u.PreferredLanguage = language
+		return kv.PutJSON(tx, kv.BUsers, []byte(id), u)
+	})
 }
 
 // PlaybackPolicy returns the stored limits for one user.

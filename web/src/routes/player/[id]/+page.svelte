@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -14,6 +15,14 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { episodeLabel } from '$lib/utilities/grouping';
 	import { itemCache } from '$lib/stores/media-cache.svelte';
+	import { loadPreferredPlayer, playbackHref, type PreferredPlayer } from '$lib/player/external-player';
+	let preferredPlayer = $state<PreferredPlayer>('browser');
+	let origin = $state('');
+	onMount(() => {
+		origin = window.location.origin;
+		if (session.user) preferredPlayer = loadPreferredPlayer(session.user.id);
+	});
+	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer); }
 
 	const id = $derived(page.params.id ?? '');
 
@@ -157,12 +166,13 @@
 						{@const current = episode.id === item.id}
 						<li>
 							<a
-								href={`/player/${episode.id}`}
+								href={episode.missing ? undefined : playHref(episode.id)}
+								aria-disabled={episode.missing ? 'true' : undefined}
 								aria-current={current ? 'true' : undefined}
 								aria-label={`${episodeLabel(episode)}${current ? ', playing' : ''}`}
 								class={[
 									'flex items-center gap-3 p-2 transition-colors',
-									current ? 'bg-foreground/5' : 'hover:bg-foreground/8'
+									current ? 'bg-foreground/5' : episode.missing ? 'opacity-50' : 'hover:bg-foreground/8'
 								].join(' ')}
 							>
 								<span class="relative block h-12 w-20 shrink-0 overflow-hidden border border-line/40 bg-surface">

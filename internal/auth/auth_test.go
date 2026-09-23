@@ -276,6 +276,35 @@ func TestGetSetRolePlaybackPolicy(t *testing.T) {
 	}
 }
 
+func TestSetPreferredLanguage(t *testing.T) {
+	s := testService(t)
+	u, err := s.Setup("admin", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetPreferredLanguage(u.ID, " POR "); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := s.Get(u.ID)
+	if !ok || got.PreferredLanguage != "por" {
+		t.Fatalf("normalized preference must persist: %+v", got)
+	}
+	for _, bad := range []string{"po", "port", "p1r", "p{r"} {
+		if err := s.SetPreferredLanguage(u.ID, bad); err == nil {
+			t.Fatalf("%q must refuse", bad)
+		}
+	}
+	if err := s.SetPreferredLanguage("ghost", "por"); err == nil {
+		t.Fatal("unknown user must fail")
+	}
+	if err := s.SetPreferredLanguage(u.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(u.ID); got.PreferredLanguage != "" {
+		t.Fatalf("clear must empty the preference: %+v", got)
+	}
+}
+
 // PlaybackPolicy defaults are permissive; every setter flips Restricted.
 func TestPlaybackPolicySemantics(t *testing.T) {
 	var p PlaybackPolicy

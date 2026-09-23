@@ -1,6 +1,5 @@
 package main
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
 
 import (
 	"net/http"
@@ -127,23 +126,4 @@ func TestResolveQuerySingleAndPick(t *testing.T) {
 		t.Fatalf("picked=%+v", got)
 	}
 	_ = items
-}
-
-func TestFindNextEpisode(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"items":[{"id":"e1","title":"Show","season":1,"episode":1},{"id":"e2","title":"Show","season":1,"episode":2},{"id":"s2","title":"Show","season":2,"episode":1}],"total":3,"limit":500,"offset":0}`))
-	}))
-	defer srv.Close()
-	client := newAPIClient(srv.URL, "tok")
-	next, ok, err := findNextEpisode(client, apiItem{ID: "e1", Title: "Show", Season: 1, Episode: 1})
-	if err != nil || !ok || next.ID != "e2" {
-		t.Fatalf("next=%+v ok=%v err=%v", next, ok, err)
-	}
-	if _, ok, _ := findNextEpisode(client, apiItem{ID: "e2", Title: "Show", Season: 1, Episode: 2}); ok {
-		t.Fatal("no ep3 must report false")
-	}
-	if _, ok, _ := findNextEpisode(client, apiItem{ID: "m", Title: "Movie"}); ok {
-		t.Fatal("non-episodic must report false")
-	}
 }

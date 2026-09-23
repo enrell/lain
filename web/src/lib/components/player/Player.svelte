@@ -29,6 +29,7 @@
 	import { session } from '$lib/auth/session.svelte';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
+	import { resolveTracks } from '$lib/player/track-language';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
 	import { isCompleted } from '$lib/utilities/progress';
@@ -142,6 +143,7 @@
 	let hasSubtitle = $state(false);
 	let selectedAudio = $state('');
 	let selectedSubtitle = $state('');
+	let languageMetadataKnown = $state(false);
 	// v3 session state (D-042): delivery actually used, the quality the
 	// viewer picked, why the server transcodes, and the hls.js instance.
 	let playbackOptions = $state<PlaybackOptions | null>(null);
@@ -174,6 +176,9 @@
 	const audioTracks = $derived((plan.streams ?? []).filter((s) => s.type === 'audio'));
 	const subtitleTracks = $derived(
 		(plan.streams ?? []).filter((s) => s.type === 'subtitle' && s.convertible)
+	);
+	const selectedSubtitleLanguage = $derived(
+		subtitleTracks.find((s) => String(s.index) === selectedSubtitle)?.language ?? 'und'
 	);
 	// Transcode sessions serve the sidecar the session prepared; direct
 	// play asks the server to extract the selected track on the fly.
@@ -259,6 +264,17 @@
 	}
 
 	onMount(() => {
+		const language = session.user?.preferred_language ?? '';
+		const choice = resolveTracks(plan.streams ?? [], language);
+		languageMetadataKnown = choice.metadataKnown;
+		selectedAudio = choice.audioIndex === undefined ? '' : String(choice.audioIndex);
+		selectedSubtitle = choice.subtitleIndex === undefined ? '' : String(choice.subtitleIndex);
+		// Native browser direct play cannot select an embedded audio track.
+		// When several exist and a preferred one was found, the existing
+		// transcode session can select it by stream index.
+		if (mode === 'direct' && choice.audioMatches && audioTracks.length > 1) {
+			forcedTranscode = true;
+		}
 		void detectBrowserProfile().then((profile) => { browserProfile = profile; });
 		void applyEffectDefault();
 		window.addEventListener('pagehide', onPageHide);
@@ -267,7 +283,7 @@
 		if (mode === 'transcode') {
 			transcodeSession = plan.session ?? '';
 			transcodeReasons = plan.reasons ?? [];
-			if (plan.state === 'ready') {
+			if (plan.state === 'ready' && !language) {
 				// A cached session was produced from the start of the source.
 				void adoptReadySession();
 			} else {
@@ -497,8 +513,9 @@
 		try {
 			let status = await api.playback.startTranscode(item.id, {
 				quality: (selection?.quality ?? selectedQuality) || undefined,
-				audio_stream: selection?.audio_stream,
-				subtitle_stream: selection?.subtitle_stream,
+				audio_stream: selection?.audio_stream ?? (selectedAudio === '' ? undefined : Number(selectedAudio)),
+				subtitle_stream: selection?.subtitle_stream ?? (selectedSubtitle === '' ? undefined : Number(selectedSubtitle)),
+				subtitle_mode: languageMetadataKnown && selectedSubtitle === '' ? 'off' : undefined,
 				start_sec: baseOffset || undefined
 			});
 			transcodeSession = status.session;
@@ -1254,7 +1271,7 @@
 			     what makes switching tracks during direct play reliable. -->
 			{#if subtitleSrc}
 				{#key subtitleSrc}
-					<track kind="subtitles" srclang="en" label="Subtitles" src={subtitleSrc} default />
+					<track kind="subtitles" srclang={selectedSubtitleLanguage} label="Subtitles" src={subtitleSrc} default />
 				{/key}
 			{/if}
 			<track kind="captions" />

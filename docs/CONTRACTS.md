@@ -61,6 +61,31 @@ and opens the existing direct stream. The CLI reports measured progress
 through the existing item progress endpoint. It never assumes a VLC exit
 means the file was watched.
 
+`lain watch` and the web handoff load the ordered catalog episode list
+for a title (D-056) and give the player one playlist from the chosen
+episode onward. Next/Previous work within that playlist in one player
+process. Each entry is associated with its own existing progress record.
+`--once` keeps single-item playback. The player preference is local to
+each CLI installation or browser account storage; the link still names
+the selected player explicitly.
+
+### Account playback language
+
+`GET /api/me` includes optional `preferred_language` on the public
+user object. `PATCH /api/me/preferences` accepts
+`{"preferred_language":"por"}` (or `""` to clear it) and returns the
+updated public user object. Only the authenticated account can update
+its preference. Values are lowercase three-letter ISO 639-2 codes;
+input is normalized to lowercase, and other shapes return 400.
+Existing clients ignore the optional field. The field does not change
+password version or playback limits (D-015/D-071).
+
+The preference resolves each media item independently: matching audio
+wins and subtitles are disabled; otherwise a matching subtitle is
+selected when the client can render it. Missing language metadata
+leaves the native player selection in control. Explicit player track
+changes override the initial automatic selection for that item.
+
 ## lain.userstate.progress@1 (exactly-one)
 
 `PutInput{user_id, progress}` / `GetInput{user_id, item_id}`. Keyed by
