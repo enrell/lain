@@ -303,6 +303,8 @@ export interface Enrichment {
 /** internal/auth.User (auth.go); PassHash is nulled by Public(). */
 export interface User {
 	id: string;
+	/** ISO 639-2 code used to prefer audio, then subtitles (D-071). */
+	preferred_language?: string;
 	username: string;
 	role: 'admin' | 'user';
 	disabled: boolean;

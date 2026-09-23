@@ -204,19 +204,32 @@ lain version
 lain login --server http://127.0.0.1:9360 --username admin
 lain watch frieren                      # search, pick, play in mpv, save progress
 lain watch frieren --player vlc         # use VLC instead
+lain player vlc                         # make VLC the local CLI default
+lain language por                       # prefer Portuguese audio, then subtitles
 lain watch --next                       # resume first unfinished entry
 lain install-player-handler             # enable web "Open in mpv/VLC" links locally
 lain backup --out backups               # online when the server runs
 lain restore backups/lain-backup-<ts> --data-dir ~/.local/share/lain
 ```
 
-`watch` resolves an item, launches mpv (default) or VLC with an
-authenticated stream URL, resumes saved progress, and writes measured
-progress through the same endpoint every client uses. mpv uses a bundled
-Lua script; VLC is sampled through a private local RC socket. Completed
-episodes (≥95%) auto-play the next one on a TTY. The stream URL contains
-the API token while the player runs; treat local process command lines as
-private. `--dry-run` redacts it.
+`watch` resolves an item and launches mpv or VLC. A series opens as one
+playlist from the chosen episode onward: the player's Next/Previous
+controls change episodes in the same process, including the next season.
+`--once` opens only one item. The CLI restores each episode's saved
+position and reports measured progress while it plays and when it ends.
+mpv uses a bundled Lua script; VLC is sampled through a private local
+RC socket. The CLI default is mpv until changed with `lain player vlc`;
+`--player` overrides it for one command.
+
+`lain language <ISO 639-2 code>` saves a preference to the user account;
+`lain language --clear` restores each player's default. A matching audio
+track takes priority and subtitles stay off. Otherwise Lain selects a
+subtitle in that language when one is available. Untagged tracks and
+unsupported browser subtitle formats keep the player fallback. The
+viewer can still change tracks manually. The stream URL contains the
+API token while the player runs; series playlists are temporary private
+files and single-item playback passes the URL as a process argument.
+Treat local process command lines as private. `--dry-run` redacts the URL.
 
 For external playback from the web UI, install this CLI and the player on
 the **browser's computer**. Log in with the exact origin shown in the web
@@ -224,8 +237,8 @@ page's setup instructions, then run `lain install-player-handler` on that
 computer. The browser's `lain://play` link contains only the server origin,
 item ID and chosen player; the handler accepts links only for the locally
 configured server and retrieves the item using its local login. The
-browser may ask permission to open the local app. No new server endpoint
-or browser credential handoff is involved. If VLC cannot report position,
+browser may ask permission to open the local app. The handoff adds no
+server playback endpoint or browser credential transfer. If VLC cannot report position,
 playback still works but the CLI warns and leaves progress unchanged.
 The handler opens a terminal so errors remain visible while launching or
 watching. Re-run `lain install-player-handler` if the CLI binary moves.

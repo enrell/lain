@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { onMount } from 'svelte';
 	import Play from '@lucide/svelte/icons/play';
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { episodeLabel, type SeriesGroup } from '$lib/utilities/grouping';
@@ -11,6 +12,14 @@
 	import Poster from '$lib/components/media/Poster.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import { formatTime } from '$lib/utilities/format';
+	import { loadPreferredPlayer, playbackHref, type PreferredPlayer } from '$lib/player/external-player';
+	let preferredPlayer = $state<PreferredPlayer>('browser');
+	let origin = $state('');
+	onMount(() => {
+		origin = window.location.origin;
+		if (session.user) preferredPlayer = loadPreferredPlayer(session.user.id);
+	});
+	function playHref(id: string): string { return playbackHref(origin, id, preferredPlayer); }
 
 	/**
 	 * The title page body: a cinematic backdrop with the title block, a
@@ -157,7 +166,7 @@
 			</div>
 			<div>
 				{#if resumeTarget}
-					<LinkButton href={`/player/${resumeTarget.id}`} size="lg" class="w-full justify-center">
+					<LinkButton href={playHref(resumeTarget.id)} size="lg" class="w-full justify-center">
 						<Play class="size-4 fill-current" aria-hidden="true" /> {resumeLabel}
 					</LinkButton>
 				{:else}
@@ -258,7 +267,7 @@
 							</div>
 						{:else}
 							<a
-								href={`/player/${item.id}`}
+								href={playHref(item.id)}
 								class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
 								aria-label={`Play ${episodeLabel(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 							>

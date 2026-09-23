@@ -4,6 +4,11 @@ import type { Progress, User } from './types';
 /** Gateway routes: GET /api/me, PATCH /api/me/password, GET /api/me/continue. */
 export const me = {
 	get: () => request<User>('/api/me'),
+	setPreferredLanguage: (preferredLanguage: string) =>
+		request<User>('/api/me/preferences', {
+			method: 'PATCH',
+			body: { preferred_language: preferredLanguage }
+		}),
 
 	changePassword: (oldPassword: string, newPassword: string) =>
 		request<{ status: string }>('/api/me/password', {

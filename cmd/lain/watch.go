@@ -31,8 +31,10 @@ var progressLua string
 
 // clientConfig is ~/.config/lain/config.json (0600).
 type clientConfig struct {
-	Server string `json:"server"`
-	Token  string `json:"token"`
+	Server            string `json:"server"`
+	Token             string `json:"token"`
+	Player            string `json:"player,omitempty"`
+	PreferredLanguage string `json:"-"`
 }
 
 func configPath() (string, error) {
@@ -114,7 +116,8 @@ func cmdLogin(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := saveConfig(clientConfig{Server: strings.TrimRight(server, "/"), Token: tok}); err != nil {
+	previous, _ := loadConfig()
+	if err := saveConfig(clientConfig{Server: strings.TrimRight(server, "/"), Token: tok, Player: previous.Player}); err != nil {
 		return err
 	}
 	fmt.Printf("logged in as %s on %s\n", username, server)
@@ -130,6 +133,30 @@ func cmdLogout(args []string) error {
 		return err
 	}
 	fmt.Println("logged out")
+	return nil
+}
+
+func cmdPlayer(args []string) error {
+	cfg, err := loadConfig()
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if len(args) == 0 {
+		player := cfg.Player
+		if player == "" {
+			player = "mpv"
+		}
+		fmt.Println(player)
+		return nil
+	}
+	if len(args) != 1 || (args[0] != "mpv" && args[0] != "vlc") {
+		return fmt.Errorf("usage: lain player [mpv|vlc]")
+	}
+	cfg.Player = args[0]
+	if err := saveConfig(cfg); err != nil {
+		return err
+	}
+	fmt.Printf("default player: %s\n", cfg.Player)
 	return nil
 }
 
@@ -162,6 +189,7 @@ type apiItem struct {
 	Episode  int    `json:"episode"`
 	Year     int    `json:"year"`
 	FilePath string `json:"file_path"`
+	Missing  bool   `json:"missing"`
 }
 
 type apiProgress struct {
@@ -233,14 +261,97 @@ func (c *apiClient) put(path string, body any, out any) error {
 	return json.Unmarshal(data, out)
 }
 
-func cmdWatch(args []string) error {
-	player := flag(args, "player", "mpv")
-	if player != "mpv" && player != "vlc" {
-		return fmt.Errorf("unsupported player %q (choose mpv or vlc)", player)
+func (c *apiClient) patch(path string, body any, out any) error {
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("PATCH", c.server+path, strings.NewReader(string(raw)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("PATCH %s: %d %s", path, resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	if out == nil {
+		return nil
+	}
+	return json.Unmarshal(data, out)
+}
+
+func cmdLanguage(args []string) error {
+	if len(args) > 1 {
+		return fmt.Errorf("usage: lain language [three-letter-code|--clear]")
 	}
 	cfg, err := loadConfig()
 	if err != nil || cfg.Token == "" {
 		return fmt.Errorf("not logged in (run `lain login`)")
+	}
+	client := newAPIClient(cfg.Server, cfg.Token)
+	var user struct {
+		PreferredLanguage string `json:"preferred_language"`
+	}
+	if len(args) == 0 {
+		if err := client.get("/api/me", nil, &user); err != nil {
+			return err
+		}
+		if user.PreferredLanguage == "" {
+			fmt.Println("player default")
+		} else {
+			fmt.Println(user.PreferredLanguage)
+		}
+		return nil
+	}
+	language := strings.ToLower(strings.TrimSpace(args[0]))
+	if language == "--clear" {
+		language = ""
+	}
+	if language != "" {
+		if len(language) != 3 {
+			return fmt.Errorf("language must be a three-letter ISO 639-2 code")
+		}
+		for _, char := range language {
+			if char < 'a' || char > 'z' {
+				return fmt.Errorf("language must be a three-letter ISO 639-2 code")
+			}
+		}
+	}
+	if err := client.patch("/api/me/preferences", map[string]string{"preferred_language": language}, &user); err != nil {
+		return err
+	}
+	if user.PreferredLanguage == "" {
+		fmt.Println("preferred language cleared")
+	} else {
+		fmt.Printf("preferred language: %s\n", user.PreferredLanguage)
+	}
+	return nil
+}
+
+func cmdWatch(args []string) error {
+	if choice := flag(args, "player", ""); choice != "" && choice != "mpv" && choice != "vlc" {
+		return fmt.Errorf("unsupported player %q (choose mpv or vlc)", choice)
+	}
+	cfg, err := loadConfig()
+	if err != nil || cfg.Token == "" {
+		return fmt.Errorf("not logged in (run `lain login`)")
+	}
+	player := flag(args, "player", cfg.Player)
+	if player == "" {
+		player = "mpv"
+	}
+	if player != "mpv" && player != "vlc" {
+		return fmt.Errorf("unsupported player %q (choose mpv or vlc)", player)
 	}
 	if srv := flag(args, "server", ""); srv != "" {
 		cfg.Server = strings.TrimRight(srv, "/")
@@ -250,6 +361,15 @@ func cmdWatch(args []string) error {
 	query := strings.TrimSpace(strings.Join(positional(args), " "))
 	once := hasFlag(args, "once")
 	dry := hasFlag(args, "dry-run")
+	if !dry {
+		var me struct {
+			PreferredLanguage string `json:"preferred_language"`
+		}
+		if err := client.get("/api/me", nil, &me); err != nil {
+			return err
+		}
+		cfg.PreferredLanguage = me.PreferredLanguage
+	}
 
 	var start apiItem
 	if id := flag(args, "id", ""); id != "" {
@@ -267,37 +387,17 @@ func cmdWatch(args []string) error {
 			return err
 		}
 	}
-
-	for {
-		played, err := playOneWithPlayer(client, cfg, start, player, dry)
+	if !once && !dry && start.Episode > 0 {
+		queue, err := episodeQueue(client, start)
 		if err != nil {
 			return err
 		}
-		if dry || once || !played.completed || !watchIsATTY(os.Stdout) {
-			if played.completed && !once {
-				reportNext(client, start)
-			}
-			return nil
+		if len(queue) > 1 {
+			return playEpisodeQueue(client, cfg, queue, player)
 		}
-		next, ok, err := nextEpisode(client, start)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			fmt.Println("no further episode found")
-			return nil
-		}
-		fmt.Printf("next: %s S%02dE%02d\n", next.Title, next.Season, next.Episode)
-		start = next
 	}
-}
-
-func nextEpisode(client *apiClient, current apiItem) (apiItem, bool, error) {
-	next, ok, err := findNextEpisode(client, current)
-	if err != nil {
-		return apiItem{}, false, err
-	}
-	return next, ok, nil
+	_, err = playOneWithPlayer(client, cfg, start, player, dry)
+	return err
 }
 
 // playedResult reports what one external-player session did.
@@ -344,11 +444,17 @@ func playOneWithPlayer(client *apiClient, cfg clientConfig, item apiItem, player
 			return playedResult{}, err
 		}
 		args = append(args, "--script="+scriptFile, "--script-opts=lain-state="+stateFile, "--title="+label)
+		if cfg.PreferredLanguage != "" {
+			args = append(args, "--script-opt=lain-language="+cfg.PreferredLanguage)
+		}
 		if resume > 0 {
 			args = append(args, "--start="+strconv.FormatFloat(resume, 'f', 0, 64))
 		}
 	} else {
 		args = append(args, "--no-one-instance", "--play-and-exit", "--extraintf=rc", "--rc-unix="+socketFile, "--meta-title="+label)
+		if cfg.PreferredLanguage != "" {
+			args = append(args, "--audio-language="+cfg.PreferredLanguage, "--sub-language="+cfg.PreferredLanguage)
+		}
 		if resume > 0 {
 			args = append(args, "--start-time="+strconv.FormatFloat(resume, 'f', 0, 64))
 		}
@@ -369,7 +475,14 @@ func playOneWithPlayer(client *apiClient, cfg clientConfig, item apiItem, player
 	var pos, dur float64
 	var ok bool
 	if player == "vlc" {
-		pos, dur, ok, runErr = runVLC(cmd, socketFile)
+		subtitleOff := false
+		if cfg.PreferredLanguage != "" {
+			subtitleOff, err = vlcSubtitleOff(client, item, cfg.PreferredLanguage)
+			if err != nil {
+				return playedResult{}, err
+			}
+		}
+		pos, dur, ok, runErr = runVLCWithSubtitlePolicy(cmd, socketFile, subtitleOff)
 	} else {
 		runErr = cmd.Run()
 		pos, dur, ok = readStateFile(stateFile)
@@ -405,6 +518,10 @@ func playerExitErr(player string, runErr error) error {
 // VLC's local RC socket reports the same position and duration that mpv's
 // bundled Lua script writes. The socket lives in a private temporary dir.
 func runVLC(cmd *exec.Cmd, socket string) (pos, dur float64, ok bool, runErr error) {
+	return runVLCWithSubtitlePolicy(cmd, socket, false)
+}
+
+func runVLCWithSubtitlePolicy(cmd *exec.Cmd, socket string, subtitleOff bool) (pos, dur float64, ok bool, runErr error) {
 	if err := cmd.Start(); err != nil {
 		return 0, 0, false, err
 	}
@@ -412,13 +529,22 @@ func runVLC(cmd *exec.Cmd, socket string) (pos, dur float64, ok bool, runErr err
 	go func() { done <- cmd.Wait() }()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	trackApplied := !subtitleOff
+	var trackErr error
 	for {
 		select {
 		case err := <-done:
+			if trackErr != nil {
+				return pos, dur, ok, trackErr
+			}
 			return pos, dur, ok, err
 		case <-ticker.C:
 			p, d, err := vlcPosition(socket)
 			if err == nil && d > 0 && p >= 0 {
+				if !trackApplied {
+					_, trackErr = vlcRC(socket, "strack -1\n")
+					trackApplied = trackErr == nil
+				}
 				pos, dur, ok = p, d, true
 			}
 		}
@@ -593,33 +719,6 @@ func searchItems(client *apiClient, query string) ([]apiItem, error) {
 	return page.Items, nil
 }
 
-// findNextEpisode locates same-title, same-season, episode+1.
-func findNextEpisode(client *apiClient, cur apiItem) (apiItem, bool, error) {
-	if cur.Episode == 0 {
-		return apiItem{}, false, nil
-	}
-	items, err := searchItems(client, cur.Title)
-	if err != nil {
-		return apiItem{}, false, err
-	}
-	wantTitle := strings.ToLower(strings.TrimSpace(cur.Title))
-	for _, it := range items {
-		if strings.ToLower(strings.TrimSpace(it.Title)) == wantTitle &&
-			it.Season == cur.Season && it.Episode == cur.Episode+1 {
-			return it, true, nil
-		}
-	}
-	return apiItem{}, false, nil
-}
-
-func reportNext(client *apiClient, cur apiItem) {
-	next, ok, err := findNextEpisode(client, cur)
-	if err != nil || !ok {
-		return
-	}
-	fmt.Printf("next: %s S%02dE%02d\n", next.Title, next.Season, next.Episode)
-}
-
 // valueFlags consume the following arg.
 var valueFlags = map[string]bool{
 	"--pick": true, "--player": true, "--id": true, "--server": true, "--data-dir": true,
@@ -657,7 +756,3 @@ func hasFlag(args []string, name string) bool {
 	}
 	return false
 }
-
-func isATTY(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }
-
-var watchIsATTY = isATTY

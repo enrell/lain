@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Play from '@lucide/svelte/icons/play';
 	import Info from '@lucide/svelte/icons/info';
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
@@ -7,6 +8,14 @@
 	import { mediaSubtitle } from '$lib/utilities/format';
 	import { progressRatio } from '$lib/utilities/progress';
 	import ProgressBar from './ProgressBar.svelte';
+	import { loadPreferredPlayer, playbackHref, type PreferredPlayer } from '$lib/player/external-player';
+	let preferredPlayer = $state<PreferredPlayer>('browser');
+	let origin = $state('');
+	onMount(() => {
+		origin = window.location.origin;
+		if (session.user) preferredPlayer = loadPreferredPlayer(session.user.id);
+	});
+	function playHref(id: string): string { return playbackHref(origin, id, preferredPlayer); }
 
 	let {
 		item,
@@ -82,7 +91,7 @@
 			{/if}
 			<div class="mt-7 flex flex-wrap gap-3">
 				<a
-					href={`/player/${item.id}`}
+					href={playHref(item.id)}
 					class="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-black transition duration-300 ease-out hover:-translate-y-0.5 hover:bg-white/88 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
 				>
 					<Play class="size-4 fill-current" aria-hidden="true" />
@@ -99,7 +108,7 @@
 	</div>
 	{#if upNext}
 		<a
-			href={`/player/${upNext.id}`}
+			href={playHref(upNext.id)}
 			class="absolute bottom-8 right-8 z-10 hidden w-[min(26rem,32vw)] grid-cols-[7rem_1fr] items-stretch border border-white/10 bg-black/75 backdrop-blur-xl transition duration-300 ease-out hover:-translate-y-0.5 hover:border-white/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white md:grid"
 			aria-label={`Continue next: ${upNextTitle}`}
 		>

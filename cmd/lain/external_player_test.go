@@ -1,6 +1,5 @@
 package main
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-23
 
 import (
 	"encoding/json"
@@ -147,6 +146,8 @@ func TestOpenURLUsesLocalLoginAndSavesProgress(t *testing.T) {
 			return
 		}
 		switch {
+		case r.Method == "GET" && r.URL.Path == "/api/me":
+			io.WriteString(w, `{}`)
 		case r.Method == "GET" && r.URL.Path == "/api/catalog/episode-1":
 			io.WriteString(w, `{"id":"episode-1","title":"Show"}`)
 		case r.Method == "GET" && r.URL.Path == "/api/items/episode-1/progress":
@@ -195,6 +196,8 @@ func TestWatchDirectIDAndVLCResume(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/me":
+			io.WriteString(w, `{}`)
 		case "/api/catalog/e1":
 			io.WriteString(w, `{"id":"e1","title":"Show"}`)
 		case "/api/items/e1/progress":
@@ -219,14 +222,13 @@ func TestWatchDirectIDAndVLCResume(t *testing.T) {
 	}
 }
 
-func TestWatchSurfacesNextEpisodeFailureOnTTY(t *testing.T) {
+func TestWatchSurfacesEpisodeQueueFailure(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	installFakeMpv(t, 96, 100, "0")
-	original := watchIsATTY
-	watchIsATTY = func(*os.File) bool { return true }
-	t.Cleanup(func() { watchIsATTY = original })
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/me":
+			io.WriteString(w, `{}`)
 		case "/api/catalog/e1":
 			io.WriteString(w, `{"id":"e1","title":"Show","season":1,"episode":1}`)
 		case "/api/items/e1/progress":
@@ -235,7 +237,7 @@ func TestWatchSurfacesNextEpisodeFailureOnTTY(t *testing.T) {
 			} else {
 				io.WriteString(w, "null")
 			}
-		case "/api/search":
+		case "/api/catalog/e1/episodes":
 			w.WriteHeader(http.StatusServiceUnavailable)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -246,7 +248,7 @@ func TestWatchSurfacesNextEpisodeFailureOnTTY(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := cmdWatch([]string{"--id", "e1"}); err == nil || !strings.Contains(err.Error(), "503") {
-		t.Fatalf("next episode error must surface: %v", err)
+		t.Fatalf("episode queue error must surface: %v", err)
 	}
 }
 
