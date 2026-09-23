@@ -1,8 +1,8 @@
 # Browser shader engine
 
 The web player has an optional first-party shader presentation layer. WebGPU is
-the primary backend; WebGL2 runs the bundled mpv Anime4K hooks when WebGPU has
-no compatible adapter. The
+preferred by default; the Brave profile prefers WebGL2 for the bundled mpv
+Anime4K hooks. The
 browser still owns demuxing, decoding, buffering, seeking, audio/video sync and
 audio output through the existing `<video>` element. The renderer imports each
 decoded video frame, normalizes it into an internal RGB texture, runs an ordered
@@ -81,10 +81,20 @@ GPU resource is allocated.
 ## Fallbacks
 
 WebGPU is optional. The player keeps `<video>` as the visible path until the
-first GPU frame has been submitted. On browsers without a WebGPU adapter, the
-Mode A, Mode A+A and Lite presets use WebGL2 and the original Anime4K mpv GLSL
-hooks on the same decoded video frames. This requires WebGL2 floating-point
-render targets. If neither GPU path works, the native video remains available.
+first GPU frame has been submitted. When WebGPU has no compatible adapter or
+initialization fails, the Mode A, Mode A+A and Lite presets can use WebGL2 and
+the original Anime4K mpv GLSL hooks on the same decoded video frames. This
+requires WebGL2 floating-point render targets. If neither GPU path works, the
+native video remains available.
+
+The browser renderer profile prefers WebGL2 in Brave and WebGPU elsewhere.
+Brave is identified through its `navigator.brave.isBrave()` API, with the Brave
+client-hint brand as a fallback; a generic Chromium user agent is not enough
+to identify it. Each backend still checks its actual adapter/context and shader
+support. Separate canvases allow the second backend to initialize even when
+the first one acquired a different canvas context before failing. The selected
+profile and active backend appear under Playback information. The profile does
+not alter browser GPU flags or repair a broken native video compositor.
 
 Before a GPU canvas replaces the video element, the player checks that the
 browser exposes readable pixels from the decoded frame. Some browser/driver

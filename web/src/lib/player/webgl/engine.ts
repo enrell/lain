@@ -119,7 +119,7 @@ function image(gl: WebGL2RenderingContext, width: number, height: number, format
 	return { texture, width, height };
 }
 
-/** Runs the same local mpv GLSL hooks when Linux Brave has no WebGPU adapter. */
+/** Runs the bundled mpv GLSL hooks in browsers whose profile prefers WebGL2. */
 export class WebGLAnime4KRenderer {
 	private readonly scheduler: VideoFrameScheduler;
 	private readonly frameBuffer: WebGLFramebuffer;
