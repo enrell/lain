@@ -3,6 +3,8 @@ import { VideoFrameScheduler } from './scheduler';
 import { DISPLAY_SHADER, effectShader, INGEST_SHADER } from './shaders';
 import { TexturePool } from './texture-pool';
 import { GPU_COPY_DST, GPU_FRAGMENT_STAGE, GPU_UNIFORM } from './constants';
+import type { Anime4KComputePack, Anime4KMode } from './packs/anime4k-compute';
+import { DecodedFrameProbe } from '../frame-probe';
 
 const UNIFORM_BYTES = 64;
 const MAX_INPUTS = 4;
@@ -17,6 +19,7 @@ export interface VideoRendererOptions {
 	video: HTMLVideoElement;
 	canvas: HTMLCanvasElement;
 	passes?: readonly ShaderPass[];
+	computeMode?: Anime4KMode;
 	onActiveChange?: (active: boolean) => void;
 	onFailure?: (reason: string) => void;
 }
@@ -60,6 +63,7 @@ export class VideoRenderer {
 	private frameIndex = 0;
 	private stopped = false;
 	private active = false;
+	private readonly frameProbe = new DecodedFrameProbe();
 
 	private constructor(
 		private readonly options: VideoRendererOptions,
@@ -71,7 +75,8 @@ export class VideoRenderer {
 		private readonly displayPipeline: GPURenderPipeline,
 		private readonly displayLayout: GPUBindGroupLayout,
 		private readonly effectLayout: GPUBindGroupLayout,
-		private readonly compiled: readonly CompiledPass[]
+		private readonly compiled: readonly CompiledPass[],
+		private readonly computePack: Anime4KComputePack | null
 	) {
 		this.pool = new TexturePool(device);
 		this.sampler = device.createSampler({
@@ -98,17 +103,24 @@ export class VideoRenderer {
 		if (typeof options.video.requestVideoFrameCallback !== 'function') {
 			return { renderer: null, reason: 'decoded-frame callbacks are unavailable' };
 		}
-		const context = (
-			options.canvas as HTMLCanvasElement & {
-				getContext(contextId: 'webgpu'): GPUCanvasContext | null;
-			}
-		).getContext('webgpu');
-		if (!context) return { renderer: null, reason: 'WebGPU canvas is unavailable' };
-
 		try {
-			const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+			const adapter =
+				(await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' })) ??
+				(await navigator.gpu.requestAdapter());
 			if (!adapter) return { renderer: null, reason: 'no WebGPU adapter is available' };
-			const device = await adapter.requestDevice({ label: 'Lain video shader engine' });
+			if (options.computeMode && !adapter.features.has('float32-filterable')) {
+				return { renderer: null, reason: 'this adapter does not support filterable 32-bit Anime4K textures' };
+			}
+			const device = await adapter.requestDevice({
+				label: 'Lain video shader engine',
+				requiredFeatures: options.computeMode ? ['float32-filterable'] : []
+			});
+			const context = (
+				options.canvas as HTMLCanvasElement & {
+					getContext(contextId: 'webgpu'): GPUCanvasContext | null;
+				}
+			).getContext('webgpu');
+			if (!context) return { renderer: null, reason: 'WebGPU canvas is unavailable' };
 			const canvasFormat = navigator.gpu.getPreferredCanvasFormat();
 			context.configure({ device, format: canvasFormat, alphaMode: 'opaque', colorSpace: 'srgb' });
 
@@ -160,7 +172,7 @@ export class VideoRenderer {
 				})
 			]);
 
-			const passes = options.passes ?? [];
+			const passes = options.computeMode ? [] : (options.passes ?? []);
 			const compiled = await Promise.all(
 				passes.map(async (pass): Promise<CompiledPass> => {
 					const module = await checkedModule(device, `shader pass ${pass.id}`, effectShader(pass));
@@ -186,6 +198,9 @@ export class VideoRenderer {
 					};
 				})
 			);
+			const computePack = options.computeMode
+				? await (await import('./packs/anime4k-compute')).Anime4KComputePack.create(device, options.computeMode)
+				: null;
 
 			const renderer = new VideoRenderer(
 				options,
@@ -197,7 +212,8 @@ export class VideoRenderer {
 				displayPipeline,
 				displayLayout,
 				effectLayout,
-				compiled
+				compiled,
+				computePack
 			);
 			device.lost.then((info) => renderer.fail(`WebGPU device lost: ${info.message || info.reason}`));
 			renderer.start();
@@ -217,10 +233,12 @@ export class VideoRenderer {
 		const height = video.videoHeight;
 		if (width < 1 || height < 1 || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return null;
 		if (!this.plan || this.plan.source.width !== width || this.plan.source.height !== height) {
-			this.plan = planShaderGraph(passes, { width, height }, this.device.limits.maxTextureDimension2D);
+			this.plan = planShaderGraph(this.computePack ? [] : passes, { width, height }, this.device.limits.maxTextureDimension2D);
 			this.pool.sync(this.plan);
-			if (canvas.width !== this.plan.output.width) canvas.width = this.plan.output.width;
-			if (canvas.height !== this.plan.output.height) canvas.height = this.plan.output.height;
+			if (!this.computePack) {
+				if (canvas.width !== this.plan.output.width) canvas.width = this.plan.output.width;
+				if (canvas.height !== this.plan.output.height) canvas.height = this.plan.output.height;
+			}
 		}
 		return this.plan;
 	}
@@ -229,6 +247,13 @@ export class VideoRenderer {
 		if (this.stopped) return;
 		const plan = this.ensurePlan();
 		if (!plan) return;
+		if (!this.frameProbe.check(this.options.video)) {
+			if (this.active) {
+				this.active = false;
+				this.options.onActiveChange?.(false);
+			}
+			return;
+		}
 		const encoder = this.device.createCommandEncoder({ label: `video frame ${this.frameIndex}` });
 		const external = this.device.importExternalTexture({ source: this.options.video, colorSpace: 'srgb' });
 		const ingestBindings = this.device.createBindGroup({
@@ -289,12 +314,26 @@ export class VideoRenderer {
 			effect.end();
 		}
 
+		let outputTexture = this.pool.get(plan.output.slot);
+		if (this.computePack) {
+			const clientWidth = Math.max(1, this.options.canvas.clientWidth);
+			const clientHeight = Math.max(1, this.options.canvas.clientHeight);
+			const fit = Math.min(clientWidth / plan.source.width, clientHeight / plan.source.height);
+			outputTexture = this.computePack.configure(
+				this.pool.get(plan.sourceSlot),
+				Math.round(plan.source.width * fit),
+				Math.round(plan.source.height * fit)
+			);
+			this.computePack.encode(encoder);
+			if (this.options.canvas.width !== outputTexture.width) this.options.canvas.width = outputTexture.width;
+			if (this.options.canvas.height !== outputTexture.height) this.options.canvas.height = outputTexture.height;
+		}
 		const displayBindings = this.device.createBindGroup({
 			label: 'video display frame bindings',
 			layout: this.displayLayout,
 			entries: [
 				{ binding: 0, resource: this.sampler },
-				{ binding: 1, resource: this.pool.get(plan.output.slot).createView() }
+				{ binding: 1, resource: outputTexture.createView() }
 			]
 		});
 		const display = encoder.beginRenderPass({
@@ -325,6 +364,7 @@ export class VideoRenderer {
 		this.stopped = true;
 		this.scheduler.stop();
 		this.pool.destroy();
+		this.computePack?.destroy();
 		for (const pass of this.compiled) pass.uniforms.destroy();
 		this.context.unconfigure();
 		if (this.active) this.options.onActiveChange?.(false);

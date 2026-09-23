@@ -1,6 +1,8 @@
-# WebGPU shader engine
+# Browser shader engine
 
-The web player has an optional first-party WebGPU presentation layer. The
+The web player has an optional first-party shader presentation layer. WebGPU is
+the primary backend; WebGL2 runs the bundled mpv Anime4K hooks when WebGPU has
+no compatible adapter. The
 browser still owns demuxing, decoding, buffering, seeking, audio/video sync and
 audio output through the existing `<video>` element. The renderer imports each
 decoded video frame, normalizes it into an internal RGB texture, runs an ordered
@@ -79,9 +81,17 @@ GPU resource is allocated.
 ## Fallbacks
 
 WebGPU is optional. The player keeps `<video>` as the visible path until the
-first GPU frame has been submitted. If WebGPU, a compatible adapter, shader
-compilation, the canvas context or a later device submission fails, the canvas
-is disabled and the native video remains available.
+first GPU frame has been submitted. On browsers without a WebGPU adapter, the
+Mode A, Mode A+A and Lite presets use WebGL2 and the original Anime4K mpv GLSL
+hooks on the same decoded video frames. This requires WebGL2 floating-point
+render targets. If neither GPU path works, the native video remains available.
+
+Before a GPU canvas replaces the video element, the player checks that the
+browser exposes readable pixels from the decoded frame. Some browser/driver
+configurations play audio and composite video normally but return blank frames
+to canvas, WebGL and WebGPU. In that case the effect cannot process the video;
+after five seconds of blank frames the player reports the limitation and keeps
+the native video visible. `Off` never starts a shader renderer.
 
 Native sidecar subtitles are rendered by the browser on the video element. The
 player therefore pauses the WebGPU presentation layer while such a text track
@@ -105,8 +115,41 @@ It is available from the player's `Effects` selector and remains opt-in; `Off`
 is the default. The source is isolated under `packs/`, and both upstream MIT
 licenses are reproduced in `docs/THIRD_PARTY.md`.
 
-Do not add GLSL, HLSL, SPIR-V or mpv-hook translation to the runtime. Any such
-conversion belongs in an offline tool and must still produce reviewed WGSL.
+Extending D-059/D-060 within D-066's player settings, the browser also offers
+three presets modeled on this machine's mpv shader
+chains. `Mode A` follows Ctrl+1 (Clamp Highlights, Restore CNN M, Upscale CNN
+M, conditional AutoDownscalePre, Upscale CNN S). `Mode A+A` follows Ctrl+2 and
+adds Restore CNN S after the first upscale. `Lite` combines Clamp Highlights,
+Restore CNN S, Deblur DoG and Darken VeryFast, with no upscale. These presets
+use the corresponding MIT-licensed compute WGSL from anime4k-wgpu; the
+selected, generated pipeline descriptors are vendored in
+`packs/anime4k-predefined.json`, without a runtime dependency. The optional
+compute path requires WebGPU's `float32-filterable` adapter feature. If it is
+missing or a shader fails, the browser's native video remains visible.
+
+The mpv AutoDownscalePre stages depend on the actual display scale. The browser
+path follows their 1.2x, 2x, 2.4x and 4x thresholds and resamples before a
+second upscale when needed. Canvas composition and WebGPU sampling may still
+produce slightly different pixels than mpv's GLSL renderer; the presets are
+pipeline equivalents, not a bit-exact GLSL emulation.
+
+The WebGL2 fallback uses the nine original MIT-licensed mpv hook files under
+`web/src/lib/player/webgl/packs/`. Its small hook runner evaluates only the
+directives used by these bundled files; it does not accept arbitrary shaders.
+The files are included in the browser bundle, with no server-side processing.
+The DoG x2 preset has the same four fragment stages in both backends.
+
+`Settings → Video effects` saves an initial choice and ordered overrides in
+browser storage under the signed-in account. A rule can match library type,
+library ID, video stream index, and inclusive source-height bounds. Resolution
+is the source video height, before any shader upscale. Precedence is stream,
+resolution, library, library type, then the global default; the last matching
+row wins ties. This is local to the current browser and does not change the
+server or desktop client. The player can change the effect for its current
+viewing session without modifying saved defaults. A fresh account remains Off.
+
+The WebGPU graph accepts WGSL only. The WebGL2 fallback accepts only its
+bundled Anime4K GLSL hooks. Neither runtime accepts user-supplied shader code.
 
 ## Verification
 
@@ -114,7 +157,9 @@ conversion belongs in an offline tool and must still produce reviewed WGSL.
 texture reuse. `scheduler.test.ts` fixes the one-callback/one-frame contract.
 The procedural browser probe uses a canvas-captured synthetic video so it can
 compile the complete Anime4K DoG graph, import a real `GPUExternalTexture` and
-present a 2x frame without depending on a media file or server state. The
+present a 2x frame without depending on a media file or server state. It also
+compiles and submits Mode A, A+A and Lite through the compute path, including
+the conditional auto-downscale and 4x branches. The
 normal product smoke launches Chromium with the GPU disabled and therefore
 covers the native fallback. A product-level WebGPU run covers activation and
 effect switching against the embedded web application.

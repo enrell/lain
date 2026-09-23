@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import Blocks from '@lucide/svelte/icons/blocks';
 	import DatabaseBackup from '@lucide/svelte/icons/database-backup';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Library from '@lucide/svelte/icons/library';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import UserRound from '@lucide/svelte/icons/user-round';
@@ -25,6 +26,7 @@
 	const tabs = $derived(
 		[
 			{ href: '/settings', label: 'Account', icon: UserRound, admin: false },
+			{ href: '/settings/effects', label: 'Video effects', icon: Sparkles, admin: false },
 			{ href: '/settings/libraries', label: 'Libraries', icon: Library, admin: true },
 			{ href: '/settings/users', label: 'Users', icon: Users, admin: true },
 			{ href: '/settings/playback', label: 'Playback', icon: SlidersHorizontal, admin: true },

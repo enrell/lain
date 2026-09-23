@@ -72,6 +72,7 @@
 	}
 
 	function progressLine(episode: CatalogItem): string {
+		if (episode.missing) return 'Missing from disk';
 		const p = progressMap.get(episode.id);
 		if (!p) return 'Not watched';
 		if (p.completed) return 'Watched';
@@ -117,11 +118,18 @@
 						<p class="mt-3 text-sm leading-relaxed text-muted">
 							{plan.reason ?? 'No playback plan is available for this file in the browser.'}
 						</p>
-						<p class="mt-3 text-xs leading-relaxed text-muted/80">
-							The server only sends bytes it can actually serve: the transcoder is unavailable, so
-							there is no browser-playable version of this container. The desktop/CLI client plays
-							it directly.
-						</p>
+						{#if item.missing}
+							<p class="mt-3 text-xs leading-relaxed text-muted/80">
+								The entry stays in the catalog so progress and metadata are preserved. If the file
+								comes back, it becomes playable again on its own.
+							</p>
+						{:else}
+							<p class="mt-3 text-xs leading-relaxed text-muted/80">
+								The server only sends bytes it can actually serve: the transcoder is unavailable, so
+								there is no browser-playable version of this container. The desktop/CLI client plays
+								it directly.
+							</p>
+						{/if}
 						<div class="mt-7 flex flex-wrap items-center justify-center gap-2">
 							<Button variant="secondary" onclick={() => void goto(detailHref)}>
 								<ArrowLeft class="size-4" /> Back to details

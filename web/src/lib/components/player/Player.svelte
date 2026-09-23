@@ -34,7 +34,9 @@
 	import { ProgressReporter, type ProgressSnapshot } from '$lib/utilities/progress-reporter';
 	import { elapsedSince, formatTime } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { EFFECT_PRESETS, loadEffectsPolicy, resolveEffect, type EffectPreset } from '$lib/player/effects-policy';
 	import { VideoRenderer } from '$lib/player/webgpu/engine';
+	import type { WebGLAnime4KRenderer } from '$lib/player/webgl/engine';
 	import { PASSTHROUGH_PASS } from '$lib/player/webgpu/shaders';
 	import { ANIME4K_DOG_X2 } from '$lib/player/webgpu/packs/anime4k';
 
@@ -56,13 +58,41 @@
 	let container = $state<HTMLDivElement | null>(null);
 	let video = $state<HTMLVideoElement | null>(null);
 	let renderCanvas = $state<HTMLCanvasElement | null>(null);
-	let gpuRenderer: VideoRenderer | null = null;
+	let gpuRenderer: VideoRenderer | WebGLAnime4KRenderer | null = null;
 	let rendererActive = $state(false);
+	let rendererBackend = $state<'WebGPU' | 'WebGL2' | null>(null);
 	let rendererGeneration = 0;
-	let selectedEffect = $state<'off' | 'anime4k-dog-x2'>('off');
+	let selectedEffect = $state<EffectPreset>('off');
+	let effectError = $state<string | null>(null);
+	let effectManual = false;
 	const rendererPasses = $derived(
 		selectedEffect === 'anime4k-dog-x2' ? ANIME4K_DOG_X2 : [PASSTHROUGH_PASS]
 	);
+	const computeMode = $derived(
+		selectedEffect === 'anime4k-a' || selectedEffect === 'anime4k-aa' || selectedEffect === 'anime4k-lite'
+			? selectedEffect : undefined
+	);
+
+	async function applyEffectDefault(): Promise<void> {
+		if (!session.user || effectManual) return;
+		const policy = loadEffectsPolicy(session.user.id);
+		let libraries: Awaited<ReturnType<typeof api.libraries.list>> = [];
+		try {
+			libraries = await api.libraries.list();
+		} catch (error) {
+			console.warn('[lain-player] library-specific effect defaults unavailable', error);
+			effectError = `Could not load effect defaults: ${error instanceof Error ? error.message : String(error)}`;
+		}
+		if (effectManual) return;
+		const library = libraries.find((entry) => entry.id === item.library_id);
+		const stream = (plan.streams ?? []).find((entry) => entry.type === 'video');
+		selectedEffect = resolveEffect(policy, {
+			libraryId: item.library_id,
+			libraryType: library?.type ?? '',
+			streamIndex: stream?.index ?? 0,
+			height: stream?.height ?? 0
+		});
+	}
 
 	let playing = $state(false);
 	let waiting = $state(false);
@@ -225,6 +255,7 @@
 	}
 
 	onMount(() => {
+		void applyEffectDefault();
 		window.addEventListener('pagehide', onPageHide);
 		document.addEventListener('visibilitychange', onPageHide);
 		void loadPlaybackOptions();
@@ -270,6 +301,7 @@
 		gpuRenderer?.stop();
 		gpuRenderer = null;
 		rendererActive = false;
+		rendererBackend = null;
 	}
 
 	// The browser media engine remains authoritative. WebGPU starts only
@@ -282,7 +314,8 @@
 		const ready = transcodeReady;
 		const nativeSubtitle = subtitleSrc;
 		const passes = rendererPasses;
-		if (!el || !canvas || !ready || nativeSubtitle) {
+		const mode = computeMode;
+		if (!el || !canvas || !ready || nativeSubtitle || selectedEffect === 'off') {
 			stopRenderer();
 			return;
 		}
@@ -293,24 +326,65 @@
 			video: el,
 			canvas,
 			passes,
+			computeMode: mode,
 			onActiveChange: (active) => {
-				if (!cancelled && generation === rendererGeneration) rendererActive = active;
+				if (!cancelled && generation === rendererGeneration) {
+					rendererActive = active;
+					rendererBackend = active ? 'WebGPU' : null;
+					if (active) effectError = null;
+				}
 			},
 			onFailure: (reason) => {
 				if (cancelled || generation !== rendererGeneration) return;
 				gpuRenderer = null;
 				rendererActive = false;
+				rendererBackend = null;
+				effectError = reason;
 				if (import.meta.env.DEV) console.warn('[lain-player] WebGPU renderer disabled', reason);
 			}
-		}).then((result) => {
+		}).then(async (result) => {
 			if (cancelled || generation !== rendererGeneration) {
 				result.renderer?.stop();
 				return;
 			}
-			gpuRenderer = result.renderer;
-			if (!result.renderer && import.meta.env.DEV) {
-				console.info('[lain-player] native video renderer', result.reason);
+			let renderer: VideoRenderer | WebGLAnime4KRenderer | null = result.renderer;
+			let reason: string | undefined = result.reason;
+			if (!result.renderer && selectedEffect !== 'off' &&
+				(result.reason === 'no WebGPU adapter is available' || result.reason === 'WebGPU is unavailable' ||
+				result.reason === 'this adapter does not support filterable 32-bit Anime4K textures')) {
+				const { WebGLAnime4KRenderer } = await import('$lib/player/webgl/engine');
+				if (cancelled || generation !== rendererGeneration) return;
+				const fallback = WebGLAnime4KRenderer.create({
+					video: el, canvas, mode: selectedEffect,
+					onActiveChange: (active) => {
+						if (!cancelled && generation === rendererGeneration) {
+							rendererActive = active;
+							rendererBackend = active ? 'WebGL2' : null;
+							if (active) effectError = null;
+						}
+					},
+					onFailure: (reason) => {
+						if (cancelled || generation !== rendererGeneration) return;
+						gpuRenderer = null;
+						rendererActive = false;
+						rendererBackend = null;
+						effectError = reason;
+					}
+				});
+				renderer = fallback.renderer;
+				reason = fallback.reason;
 			}
+			gpuRenderer = renderer;
+			if (!renderer && import.meta.env.DEV) {
+				console.info('[lain-player] native video renderer', reason);
+			}
+			if (!renderer && selectedEffect !== 'off') effectError = reason ?? 'Video effects unavailable';
+		}).catch((error: unknown) => {
+			if (cancelled || generation !== rendererGeneration) return;
+			rendererActive = false;
+			rendererBackend = null;
+			effectError = error instanceof Error ? error.message : String(error);
+			console.warn('[lain-player] video effects initialization failed', error);
 		});
 
 		return () => {
@@ -1365,15 +1439,14 @@
 					{#each RATES as option (option)}<option value={option}>{option === 1 ? 'Normal' : `${option}×`}</option>{/each}
 				</select>
 			</label>
-			{#if rendererActive}
-				<label class="chrome-chip">
-					Effects
-					<select class="chrome-select" bind:value={selectedEffect} aria-label="Video effects">
-						<option value="off">Off</option>
-						<option value="anime4k-dog-x2">Anime4K DoG ×2</option>
-					</select>
-				</label>
-			{/if}
+			<label class="chrome-chip">
+				Effects
+				<select class="chrome-select" bind:value={selectedEffect} aria-label="Video effects" onchange={() => { effectManual = true; effectError = null; }}>
+					{#each EFFECT_PRESETS as preset}<option value={preset.id}>{preset.label}</option>{/each}
+				</select>
+			</label>
+			{#if effectError && selectedEffect !== 'off'}<p class="mt-1 text-xs text-danger" role="status">Anime4K unavailable: {effectError}</p>{/if}
+			<a class="mt-1 block text-xs text-accent hover:underline" href="/settings/effects">Set default effects and overrides</a>
 			{#if mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}
 				<label class="chrome-chip">
 					Quality
@@ -1431,6 +1504,7 @@
 			<details class="mt-4 border-t border-line/40 pt-3 text-xs leading-relaxed text-muted">
 				<summary class="cursor-pointer py-2 text-sm">Playback information</summary>
 				<p class="mt-2 font-mono">{telemetry}</p>
+				{#if rendererBackend}<p class="mt-2">Video effects: {rendererBackend}</p>{/if}
 				{#if sessionNote}<p class="mt-2">{sessionNote}</p>{/if}
 			</details>
 		</div>

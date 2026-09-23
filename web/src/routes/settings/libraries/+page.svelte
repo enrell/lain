@@ -181,11 +181,13 @@
 			{:else if scan.status?.state === 'done' && scan.status.stats}
 				{@const stats = scan.status.stats}
 				<p class="text-muted">
-					Last scan {scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}:
+					Last scan {scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}
+					{#if scan.status.trigger === 'watch'}by the filesystem watcher{/if}:
 					<span class="text-foreground">{stats.identified}</span> identified ·
 					<span class="text-foreground">{stats.unidentified}</span> unidentified ·
-					<span class="text-foreground">{stats.pruned}</span> pruned ·
 					<span class="text-foreground">{stats.enriched}</span> enriched
+					{#if stats.missing > 0}· <span class="text-warning">{stats.missing} missing</span>{/if}
+					{#if stats.restored > 0}· <span class="text-foreground">{stats.restored} restored</span>{/if}
 					{#if stats.walk_errors > 0}· <span class="text-warning">{stats.walk_errors} unreadable</span>{/if}
 					{#if stats.errors > 0}· <span class="text-danger">{stats.errors} errors</span>{/if}
 				</p>
@@ -198,8 +200,8 @@
 								<span class="font-medium">{root.name}</span>
 								<span class="font-mono text-xs text-muted">{root.path}</span>
 								— {root.reason}. Check that the drive is mounted and the path is readable by the
-								server, then scan again. Nothing was pruned for it, so the catalog still shows what it
-								last saw.
+								server, then scan again. Nothing was marked missing for it, so the catalog still
+								shows what it last saw.
 							</li>
 						{/each}
 					</ul>

@@ -1,11 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import Play from '@lucide/svelte/icons/play';
-	import type { Library, Progress } from '$lib/api/types';
+	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { episodeLabel, type SeriesGroup } from '$lib/utilities/grouping';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
+	import Button from '$lib/components/primitives/Button.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import Poster from '$lib/components/media/Poster.svelte';
 	import { formatTime } from '$lib/utilities/format';
@@ -78,14 +79,18 @@
 	const watched = $derived(group.items.filter((i) => progressMap?.get(i.id)?.completed).length);
 
 	// Resume at the first started-but-unfinished episode; otherwise play
-	// the show from the top like a fresh watch.
+	// the show from the top like a fresh watch. Missing episodes can never
+	// be the target — the plan refuses them at play time anyway.
+	const available = $derived(group.items.filter((i) => !i.missing));
 	const resumeTarget = $derived(
-		group.items.find((i) => {
+		available.find((i) => {
 			const p = progressMap?.get(i.id);
 			return p && !p.completed && p.position_sec >= 5;
-		}) ?? first
+		}) ?? available[0]
 	);
-	const resumeProgress = $derived(progressMap?.get(resumeTarget.id) ?? null);
+	const resumeProgress = $derived(
+		resumeTarget ? (progressMap?.get(resumeTarget.id) ?? null) : null
+	);
 	const resuming = $derived(
 		!!resumeProgress && !resumeProgress.completed && resumeProgress.position_sec >= 5
 	);
@@ -95,10 +100,12 @@
 	const resumeLabel = $derived(resuming ? `Resume from ${formatTime(resumeProgress!.position_sec)}` : 'Play');
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
-			? `Up next · ${episodeLabel(resumeTarget)} · ${Math.round((resumeProgress!.position_sec / resumeProgress!.duration_sec) * 100)}% watched`
-			: watched > 0
-				? `${watched} of ${group.count} watched`
-				: 'Not started'
+			? `Up next · ${episodeLabel(resumeTarget!)} · ${Math.round((resumeProgress!.position_sec / resumeProgress!.duration_sec) * 100)}% watched`
+			: available.length === 0
+				? 'All files missing'
+				: watched > 0
+					? `${watched} of ${group.count} watched`
+					: 'Not started'
 	);
 
 	function stillUrl(id: string): string {
@@ -148,9 +155,15 @@
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
 			<div>
-				<LinkButton href={`/player/${resumeTarget.id}`} size="lg" class="w-full justify-center">
-					<Play class="size-4 fill-current" aria-hidden="true" /> {resumeLabel}
-				</LinkButton>
+				{#if resumeTarget}
+					<LinkButton href={`/player/${resumeTarget.id}`} size="lg" class="w-full justify-center">
+						<Play class="size-4 fill-current" aria-hidden="true" /> {resumeLabel}
+					</LinkButton>
+				{:else}
+					<Button size="lg" disabled class="w-full justify-center" title="The files are no longer on disk">
+						<Play class="size-4 fill-current" aria-hidden="true" /> Play
+					</Button>
+				{/if}
 				<p class="mt-2 text-center text-xs text-muted" aria-live="polite">{watchedLine}</p>
 			</div>
 			{#if actions}
@@ -231,52 +244,72 @@
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
 					<li>
-						<a
-							href={`/player/${item.id}`}
-							class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
-							aria-label={`Play ${episodeLabel(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
-						>
-							<div class="relative aspect-video overflow-hidden bg-surface">
-								<img
-									src={stillUrl(item.id)}
-									alt=""
-									aria-hidden="true"
-									loading="lazy"
-									decoding="async"
-									class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
-								/>
-								<span
-									class="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-black/65 text-white opacity-0 backdrop-blur transition-opacity duration-200 group-hover:opacity-100"
-								>
-									<Play class="size-3.5 translate-x-px" aria-hidden="true" />
-								</span>
-								{#if ratio > 0}
-									<div class="absolute inset-x-0 bottom-0 h-1 bg-black/50">
-										<div class="h-full bg-accent" style={`width: ${ratio}%`}></div>
-									</div>
-								{/if}
+						{#if item.missing}
+							<!-- A missing file is not a dead link pretending to play:
+							     the card stays for context (progress, titles) but does
+							     not navigate. -->
+							<div
+								class="block overflow-hidden rounded-xl border border-line/60 bg-surface/30 opacity-60"
+								aria-label={`${episodeLabel(item)}, missing from disk`}
+							>
+								{@render episodeCard(item, progress, ratio)}
 							</div>
-							<div class="p-3">
-								<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">{episodeLabel(item)}</p>
-								{#if item.title !== group.title}
-									<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>
-								{/if}
-								<p class="mt-1 truncate text-xs text-muted">
-									{#if progress && !progress.completed && progress.duration_sec > 0}
-										Resume at {Math.min(100, Math.round((progress.position_sec / progress.duration_sec) * 100))}%
-									{:else if progress?.completed}
-										Watched
-									{:else if item.size > 0}
-										{formatSize(item.size)}
-									{:else}
-										Not watched
-									{/if}
-								</p>
-							</div>
-						</a>
+						{:else}
+							<a
+								href={`/player/${item.id}`}
+								class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
+								aria-label={`Play ${episodeLabel(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
+							>
+								{@render episodeCard(item, progress, ratio)}
+							</a>
+						{/if}
 					</li>
 				{/each}
 			</ul>
 		</div>
 	</div>
 </article>
+
+{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number)}
+	<div class="relative aspect-video overflow-hidden bg-surface">
+		<img
+			src={stillUrl(item.id)}
+			alt=""
+			aria-hidden="true"
+			loading="lazy"
+			decoding="async"
+			class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+		/>
+		{#if !item.missing}
+			<span
+				class="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-black/65 text-white opacity-0 backdrop-blur transition-opacity duration-200 group-hover:opacity-100"
+			>
+				<Play class="size-3.5 translate-x-px" aria-hidden="true" />
+			</span>
+		{/if}
+		{#if ratio > 0}
+			<div class="absolute inset-x-0 bottom-0 h-1 bg-black/50">
+				<div class="h-full bg-accent" style={`width: ${ratio}%`}></div>
+			</div>
+		{/if}
+	</div>
+	<div class="p-3">
+		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">{episodeLabel(item)}</p>
+		{#if item.title !== group.title}
+			<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>
+		{/if}
+		<p class={['mt-1 truncate text-xs', item.missing ? 'text-danger' : 'text-muted'].join(' ')}>
+			{#if item.missing}
+				Missing from disk
+			{:else if progress && !progress.completed && progress.duration_sec > 0}
+				Resume at {Math.min(100, Math.round((progress.position_sec / progress.duration_sec) * 100))}%
+			{:else if progress?.completed}
+				Watched
+			{:else if item.size > 0}
+				{formatSize(item.size)}
+			{:else}
+				Not watched
+			{/if}
+		</p>
+	</div>
+{/snippet}
