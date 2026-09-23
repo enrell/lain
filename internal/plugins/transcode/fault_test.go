@@ -1,6 +1,5 @@
 package transcode
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-23
 
 // Fault-injection for the derivative cache: an unwritable or vanished
 // artifact root must surface as a typed error or a failed job — never

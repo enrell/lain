@@ -1,6 +1,5 @@
 package gateway
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
 
 // Round-3 mutation killers: boundary conditions that survived because
 // earlier tests never produced the exact edge input.

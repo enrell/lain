@@ -1,6 +1,5 @@
 package transcode
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
 
 // Regression tests for the defects an adversarial audit found in the
 // D-042 transcode slice. Each test pins the fixed behavior so it cannot

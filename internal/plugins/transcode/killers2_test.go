@@ -3,7 +3,6 @@
 // throttle/segment bookkeeping and the startV3 adoption block.
 package transcode
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
 
 import (
 	"context"

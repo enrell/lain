@@ -1,6 +1,5 @@
 package contract
 
-// mutation-clean: gremlins v0.6.0 — package verified 2026-09-23
 
 // Self-test for the shared harness: a well-behaved fake provider must
 // pass cleanly through every check. The negative direction (a bad
