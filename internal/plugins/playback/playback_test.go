@@ -1,5 +1,7 @@
 package playback
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
 	"testing"
 
@@ -73,6 +75,104 @@ func TestPlanRejectsHDRForBrowserTranscode(t *testing.T) {
 	})
 	if got.Mode != "transcode-required" || got.Available || got.Reason == "" {
 		t.Fatalf("HDR plan=%+v, want explicit unavailable", got)
+	}
+}
+
+// With no probed streams a capability claim is meaningless — an empty
+// MediaInfo must never direct-play.
+func TestPlanEmptyProbeNeverDirects(t *testing.T) {
+	got := Plan(PlanInput{
+		Request:   contracts.PlanRequest{ItemID: "i", Client: "web", Capabilities: capsOf("mkv,mkv/h264,mkv/aac")},
+		FilePath:  "/v/show.mkv",
+		MediaInfo: &contracts.MediaInfo{Format: "matroska", Streams: nil},
+	})
+	if got.Mode != "transcode" {
+		t.Fatalf("empty probe + full claim = %+v, want transcode", got)
+	}
+	// Audio-only files still direct-play on browser-safe containers.
+	for _, tc := range []struct {
+		path  string
+		want  string
+		codec string
+	}{
+		{"/v/track.mp3", "direct", "mp3"},
+		{"/v/track.ogg", "direct", "vorbis"},
+		{"/v/track.mp4", "transcode", "aac"}, // mp4 with no video is not a video play
+		{"/v/track.mkv", "transcode", "flac"},
+	} {
+		got := Plan(PlanInput{
+			Request:  contracts.PlanRequest{ItemID: "i", Client: "web"},
+			FilePath: tc.path,
+			MediaInfo: &contracts.MediaInfo{Streams: []contracts.MediaStream{
+				{Index: 0, Type: "audio", Codec: tc.codec, Default: true},
+			}},
+		})
+		if got.Mode != tc.want {
+			t.Fatalf("%s audio-only = %q, want %q", tc.path, got.Mode, tc.want)
+		}
+	}
+}
+
+// webm and mp4 each have their own web-safe track matrix; pixel format
+// and audio codec both gate direct play.
+func TestPlanBrowserContainerMatrix(t *testing.T) {
+	vid := func(codec, pix string) contracts.MediaStream {
+		return contracts.MediaStream{Index: 0, Type: "video", Codec: codec, PixelFormat: pix}
+	}
+	aud := func(codec string) contracts.MediaStream {
+		return contracts.MediaStream{Index: 1, Type: "audio", Codec: codec, Default: true}
+	}
+	cases := []struct {
+		name    string
+		path    string
+		streams []contracts.MediaStream
+		want    string
+	}{
+		{"mp4 h264 yuvj420p", "/v/m.mp4", []contracts.MediaStream{vid("h264", "yuvj420p"), aud("aac")}, "direct"},
+		{"mp4 h264 10-bit", "/v/m.mp4", []contracts.MediaStream{vid("h264", "yuv420p10le"), aud("aac")}, "transcode"},
+		{"mp4 hevc", "/v/m.mp4", []contracts.MediaStream{vid("hevc", "yuv420p"), aud("aac")}, "transcode"},
+		{"webm vp8 opus", "/v/m.webm", []contracts.MediaStream{vid("vp8", "yuv420p"), aud("opus")}, "direct"},
+		{"webm vp9 vorbis", "/v/m.webm", []contracts.MediaStream{vid("vp9", "yuv420p"), aud("vorbis")}, "direct"},
+		{"webm av1 no audio", "/v/m.webm", []contracts.MediaStream{vid("av1", "yuv420p")}, "direct"},
+		{"webm vp9 ac3", "/v/m.webm", []contracts.MediaStream{vid("vp9", "yuv420p"), aud("ac3")}, "transcode"},
+		{"webm h264", "/v/m.webm", []contracts.MediaStream{vid("h264", "yuv420p"), aud("opus")}, "transcode"},
+		{"mp4 h264 no audio", "/v/m.mp4", []contracts.MediaStream{vid("h264", "yuv420p")}, "direct"},
+	}
+	for _, tc := range cases {
+		got := Plan(PlanInput{
+			Request:   contracts.PlanRequest{ItemID: "i", Client: "web"},
+			FilePath:  tc.path,
+			MediaInfo: &contracts.MediaInfo{Streams: tc.streams},
+		})
+		if got.Mode != tc.want {
+			t.Fatalf("%s = %q, want %q", tc.name, got.Mode, tc.want)
+		}
+	}
+}
+
+// HDR + a working tone-map pipeline is transcode, not refusal.
+func TestPlanHDRWithToneMapTranscodes(t *testing.T) {
+	got := Plan(PlanInput{
+		Request:  contracts.PlanRequest{ItemID: "i", Client: "web"},
+		FilePath: "/v/show.mkv",
+		ToneMap:  true,
+		MediaInfo: &contracts.MediaInfo{Streams: []contracts.MediaStream{
+			{Index: 0, Type: "video", Codec: "hevc", PixelFormat: "yuv420p10le", ColorTransfer: "arib-std-b67"},
+		}},
+	})
+	if got.Mode != "transcode" || !got.Available {
+		t.Fatalf("HDR+tonemap = %+v, want transcode", got)
+	}
+	// SDR flags must not trip the HDR branch.
+	got = Plan(PlanInput{
+		Request:  contracts.PlanRequest{ItemID: "i", Client: "web"},
+		FilePath: "/v/show.mp4",
+		MediaInfo: &contracts.MediaInfo{Streams: []contracts.MediaStream{
+			{Index: 0, Type: "video", Codec: "h264", PixelFormat: "yuv420p", ColorTransfer: "bt709"},
+		}},
+	})
+	if got.Mode != "direct" {
+		t.Fatalf("bt709 h264 mp4 = %+v, want direct", got)
 	}
 }
 

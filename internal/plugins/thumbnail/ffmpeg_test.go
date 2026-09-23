@@ -1,5 +1,7 @@
 package thumbnail
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
 	"os"
 	"os/exec"
@@ -84,5 +86,87 @@ func TestHealthTracksFFmpeg(t *testing.T) {
 	_, lookErr := exec.LookPath("ffmpeg")
 	if got := g.Health(); (lookErr == nil) != (got == nil) {
 		t.Fatalf("health=%v, ffmpeg lookup=%v", got, lookErr)
+	}
+}
+
+func TestGenerateClampsAndCacheIdentity(t *testing.T) {
+	root := t.TempDir()
+	src := makeClip(t, root)
+	g := New(filepath.Join(root, "cache"))
+
+	// Width <= 0 defaults to 480; TimeSec < 0 clamps to 0 and the clamped
+	// value is what the cache key sees: -1 and 0 share one entry.
+	out, err := g.Invoke(contracts.CapTransformThumb, contracts.ThumbnailRequest{FilePath: src, TimeSec: -1, Width: 0})
+	if err != nil {
+		t.Fatalf("clamped request: %v", err)
+	}
+	th := out.(contracts.Thumbnail)
+	if th.Width != 480 {
+		t.Fatalf("width=%d, want default 480", th.Width)
+	}
+	again, err := g.Invoke(contracts.CapTransformThumb, contracts.ThumbnailRequest{FilePath: src, TimeSec: 0, Width: 480})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := again.(contracts.Thumbnail); !c.Cached || c.Path != th.Path {
+		t.Fatalf("TimeSec -1 must share the TimeSec 0 cache entry: %+v", c)
+	}
+
+	// A zero-byte cache entry must be regenerated, not served.
+	if err := os.Truncate(th.Path, 0); err != nil {
+		t.Fatal(err)
+	}
+	regen, err := g.Invoke(contracts.CapTransformThumb, contracts.ThumbnailRequest{FilePath: src, TimeSec: 0, Width: 480})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if regen.(contracts.Thumbnail).Cached {
+		t.Fatal("empty cache file must regenerate, not serve")
+	}
+}
+
+func TestGenerateExtractFailureSurfaces(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "not-a-video.mp4")
+	if err := os.WriteFile(src, []byte("definitely not a video"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	g := New(filepath.Join(root, "cache"))
+	// TimeSec 0: no retry, straight error.
+	if _, err := g.Invoke(contracts.CapTransformThumb, contracts.ThumbnailRequest{FilePath: src, Width: 96}); err == nil {
+		t.Fatal("unreadable media must fail")
+	}
+	// TimeSec > 0: retry at 0 also fails -> still an error.
+	if _, err := g.Invoke(contracts.CapTransformThumb, contracts.ThumbnailRequest{FilePath: src, TimeSec: 5, Width: 96}); err == nil {
+		t.Fatal("failed retry must fail")
+	}
+}
+
+func TestHealthTracksCacheDir(t *testing.T) {
+	// initErr: cache dir cannot be created under a regular file.
+	f, err := os.CreateTemp(t.TempDir(), "file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	g := New(filepath.Join(f.Name(), "sub"))
+	if g.Health() == nil {
+		t.Fatal("unwritable cache dir must fail Health")
+	}
+	// Cache dir replaced by a file after a clean init.
+	root := t.TempDir()
+	g = New(filepath.Join(root, "cache"))
+	dir := g.dir
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if g.Health() == nil {
+		t.Fatal("file-instead-of-dir cache must fail Health")
 	}
 }

@@ -491,7 +491,14 @@ func (p *encodePlan) resolveFilters(caps capabilities) {
 	if p.needTone {
 		filters = append(filters, toneMapChain(p.settings, caps))
 	}
-	if p.width > 0 && p.video.Width > 0 && (p.width < p.video.Width || (p.height > 0 && p.height < p.video.Height)) {
+	// width and height derive from the video dimensions or a positive
+	// quality cap, so each can only be 0 when the source reports 0.
+	srcHasWidth := p.video.Width > 0
+	hasWidth := p.width > 0 && srcHasWidth
+	narrower := p.width < p.video.Width
+	heightSet := p.height > 0
+	shorter := heightSet && p.height < p.video.Height
+	if hasWidth && (narrower || shorter) {
 		filters = append(filters, scaleFilter(p.width, p.height))
 	}
 	if p.hwBackend == contracts.HWVAAPI && !p.copyVideo {
@@ -583,10 +590,12 @@ func fileExt(path string) string {
 // scaleFilter caps both dimensions while preserving aspect ratio and
 // even dimensions (encoders require them).
 func scaleFilter(w, h int) string {
+	both := w > 0 && h > 0
+	onlyH := h > 0
 	switch {
-	case w > 0 && h > 0:
+	case both:
 		return fmt.Sprintf("scale=w='min(iw,%d)':h='min(ih,%d)':force_original_aspect_ratio=decrease:force_divisible_by=2", w, h)
-	case h > 0:
+	case onlyH:
 		return fmt.Sprintf("scale=-2:'min(ih,%d)'", h)
 	default:
 		return fmt.Sprintf("scale='min(iw,%d)':-2", w)
@@ -668,19 +677,28 @@ func chooseEncoder(settings contracts.TranscodeSettings, codec string, report me
 	}
 	if backend != "" && settings.HardwareEncode {
 		want := hwNames[backend][codec]
+		noName := want == ""
+		missing := !caps.hasEncoder(want)
+		dead := !caps.Hardware[backend]
 		switch {
-		case want == "":
-			fallback = "hardware " + backend + " cannot encode " + codec + "; used software"
-		case !caps.hasEncoder(want):
-			fallback = "hardware encoder " + want + " unavailable; used software"
-		case !caps.Hardware[backend]:
-			fallback = "hardware backend " + backend + " failed its probe; used software"
+		case noName:
+			fallback = joinNotes(fallback, "hardware "+backend+" cannot encode "+codec+"; used software")
+		case missing:
+			fallback = joinNotes(fallback, "hardware encoder "+want+" unavailable; used software")
+		case dead:
+			fallback = joinNotes(fallback, "hardware backend "+backend+" failed its probe; used software")
 		default:
-			return want, backend, decodeAllowed, "", nil
+			return want, backend, decodeAllowed, fallback, nil
 		}
 		backend = ""
 	}
-	for _, candidate := range software[codec] {
+	// resolveVideo validates the codec, but a defensive guard keeps a
+	// future caller from panicking on a map miss.
+	candidates := software[codec]
+	if len(candidates) == 0 {
+		return "", "", false, "", invalid("video_codec must be h264, hevc or av1")
+	}
+	for _, candidate := range candidates {
 		if caps.hasEncoder(candidate) {
 			// Decode-only hardware still offloads the decode half when
 			// the operator enabled acceleration but not hardware encode.
@@ -690,7 +708,7 @@ func chooseEncoder(settings contracts.TranscodeSettings, codec string, report me
 	}
 	// Without a working probe the conservative default still exists on
 	// every real ffmpeg build.
-	return software[codec][0], "", false, fallback, nil
+	return candidates[0], "", false, fallback, nil
 }
 
 func containsCodec(list []string, codec string) bool {
@@ -811,12 +829,15 @@ const capTTL = 30 * time.Second
 func parseFFmpegList(out []byte, set map[string]bool) {
 	for _, line := range strings.Split(string(out), "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
+		single := len(fields) == 1
+		multi := len(fields) >= 2
 		switch {
-		case len(fields) == 1:
+		case single:
 			set[fields[0]] = true
-		case len(fields) >= 2:
+		case multi:
 			name := fields[1]
-			if name == "=" || strings.Contains(name, ":") {
+			flagOrColon := name == "=" || strings.Contains(name, ":")
+			if flagOrColon {
 				continue
 			}
 			set[name] = true

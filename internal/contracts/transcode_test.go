@@ -1,5 +1,7 @@
 package contracts
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
 	"reflect"
 	"strings"
@@ -102,6 +104,179 @@ func TestValidateRejectsOutOfRange(t *testing.T) {
 				t.Fatalf("Validate accepted %+v", s)
 			}
 		})
+	}
+}
+
+// TestValidateAcceptsBoundaryValues pins the inclusive edges of every
+// bounded knob: the documented min and max must validate, so an
+// off-by-one in the comparison is caught.
+func TestValidateAcceptsBoundaryValues(t *testing.T) {
+	edges := []struct {
+		name   string
+		mutate func(*TranscodeSettings)
+	}{
+		{"segment seconds 1", func(s *TranscodeSettings) { s.HLSSegmentSeconds = 1 }},
+		{"segment seconds 30", func(s *TranscodeSettings) { s.HLSSegmentSeconds = 30 }},
+		{"throttle ahead 5", func(s *TranscodeSettings) { s.ThrottleAheadSec = 5 }},
+		{"throttle ahead 600", func(s *TranscodeSettings) { s.ThrottleAheadSec = 600 }},
+		{"segment keep 0", func(s *TranscodeSettings) { s.SegmentKeepSec = 0 }},
+		{"segment keep 3600", func(s *TranscodeSettings) { s.SegmentKeepSec = 3600 }},
+		{"idle timeout 15", func(s *TranscodeSettings) { s.IdleTimeoutSec = 15 }},
+		{"idle timeout 3600", func(s *TranscodeSettings) { s.IdleTimeoutSec = 3600 }},
+		{"cache bytes 1GiB", func(s *TranscodeSettings) { s.CacheBytes = 1 << 30 }},
+		{"queue size 1", func(s *TranscodeSettings) { s.QueueSize = 1 }},
+		{"queue size 64", func(s *TranscodeSettings) { s.QueueSize = 64 }},
+		{"max concurrent 1", func(s *TranscodeSettings) { s.MaxConcurrent = 1 }},
+		{"max concurrent 16", func(s *TranscodeSettings) { s.MaxConcurrent = 16 }},
+		{"crf 0", func(s *TranscodeSettings) { s.CRF = 0 }},
+		{"crf 51", func(s *TranscodeSettings) { s.CRF = 51 }},
+		{"quality zero bounds", func(s *TranscodeSettings) {
+			s.Qualities[0].MaxWidth, s.Qualities[0].MaxHeight, s.Qualities[0].BitrateKbps = 0, 0, 0
+		}},
+		{"audio bitrate 32", func(s *TranscodeSettings) { s.AudioBitrateKbps = 32 }},
+		{"audio bitrate 640", func(s *TranscodeSettings) { s.AudioBitrateKbps = 640 }},
+		{"downmix boost 0.5", func(s *TranscodeSettings) { s.DownmixAudioBoost = 0.5 }},
+		{"thread count 0", func(s *TranscodeSettings) { s.ThreadCount = 0 }},
+		{"muxing queue 128", func(s *TranscodeSettings) { s.MuxingQueueSize = 128 }},
+		{"muxing queue 65536", func(s *TranscodeSettings) { s.MuxingQueueSize = 65536 }},
+		{"remote bitrate 0", func(s *TranscodeSettings) { s.RemoteBitrateLimitKbps = 0 }},
+		{"device exactly 512", func(s *TranscodeSettings) { s.HardwareDevice = strings.Repeat("d", 512) }},
+		{"device with space ok", func(s *TranscodeSettings) { s.HardwareDevice = " /dev/dri/renderD128 " }},
+	}
+	for _, tc := range edges {
+		t.Run(tc.name, func(t *testing.T) {
+			s := DefaultTranscodeSettings()
+			tc.mutate(&s)
+			if err := s.Validate(); err != nil {
+				t.Fatalf("boundary value rejected: %v", err)
+			}
+		})
+	}
+	// Device edge: one byte over the cap or a newline inside must fail.
+	s := DefaultTranscodeSettings()
+	s.HardwareDevice = strings.Repeat("d", 513)
+	if err := s.Validate(); err == nil {
+		t.Fatal("device > 512 bytes must refuse")
+	}
+	s = DefaultTranscodeSettings()
+	s.HardwareDevice = "/dev/x\ny"
+	if err := s.Validate(); err == nil {
+		t.Fatal("device with newline must refuse")
+	}
+}
+
+// Per-codec CRF fields share the 0..51 bound; presets share the
+// EncoderPresets vocabulary; peak nits are 50..10000 inclusive.
+func TestPerCodecBounds(t *testing.T) {
+	for _, crf := range []int{-1, 52} {
+		for _, set := range []func(*TranscodeSettings, int){
+			func(s *TranscodeSettings, v int) { s.H264CRF = v },
+			func(s *TranscodeSettings, v int) { s.H265CRF = v },
+			func(s *TranscodeSettings, v int) { s.AV1CRF = v },
+		} {
+			s := DefaultTranscodeSettings()
+			set(&s, crf)
+			if err := s.Validate(); err == nil {
+				t.Fatalf("crf %d must refuse", crf)
+			}
+		}
+	}
+	for _, crf := range []int{0, 51} {
+		s := DefaultTranscodeSettings()
+		s.H264CRF, s.H265CRF, s.AV1CRF = crf, crf, crf
+		if err := s.Validate(); err != nil {
+			t.Fatalf("crf %d must accept: %v", crf, err)
+		}
+	}
+	for _, preset := range []string{"turbo", "PLACEHOLDER"} {
+		s := DefaultTranscodeSettings()
+		s.H264Preset = preset
+		if err := s.Validate(); err == nil {
+			t.Fatalf("preset %q must refuse", preset)
+		}
+	}
+	for _, preset := range EncoderPresets {
+		s := DefaultTranscodeSettings()
+		s.H264Preset, s.H265Preset, s.AV1Preset = preset, preset, preset
+		if err := s.Validate(); err != nil {
+			t.Fatalf("preset %q must accept: %v", preset, err)
+		}
+	}
+	s := DefaultTranscodeSettings()
+	s.H264Preset = ""
+	if err := s.Validate(); err != nil {
+		t.Fatalf("empty preset must accept (unset): %v", err)
+	}
+	for _, nits := range []int{50, 10000} {
+		s := DefaultTranscodeSettings()
+		s.ToneMappingPeakNits = nits
+		if err := s.Validate(); err != nil {
+			t.Fatalf("peak %d must accept: %v", nits, err)
+		}
+	}
+}
+
+// An empty request field inherits the settings default — and the
+// resolved value is what lands in the profile key.
+func TestProfileKeyDefaultsResolve(t *testing.T) {
+	s := DefaultTranscodeSettings()
+	req := TranscodeV3Request{Settings: s}
+	def := TranscodeProfileKey(s, req)
+
+	explicit := req
+	explicit.Delivery = s.DefaultDelivery
+	explicit.VideoCodec = VideoCodecH264
+	explicit.AudioCodec = AudioCodecAAC
+	explicit.SubtitleMode = s.SubtitleMode
+	if TranscodeProfileKey(s, explicit) != def {
+		t.Fatal("explicit-equal-to-default must produce the same key")
+	}
+	// A different default produces a different key even with the field
+	// still empty on the request.
+	s2 := s
+	s2.DefaultDelivery = TranscodeDeliveryProgressive
+	if s.DefaultDelivery == s2.DefaultDelivery {
+		t.Fatal("test needs a changed default")
+	}
+	if TranscodeProfileKey(s2, req) == def {
+		t.Fatal("changed default must move the key for empty request fields")
+	}
+	s2 = s
+	s2.SubtitleMode = SubtitleModeOff
+	if s.SubtitleMode == s2.SubtitleMode {
+		t.Fatal("test needs a changed subtitle default")
+	}
+	if TranscodeProfileKey(s2, req) == def {
+		t.Fatal("changed subtitle default must move the key")
+	}
+}
+
+// AllowsSubtitleExtraction / AllowsFallbackFonts default to on and only
+// an explicit false disables them.
+func TestAdditivePermissionDefaults(t *testing.T) {
+	s := DefaultTranscodeSettings()
+	if !s.AllowsSubtitleExtraction() || !s.AllowsFallbackFonts() {
+		t.Fatal("nil permission flags must default to allowed")
+	}
+	f := false
+	s.AllowSubtitleExtraction = &f
+	if s.AllowSubtitleExtraction == nil || *s.AllowSubtitleExtraction != false {
+		t.Fatal("fixture")
+	}
+	if s.AllowsSubtitleExtraction() {
+		t.Fatal("explicit false must deny extraction")
+	}
+	s.AllowSubtitleExtraction = nil
+	s.FallbackFontEnabled = &f
+	if s.AllowsFallbackFonts() {
+		t.Fatal("explicit false must deny fallback fonts")
+	}
+	// AllowStreamCopy has the same shape on the request side.
+	if !AllowStreamCopy(nil) {
+		t.Fatal("nil stream-copy flag must default to allowed")
+	}
+	if AllowStreamCopy(&f) {
+		t.Fatal("explicit false must deny stream copy")
 	}
 }
 

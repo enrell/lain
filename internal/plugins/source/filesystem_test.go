@@ -1,9 +1,12 @@
 package source
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -26,8 +29,84 @@ func TestFileAsRootIsRootError(t *testing.T) {
 	if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := Enumerate(EnumerateInput{Root: f, LibraryID: "l", Type: "anime"}); err == nil {
+	_, _, err := Enumerate(EnumerateInput{Root: f, LibraryID: "l", Type: "anime"})
+	if err == nil {
 		t.Fatal("file root must error")
+	}
+	// A statable non-directory reports "not a directory", and the
+	// RootError message carries root and cause for the operator.
+	var re *RootError
+	if !errors.As(err, &re) {
+		t.Fatalf("want *RootError, got %T", err)
+	}
+	if re.Err == nil || !strings.Contains(re.Err.Error(), "not a directory") {
+		t.Fatalf("cause: %v", re.Err)
+	}
+	if msg := err.Error(); !strings.Contains(msg, f) || !strings.Contains(msg, "inaccessible root") {
+		t.Fatalf("RootError text: %q", msg)
+	}
+}
+
+// Invoke is the plugin-contract surface: wrong cap, wrong input type
+// and a failed walk all surface as errors, never panics.
+func TestInvokeContract(t *testing.T) {
+	p := Provider{}
+	if p.ID() != ID {
+		t.Fatalf("id=%s", p.ID())
+	}
+	if caps := p.Capabilities(); len(caps) != 1 || caps[0] != "lain.source.enumerate@1" {
+		t.Fatalf("caps=%v", caps)
+	}
+	if err := p.Health(); err != nil {
+		t.Fatal(err)
+	}
+	_, err := p.Invoke("lain.other@1", EnumerateInput{})
+	if err == nil || !strings.Contains(err.Error(), "unsupported cap") {
+		t.Fatalf("wrong cap: %v", err)
+	}
+	if _, err := p.Invoke("lain.source.enumerate@1", "junk"); err == nil {
+		t.Fatal("wrong input type must fail")
+	}
+	if _, err := p.Invoke("lain.source.enumerate@1", EnumerateInput{Root: "/nonexistent-lain-lib"}); err == nil {
+		t.Fatal("enumerate failure must propagate")
+	}
+	root := t.TempDir()
+	out, err := p.Invoke("lain.source.enumerate@1", EnumerateInput{Root: root, Type: "video"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, ok := out.(EnumerateOutput)
+	if !ok || !res.Stats.Accessible {
+		t.Fatalf("output: %+v", out)
+	}
+}
+
+// Entries counts every walk callback. A media-named symlink is seen as
+// the link itself (lstat semantics): it enumerates as a candidate even
+// with a dead target — the pipeline decides later whether to keep it.
+func TestWalkStatsAndDeadSymlink(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.mkv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "n.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/nonexistent-target", filepath.Join(root, "dead.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	cands, stats, err := Enumerate(EnumerateInput{Root: root, LibraryID: "l", Type: "anime"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Entries != 4 { // root + 2 files + dead symlink
+		t.Fatalf("entries=%d, want 4", stats.Entries)
+	}
+	if stats.WalkErrors != 0 {
+		t.Fatalf("walk errors=%d, want 0", stats.WalkErrors)
+	}
+	if len(cands) != 2 {
+		t.Fatalf("candidates=%d, want 2 (file + dead link)", len(cands))
 	}
 }
 
@@ -104,8 +183,8 @@ func TestUnreadableSubdirCountsKeepsWalking(t *testing.T) {
 	if !stats.Accessible {
 		t.Fatal("root stays accessible despite bad child")
 	}
-	if stats.WalkErrors == 0 {
-		t.Fatal("unreadable dir must be counted, not silent")
+	if stats.WalkErrors != 1 {
+		t.Fatalf("unreadable dir must count exactly 1 walk error, got %d", stats.WalkErrors)
 	}
 	if len(cands) != 1 {
 		t.Fatalf("candidates=%d, want 1 (good dir only)", len(cands))

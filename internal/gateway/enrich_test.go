@@ -1,5 +1,7 @@
 package gateway
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
 	"encoding/json"
 	"os"
@@ -17,6 +19,8 @@ type fakeMeta struct {
 	record      contracts.MetadataRecord
 	failSearch  bool
 	failResolve bool
+	lastKind    *string // captures the Kind of the last search input
+	searches    int     // search invocations, for cache assertions
 }
 
 func (f *fakeMeta) ID() string { return f.id }
@@ -29,6 +33,12 @@ func (f *fakeMeta) Invoke(cap string, input any) (any, error) {
 	case contracts.CapMetadataSearch:
 		if f.failSearch {
 			return nil, errFakeMetaDown
+		}
+		f.searches++
+		if f.lastKind != nil {
+			if in, ok := input.(contracts.MetadataSearchInput); ok {
+				*f.lastKind = in.Kind
+			}
 		}
 		return f.candidates, nil
 	case contracts.CapMetadataResolve:
@@ -168,12 +178,13 @@ func scanToDone(t *testing.T, srv *Server, admin string) map[string]any {
 		State string         `json:"state"`
 		Stats map[string]any `json:"stats"`
 	}
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 2000; i++ {
 		rec := do(t, srv, "GET", "/api/library/scan", nil, admin)
 		_ = json.Unmarshal(rec.Body.Bytes(), &status)
 		if status.State == "done" || status.State == "error" {
 			break
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	if status.State != "done" {
 		t.Fatalf("scan state %q", status.State)

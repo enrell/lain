@@ -30,3 +30,6 @@ qa/.cache/
 qa/.browser/
 qa/.probe/
 __pycache__/
+
+# mutation testing: per-package reports (workdirs live outside the repo)
+tools/mutation/reports/

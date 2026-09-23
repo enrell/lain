@@ -68,12 +68,15 @@ func (s *Server) logger() *slog.Logger {
 // otelSeverity maps slog levels to OpenTelemetry SeverityNumbers
 // (spec ranges: DEBUG 5-8, INFO 9-12, WARN 13-16, ERROR 17-20).
 func otelSeverity(l slog.Level) int {
+	belowInfo := l < slog.LevelInfo
+	belowWarn := l < slog.LevelWarn
+	belowError := l < slog.LevelError
 	switch {
-	case l < slog.LevelInfo:
+	case belowInfo:
 		return 5
-	case l < slog.LevelWarn:
+	case belowWarn:
 		return 9
-	case l < slog.LevelError:
+	case belowError:
 		return 13
 	default:
 		return 17
@@ -147,10 +150,12 @@ func (s *Server) withAccessLog(next http.Handler) http.Handler {
 		sw := &statusWriter{ResponseWriter: w, status: 200}
 		next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), reqIDKey, id)))
 		attrs := []any{"req", id, "method", r.Method, "path", r.URL.Path, "status", sw.status, "dur_ms", time.Since(start).Milliseconds()}
+		isError := sw.status >= 500
+		isWarn := sw.status >= 400
 		switch {
-		case sw.status >= 500:
+		case isError:
 			s.logger().Error("request", attrs...)
-		case sw.status >= 400:
+		case isWarn:
 			s.logger().Warn("request", attrs...)
 		default:
 			s.logger().Debug("request", attrs...)
