@@ -13,7 +13,7 @@
       "verified_at": "2026-09-23"
     },
     "internal/kv": {
-      "hash": "aac19d74e6a3e1e4f554e610b00aeaaa0be421cee2b82e5e7a5532001967807f",
+      "hash": "a3ce583c4531f3dbb283b4d1fcc307d1c59656cfd093192cdcaaf880198594bc",
       "status": "clean",
       "killed": 29,
       "mutants": 29,
@@ -36,7 +36,7 @@
       "verified_at": "2026-09-23"
     },
     "internal/plugins/search": {
-      "hash": "96c5943197b050645bf01d77e898211d3559a7029560d160537339b548cbdb6f",
+      "hash": "c869178da67e23f84c35337fe24d719ce97fed19a261ebdec5c41ed5fa1405f3",
       "status": "clean",
       "killed": 36,
       "mutants": 45,
@@ -99,7 +99,7 @@
       "verified_at": "2026-09-22"
     },
     "internal/plugins/userstate": {
-      "hash": "1de958975873693d7be5de8c51e053386439a433d3d5dba5bef5ba47f80657b4",
+      "hash": "c3f0dba6cf672335189904abc2376d8e6626b403ce09e8e431965aec33107a10",
       "status": "clean",
       "killed": 14,
       "mutants": 14,
@@ -107,7 +107,7 @@
       "verified_at": "2026-09-23"
     },
     "internal/contracts": {
-      "hash": "56d9314563b6c4110280156a615ff58e660d03eaa0a77788f7869a5c2a539232",
+      "hash": "5bd0d6bda9ec228aaa3ce33fedae8f8f2b7160af28946a1d92fe63bbb35d49aa",
       "status": "clean",
       "killed": 158,
       "mutants": 160,
@@ -337,7 +337,7 @@
       "verified_at": "2026-09-23"
     },
     "internal/plugins/source": {
-      "hash": "b7ce6f0a622cb46b6ffc792bcd8d7bc4a06389d4baf3f13c45dc09944d189ade",
+      "hash": "4f82dad2747a33383c6e3c9c813d237365c046080cfb707971532313f979664f",
       "status": "clean",
       "killed": 14,
       "mutants": 14,
@@ -352,7 +352,7 @@
       "verified_at": "2026-09-22"
     },
     "internal/plugins/playback": {
-      "hash": "ad2c50d293ae7f70a68f880fb52a6fa924a39b19ce4d8f74a70d6eecb263c273",
+      "hash": "b8eb92631a96bafe231eb7ede16a23bbf1f7a5383b6a44ccbdbdb45e778f86d6",
       "status": "clean",
       "killed": 31,
       "mutants": 31,
@@ -360,28 +360,34 @@
       "verified_at": "2026-09-23"
     },
     "internal/plugins/probe": {
-      "hash": "8d25528ef1b34548b938651b24cc3c2a3560475bbd83a9cacf1bfa1488719958",
+      "hash": "6ca6f20c5e1c5ce98a0aab6dca570a7c90c1f72ac3eef12ff1f2aaf64a58aa14",
       "status": "clean",
-      "killed": 17,
-      "mutants": 18,
+      "killed": 18,
+      "mutants": 20,
       "equivalents": [
         {
           "file": "ffprobe.go",
-          "line": 20,
+          "line": 21,
           "type": "ARITHMETIC_BASE",
           "reason": "20s ffprobe timeout magnitude not observable in unit tests"
         },
         {
           "file": "ffprobe.go",
-          "line": 131,
+          "line": 98,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "d>=0 vs d>0 differ only at d==0, where Duration stays its 0 zero-value either way"
+        },
+        {
+          "file": "ffprobe.go",
+          "line": 137,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "n<0 vs n<=0 identical at n==0: Atoi failure already yields 0"
         }
       ],
-      "verified_at": "2026-09-22"
+      "verified_at": "2026-09-23"
     },
     "internal/plugins/metadata": {
-      "hash": "c74d1ffab8e31cd56053da831f798fb474e66aef5b069f5b7e434002cd6e0979",
+      "hash": "889c8fbf295399a2718376fea77262c5aadf9798c633b16558ca0261930f989f",
       "status": "clean",
       "killed": 224,
       "mutants": 237,
@@ -510,169 +516,235 @@
       "verified_at": "2026-09-22"
     },
     "internal/plugins/identify": {
-      "hash": "5fb8626b77b08afcbede1eb6f3c6f0a5446dd9118e110f77a4f58e42dbf24074",
+      "hash": "f406e7033e32372ee949bba04574f987ce78e008cf03ff9ee27d7f7c8b96fb4f",
       "status": "clean",
-      "killed": 139,
-      "mutants": 166,
+      "killed": 142,
+      "mutants": 169,
       "equivalents": [
         {
           "file": "identify.go",
-          "line": 80,
+          "line": 81,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "pure-digit tokens strip to i=0; techTokens[\"\"] is false either way"
         },
         {
           "file": "identify.go",
-          "line": 83,
+          "line": 81,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "pure-digit tokens strip to i=0; techTokens[\"\"] is false either way"
+        },
+        {
+          "file": "identify.go",
+          "line": 84,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "i==len means no digits stripped; the direct map check at line 76 already answered"
         },
         {
           "file": "identify.go",
-          "line": 150,
+          "line": 84,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "i==len means no digits stripped; the direct map check at line 76 already answered"
+        },
+        {
+          "file": "identify.go",
+          "line": 163,
           "type": "INCREMENT_DECREMENT",
           "reason": "i-- diverges the tokenizer into a hang (TIMED OUT); a hang is divergence, not survival"
         },
         {
           "file": "identify.go",
-          "line": 157,
-          "type": "INCREMENT_DECREMENT",
-          "reason": "same"
-        },
-        {
-          "file": "identify.go",
-          "line": 167,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "unreachable: . is a tokenizer separator so the glued-digit branch never sees one"
-        },
-        {
-          "file": "identify.go",
-          "line": 167,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "same"
-        },
-        {
-          "file": "identify.go",
-          "line": 167,
-          "type": "ARITHMETIC_BASE",
-          "reason": "same"
-        },
-        {
-          "file": "identify.go",
           "line": 168,
           "type": "INCREMENT_DECREMENT",
-          "reason": "same dead branch"
+          "reason": "depth++ diverges bracket tracking into a hang (TIMED OUT); a hang cannot produce a wrong-but-passing run"
         },
         {
           "file": "identify.go",
-          "line": 204,
-          "type": "INVERT_NEGATIVES",
-          "reason": "e=1 with no e found still fails atoi(t[1:1]) downstream"
+          "line": 170,
+          "type": "INCREMENT_DECREMENT",
+          "reason": "i-- diverges the tokenizer into a hang (TIMED OUT); a hang is divergence, not survival"
         },
         {
           "file": "identify.go",
-          "line": 204,
-          "type": "ARITHMETIC_BASE",
-          "reason": "same"
+          "line": 174,
+          "type": "INCREMENT_DECREMENT",
+          "reason": "i-- diverges the tokenizer into a hang (TIMED OUT); a hang is divergence, not survival"
         },
         {
           "file": "identify.go",
-          "line": 214,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "e+1==len proceeds to atoi(\"\") which fails identically"
-        },
-        {
-          "file": "identify.go",
-          "line": 214,
-          "type": "ARITHMETIC_BASE",
-          "reason": "e-1 indexing fails atoi identically"
-        },
-        {
-          "file": "identify.go",
-          "line": 237,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "x<0 or x+1>len paths still fail atoi downstream"
-        },
-        {
-          "file": "identify.go",
-          "line": 237,
-          "type": "ARITHMETIC_BASE",
-          "reason": "same"
-        },
-        {
-          "file": "identify.go",
-          "line": 250,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "i>=0 loop still exits at i<0; v at 0 fails atoi(t[:0])"
-        },
-        {
-          "file": "identify.go",
-          "line": 251,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "same"
-        },
-        {
-          "file": "identify.go",
-          "line": 408,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "episode==year already implies year>0 since only 4-digit years read as episode"
-        },
-        {
-          "file": "identify.go",
-          "line": 468,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "conf max is 0.88 (0.7+0.1+0.08); the cap is unreachable headroom"
-        },
-        {
-          "file": "identify.go",
-          "line": 496,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "l==\"e\" enters atoi(l[1:])=atoi(\"\") which fails identically"
-        },
-        {
-          "file": "identify.go",
-          "line": 166,
+          "line": 179,
           "type": "CONDITIONALS_NEGATION",
           "reason": "negating an inner-loop terminator exits without advancing i — the outer loop hangs (TIMED OUT = divergence)"
         },
         {
           "file": "identify.go",
-          "line": 364,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "epOutIdx==0 always declines (empty title); the <= entry is unobservable"
-        },
-        {
-          "file": "identify.go",
-          "line": 364,
+          "line": 179,
           "type": "CONDITIONALS_NEGATION",
-          "reason": "weak markers already set epOutIdx; re-entering finds no bare number or is shadowed by strong"
+          "reason": "negating an inner-loop terminator exits without advancing i — the outer loop hangs (TIMED OUT = divergence)"
         },
         {
           "file": "identify.go",
-          "line": 375,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "epOutIdx==0 means the marker was word 0 and the title is empty — decline either way"
+          "line": 179,
+          "type": "CONDITIONALS_NEGATION",
+          "reason": "negating an inner-loop terminator exits without advancing i — the outer loop hangs (TIMED OUT = divergence)"
         },
         {
           "file": "identify.go",
-          "line": 385,
+          "line": 179,
+          "type": "CONDITIONALS_NEGATION",
+          "reason": "negating an inner-loop terminator exits without advancing i — the outer loop hangs (TIMED OUT = divergence)"
+        },
+        {
+          "file": "identify.go",
+          "line": 179,
+          "type": "CONDITIONALS_NEGATION",
+          "reason": "negating an inner-loop terminator exits without advancing i — the outer loop hangs (TIMED OUT = divergence)"
+        },
+        {
+          "file": "identify.go",
+          "line": 180,
+          "type": "CONDITIONALS_NEGATION",
+          "reason": "unreachable: . is a tokenizer separator so the glued-digit branch never sees one"
+        },
+        {
+          "file": "identify.go",
+          "line": 180,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "same"
         },
         {
           "file": "identify.go",
-          "line": 438,
+          "line": 180,
+          "type": "CONDITIONALS_NEGATION",
+          "reason": "unreachable: . is a tokenizer separator so the glued-digit branch never sees one"
+        },
+        {
+          "file": "identify.go",
+          "line": 180,
+          "type": "ARITHMETIC_BASE",
+          "reason": "same"
+        },
+        {
+          "file": "identify.go",
+          "line": 181,
+          "type": "INCREMENT_DECREMENT",
+          "reason": "same dead branch"
+        },
+        {
+          "file": "identify.go",
+          "line": 180,
+          "type": "ARITHMETIC_BASE",
+          "reason": "same"
+        },
+        {
+          "file": "identify.go",
+          "line": 217,
+          "type": "INVERT_NEGATIVES",
+          "reason": "e=1 with no e found still fails atoi(t[1:1]) downstream"
+        },
+        {
+          "file": "identify.go",
+          "line": 217,
+          "type": "ARITHMETIC_BASE",
+          "reason": "same"
+        },
+        {
+          "file": "identify.go",
+          "line": 227,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "e+1==len proceeds to atoi(\"\") which fails identically"
+        },
+        {
+          "file": "identify.go",
+          "line": 227,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "e+1==len proceeds to atoi(\"\") which fails identically"
+        },
+        {
+          "file": "identify.go",
+          "line": 227,
+          "type": "ARITHMETIC_BASE",
+          "reason": "e-1 indexing fails atoi identically"
+        },
+        {
+          "file": "identify.go",
+          "line": 250,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "x<0 or x+1>len paths still fail atoi downstream"
+        },
+        {
+          "file": "identify.go",
+          "line": 250,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "x<0 or x+1>len paths still fail atoi downstream"
+        },
+        {
+          "file": "identify.go",
+          "line": 250,
+          "type": "ARITHMETIC_BASE",
+          "reason": "same"
+        },
+        {
+          "file": "identify.go",
+          "line": 263,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "i>=0 loop still exits at i<0; v at 0 fails atoi(t[:0])"
+        },
+        {
+          "file": "identify.go",
+          "line": 264,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "same"
+        },
+        {
+          "file": "identify.go",
+          "line": 377,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "epOutIdx==0 always declines (empty title); the <= entry is unobservable"
+        },
+        {
+          "file": "identify.go",
+          "line": 377,
+          "type": "CONDITIONALS_NEGATION",
+          "reason": "weak markers already set epOutIdx; re-entering finds no bare number or is shadowed by strong"
+        },
+        {
+          "file": "identify.go",
+          "line": 388,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "epOutIdx==0 means the marker was word 0 and the title is empty — decline either way"
+        },
+        {
+          "file": "identify.go",
+          "line": 398,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "same"
+        },
+        {
+          "file": "identify.go",
+          "line": 421,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "episode==year already implies year>0 since only 4-digit years read as episode"
+        },
+        {
+          "file": "identify.go",
+          "line": 451,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "epOutIdx==0 yields an empty title and declines; the boundary is unobservable"
         },
         {
           "file": "identify.go",
-          "line": 214,
+          "line": 486,
           "type": "CONDITIONALS_BOUNDARY",
-          "reason": "e+1==len proceeds to atoi(\"\") which fails identically"
+          "reason": "conf max is 0.88 (0.7+0.1+0.08); the cap is unreachable headroom"
+        },
+        {
+          "file": "identify.go",
+          "line": 514,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "l==\"e\" enters atoi(l[1:])=atoi(\"\") which fails identically"
         }
       ],
-      "verified_at": "2026-09-22"
+      "verified_at": "2026-09-23"
     },
     "internal/core": {
       "hash": "7b72eaa93ce075347edef44e221003cc998fe56bf5ee231f4147311ff7f92ec9",
@@ -708,160 +780,82 @@
       "verified_at": "2026-09-22"
     },
     "internal/plugins/catalog": {
-      "hash": "c98e5b10266128c6d36dedf0c7d4061d8c4596f367cf22ab91a924c26f22d194",
+      "hash": "4018f3bf2dce906db529ce3c98ed11f5c91816fa7f1186dcb97c1001a7f86aea",
       "status": "clean",
-      "killed": 116,
-      "mutants": 138,
+      "killed": 121,
+      "mutants": 143,
       "equivalents": [
         {
           "file": "catalog.go",
-          "line": 151,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "negating the refresh fast-path just falls through to a match loop that skips the same-ID candidate — same continue"
-        },
-        {
-          "file": "catalog.go",
-          "line": 178,
+          "line": 169,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "aliases>=8 at exactly 8 trims to the same last-8 slice"
         },
         {
           "file": "catalog.go",
-          "line": 227,
+          "line": 203,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "aliases>=8 at exactly 8 trims to the same last-8 slice"
+        },
+        {
+          "file": "catalog.go",
+          "line": 263,
           "type": "CONDITIONALS_NEGATION",
           "reason": "PutJSON only fails on marshal errors; CatalogItem is always marshalable — unreachable"
         },
         {
           "file": "catalog.go",
-          "line": 293,
+          "line": 329,
           "type": "CONDITIONALS_NEGATION",
           "reason": "bolt Put cannot fail on valid in-tx keys — unreachable"
         },
         {
           "file": "catalog.go",
-          "line": 441,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "offset==total proceeds to end=min(total,total) — same empty page"
-        },
-        {
-          "file": "catalog.go",
-          "line": 445,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "end>=total at equality assigns end=total — identical"
-        },
-        {
-          "file": "catalog.go",
-          "line": 459,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "input arrives ID-sorted from the bucket cursor; equal-UpdatedAt tie-break reproduces input order"
-        },
-        {
-          "file": "catalog.go",
-          "line": 460,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "same"
-        },
-        {
-          "file": "catalog.go",
-          "line": 462,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "ID tie-break equals input order; IDs unique so <= never differs"
-        },
-        {
-          "file": "catalog.go",
-          "line": 462,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "same"
-        },
-        {
-          "file": "catalog.go",
-          "line": 403,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "BItems cursor iterates ID-sorted; equal s/e/y items already in ID order"
-        },
-        {
-          "file": "catalog.go",
-          "line": 403,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "same"
-        },
-        {
-          "file": "catalog.go",
-          "line": 520,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "library index iterates ID-sorted; ID tie-break equals input order"
-        },
-        {
-          "file": "catalog.go",
-          "line": 520,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "same"
-        },
-        {
-          "file": "catalog.go",
-          "line": 561,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "stale index keys dangle to missing items and are skipped on read; observable only via ID reuse which is path-derived"
-        },
-        {
-          "file": "catalog.go",
-          "line": 568,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "bolt cursor Delete cannot fail mid-iteration — unreachable"
-        },
-        {
-          "file": "catalog.go",
-          "line": 395,
+          "line": 431,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "guarded by !=: equal seasons never reach the < comparison"
         },
         {
           "file": "catalog.go",
-          "line": 398,
+          "line": 434,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "same"
         },
         {
           "file": "catalog.go",
-          "line": 401,
+          "line": 437,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "same"
         },
         {
           "file": "catalog.go",
-          "line": 476,
+          "line": 439,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "BItems cursor iterates ID-sorted; equal s/e/y items already in ID order"
+        },
+        {
+          "file": "catalog.go",
+          "line": 477,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "offset==total proceeds to end=min(total,total) — same empty page"
+        },
+        {
+          "file": "catalog.go",
+          "line": 481,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "end>=total at equality assigns end=total — identical"
+        },
+        {
+          "file": "catalog.go",
+          "line": 496,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "same"
         },
         {
           "file": "catalog.go",
-          "line": 479,
+          "line": 498,
           "type": "CONDITIONALS_BOUNDARY",
-          "reason": "same"
-        },
-        {
-          "file": "catalog.go",
-          "line": 482,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "same"
-        },
-        {
-          "file": "catalog.go",
-          "line": 485,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "same"
-        },
-        {
-          "file": "catalog.go",
-          "line": 487,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "IDs unique; <= only differs on equal elements"
-        },
-        {
-          "file": "catalog.go",
-          "line": 509,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "guarded by !="
+          "reason": "ID tie-break equals input order; IDs unique so <= never differs"
         },
         {
           "file": "catalog.go",
@@ -873,19 +867,61 @@
           "file": "catalog.go",
           "line": 515,
           "type": "CONDITIONALS_BOUNDARY",
-          "reason": "same"
+          "reason": "guarded by !=: equal seasons never reach the < comparison"
         },
         {
           "file": "catalog.go",
           "line": 518,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "same"
+        },
+        {
+          "file": "catalog.go",
+          "line": 521,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "same"
+        },
+        {
+          "file": "catalog.go",
+          "line": 523,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "BItems cursor iterates ID-sorted; equal s/e/y items already in ID order"
+        },
+        {
+          "file": "catalog.go",
+          "line": 545,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "guarded by !="
+        },
+        {
+          "file": "catalog.go",
+          "line": 548,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "same"
+        },
+        {
+          "file": "catalog.go",
+          "line": 551,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "same"
+        },
+        {
+          "file": "catalog.go",
+          "line": 554,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "same"
+        },
+        {
+          "file": "catalog.go",
+          "line": 556,
+          "type": "CONDITIONALS_BOUNDARY",
+          "reason": "same"
         }
       ],
-      "verified_at": "2026-09-22"
+      "verified_at": "2026-09-23"
     },
     "internal/plugins/ingest": {
-      "hash": "8a42c3abae959e5e346712d060cddab678f19e2ab87f8c6331eb1d413dbd5a20",
+      "hash": "0fb640549059b794e46ed99428febb81673ff9d0c1a97aff701be045be45de1c",
       "status": "clean",
       "killed": 18,
       "mutants": 18,
@@ -942,7 +978,7 @@
       "verified_at": "2026-09-22"
     },
     "internal/plugins/thumbnail": {
-      "hash": "25c7a56c892ac4963dd76f53d2613ade44a5b33762083eb5c23fbbde62982a58",
+      "hash": "7cca0c2a70c18c84752abf0a521910a1faae350c68b046714c39cacc104ea8e3",
       "status": "clean",
       "killed": 25,
       "mutants": 28,
@@ -975,7 +1011,7 @@
       "verified_at": "2026-09-22"
     },
     "internal/plugins/transcode": {
-      "hash": "10abd89bb67a274779f60d8c3f35aff830412b9e99cdecf3902424dd58697f04",
+      "hash": "2a504e7a9208825f39e2176285f55f093817c66eca068b50b9880178d89e3090",
       "status": "clean",
       "killed": 695,
       "mutants": 723,
@@ -1060,7 +1096,7 @@
         },
         {
           "file": "coordinator.go",
-          "line": 1378,
+          "line": 1392,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "AccessedAt < -> <= only reorders equal timestamps; either eviction order is equally valid"
         },
@@ -1102,7 +1138,7 @@
         },
         {
           "file": "hls.go",
-          "line": 71,
+          "line": 72,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "i >= 0 -> > skips value[:0] only for a comma at index 0; ParseFloat fails on ',x' either way so pendingDuration is 0 both ways"
         },
@@ -1144,13 +1180,7 @@
         },
         {
           "file": "coordinator.go",
-          "line": 762,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "|| -> && on the same guard runs only wrongly-closed jobs -> divergent hang"
-        },
-        {
-          "file": "coordinator.go",
-          "line": 1376,
+          "line": 1390,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "CreatedAt < -> <= only reorders equal timestamps; either eviction order is valid"
         },
@@ -1168,7 +1198,7 @@
         },
         {
           "file": "hls.go",
-          "line": 121,
+          "line": 129,
           "type": "CONDITIONALS_BOUNDARY",
           "reason": "d > target -> >= assigns target=d at equality, the identical value"
         },
@@ -1180,13 +1210,13 @@
         },
         {
           "file": "coordinator.go",
-          "line": 1412,
+          "line": 1426,
           "type": "CONDITIONALS_NEGATION",
           "reason": "ArtifactRoot!=\"\" -> == skips os.Remove(artifactDirFor), but RemoveAll(paths.hlsDir) just removed that same dir; unobservable"
         },
         {
           "file": "coordinator.go",
-          "line": 1449,
+          "line": 1463,
           "type": "CONDITIONALS_NEGATION",
           "reason": "owner-claim else-if only runs in a create/open race window; not deterministically reachable"
         },
@@ -1258,13 +1288,13 @@
         },
         {
           "file": "coordinator.go",
-          "line": 963,
+          "line": 977,
           "type": "CONDITIONALS_NEGATION",
           "reason": "MkdirAll err != nil -> == aborts on success; full suite kills it, covering subset hangs -> divergent"
         },
         {
           "file": "coordinator.go",
-          "line": 979,
+          "line": 993,
           "type": "CONDITIONALS_NEGATION",
           "reason": "exec err != nil -> == swallows failure; covering tests hang waiting for readiness -> divergent"
         },
@@ -1302,70 +1332,15 @@
       "verified_at": "2026-09-22"
     },
     "cmd/lain": {
-      "hash": "e954db1bfdbfac39c04b6135bc5349bbc68e483b8204bfec0f1f58a9ccfa3911",
+      "hash": "95c115a3856c5e9666a1bd5f363a0e409a44ae5a46a74f669bf36854036da1d4",
       "status": "clean",
-      "killed": 222,
-      "mutants": 222,
-      "equivalents": [
-        {
-          "file": "main.go",
-          "line": 26,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "main() exits via os.Exit; not callable from tests"
-        },
-        {
-          "file": "main.go",
-          "line": 26,
-          "type": "CONDITIONALS_BOUNDARY",
-          "reason": "same"
-        },
-        {
-          "file": "main.go",
-          "line": 51,
-          "type": "ARITHMETIC_BASE",
-          "reason": "version print inside main(); not callable"
-        },
-        {
-          "file": "main.go",
-          "line": 56,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "os.Exit(1) tail of main(); not callable"
-        },
-        {
-          "file": "main.go",
-          "line": 57,
-          "type": "ARITHMETIC_BASE",
-          "reason": "error print inside main(); not callable"
-        },
-        {
-          "file": "main.go",
-          "line": 132,
-          "type": "ARITHMETIC_BASE",
-          "reason": "untestable tail: past NewWithOptions success the function ends in ListenAndServe"
-        },
-        {
-          "file": "main.go",
-          "line": 140,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "same"
-        },
-        {
-          "file": "watch.go",
-          "line": 276,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "loop tail requires a tty on stdout (isATTY) — unreachable under tests"
-        },
-        {
-          "file": "watch.go",
-          "line": 252,
-          "type": "CONDITIONALS_NEGATION",
-          "reason": "both switch arms covered (TestCmdWatchNext/QueryDryRun/EmptyQueryDryRun); residual attribution artifact"
-        }
-      ],
-      "verified_at": "2026-09-22"
+      "killed": 307,
+      "mutants": 307,
+      "equivalents": [],
+      "verified_at": "2026-09-23"
     },
     "internal/gateway": {
-      "hash": "329d4e9e14ae1d4c60b17c1e130ec08156622e4b6d4b810431598c5abd98bbb4",
+      "hash": "35e46c74ec115770bef7a2dbe786c689d0171926b19654cae26f964c75688bcc",
       "status": "clean",
       "killed": 288,
       "mutants": 333,
@@ -1498,6 +1473,14 @@
         }
       ],
       "verified_at": "2026-09-22"
+    },
+    "internal/testutil/contract": {
+      "hash": "bbbc7ede0609aaf4fcfc09e7c4775b055d6756359ca18ec7518d0efee7cd313b",
+      "status": "clean",
+      "killed": 12,
+      "mutants": 12,
+      "equivalents": [],
+      "verified_at": "2026-09-23"
     }
   }
 }

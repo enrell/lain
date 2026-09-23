@@ -759,7 +759,14 @@ func (t *Transcoder) stopJob(j *job, code, message string) {
 
 func (t *Transcoder) run(j *job) {
 	t.mu.Lock()
-	if j.state != contracts.TranscodeQueued || t.closed {
+	if t.closed {
+		t.mu.Unlock()
+		return
+	}
+	if j.state != contracts.TranscodeQueued {
+		// A queued job stopped before it ever ran is already terminal;
+		// done must still close or synchronous waiters block forever.
+		close(j.done)
 		t.mu.Unlock()
 		return
 	}
@@ -835,7 +842,14 @@ func (t *Transcoder) runConvert(spec sourceSpec, out string, onSample func(progr
 // HLS writes segments plus the server-owned playlist.
 func (t *Transcoder) runV3(j *job) {
 	t.mu.Lock()
-	if j.state != contracts.TranscodeQueued || t.closed {
+	if t.closed {
+		t.mu.Unlock()
+		return
+	}
+	if j.state != contracts.TranscodeQueued {
+		// A queued job cancelled before it ever ran is already
+		// terminal; done must still close or waiters block forever.
+		close(j.done)
 		t.mu.Unlock()
 		return
 	}

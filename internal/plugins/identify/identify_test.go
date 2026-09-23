@@ -129,6 +129,33 @@ var benchNames = []string{
 	"movie.mp4",
 }
 
+func TestCleanTitleDropsControlChars(t *testing.T) {
+	if got := cleanTitle("a\x00b\x1fc"); got != "abc" {
+		t.Fatalf("cleanTitle=%q, want %q", got, "abc")
+	}
+	if got := cleanTitle("plain title"); got != "plain title" {
+		t.Fatalf("cleanTitle must be identity on clean input: %q", got)
+	}
+}
+
+func TestIdentifyDropsWordsAfterEpisodeMarker(t *testing.T) {
+	for _, f := range []string{
+		"[Fansub-A] Cool Show - 03 Extra Words [1080p].mkv",
+		"[Fansub-A] Cool Show \x00 - 03 Extra [1080p].mkv",
+	} {
+		p, ok := IdentifyAnime(contracts.Candidate{Path: "/lib/" + f, LibraryID: "lib-1"})
+		if !ok {
+			t.Fatalf("%s: declined, want accept", f)
+		}
+		if p.Title != "Cool Show" {
+			t.Fatalf("%s: title=%q, words after the episode marker must be dropped", f, p.Title)
+		}
+		if p.Episode != 3 {
+			t.Fatalf("%s: episode=%d, want 3", f, p.Episode)
+		}
+	}
+}
+
 func BenchmarkIdentifyAnime(b *testing.B) {
 	cands := make([]contracts.Candidate, len(benchNames))
 	for i, n := range benchNames {

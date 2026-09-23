@@ -11,6 +11,7 @@ package transcode
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -72,6 +73,13 @@ func parseHLSPlaylist(path string) ([]hlsSegment, bool, error) {
 				value = value[:i]
 			}
 			pendingDuration, _ = strconv.ParseFloat(strings.TrimSpace(value), 64)
+			// ParseFloat accepts NaN and ±Inf without error, and a
+			// negative EXTINF would push the timeline backwards — all of
+			// it poisons the throttle's ahead computation, so clamp to 0
+			// like any other malformed value.
+			if math.IsNaN(pendingDuration) || math.IsInf(pendingDuration, 0) || pendingDuration < 0 {
+				pendingDuration = 0
+			}
 		case isDiscont:
 			// The tag precedes the segment it applies to: the next media
 			// segment starts a new timeline.

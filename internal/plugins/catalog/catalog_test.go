@@ -3,6 +3,7 @@ package catalog
 // mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/enrell/lain/internal/contracts"
@@ -336,6 +337,58 @@ func TestReconcileCrossLibraryNoMerge(t *testing.T) {
 	out, n := s.ReconcileMoves("other", []contracts.CatalogItem{other}, present)
 	if n != 0 || out[0].ID != other.ID {
 		t.Fatalf("cross-library titles must not merge: %+v migrated=%d", out[0], n)
+	}
+}
+
+func TestReconcileMoveBackMergesAliases(t *testing.T) {
+	s := reconcileSetup(t)
+	old := s.List()[0]
+	// Simulate the earlier move A->B: the row keeps its ID, the path is B,
+	// and A was recorded as history.
+	old.FilePath = "/y/b.mkv"
+	old.Aliases = []string{"/x/a.mkv"}
+	if err := s.UpsertBatch([]contracts.CatalogItem{old}); err != nil {
+		t.Fatal(err)
+	}
+	// The file comes back to A: the fresh item's path-derived ID matches
+	// the stored row again, but FilePath differs. History must merge —
+	// A stays, B is recorded — instead of being wiped by the upsert.
+	back := mkItem("l", "/x/a.mkv", "Show")
+	present := map[string]bool{back.ID: true}
+	out, n := s.ReconcileMoves("l", []contracts.CatalogItem{back}, present)
+	if n != 1 {
+		t.Fatalf("migrated=%d, want 1", n)
+	}
+	want := map[string]bool{"/x/a.mkv": true, "/y/b.mkv": true}
+	if len(out[0].Aliases) != len(want) {
+		t.Fatalf("aliases=%v, want %v", out[0].Aliases, want)
+	}
+	for _, a := range out[0].Aliases {
+		if !want[a] {
+			t.Fatalf("unexpected alias %q in %v", a, out[0].Aliases)
+		}
+	}
+}
+
+func TestReconcileMoveBackTrimsAliasHistory(t *testing.T) {
+	s := reconcileSetup(t)
+	old := s.List()[0]
+	old.FilePath = "/y/b.mkv"
+	old.Aliases = make([]string, 8)
+	for i := range old.Aliases {
+		old.Aliases[i] = fmt.Sprintf("/z/h%d.mkv", i)
+	}
+	old.Aliases[7] = "/x/a.mkv"
+	if err := s.UpsertBatch([]contracts.CatalogItem{old}); err != nil {
+		t.Fatal(err)
+	}
+	back := mkItem("l", "/x/a.mkv", "Show")
+	out, n := s.ReconcileMoves("l", []contracts.CatalogItem{back}, map[string]bool{back.ID: true})
+	if n != 1 {
+		t.Fatalf("migrated=%d, want 1", n)
+	}
+	if len(out[0].Aliases) != 8 || out[0].Aliases[7] != "/y/b.mkv" {
+		t.Fatalf("aliases=%v, want last-8 window ending in /y/b.mkv", out[0].Aliases)
 	}
 }
 

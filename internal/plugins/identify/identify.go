@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/core"
@@ -122,6 +123,18 @@ type token struct {
 	text      string // original case, for titles
 	lower     string
 	bracketed bool
+}
+
+// cleanTitle drops control characters. Real filenames cannot contain
+// them (POSIX forbids NUL), but tokens are joined into a title that is
+// persisted and rendered — nothing below U+0020 may survive.
+func cleanTitle(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // isSep reports tokenizer separators. Brackets split words AND mark
@@ -451,7 +464,12 @@ func IdentifyAnime(c contracts.Candidate) (contracts.Proposal, bool) {
 			n++
 			continue
 		}
-		words = append(words, tk.text)
+		w := cleanTitle(tk.text)
+		if w == "" {
+			n++
+			continue
+		}
+		words = append(words, w)
 		n++
 	}
 	if len(words) == 0 {
@@ -548,7 +566,7 @@ func IdentifyGeneric(c contracts.Candidate) contracts.Proposal {
 		kind = "photo"
 	}
 	return contracts.Proposal{
-		Kind: kind, Title: title, Confidence: 0.4,
+		Kind: kind, Title: cleanTitle(title), Confidence: 0.4,
 		Evidence: []string{"extension"}, PluginID: GenericID,
 	}
 }
