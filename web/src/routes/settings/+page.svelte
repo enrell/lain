@@ -23,7 +23,7 @@
 		}
 	});
 	function changePlayer(value: string): void {
-		if (!session.user || (value !== 'browser' && value !== 'mpv' && value !== 'vlc')) return;
+		if (!session.user || (value !== 'browser' && value !== 'local' && value !== 'mpv' && value !== 'vlc')) return;
 		preferredPlayer = value;
 		savePreferredPlayer(session.user.id, value);
 	}
