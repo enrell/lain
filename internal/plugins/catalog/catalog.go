@@ -169,14 +169,14 @@ func (s *Service) ReconcileMoves(libraryID string, items []contracts.CatalogItem
 		}
 		if match.FilePath != it.FilePath && !hasAlias(it.Aliases, match.FilePath) {
 			it.Aliases = append(it.Aliases, match.FilePath)
-			if len(it.Aliases) > 8 {
-				it.Aliases = it.Aliases[len(it.Aliases)-8:]
-			}
 		}
 		for _, a := range match.Aliases {
 			if !hasAlias(it.Aliases, a) {
 				it.Aliases = append(it.Aliases, a)
 			}
+		}
+		if len(it.Aliases) > 8 {
+			it.Aliases = it.Aliases[len(it.Aliases)-8:]
 		}
 		delete(present, it.ID)
 		it.ID = match.ID
@@ -259,36 +259,49 @@ func (s *Service) UpsertBatch(items []contracts.CatalogItem) error {
 	})
 }
 
-// PruneMissing removes items of one library that the scan did not see.
-// The caller must guarantee the root was fully walked: a partial walk
-// must never read as deletions.
-func (s *Service) PruneMissing(libraryID string, present map[string]bool) (int, error) {
-	removed := 0
-	err := s.db.Update(func(tx *bolt.Tx) error {
+// MarkMissing reconciles one library's stored items with what the scan
+// saw (D-068): absent files are flagged missing — never deleted, so a
+// restored file reattaches its progress and enrichments — and files
+// that came back lose the flag. The caller must guarantee the root was
+// fully walked: a partial walk must never read as deletions. It runs
+// before the upsert batch so "restored" is counted from the stored
+// flag the incoming records are about to overwrite.
+func (s *Service) MarkMissing(libraryID string, present map[string]bool) (missing, restored int, err error) {
+	err = s.db.Update(func(tx *bolt.Tx) error {
 		ib, lb := tx.Bucket(kv.BItems), tx.Bucket(kv.BItemsByLib)
 		cur := lb.Cursor()
 		prefix := libPrefix(libraryID)
 		for k, _ := cur.Seek(prefix); k != nil && hasPrefix(k, prefix); k, _ = cur.Next() {
-			id := string(k[len(prefix):])
-			if present[id] {
+			var it contracts.CatalogItem
+			if err := kv.GetJSON(tx, kv.BItems, k[len(prefix):], &it); err != nil {
 				continue
 			}
-			if err := ib.Delete([]byte(id)); err != nil {
+			switch {
+			case present[it.ID] && it.Missing:
+				it.Missing = false
+				restored++
+			case !present[it.ID] && !it.Missing:
+				it.Missing = true
+				missing++
+			default:
+				continue
+			}
+			raw, err := marshalItem(it)
+			if err != nil {
 				return err
 			}
-			if err := cur.Delete(); err != nil {
+			if err := ib.Put([]byte(it.ID), raw); err != nil {
 				return err
 			}
-			removed++
 		}
 		return nil
 	})
-	return removed, err
+	return missing, restored, err
 }
 
 // DeleteLibrary removes every catalog item that belongs to a library, plus
 // its by-library index entries. Deleting the library record alone strands
-// them: the scan only walks libraries that still exist, and PruneMissing
+// them: the scan only walks libraries that still exist, and MarkMissing
 // only ever sees roots it was given, so the items would survive forever.
 // Identity lives in the catalog, so the catalog owns the removal.
 func (s *Service) DeleteLibrary(libraryID string) (int, error) {

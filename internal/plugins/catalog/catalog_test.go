@@ -1,5 +1,7 @@
 package catalog
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
 	"testing"
 
@@ -97,7 +99,7 @@ func TestBatchOverwritesSameID(t *testing.T) {
 	}
 }
 
-func TestPruneScopedPerLibrary(t *testing.T) {
+func TestMarkMissingScopedPerLibrary(t *testing.T) {
 	s := testService(t)
 	a := mkItem("lib-a", "/a/1.mkv", "A1")
 	b := mkItem("lib-a", "/a/2.mkv", "A2")
@@ -105,34 +107,51 @@ func TestPruneScopedPerLibrary(t *testing.T) {
 	if err := s.UpsertBatch([]contracts.CatalogItem{a, b, c}); err != nil {
 		t.Fatal(err)
 	}
-	// Only A1 seen: A2 pruned, B1 untouched (other library).
-	n, err := s.PruneMissing("lib-a", map[string]bool{a.ID: true})
+	// Only A1 seen: A2 marked missing, B1 untouched (other library).
+	missing, restored, err := s.MarkMissing("lib-a", map[string]bool{a.ID: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 {
-		t.Fatalf("pruned=%d, want 1", n)
+	if missing != 1 || restored != 0 {
+		t.Fatalf("missing=%d restored=%d, want 1/0", missing, restored)
 	}
-	if _, ok := s.Get(a.ID); !ok {
-		t.Fatal("seen item must survive")
+	got, ok := s.Get(b.ID)
+	if !ok || !got.Missing {
+		t.Fatalf("absent item must be marked missing: %+v", got)
 	}
-	if _, ok := s.Get(c.ID); !ok {
-		t.Fatal("other library must be untouched")
+	got, ok = s.Get(a.ID)
+	if !ok || got.Missing {
+		t.Fatalf("seen item must stay present: %+v", got)
 	}
-	if _, ok := s.Get(b.ID); ok {
-		t.Fatal("missing item must be pruned")
+	got, ok = s.Get(c.ID)
+	if !ok || got.Missing {
+		t.Fatalf("other library must be untouched: %+v", got)
+	}
+	// A second identical pass changes nothing.
+	missing, restored, err = s.MarkMissing("lib-a", map[string]bool{a.ID: true})
+	if err != nil || missing != 0 || restored != 0 {
+		t.Fatalf("idempotent pass: missing=%d restored=%d err=%v", missing, restored, err)
 	}
 }
 
-func TestPruneNothingToRemove(t *testing.T) {
+func TestMarkMissingRestoresReturnedFile(t *testing.T) {
 	s := testService(t)
 	a := mkItem("l", "/a.mkv", "A")
 	if err := s.UpsertBatch([]contracts.CatalogItem{a}); err != nil {
 		t.Fatal(err)
 	}
-	n, err := s.PruneMissing("l", map[string]bool{a.ID: true})
-	if err != nil || n != 0 {
-		t.Fatalf("prune=%d err=%v, want 0/<nil>", n, err)
+	if _, _, err := s.MarkMissing("l", map[string]bool{}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(a.ID); !got.Missing {
+		t.Fatal("item must be missing while its file is gone")
+	}
+	missing, restored, err := s.MarkMissing("l", map[string]bool{a.ID: true})
+	if err != nil || missing != 0 || restored != 1 {
+		t.Fatalf("missing=%d restored=%d err=%v, want 0/1/<nil>", missing, restored, err)
+	}
+	if got, _ := s.Get(a.ID); got.Missing {
+		t.Fatal("returned file must clear the missing flag")
 	}
 }
 
@@ -163,9 +182,10 @@ func TestDeleteLibraryRemovesOnlyItsItems(t *testing.T) {
 	if got := len(s.ListByLibrary("lib-b")); got != 1 {
 		t.Fatalf("by-library index of lib-b has %d entries, want 1", got)
 	}
-	// A prune of a still-existing root must not resurrect or miss anything.
-	if n, err := s.PruneMissing("lib-b", map[string]bool{c.ID: true}); err != nil || n != 0 {
-		t.Fatalf("prune=%d err=%v, want 0/<nil>", n, err)
+	// A mark-missing pass over a still-existing root changes nothing.
+	missing, restored, err := s.MarkMissing("lib-b", map[string]bool{c.ID: true})
+	if err != nil || missing != 0 || restored != 0 {
+		t.Fatalf("missing=%d restored=%d err=%v, want 0/0/<nil>", missing, restored, err)
 	}
 }
 
