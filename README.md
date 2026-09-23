@@ -203,16 +203,35 @@ lain plugins                            # registered providers + composition
 lain version
 lain login --server http://127.0.0.1:9360 --username admin
 lain watch frieren                      # search, pick, play in mpv, save progress
+lain watch frieren --player vlc         # use VLC instead
 lain watch --next                       # resume first unfinished entry
+lain install-player-handler             # enable web "Open in mpv/VLC" links locally
 lain backup --out backups               # online when the server runs
 lain restore backups/lain-backup-<ts> --data-dir ~/.local/share/lain
 ```
 
-`watch` resolves an item, launches mpv with an authenticated stream URL
-and reports progress through the same endpoint every client uses. A
-bundled lua script records position on pause, every 10 s and on exit;
-completed episodes (≥95%) auto-play the next one on a TTY. No
-credentials reach the player process.
+`watch` resolves an item, launches mpv (default) or VLC with an
+authenticated stream URL, resumes saved progress, and writes measured
+progress through the same endpoint every client uses. mpv uses a bundled
+Lua script; VLC is sampled through a private local RC socket. Completed
+episodes (≥95%) auto-play the next one on a TTY. The stream URL contains
+the API token while the player runs; treat local process command lines as
+private. `--dry-run` redacts it.
+
+For external playback from the web UI, install this CLI and the player on
+the **browser's computer**. Log in with the exact origin shown in the web
+page's setup instructions, then run `lain install-player-handler` on that
+computer. The browser's `lain://play` link contains only the server origin,
+item ID and chosen player; the handler accepts links only for the locally
+configured server and retrieves the item using its local login. The
+browser may ask permission to open the local app. No new server endpoint
+or browser credential handoff is involved. If VLC cannot report position,
+playback still works but the CLI warns and leaves progress unchanged.
+The handler opens a terminal so errors remain visible while launching or
+watching. Re-run `lain install-player-handler` if the CLI binary moves.
+
+The planned terminal UI client and the still-open language/repository choices
+are recorded in [docs/CLIENTS.md](docs/CLIENTS.md).
 
 ## Web UI development
 

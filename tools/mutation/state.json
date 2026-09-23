@@ -1332,10 +1332,10 @@
       "verified_at": "2026-09-22"
     },
     "cmd/lain": {
-      "hash": "95c115a3856c5e9666a1bd5f363a0e409a44ae5a46a74f669bf36854036da1d4",
+      "hash": "dd621aa7344dddfc704c1d1db22f387862542193b1a331c5f207aa5605000764",
       "status": "clean",
-      "killed": 307,
-      "mutants": 307,
+      "killed": 309,
+      "mutants": 309,
       "equivalents": [],
       "verified_at": "2026-09-23"
     },

@@ -17,6 +17,7 @@
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Poster from '$lib/components/media/Poster.svelte';
+	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import ProgressBar from '$lib/components/media/ProgressBar.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import TitleView from '$lib/components/media/TitleView.svelte';
@@ -286,6 +287,7 @@
 						</div>
 					{/if}
 				</div>
+				{#if !item.missing}<ExternalPlayers itemId={item.id} />{/if}
 
 				{#if item.missing}
 					<div class="max-w-2xl rounded-card border border-danger/25 bg-danger/5 px-4 py-3 text-sm">

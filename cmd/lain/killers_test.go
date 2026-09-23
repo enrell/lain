@@ -318,11 +318,13 @@ func TestPlayOneNoStateFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("null"))
+	}))
 	defer srv.Close()
 	client := newAPIClient(srv.URL, "t")
 	_, err := playOne(client, clientConfig{Server: srv.URL, Token: "t"}, apiItem{ID: "e1"}, false)
-	if err == nil || !strings.Contains(err.Error(), "no progress") {
+	if err == nil || !strings.Contains(err.Error(), "exited before progress") {
 		t.Fatalf("missing state + mpv error must surface the note: %v", err)
 	}
 }

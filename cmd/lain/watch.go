@@ -2,10 +2,9 @@
 //
 // The CLI is a plain API client, like the desktop will be: login stores
 // a token under the user config dir, watch resolves an item, launches
-// mpv with an authenticated stream URL, then reports progress from the
-// state file the bundled lua script maintains. No credentials reach
-// the player; progress flows through the same endpoint every client
-// uses.
+// mpv or VLC with an authenticated stream URL, then reports measured
+// progress through the same endpoint every client uses. The media URL
+// carries the token in the player process arguments while it runs.
 package main
 
 import (
@@ -14,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -234,6 +234,10 @@ func (c *apiClient) put(path string, body any, out any) error {
 }
 
 func cmdWatch(args []string) error {
+	player := flag(args, "player", "mpv")
+	if player != "mpv" && player != "vlc" {
+		return fmt.Errorf("unsupported player %q (choose mpv or vlc)", player)
+	}
 	cfg, err := loadConfig()
 	if err != nil || cfg.Token == "" {
 		return fmt.Errorf("not logged in (run `lain login`)")
@@ -248,13 +252,16 @@ func cmdWatch(args []string) error {
 	dry := hasFlag(args, "dry-run")
 
 	var start apiItem
-	switch {
-	case hasFlag(args, "next") || query == "":
+	if id := flag(args, "id", ""); id != "" {
+		if err := client.get("/api/catalog/"+url.PathEscape(id), nil, &start); err != nil {
+			return err
+		}
+	} else if hasFlag(args, "next") || query == "" {
 		start, err = resolveNext(client)
 		if err != nil {
 			return err
 		}
-	default:
+	} else {
 		start, err = resolveQuery(client, query, os.Stdin, os.Stdout)
 		if err != nil {
 			return err
@@ -262,17 +269,17 @@ func cmdWatch(args []string) error {
 	}
 
 	for {
-		played, err := playOne(client, cfg, start, dry)
+		played, err := playOneWithPlayer(client, cfg, start, player, dry)
 		if err != nil {
 			return err
 		}
-		if dry || once || !played.completed || !isATTY(os.Stdout) {
+		if dry || once || !played.completed || !watchIsATTY(os.Stdout) {
 			if played.completed && !once {
 				reportNext(client, start)
 			}
 			return nil
 		}
-		next, ok, err := findNextEpisode(client, start)
+		next, ok, err := nextEpisode(client, start)
 		if err != nil {
 			return err
 		}
@@ -285,7 +292,15 @@ func cmdWatch(args []string) error {
 	}
 }
 
-// playedResult reports what one mpv session did.
+func nextEpisode(client *apiClient, current apiItem) (apiItem, bool, error) {
+	next, ok, err := findNextEpisode(client, current)
+	if err != nil {
+		return apiItem{}, false, err
+	}
+	return next, ok, nil
+}
+
+// playedResult reports what one external-player session did.
 type playedResult struct {
 	completed bool
 	position  float64
@@ -293,55 +308,148 @@ type playedResult struct {
 }
 
 func playOne(client *apiClient, cfg clientConfig, item apiItem, dry bool) (playedResult, error) {
-	streamURL := cfg.Server + "/api/items/" + item.ID + "/stream?token=" + url.QueryEscape(cfg.Token)
+	return playOneWithPlayer(client, cfg, item, "mpv", dry)
+}
+
+func playOneWithPlayer(client *apiClient, cfg clientConfig, item apiItem, player string, dry bool) (playedResult, error) {
+	streamURL := cfg.Server + "/api/items/" + url.PathEscape(item.ID) + "/stream?token=" + url.QueryEscape(cfg.Token)
 	label := item.Title
 	if item.Episode > 0 {
 		label = fmt.Sprintf("%s S%02dE%02d", item.Title, item.Season, item.Episode)
+	}
+	if player != "mpv" && player != "vlc" {
+		return playedResult{}, fmt.Errorf("unsupported player %q", player)
 	}
 	stateDir, err := os.MkdirTemp("", "lain-watch-*")
 	if err != nil {
 		return playedResult{}, err
 	}
 	defer os.RemoveAll(stateDir)
+	var previous apiProgress
+	if !dry {
+		if err := client.get("/api/items/"+url.PathEscape(item.ID)+"/progress", nil, &previous); err != nil {
+			return playedResult{}, err
+		}
+	}
+	resume := previous.PositionSec
+	if previous.Completed || resume < 5 {
+		resume = 0
+	}
+	args := []string{}
 	stateFile := filepath.Join(stateDir, "progress.json")
-	scriptFile := filepath.Join(stateDir, "lain-progress.lua")
-	if err := os.WriteFile(scriptFile, []byte(progressLua), 0o644); err != nil {
-		return playedResult{}, err
+	socketFile := filepath.Join(stateDir, "vlc.sock")
+	if player == "mpv" {
+		scriptFile := filepath.Join(stateDir, "lain-progress.lua")
+		if err := os.WriteFile(scriptFile, []byte(progressLua), 0o600); err != nil {
+			return playedResult{}, err
+		}
+		args = append(args, "--script="+scriptFile, "--script-opts=lain-state="+stateFile, "--title="+label)
+		if resume > 0 {
+			args = append(args, "--start="+strconv.FormatFloat(resume, 'f', 0, 64))
+		}
+	} else {
+		args = append(args, "--no-one-instance", "--play-and-exit", "--extraintf=rc", "--rc-unix="+socketFile, "--meta-title="+label)
+		if resume > 0 {
+			args = append(args, "--start-time="+strconv.FormatFloat(resume, 'f', 0, 64))
+		}
 	}
-	mpvArgs := []string{
-		"--script=" + scriptFile,
-		"--script-opts=lain-state=" + stateFile,
-		"--title=" + label,
-		streamURL,
-	}
+	args = append(args, streamURL)
 	if dry {
-		fmt.Printf("mpv %s\n", strings.Join(mpvArgs, " "))
+		fmt.Printf("%s %s [authenticated stream URL]\n", player, strings.Join(args[:len(args)-1], " "))
 		return playedResult{}, nil
 	}
-	mpv, err := exec.LookPath("mpv")
+	bin, err := exec.LookPath(player)
 	if err != nil {
-		return playedResult{}, fmt.Errorf("mpv not found in PATH")
+		return playedResult{}, fmt.Errorf("%s not found in PATH", player)
 	}
 	fmt.Printf("playing: %s\n", label)
-	cmd := exec.Command(mpv, mpvArgs...)
+	cmd := exec.Command(bin, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	runErr := cmd.Run()
+	var runErr error
+	var pos, dur float64
+	var ok bool
+	if player == "vlc" {
+		pos, dur, ok, runErr = runVLC(cmd, socketFile)
+	} else {
+		runErr = cmd.Run()
+		pos, dur, ok = readStateFile(stateFile)
+	}
 
-	// Progress comes from the state file the lua script maintains:
-	// pause, 10 s ticks, shutdown and end-of-file all flush it.
-	pos, dur, ok := readStateFile(stateFile)
+	// mpv writes a state file; VLC is sampled through its local RC socket.
 	if !ok {
-		return playedResult{}, runErrToNil(runErr, "no progress recorded (file never started?)")
+		if runErr != nil {
+			return playedResult{}, fmt.Errorf("%s exited before progress was recorded: %w", player, runErr)
+		}
+		fmt.Fprintf(os.Stderr, "warning: %s closed without measurable progress; watch position was not changed\n", player)
+		return playedResult{}, nil
 	}
 	completed := dur > 0 && pos/dur >= 0.95
 	var saved apiProgress
-	putErr := client.put("/api/items/"+item.ID+"/progress",
+	putErr := client.put("/api/items/"+url.PathEscape(item.ID)+"/progress",
 		map[string]any{"position_sec": pos, "duration_sec": dur, "completed": completed}, &saved)
 	if putErr != nil {
 		return playedResult{}, putErr
 	}
 	fmt.Printf("saved: %.0fs / %.0fs%s\n", pos, dur, completedMark(completed))
-	return playedResult{completed: completed, position: pos, duration: dur}, runErrToNil(runErr, "")
+	result := playedResult{completed: completed, position: pos, duration: dur}
+	return result, playerExitErr(player, runErr)
+}
+
+func playerExitErr(player string, runErr error) error {
+	if player == "vlc" && runErr != nil {
+		return fmt.Errorf("vlc exited after saving progress: %w", runErr)
+	}
+	return runErrToNil(runErr, "")
+}
+
+// VLC's local RC socket reports the same position and duration that mpv's
+// bundled Lua script writes. The socket lives in a private temporary dir.
+func runVLC(cmd *exec.Cmd, socket string) (pos, dur float64, ok bool, runErr error) {
+	if err := cmd.Start(); err != nil {
+		return 0, 0, false, err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case err := <-done:
+			return pos, dur, ok, err
+		case <-ticker.C:
+			p, d, err := vlcPosition(socket)
+			if err == nil && d > 0 && p >= 0 {
+				pos, dur, ok = p, d, true
+			}
+		}
+	}
+}
+
+func vlcPosition(socket string) (float64, float64, error) {
+	conn, err := net.DialTimeout("unix", socket, 300*time.Millisecond)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(time.Second))
+	if _, err := io.WriteString(conn, "get_time\nget_length\n"); err != nil {
+		return 0, 0, err
+	}
+	var values []float64
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		line := strings.TrimSpace(strings.TrimLeft(scanner.Text(), "> "))
+		if n, err := strconv.ParseFloat(line, 64); err == nil && n >= 0 {
+			values = append(values, n)
+			if len(values) == 2 {
+				return values[0], values[1], nil
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, 0, err
+	}
+	return 0, 0, fmt.Errorf("VLC did not report time and duration")
 }
 
 func runErrToNil(runErr error, note string) error {
@@ -514,7 +622,7 @@ func reportNext(client *apiClient, cur apiItem) {
 
 // valueFlags consume the following arg.
 var valueFlags = map[string]bool{
-	"--pick": true, "--server": true, "--data-dir": true,
+	"--pick": true, "--player": true, "--id": true, "--server": true, "--data-dir": true,
 	"--out": true, "--username": true, "--password": true,
 	"--type": true, "--runs": true, "--port": true, "--matrix-bin": true,
 }
@@ -551,3 +659,5 @@ func hasFlag(args []string, name string) bool {
 }
 
 func isATTY(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }
+
+var watchIsATTY = isATTY

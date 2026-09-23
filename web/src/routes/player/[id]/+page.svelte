@@ -7,6 +7,7 @@
 	import { api, ApiError } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import Player from '$lib/components/player/Player.svelte';
+	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
@@ -136,6 +137,7 @@
 							</Button>
 							<Button variant="ghost" onclick={() => void goto('/library')}>Browse library</Button>
 						</div>
+						{#if !item.missing}<div class="mt-5"><ExternalPlayers itemId={item.id} /></div>{/if}
 					</div>
 				</div>
 			{/if}
