@@ -65,6 +65,61 @@ go build -o lain ./cmd/lain
 ./lain watch --next                           # resume in mpv
 ```
 
+## Testing layers (what to use, where, how fast)
+
+The suite is layered so the per-commit path stays seconds while the
+expensive engines run scoped or nightly:
+
+```
+per commit (seconds):   build + vet → unit/integration → property → race (hot pkgs)
+per *_test.go change:   mutation (hash-gated, D-069)
+per parser change:      fuzz corpus replay (always) + campaign (time-boxed)
+nightly / scheduled:    longer fuzz campaigns → more model seeds → stress -count=20
+per refactor/migration: differential oracle runs
+```
+
+- **Contract tests** — `internal/testutil/contract` runs one shared
+  harness against every `core.Provider`: non-empty ID/capabilities,
+  `Health` never panics, unknown capabilities and wrong input types
+  return typed `*core.Error`, declared capabilities accept valid
+  samples. Operational failures (closed db, missing ffmpeg) may
+  surface untyped — the typed contract covers protocol violations only.
+- **Native fuzzing** — `go test -fuzz` on untrusted input parsers:
+  `identify` (filenames), `probe` (ffprobe JSON), `gateway` theme CSS,
+  `transcode` HLS playlists. Fuzzing found real bugs (NaN durations,
+  control-char titles, negative geometry); failing inputs live as
+  regression corpus under `testdata/fuzz/` — keep them. Run one package
+  at a time (`-fuzz` rejects multiple packages):
+
+  ```sh
+  go test ./internal/plugins/identify -fuzz=FuzzIdentifyAnime -fuzztime=60s
+  go test ./internal/plugins/probe -fuzz=FuzzParse -fuzztime=60s
+  go test ./internal/plugins/transcode -fuzz=FuzzParseHLSPlaylist -fuzztime=60s
+  go test ./internal/gateway -fuzz=FuzzParseOmarchyTheme -fuzztime=60s
+  ```
+
+- **Property tests** — stdlib `testing/quick` (no PBT dependency):
+  kv key injectivity and JSON round-trips, `TitleKey` idempotence and
+  ASCII case-insensitivity (unicode case-folding is NOT guaranteed
+  symmetric — do not assert it), fingerprint determinism, HLS rewrite
+  idempotence and token-leak-freedom, contract JSON stability.
+- **Stateful models** — seeded random walks with a parallel model:
+  `ingest/model_test.go` mutates a real tree (create/delete/rename/
+  restore/broken walk) and asserts catalog=missing semantics plus a
+  fresh-scan differential oracle; `transcode/lifecycle_model_test.go`
+  drives job lifecycles through gated converts asserting legal
+  transitions, `done` closing exactly once, and admission bounds.
+  Seeds are subtests — a failure names its seed for replay.
+- **Deterministic timers** — `testing/synctest` for debounce/throttle
+  logic (see `gateway/watch_synctest_test.go`). Inside the bubble the
+  root goroutine's `time.Sleep` drives the fake clock and
+  `synctest.Wait()` settles goroutines — `Wait` alone does NOT advance
+  the clock. Keep real fd I/O (fsnotify, sockets) outside the bubble.
+- **Fault injection** — `fault_test.go` files assert degradation, not
+  crashes: closed DB (reads empty, writes error), unwritable/vanished
+  cache, missing source files, broken walks. A failed walk or an
+  identify failure must never read as deletions (D-068).
+
 ## Mutation testing (D-069)
 
 Every new or changed `*_test.go` must be mutation-verified before the

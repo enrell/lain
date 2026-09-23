@@ -148,8 +148,33 @@ func (s *Service) ReconcileMoves(libraryID string, items []contracts.CatalogItem
 	}
 	migrated := 0
 	for i, it := range items {
-		if old, ok := byID[it.ID]; ok && old.FilePath == it.FilePath {
-			continue // refresh of a known path: identity already stable
+		if old, ok := byID[it.ID]; ok {
+			if old.FilePath == it.FilePath {
+				// Refresh of a known path: the fresh item carries no
+				// history, so carry the recorded aliases forward —
+				// wholesale upsert would otherwise wipe them.
+				it.Aliases = mergeAliases(it.Aliases, old.Aliases)
+				items[i] = it
+				continue // identity already stable
+			}
+			if sameLogical(old, it) {
+				// Move-back (A->B->A): the file returned to the path
+				// its ID derives from. The match loop below skips
+				// same-ID candidates, so reconcile here — adopt the
+				// recorded history and log the vacated path.
+				it.Aliases = mergeAliases(it.Aliases, old.Aliases)
+				if !hasAlias(it.Aliases, old.FilePath) {
+					it.Aliases = append(it.Aliases, old.FilePath)
+				}
+				if len(it.Aliases) > 8 {
+					it.Aliases = it.Aliases[len(it.Aliases)-8:]
+				}
+				items[i] = it
+				migrated++
+				continue
+			}
+			// Different logical item claiming this path-derived ID:
+			// honest takeover — the fresh item replaces the row.
 		}
 		var match *contracts.CatalogItem
 		for _, cand := range existing {
@@ -185,6 +210,17 @@ func (s *Service) ReconcileMoves(libraryID string, items []contracts.CatalogItem
 		migrated++
 	}
 	return items, migrated
+}
+
+// mergeAliases returns dst extended with every src path not already
+// present, preserving order (dst history first, then src).
+func mergeAliases(dst, src []string) []string {
+	for _, a := range src {
+		if !hasAlias(dst, a) {
+			dst = append(dst, a)
+		}
+	}
+	return dst
 }
 
 func hasAlias(aliases []string, path string) bool {

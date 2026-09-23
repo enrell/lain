@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -91,8 +92,11 @@ func parse(raw []byte) (contracts.MediaInfo, error) {
 		return contracts.MediaInfo{}, err
 	}
 	info := contracts.MediaInfo{Format: r.Format.FormatName, Streams: []contracts.MediaStream{}}
-	if r.Format.Duration != "" {
-		info.Duration, _ = strconv.ParseFloat(r.Format.Duration, 64)
+	// d >= 0 rejects NaN outright (NaN comparisons are false), so a
+	// malformed or infinite duration degrades to 0 — unknown — instead
+	// of poisoning duration math downstream.
+	if d, err := strconv.ParseFloat(r.Format.Duration, 64); err == nil && d >= 0 && !math.IsInf(d, 0) {
+		info.Duration = d
 	}
 	for _, s := range r.Streams {
 		if s.CodecType != "video" && s.CodecType != "audio" && s.CodecType != "subtitle" {
@@ -101,7 +105,9 @@ func parse(raw []byte) (contracts.MediaInfo, error) {
 		info.Streams = append(info.Streams, contracts.MediaStream{
 			Index: s.Index, Type: s.CodecType, Codec: strings.ToLower(s.CodecName),
 			Profile: s.Profile, PixelFormat: strings.ToLower(s.PixelFormat),
-			Width: s.Width, Height: s.Height, Channels: s.Channels,
+			// Geometry feeds scaling and plan math; negative values are
+			// malformed input, not real dimensions — clamp to unknown.
+			Width: max(s.Width, 0), Height: max(s.Height, 0), Channels: max(s.Channels, 0),
 			Language: strings.ToLower(s.Tags.Language), Title: s.Tags.Title,
 			Default: s.Disposition.Default != 0, Forced: s.Disposition.Forced != 0,
 			ColorTransfer: strings.ToLower(s.ColorTransfer), ColorPrimaries: strings.ToLower(s.ColorPrimaries),
