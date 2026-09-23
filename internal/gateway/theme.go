@@ -225,7 +225,7 @@ func blendTo(c, other, target string, min float64) string {
 	if contrastRatio(c, other) >= min {
 		return c
 	}
-	for i := 0; i < 256; i++ {
+	for range 256 {
 		next := mixHex(c, target, 0.08)
 		if next == c {
 			break

@@ -179,12 +179,15 @@ func (s *Server) transcodeRequest(v auth.Verified, filePath string, selection tr
 // effectiveBitrateLimit returns the tighter non-zero cap, or 0 when
 // neither is set.
 func effectiveBitrateLimit(userKbps, serverKbps int) int {
+	noUser := userKbps <= 0
+	noServer := serverKbps <= 0
+	userTighter := userKbps < serverKbps
 	switch {
-	case userKbps <= 0:
+	case noUser:
 		return serverKbps
-	case serverKbps <= 0:
+	case noServer:
 		return userKbps
-	case userKbps < serverKbps:
+	case userTighter:
 		return userKbps
 	default:
 		return serverKbps
@@ -472,12 +475,15 @@ func rewriteHLSPlaylist(raw, session, token string) string {
 			b.WriteByte('\n')
 		}
 		trimmed := strings.TrimSpace(line)
+		blank := trimmed == ""
+		isMap := strings.HasPrefix(trimmed, "#EXT-X-MAP:")
+		isTag := strings.HasPrefix(trimmed, "#")
 		switch {
-		case trimmed == "":
+		case blank:
 			b.WriteString(line)
-		case strings.HasPrefix(trimmed, "#EXT-X-MAP:"):
+		case isMap:
 			b.WriteString(signMapURI(line, session, token))
-		case strings.HasPrefix(trimmed, "#"):
+		case isTag:
 			b.WriteString(line)
 		default:
 			b.WriteString(signHLSURI(trimmed, session, token))

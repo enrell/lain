@@ -627,10 +627,11 @@ func (t *Transcoder) acquireSlot() bool {
 			return true
 		}
 		t.mu.Unlock()
+		poll := 50 * time.Millisecond
 		select {
 		case <-t.ctx.Done():
 			return false
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(poll):
 		}
 	}
 }
@@ -1271,7 +1272,7 @@ func (t *Transcoder) activeSessionsWith(extra string) map[string]bool {
 // recentAccessGrace protects a recently-fetched session from eviction: a
 // ready HLS session is still playable, so its segments must survive while
 // a client is watching.
-const recentAccessGrace = 60 * time.Second
+const recentAccessGraceSeconds = 60
 
 // cleanup removes abandoned/stale derivatives and then evicts the
 // least-recently-used ready entries until the configured ready-cache
@@ -1355,13 +1356,15 @@ func (t *Transcoder) cleanup(startup bool, exclude map[string]bool) error {
 	// between the media rename and sidecar write.
 	for _, de := range entries {
 		name := de.Name()
+		isMP4 := filepath.Ext(name) == ".mp4"
+		isHLSDir := strings.HasSuffix(name, ".hls") && de.IsDir()
 		switch {
-		case filepath.Ext(name) == ".mp4":
+		case isMP4:
 			id := name[:len(name)-len(".mp4")]
 			if !meta[id] && !exclude[id] {
 				_ = os.Remove(filepath.Join(t.dir, name))
 			}
-		case strings.HasSuffix(name, ".hls") && de.IsDir():
+		case isHLSDir:
 			id := strings.TrimSuffix(name, ".hls")
 			if !meta[id] && !exclude[id] {
 				_ = os.RemoveAll(filepath.Join(t.dir, name))
@@ -1374,7 +1377,7 @@ func (t *Transcoder) cleanup(startup bool, exclude map[string]bool) error {
 		}
 		return ready[i].AccessedAt < ready[j].AccessedAt
 	})
-	grace := t.now().Add(-recentAccessGrace).Unix()
+	grace := t.now().Add(-recentAccessGraceSeconds * time.Second).Unix()
 	for _, e := range ready {
 		if total <= budget {
 			break

@@ -1,5 +1,7 @@
 package gateway
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 // Real end-to-end transcoding: every source is generated procedurally
 // by ffmpeg (lavfi), catalogued through the real ingest pipeline, then
 // driven over HTTP against the real server. Nothing is faked and

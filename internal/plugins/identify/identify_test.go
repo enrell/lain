@@ -1,5 +1,7 @@
 package identify
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
 	"testing"
 

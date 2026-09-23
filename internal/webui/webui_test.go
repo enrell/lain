@@ -1,12 +1,16 @@
 package webui
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
+	"errors"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 func testFS() fstest.MapFS {
@@ -16,6 +20,7 @@ func testFS() fstest.MapFS {
 		"_app/immutable/app.css": &fstest.MapFile{Data: []byte("body{color:red}")},
 		"favicon.svg":            &fstest.MapFile{Data: []byte("<svg/>")},
 		"fonts/inter.woff2":      &fstest.MapFile{Data: []byte("wOF2")},
+		"report.html":            &fstest.MapFile{Data: []byte("<html>r</html>")},
 	}
 }
 
@@ -65,6 +70,12 @@ func TestAssetsServedWithTypesAndCaching(t *testing.T) {
 	rec = do(t, h, "GET", "/fonts/inter.woff2")
 	if rec.Header().Get("Content-Type") != "font/woff2" {
 		t.Fatalf("font content-type %q", rec.Header().Get("Content-Type"))
+	}
+	// .html is not in the extension switch: the type must come from
+	// mime.TypeByExtension, not the octet-stream fallback.
+	rec = do(t, h, "GET", "/report.html")
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("mime-derived content-type: %q", ct)
 	}
 	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "max-age=3600") {
 		t.Fatalf("asset cache-control %q", cc)
@@ -141,6 +152,58 @@ func TestMissingIndexGivesBuildNotice(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "web UI") {
 		t.Fatalf("unbuilt notice: %q", rec.Body.String())
+	}
+}
+
+// A broken embedded tree degrades to a plain 500 page, never a panic.
+func TestMountFSErrorDegradesTo500(t *testing.T) {
+	mux := http.NewServeMux()
+	mount(mux, nil, errors.New("dist missing"))
+	rec := do(t, mux, "GET", "/")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("degraded mount: %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "web UI unavailable: dist missing") {
+		t.Fatalf("degraded body: %q", rec.Body.String())
+	}
+}
+
+// errFile implements only fs.File — no ReaderAt/Seeker — and its Read
+// always fails, forcing the readSeeker fallback into its error path.
+type errFile struct{}
+
+func (errFile) Stat() (fs.FileInfo, error) { return errFileInfo{}, nil }
+func (errFile) Read([]byte) (int, error)   { return 0, errors.New("read blew up") }
+func (errFile) Close() error               { return nil }
+
+type errFileInfo struct{}
+
+func (errFileInfo) Name() string      { return "broken.bin" }
+func (errFileInfo) Size() int64       { return 4 }
+func (errFileInfo) Mode() fs.FileMode { return 0o444 }
+func (errFileInfo) ModTime() time.Time {
+	return time.Unix(0, 0)
+}
+func (errFileInfo) IsDir() bool { return false }
+func (errFileInfo) Sys() any    { return nil }
+
+type errFS struct{ inner fs.FS }
+
+func (e errFS) Open(name string) (fs.File, error) {
+	if name == "broken.bin" {
+		return errFile{}, nil
+	}
+	return e.inner.Open(name)
+}
+
+func TestUnreadableAssetIs500(t *testing.T) {
+	h := Handler(errFS{inner: testFS()})
+	rec := do(t, h, "GET", "/broken.bin")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("unreadable asset: %d body %q", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("unreadable asset content-type %q", rec.Header().Get("Content-Type"))
 	}
 }
 

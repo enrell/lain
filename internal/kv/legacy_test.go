@@ -1,5 +1,7 @@
 package kv
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
 	"encoding/json"
 	"os"
@@ -23,7 +25,7 @@ func TestLegacyImport(t *testing.T) {
 	write("users.json", `[{"id":"user-admin","username":"admin","pass_hash":"eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4","created_at":1}]`)
 	write("libraries.json", `[{"id":"lib-1","name":"Anime","type":"anime","path":"/media","source":"lain-source-filesystem","created_at":1}]`)
 	write("catalog.json", `{"abc123":{"id":"abc123","library_id":"lib-1","kind":"episode","title":"Show","episode":2,"file_path":"/media/e2.mkv","origin":"x","provenance":"y","updated_at":1}}`)
-	write("userstate.json", `{"user-admin\u0000123":{"item_id":"123","user_id":"user-admin","position_sec":5,"updated_at":1}}`)
+	write("userstate.json", `{"user-admin\u0000123":{"item_id":"123","user_id":"user-admin","position_sec":5,"updated_at":1},"user-admin\u0000124":{"item_id":"124","user_id":"user-admin","position_sec":9,"updated_at":2}}`)
 
 	docs := dirDocs{root: dir}
 	db, err := Open(dir)
@@ -44,8 +46,11 @@ func TestLegacyImport(t *testing.T) {
 		if tx.Bucket(BItems).Stats().KeyN != 1 || tx.Bucket(BItemsByLib).Stats().KeyN != 1 {
 			t.Errorf("items/index wrong")
 		}
-		if tx.Bucket(BProgress).Stats().KeyN != 1 {
-			t.Errorf("progress wrong")
+		if tx.Bucket(BProgress).Stats().KeyN != 2 {
+			t.Errorf("progress wrong: %d, want 2", tx.Bucket(BProgress).Stats().KeyN)
+		}
+		if got := tx.Bucket(BMeta).Get([]byte("secret")); string(got) != "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" {
+			t.Errorf("secret not imported: %q", got)
 		}
 		var u struct {
 			Role   string `json:"role"`
@@ -71,6 +76,55 @@ func TestLegacyImport(t *testing.T) {
 	// Second run is a no-op (idempotent, no duplicates).
 	if err := ImportLegacy(db, docs); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// An empty or missing secret must not materialize a meta key.
+func TestLegacyImportSkipsEmptySecret(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("secret.json", `""`)
+	write("users.json", `[{"id":"u1","username":"u","pass_hash":"eA==","created_at":1}]`)
+
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := ImportLegacy(db, dirDocs{root: dir}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.View(func(tx *bolt.Tx) error {
+		if tx.Bucket(BMeta).Get([]byte("secret")) != nil {
+			t.Error("empty secret must not be stored")
+		}
+		if tx.Bucket(BUsers).Stats().KeyN != 1 {
+			t.Error("user must still be imported")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A database that cannot transact fails the import loudly.
+func TestLegacyImportFailsOnClosedDB(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "users.json"), []byte(`[]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if err := ImportLegacy(db, dirDocs{root: dir}); err == nil {
+		t.Fatal("import on a closed db must fail")
 	}
 }
 

@@ -55,24 +55,30 @@ func parseHLSPlaylist(path string) ([]hlsSegment, bool, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		isEmpty := line == ""
+		isSeqTag := strings.HasPrefix(line, "#EXT-X-MEDIA-SEQUENCE:")
+		isInfTag := strings.HasPrefix(line, "#EXTINF:")
+		isDiscont := line == "#EXT-X-DISCONTINUITY"
+		isEnd := line == "#EXT-X-ENDLIST"
+		isOtherTag := strings.HasPrefix(line, "#")
 		switch {
-		case line == "":
-		case strings.HasPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"):
+		case isEmpty:
+		case isSeqTag:
 			mediaSeq, _ = strconv.Atoi(strings.TrimPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"))
 			pendingSeq = mediaSeq
-		case strings.HasPrefix(line, "#EXTINF:"):
+		case isInfTag:
 			value := strings.TrimPrefix(line, "#EXTINF:")
 			if i := strings.IndexByte(value, ','); i >= 0 {
 				value = value[:i]
 			}
 			pendingDuration, _ = strconv.ParseFloat(strings.TrimSpace(value), 64)
-		case line == "#EXT-X-DISCONTINUITY":
+		case isDiscont:
 			// The tag precedes the segment it applies to: the next media
 			// segment starts a new timeline.
 			pendingDiscont = true
-		case line == "#EXT-X-ENDLIST":
+		case isEnd:
 			ended = true
-		case strings.HasPrefix(line, "#"):
+		case isOtherTag:
 			// header/metadata tags are not needed here
 		default:
 			seg := hlsSegment{URI: line, Duration: pendingDuration, MediaSeq: pendingSeq, IsDiscont: pendingDiscont}
@@ -245,15 +251,17 @@ func (t *Transcoder) applyThrottle(j *job) {
 	clientSec := clientPositionSec(dir, clientSeg)
 	ahead := producedSec - clientSec
 	limit := float64(j.settings.ThrottleAheadSec)
+	shouldPause := !paused && ahead > limit
+	shouldResume := paused && ahead < limit/2
 	switch {
-	case !paused && ahead > limit:
+	case shouldPause:
 		if err := pauseProcess(cmd.Process); err == nil {
 			t.mu.Lock()
 			j.paused = true
 			t.mu.Unlock()
 			t.logger().Debug("transcode throttled", "session", session, "ahead_sec", int(ahead))
 		}
-	case paused && ahead < limit/2:
+	case shouldResume:
 		if err := resumeProcess(cmd.Process); err == nil {
 			t.mu.Lock()
 			j.paused = false

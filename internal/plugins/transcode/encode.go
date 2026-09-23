@@ -45,9 +45,9 @@ func subtitleFontOptions(settings contracts.TranscodeSettings) string {
 func sanitizeFontName(name string) string {
 	var b strings.Builder
 	for _, r := range name {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
-			r == ' ', r == '-', r == '_', r == '+':
+		keep := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' ||
+			r == ' ' || r == '-' || r == '_' || r == '+'
+		if keep {
 			b.WriteRune(r)
 		}
 	}
@@ -273,6 +273,8 @@ func (p encodePlan) hlsArgs(dir, output string) []string {
 }
 
 func (p encodePlan) videoQualityArgs() []string {
+	isSVT := p.encoder == "libsvtav1"
+	isAOM := p.encoder == "libaom-av1"
 	preset := p.preset
 	crf := strconv.Itoa(p.crf)
 	cap := func() []string {
@@ -311,11 +313,11 @@ func (p encodePlan) videoQualityArgs() []string {
 		}
 		args := []string{"-q:v", strconv.Itoa(q)}
 		return append(args, cap()...)
-	case p.encoder == "libsvtav1":
+	case isSVT:
 		// The AV1 preset is the operator's choice, not a constant.
 		args := []string{"-preset", svtAV1Preset(preset), "-crf", crf}
 		return append(args, cap()...)
-	case p.encoder == "libaom-av1":
+	case isAOM:
 		// CRF (constant quality) normally pins -b:v 0, but libaom
 		// refuses any rate-control parameters without a bitrate, so a
 		// requested ceiling switches to constrained quality carried by
@@ -486,11 +488,14 @@ func (t *Transcoder) execPlan(ctx context.Context, p encodePlan, output string, 
 	}
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
-	if onCmd != nil {
-		onCmd(cmd)
-	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	// onCmd fires only after Start: it publishes the cmd under t.mu, and
+	// readers dereference cmd.Process — Start() writes that field, so a
+	// pre-Start publish would race them.
+	if onCmd != nil {
+		onCmd(cmd)
 	}
 	if onSample != nil {
 		consumeProgress(stdout, p.report.durationSeconds(), onSample)

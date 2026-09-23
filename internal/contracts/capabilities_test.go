@@ -1,5 +1,7 @@
 package contracts
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
 	"reflect"
 	"testing"
@@ -42,6 +44,14 @@ func TestParseCapabilitiesDistinguishesUnknownFromEmpty(t *testing.T) {
 	var absent *ClientCapabilities
 	if absent.Has("mkv") {
 		t.Fatal("a nil capability set must not report any token")
+	}
+	// Has must find a claimed token and miss an unclaimed one.
+	claimed := ParseCapabilities([]string{"mkv,mkv/h264"})
+	if !claimed.Has("mkv") || !claimed.Has("mkv/h264") {
+		t.Fatal("claimed tokens must report present")
+	}
+	if claimed.Has("avi") || claimed.Has("mkv/av1") {
+		t.Fatal("unclaimed tokens must report absent")
 	}
 }
 

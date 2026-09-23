@@ -42,7 +42,11 @@ func (p Provider) Invoke(cap string, input any) (any, error) {
 	if !ok {
 		return nil, &core.Error{Code: "invalid-message", Msg: "QueryInput required"}
 	}
-	return Query(p.Items(), in), nil
+	var items []contracts.CatalogItem
+	if p.Items != nil {
+		items = p.Items()
+	}
+	return Query(items, in), nil
 }
 
 // Query filters case-insensitively by title substring (kind optional)

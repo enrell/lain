@@ -32,6 +32,12 @@ func FS() (fs.FS, error) { return fs.Sub(embedded, "dist") }
 // this handler, which never lets an API request become HTML.
 func Mount(mux *http.ServeMux) {
 	sub, err := FS()
+	mount(mux, sub, err)
+}
+
+// mount is the testable seam: FS() cannot fail on a real embedded
+// build, so the degraded path is exercised through here.
+func mount(mux *http.ServeMux, sub fs.FS, err error) {
 	if err != nil {
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "web UI unavailable: "+err.Error(), http.StatusInternalServerError)

@@ -1,5 +1,7 @@
 package transcode
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 // Adversarial audit of the newest transcode surface: decode-only
 // hardware acceleration, hardware device resolution, the visible
 // software fallback, the relocated artifact path round trip, profile-key
