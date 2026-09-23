@@ -271,7 +271,7 @@
 							{resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
 						</LinkButton>
 					{:else}
-						<Button size="lg" disabled title={plan?.reason ?? 'Not playable in the browser'}>
+						<Button size="lg" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
 							<Play class="size-4" /> Play
 						</Button>
 					{/if}
@@ -287,7 +287,15 @@
 					{/if}
 				</div>
 
-				{#if !playable}
+				{#if item.missing}
+					<div class="max-w-2xl rounded-card border border-danger/25 bg-danger/5 px-4 py-3 text-sm">
+						<p class="font-medium text-danger">The file is no longer on disk.</p>
+						<p class="mt-1 text-muted">
+							It stays in the catalog so progress and metadata are preserved. If the file comes
+							back under {library?.name ?? 'its library'}, it becomes playable again on its own.
+						</p>
+					</div>
+				{:else if !playable}
 					<div class="max-w-2xl rounded-card border border-warning/25 bg-warning/5 px-4 py-3 text-sm">
 						<p class="font-medium text-warning">The browser cannot play this file directly.</p>
 						<p class="mt-1 text-muted">

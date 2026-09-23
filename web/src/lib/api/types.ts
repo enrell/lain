@@ -23,6 +23,9 @@ export interface CatalogItem {
 	origin: string;
 	provenance: string;
 	updated_at: number;
+	/** The file vanished from the library root (D-068): the row is kept
+	 * and the flag clears on its own when the path comes back. */
+	missing?: boolean;
 }
 
 /** internal/contracts.CatalogPage (media.go). */
@@ -256,6 +259,10 @@ export interface ScanStats {
 	unidentified: number;
 	errors: number;
 	pruned: number;
+	/** Files gone from a clean scan (marked, not deleted — D-068). */
+	missing: number;
+	/** Missing items whose file reappeared under the same path. */
+	restored: number;
 	migrated: number;
 	enriched: number;
 	walk_errors: number;
@@ -275,6 +282,8 @@ export interface ScanStatus {
 	finished_at?: number;
 	stats?: ScanStats;
 	error?: string;
+	/** What started this scan: a button press or the filesystem watcher. */
+	trigger?: 'manual' | 'watch';
 }
 
 /** internal/contracts.Enrichment (media.go). */

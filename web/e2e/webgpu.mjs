@@ -146,6 +146,8 @@ try {
       video.autoplay = true;
       video.playsInline = true;
       const output = document.createElement('canvas');
+	  output.style.width = '192px';
+	  output.style.height = '108px';
       document.body.replaceChildren(video, output);
       video.srcObject = source.captureStream(30);
       let frame = 0;
@@ -191,6 +193,66 @@ try {
         webgpu: !!navigator.gpu
       };
       started.renderer.stop();
+	  const modes = {};
+	  for (const mode of ['anime4k-a', 'anime4k-aa', 'anime4k-lite']) {
+	    active = false;
+	    failure = '';
+	    const next = await VideoRenderer.create({
+	      video, canvas: output, computeMode: mode,
+	      onActiveChange: (value) => active = value,
+	      onFailure: (reason) => failure = reason
+	    });
+	    if (!next.renderer) throw new Error(mode + ': ' + next.reason);
+	    await new Promise((resolve, reject) => {
+	      const deadline = performance.now() + 12000;
+	      const poll = () => active ? resolve() : performance.now() > deadline
+	        ? reject(new Error(mode + ': renderer did not present: ' + failure))
+	        : setTimeout(poll, 50);
+	      poll();
+	    });
+	    modes[mode] = [output.width, output.height];
+	    next.renderer.stop();
+	  }
+	  output.style.width = '384px';
+	  output.style.height = '216px';
+	  active = false;
+	  const highScale = await VideoRenderer.create({
+	    video, canvas: output, computeMode: 'anime4k-a',
+	    onActiveChange: (value) => active = value,
+	    onFailure: (reason) => failure = reason
+	  });
+	  if (!highScale.renderer) throw new Error(highScale.reason);
+	  await new Promise((resolve, reject) => {
+	    const deadline = performance.now() + 12000;
+	    const poll = () => active ? resolve() : performance.now() > deadline
+	      ? reject(new Error('4x renderer did not present: ' + failure))
+	      : setTimeout(poll, 50);
+	    poll();
+	  });
+	  result.highScale = [output.width, output.height];
+	  highScale.renderer.stop();
+	  result.autoDownscale = [];
+	  for (const [width, height] of [[144, 81], [288, 162]]) {
+	    output.style.width = width + 'px';
+	    output.style.height = height + 'px';
+	    active = false;
+	    const scaled = await VideoRenderer.create({
+	      video, canvas: output, computeMode: 'anime4k-a',
+	      onActiveChange: (value) => active = value,
+	      onFailure: (reason) => failure = reason
+	    });
+	    if (!scaled.renderer) throw new Error(scaled.reason);
+	    await new Promise((resolve, reject) => {
+	      const deadline = performance.now() + 12000;
+	      const poll = () => active ? resolve() : performance.now() > deadline
+	        ? reject(new Error('auto downscale did not present: ' + failure))
+	        : setTimeout(poll, 50);
+	      poll();
+	    });
+	    result.autoDownscale.push([output.width, output.height]);
+	    scaled.renderer.stop();
+	  }
+	  result.modes = modes;
       clearInterval(timer);
       for (const track of video.srcObject.getTracks()) track.stop();
       return result;
@@ -208,6 +270,14 @@ try {
 	if (!result?.active || !result.webgpu) throw new Error(`renderer inactive: ${JSON.stringify(result)}`);
 	if (result.source.join('x') !== '96x54' || result.output.join('x') !== '192x108') {
 		throw new Error(`wrong graph dimensions: ${JSON.stringify(result)}`);
+	}
+	if (result.modes['anime4k-lite'].join('x') !== '96x54' ||
+		result.modes['anime4k-a'].join('x') !== '192x108' ||
+		result.modes['anime4k-aa'].join('x') !== '192x108' ||
+		result.highScale.join('x') !== '384x216' ||
+		result.autoDownscale[0].join('x') !== '144x81' ||
+		result.autoDownscale[1].join('x') !== '288x162') {
+		throw new Error(`wrong Anime4K dimensions: ${JSON.stringify(result)}`);
 	}
 	console.log(`WebGPU probe passed: ${result.source.join('x')} -> ${result.output.join('x')}`);
 } finally {
