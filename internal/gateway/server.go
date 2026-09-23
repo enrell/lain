@@ -27,6 +27,7 @@ import (
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/core"
 	"github.com/enrell/lain/internal/kv"
+	"github.com/enrell/lain/internal/localplay"
 	"github.com/enrell/lain/internal/plugins/catalog"
 	"github.com/enrell/lain/internal/plugins/ingest"
 	"github.com/enrell/lain/internal/plugins/metadata"
@@ -76,11 +77,17 @@ type Server struct {
 	// until StartWatcher runs; tests opt in, serve starts it.
 	watch         *libWatcher
 	watchDebounce time.Duration // test seam: zero uses the default
+
+	// local spawns mpv/VLC on this machine for loopback browsers (D-072).
+	local *localplay.Manager
 }
 
 // Close stops background transforms and the library watcher before
 // releasing the database.
 func (s *Server) Close() error {
+	if s.local != nil {
+		s.local.Close()
+	}
 	if w := s.watcher(); w != nil {
 		w.close()
 	}
@@ -194,7 +201,7 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	if opts.transcodeProbe != nil {
 		probeTranscode = opts.transcodeProbe
 	}
-	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, settings: &SettingsStore{db: db}, mux: http.NewServeMux(), ver: ver, themePath: omarchyThemePath(), transcode: tr, probeTranscode: probeTranscode, autoEnrich: true, scan: ScanStatus{State: "idle"}}
+	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, settings: &SettingsStore{db: db}, mux: http.NewServeMux(), ver: ver, themePath: omarchyThemePath(), transcode: tr, probeTranscode: probeTranscode, autoEnrich: true, scan: ScanStatus{State: "idle"}, local: localplay.New()}
 	// First boot adopts CLI bounds as the saved policy; later boots keep
 	// the operator's admin-UI choices (D-045).
 	bootSettings := contracts.DefaultTranscodeSettings()
@@ -337,6 +344,8 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/items/{id}/stream", s.handleStream) // auth inside (query token)
 	m.HandleFunc("PUT /api/items/{id}/progress", s.requireAuth(s.handleProgressPut))
 	m.HandleFunc("GET /api/items/{id}/progress", s.requireAuth(s.handleProgressGet))
+	m.HandleFunc("GET /api/localplay", s.requireAuth(s.handleLocalPlay))
+	m.HandleFunc("POST /api/items/{id}/play-local", s.requireAuth(s.handlePlayLocal))
 
 	m.HandleFunc("GET /api/plugins", s.requireAdmin(s.handlePlugins))
 	m.HandleFunc("POST /api/plugins/swap", s.requireAdmin(s.handleSwap))

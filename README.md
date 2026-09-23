@@ -231,14 +231,19 @@ API token while the player runs; series playlists are temporary private
 files and single-item playback passes the URL as a process argument.
 Treat local process command lines as private. `--dry-run` redacts the URL.
 
-For external playback from the web UI, install this CLI and the player on
-the **browser's computer**. Log in with the exact origin shown in the web
+For external playback from the web UI, the simplest path needs no CLI at
+all: when the server runs natively on the same computer as the browser,
+Settings → "Player on this machine" (or the per-item "Play on this
+machine" button) makes the server itself open mpv or VLC — progress and
+language preference apply exactly as in `lain watch`. When the browser
+is on a *different* computer, install this CLI and the player on the
+**browser's computer**. Log in with the exact origin shown in the web
 page's setup instructions, then run `lain install-player-handler` on that
 computer. The browser's `lain://play` link contains only the server origin,
 item ID and chosen player; the handler accepts links only for the locally
 configured server and retrieves the item using its local login. The
-browser may ask permission to open the local app. The handoff adds no
-server playback endpoint or browser credential transfer. If VLC cannot report position,
+browser may ask permission to open the local app. The `lain://` handoff
+needs no endpoint of its own and no browser credential transfer. If VLC cannot report position,
 playback still works but the CLI warns and leaves progress unchanged.
 The handler opens a terminal so errors remain visible while launching or
 watching. Re-run `lain install-player-handler` if the CLI binary moves.

@@ -1,9 +1,11 @@
 # Clients
 
 Lain currently serves a browser UI, a Go CLI (`lain login` / `lain watch`),
-and a separate Linux desktop client in `projects/lain-desktop`. The web UI
-and CLI can launch mpv or VLC on the browser's computer through the optional
-local player handler. The desktop app keeps its existing libmpv playback.
+and a separate Linux desktop client in `projects/lain-desktop`. When the
+browser and a natively running server share a machine, the server opens
+mpv or VLC itself for the web UI (D-072); browsers on other computers use
+the optional `lain://` local player handler (D-070). The desktop app keeps
+its existing libmpv playback.
 The web and CLI clients share a preferred playback language through the
 authenticated user account (D-071). The default player is local to each
 browser or CLI installation.

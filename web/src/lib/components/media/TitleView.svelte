@@ -12,7 +12,7 @@
 	import Poster from '$lib/components/media/Poster.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import { formatTime } from '$lib/utilities/format';
-	import { loadPreferredPlayer, playbackHref, type PreferredPlayer } from '$lib/player/external-player';
+	import { loadPreferredPlayer, playbackHref, playLocallyOrBrowser, type PreferredPlayer } from '$lib/player/external-player';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	onMount(() => {
@@ -166,7 +166,7 @@
 			</div>
 			<div>
 				{#if resumeTarget}
-					<LinkButton href={playHref(resumeTarget.id)} size="lg" class="w-full justify-center">
+					<LinkButton href={playHref(resumeTarget.id)} size="lg" class="w-full justify-center" onclick={(e) => playLocallyOrBrowser(e, resumeTarget.id, preferredPlayer)}>
 						<Play class="size-4 fill-current" aria-hidden="true" /> {resumeLabel}
 					</LinkButton>
 				{:else}
@@ -268,6 +268,7 @@
 						{:else}
 							<a
 								href={playHref(item.id)}
+								onclick={(e) => playLocallyOrBrowser(e, item.id, preferredPlayer)}
 								class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
 								aria-label={`Play ${episodeLabel(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 							>

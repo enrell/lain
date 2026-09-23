@@ -3,6 +3,7 @@ import { backup } from './backup';
 import { catalog } from './catalog';
 import { enrich } from './enrich';
 import { libraries } from './libraries';
+import { localplay } from './localplay';
 import { me } from './me';
 import { playback } from './playback';
 import { plugins } from './plugins';
@@ -24,6 +25,7 @@ export const api = {
 	catalog,
 	enrich,
 	libraries,
+	localplay,
 	me,
 	playback,
 	plugins,
