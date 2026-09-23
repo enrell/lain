@@ -35,6 +35,7 @@
 	import { elapsedSince, formatTime } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
 	import { EFFECT_PRESETS, loadEffectsPolicy, resolveEffect, type EffectPreset } from '$lib/player/effects-policy';
+	import { detectBrowserProfile, type BrowserProfile, type RendererBackend } from '$lib/player/browser-profile';
 	import { VideoRenderer } from '$lib/player/webgpu/engine';
 	import type { WebGLAnime4KRenderer } from '$lib/player/webgl/engine';
 	import { PASSTHROUGH_PASS } from '$lib/player/webgpu/shaders';
@@ -57,7 +58,9 @@
 
 	let container = $state<HTMLDivElement | null>(null);
 	let video = $state<HTMLVideoElement | null>(null);
-	let renderCanvas = $state<HTMLCanvasElement | null>(null);
+	let webgpuCanvas = $state<HTMLCanvasElement | null>(null);
+	let webglCanvas = $state<HTMLCanvasElement | null>(null);
+	let browserProfile = $state<BrowserProfile | null>(null);
 	let gpuRenderer: VideoRenderer | WebGLAnime4KRenderer | null = null;
 	let rendererActive = $state(false);
 	let rendererBackend = $state<'WebGPU' | 'WebGL2' | null>(null);
@@ -255,6 +258,7 @@
 	}
 
 	onMount(() => {
+		void detectBrowserProfile().then((profile) => { browserProfile = profile; });
 		void applyEffectDefault();
 		window.addEventListener('pagehide', onPageHide);
 		document.addEventListener('visibilitychange', onPageHide);
@@ -304,82 +308,66 @@
 		rendererBackend = null;
 	}
 
-	// The browser media engine remains authoritative. WebGPU starts only
-	// after playback has a usable source and yields the picture only after
-	// its first successful GPU submission. Native text tracks temporarily
-	// return presentation to <video>, whose caption renderer owns them.
+	// The browser media engine remains authoritative. The browser profile sets
+	// backend order, but each renderer must pass its own capability and frame
+	// checks before it can replace native video.
 	$effect(() => {
 		const el = video;
-		const canvas = renderCanvas;
+		const gpuCanvas = webgpuCanvas;
+		const glCanvas = webglCanvas;
+		const profile = browserProfile;
 		const ready = transcodeReady;
 		const nativeSubtitle = subtitleSrc;
 		const passes = rendererPasses;
 		const mode = computeMode;
-		if (!el || !canvas || !ready || nativeSubtitle || selectedEffect === 'off') {
+		if (!el || !gpuCanvas || !glCanvas || !profile || !ready || nativeSubtitle || selectedEffect === 'off') {
 			stopRenderer();
 			return;
 		}
 
 		const generation = ++rendererGeneration;
 		let cancelled = false;
-		void VideoRenderer.create({
-			video: el,
-			canvas,
-			passes,
-			computeMode: mode,
-			onActiveChange: (active) => {
-				if (!cancelled && generation === rendererGeneration) {
-					rendererActive = active;
-					rendererBackend = active ? 'WebGPU' : null;
-					if (active) effectError = null;
+		const current = () => !cancelled && generation === rendererGeneration;
+		const activeChange = (backend: RendererBackend) => (active: boolean) => {
+			if (!current()) return;
+			rendererActive = active;
+			rendererBackend = active ? (backend === 'webgpu' ? 'WebGPU' : 'WebGL2') : null;
+			if (active) effectError = null;
+		};
+		const failure = (backend: RendererBackend) => (reason: string) => {
+			if (!current()) return;
+			gpuRenderer = null;
+			rendererActive = false;
+			rendererBackend = null;
+			effectError = reason;
+			if (import.meta.env.DEV) console.warn(`[lain-player] ${backend} renderer disabled`, reason);
+		};
+		void (async () => {
+			const reasons: string[] = [];
+			for (const backend of profile.backends) {
+				if (!current()) return;
+				if (backend === 'webgpu') {
+					const result = await VideoRenderer.create({
+						video: el, canvas: gpuCanvas, passes, computeMode: mode,
+						onActiveChange: activeChange(backend), onFailure: failure(backend)
+					});
+					if (!current()) { result.renderer?.stop(); return; }
+					if (result.renderer) { gpuRenderer = result.renderer; return; }
+					reasons.push(`WebGPU: ${result.reason ?? 'unavailable'}`);
+				} else {
+					const { WebGLAnime4KRenderer } = await import('$lib/player/webgl/engine');
+					if (!current()) return;
+					const result = WebGLAnime4KRenderer.create({
+						video: el, canvas: glCanvas, mode: selectedEffect,
+						onActiveChange: activeChange(backend), onFailure: failure(backend)
+					});
+					if (!current()) { result.renderer?.stop(); return; }
+					if (result.renderer) { gpuRenderer = result.renderer; return; }
+					reasons.push(`WebGL2: ${result.reason ?? 'unavailable'}`);
 				}
-			},
-			onFailure: (reason) => {
-				if (cancelled || generation !== rendererGeneration) return;
-				gpuRenderer = null;
-				rendererActive = false;
-				rendererBackend = null;
-				effectError = reason;
-				if (import.meta.env.DEV) console.warn('[lain-player] WebGPU renderer disabled', reason);
 			}
-		}).then(async (result) => {
-			if (cancelled || generation !== rendererGeneration) {
-				result.renderer?.stop();
-				return;
-			}
-			let renderer: VideoRenderer | WebGLAnime4KRenderer | null = result.renderer;
-			let reason: string | undefined = result.reason;
-			if (!result.renderer && selectedEffect !== 'off' &&
-				(result.reason === 'no WebGPU adapter is available' || result.reason === 'WebGPU is unavailable' ||
-				result.reason === 'this adapter does not support filterable 32-bit Anime4K textures')) {
-				const { WebGLAnime4KRenderer } = await import('$lib/player/webgl/engine');
-				if (cancelled || generation !== rendererGeneration) return;
-				const fallback = WebGLAnime4KRenderer.create({
-					video: el, canvas, mode: selectedEffect,
-					onActiveChange: (active) => {
-						if (!cancelled && generation === rendererGeneration) {
-							rendererActive = active;
-							rendererBackend = active ? 'WebGL2' : null;
-							if (active) effectError = null;
-						}
-					},
-					onFailure: (reason) => {
-						if (cancelled || generation !== rendererGeneration) return;
-						gpuRenderer = null;
-						rendererActive = false;
-						rendererBackend = null;
-						effectError = reason;
-					}
-				});
-				renderer = fallback.renderer;
-				reason = fallback.reason;
-			}
-			gpuRenderer = renderer;
-			if (!renderer && import.meta.env.DEV) {
-				console.info('[lain-player] native video renderer', reason);
-			}
-			if (!renderer && selectedEffect !== 'off') effectError = reason ?? 'Video effects unavailable';
-		}).catch((error: unknown) => {
+			if (current()) effectError = reasons.join('; ');
+		})().catch((error: unknown) => {
 			if (cancelled || generation !== rendererGeneration) return;
 			rendererActive = false;
 			rendererBackend = null;
@@ -1271,10 +1259,18 @@
 			<track kind="captions" />
 		</video>
 		<canvas
-			bind:this={renderCanvas}
+			bind:this={webgpuCanvas}
 			class={[
 				'pointer-events-none absolute inset-0 size-full object-contain transition-opacity duration-100',
-				rendererActive ? 'opacity-100' : 'opacity-0'
+				rendererActive && rendererBackend === 'WebGPU' ? 'opacity-100' : 'opacity-0'
+			].join(' ')}
+			aria-hidden="true"
+		></canvas>
+		<canvas
+			bind:this={webglCanvas}
+			class={[
+				'pointer-events-none absolute inset-0 size-full object-contain transition-opacity duration-100',
+				rendererActive && rendererBackend === 'WebGL2' ? 'opacity-100' : 'opacity-0'
 			].join(' ')}
 			aria-hidden="true"
 		></canvas>
@@ -1504,6 +1500,7 @@
 			<details class="mt-4 border-t border-line/40 pt-3 text-xs leading-relaxed text-muted">
 				<summary class="cursor-pointer py-2 text-sm">Playback information</summary>
 				<p class="mt-2 font-mono">{telemetry}</p>
+				{#if browserProfile}<p class="mt-2">Renderer profile: {browserProfile.id === 'brave' ? 'Brave' : 'Default'}</p>{/if}
 				{#if rendererBackend}<p class="mt-2">Video effects: {rendererBackend}</p>{/if}
 				{#if sessionNote}<p class="mt-2">{sessionNote}</p>{/if}
 			</details>
