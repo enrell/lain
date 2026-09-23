@@ -24,6 +24,14 @@ Write input: `{library_id, proposal, candidate}` → `CatalogItem` with
 `origin` + `provenance`. Item id is stable over library+path. Read:
 `nil` → list, `{id}` → one item.
 
+`CatalogItem.missing` (additive, `omitempty`) marks an item whose file
+vanished from its library root (D-068). Missing rows stay in the
+catalog — list, search, detail and episode-grouping reads all return
+them — because the stable id keeps progress and enrichment reattaching
+when the same path comes back. A clean rescan of the library clears
+the flag. Missing is a state, never a deletion: progress and
+enrichment documents are never swept.
+
 Portable document `lain.catalog-export@1` is the replacement contract.
 
 ### Gateway read: one title's files
@@ -138,8 +146,24 @@ library view never filters client-side.
 ## lain.ingest.scan@1 (exactly-one)
 
 Input: `{libraries[]}` → `ScanStats{libraries, candidates, identified,
-unidentified, errors, ...}`. Fixed order: enumerate → identify →
-catalog write. Unidentified files count, never abort.
+unidentified, errors, missing, restored, ...}`. Fixed order: enumerate
+→ identify → catalog write. Unidentified files count, never abort.
+
+Reconciliation (D-068): at the end of a *clean* walk of a library —
+root accessible, no walk errors — every stored item of that library
+absent from the present set is marked `missing` (counted in
+`stats.missing`) instead of being deleted; a missing item whose path
+reappears clears the flag (`stats.restored`). An inaccessible root or
+a dirty walk marks nothing, so an unmounted drive cannot empty the
+catalog. Identification failures are never proof of disappearance: an
+enumerated-but-unidentified path still counts as present, so an
+already-cataloged item at that path keeps its state. The gateway runs
+the same pipeline per-library from an `fsnotify` watcher (debounced,
+serialized with manual scans through the scan lock, reported as
+`trigger: "watch"` on `GET /api/library/scan`), so a delete on disk is
+reflected without waiting for a manual scan. Watching can be turned
+off with `--watch=false` / `LAIN_WATCH=false` for filesystems inotify
+cannot see.
 
 ## lain.playback.transcode@1 (exactly-one)
 

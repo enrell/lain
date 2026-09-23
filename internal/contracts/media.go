@@ -92,6 +92,10 @@ type CatalogItem struct {
 	Provenance string   `json:"provenance"`
 	Aliases    []string `json:"aliases,omitempty"`
 	UpdatedAt  int64    `json:"updated_at"`
+	// Missing marks an item whose file vanished from the library root
+	// (D-068). Scans set and clear it; a same-path restore reattaches
+	// progress and enrichments because the ID is path-derived.
+	Missing bool `json:"missing,omitempty"`
 }
 
 // CatalogPage is the paged envelope for catalog reads. Clients need
@@ -376,9 +380,13 @@ type ScanStats struct {
 	Unidentified int `json:"unidentified"`
 	Errors       int `json:"errors"`
 	Pruned       int `json:"pruned"`
-	Migrated     int `json:"migrated"`
-	Enriched     int `json:"enriched"`
-	WalkErrors   int `json:"walk_errors"`
+	// Missing counts items whose file vanished this scan (marked, not
+	// deleted, per D-068); Restored counts items whose file came back.
+	Missing    int `json:"missing"`
+	Restored   int `json:"restored"`
+	Migrated   int `json:"migrated"`
+	Enriched   int `json:"enriched"`
+	WalkErrors int `json:"walk_errors"`
 	// Unreadable names the roots behind WalkErrors and any inaccessible
 	// root, in library order. Empty when every root was walked clean.
 	Unreadable []UnreadableRoot `json:"unreadable,omitempty"`

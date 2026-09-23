@@ -1,5 +1,7 @@
 package ingest
 
+// mutation-clean: gremlins v0.6.0 — package verified 2026-09-22
+
 import (
 	"os"
 	"path/filepath"
@@ -130,8 +132,9 @@ func writeFile(t *testing.T, path string) {
 	}
 }
 
-// Deleted files are pruned; the scan reports the count.
-func TestRescanPrunesDeletedFiles(t *testing.T) {
+// Deleted files are marked missing, not deleted (D-068): the catalog
+// keeps the item so a restored file reattaches progress and overlays.
+func TestRescanMarksDeletedFilesMissing(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "[Fansub-A] Frieren - 12 [1080p].mkv"))
 	writeFile(t, filepath.Join(root, "gone.mp4"))
@@ -143,6 +146,7 @@ func TestRescanPrunesDeletedFiles(t *testing.T) {
 	if got := len(cat.List()); got != 2 {
 		t.Fatalf("list=%d, want 2", got)
 	}
+	goneID := catalog.ItemID("l", filepath.Join(root, "gone.mp4"))
 	if err := os.Remove(filepath.Join(root, "gone.mp4")); err != nil {
 		t.Fatal(err)
 	}
@@ -150,11 +154,76 @@ func TestRescanPrunesDeletedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.Pruned != 1 {
-		t.Fatalf("pruned=%d, want 1", stats.Pruned)
+	if stats.Missing != 1 || stats.Restored != 0 {
+		t.Fatalf("missing=%d restored=%d, want 1/0", stats.Missing, stats.Restored)
 	}
-	if got := len(cat.List()); got != 1 {
-		t.Fatalf("list=%d, want 1 after prune", got)
+	got, ok := cat.Get(goneID)
+	if !ok || !got.Missing {
+		t.Fatalf("deleted file must stay cataloged as missing: %+v", got)
+	}
+	// The file returns: the same path-derived ID picks its record back
+	// up and the flag clears.
+	writeFile(t, filepath.Join(root, "gone.mp4"))
+	stats, err = r.Run(ScanInput{Libraries: libs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Restored != 1 || stats.Missing != 0 {
+		t.Fatalf("restored=%d missing=%d, want 1/0", stats.Restored, stats.Missing)
+	}
+	if got, _ := cat.Get(goneID); got.Missing {
+		t.Fatal("returned file must clear the missing flag")
+	}
+}
+
+// rejectIdentify never accepts a proposal, so every candidate counts as
+// an identify error while its file plainly still exists.
+type rejectIdentify struct{}
+
+func (rejectIdentify) ID() string             { return "test-identify-reject" }
+func (rejectIdentify) Capabilities() []string { return []string{contracts.CapMediaIdentify} }
+func (rejectIdentify) Health() error          { return nil }
+func (rejectIdentify) Invoke(string, any) (any, error) {
+	return contracts.Proposal{PluginID: "test-identify-reject"}, nil
+}
+
+// An identify failure is not a deletion: an item whose file still sits
+// on disk must not be marked missing when no identifier accepts it.
+func TestIdentifyFailureKeepsItem(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "Show.S01E01.1080p.mkv"))
+	r, cat := testRunner(t)
+	libs := []contracts.Library{{ID: "l", Type: "show", Path: root}}
+	stats0, err := r.Run(ScanInput{Libraries: libs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats0.Unidentified != 0 || stats0.Identified != 1 {
+		t.Fatalf("clean scan: identified=%d unidentified=%d, want 1/0", stats0.Identified, stats0.Unidentified)
+	}
+	items := cat.List()
+	if len(items) != 1 {
+		t.Fatalf("list=%d, want 1", len(items))
+	}
+	r.Reg.Register(rejectIdentify{})
+	if _, err := r.Reg.Swap(contracts.CapMediaIdentify, []string{"test-identify-reject"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := r.Run(ScanInput{Libraries: libs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Errors != 1 {
+		t.Fatalf("errors=%d, want exactly 1", stats.Errors)
+	}
+	if stats.Missing != 0 {
+		t.Fatalf("missing=%d on identify failure, want 0", stats.Missing)
+	}
+	if stats.Identified != 0 || stats.Unidentified != 1 {
+		t.Fatalf("identified=%d unidentified=%d, want 0/1", stats.Identified, stats.Unidentified)
+	}
+	if got, _ := cat.Get(items[0].ID); got.Missing {
+		t.Fatal("identify failure must not mark the item missing")
 	}
 }
 
@@ -177,8 +246,8 @@ func TestInaccessibleRootSkipsPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.Pruned != 0 {
-		t.Fatalf("pruned=%d on dead root, want 0", stats.Pruned)
+	if stats.Pruned != 0 || stats.Missing != 0 {
+		t.Fatalf("pruned=%d missing=%d on dead root, want 0/0", stats.Pruned, stats.Missing)
 	}
 	if got := len(cat.List()); got != before {
 		t.Fatalf("catalog changed on dead root: %d -> %d", before, got)
@@ -209,6 +278,27 @@ func TestUnreadableRootIsNamed(t *testing.T) {
 	got := stats.Unreadable[0]
 	if got.LibraryID != "l" || got.Name != "Vanishing QA" || got.Path != root || got.Reason == "" {
 		t.Fatalf("root not named: %+v", got)
+	}
+}
+
+// A root whose path does not exist at all fails os.Stat, counts one
+// error, and is named with the "could not be read" reason.
+func TestNonexistentRootIsError(t *testing.T) {
+	r, _ := testRunner(t)
+	stats, err := r.Run(ScanInput{Libraries: []contracts.Library{
+		{ID: "gone", Name: "Gone", Path: filepath.Join(t.TempDir(), "nope"), Type: "anime"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Errors != 1 {
+		t.Fatalf("errors=%d, want 1 for a missing root", stats.Errors)
+	}
+	if len(stats.Unreadable) != 1 || stats.Unreadable[0].Reason != "the path could not be read" {
+		t.Fatalf("unreadable=%+v", stats.Unreadable)
+	}
+	if stats.Missing != 0 {
+		t.Fatalf("missing=%d, want 0", stats.Missing)
 	}
 }
 
@@ -260,19 +350,22 @@ func TestWalkErrorBlocksPruneForThatLibrary(t *testing.T) {
 	if len(stats.Unreadable) != 1 || stats.Unreadable[0].LibraryID != "bad" || stats.Unreadable[0].Path != bad {
 		t.Fatalf("walk-error root not named: %+v", stats.Unreadable)
 	}
-	// good lib pruned normally...
-	if stats.Pruned != 1 {
-		t.Fatalf("pruned=%d, want 1 (good lib only)", stats.Pruned)
+	// good lib marked its vanished file missing...
+	if stats.Missing != 1 {
+		t.Fatalf("missing=%d, want 1 (good lib only)", stats.Missing)
 	}
-	// ...bad lib kept everything it ever saw.
-	n := 0
+	// ...bad lib kept everything it ever saw, unflagged.
+	n, flagged := 0, 0
 	for _, it := range cat.List() {
 		if it.LibraryID == "bad" {
 			n++
+			if it.Missing {
+				flagged++
+			}
 		}
 	}
-	if n != 2 {
-		t.Fatalf("bad lib items=%d, want 2 (no prune on dirty walk)", n)
+	if n != 2 || flagged != 0 {
+		t.Fatalf("bad lib items=%d missing=%d, want 2/0 (no marking on dirty walk)", n, flagged)
 	}
 }
 
@@ -291,7 +384,7 @@ func TestRescanIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Identified != 2 || second.Identified != 2 || second.Pruned != 0 {
+	if first.Identified != 2 || second.Identified != 2 || second.Pruned != 0 || second.Missing != 0 {
 		t.Fatalf("not idempotent: %+v -> %+v", first, second)
 	}
 	if got := len(cat.List()); got != 2 {
@@ -410,8 +503,8 @@ func TestRescanRenameMigratesID(t *testing.T) {
 	if stats.Migrated != 1 {
 		t.Fatalf("migrated=%d, want 1", stats.Migrated)
 	}
-	if stats.Pruned != 0 {
-		t.Fatalf("pruned=%d, want 0 (move, not delete)", stats.Pruned)
+	if stats.Pruned != 0 || stats.Missing != 0 {
+		t.Fatalf("pruned=%d missing=%d, want 0/0 (move, not delete)", stats.Pruned, stats.Missing)
 	}
 	after := cat.List()
 	if len(after) != 1 {
@@ -425,5 +518,15 @@ func TestRescanRenameMigratesID(t *testing.T) {
 	}
 	if len(after[0].Aliases) != 1 || after[0].Aliases[0] != oldPath {
 		t.Fatalf("aliases=%v, want [%s]", after[0].Aliases, oldPath)
+	}
+}
+
+func TestInvokeRejectsBadMessages(t *testing.T) {
+	var r Runner
+	if _, err := r.Invoke("lain.bogus@1", ScanInput{}); err == nil {
+		t.Fatal("unsupported cap must fail")
+	}
+	if _, err := r.Invoke(contracts.CapIngestScan, "nope"); err == nil {
+		t.Fatal("wrong input type must fail")
 	}
 }

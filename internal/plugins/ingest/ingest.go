@@ -71,10 +71,10 @@ type libResult struct {
 }
 
 // Run walks every library root in parallel, identifies each candidate
-// through the ordered-many binding, persists all upserts at once, then
-// prunes files that vanished — but only for roots that were fully
-// walked. An unmounted drive or a mid-walk I/O error never reads as
-// deletions.
+// through the ordered-many binding, marks vanished files missing and
+// restores returned ones (D-068), then persists all upserts at once —
+// but only for roots that were fully walked. An unmounted drive or a
+// mid-walk I/O error never reads as deletions.
 func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 	stats := contracts.ScanStats{StartedAt: time.Now().Unix(), Libraries: len(in.Libraries)}
 	results := make([]libResult, len(in.Libraries))
@@ -119,25 +119,31 @@ func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 		stats.Migrated += n
 		all = append(all, res.items...)
 	}
+	// Missing-state reconciliation runs before the upsert batch: the
+	// stored flag still says what the previous scan left behind, which is
+	// what makes "restored" countable. Only roots that were fully walked
+	// may mark — an unmounted drive or a mid-walk I/O error never reads
+	// as deletions.
 	t0 := time.Now()
-	if err := r.Cat.UpsertBatch(all); err != nil {
-		return stats, err
-	}
-	r.Trace.addPersist(time.Since(t0))
-	t0 = time.Now()
 	for i := range results {
 		res := &results[i]
 		if !res.accessible || !res.cleanWalk {
 			continue
 		}
-		n, err := r.Cat.PruneMissing(res.libraryID, res.present)
+		missing, restored, err := r.Cat.MarkMissing(res.libraryID, res.present)
 		if err != nil {
 			stats.Errors++
 			continue
 		}
-		stats.Pruned += n
+		stats.Missing += missing
+		stats.Restored += restored
 	}
 	r.Trace.addPrune(time.Since(t0))
+	t0 = time.Now()
+	if err := r.Cat.UpsertBatch(all); err != nil {
+		return stats, err
+	}
+	r.Trace.addPersist(time.Since(t0))
 	stats.Unidentified = stats.Candidates - stats.Identified
 	stats.FinishedAt = time.Now().Unix()
 	return stats, nil
@@ -168,6 +174,10 @@ func (r *Runner) scanRoot(lib contracts.Library) libResult {
 		})
 		if err != nil || !accepted {
 			res.errors++
+			// The file still exists — an identify failure is not a
+			// deletion (D-011/D-068). Protect whatever catalog record
+			// this path owns from the missing-marker pass.
+			res.present[catalog.ItemID(lib.ID, c.Path)] = true
 			continue
 		}
 		it := catalog.NewItem(lib.ID, out.(contracts.Proposal), c)

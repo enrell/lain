@@ -71,10 +71,19 @@ type Server struct {
 
 	scanMu sync.Mutex
 	scan   ScanStatus
+
+	// watch reconciles the catalog on filesystem events (D-068). Nil
+	// until StartWatcher runs; tests opt in, serve starts it.
+	watch         *libWatcher
+	watchDebounce time.Duration // test seam: zero uses the default
 }
 
-// Close stops background transforms before releasing the database.
+// Close stops background transforms and the library watcher before
+// releasing the database.
 func (s *Server) Close() error {
+	if w := s.watcher(); w != nil {
+		w.close()
+	}
 	if s.transcode != nil {
 		_ = s.transcode.Close()
 	}
@@ -98,6 +107,9 @@ type ScanStatus struct {
 	FinishedAt int64                `json:"finished_at,omitempty"`
 	Stats      *contracts.ScanStats `json:"stats,omitempty"`
 	Error      string               `json:"error,omitempty"`
+	// Trigger is "manual" for operator scans and "watch" for
+	// filesystem-event scans (D-068); empty on older statuses.
+	Trigger string `json:"trigger,omitempty"`
 }
 
 // New builds the server over a data dir, registering built-ins. The
@@ -421,6 +433,9 @@ func (s *Server) handleLibCreate(w http.ResponseWriter, r *http.Request, _ auth.
 		writeErr(w, 400, err.Error())
 		return
 	}
+	if w := s.watcher(); w != nil {
+		w.watchTree(lib.Path, lib.ID)
+	}
 	writeJSON(w, 201, lib)
 }
 
@@ -430,8 +445,11 @@ func (s *Server) handleLibDelete(w http.ResponseWriter, r *http.Request, _ auth.
 		writeErr(w, 404, err.Error())
 		return
 	}
-	// A library record without its items is a leak: the scan prunes per
-	// root and this root is gone, so nothing would ever collect them.
+	if w := s.watcher(); w != nil {
+		w.dropLibrary(id)
+	}
+	// A library record without its items is a leak: the scan reconciles
+	// per root and this root is gone, so nothing would ever collect them.
 	removed, err := s.cat.DeleteLibrary(id)
 	if err != nil {
 		s.logger().Error("library catalog cleanup failed", "req", reqIDOf(r), "library", id, "err", err.Error())
@@ -467,9 +485,9 @@ func (s *Server) handleScanStart(w http.ResponseWriter, r *http.Request, _ auth.
 		writeErr(w, 409, "scan already running")
 		return
 	}
-	s.scan = ScanStatus{State: "running", StartedAt: time.Now().Unix()}
+	s.scan = ScanStatus{State: "running", StartedAt: time.Now().Unix(), Trigger: "manual"}
 	s.scanMu.Unlock()
-	go s.runScan()
+	go s.runScan(s.libList(), "manual")
 	writeJSON(w, 202, map[string]string{"state": "running"})
 }
 
@@ -479,15 +497,14 @@ func (s *Server) handleScanStatus(w http.ResponseWriter, r *http.Request, _ auth
 	writeJSON(w, 200, s.scan)
 }
 
-func (s *Server) runScan() {
-	libs := s.libList()
-	s.logger().Info("scan started", "libraries", len(libs))
+func (s *Server) runScan(libs []contracts.Library, trigger string) {
+	s.logger().Info("scan started", "libraries", len(libs), "trigger", trigger)
 	out, _, err := s.reg.CallOne(contracts.CapIngestScan, ingest.ScanInput{Libraries: libs})
 	s.scanMu.Lock()
 	if err != nil {
-		s.scan = ScanStatus{State: "error", StartedAt: s.scan.StartedAt, FinishedAt: time.Now().Unix(), Error: err.Error()}
+		s.scan = ScanStatus{State: "error", StartedAt: s.scan.StartedAt, FinishedAt: time.Now().Unix(), Error: err.Error(), Trigger: trigger}
 		s.scanMu.Unlock()
-		s.logger().Error("scan failed", "err", err.Error())
+		s.logger().Error("scan failed", "err", err.Error(), "trigger", trigger)
 		return
 	}
 	stats := out.(contracts.ScanStats)
@@ -502,11 +519,12 @@ func (s *Server) runScan() {
 	stats.Enriched = enriched
 	s.scanMu.Lock()
 	defer s.scanMu.Unlock()
-	s.scan = ScanStatus{State: "done", StartedAt: startedAt, FinishedAt: stats.FinishedAt, Stats: &stats}
+	s.scan = ScanStatus{State: "done", StartedAt: startedAt, FinishedAt: stats.FinishedAt, Stats: &stats, Trigger: trigger}
 	s.logger().Info("scan done",
 		"candidates", stats.Candidates, "identified", stats.Identified,
 		"unidentified", stats.Unidentified, "migrated", stats.Migrated,
-		"enriched", stats.Enriched, "errors", stats.Errors)
+		"missing", stats.Missing, "restored", stats.Restored,
+		"enriched", stats.Enriched, "errors", stats.Errors, "trigger", trigger)
 }
 
 // SetAutoEnrich toggles post-scan metadata enrichment (on by default).
@@ -584,6 +602,20 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, v auth.V
 		writeErr(w, 404, "unknown item")
 		return
 	}
+	// A catalog row can outlive its file between reconciliations (D-068):
+	// say so in the plan instead of letting the client discover a bare
+	// stream 404 after pressing play.
+	if _, err := os.Stat(it.FilePath); err != nil {
+		writeJSON(w, 200, struct {
+			contracts.Plan
+			DurationSec float64 `json:"duration_sec,omitempty"`
+		}{Plan: contracts.Plan{
+			Mode:      "unavailable",
+			Available: false,
+			Reason:    "the file is no longer on disk",
+		}})
+		return
+	}
 	client := r.URL.Query().Get("client")
 	// The client reports what it can decode (D-058): an absent `caps`
 	// means unknown and keeps the conservative browser rules, while a
@@ -603,8 +635,7 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, v auth.V
 	}
 	// Tone mapping is only promised when it is enabled and its probe
 	// passed (D-031/D-042); otherwise HDR stays honestly unavailable.
-	toneMap := settings.ToneMapping && settings.ToneMappingMode != contracts.ToneMapModeNever &&
-		s.probeTranscode(settings).ToneMapping
+	toneMap := s.toneMapAvailable(settings)
 	out, _, err := s.reg.CallOne(contracts.CapPlaybackPlan, playback.PlanInput{
 		Request: contracts.PlanRequest{
 			ItemID:       it.ID,
@@ -674,6 +705,14 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, v auth.V
 		contracts.Plan
 		DurationSec float64 `json:"duration_sec,omitempty"`
 	}{Plan: plan, DurationSec: mediaDurationSec(mediaInfo)})
+}
+
+// toneMapAvailable reports whether a plan may promise HDR tone mapping:
+// enabled in settings, not policy-disabled, and confirmed by the
+// transcode capability probe.
+func (s *Server) toneMapAvailable(settings contracts.TranscodeSettings) bool {
+	return settings.ToneMapping && settings.ToneMappingMode != contracts.ToneMapModeNever &&
+		s.probeTranscode(settings).ToneMapping
 }
 
 // mediaDurationSec is the probed media length in seconds, 0 when the

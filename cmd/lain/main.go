@@ -62,7 +62,7 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage: lain <command> [flags]
 
-	serve     run the server (flags: --data-dir, --port, --bind, --log-level, --transcode-cache-size)
+	serve     run the server (flags: --data-dir, --port, --bind, --log-level, --transcode-cache-size, --watch)
   doctor    diagnose runtime + matrix environment (flags: --data-dir, --matrix-bin)
   plugins   list registered providers + composition (flags: --data-dir)
   bench     run a workload benchmark (bench scan --path DIR [--runs N])
@@ -94,21 +94,26 @@ func flag(args []string, name, def string) string {
 	return def
 }
 
+// flagOrEnv resolves a flag, then an env var, then a default.
+func flagOrEnv(args []string, name, env, def string) string {
+	if v := flag(args, name, ""); v != "" {
+		return v
+	}
+	if v := os.Getenv(env); v != "" {
+		return v
+	}
+	return def
+}
+
+// envOff reports the explicit-off spellings an env flag accepts.
+func envOff(v string) bool { return v == "0" || v == "false" || v == "FALSE" }
+
 func cmdServe(args []string) error {
 	dataDir := flag(args, "data-dir", defaultDataDir())
 	port := flag(args, "port", "9360")
 	bind := flag(args, "bind", "127.0.0.1")
-	logLevel := flag(args, "log-level", "")
-	if logLevel == "" {
-		logLevel = os.Getenv("LAIN_LOG_LEVEL")
-	}
-	if logLevel == "" {
-		logLevel = "info"
-	}
-	cacheSize := flag(args, "transcode-cache-size", os.Getenv("LAIN_TRANSCODE_CACHE_SIZE"))
-	if cacheSize == "" {
-		cacheSize = "20GiB"
-	}
+	logLevel := flagOrEnv(args, "log-level", "LAIN_LOG_LEVEL", "info")
+	cacheSize := flagOrEnv(args, "transcode-cache-size", "LAIN_TRANSCODE_CACHE_SIZE", "20GiB")
 	cacheBytes, err := parseByteSize(cacheSize)
 	if err != nil {
 		return fmt.Errorf("transcode cache size: %w", err)
@@ -125,17 +130,31 @@ func cmdServe(args []string) error {
 	logger := gateway.NewAgentLogger(os.Stdout, level, "lain", version)
 	srv.SetLogger(logger)
 	logger.Info("log level: " + logLevel)
-	if v := os.Getenv("LAIN_AUTO_ENRICH"); v == "0" || v == "false" || v == "FALSE" {
+	if envOff(os.Getenv("LAIN_AUTO_ENRICH")) {
 		srv.SetAutoEnrich(false)
 	}
-	httpSrv := &http.Server{
-		Addr:         bind + ":" + port,
-		Handler:      srv.Handler(),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 0, // streams are long-lived; timeouts would cut playback
+	// The filesystem watcher reconciles the catalog on delete/add/move
+	// events (D-068). inotify cannot see network mounts, so the operator
+	// can turn it off and keep the manual scan.
+	if !envOff(flagOrEnv(args, "watch", "LAIN_WATCH", "")) {
+		if err := srv.StartWatcher(); err != nil {
+			logger.Warn("library watcher disabled", "err", err.Error())
+		}
 	}
+	httpSrv := newHTTPServer(bind, port, srv.Handler())
 	fmt.Printf("lain %s on http://%s:%s (data %s)\n", version, bind, port, dataDir)
 	return httpSrv.ListenAndServe()
+}
+
+// newHTTPServer builds the listener config. Streams are long-lived, so
+// only reads carry a timeout; writes must never cut playback.
+func newHTTPServer(bind, port string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:         bind + ":" + port,
+		Handler:      h,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 0,
+	}
 }
 
 func parseByteSize(raw string) (int64, error) {
