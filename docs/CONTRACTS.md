@@ -51,6 +51,16 @@ season filter, episode grid; a single-file title keeps the plain item
 page) and `/player/{id}` as the watch page — video with the title's
 episodes listed beside it, so switching never leaves playback.
 
+### External player handoff
+
+Web links use `lain://play?server=<origin>&id=<item-id>&player=mpv|vlc`.
+This is a local CLI protocol, not a server API. It contains no token. A
+user-installed `lain` handler accepts only the exact server origin saved
+by `lain login`, fetches the item through the authenticated catalog API,
+and opens the existing direct stream. The CLI reports measured progress
+through the existing item progress endpoint. It never assumes a VLC exit
+means the file was watched.
+
 ## lain.userstate.progress@1 (exactly-one)
 
 `PutInput{user_id, progress}` / `GetInput{user_id, item_id}`. Keyed by

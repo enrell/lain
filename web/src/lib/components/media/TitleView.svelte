@@ -9,6 +9,7 @@
 	import Button from '$lib/components/primitives/Button.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import Poster from '$lib/components/media/Poster.svelte';
+	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import { formatTime } from '$lib/utilities/format';
 
 	/**
@@ -164,6 +165,7 @@
 						<Play class="size-4 fill-current" aria-hidden="true" /> Play
 					</Button>
 				{/if}
+				{#if resumeTarget}<div class="mt-3"><ExternalPlayers itemId={resumeTarget.id} /></div>{/if}
 				<p class="mt-2 text-center text-xs text-muted" aria-live="polite">{watchedLine}</p>
 			</div>
 			{#if actions}

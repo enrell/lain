@@ -5,6 +5,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -43,6 +45,10 @@ func main() {
 		err = cmdLogout(os.Args[2:])
 	case "watch":
 		err = cmdWatch(os.Args[2:])
+	case "open-url":
+		err = cmdOpenURL(os.Args[2:])
+	case "install-player-handler":
+		err = cmdInstallPlayerHandler()
 	case "backup":
 		err = cmdBackup(os.Args[2:])
 	case "restore":
@@ -54,10 +60,12 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error: "+err.Error())
+		printCommandError(os.Stderr, err)
 		os.Exit(1)
 	}
 }
+
+func printCommandError(w io.Writer, err error) { fmt.Fprintln(w, "error: "+err.Error()) }
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage: lain <command> [flags]
@@ -68,7 +76,8 @@ func usage() {
   bench     run a workload benchmark (bench scan --path DIR [--runs N])
   login     save API credentials (flags: --server, --username; or LAIN_PASSWORD)
   logout    forget saved credentials
-  watch     play from the server in mpv ([query] [--next] [--once] [--pick N] [--dry-run])
+  watch     play in mpv or VLC ([query] [--next] [--once] [--pick N] [--player mpv|vlc] [--dry-run])
+  install-player-handler  register this CLI for external-player links in the web UI
   backup    snapshot the database online (flags: --data-dir, --out)
   restore   restore a backup into an empty data dir (restore DIR [--data-dir])
   version   print version`)
@@ -137,13 +146,17 @@ func cmdServe(args []string) error {
 	// events (D-068). inotify cannot see network mounts, so the operator
 	// can turn it off and keep the manual scan.
 	if !envOff(flagOrEnv(args, "watch", "LAIN_WATCH", "")) {
-		if err := srv.StartWatcher(); err != nil {
-			logger.Warn("library watcher disabled", "err", err.Error())
-		}
+		startLibraryWatcher(srv.StartWatcher, logger)
 	}
 	httpSrv := newHTTPServer(bind, port, srv.Handler())
 	fmt.Printf("lain %s on http://%s:%s (data %s)\n", version, bind, port, dataDir)
 	return httpSrv.ListenAndServe()
+}
+
+func startLibraryWatcher(start func() error, logger *slog.Logger) {
+	if err := start(); err != nil {
+		logger.Warn("library watcher disabled", "err", err.Error())
+	}
 }
 
 // newHTTPServer builds the listener config. Streams are long-lived, so

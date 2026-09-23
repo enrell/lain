@@ -28,6 +28,7 @@
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
+	import ExternalPlayers from './ExternalPlayers.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
 	import { isCompleted } from '$lib/utilities/progress';
@@ -1429,6 +1430,7 @@
 				<h2 class="text-base font-semibold">Playback settings</h2>
 				<IconButton label="Close settings" onclick={() => { settingsOpen = false; settingsButton?.focus(); }}><X class="size-5" /></IconButton>
 			</div>
+			<div class="mb-4 border-b border-line/60 pb-4"><ExternalPlayers itemId={item.id} onOpen={() => video?.pause()} /></div>
 			<label class="chrome-chip">
 				Speed
 				<select class="chrome-select" value={rate} onchange={(event) => setRate(Number(event.currentTarget.value))} aria-label="Playback speed">
