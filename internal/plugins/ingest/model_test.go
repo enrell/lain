@@ -59,7 +59,7 @@ func modelWalk(t *testing.T, seed int64) {
 	reg.Register(identify.Anime{})
 	reg.Register(identify.Generic{})
 	reg.Register(cat)
-	r := &Runner{Reg: reg, Cat: cat}
+	r := &Runner{Reg: reg}
 
 	root := t.TempDir()
 	lib := contracts.Library{ID: "l1", Type: "anime", Path: root}
@@ -234,7 +234,7 @@ func modelWalk(t *testing.T, seed int64) {
 		reg2.Register(identify.Anime{})
 		reg2.Register(identify.Generic{})
 		reg2.Register(cat2)
-		r2 := &Runner{Reg: reg2, Cat: cat2}
+		r2 := &Runner{Reg: reg2}
 		if _, err := r2.Run(ScanInput{Libraries: []contracts.Library{lib}}); err != nil {
 			t.Fatalf("oracle scan: %v", err)
 		}

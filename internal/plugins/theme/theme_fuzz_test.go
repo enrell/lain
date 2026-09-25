@@ -1,5 +1,4 @@
-package gateway
-
+package theme
 
 import (
 	"strings"
@@ -10,7 +9,7 @@ import (
 // parser. The file is user-supplied; every accepted palette must carry
 // only #rrggbb colors in its color fields.
 //
-// Campaign: go test -fuzz=FuzzParseOmarchyTheme -fuzztime=60s ./internal/gateway/
+// Campaign: go test -fuzz=FuzzParseOmarchyTheme -fuzztime=60s ./internal/plugins/theme/
 func FuzzParseOmarchyTheme(f *testing.F) {
 	for _, s := range []string{
 		"background=#101010\nforeground=#e0e0e0\naccent=#3366ff\n",
@@ -29,7 +28,7 @@ func FuzzParseOmarchyTheme(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, css string) {
-		p, ok := parseOmarchyTheme(strings.NewReader(css))
+		p, ok := ParseOmarchy(strings.NewReader(css))
 		if !ok {
 			return
 		}

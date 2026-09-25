@@ -47,12 +47,15 @@ type Composition struct {
 // DefaultComposition is the built-in set. Version 2 added TVMaze
 // (D-025); version 3 added asynchronous transcode v2 (D-028), and
 // version 4 adds technical media probing (D-030), and version 5 adds
-// the Jellyfin-parity transcode v3 session contract (D-042/D-044).
+// the Jellyfin-parity transcode v3 session contract (D-042/D-044), and
+// version 6 converts the gateway's remaining policy islands into
+// capabilities: settings, theme, enrichment, local playback, library
+// watch and backup (D-076).
 // Upgrade carries saved compositions forward without replacing
 // overrides.
 func DefaultComposition() *Composition {
 	return &Composition{
-		Version: 5,
+		Version: 6,
 		Bindings: map[string]*Binding{
 			"lain.source.enumerate@1":    {Mode: ModeExactlyOne, Providers: []string{"lain-source-filesystem"}, Generation: 1},
 			"lain.media.identify@1":      {Mode: ModeOrderedMany, Providers: []string{"lain-identify-anime", "lain-identify-generic"}, Generation: 1},
@@ -69,6 +72,12 @@ func DefaultComposition() *Composition {
 			"lain.ingest.scan@1":         {Mode: ModeExactlyOne, Providers: []string{"lain-ingest-default"}, Generation: 1},
 			"lain.metadata.search@1":     {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan", "lain-metadata-tvmaze"}, Generation: 1},
 			"lain.metadata.resolve@1":    {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan", "lain-metadata-tvmaze"}, Generation: 1},
+			"lain.settings.transcode@1":  {Mode: ModeExactlyOne, Providers: []string{"lain-settings-bolt"}, Generation: 1},
+			"lain.ui.theme@1":            {Mode: ModeExactlyOne, Providers: []string{"lain-theme-omarchy"}, Generation: 1},
+			"lain.metadata.enrich@1":     {Mode: ModeExactlyOne, Providers: []string{"lain-metadata-enrich"}, Generation: 1},
+			"lain.playback.local@1":      {Mode: ModeExactlyOne, Providers: []string{"lain-playback-local"}, Generation: 1},
+			"lain.backup.create@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-backup-bundle"}, Generation: 1},
+			"lain.source.watch@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-source-watch"}, Generation: 1},
 		},
 	}
 }

@@ -37,7 +37,7 @@ func doAddr(t *testing.T, srv *Server, method, path, remote string, body any, to
 
 func seedItem(t *testing.T, srv *Server, path, title string, episode int) contracts.CatalogItem {
 	t.Helper()
-	it, err := srv.cat.Upsert(catalog.UpsertInput{
+	out, _, err := srv.reg.CallOne(contracts.CapCatalogWrite, catalog.UpsertInput{
 		LibraryID: "lib-local",
 		Proposal:  contracts.Proposal{Kind: "anime", Title: title, Season: 1, Episode: episode, Confidence: 0.9, PluginID: "test"},
 		Candidate: contracts.Candidate{Path: path, Size: 100, ModTime: 1, LibraryID: "lib-local"},
@@ -45,7 +45,7 @@ func seedItem(t *testing.T, srv *Server, path, title string, episode int) contra
 	if err != nil {
 		t.Fatal(err)
 	}
-	return it
+	return out.(contracts.CatalogItem)
 }
 
 func localTestManager(t *testing.T, srv *Server, script string) {

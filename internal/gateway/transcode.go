@@ -210,7 +210,7 @@ func sourceBitrateKbps(info *contracts.MediaInfo) int {
 }
 
 func (s *Server) handleTranscodeStart(w http.ResponseWriter, r *http.Request, v auth.Verified) {
-	it, ok := s.cat.Get(r.PathValue("id"))
+	it, ok := s.catGet(r.PathValue("id"))
 	if !ok {
 		writeErr(w, http.StatusNotFound, "unknown item")
 		return
@@ -243,7 +243,7 @@ func (s *Server) handleTranscodeStart(w http.ResponseWriter, r *http.Request, v 
 }
 
 func (s *Server) handleTranscodeStatus(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
-	it, ok := s.cat.Get(r.PathValue("id"))
+	it, ok := s.catGet(r.PathValue("id"))
 	if !ok {
 		writeErr(w, http.StatusNotFound, "unknown item")
 		return
@@ -280,7 +280,7 @@ func (s *Server) handleTranscodeCancel(w http.ResponseWriter, r *http.Request, v
 	// a client may only cancel a session it owns, for the item it asked
 	// for. An empty user id (admin cancel) skips the ownership check.
 	var filePath string
-	if it, ok := s.cat.Get(r.PathValue("id")); ok {
+	if it, ok := s.catGet(r.PathValue("id")); ok {
 		filePath = it.FilePath
 	}
 	out, _, err := s.reg.CallOne(contracts.CapPlaybackTranscodeV3, contracts.TranscodeV3Request{
@@ -320,7 +320,7 @@ func (s *Server) handleTranscode(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	it, ok := s.cat.Get(r.PathValue("id"))
+	it, ok := s.catGet(r.PathValue("id"))
 	if !ok {
 		writeErr(w, http.StatusNotFound, "unknown item")
 		return
@@ -385,7 +385,7 @@ func (s *Server) handleTranscodeHLS(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	it, ok := s.cat.Get(r.PathValue("id"))
+	it, ok := s.catGet(r.PathValue("id"))
 	if !ok {
 		writeErr(w, http.StatusNotFound, "unknown item")
 		return
@@ -576,7 +576,7 @@ func (s *Server) handleSubtitles(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	it, ok := s.cat.Get(r.PathValue("id"))
+	it, ok := s.catGet(r.PathValue("id"))
 	if !ok {
 		writeErr(w, http.StatusNotFound, "unknown item")
 		return

@@ -20,9 +20,23 @@ Built-ins: `lain-identify-anime` (declines without release evidence),
 
 ## lain.catalog.read@1 / lain.catalog.write@1 (exactly-one)
 
-Write input: `{library_id, proposal, candidate}` → `CatalogItem` with
-`origin` + `provenance`. Item id is stable over library+path. Read:
-`nil` → list, `{id}` → one item.
+The gateway resolves the catalog only through these bindings (D-075):
+a swapped provider serves every read and write below.
+
+Read inputs: `nil` → all items; `GetInput{id}` → one item;
+`PageInput{page}` → `CatalogPage`; `EpisodesInput{id}` → every item
+sharing the title's key in watch order. Unknown ids fail with the
+typed code `not-found`.
+
+Write inputs: `UpsertInput{library_id, proposal, candidate}` →
+`CatalogItem` with `origin` + `provenance`;
+`CommitScanInput{library_id, entries, reconcile_missing}` commits one
+library's scan in a single call — the provider derives identity,
+reconciles moves (D-019) and, only when `reconcile_missing` asserts a
+clean walk, marks absent items missing (D-068) — returning
+`{migrated, missing, restored}`; `SetMissingInput{id, missing}` →
+whether the item existed; `DeleteLibraryInput{library_id}` → removed
+count. Item id is stable over library+path.
 
 `CatalogItem.missing` (additive, `omitempty`) marks an item whose file
 vanished from its library root (D-068). Missing rows stay in the
@@ -42,9 +56,9 @@ for an unknown id. It answers the web title page: every item whose
 in watch order (season, episode, year, id), whichever library it lives
 in. `catalog.TitleKey` is the one grouping rule, mirrored by the web
 Library grid's `normalizeSeriesTitle`, so a show's card and its own page
-cannot disagree about the episode count (D-056). The plugin capability
-`lain.catalog.read@1` is untouched: the gateway already reads the
-concrete catalog service for `Page`/`Get`.
+cannot disagree about the episode count (D-056). The gateway answers it
+through `lain.catalog.read@1`'s `EpisodesInput`, so a swapped catalog
+serves the title page too (D-075).
 
 The web UI renders `/item/{id}` as the *title* page (hero, poster rail,
 season filter, episode grid; a single-file title keeps the plain item
@@ -113,8 +127,9 @@ changes override the initial automatic selection for that item.
 
 ## lain.userstate.progress@1 (exactly-one)
 
-`PutInput{user_id, progress}` / `GetInput{user_id, item_id}`. Keyed by
-user+item in its own document; catalog rewrites never touch it.
+`PutInput{user_id, progress}` / `GetInput{user_id, item_id}` /
+`ListInput{user_id}` → all of one user's progress. Keyed by user+item
+in its own document; catalog rewrites never touch it.
 
 ## lain.playback.plan@1 (first-accepted)
 
@@ -543,21 +558,143 @@ synonyms, year, poster). `dir` hints local sources; remotes ignore it.
 `lain.metadata.resolve@1`: `{provider, remote_id}` → `MetadataRecord`
 (full entry; artwork as URLs, never bytes).
 
-The gateway fans out (`Registry.CallMerge`), dedups by normalized
-title, and scores exact matches first, then binding precedence
+The metadata pipeline's orchestration is itself a capability
+(`lain.metadata.enrich@1`, below); it fans out via
+`Registry.CallMergeReport`, dedups by normalized title, and scores
+exact matches first, then binding precedence
 (`nfo → kitsu → anilist → jikan → tvmaze`). TVMaze is keyless and
 TV-first: it answers series/episode/video/anime kinds and stays
 silent for movies. TMDB and IMDb are deliberately out of this slice
 (TMDB needs a user-supplied key, IMDb has no free official API;
 see Q-010/Q-011). Failing providers are skipped, so
 an upstream outage degrades the merge instead of failing it. Winners
-resolve through `Registry.InvokeProvider` (still through authority)
+resolve through `InvokeProvider` (still through authority)
 and persist as overlays (`POST /api/catalog/{id}/enrich`), never
 inside the catalog: removing a provider deletes its overlays without
 touching identity, progress or files. Repeat queries hit a TTL cache
 (search 7d, records 30d) instead of the network. Grids read many
 overlays at once via `GET /api/enrichments?ids=` (bounded, one read
 transaction); missing entries are simply absent.
+
+## lain.metadata.enrich@1 (exactly-one)
+
+The enrichment pipeline as one capability (D-076). Ops:
+
+- `enrich` `{item, only?}` → `Enrichment`: search fan-out, pick,
+  resolve, persist. `not-found` when nothing matched.
+- `get` `{item_id}` → `Enrichment`. `not-found` on absence.
+- `batch` `{ids}` → `{items}`: overlays for a grid page.
+- `delete` `{item_id}` → bool.
+- `backfill` → `{checked, enriched}`: overlay-less items enriched in
+  one pass (auto-enrich after scans).
+
+The built-in provider (`lain-metadata-enrich`) owns the saver and
+the search/record caches and calls `metadata.search`/`resolve` and
+`catalog.read` through the registry — a swapped catalog or metadata
+provider changes enrichment without a code change.
+
+## lain.settings.transcode@1 (exactly-one)
+
+The persisted transcode policy store (D-076). Ops: `get` (nil input →
+`TranscodeSettings`, current or defaults), `put` `{settings}` →
+validated `TranscodeSettings`, `ensure` `{settings}` → `{seeded}` for
+first-boot adoption, `has` → `{stored}`. A corrupt document is a typed
+`internal` error — never silently reseeded.
+
+## lain.ui.theme@1 (exactly-one)
+
+Theme derivation (D-076). Input `{colors_path?}` → `Palette` of
+semantic roles (bg/fg/accent variants). The built-in
+`lain-theme-omarchy` reads Omarchy colors (env `LAIN_OMARCHY_COLORS`
+or the default path), falls back to a built-in palette, and owns the
+contrast/legibility fixups. The gateway relays the palette at
+`GET /api/theme`; an unbound or failing binding returns 503 while the
+frontend's CSS defaults keep the UI usable.
+
+## lain.playback.local@1 (exactly-one)
+
+Same-machine playback supervision (D-072/D-076). Ops: `players` (nil →
+`{players}`), `play` `{player?, user_id, language?, item}` →
+`{status, player, count}`. The provider owns playlist resolution
+(series queue from the episode onward), resume positions (through
+`userstate.progress`), VLC subtitle policy (through `media.probe`),
+and mpv/VLC spawning. `busy` when a session is running;
+`dependency-unavailable` when no player exists. The gateway still owns
+the loopback check — remote browsers get 403 before the call.
+
+## lain.backup.create@1 (exactly-one)
+
+Backup artifact packaging (D-076). Input `{snapshot_path, out_dir,
+docs}` — the trusted core snapshots the live database to a temp file
+(never hands the locked db path) plus data-directory JSON documents —
+→ `{path, filename}`. The built-in `lain-backup-bundle` passes the
+snapshot through unchanged; a replacement can package, encrypt or ship
+it elsewhere.
+
+## lain.source.watch@1 (exactly-one)
+
+Filesystem watching and debounce as a provider (D-068/D-076). Ops:
+`poll` `{libraries}` → `{dirty}` (diffs the watched set against the
+input — library adds/removes need no separate signal — and drains ids
+whose 2s quiet window elapsed); `dirty` `{library_id}` re-marks with a
+fresh timestamp (the gateway's re-nudge when a scan is in flight);
+`close` stops the watcher. The gateway polls on a 500ms ticker and
+reconciles drained libraries through `lain.ingest.scan@1`.
+
+## Component mode (wire protocol)
+
+Any provider can run as a supervised process (D-074). The host
+(`internal/component`) speaks NDJSON frames over a unix socket:
+
+- **Handshake**: the child reads a `hello` frame (`{type:"hello"}`)
+  and answers `{type:"hello", id, version, capabilities[]}`.
+- **Invoke**: `{type:"invoke", seq, cap, op, input}` →
+  `{type:"result", seq, output}` or `{type:"error", seq, code, msg}`.
+  `op` selects the operation inside a capability (the `(capability,
+  op) → input type` table lives in `internal/component/ops.go`); an
+  empty op resolves when the capability has exactly one input shape.
+- **Health**: `{type:"health", seq}` → `{type:"health", seq, healthy}`
+  — transport-level, never routed through a capability.
+
+Frames are bounded (1 MiB). Sequence ids correlate requests and
+responses. A provider panic answers `internal` — it never kills the
+socket. Timeouts and mid-call deaths are `outcome-unknown`; an
+unreachable or unspawnable component is `dependency-unavailable`.
+Crashed processes respawn with backoff under the host's supervision.
+Media bytes never cross the socket — the data-plane rule holds for
+components exactly as it holds in-process.
+
+`lain plugin-run --id <provider> --sock <path> [--data-dir <dir>]`
+serves one built-in provider as a component — the same code that runs
+embedded. Third parties get the protocol from `internal/component` or
+any language that speaks NDJSON over a unix socket.
+
+## Component manifests and provisioning
+
+A manifest names a runnable component:
+
+```json
+{
+  "id": "community.anime-parser",
+  "version": "1.3.0",
+  "capabilities": ["lain.media.identify@1"],
+  "execution": {
+    "kind": "process",
+    "entrypoint": "/path/to/bin",
+    "args": ["--sock", "{sock}"]
+  }
+}
+```
+
+`{sock}` expands to the socket path the host allocates. The
+provisioner (`internal/component`) watches `<data-dir>/plugins/` for
+`*.json` manifests: dropping one in spawns, handshakes, health-checks
+and registers the provider; removing it unregisters and kills the
+process; rewriting it reloads the component. Install/remove is logged;
+a bad manifest or an unspawnable binary degrades to a log line, never
+a failed boot. `Unregister` removes the provider from every binding
+and deletes the registration (distinct from `Withdraw`, which keeps
+the registration for a later swap-back).
 
 Operator surfaces can list registered providers with their
 capabilities and live health (`provider_info` on `GET /api/plugins`) so

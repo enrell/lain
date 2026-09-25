@@ -8,6 +8,7 @@ import (
 
 	"github.com/enrell/lain/internal/auth"
 	"github.com/enrell/lain/internal/contracts"
+	"github.com/enrell/lain/internal/core"
 	"github.com/enrell/lain/internal/plugins/metadata"
 )
 
@@ -21,6 +22,21 @@ func (s *Server) routesEnrich() {
 // maxEnrichBatch bounds one batch overlay read: grids ask for a page of
 // items, not the whole catalog.
 const maxEnrichBatch = 200
+
+// enrichErr maps a capability failure to the status the enrich surface
+// reported before it was a capability.
+func enrichErr(w http.ResponseWriter, err error) {
+	code := http.StatusInternalServerError
+	if ce, ok := err.(*core.Error); ok {
+		switch ce.Code {
+		case "not-found":
+			code = http.StatusNotFound
+		case "dependency-unavailable":
+			code = http.StatusServiceUnavailable
+		}
+	}
+	writeErr(w, code, err.Error())
+}
 
 // handleEnrichBatch returns the overlays that exist for a set of item
 // ids in one read transaction: artwork for a grid without N+1
@@ -42,13 +58,18 @@ func (s *Server) handleEnrichBatch(w http.ResponseWriter, r *http.Request, _ aut
 			ids = append(ids, p)
 		}
 	}
-	saver := metadata.NewSaver(s.db)
-	writeJSON(w, 200, map[string]any{"items": saver.GetMany(ids)})
+	out, _, err := s.reg.CallOne(contracts.CapMetadataEnrich, metadata.BatchInput{IDs: ids})
+	if err != nil {
+		enrichErr(w, err)
+		return
+	}
+	batch, _ := out.(metadata.BatchOutput)
+	writeJSON(w, 200, map[string]any{"items": batch.Items})
 }
 
 func (s *Server) handleEnrich(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	id := r.PathValue("id")
-	item, ok := s.cat.Get(id)
+	item, ok := s.catGet(id)
 	if !ok {
 		writeErr(w, 404, "unknown item")
 		return
@@ -61,73 +82,52 @@ func (s *Server) handleEnrich(w http.ResponseWriter, r *http.Request, _ auth.Ver
 	writeJSON(w, 200, saved)
 }
 
-// autoEnrichMissing enriches every catalog item that has no overlay yet.
-// Every failure is skipped: a missing match or a down provider must never
-// fail the scan that just succeeded. Items enrich one at a time, so
-// provider APIs see a sequential trickle, never a burst.
-func (s *Server) autoEnrichMissing() int {
-	saver := metadata.NewSaver(s.db)
-	done := 0
-	for _, item := range s.cat.List() {
-		if _, ok := saver.Get(item.ID); ok {
-			continue
+// enrichOne runs one item through the enrich capability and maps the
+// outcome to the (enrichment, httpCode, message) triple the surface
+// reported before the capability existed.
+func (s *Server) enrichOne(item contracts.CatalogItem, only string) (contracts.Enrichment, int, string) {
+	out, _, err := s.reg.CallOne(contracts.CapMetadataEnrich, metadata.EnrichInput{Item: item, Only: only})
+	if err != nil {
+		code := http.StatusInternalServerError
+		if ce, ok := err.(*core.Error); ok {
+			switch ce.Code {
+			case "not-found":
+				code = http.StatusNotFound
+			case "dependency-unavailable":
+				code = http.StatusServiceUnavailable
+			}
 		}
-		if _, _, errMsg := s.enrichOne(item, ""); errMsg != "" {
-			continue
-		}
-		done++
+		return contracts.Enrichment{}, code, err.Error()
 	}
-	return done
+	saved, _ := out.(contracts.Enrichment)
+	return saved, http.StatusOK, ""
 }
 
-// enrichOne searches, resolves, and saves one overlay with the Auto
-// provider set (only == ""), or a single named provider. It returns the
-// HTTP status its caller should report alongside any error message.
-func (s *Server) enrichOne(item contracts.CatalogItem, only string) (contracts.Enrichment, int, string) {
-	kind := "anime"
-	if item.Kind != "" && item.Kind != "episode" && item.Kind != "video" {
-		kind = item.Kind
-	}
-	merged, err := s.searchMetadata(item.Title, kind, dirOf(item.FilePath), only)
+// autoEnrichMissing asks the enrich provider to backfill overlays for
+// every catalog item lacking one. A failure here degrades to zero
+// overlays — the scan that just ran still succeeded.
+func (s *Server) autoEnrichMissing() int {
+	out, _, err := s.reg.CallOne(contracts.CapMetadataEnrich, metadata.BackfillInput{})
 	if err != nil {
-		s.logger().Warn("enrich search failed", "item", item.ID, "title", item.Title, "err", err.Error())
-		return contracts.Enrichment{}, 503, err.Error()
+		s.logger().Warn("auto-enrich failed", "err", err.Error())
+		return 0
 	}
-	best, ok := metadata.BestPick(merged)
-	if !ok {
-		s.logger().Warn("enrich no match", "item", item.ID, "title", item.Title, "kind", kind)
-		return contracts.Enrichment{}, 404, "no metadata found"
-	}
-	rec, err := s.resolveMetadata(best.Provider, best.RemoteID)
-	if err != nil {
-		s.logger().Warn("enrich resolve failed", "item", item.ID, "title", item.Title,
-			"provider", best.Provider, "remote_id", best.RemoteID, "err", err.Error())
-		return contracts.Enrichment{}, 503, err.Error()
-	}
-	saver := metadata.NewSaver(s.db)
-	saved, err := saver.Save(item.ID, rec)
-	if err != nil {
-		s.logger().Error("enrich save failed", "item", item.ID, "title", item.Title, "err", err.Error())
-		return contracts.Enrichment{}, 500, err.Error()
-	}
-	s.logger().Debug("enrich ok", "item", item.ID, "title", saved.Title, "provider", saved.Provider)
-	return saved, 200, ""
+	report, _ := out.(metadata.BackfillOutput)
+	return report.Enriched
 }
 
 func (s *Server) handleEnrichGet(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
-	saver := metadata.NewSaver(s.db)
-	e, ok := saver.Get(r.PathValue("id"))
-	if !ok {
-		writeErr(w, 404, "not enriched")
+	out, _, err := s.reg.CallOne(contracts.CapMetadataEnrich, metadata.GetInput{ItemID: r.PathValue("id")})
+	if err != nil {
+		enrichErr(w, err)
 		return
 	}
-	writeJSON(w, 200, e)
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) handleEnrichDelete(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
-	saver := metadata.NewSaver(s.db)
-	if err := saver.Delete(r.PathValue("id")); err != nil {
-		writeErr(w, 500, err.Error())
+	if _, _, err := s.reg.CallOne(contracts.CapMetadataEnrich, metadata.DeleteInput{ItemID: r.PathValue("id")}); err != nil {
+		enrichErr(w, err)
 		return
 	}
 	writeJSON(w, 200, map[string]string{"status": "ok"})

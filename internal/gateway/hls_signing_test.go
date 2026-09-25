@@ -1,6 +1,5 @@
 package gateway
 
-
 // Adversarial audit of the newest HLS signing surface: the playlist the
 // gateway serves must sign every media URI with the session and the
 // caller's token, and those signed URIs are what authorizes init.mp4 and

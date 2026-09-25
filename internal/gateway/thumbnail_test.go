@@ -1,6 +1,5 @@
 package gateway
 
-
 import (
 	"encoding/json"
 	"os/exec"

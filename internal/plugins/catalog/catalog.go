@@ -60,11 +60,18 @@ type ExportDoc struct {
 func (s *Service) Invoke(cap string, input any) (any, error) {
 	switch cap {
 	case contracts.CapCatalogWrite:
-		in, ok := input.(UpsertInput)
-		if !ok {
-			return nil, &core.Error{Code: "invalid-message", Msg: "UpsertInput required"}
+		switch in := input.(type) {
+		case UpsertInput:
+			return s.Upsert(in)
+		case CommitScanInput:
+			return s.CommitScan(in)
+		case SetMissingInput:
+			return s.SetMissing(in.ID, in.Missing)
+		case DeleteLibraryInput:
+			return s.DeleteLibrary(in.LibraryID)
+		default:
+			return nil, &core.Error{Code: "invalid-message", Msg: "UpsertInput, CommitScanInput, SetMissingInput or DeleteLibraryInput required"}
 		}
-		return s.Upsert(in)
 	case contracts.CapCatalogRead:
 		switch in := input.(type) {
 		case nil:
@@ -72,20 +79,107 @@ func (s *Service) Invoke(cap string, input any) (any, error) {
 		case GetInput:
 			it, ok := s.Get(in.ID)
 			if !ok {
-				return nil, &core.Error{Code: "invalid-message", Msg: "unknown item " + in.ID}
+				return nil, &core.Error{Code: "not-found", Msg: "unknown item " + in.ID}
 			}
 			return it, nil
+		case PageInput:
+			return s.Page(in.Page)
+		case EpisodesInput:
+			items, ok := s.Episodes(in.ID)
+			if !ok {
+				return nil, &core.Error{Code: "not-found", Msg: "unknown item " + in.ID}
+			}
+			return items, nil
 		default:
-			return nil, &core.Error{Code: "invalid-message", Msg: "nil or GetInput required"}
+			return nil, &core.Error{Code: "invalid-message", Msg: "nil, GetInput, PageInput or EpisodesInput required"}
 		}
 	default:
 		return nil, &core.Error{Code: "invalid-message", Msg: "unsupported cap " + cap}
 	}
 }
 
-// GetInput reads one item by id.
+// GetInput reads one item by id. An unknown id fails with not-found.
 type GetInput struct {
 	ID string `json:"id"`
+}
+
+// PageInput reads one filtered/sorted page (the catalog list view).
+type PageInput struct {
+	Page contracts.PageParams `json:"page"`
+}
+
+// EpisodesInput reads every item sharing the item's title key, in watch
+// order. An unknown id fails with not-found.
+type EpisodesInput struct {
+	ID string `json:"id"`
+}
+
+// ScanEntry is one enumerated file's scan outcome. Identified entries
+// carry the winning proposal; unidentified ones still mark presence, so
+// an identify failure never reads as a deletion (D-068).
+type ScanEntry struct {
+	Candidate  contracts.Candidate `json:"candidate"`
+	Proposal   contracts.Proposal  `json:"proposal"`
+	Identified bool                `json:"identified"`
+}
+
+// CommitScanInput commits one library's scan result as a single write
+// (D-075). ReconcileMissing is the caller's assertion that the root was
+// fully walked — only then may absent items be marked missing.
+type CommitScanInput struct {
+	LibraryID        string      `json:"library_id"`
+	Entries          []ScanEntry `json:"entries"`
+	ReconcileMissing bool        `json:"reconcile_missing"`
+}
+
+// CommitScanOutput reports what the commit changed.
+type CommitScanOutput struct {
+	Migrated int `json:"migrated"`
+	Missing  int `json:"missing"`
+	Restored int `json:"restored"`
+}
+
+// SetMissingInput flips the missing flag on one item (D-073); output is
+// whether the item existed.
+type SetMissingInput struct {
+	ID      string `json:"id"`
+	Missing bool   `json:"missing"`
+}
+
+// DeleteLibraryInput removes every catalog item of a library; output is
+// the removed count.
+type DeleteLibraryInput struct {
+	LibraryID string `json:"library_id"`
+}
+
+// CommitScan persists one library's scan result as the capability's
+// single write unit (D-075): identity derivation, move reconciliation
+// (D-019) and missing-state marking (D-068) all live inside the catalog,
+// so a replacement provider owns the same semantics end to end.
+// ReconcileMissing must be set only when the walk completed cleanly.
+func (s *Service) CommitScan(in CommitScanInput) (CommitScanOutput, error) {
+	var items []contracts.CatalogItem
+	present := make(map[string]bool, len(in.Entries))
+	for _, e := range in.Entries {
+		present[ItemID(in.LibraryID, e.Candidate.Path)] = true
+		if !e.Identified {
+			continue
+		}
+		items = append(items, NewItem(in.LibraryID, e.Proposal, e.Candidate))
+	}
+	items, migrated := s.ReconcileMoves(in.LibraryID, items, present)
+	out := CommitScanOutput{Migrated: migrated}
+	if in.ReconcileMissing {
+		m, r, err := s.MarkMissing(in.LibraryID, present)
+		if err != nil {
+			return out, err
+		}
+		out.Missing, out.Restored = m, r
+	}
+	if err := s.UpsertBatch(items); err != nil {
+		return out, err
+	}
+	return out, nil
 }
 
 // ItemID derives a stable id from library + path. Fresh items use it as

@@ -31,7 +31,7 @@ func (s *Server) handleThumbnail(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	it, ok := s.cat.Get(r.PathValue("id"))
+	it, ok := s.catGet(r.PathValue("id"))
 	if !ok {
 		writeErr(w, http.StatusNotFound, "unknown item")
 		return

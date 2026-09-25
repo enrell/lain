@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/enrell/lain/internal/core"
 )
 
 // Structured server logging (D-026/D-027): stdlib slog to stdout as
@@ -55,6 +57,17 @@ func (s *Server) SetLogger(l *slog.Logger) {
 	s.log.Store(l)
 	if s.transcode != nil {
 		s.transcode.SetLogger(l)
+	}
+	if s.components != nil {
+		s.components.SetLogger(l)
+	}
+	// Providers that ask for server diagnostics implement SetLogger.
+	if s.reg != nil {
+		s.reg.Each(func(p core.Provider) {
+			if sl, ok := p.(interface{ SetLogger(*slog.Logger) }); ok {
+				sl.SetLogger(l)
+			}
+		})
 	}
 }
 

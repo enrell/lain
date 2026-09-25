@@ -1,86 +1,16 @@
 package gateway
 
-
 import (
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/fsnotify/fsnotify"
 )
 
-// newTestWatcher builds a watcher with the scan entry point stubbed: the
-// returned channel receives one send per would-be rescan, so debounce
-// and cancellation are assertable without walking a real tree.
-func newTestWatcher(t *testing.T, srv *Server, debounce time.Duration) (*libWatcher, chan string) {
-	t.Helper()
-	fsw, err := fsnotify.NewWatcher()
-	if err != nil {
-		t.Fatal(err)
-	}
-	scans := make(chan string, 16)
-	w := &libWatcher{
-		s: srv, fs: fsw, debounce: debounce,
-		scan:   func(id string) { scans <- id },
-		dirs:   map[string]string{},
-		timers: map[string]*time.Timer{},
-	}
-	t.Cleanup(w.close)
-	return w, scans
-}
-
-// A burst of events for one library collapses into a single rescan:
-// every event re-arms the debounce while the tree is still settling.
-func TestWatcherDebounceCollapsesBurst(t *testing.T) {
-	srv := testServer(t)
-	w, scans := newTestWatcher(t, srv, 40*time.Millisecond)
-	for i := 0; i < 6; i++ {
-		w.nudge("lib-1")
-		time.Sleep(5 * time.Millisecond)
-	}
-	select {
-	case id := <-scans:
-		if id != "lib-1" {
-			t.Fatalf("scan fired for %s, want lib-1", id)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("debounced scan never fired")
-	}
-	select {
-	case id := <-scans:
-		t.Fatalf("burst produced a second scan for %s", id)
-	case <-time.After(3 * w.debounce):
-	}
-}
-
-// dropLibrary unwatches the tree and cancels a pending rescan: a library
-// that is already gone must not be scanned afterwards.
-func TestWatcherDropLibraryCancelsPendingScan(t *testing.T) {
-	srv := testServer(t)
-	w, scans := newTestWatcher(t, srv, 40*time.Millisecond)
-	root := t.TempDir()
-	w.add(root, "lib-1")
-	w.nudge("lib-1")
-	w.dropLibrary("lib-1")
-	select {
-	case id := <-scans:
-		t.Fatalf("scan fired for dropped library %s", id)
-	case <-time.After(3 * w.debounce):
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if len(w.dirs) != 0 {
-		t.Fatalf("dirs still watched after drop: %v", w.dirs)
-	}
-	if len(w.timers) != 0 {
-		t.Fatalf("pending timer survived drop: %v", w.timers)
-	}
-}
-
-// While a scan is running, an event re-arms the debounce instead of
-// racing the in-flight scan; once the lock frees, one watch scan lands.
+// While a scan is running, a dirty drain re-marks the library in the
+// provider instead of racing the in-flight scan; once the lock frees,
+// one watch scan lands.
 func TestWatcherRearmsDuringRunningScan(t *testing.T) {
 	srv := testServer(t)
 	srv.watchDebounce = 30 * time.Millisecond

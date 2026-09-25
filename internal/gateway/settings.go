@@ -1,74 +1,66 @@
-// Operator settings for the transcode pipeline (D-045): JSON in the
-// bbolt meta bucket, resolved by the gateway and passed inside the
-// contract input. The plugin never reads the bucket.
+// Operator settings for the transcode pipeline (D-045): resolved by the
+// gateway through the lain.settings.transcode@1 capability and passed
+// inside the contract input — the pipeline plugin never reads storage,
+// and a swapped settings provider owns the policy (D-076).
 package gateway
 
 import (
 	"net/http"
 
-	bolt "go.etcd.io/bbolt"
-
 	"github.com/enrell/lain/internal/auth"
 	"github.com/enrell/lain/internal/contracts"
-	"github.com/enrell/lain/internal/kv"
+	"github.com/enrell/lain/internal/core"
+	"github.com/enrell/lain/internal/plugins/settings"
 )
 
-const transcodeSettingsKey = "transcode_settings"
-
-// SettingsStore persists operator policy in the meta bucket.
-type SettingsStore struct {
-	db *bolt.DB
-}
-
-// HasTranscode distinguishes a fresh install from an operator who explicitly
-// saved the software backend. That distinction is load-bearing for D-063:
-// detection chooses a first-boot default but never rewrites a saved choice.
-func (st *SettingsStore) HasTranscode() (bool, error) {
-	var out contracts.TranscodeSettings
-	err := st.db.View(func(tx *bolt.Tx) error {
-		return kv.GetJSON(tx, kv.BMeta, []byte(transcodeSettingsKey), &out)
-	})
-	if kv.IsNotFound(err) {
-		return false, nil
-	}
-	return err == nil, err
+// settingsResolver routes the operator settings calls every other part
+// of the server makes through the capability. It keeps the read
+// path's old fallback shape: a broken store degrades to shipped
+// defaults rather than breaking playback.
+type settingsResolver struct {
+	s *Server
 }
 
 // Transcode returns the effective transcode settings (defaults when
-// nothing was saved yet).
-func (st *SettingsStore) Transcode() contracts.TranscodeSettings {
-	var out contracts.TranscodeSettings
-	err := st.db.View(func(tx *bolt.Tx) error {
-		return kv.GetJSON(tx, kv.BMeta, []byte(transcodeSettingsKey), &out)
-	})
+// nothing was saved yet or the provider is down).
+func (a settingsResolver) Transcode() contracts.TranscodeSettings {
+	out, _, err := a.s.reg.CallOne(contracts.CapTranscodeSettings, nil)
 	if err != nil {
 		return contracts.DefaultTranscodeSettings()
 	}
-	return out.Normalize()
+	st, ok := out.(contracts.TranscodeSettings)
+	if !ok {
+		return contracts.DefaultTranscodeSettings()
+	}
+	return st
 }
 
-// SaveTranscode validates and stores the settings.
-func (st *SettingsStore) SaveTranscode(in contracts.TranscodeSettings) error {
-	in = in.Normalize()
-	if err := in.Validate(); err != nil {
-		return err
+// HasTranscode distinguishes a fresh install from an operator who
+// explicitly saved the software backend (D-063).
+func (a settingsResolver) HasTranscode() (bool, error) {
+	out, _, err := a.s.reg.CallOne(contracts.CapTranscodeSettings, settings.HasInput{})
+	if err != nil {
+		return false, err
 	}
-	return st.db.Update(func(tx *bolt.Tx) error {
-		return kv.PutJSON(tx, kv.BMeta, []byte(transcodeSettingsKey), in)
-	})
+	has, ok := out.(settings.HasOutput)
+	if !ok {
+		return false, &core.Error{Code: "internal", Msg: "bad settings provider output"}
+	}
+	return has.Saved, nil
+}
+
+// SaveTranscode validates and stores the settings; invalid policy
+// values surface as invalid-message.
+func (a settingsResolver) SaveTranscode(in contracts.TranscodeSettings) error {
+	_, _, err := a.s.reg.CallOne(contracts.CapTranscodeSettings, settings.PutInput{Settings: in})
+	return err
 }
 
 // Ensure writes the given settings when none exist yet (first boot
 // adopts CLI defaults without overwriting an operator choice).
-func (st *SettingsStore) Ensure(base contracts.TranscodeSettings) error {
-	var existing contracts.TranscodeSettings
-	err := st.db.View(func(tx *bolt.Tx) error {
-		return kv.GetJSON(tx, kv.BMeta, []byte(transcodeSettingsKey), &existing)
-	})
-	if err == nil {
-		return nil
-	}
-	return st.SaveTranscode(base)
+func (a settingsResolver) Ensure(base contracts.TranscodeSettings) error {
+	_, _, err := a.s.reg.CallOne(contracts.CapTranscodeSettings, settings.EnsureInput{Base: base})
+	return err
 }
 
 // automaticHardwarePreference is deterministic when a machine exposes more

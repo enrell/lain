@@ -19,6 +19,25 @@ const (
 	CapMetadataSearch    = "lain.metadata.search@1"
 	CapMetadataResolve   = "lain.metadata.resolve@1"
 	CapTransformThumb    = "lain.transform.thumbnail@1"
+	// CapUITheme derives the web UI palette from the host environment
+	// (D-076). Exactly one provider owns the derivation.
+	CapUITheme = "lain.ui.theme@1"
+	// CapMetadataEnrich orchestrates the metadata overlay pipeline:
+	// search, pick, resolve, save (D-076).
+	CapMetadataEnrich = "lain.metadata.enrich@1"
+	// CapPlaybackLocal supervises same-machine playback in mpv/VLC
+	// (D-072, D-076).
+	CapPlaybackLocal = "lain.playback.local@1"
+	// CapSourceWatch owns library filesystem watching and debounce
+	// (D-068, D-076).
+	CapSourceWatch = "lain.source.watch@1"
+	// CapBackupCreate packages a consistent snapshot for download
+	// (D-076). The core supplies the snapshot; the provider owns the
+	// artifact format.
+	CapBackupCreate = "lain.backup.create@1"
+	// CapTranscodeSettings stores the operator's transcode policy
+	// (D-045, D-076).
+	CapTranscodeSettings = "lain.settings.transcode@1"
 	CapPlaybackTranscode = "lain.playback.transcode@1"
 	// CapPlaybackTranscodeV2 adds side-effect-free inspection plus
 	// asynchronous start/status operations. V1 remains the synchronous
