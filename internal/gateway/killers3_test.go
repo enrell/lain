@@ -1,6 +1,5 @@
 package gateway
 
-
 // Round-3 mutation killers: boundary conditions that survived because
 // earlier tests never produced the exact edge input.
 
@@ -109,39 +108,7 @@ func TestKillRequestLogExactBoundaries(t *testing.T) {
 
 // --- theme.go:67 (home-dir fallback) ---
 
-func TestKillOmarchyThemePathHomeFallback(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("LAIN_OMARCHY_COLORS", "")
-	t.Setenv("HOME", home)
-	want := filepath.Join(home, ".local", "state", "omarchy", "current", "theme", "colors.toml")
-	if got := omarchyThemePath(); got != want {
-		t.Fatalf("default path: %q want %q", got, want)
-	}
-}
-
 // --- theme.go:100 (inline-comment strip guards) ---
-
-func TestKillThemeCommentStrip(t *testing.T) {
-	const base = "background = \"#101010\"\nforeground = \"#f0f0f0\"\n"
-	// A leading '#' at index 0 is the colour itself, never a comment.
-	p, ok := parseOmarchyTheme(strings.NewReader(base + "accent = #aabbcc\n"))
-	if !ok || p.Accent != "#aabbcc" {
-		t.Fatalf("unquoted hex value must survive: %q %v", p.Accent, ok)
-	}
-	// An inline comment after a bare word strips (i>0 branch).
-	p, ok = parseOmarchyTheme(strings.NewReader("mode = light # trailing\n" + base + "accent = \"#aabbcc\"\n"))
-	if !ok || p.Mode != "light" {
-		t.Fatalf("commented bare mode must parse to light: %q %v", p.Mode, ok)
-	}
-	// Quotes protect an inner '#': a quoted colour keeps its leading '#'
-	// instead of being truncated to a bare quote.
-	for _, q := range []string{`'`, `"`} {
-		p, ok = parseOmarchyTheme(strings.NewReader(base + "accent = " + q + "#112233" + q + "\n"))
-		if !ok || p.Accent != "#112233" {
-			t.Fatalf("quoted colour: %q %v", p.Accent, ok)
-		}
-	}
-}
 
 // --- enrich.go:35 (batch limit boundary) ---
 
@@ -438,11 +405,10 @@ func TestKillWatcherDefaultDebounce(t *testing.T) {
 	if err := srv.StartWatcher(); err != nil {
 		t.Fatalf("start watcher: %v", err)
 	}
-	w := srv.watcher()
-	if w == nil {
-		t.Fatal("watcher must exist after StartWatcher")
+	if srv.watchProv == nil {
+		t.Fatal("watch provider must exist after StartWatcher")
 	}
-	if w.debounce != 2*time.Second {
-		t.Fatalf("default debounce=%v, want 2s", w.debounce)
+	if srv.watchProv.Debounce != 2*time.Second {
+		t.Fatalf("default debounce=%v, want 2s", srv.watchProv.Debounce)
 	}
 }

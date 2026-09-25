@@ -37,6 +37,8 @@ func main() {
 		err = cmdDoctor(os.Args[2:])
 	case "plugins":
 		err = cmdPlugins(os.Args[2:])
+	case "plugin-run":
+		err = cmdPluginRun(os.Args[2:])
 	case "bench":
 		err = cmdBench(os.Args[2:])
 	case "login":
@@ -77,6 +79,7 @@ func usage() {
 	serve     run the server (flags: --data-dir, --port, --bind, --log-level, --transcode-cache-size, --watch)
   doctor    diagnose runtime + matrix environment (flags: --data-dir, --matrix-bin)
   plugins   list registered providers + composition (flags: --data-dir)
+  plugin-run  serve one built-in provider as a component (--id, --sock [--data-dir])
   bench     run a workload benchmark (bench scan --path DIR [--runs N])
   login     save API credentials (flags: --server, --username; or LAIN_PASSWORD)
   logout    forget saved credentials

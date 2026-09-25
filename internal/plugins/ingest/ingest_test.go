@@ -42,7 +42,7 @@ func TestScanEndToEnd(t *testing.T) {
 	reg.Register(identify.Anime{})
 	reg.Register(identify.Generic{})
 	reg.Register(cat)
-	r := &Runner{Reg: reg, Cat: cat}
+	r := &Runner{Reg: reg}
 	stats, err := r.Run(ScanInput{Libraries: []contracts.Library{{ID: "lib-anime", Name: "Anime", Type: "anime", Path: root}}})
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestScanKeepsServingWhenAnimeWithdrawn(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "[Fansub-A] Frieren - 12 [1080p].mkv"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := &Runner{Reg: reg, Cat: cat}
+	r := &Runner{Reg: reg}
 	stats, err := r.Run(ScanInput{Libraries: []contracts.Library{{ID: "l", Type: "anime", Path: root}}})
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +118,7 @@ func testRunner(t *testing.T) (*Runner, *catalog.Service) {
 	reg.Register(identify.Anime{})
 	reg.Register(identify.Generic{})
 	reg.Register(cat)
-	return &Runner{Reg: reg, Cat: cat}, cat
+	return &Runner{Reg: reg}, cat
 }
 
 func writeFile(t *testing.T, path string) {

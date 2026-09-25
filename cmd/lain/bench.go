@@ -114,7 +114,7 @@ func benchOneScan(path, libType string, run int) (*bench.RunResult, error) {
 	reg.Register(identify.Generic{})
 	reg.Register(cat)
 	trace := &ingest.ScanTrace{}
-	runner := &ingest.Runner{Reg: reg, Cat: cat, Trace: trace}
+	runner := &ingest.Runner{Reg: reg, Trace: trace}
 
 	sampler := bench.Start(20 * time.Millisecond)
 	t0 := time.Now()

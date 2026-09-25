@@ -1,6 +1,5 @@
 package gateway
 
-
 import (
 	"bytes"
 	"encoding/json"
@@ -11,12 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/enrell/lain/internal/auth"
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/plugins/transcode"
-	"github.com/fsnotify/fsnotify"
 )
 
 // --- libraries.go:41/159 (sort order) ---
@@ -220,41 +217,6 @@ func TestKillToneMapGate(t *testing.T) {
 
 // --- thumbnail.go:52/55 (width/time clamps) ---
 // Covered by TestKillThumbnailParams in killers_test.go.
-
-// --- watch.go:188/189 (dir add/remove on fs events) ---
-
-func TestKillWatcherDirTracking(t *testing.T) {
-	srv := testServer(t)
-	fs, err := fsnotify.NewWatcher()
-	if err != nil {
-		t.Fatalf("watcher: %v", err)
-	}
-	defer fs.Close()
-	libID := "lib-1"
-	w := &libWatcher{
-		s:      srv,
-		fs:     fs,
-		dirs:   map[string]string{},
-		timers: map[string]*time.Timer{},
-		scan:   func(string) {},
-	}
-	parent := t.TempDir()
-	dir := filepath.Join(parent, "newdir")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	w.dirs[parent] = libID
-	// A directory create under a watched parent registers the new dir.
-	w.onEvent(fsnotify.Event{Name: dir, Op: fsnotify.Create})
-	if got := w.dirs[dir]; got != libID {
-		t.Fatalf("created dir not tracked: dirs[%q]=%q", dir, got)
-	}
-	// A remove event drops it again.
-	w.onEvent(fsnotify.Event{Name: dir, Op: fsnotify.Remove})
-	if _, ok := w.dirs[dir]; ok {
-		t.Fatalf("removed dir still tracked: %+v", w.dirs)
-	}
-}
 
 // --- enrich.go:88 (kind derivation) ---
 

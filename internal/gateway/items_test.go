@@ -124,11 +124,11 @@ func TestSetMissingFlipsOneItem(t *testing.T) {
 	}
 	victim, sibling := page.Items[0].ID, page.Items[1].ID
 
-	found, err := srv.cat.SetMissing(victim, true)
+	found, err := srv.catSetMissing(victim, true)
 	if err != nil || !found {
 		t.Fatalf("SetMissing: found=%v err=%v", found, err)
 	}
-	if found, err := srv.cat.SetMissing("ghost", true); err != nil || found {
+	if found, err := srv.catSetMissing("ghost", true); err != nil || found {
 		t.Fatalf("unknown id must report not-found: found=%v err=%v", found, err)
 	}
 
@@ -142,7 +142,7 @@ func TestSetMissingFlipsOneItem(t *testing.T) {
 		t.Fatalf("sibling must stay present: %s", rec.Body.String())
 	}
 
-	if _, err := srv.cat.SetMissing(victim, false); err != nil {
+	if _, err := srv.catSetMissing(victim, false); err != nil {
 		t.Fatalf("unflag: %v", err)
 	}
 	rec = do(t, srv, "GET", "/api/catalog/"+victim, nil, admin)

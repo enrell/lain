@@ -10,7 +10,9 @@ package gateway
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -24,17 +26,23 @@ import (
 	bolt "go.etcd.io/bbolt"
 
 	"github.com/enrell/lain/internal/auth"
+	"github.com/enrell/lain/internal/component"
+	"github.com/enrell/lain/internal/plugins/backup"
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/core"
 	"github.com/enrell/lain/internal/kv"
 	"github.com/enrell/lain/internal/localplay"
 	"github.com/enrell/lain/internal/plugins/catalog"
 	"github.com/enrell/lain/internal/plugins/ingest"
+	pluginlocalplay "github.com/enrell/lain/internal/plugins/localplay"
 	"github.com/enrell/lain/internal/plugins/metadata"
 	"github.com/enrell/lain/internal/plugins/playback"
 	"github.com/enrell/lain/internal/plugins/probe"
 	"github.com/enrell/lain/internal/plugins/search"
+	"github.com/enrell/lain/internal/plugins/settings"
 	"github.com/enrell/lain/internal/plugins/source"
+	"github.com/enrell/lain/internal/plugins/sourcewatch"
+	"github.com/enrell/lain/internal/plugins/theme"
 	"github.com/enrell/lain/internal/plugins/thumbnail"
 	"github.com/enrell/lain/internal/plugins/transcode"
 	"github.com/enrell/lain/internal/plugins/userstate"
@@ -48,10 +56,8 @@ type Server struct {
 	auth           *auth.Service
 	db             *bolt.DB
 	st             *store.Dir
-	cat            *catalog.Service
-	ustate         *userstate.Service
 	libs           *LibraryStore
-	settings       *SettingsStore
+	settings       settingsResolver
 	mux            *http.ServeMux
 	ver            string
 	themePath      string
@@ -73,23 +79,41 @@ type Server struct {
 	scanMu sync.Mutex
 	scan   ScanStatus
 
-	// watch reconciles the catalog on filesystem events (D-068). Nil
-	// until StartWatcher runs; tests opt in, serve starts it.
-	watch         *libWatcher
+	// watch reconciles the catalog on file events through the
+	// lain.source.watch@1 provider (D-068/D-076): the poll loop starts
+	// on StartWatcher; watchDone closes it on shutdown.
+	watchProv     *sourcewatch.Provider
+	watchStarted  bool
+	watchDone     chan struct{}
 	watchDebounce time.Duration // test seam: zero uses the default
 
 	// local spawns mpv/VLC on this machine for loopback browsers (D-072).
 	local *localplay.Manager
+
+	// components provisions external providers from <data-dir>/plugins/
+	// (D-077). Started in NewWithOptions; nil only on spawn failure.
+	components *component.Provisioner
 }
 
 // Close stops background transforms and the library watcher before
 // releasing the database.
 func (s *Server) Close() error {
+	if s.components != nil {
+		s.components.Close()
+	}
+	if s.watchStarted && s.watchDone != nil {
+		close(s.watchDone)
+		s.watchDone = nil // Close may run twice (test cleanup)
+	}
+	if s.reg != nil {
+		s.reg.Each(func(p core.Provider) {
+			if c, ok := p.(io.Closer); ok {
+				_ = c.Close()
+			}
+		})
+	}
 	if s.local != nil {
 		s.local.Close()
-	}
-	if w := s.watcher(); w != nil {
-		w.close()
 	}
 	if s.transcode != nil {
 		_ = s.transcode.Close()
@@ -172,7 +196,7 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	reg.Register(identifyGenericShim{})
 	reg.Register(cat)
 	reg.Register(ustate)
-	reg.Register(searchProvider{cat: cat})
+	reg.Register(searchProvider{reg: reg})
 	reg.Register(playback.Planner{})
 	reg.Register(probe.Provider{})
 	reg.Register(thumbnail.New(filepath.Join(dataDir, "thumbnails")))
@@ -186,7 +210,15 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	reg.Register(metadata.NewAniList())
 	reg.Register(metadata.NewJikan())
 	reg.Register(metadata.NewTVMaze())
-	runner := &ingest.Runner{Reg: reg, Cat: cat}
+	reg.Register(settings.Provider{DB: db})
+	reg.Register(theme.Provider{})
+	reg.Register(metadata.NewEnricher(reg, db))
+	local := localplay.New()
+	reg.Register(&pluginlocalplay.Provider{Reg: reg, Mgr: local})
+	reg.Register(backup.Provider{})
+	watchProv := sourcewatch.NewWatcherProvider()
+	reg.Register(watchProv)
+	runner := &ingest.Runner{Reg: reg}
 	reg.Register(runner)
 	if err := comp.Validate(knownSet(reg)); err != nil {
 		db.Close()
@@ -201,7 +233,8 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	if opts.transcodeProbe != nil {
 		probeTranscode = opts.transcodeProbe
 	}
-	s := &Server{reg: reg, auth: a, db: db, st: st, cat: cat, ustate: ustate, libs: &LibraryStore{db: db}, settings: &SettingsStore{db: db}, mux: http.NewServeMux(), ver: ver, themePath: omarchyThemePath(), transcode: tr, probeTranscode: probeTranscode, autoEnrich: true, scan: ScanStatus{State: "idle"}, local: localplay.New()}
+	s := &Server{reg: reg, auth: a, db: db, st: st, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, transcode: tr, probeTranscode: probeTranscode, autoEnrich: true, scan: ScanStatus{State: "idle"}, local: local, watchProv: watchProv, watchDone: make(chan struct{})}
+	s.settings = settingsResolver{s: s}
 	// First boot adopts CLI bounds as the saved policy; later boots keep
 	// the operator's admin-UI choices (D-045).
 	bootSettings := contracts.DefaultTranscodeSettings()
@@ -230,6 +263,14 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	// The web UI is the least specific pattern: API, health and media
 	// routes registered above keep winning their paths.
 	webui.Mount(s.mux)
+	// Component-mode provisioning (D-077): manifests dropped into
+	// <data-dir>/plugins/ spawn supervised provider processes. A
+	// provisioning failure degrades to "no external components" — it
+	// never blocks boot.
+	s.components = component.NewProvisioner(filepath.Join(dataDir, "plugins"), reg, s.logger())
+	if err := s.components.Start(); err != nil {
+		s.logger().Warn("component provisioning disabled", "err", err.Error())
+	}
 	return s, nil
 }
 
@@ -350,6 +391,7 @@ func (s *Server) routes() {
 
 	m.HandleFunc("GET /api/plugins", s.requireAdmin(s.handlePlugins))
 	m.HandleFunc("POST /api/plugins/swap", s.requireAdmin(s.handleSwap))
+	m.HandleFunc("POST /api/plugins/withdraw", s.requireAdmin(s.handleWithdraw))
 	m.HandleFunc("GET /api/admin/backup", s.requireAdmin(s.handleBackup))
 }
 
@@ -436,7 +478,12 @@ func (s *Server) handleMyPassword(w http.ResponseWriter, r *http.Request, v auth
 // handleContinue returns the user's recorded progress newest-first
 // (continue-watching feed).
 func (s *Server) handleContinue(w http.ResponseWriter, r *http.Request, v auth.Verified) {
-	writeJSON(w, 200, s.ustate.List(v.UserID))
+	list, err := s.ustateList(v.UserID)
+	if err != nil {
+		writeErr(w, 503, err.Error())
+		return
+	}
+	writeJSON(w, 200, list)
 }
 
 func (s *Server) handleLibsList(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
@@ -462,9 +509,8 @@ func (s *Server) handleLibCreate(w http.ResponseWriter, r *http.Request, _ auth.
 		writeErr(w, 400, err.Error())
 		return
 	}
-	if w := s.watcher(); w != nil {
-		w.watchTree(lib.Path, lib.ID)
-	}
+	// The watch provider picks the new library up on its next poll —
+	// the library set travels inside every poll input.
 	writeJSON(w, 201, lib)
 }
 
@@ -474,12 +520,9 @@ func (s *Server) handleLibDelete(w http.ResponseWriter, r *http.Request, _ auth.
 		writeErr(w, 404, err.Error())
 		return
 	}
-	if w := s.watcher(); w != nil {
-		w.dropLibrary(id)
-	}
 	// A library record without its items is a leak: the scan reconciles
 	// per root and this root is gone, so nothing would ever collect them.
-	removed, err := s.cat.DeleteLibrary(id)
+	removed, err := s.catDeleteLibrary(id)
 	if err != nil {
 		s.logger().Error("library catalog cleanup failed", "req", reqIDOf(r), "library", id, "err", err.Error())
 		writeErr(w, 500, "library removed, but its catalog entries could not be deleted")
@@ -581,7 +624,7 @@ func atoiQuery(r *http.Request, key string) int {
 }
 
 func (s *Server) handleCatalogList(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
-	page, err := s.cat.Page(pageParams(r))
+	page, err := s.catPage(pageParams(r))
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
@@ -590,7 +633,7 @@ func (s *Server) handleCatalogList(w http.ResponseWriter, r *http.Request, _ aut
 }
 
 func (s *Server) handleCatalogGet(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
-	it, ok := s.cat.Get(r.PathValue("id"))
+	it, ok := s.catGet(r.PathValue("id"))
 	if !ok {
 		writeErr(w, 404, "unknown item")
 		return
@@ -603,7 +646,7 @@ func (s *Server) handleCatalogGet(w http.ResponseWriter, r *http.Request, _ auth
 // client only renders it, so the detail page never depends on the
 // search plugin (D-056).
 func (s *Server) handleCatalogEpisodes(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
-	items, ok := s.cat.Episodes(r.PathValue("id"))
+	items, ok := s.catEpisodes(r.PathValue("id"))
 	if !ok {
 		writeErr(w, 404, "unknown item")
 		return
@@ -626,7 +669,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, _ auth.Ver
 }
 
 func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, v auth.Verified) {
-	it, ok := s.cat.Get(r.PathValue("id"))
+	it, ok := s.catGet(r.PathValue("id"))
 	if !ok {
 		writeErr(w, 404, "unknown item")
 		return
@@ -762,7 +805,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	it, ok := s.cat.Get(r.PathValue("id"))
+	it, ok := s.catGet(r.PathValue("id"))
 	if !ok {
 		writeErr(w, 404, "unknown item")
 		return
@@ -869,18 +912,77 @@ func (s *Server) handleSwap(w http.ResponseWriter, r *http.Request, _ auth.Verif
 	writeJSON(w, 200, map[string]any{"generation": gen, "composition": s.reg.Composition().View()})
 }
 
-// handleBackup streams a consistent database snapshot (admin only).
-// The snapshot comes from one read transaction, so backup works while
-// scans and streams are running. Pair with GET /api/plugins (which
-// carries the composition) for a complete backup set.
-func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", `attachment; filename="lain.db"`)
-	if err := s.db.View(func(tx *bolt.Tx) error {
-		_, err := tx.WriteTo(w)
-		return err
-	}); err != nil {
-		// Headers already sent; nothing honest left to write.
+// handleWithdraw removes a provider from serving without deleting its
+// registration: bindings that referenced it fall back to remaining
+// healthy providers, and an exactly-one binding with no alternative
+// stays marked degraded rather than serving nothing silently.
+func (s *Server) handleWithdraw(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+	var in struct {
+		Provider string `json:"provider"`
+	}
+	if !s.decode(w, r, &in) {
 		return
 	}
+	if in.Provider == "" {
+		writeErr(w, 400, "provider required")
+		return
+	}
+	if err := s.reg.Withdraw(in.Provider); err != nil {
+		if ce, ok := err.(*core.Error); ok {
+			writeJSON(w, 400, map[string]any{"error": ce.Msg, "code": ce.Code})
+			return
+		}
+		writeErr(w, 400, err.Error())
+		return
+	}
+	if err := s.st.Save("composition.json", s.reg.Composition()); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"composition": s.reg.Composition().View()})
+}
+
+// handleBackup streams a backup artifact (admin only). The trusted
+// core snapshots the live database to a temp file — one read
+// transaction, so backup works while scans and streams run — and the
+// lain.backup.create@1 provider owns what the artifact becomes (D-076).
+// Pair with GET /api/plugins (which carries the composition) for a
+// complete backup set.
+func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+	dir, err := os.MkdirTemp("", "lain-backup-*")
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	defer os.RemoveAll(dir)
+	snapshot := filepath.Join(dir, "lain.db")
+	if err := s.db.View(func(tx *bolt.Tx) error {
+		f, err := os.Create(snapshot)
+		if err != nil {
+			return err
+		}
+		_, werr := tx.WriteTo(f)
+		return errors.Join(werr, f.Close())
+	}); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	comp, _ := json.Marshal(s.reg.Composition())
+	out, _, err := s.reg.CallOne(contracts.CapBackupCreate, backup.CreateInput{
+		SnapshotPath: snapshot,
+		OutDir:       dir,
+		Docs:         map[string]json.RawMessage{"composition.json": comp},
+	})
+	if err != nil {
+		writeErr(w, 503, err.Error())
+		return
+	}
+	artifact, ok := out.(backup.CreateOutput)
+	if !ok || artifact.Path == "" {
+		writeErr(w, 500, "backup provider returned a bad shape")
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+artifact.Filename+`"`)
+	http.ServeFile(w, r, artifact.Path)
 }

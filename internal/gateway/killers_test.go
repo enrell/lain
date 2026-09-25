@@ -1,6 +1,5 @@
 package gateway
 
-
 // Mutation killers for gateway pure helpers and handler branches that
 // the behavioural suites exercise but never assert precisely.
 
@@ -19,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	bolt "go.etcd.io/bbolt"
 
 	"github.com/enrell/lain/internal/contracts"
@@ -118,18 +116,6 @@ func TestKillReqIDOf(t *testing.T) {
 	}
 }
 
-func TestKillOmarchyThemePath(t *testing.T) {
-	t.Setenv("LAIN_OMARCHY_COLORS", "/custom/colors.toml")
-	if got := omarchyThemePath(); got != "/custom/colors.toml" {
-		t.Fatalf("env override: %q", got)
-	}
-	t.Setenv("LAIN_OMARCHY_COLORS", "   ")
-	got := omarchyThemePath()
-	if got == "/custom/colors.toml" || (got != "" && !strings.HasSuffix(got, filepath.Join("theme", "colors.toml"))) {
-		t.Fatalf("blank env must fall back to the default path: %q", got)
-	}
-}
-
 func TestKillDirOf(t *testing.T) {
 	if dirOf("") != "" {
 		t.Fatal("empty path must stay empty")
@@ -140,63 +126,6 @@ func TestKillDirOf(t *testing.T) {
 }
 
 // --- theme palette fixups ---
-
-func TestKillThemeContrastMath(t *testing.T) {
-	if got := contrastRatio("#000000", "#ffffff"); got < 20.9 || got > 21.1 {
-		t.Fatalf("black/white contrast: %v", got)
-	}
-	// Symmetric: swapping args must not change the ratio.
-	a, b := "#123456", "#fedcba"
-	if contrastRatio(a, b) != contrastRatio(b, a) {
-		t.Fatal("contrastRatio must be symmetric")
-	}
-	if contrastColor("#000000") != "#ffffff" || contrastColor("#ffffff") != "#000000" {
-		t.Fatal("contrastColor must pick the farther pole")
-	}
-	// 0x0a sits below the sRGB linearisation knee, 0x0b above it.
-	if hexLuminance("#0a0a0a") >= hexLuminance("#0b0b0b") {
-		t.Fatal("the sRGB knee must stay monotonic")
-	}
-}
-
-func TestKillThemeParseModes(t *testing.T) {
-	// mode validation: only dark/light are accepted; junk is ignored.
-	const base = "background = \"#101010\"\nforeground = \"#f0f0f0\"\naccent = \"#6699cc\"\n"
-	p, ok := parseOmarchyTheme(strings.NewReader("mode = \"dark\"\n" + base))
-	if !ok || p.Mode != "dark" {
-		t.Fatalf("dark mode parse: %+v %v", p, ok)
-	}
-	p, ok = parseOmarchyTheme(strings.NewReader("mode = \"sepia\"\n" + base))
-	if !ok || p.Mode != "dark" {
-		t.Fatalf("invalid mode must fall back to dark: %q %v", p.Mode, ok)
-	}
-	// Inline comments strip only for unquoted non-# values: `dark # x`
-	// parses as dark, while `#101010 # x` keeps its leading #.
-	p, ok = parseOmarchyTheme(strings.NewReader("mode = dark # a comment\n" + base))
-	if !ok || p.Mode != "dark" {
-		t.Fatalf("inline comment on a bare value: %q %v", p.Mode, ok)
-	}
-}
-
-func TestKillThemePaletteFixup(t *testing.T) {
-	// A collapsed palette (everything black) forces every fixup branch:
-	// SurfaceActive must separate from Surface, Muted must clear the
-	// text floor, Line must be visible.
-	p := applyLegibilityFloor(themePalette{
-		Background: "#000000", Surface: "#000000", SurfaceActive: "#000000",
-		Foreground: "#ffffff", Muted: "#000000", Line: "#000000",
-		Accent: "#000000",
-	})
-	if contrastRatio(p.SurfaceActive, p.Surface) < minLineContrast-0.05 {
-		t.Fatalf("surface_active must read as a fill: %q on %q", p.SurfaceActive, p.Surface)
-	}
-	if contrastRatio(p.Muted, p.SurfaceActive) < minTextContrast-0.05 {
-		t.Fatalf("muted must clear the text floor: %q on %q", p.Muted, p.SurfaceActive)
-	}
-	if contrastRatio(p.Line, p.Surface) < minLineContrast-0.05 {
-		t.Fatalf("line must be visible: %q on %q", p.Line, p.Surface)
-	}
-}
 
 // --- handler branches ---
 
@@ -386,20 +315,17 @@ func TestKillWatcherLifecycle(t *testing.T) {
 	if err := srv.StartWatcher(); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	first := srv.watcher()
-	if first == nil {
-		t.Fatal("watcher must be installed")
+	if !srv.watchStarted {
+		t.Fatal("watcher must be started")
 	}
-	if first.debounce != 25*time.Millisecond {
-		t.Fatalf("test debounce seam ignored: %v", first.debounce)
+	if srv.watchProv == nil || srv.watchProv.Debounce != 25*time.Millisecond {
+		t.Fatalf("test debounce seam ignored: %+v", srv.watchProv)
 	}
 	if err := srv.StartWatcher(); err != nil {
 		t.Fatalf("second start: %v", err)
 	}
-	if srv.watcher() != first {
-		t.Fatal("a second StartWatcher must be a no-op")
-	}
-	// Creating a library registers its tree; deleting it drops the watch.
+	// Creating a library registers its tree on the next poll; deleting
+	// it drops the watch on the one after.
 	dir := t.TempDir()
 	rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "W", "path": dir}, admin)
 	if rec.Code != 201 {
@@ -409,37 +335,17 @@ func TestKillWatcherLifecycle(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &lib); err != nil {
 		t.Fatal(err)
 	}
-	first.mu.Lock()
-	_, watched := first.dirs[filepath.Clean(dir)]
-	first.mu.Unlock()
-	if !watched {
+	srv.pollWatch()
+	if !srv.watchProv.Watching(lib.ID) {
 		t.Fatal("created library root must be watched")
 	}
 	rec = do(t, srv, "DELETE", "/api/libraries/"+lib.ID, nil, admin)
 	if rec.Code != 200 {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
 	}
-	first.mu.Lock()
-	_, watched = first.dirs[filepath.Clean(dir)]
-	first.mu.Unlock()
-	if watched {
+	srv.pollWatch()
+	if srv.watchProv.Watching(lib.ID) {
 		t.Fatal("deleted library root must be unwatched")
-	}
-}
-
-func TestKillWatcherRemoveEvent(t *testing.T) {
-	srv := testServer(t)
-	w, _ := newTestWatcher(t, srv, time.Hour)
-	dir := t.TempDir()
-	w.watchTree(dir, "lib1")
-	// A remove event forgets the dir so a recycled path cannot
-	// mis-attribute later events to this library.
-	w.onEvent(fsnotify.Event{Name: dir, Op: fsnotify.Remove})
-	w.mu.Lock()
-	_, ok := w.dirs[filepath.Clean(dir)]
-	w.mu.Unlock()
-	if ok {
-		t.Fatal("removed dir must leave the watch map")
 	}
 }
 
@@ -545,7 +451,7 @@ func TestKillUserPatchGuards(t *testing.T) {
 func TestKillSettingsHasTranscodeCorrupt(t *testing.T) {
 	srv := testServer(t)
 	err := srv.db.Update(func(tx *bolt.Tx) error {
-		return tx.Bucket(kv.BMeta).Put([]byte(transcodeSettingsKey), []byte("{not json"))
+		return tx.Bucket(kv.BMeta).Put([]byte("transcode_settings"), []byte("{not json"))
 	})
 	if err != nil {
 		t.Fatal(err)

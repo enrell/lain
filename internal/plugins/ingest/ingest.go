@@ -2,11 +2,13 @@
 // (lain.ingest.scan@1). It knows the pipeline order but not the
 // policies: sources enumerate, identifiers propose, the catalog owns
 // identity. Swapping any of them changes behavior without touching
-// this file.
+// this file. Catalog persistence goes through the registry
+// (lain.catalog.write@1), so the catalog binding is load-bearing even
+// inside a scan (D-075).
 //
 // Cost model: one library walk per root (parallel across roots), one
-// catalog persist for all upserts, one more only when pruning removed
-// something. Disk writes per scan are constant in library size.
+// catalog commit per walked root. Disk writes per scan stay constant in
+// library size.
 package ingest
 
 import (
@@ -26,7 +28,6 @@ const ID = "lain-ingest-default"
 // Runner executes scans against the registry.
 type Runner struct {
 	Reg *core.Registry
-	Cat *catalog.Service
 	// Trace, when non-nil, collects per-phase durations of Run.
 	// Used by `lain bench scan`; production leaves it nil.
 	Trace *ScanTrace
@@ -53,14 +54,14 @@ func (r *Runner) Invoke(cap string, input any) (any, error) {
 }
 
 // libResult is one root's in-memory outcome. Nothing touches the
-// catalog until every root finished: a crash mid-scan leaves the
-// previous catalog intact instead of half-written.
+// catalog until its root finished: the commit is per-library, so a
+// crash mid-scan can only leave a whole root's previous catalog intact,
+// never a half-written one.
 type libResult struct {
 	libraryID  string
 	name       string
 	path       string
-	items      []contracts.CatalogItem
-	present    map[string]bool
+	entries    []catalog.ScanEntry
 	accessible bool
 	cleanWalk  bool
 	candidates int
@@ -71,9 +72,10 @@ type libResult struct {
 }
 
 // Run walks every library root in parallel, identifies each candidate
-// through the ordered-many binding, marks vanished files missing and
-// restores returned ones (D-068), then persists all upserts at once —
-// but only for roots that were fully walked. An unmounted drive or a
+// through the ordered-many binding, then commits each root through the
+// catalog write binding (D-075): identity reconciliation (D-019) and
+// missing-state marking (D-068) run inside the catalog per library, and
+// only roots that were fully walked may mark — an unmounted drive or a
 // mid-walk I/O error never reads as deletions.
 func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 	stats := contracts.ScanStats{StartedAt: time.Now().Unix(), Libraries: len(in.Libraries)}
@@ -88,7 +90,6 @@ func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 	}
 	wg.Wait()
 
-	var all []contracts.CatalogItem
 	for i := range results {
 		res := &results[i]
 		stats.Candidates += res.candidates
@@ -111,37 +112,30 @@ func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 				Reason: fmt.Sprintf("%d directories could not be read", res.walkErrors),
 			})
 		}
-		// Identity v2 (D-019): re-home stable IDs onto moved or renamed
-		// files before persisting, while every root's present set is
-		// complete so genuine duplicates never merge.
-		reconciled, n := r.Cat.ReconcileMoves(res.libraryID, res.items, res.present)
-		res.items = reconciled
-		stats.Migrated += n
-		all = append(all, res.items...)
 	}
-	// Missing-state reconciliation runs before the upsert batch: the
-	// stored flag still says what the previous scan left behind, which is
-	// what makes "restored" countable. Only roots that were fully walked
-	// may mark — an unmounted drive or a mid-walk I/O error never reads
-	// as deletions.
+	// One commit per walked root. A failed commit counts as an error and
+	// leaves that root's previous catalog intact instead of aborting the
+	// other libraries.
 	t0 := time.Now()
 	for i := range results {
 		res := &results[i]
-		if !res.accessible || !res.cleanWalk {
-			continue
-		}
-		missing, restored, err := r.Cat.MarkMissing(res.libraryID, res.present)
+		out, _, err := r.Reg.CallOne(contracts.CapCatalogWrite, catalog.CommitScanInput{
+			LibraryID:        res.libraryID,
+			Entries:          res.entries,
+			ReconcileMissing: res.accessible && res.cleanWalk,
+		})
 		if err != nil {
 			stats.Errors++
 			continue
 		}
-		stats.Missing += missing
-		stats.Restored += restored
-	}
-	r.Trace.addPrune(time.Since(t0))
-	t0 = time.Now()
-	if err := r.Cat.UpsertBatch(all); err != nil {
-		return stats, err
+		commit, ok := out.(catalog.CommitScanOutput)
+		if !ok {
+			stats.Errors++
+			continue
+		}
+		stats.Migrated += commit.Migrated
+		stats.Missing += commit.Missing
+		stats.Restored += commit.Restored
 	}
 	r.Trace.addPersist(time.Since(t0))
 	stats.Unidentified = stats.Candidates - stats.Identified
@@ -151,18 +145,25 @@ func (r *Runner) Run(in ScanInput) (contracts.ScanStats, error) {
 
 // scanRoot walks one root to completion in memory.
 func (r *Runner) scanRoot(lib contracts.Library) libResult {
-	res := libResult{libraryID: lib.ID, name: lib.Name, path: lib.Path, present: map[string]bool{}}
+	res := libResult{libraryID: lib.ID, name: lib.Name, path: lib.Path}
 	t0 := time.Now()
-	cands, es, err := source.Enumerate(source.EnumerateInput{
+	out, _, err := r.Reg.CallOne(contracts.CapSourceEnumerate, source.EnumerateInput{
 		Root: lib.Path, LibraryID: lib.ID, Type: lib.Type,
 	})
 	r.Trace.addEnumerate(time.Since(t0))
-	res.dirs = es.Dirs
-	res.walkErrors = es.WalkErrors
 	if err != nil {
 		res.errors++
 		return res // root gone: accessible stays false, prune skipped
 	}
+	enumerated, ok := out.(source.EnumerateOutput)
+	if !ok {
+		res.errors++
+		return res
+	}
+	cands := enumerated.Candidates
+	es := enumerated.Stats
+	res.dirs = es.Dirs
+	res.walkErrors = es.WalkErrors
 	res.accessible = es.Accessible
 	res.cleanWalk = es.WalkErrors == 0
 	t0 = time.Now()
@@ -172,18 +173,19 @@ func (r *Runner) scanRoot(lib contracts.Library) libResult {
 			p, ok := v.(contracts.Proposal)
 			return ok && p.Accepted()
 		})
+		// The file still exists even when no identifier accepts it —
+		// an identify failure is not a deletion (D-011/D-068). The
+		// catalog counts every entry's path as present, so an
+		// already-cataloged item at that path keeps its state.
+		entry := catalog.ScanEntry{Candidate: c}
 		if err != nil || !accepted {
 			res.errors++
-			// The file still exists — an identify failure is not a
-			// deletion (D-011/D-068). Protect whatever catalog record
-			// this path owns from the missing-marker pass.
-			res.present[catalog.ItemID(lib.ID, c.Path)] = true
-			continue
+		} else {
+			entry.Proposal = out.(contracts.Proposal)
+			entry.Identified = true
+			res.identified++
 		}
-		it := catalog.NewItem(lib.ID, out.(contracts.Proposal), c)
-		res.items = append(res.items, it)
-		res.present[it.ID] = true
-		res.identified++
+		res.entries = append(res.entries, entry)
 	}
 	r.Trace.addIdentify(time.Since(t0))
 	return res

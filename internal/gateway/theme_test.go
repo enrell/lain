@@ -1,11 +1,12 @@
 package gateway
 
-
 import (
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/enrell/lain/internal/plugins/theme"
 )
 
 func TestThemeEndpointPublishesNormalizedOmarchyPaletteWithoutAuth(t *testing.T) {
@@ -37,7 +38,7 @@ yellow = "#D0A215"
 	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
 		t.Fatalf("Cache-Control = %q, want no-store", got)
 	}
-	var got themePalette
+	var got theme.Palette
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +61,7 @@ func TestThemeEndpointFallsBackOnMissingOrUnsafePalette(t *testing.T) {
 	srv.themePath = filepath.Join(t.TempDir(), "missing.toml")
 
 	rec := do(t, srv, "GET", "/api/theme", nil, "")
-	var got themePalette
+	var got theme.Palette
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
@@ -165,27 +166,27 @@ yellow = "#D0A215"
 			}
 			srv.themePath = path
 			rec := do(t, srv, "GET", "/api/theme", nil, "")
-			var got themePalette
+			var got theme.Palette
 			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 				t.Fatal(err)
 			}
 			if got.Source != "omarchy" {
 				t.Fatalf("expected the host palette, got %+v", got)
 			}
-			if r := contrastRatio(got.Muted, got.Background); r < minTextContrast {
-				t.Fatalf("muted %s on background %s = %.2f:1, want >= %.1f", got.Muted, got.Background, r, minTextContrast)
+			if r := theme.ContrastRatio(got.Muted, got.Background); r < theme.MinTextContrast {
+				t.Fatalf("muted %s on background %s = %.2f:1, want >= %.1f", got.Muted, got.Background, r, theme.MinTextContrast)
 			}
-			if r := contrastRatio(got.Muted, got.SurfaceActive); r < minTextContrast {
-				t.Fatalf("muted %s on surface_active %s = %.2f:1, want >= %.1f (neutral badge text on its fill)", got.Muted, got.SurfaceActive, r, minTextContrast)
+			if r := theme.ContrastRatio(got.Muted, got.SurfaceActive); r < theme.MinTextContrast {
+				t.Fatalf("muted %s on surface_active %s = %.2f:1, want >= %.1f (neutral badge text on its fill)", got.Muted, got.SurfaceActive, r, theme.MinTextContrast)
 			}
-			if r := contrastRatio(got.SurfaceActive, got.Surface); r < minLineContrast {
-				t.Fatalf("surface_active %s on surface %s = %.2f:1, want >= %.2f (a fill must read as a fill)", got.SurfaceActive, got.Surface, r, minLineContrast)
+			if r := theme.ContrastRatio(got.SurfaceActive, got.Surface); r < theme.MinLineContrast {
+				t.Fatalf("surface_active %s on surface %s = %.2f:1, want >= %.2f (a fill must read as a fill)", got.SurfaceActive, got.Surface, r, theme.MinLineContrast)
 			}
-			if r := contrastRatio(got.Line, got.Surface); r < minLineContrast {
-				t.Fatalf("line %s on surface %s = %.2f:1, want >= %.2f", got.Line, got.Surface, r, minLineContrast)
+			if r := theme.ContrastRatio(got.Line, got.Surface); r < theme.MinLineContrast {
+				t.Fatalf("line %s on surface %s = %.2f:1, want >= %.2f", got.Line, got.Surface, r, theme.MinLineContrast)
 			}
-			if r := contrastRatio(got.Line, got.SurfaceActive); r < minLineContrast {
-				t.Fatalf("line %s on surface_active %s = %.2f:1, want >= %.2f", got.Line, got.SurfaceActive, r, minLineContrast)
+			if r := theme.ContrastRatio(got.Line, got.SurfaceActive); r < theme.MinLineContrast {
+				t.Fatalf("line %s on surface_active %s = %.2f:1, want >= %.2f", got.Line, got.SurfaceActive, r, theme.MinLineContrast)
 			}
 		})
 	}
@@ -213,20 +214,20 @@ yellow = "#6b5e73"
 	}
 	srv.themePath = path
 	rec := do(t, srv, "GET", "/api/theme", nil, "")
-	var got themePalette
+	var got theme.Palette
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
 	if got.Muted != "#a8a2a4" || got.SurfaceActive != "#3a3438" {
 		t.Fatalf("separated palette was restyled: %+v", got)
 	}
-	if r := contrastRatio(got.Muted, got.Background); r < minTextContrast {
+	if r := theme.ContrastRatio(got.Muted, got.Background); r < theme.MinTextContrast {
 		t.Fatalf("muted/background = %.2f:1", r)
 	}
-	if r := contrastRatio(got.Muted, got.SurfaceActive); r < minTextContrast {
+	if r := theme.ContrastRatio(got.Muted, got.SurfaceActive); r < theme.MinTextContrast {
 		t.Fatalf("muted/surface_active = %.2f:1", r)
 	}
-	if r := contrastRatio(got.Line, got.SurfaceActive); r < minLineContrast {
+	if r := theme.ContrastRatio(got.Line, got.SurfaceActive); r < theme.MinLineContrast {
 		t.Fatalf("line/surface_active = %.2f:1", r)
 	}
 }

@@ -16,7 +16,7 @@ import (
 // item is a no-op that still answers 200 — the end state is identical.
 func (s *Server) handleItemDelete(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
 	id := r.PathValue("id")
-	it, ok := s.cat.Get(id)
+	it, ok := s.catGet(id)
 	if !ok {
 		writeErr(w, 404, "unknown item")
 		return
@@ -26,7 +26,7 @@ func (s *Server) handleItemDelete(w http.ResponseWriter, r *http.Request, _ auth
 		writeErr(w, 500, err.Error())
 		return
 	}
-	if _, err := s.cat.SetMissing(id, true); err != nil {
+	if _, err := s.catSetMissing(id, true); err != nil {
 		s.logger().Error("item missing-flag failed after file delete", "req", reqIDOf(r), "item", id, "err", err.Error())
 		writeErr(w, 500, "file removed, but the catalog entry could not be marked missing")
 		return

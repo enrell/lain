@@ -1,6 +1,5 @@
 package gateway
 
-
 import (
 	"bytes"
 	"encoding/json"

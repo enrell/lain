@@ -58,6 +58,7 @@ func (r *Registry) Register(p Provider) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.providers[p.ID()] = p
+	r.logLocked(Event{Kind: "register", Provider: p.ID()})
 }
 
 func (r *Registry) logLocked(e Event) {
@@ -124,6 +125,35 @@ func (r *Registry) Withdraw(id string) error {
 	if _, ok := r.providers[id]; !ok {
 		return &Error{Code: "invalid-message", Msg: "unknown provider " + id}
 	}
+	r.dropFromBindingsLocked(id)
+	return nil
+}
+
+// Unregister withdraws a provider from every binding and deletes its
+// registration: the id leaves Providers() entirely. Component
+// provisioning uses it when a manifest disappears — the code is gone,
+// not merely unbound.
+func (r *Registry) Unregister(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.providers[id]; !ok {
+		return &Error{Code: "invalid-message", Msg: "unknown provider " + id}
+	}
+	r.dropFromBindingsLocked(id)
+	delete(r.providers, id)
+	for cap, pid := range r.lastGood {
+		if pid == id {
+			delete(r.lastGood, cap)
+		}
+	}
+	r.logLocked(Event{Kind: "unregister", Provider: id})
+	return nil
+}
+
+// dropFromBindingsLocked removes id from every binding that names it,
+// falling back to remaining providers or marking the binding degraded.
+// Caller holds the write lock.
+func (r *Registry) dropFromBindingsLocked(id string) {
 	for cap, b := range r.comp.Bindings {
 		kept := b.Providers[:0:0]
 		dropped := false
@@ -145,7 +175,17 @@ func (r *Registry) Withdraw(id string) error {
 		b.Generation++
 		r.logLocked(Event{Kind: "withdraw", Capability: cap, Provider: id, Generation: b.Generation, Detail: fmt.Sprintf("fallback to %v", kept)})
 	}
-	return nil
+}
+
+// Each visits every registered provider (order unspecified). Used for
+// cross-cutting wiring that is not capability behavior, like pointing
+// providers that ask for it at the server logger.
+func (r *Registry) Each(fn func(Provider)) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, p := range r.providers {
+		fn(p)
+	}
 }
 
 // Ordered returns the healthy providers for a capability in binding order.

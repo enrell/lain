@@ -1,8 +1,8 @@
-# Plugin authoring (v0.1)
+# Plugin authoring
 
 ## Shape
 
-A v0.1 plugin is a Go type implementing `core.Provider`:
+A plugin is a Go type implementing `core.Provider`:
 
 ```go
 type Provider interface {
@@ -18,7 +18,17 @@ Return `&core.Error{Code: "invalid-message", ...}` for wrong shapes;
 codes `dependency-unavailable`, `stale-generation`, `outcome-unknown`
 have registry meaning — do not invent new ones without documenting them.
 
-## Manifest (for Matrix provisioning)
+## Component mode
+
+Any provider can run out-of-process. `lain plugin-run --id <provider>
+--sock <path>` serves a built-in provider over the component wire:
+NDJSON frames on a unix socket, a `hello` handshake that declares
+capabilities, `invoke`/`result`/`error` frames keyed by sequence id,
+and a transport-level `health`. See "Component mode" in
+`docs/CONTRACTS.md` for the protocol — third-party components can
+implement it in any language.
+
+A component manifest makes an executable provisionable:
 
 ```json
 {
@@ -26,21 +36,28 @@ have registry meaning — do not invent new ones without documenting them.
   "version": "1.3.0",
   "capabilities": ["lain.media.identify@1"],
   "execution": {"kind": "process", "entrypoint": "/path/to/bin",
-    "args": ["--matrix-sock", "{sock}", "--id", "{id}"]}
+    "args": ["--sock", "{sock}"]}
 }
 ```
 
-`internal/matrix.ExportManifests` writes these. The `plugin-run`
-component mode (sdk/go `Connect` + `Serve`) is the next slice; v0.1
-plugins link into the binary and register in `gateway.New`.
+`{sock}` expands to the socket the host allocates. Drop the manifest
+into `<data-dir>/plugins/` and the provisioner spawns, handshakes,
+health-checks and registers it; delete the manifest to unregister and
+kill it; rewrite it to reload. `internal/matrix.ExportManifests` still
+writes manifests in Matrix component shape for tooling.
 
 ## Install / swap / withdraw
 
-- Register: code change in `gateway.New` (v0.1) → restart.
+- Install at runtime: drop a manifest into `<data-dir>/plugins/` —
+  no rebuild or restart.
+- In-process providers register in `gateway.NewWithOptions` (restart).
 - Swap binding at runtime: `POST /api/plugins/swap` with the current
   `generation`. Health is checked first; rejection changes nothing.
-- Withdraw: `Registry.Withdraw` (API next slice); bindings fall back to
-  remaining providers with a generation bump, or stay marked degraded.
+- Withdraw: `POST /api/plugins/withdraw` marks a provider degraded and
+  falls the binding back to remaining providers; the registration
+  survives for a later swap-back.
+- Unregister (provisioner path): removes the provider from every
+  binding and deletes the registration entirely.
 
 ## Rules
 
@@ -53,3 +70,5 @@ plugins link into the binary and register in `gateway.New`.
 4. Provenance: tag everything you produce (`origin`, `evidence`).
 5. Ship a test with fixtures proving your contract behavior, including
    what you decline (for ordered-many providers, declining is a feature).
+6. Never take the database path — the trusted core hands you snapshots
+   or documents, not the live store.

@@ -13,19 +13,21 @@ a process.
 ## The fixed core
 
 `internal/core` + `internal/store` + `internal/auth` + `internal/gateway`
-+ `internal/matrix` (seam). It owns:
++ `internal/matrix` + `internal/component` (the component seam). It owns:
 
 - composition load/validate/persist (`composition.json`)
 - provider registry, health-gated swap, generation fencing, last-good
-  fallback, withdraw with degraded marking
+  fallback, withdraw with degraded marking, unregister
 - first-run setup, bcrypt passwords, HS256 tokens, per-request auth
 - atomic JSON documents (temp + rename; corrupt files reported, never
   silently ignored)
 - the HTTP boundary; media bytes via `ServeContent` (Range native)
+- component supervision (spawn/handshake/invoke/respawn) and the
+  `<data-dir>/plugins/` provisioner
 - Matrix manifest export + environment doctor
 
-It does not parse filenames, understand seasons, call metadata APIs, or
-transcode. Those are plugins.
+It does not parse filenames, understand seasons, call metadata APIs,
+theme itself, or transcode. Those are plugins.
 
 ## Data plane vs control plane
 
@@ -56,9 +58,9 @@ plugin -> plan/reference -> gateway validates -> URL -> client
 ## Composition modes
 
 Declared per capability in the composition (`exactly-one`,
-`ordered-many`, `first-accepted`, `merge-many`, `fan-out`). v0.1 wires
-the default set in `core.DefaultComposition`; `merge-many` and `fan-out`
-are declared for metadata providers and events (next slice).
+`ordered-many`, `first-accepted`, `merge-many`, `fan-out`).
+`core.DefaultComposition` wires the default set; `merge-many` serves
+the metadata providers, and `fan-out` stays reserved for events.
 
 ## Storage (v0.1)
 
@@ -69,10 +71,15 @@ JSON documents under the data dir: `users`, `secret`, `libraries`,
 
 ## Matrix seam
 
-v0.1 runs embedded: no daemon, no PKI, no socket. `internal/matrix`
-exports provider manifests in Matrix component shape and diagnoses the
-operator environment (`lain doctor --matrix-bin ...`). The `Invoke`
-surface already mirrors `invoke(cap, input)`, so component-mode
-(`lain plugin-run` + sdk/go `Connect`) is a transport change, not a
-redesign. Provisioning under `matrix-managed` comes after the PKI flow,
-not before the product works.
+Component mode is real: `internal/component` runs a provider as a
+supervised child process speaking NDJSON over a unix socket — `hello`
+handshake, sequenced `invoke`/`result`/`error` frames, transport-level
+`health`, respawn with backoff, `outcome-unknown` on timeouts. `lain
+plugin-run --id <provider> --sock <path>` adapts any built-in provider
+into a component, and `<data-dir>/plugins/` is watched: manifests
+install, reload and remove providers without a rebuild or restart
+(D-077). `internal/matrix` keeps exporting manifests in Matrix
+component shape and diagnosing the operator environment (`lain doctor
+--matrix-bin ...`); the PKI/daemon provisioning under `matrix-managed`
+remains a later slice — the wire protocol already exists, so that is
+an identity layer, not a redesign.

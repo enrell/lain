@@ -1,6 +1,5 @@
 package gateway
 
-
 // Real end-to-end transcoding: every source is generated procedurally
 // by ffmpeg (lavfi), catalogued through the real ingest pipeline, then
 // driven over HTTP against the real server. Nothing is faked and

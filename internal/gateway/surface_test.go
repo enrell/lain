@@ -1,6 +1,5 @@
 package gateway
 
-
 import (
 	"bytes"
 	"encoding/json"
@@ -198,7 +197,7 @@ func TestEnrichBatchRead(t *testing.T) {
 	srv := testServer(t)
 	admin := setupAdmin(t, srv)
 
-	it, err := srv.cat.Upsert(catalog.UpsertInput{
+	up, _, err := srv.reg.CallOne(contracts.CapCatalogWrite, catalog.UpsertInput{
 		LibraryID: "lib-x",
 		Proposal:  contracts.Proposal{Kind: "anime", Title: "Show", Confidence: 1},
 		Candidate: contracts.Candidate{Path: "/media/show.mkv", Size: 4, ModTime: 1},
@@ -206,6 +205,7 @@ func TestEnrichBatchRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	it := up.(contracts.CatalogItem)
 	if _, err := metadata.NewSaver(srv.db).Save(it.ID, contracts.MetadataRecord{
 		Provider: "p", RemoteID: "1", Title: "Show", Poster: "https://p",
 	}); err != nil {
@@ -282,9 +282,13 @@ func TestPluginsExposesProviderInfo(t *testing.T) {
 	if !found {
 		t.Fatal("composition provider must expose its capability in provider_info")
 	}
-	// Empty collections must serialize as [] — a null events log broke
+	// The events log audits registrations at boot, so a fresh server
+	// reports them — and it must never serialize as null, which broke
 	// the web UI once.
-	if !bytes.Contains(rec.Body.Bytes(), []byte(`"events":[]`)) {
-		t.Fatalf("events must encode as an empty array, got: %s", rec.Body.String())
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"events":null`)) {
+		t.Fatalf("events must not encode as null, got: %s", rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"events":[{"at"`)) {
+		t.Fatalf("boot registrations must be audited, got: %s", rec.Body.String())
 	}
 }

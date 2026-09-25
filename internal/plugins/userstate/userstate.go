@@ -43,6 +43,11 @@ type GetInput struct {
 	ItemID string `json:"item_id"`
 }
 
+// ListInput reads all of one user's progress (continue-watching feeds).
+type ListInput struct {
+	UserID string `json:"user_id"`
+}
+
 func key(userID, itemID string) []byte { return []byte(userID + "\x00" + itemID) }
 
 func userPrefix(userID string) []byte { return []byte(userID + "\x00") }
@@ -57,8 +62,10 @@ func (s *Service) Invoke(cap string, input any) (any, error) {
 	case GetInput:
 		p, _ := s.Get(in.UserID, in.ItemID)
 		return p, nil
+	case ListInput:
+		return s.List(in.UserID), nil
 	default:
-		return nil, &core.Error{Code: "invalid-message", Msg: "PutInput or GetInput required"}
+		return nil, &core.Error{Code: "invalid-message", Msg: "PutInput, GetInput or ListInput required"}
 	}
 }
 

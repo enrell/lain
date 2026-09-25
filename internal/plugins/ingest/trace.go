@@ -13,7 +13,9 @@ type ScanTrace struct {
 	Enumerate time.Duration
 	Identify  time.Duration
 	Persist   time.Duration
-	Prune     time.Duration
+	// Prune is folded into Persist since scan commits moved inside the
+	// catalog capability (D-075); kept so old benchmark files still parse.
+	Prune time.Duration
 }
 
 func (t *ScanTrace) addEnumerate(d time.Duration) {
@@ -40,15 +42,6 @@ func (t *ScanTrace) addPersist(d time.Duration) {
 	}
 	t.mu.Lock()
 	t.Persist = d
-	t.mu.Unlock()
-}
-
-func (t *ScanTrace) addPrune(d time.Duration) {
-	if t == nil {
-		return
-	}
-	t.mu.Lock()
-	t.Prune = d
 	t.mu.Unlock()
 }
 
