@@ -1,15 +1,17 @@
-import { goto } from '$app/navigation';
 import { ApiError, api } from '$lib/api';
 import { prefs } from '$lib/auth/storage';
 import { toasts } from '$lib/stores/toasts.svelte';
 import { errorMessage } from '$lib/utilities/errors';
 
 export type ExternalPlayer = 'mpv' | 'vlc';
-export type PreferredPlayer = 'browser' | 'local' | ExternalPlayer;
+export type PreferredPlayer = 'browser' | ExternalPlayer;
 
 export function loadPreferredPlayer(userId: string): PreferredPlayer {
 	const value = prefs.get(`player.${userId}`);
-	return value === 'mpv' || value === 'vlc' || value === 'local' ? value : 'browser';
+	// 'local' was the pre-autodetect spelling of "the player on this
+	// machine" (D-072); it maps to the default local player.
+	if (value === 'local') return 'mpv';
+	return value === 'mpv' || value === 'vlc' ? value : 'browser';
 }
 
 export function savePreferredPlayer(userId: string, player: PreferredPlayer): void {
@@ -17,10 +19,7 @@ export function savePreferredPlayer(userId: string, player: PreferredPlayer): vo
 }
 
 export function playbackHref(origin: string, itemId: string, player: PreferredPlayer): string {
-	// "local" keeps the in-browser href: Play buttons intercept the click
-	// and POST to the server, so a bare navigation (new tab, middle
-	// click) still lands on the web player.
-	return player === 'browser' || player === 'local' || !origin
+	return player === 'browser' || !origin
 		? `/player/${encodeURIComponent(itemId)}`
 		: externalPlayerUrl(origin, itemId, player);
 }
@@ -31,28 +30,51 @@ export function externalPlayerUrl(origin: string, itemId: string, player: Extern
 	return `lain://play?${query}`;
 }
 
+let localPlayersCache: Promise<string[]> | null = null;
+
 /**
- * Click intercept for Play buttons (D-072). When the preference is
- * "local" the server launches the player on its own machine; failures
- * that mean the capability is gone (403 remote, 503 no player) fall
- * back to the web player, while busy/conflict surfaces a toast —
- * doubling playback would be worse than explaining it.
+ * Players the server can launch itself (D-072): non-empty only when
+ * this browser reached the server over loopback, i.e. same machine.
+ * Cached once per page load — a machine does not gain players mid-click.
  */
-export async function playLocallyOrBrowser(
+function localPlayers(): Promise<string[]> {
+	localPlayersCache ??= api.localplay
+		.players()
+		.then((cap) => cap.players ?? [])
+		.catch(() => []);
+	return localPlayersCache;
+}
+
+/**
+ * Click intercept for Play buttons. When the server is on this machine
+ * it launches the player itself; anywhere else the click is replayed
+ * against its original lain:// destination (D-070). preventDefault runs
+ * synchronously because the fallback re-navigates by hand.
+ */
+export async function playExternalClick(
 	event: MouseEvent,
 	itemId: string,
 	preferred: PreferredPlayer
 ): Promise<void> {
-	if (preferred !== 'local') return;
+	if (preferred === 'browser') return;
+	const href = (event.currentTarget as HTMLAnchorElement).href;
 	event.preventDefault();
-	try {
-		const result = await api.localplay.play(itemId);
-		toasts.success(`Playing in ${result.player} on this machine.`);
-	} catch (err) {
-		if (err instanceof ApiError && (err.kind === 'forbidden' || err.kind === 'unavailable')) {
-			await goto(`/player/${encodeURIComponent(itemId)}`);
+	const players = await localPlayers();
+	if (players.length > 0) {
+		// When the browser is local, the server's capability list is the
+		// machine's player list — a missing binary would fail the lain://
+		// path identically, so the first available player is correct.
+		const player = players.includes(preferred) ? preferred : players[0];
+		try {
+			const result = await api.localplay.play(itemId, player);
+			toasts.success(`Playing in ${result.player} on this machine.`);
 			return;
+		} catch (err) {
+			if (!(err instanceof ApiError) || (err.kind !== 'forbidden' && err.kind !== 'unavailable')) {
+				toasts.error(errorMessage(err, 'Could not start playback.'));
+				return;
+			}
 		}
-		toasts.error(errorMessage(err, 'Could not start local playback.'));
 	}
+	window.location.assign(href);
 }

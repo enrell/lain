@@ -15,8 +15,7 @@ describe('externalPlayerUrl', () => {
 });
 
 describe('playbackHref', () => {
-	it('keeps "local" on the web player href so bare navigation still works', () => {
-		expect(playbackHref('https://media.example', 'it1', 'local')).toBe('/player/it1');
+	it('keeps the browser on the web player href', () => {
 		expect(playbackHref('https://media.example', 'it1', 'browser')).toBe('/player/it1');
 	});
 	it('hands external players the lain:// protocol link', () => {

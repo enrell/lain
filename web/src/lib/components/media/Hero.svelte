@@ -8,7 +8,7 @@
 	import { mediaSubtitle } from '$lib/utilities/format';
 	import { progressRatio } from '$lib/utilities/progress';
 	import ProgressBar from './ProgressBar.svelte';
-	import { loadPreferredPlayer, playbackHref, playLocallyOrBrowser, type PreferredPlayer } from '$lib/player/external-player';
+	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	onMount(() => {
@@ -92,7 +92,7 @@
 			<div class="mt-7 flex flex-wrap gap-3">
 				<a
 					href={playHref(item.id)}
-					onclick={(e) => playLocallyOrBrowser(e, item.id, preferredPlayer)}
+					onclick={(e) => playExternalClick(e, item.id, preferredPlayer)}
 					class="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-black transition duration-300 ease-out hover:-translate-y-0.5 hover:bg-white/88 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
 				>
 					<Play class="size-4 fill-current" aria-hidden="true" />
@@ -110,7 +110,7 @@
 	{#if upNext}
 		<a
 			href={playHref(upNext.id)}
-			onclick={(e) => playLocallyOrBrowser(e, upNext.id, preferredPlayer)}
+			onclick={(e) => playExternalClick(e, upNext.id, preferredPlayer)}
 			class="absolute bottom-8 right-8 z-10 hidden w-[min(26rem,32vw)] grid-cols-[7rem_1fr] items-stretch border border-white/10 bg-black/75 backdrop-blur-xl transition duration-300 ease-out hover:-translate-y-0.5 hover:border-white/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white md:grid"
 			aria-label={`Continue next: ${upNextTitle}`}
 		>
