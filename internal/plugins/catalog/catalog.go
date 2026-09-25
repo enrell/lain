@@ -7,6 +7,7 @@ package catalog
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -333,6 +334,34 @@ func (s *Service) MarkMissing(libraryID string, present map[string]bool) (missin
 		return nil
 	})
 	return missing, restored, err
+}
+
+// SetMissing flips the missing flag on one item (D-073): the delete
+// path asserts it directly instead of waiting on the watcher, so
+// LAIN_WATCH=0 installs converge too. It reports whether the item
+// existed at all.
+func (s *Service) SetMissing(id string, missing bool) (bool, error) {
+	found := false
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		var it contracts.CatalogItem
+		if err := kv.GetJSON(tx, kv.BItems, []byte(id), &it); err != nil {
+			if errors.Is(err, kv.ErrNotFound) {
+				return nil
+			}
+			return err
+		}
+		found = true
+		if it.Missing == missing {
+			return nil
+		}
+		it.Missing = missing
+		raw, err := marshalItem(it)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket(kv.BItems).Put([]byte(id), raw)
+	})
+	return found, err
 }
 
 // DeleteLibrary removes every catalog item that belongs to a library, plus

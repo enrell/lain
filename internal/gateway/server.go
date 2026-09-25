@@ -340,6 +340,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/catalog/{id}/episodes", s.requireAuth(s.handleCatalogEpisodes))
 	m.HandleFunc("GET /api/search", s.requireAuth(s.handleSearch))
 
+	m.HandleFunc("DELETE /api/items/{id}", s.requireAdmin(s.handleItemDelete))
 	m.HandleFunc("GET /api/items/{id}/playback", s.requireAuth(s.handlePlayback))
 	m.HandleFunc("GET /api/items/{id}/stream", s.handleStream) // auth inside (query token)
 	m.HandleFunc("PUT /api/items/{id}/progress", s.requireAuth(s.handleProgressPut))

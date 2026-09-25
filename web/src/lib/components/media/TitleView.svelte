@@ -1,14 +1,21 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
+	import Check from '@lucide/svelte/icons/check';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import Play from '@lucide/svelte/icons/play';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import X from '@lucide/svelte/icons/x';
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { episodeLabel, type SeriesGroup } from '$lib/utilities/grouping';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
+	import { toasts } from '$lib/stores/toasts.svelte';
+	import { errorMessage } from '$lib/utilities/errors';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
+	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Poster from '$lib/components/media/Poster.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import { formatTime } from '$lib/utilities/format';
@@ -88,10 +95,74 @@
 
 	const watched = $derived(group.items.filter((i) => progressMap?.get(i.id)?.completed).length);
 
+	// Episode selection (D-073, admin only): a mode that turns the cards
+	// into toggles instead of play links, with bulk delete routed through
+	// DELETE /api/items/{id}. The server keeps the catalog row as
+	// `missing`, so ids that were deleted this session render like any
+	// other missing episode until the next reload confirms it.
+	let selecting = $state(false);
+	let selected = $state<Set<string>>(new Set());
+	let deletedIds = $state<Set<string>>(new Set());
+	let confirmDelete = $state(false);
+	let deleting = $state(false);
+
+	function isGone(item: CatalogItem): boolean {
+		return item.missing || deletedIds.has(item.id);
+	}
+
+	function toggleSelect(id: string): void {
+		const next = new Set(selected);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		selected = next;
+	}
+
+	function selectAll(): void {
+		selected = new Set(visible.map((i) => i.id));
+	}
+
+	function selectWatched(): void {
+		selected = new Set(
+			visible.filter((i) => progressMap?.get(i.id)?.completed).map((i) => i.id)
+		);
+	}
+
+	function exitSelecting(): void {
+		selecting = false;
+		selected = new Set();
+	}
+
+	async function deleteSelected(): Promise<void> {
+		if (deleting || selected.size === 0) return;
+		deleting = true;
+		const ids = [...selected];
+		const gone = new Set(deletedIds);
+		const failed: { id: string; err: unknown }[] = [];
+		for (const id of ids) {
+			try {
+				await api.items.remove(id);
+				gone.add(id);
+			} catch (err) {
+				failed.push({ id, err });
+			}
+		}
+		deletedIds = gone;
+		confirmDelete = false;
+		deleting = false;
+		if (failed.length === 0) {
+			toasts.success(ids.length === 1 ? 'Episode deleted.' : `${ids.length} episodes deleted.`);
+			exitSelecting();
+		} else {
+			// Keep the failures selected so it is obvious which ones stayed.
+			selected = new Set(failed.map((f) => f.id));
+			toasts.error(errorMessage(failed[0].err, `${failed.length} of ${ids.length} episodes could not be deleted.`));
+		}
+	}
+
 	// Resume at the first started-but-unfinished episode; otherwise play
 	// the show from the top like a fresh watch. Missing episodes can never
 	// be the target — the plan refuses them at play time anyway.
-	const available = $derived(group.items.filter((i) => !i.missing));
+	const available = $derived(group.items.filter((i) => !isGone(i)));
 	const resumeTarget = $derived(
 		available.find((i) => {
 			const p = progressMap?.get(i.id);
@@ -249,13 +320,88 @@
 				</div>
 			{/if}
 
-			<h2 class="mb-4 text-lg font-semibold tracking-[-0.02em] text-foreground">Episodes</h2>
+			<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+				<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">
+					Episodes
+					{#if selecting}
+						<span class="ml-2 align-middle font-mono text-[11px] font-normal uppercase tracking-[0.14em] text-muted">
+							{selected.size} selected
+						</span>
+					{/if}
+				</h2>
+				{#if session.isAdmin}
+					<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Episode selection">
+						{#if selecting}
+							<button
+								type="button"
+								onclick={selectAll}
+								class="rounded-full bg-surface px-3.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
+							>
+								All
+							</button>
+							<button
+								type="button"
+								onclick={selectWatched}
+								class="rounded-full bg-surface px-3.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
+							>
+								Watched
+							</button>
+							<button
+								type="button"
+								onclick={() => (selected = new Set())}
+								class="rounded-full bg-surface px-3.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
+							>
+								None
+							</button>
+							<Button variant="danger" size="sm" disabled={selected.size === 0} onclick={() => (confirmDelete = true)}>
+								<Trash2 class="size-3.5" aria-hidden="true" /> Delete
+							</Button>
+							<Button variant="ghost" size="sm" onclick={exitSelecting}>
+								<X class="size-3.5" aria-hidden="true" /> Done
+							</Button>
+						{:else}
+							<Button variant="secondary" size="sm" onclick={() => (selecting = true)}>
+								<ListChecks class="size-3.5" aria-hidden="true" /> Select
+							</Button>
+						{/if}
+					</div>
+				{/if}
+			</div>
 			<ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" data-episode-grid>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
+					{@const gone = isGone(item)}
 					<li>
-						{#if item.missing}
+						{#if selecting}
+							<!-- Selection mode turns the card into a toggle so the
+							     click never reaches a play link. -->
+							<button
+								type="button"
+								onclick={() => toggleSelect(item.id)}
+								aria-pressed={selected.has(item.id)}
+								class={[
+									'group relative block w-full overflow-hidden rounded-xl border bg-surface/30 text-left transition duration-300',
+									selected.has(item.id)
+										? 'border-accent ring-1 ring-accent'
+										: 'border-line/60 hover:border-white/15',
+									gone ? 'opacity-60' : ''
+								].join(' ')}
+								aria-label={`${selected.has(item.id) ? 'Deselect' : 'Select'} ${episodeLabel(item)}`}
+							>
+								{@render episodeCard(item, progress, ratio, gone)}
+								<span
+									class={[
+										'absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border backdrop-blur transition-colors',
+										selected.has(item.id)
+											? 'border-accent bg-accent text-accent-fg'
+											: 'border-white/40 bg-black/55 text-transparent'
+									].join(' ')}
+								>
+									<Check class="size-3.5" aria-hidden="true" />
+								</span>
+							</button>
+						{:else if gone}
 							<!-- A missing file is not a dead link pretending to play:
 							     the card stays for context (progress, titles) but does
 							     not navigate. -->
@@ -263,7 +409,7 @@
 								class="block overflow-hidden rounded-xl border border-line/60 bg-surface/30 opacity-60"
 								aria-label={`${episodeLabel(item)}, missing from disk`}
 							>
-								{@render episodeCard(item, progress, ratio)}
+								{@render episodeCard(item, progress, ratio, gone)}
 							</div>
 						{:else}
 							<a
@@ -272,7 +418,7 @@
 								class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
 								aria-label={`Play ${episodeLabel(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 							>
-								{@render episodeCard(item, progress, ratio)}
+								{@render episodeCard(item, progress, ratio, gone)}
 							</a>
 						{/if}
 					</li>
@@ -282,7 +428,7 @@
 	</div>
 </article>
 
-{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number)}
+{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean)}
 	<div class="relative aspect-video overflow-hidden bg-surface">
 		<img
 			src={stillUrl(item.id)}
@@ -292,7 +438,7 @@
 			decoding="async"
 			class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
 		/>
-		{#if !item.missing}
+		{#if !gone}
 			<span
 				class="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-black/65 text-white opacity-0 backdrop-blur transition-opacity duration-200 group-hover:opacity-100"
 			>
@@ -310,8 +456,8 @@
 		{#if item.title !== group.title}
 			<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>
 		{/if}
-		<p class={['mt-1 truncate text-xs', item.missing ? 'text-danger' : 'text-muted'].join(' ')}>
-			{#if item.missing}
+		<p class={['mt-1 truncate text-xs', gone ? 'text-danger' : 'text-muted'].join(' ')}>
+			{#if gone}
 				Missing from disk
 			{:else if progress && !progress.completed && progress.duration_sec > 0}
 				Resume at {Math.min(100, Math.round((progress.position_sec / progress.duration_sec) * 100))}%
@@ -325,3 +471,23 @@
 		</p>
 	</div>
 {/snippet}
+
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && selecting && !confirmDelete) exitSelecting();
+	}}
+/>
+
+<Modal
+	bind:open={confirmDelete}
+	title={`Delete ${selected.size} ${selected.size === 1 ? 'episode' : 'episodes'}?`}
+	description="The files are removed from disk for every user. The catalog entries stay as missing, so progress and metadata are preserved and an episode restores itself if its file returns."
+>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (confirmDelete = false)}>Cancel</Button>
+		<Button variant="danger" loading={deleting} onclick={() => void deleteSelected()}>
+			Delete {selected.size === 1 ? 'file' : `${selected.size} files`}
+		</Button>
+	{/snippet}
+	<p class="text-sm text-muted">This cannot be undone — the media bytes are gone.</p>
+</Modal>
