@@ -23,7 +23,7 @@
 		}
 	});
 	function changePlayer(value: string): void {
-		if (!session.user || (value !== 'browser' && value !== 'local' && value !== 'mpv' && value !== 'vlc')) return;
+		if (!session.user || (value !== 'browser' && value !== 'mpv' && value !== 'vlc')) return;
 		preferredPlayer = value;
 		savePreferredPlayer(session.user.id, value);
 	}
@@ -90,15 +90,14 @@
 <div class="grid gap-6 lg:grid-cols-2">
 	<section class="rounded-card border border-line bg-surface/60 p-5">
 		<h2 class="text-base font-semibold text-foreground">Default player</h2>
-		<p class="mt-1 text-sm text-muted">Choose what Play opens in this browser. External players need the Lain CLI and a local handler.</p>
+		<p class="mt-1 text-sm text-muted">Choose what Play opens in this browser. mpv and VLC launch locally when the server shares this machine; elsewhere they go through the CLI handler.</p>
 		<label class="mt-4 block text-sm font-medium text-foreground" for="preferred-player">Player</label>
 		<select id="preferred-player" class="mt-2 w-full rounded-md border border-line bg-background p-2 text-foreground" value={preferredPlayer} onchange={(e) => changePlayer(e.currentTarget.value)}>
 			<option value="browser">Web player</option>
-			<option value="local">Player on this machine</option>
 			<option value="mpv">mpv</option>
 			<option value="vlc">VLC</option>
 		</select>
-		<p class="mt-2 text-xs text-muted">"This machine" asks the Lain server to open mpv or VLC locally — it works when the server runs natively on the same computer as this browser. For mpv or VLC on a different machine, run <code>lain login</code> and <code>lain install-player-handler</code> there.</p>
+		<p class="mt-2 text-xs text-muted">When this browser and the server are on the same computer, mpv and VLC open locally — no setup needed. On a different computer, run <code>lain login</code> and <code>lain install-player-handler</code> there.</p>
 	</section>
 	<section class="rounded-card border border-line bg-surface/60 p-5">
 		<h2 class="text-base font-semibold text-foreground">Preferred playback language</h2>

@@ -32,7 +32,7 @@
 	import { groupFromEpisodes, type SeriesGroup } from '$lib/utilities/grouping';
 	import { formatBytes, formatDate, formatRelative, formatTime, mediaSubtitle } from '$lib/utilities/format';
 	import { progressRatio } from '$lib/utilities/progress';
-	import { loadPreferredPlayer, playbackHref, playLocallyOrBrowser, type PreferredPlayer } from '$lib/player/external-player';
+	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer); }
@@ -273,7 +273,7 @@
 				     bounded content. -->
 				<div class="flex flex-wrap items-center gap-3 pt-1">
 					{#if playable || (!item.missing && preferredPlayer !== 'browser')}
-						<LinkButton href={playHref(item.id)} size="lg" onclick={(e) => playLocallyOrBrowser(e, item!.id, preferredPlayer)}>
+						<LinkButton href={playHref(item.id)} size="lg" onclick={(e) => playExternalClick(e, item!.id, preferredPlayer)}>
 							<Play class="size-4" />
 							{resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
 						</LinkButton>
