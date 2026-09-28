@@ -50,34 +50,41 @@ type Composition struct {
 // the Jellyfin-parity transcode v3 session contract (D-042/D-044), and
 // version 6 converts the gateway's remaining policy islands into
 // capabilities: settings, theme, enrichment, local playback, library
-// watch and backup (D-076).
+// watch and backup (D-076), and version 7 adds the tracking-list
+// domain: list read/write, linked accounts, platform connectors and
+// integration settings (D-078..D-081).
 // Upgrade carries saved compositions forward without replacing
 // overrides.
 func DefaultComposition() *Composition {
 	return &Composition{
-		Version: 6,
+		Version: 7,
 		Bindings: map[string]*Binding{
-			"lain.source.enumerate@1":    {Mode: ModeExactlyOne, Providers: []string{"lain-source-filesystem"}, Generation: 1},
-			"lain.media.identify@1":      {Mode: ModeOrderedMany, Providers: []string{"lain-identify-anime", "lain-identify-generic"}, Generation: 1},
-			"lain.media.probe@1":         {Mode: ModeExactlyOne, Providers: []string{"lain-probe-ffprobe"}, Generation: 1},
-			"lain.catalog.read@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
-			"lain.catalog.write@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
-			"lain.userstate.progress@1":  {Mode: ModeExactlyOne, Providers: []string{"lain-userstate-bolt"}, Generation: 1},
-			"lain.playback.plan@1":       {Mode: ModeFirstAccepted, Providers: []string{"lain-playback-default"}, Generation: 1},
-			"lain.playback.transcode@1":  {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
-			"lain.playback.transcode@2":  {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
-			"lain.playback.transcode@3":  {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
-			"lain.transform.thumbnail@1": {Mode: ModeExactlyOne, Providers: []string{"lain-thumbnail-ffmpeg"}, Generation: 1},
-			"lain.search.query@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-search-simple"}, Generation: 1},
-			"lain.ingest.scan@1":         {Mode: ModeExactlyOne, Providers: []string{"lain-ingest-default"}, Generation: 1},
-			"lain.metadata.search@1":     {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan", "lain-metadata-tvmaze"}, Generation: 1},
-			"lain.metadata.resolve@1":    {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan", "lain-metadata-tvmaze"}, Generation: 1},
-			"lain.settings.transcode@1":  {Mode: ModeExactlyOne, Providers: []string{"lain-settings-bolt"}, Generation: 1},
-			"lain.ui.theme@1":            {Mode: ModeExactlyOne, Providers: []string{"lain-theme-omarchy"}, Generation: 1},
-			"lain.metadata.enrich@1":     {Mode: ModeExactlyOne, Providers: []string{"lain-metadata-enrich"}, Generation: 1},
-			"lain.playback.local@1":      {Mode: ModeExactlyOne, Providers: []string{"lain-playback-local"}, Generation: 1},
-			"lain.backup.create@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-backup-bundle"}, Generation: 1},
-			"lain.source.watch@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-source-watch"}, Generation: 1},
+			"lain.source.enumerate@1":      {Mode: ModeExactlyOne, Providers: []string{"lain-source-filesystem"}, Generation: 1},
+			"lain.media.identify@1":        {Mode: ModeOrderedMany, Providers: []string{"lain-identify-anime", "lain-identify-generic"}, Generation: 1},
+			"lain.media.probe@1":           {Mode: ModeExactlyOne, Providers: []string{"lain-probe-ffprobe"}, Generation: 1},
+			"lain.catalog.read@1":          {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
+			"lain.catalog.write@1":         {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
+			"lain.userstate.progress@1":    {Mode: ModeExactlyOne, Providers: []string{"lain-userstate-bolt"}, Generation: 1},
+			"lain.playback.plan@1":         {Mode: ModeFirstAccepted, Providers: []string{"lain-playback-default"}, Generation: 1},
+			"lain.playback.transcode@1":    {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
+			"lain.playback.transcode@2":    {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
+			"lain.playback.transcode@3":    {Mode: ModeExactlyOne, Providers: []string{"lain-transcode-ffmpeg"}, Generation: 1},
+			"lain.transform.thumbnail@1":   {Mode: ModeExactlyOne, Providers: []string{"lain-thumbnail-ffmpeg"}, Generation: 1},
+			"lain.search.query@1":          {Mode: ModeExactlyOne, Providers: []string{"lain-search-simple"}, Generation: 1},
+			"lain.ingest.scan@1":           {Mode: ModeExactlyOne, Providers: []string{"lain-ingest-default"}, Generation: 1},
+			"lain.metadata.search@1":       {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan", "lain-metadata-tvmaze"}, Generation: 1},
+			"lain.metadata.resolve@1":      {Mode: ModeMergeMany, Providers: []string{"lain-metadata-nfo", "lain-metadata-kitsu", "lain-metadata-anilist", "lain-metadata-jikan", "lain-metadata-tvmaze"}, Generation: 1},
+			"lain.settings.transcode@1":    {Mode: ModeExactlyOne, Providers: []string{"lain-settings-bolt"}, Generation: 1},
+			"lain.ui.theme@1":              {Mode: ModeExactlyOne, Providers: []string{"lain-theme-omarchy"}, Generation: 1},
+			"lain.metadata.enrich@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-metadata-enrich"}, Generation: 1},
+			"lain.playback.local@1":        {Mode: ModeExactlyOne, Providers: []string{"lain-playback-local"}, Generation: 1},
+			"lain.backup.create@1":         {Mode: ModeExactlyOne, Providers: []string{"lain-backup-bundle"}, Generation: 1},
+			"lain.source.watch@1":          {Mode: ModeExactlyOne, Providers: []string{"lain-source-watch"}, Generation: 1},
+			"lain.list.read@1":             {Mode: ModeExactlyOne, Providers: []string{"lain-list-bolt"}, Generation: 1},
+			"lain.list.write@1":            {Mode: ModeExactlyOne, Providers: []string{"lain-list-bolt"}, Generation: 1},
+			"lain.list.account@1":          {Mode: ModeExactlyOne, Providers: []string{"lain-list-bolt"}, Generation: 1},
+			"lain.listlink@1":              {Mode: ModeOrderedMany, Providers: []string{"lain-listlink-anilist"}, Generation: 1},
+			"lain.settings.integrations@1": {Mode: ModeExactlyOne, Providers: []string{"lain-settings-bolt"}, Generation: 1},
 		},
 	}
 }

@@ -172,6 +172,22 @@ mpv "http://localhost:9360/api/items/<id>/stream?token=$TOK"
   with ffmpeg (capability `lain.transform.thumbnail@1`), caches it on
   disk and serves it with daily cache headers. No ffmpeg? Only this
   capability degrades.
+- **A unified tracking list.** The "lain list" tracks every media type —
+  anime, manga, comics, movies and series — as per-user records that do
+  not need library files (D-078). External list accounts link per user
+  through OAuth and import into it: **AniList** today
+  (`GET /api/me/links`, `/authorize`, `/api/auth/{platform}/callback`,
+  sync on demand or every ~6h). The remote platform stays authoritative
+  for what it imported — a sync replaces and removes — while an expired
+  token marks the link for reconnection without hiding entries.
+  Disconnecting removes the token and the platform's entries (D-079,
+  D-081). Two link paths ship: the **auth-pin flow** needs no setup —
+  the built-in Lain application's credentials (extractable, like every
+  distributed OAuth client's) drive the flow and the user pastes the
+  code AniList's pin page shows; or the admin registers their own OAuth
+  app at **Settings → Integrations** (or seeds `LAIN_ANILIST_CLIENT_ID`/
+  `LAIN_ANILIST_CLIENT_SECRET`) for the redirect flow — the page shows
+  the exact callback URL AniList requires.
 - **Progress that survives reindexing.** User state lives outside the
   catalog: continue watching, resume, bounded writes, per-user.
 - **Multi-user roles.** Reads and watching for everyone; libraries,
@@ -198,6 +214,9 @@ both. Releases provide a Linux tarball; on Arch a source build is one
 ```sh
 lain serve --port 9360                  # data: ~/.local/share/lain
 lain serve --log-level debug            # or LAIN_LOG_LEVEL (debug/info/warn/error)
+lain serve --list-sync=0                # or LAIN_LIST_SYNC=0 (manual list syncs only)
+# AniList OAuth can also be seeded from env instead of the admin UI:
+#   LAIN_ANILIST_CLIENT_ID / LAIN_ANILIST_CLIENT_SECRET (secret is env-only)
 lain doctor                             # environment report
 lain plugins                            # registered providers + composition
 lain version
@@ -317,6 +336,12 @@ GET  /api/theme             (public, normalized semantic colors)
 GET  /api/setup/status      POST /api/setup          (first admin)
 POST /api/auth/login        GET  /api/me
 PATCH /api/me/password      GET  /api/me/continue
+GET  /api/me/links          GET  /api/me/links/{platform}/authorize
+GET  /api/me/links/{platform}/pin    POST /api/me/links/{platform}/code
+GET  /api/auth/{platform}/callback                 (OAuth landing, public)
+POST /api/me/links/{platform}/sync   DELETE /api/me/links/{platform}
+GET  /api/list?type=&status=         (unified tracking list)
+GET  /api/admin/settings/integrations  PUT ...     (admin: OAuth clients)
 GET  /api/users             POST /api/users          (admin)
 PATCH /api/users/{id}                                (admin: disable/role/reset)
 GET  /api/libraries         POST /api/libraries      (admin)

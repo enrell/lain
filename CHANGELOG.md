@@ -6,6 +6,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **External list linking with AniList** (D-078..D-081). The lain list is
+  a new per-user tracking domain (`lain.list.read@1`, `lain.list.write@1`,
+  `lain.list.account@1` on bbolt buckets `list`/`list_accounts`):
+  standalone entries for anime, manga, comics, movies and series that
+  exist without library files, separate from catalog identity and
+  playback progress. Users link an external platform from Settings →
+  Account; `lain.listlink@1` is the ordered-many connector surface and
+  `lain-listlink-anilist` implements AniList's authorization-code flow —
+  authorize URL, code exchange, viewer lookup and an authenticated
+  `MediaListCollection` fetch for ANIME and MANGA — plus the zero-setup
+  **auth-pin** path (D-083): `GET /api/me/links/{platform}/pin` serves
+  the official Lain app's authorize URL and `POST
+  /api/me/links/{platform}/code` exchanges the pasted code through the
+  embedded app credentials, normalizing a pasted URL or fragment.
+  OAuth state is an
+  HMAC-signed, expiring value bound to the local user id; tokens live
+  server-side and never enter payloads or logs. Sync is
+  remote-authoritative for platform-owned entries (upsert + remove
+  missing) and runs on connect, on `POST /api/me/links/{platform}/sync`,
+  and on a ~6h server ticker (`--list-sync=0`/`LAIN_LIST_SYNC=0`
+  disables). A dead token answers `token-invalid`/`token-expired` and
+  marks the link for reconnection while imported entries stay visible;
+  unlinking deletes the token and the platform's entries. The operator
+  registers one AniList OAuth app at the new admin page
+  Settings → Integrations (`GET/PUT
+  /api/admin/settings/integrations`, capability
+  `lain.settings.integrations@1`), which prints the exact callback URL;
+  `LAIN_ANILIST_CLIENT_ID`/`--anilist-client-id` and
+  `LAIN_ANILIST_CLIENT_SECRET` (env-only) seed an empty configuration.
+  The web UI gains a **My list** page (type/status filters, remote
+  covers) and a Connected accounts section in Account settings.
 - Browser direct play is decided by what the client says it can decode
   (D-058). `GET /api/items/{id}/playback` accepts an optional `caps`
   token list (`mkv`, `mkv/h264`, …) that the web client fills by probing

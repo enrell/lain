@@ -641,6 +641,114 @@ fresh timestamp (the gateway's re-nudge when a scan is in flight);
 `close` stops the watcher. The gateway polls on a 500ms ticker and
 reconciles drained libraries through `lain.ingest.scan@1`.
 
+## The tracking list (D-078..D-081)
+
+The lain list is a per-user tracking domain next to catalog and
+userstate: entries are standalone records that exist with or without
+library files, so manga, comics and other non-played types share one
+list with anime, movies and series (D-078). Catalog still owns file
+identity; userstate still owns playback progress; list rows never merge
+into either.
+
+### lain.list.read@1 / lain.list.write@1 (exactly-one)
+
+`ListEntry` carries `title`, `media_type`
+(`anime|manga|movie|series|comic`), `status`
+(`current|planning|completed|paused|dropped|repeating`), `progress`,
+`progress_total`, `progress_volumes`, `score`, dates, `cover` and the
+remote identity (`platform` + `remote_id`).
+
+Read: `ListInput{user_id, type?, status?}` → `ListEntry[]` sorted by
+title then platform.
+
+Write: `PutPlatformInput{user_id, platform, entries}` →
+`ListSyncStats{upserted, removed}` — remote-authoritative replace for
+that platform (D-081): incoming remote ids are upserted and every
+entry the platform owned that is absent from the response is deleted.
+`DeletePlatformInput{user_id, platform}` → removed count (unlink).
+
+### lain.list.account@1 (exactly-one)
+
+`LinkedAccount` is a user's connection to one external platform:
+remote identity, token, expiry and sync bookkeeping. `Token` is a
+credential — it persists but never crosses a public payload
+(`Public()` clears it, `last_sync_error` records a stable code, never a
+remote body). Ops: `GetAccountInput`, `PutAccountInput`,
+`DeleteAccountInput` → bool, `ListAccountsInput{user_id?}` (empty user
+lists every account, for the scheduler).
+
+### lain.listlink@1 (ordered-many)
+
+The platform connector surface; a provider that does not serve the
+requested platform declines with `unsupported-platform` and the next
+bound provider is tried. Ops:
+
+- `LinkAuthorizeInput{platform, client_id, redirect_uri, state}` →
+  `{url}` the user opens.
+- `LinkExchangeInput{platform, client_id, client_secret, code,
+  redirect_uri}` → `LinkedIdentity{token, token_expires_at,
+  remote_user_id, remote_username}`.
+- `LinkFetchInput{platform, token, remote_user_id}` →
+  `LinkFetchOutput{entries}` — the remote list mapped onto
+  `ListEntry` fields.
+Built-in `lain-listlink-anilist`: AniList's authorization-code flow
+plus an authenticated GraphQL `MediaListCollection` fetch for `ANIME`
+and `MANGA`. A dead or revoked token surfaces as `token-invalid`.
+
+### lain.settings.integrations@1 (exactly-one)
+
+The operator's external-platform credentials (D-080), stored in the
+`meta` bucket. `nil` → `IntegrationSettings{anilist_client_id,
+anilist_client_secret}`, `IntPutInput{settings}` stores the document,
+`IntEnsureInput{base}` seeds only when no document exists — an
+explicit save (even an empty one) is never overwritten by env flags.
+
+### Gateway routes
+
+`GET /api/me/links` (auth) → `{links}`: remote identity, entry count,
+sync state — never the token. `GET /api/me/links/{platform}/authorize`
+→ `{url}` built with the operator's client id and an HMAC-signed state
+bound to the local user id and platform (10-minute expiry, no server
+storage, D-080); `503 not-configured` while the operator has not saved
+a client. `GET /api/auth/{platform}/callback` (public) verifies the
+state, exchanges the code, stores the account and runs the first
+import, then redirects to `/settings?linked=` or
+`/settings?link_error=` — failures never silently succeed.
+
+The zero-setup alternative is auth-pin (D-083): `GET
+/api/me/links/{platform}/pin` → `{url}` built with the official Lain
+application's credentials — compiled into the binary, extractable by
+design like every distributed OAuth client's (Taiga model). AniList
+refuses the implicit grant for console-created apps, so the pin page
+hands back an authorization **code**; the user pastes it into `POST
+/api/me/links/{platform}/code` `{code}` and the server runs the
+standard exchange with the embedded client id/secret and the pin
+redirect URI. A pasted URL or fragment is normalized to the code
+inside. `503 not-configured` for platforms without a pin client;
+`400 invalid-grant` when AniList rejects the paste.
+`DELETE /api/me/links/{platform}` removes the account and its
+platform-owned entries (D-079). `POST /api/me/links/{platform}/sync`
+re-imports on demand; `401 token-invalid|token-expired` marks the link
+for reconnection while imported entries stay visible. `GET /api/list`
+(auth) → `{entries}`, filterable with `?type=`/`?status=`.
+
+The callback URL AniList must be registered with is derived per
+request as `{scheme}://{host}/api/auth/{platform}/callback` (honoring
+`X-Forwarded-Proto`); the admin page prints the exact value to paste
+in the developer settings — AniList requires an exact match.
+
+Sync is remote-authoritative for platform-owned entries and runs on
+connect, on demand, and on a fixed ~6h server ticker
+(`--list-sync=0`/`LAIN_LIST_SYNC=0` leaves manual syncs only; D-081).
+
+**Operator surface.** `GET/PUT /api/admin/settings/integrations`
+(admin-only) reads and writes the AniList client credentials. GET
+reports `{client_id, secret_set, callback_url}` — the secret is
+write-only and never serialized back; a PUT without it keeps the
+stored one. `LAIN_ANILIST_CLIENT_ID`/`--anilist-client-id` and
+`LAIN_ANILIST_CLIENT_SECRET` (env only, like `LAIN_PASSWORD`) seed the
+document on first boot.
+
 ## Component mode (wire protocol)
 
 Any provider can run as a supervised process (D-074). The host

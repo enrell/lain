@@ -76,7 +76,7 @@ func printCommandError(w io.Writer, err error) { fmt.Fprintln(w, "error: "+err.E
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage: lain <command> [flags]
 
-	serve     run the server (flags: --data-dir, --port, --bind, --log-level, --transcode-cache-size, --watch)
+	serve     run the server (flags: --data-dir, --port, --bind, --log-level, --transcode-cache-size, --watch, --list-sync, --anilist-client-id; env: LAIN_ANILIST_CLIENT_SECRET)
   doctor    diagnose runtime + matrix environment (flags: --data-dir, --matrix-bin)
   plugins   list registered providers + composition (flags: --data-dir)
   plugin-run  serve one built-in provider as a component (--id, --sock [--data-dir])
@@ -140,7 +140,13 @@ func cmdServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	srv, err := gateway.NewWithOptions(dataDir, version, gateway.Options{TranscodeCacheBytes: cacheBytes})
+	srv, err := gateway.NewWithOptions(dataDir, version, gateway.Options{
+		TranscodeCacheBytes: cacheBytes,
+		AniListClientID:     flagOrEnv(args, "anilist-client-id", "LAIN_ANILIST_CLIENT_ID", ""),
+		// The secret is env-only: argv is visible to every local user
+		// through /proc, the same reason LAIN_PASSWORD has no flag.
+		AniListClientSecret: os.Getenv("LAIN_ANILIST_CLIENT_SECRET"),
+	})
 	if err != nil {
 		return err
 	}
@@ -156,6 +162,11 @@ func cmdServe(args []string) error {
 	// can turn it off and keep the manual scan.
 	if !envOff(flagOrEnv(args, "watch", "LAIN_WATCH", "")) {
 		startLibraryWatcher(srv.StartWatcher, logger)
+	}
+	// Scheduled list re-import for linked accounts (D-081);
+	// --list-sync=0/LAIN_LIST_SYNC=0 leaves manual syncs only.
+	if !envOff(flagOrEnv(args, "list-sync", "LAIN_LIST_SYNC", "")) {
+		srv.StartListSync()
 	}
 	httpSrv := newHTTPServer(bind, port, srv.Handler())
 	fmt.Printf("lain %s on http://%s:%s (data %s)\n", version, bind, port, dataDir)

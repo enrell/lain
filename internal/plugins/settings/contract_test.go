@@ -1,6 +1,5 @@
 package settings
 
-
 import (
 	"testing"
 
@@ -15,8 +14,14 @@ func TestProviderContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	contract.Run(t, Provider{DB: db}, []contract.Cap{{
-		Name:   contracts.CapTranscodeSettings, NilOK: true,
-		Sample: PutInput{Settings: contracts.DefaultTranscodeSettings()},
-	}})
+	contract.Run(t, Provider{DB: db}, []contract.Cap{
+		{
+			Name: contracts.CapTranscodeSettings, NilOK: true,
+			Sample: PutInput{Settings: contracts.DefaultTranscodeSettings()},
+		},
+		{
+			Name: contracts.CapIntegrationSettings, NilOK: true,
+			Sample: IntPutInput{Settings: contracts.IntegrationSettings{AniListClientID: "1"}},
+		},
+	})
 }

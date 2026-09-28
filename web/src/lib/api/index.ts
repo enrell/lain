@@ -4,6 +4,7 @@ import { catalog } from './catalog';
 import { enrich } from './enrich';
 import { items } from './items';
 import { libraries } from './libraries';
+import { integrations, links, list } from './list';
 import { localplay } from './localplay';
 import { me } from './me';
 import { playback } from './playback';
@@ -27,6 +28,9 @@ export const api = {
 	enrich,
 	items,
 	libraries,
+	integrations,
+	links,
+	list,
 	localplay,
 	me,
 	playback,
