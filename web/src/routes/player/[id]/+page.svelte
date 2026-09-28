@@ -110,8 +110,8 @@
 		<ErrorState message={error} retry={() => void load()} />
 	</div>
 {:else if item && plan}
-	<div class="flex h-dvh flex-col lg:flex-row">
-		<div class="relative min-h-0 min-w-0 flex-1">
+	<div class="flex h-dvh flex-col bg-black lg:flex-row">
+		<div class="relative min-h-0 min-w-0 flex-1 bg-black">
 			{#if plan.available}
 				<!-- A new episode is a new session: keying on the item rebuilds
 				     the player (video element, transcode session, clock) instead

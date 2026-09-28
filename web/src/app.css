@@ -87,10 +87,25 @@
 	background-size: 22px 22px;
 }
 
-/* The player's letterbox: the picture's own darkness, still palette-owned, so
- * a light host theme does not put a black rectangle inside a light app. */
+/* The player's letterbox: pure 100% black for OLED display immersion */
 @utility letterbox {
-	background: color-mix(in srgb, var(--color-background) 62%, #000);
+	background: #000000;
+}
+
+/* Default subtitle styling: no background by default, with crisp drop shadow */
+video::cue {
+	background-color: transparent;
+	background: transparent;
+	color: #ffffff;
+	text-shadow:
+		0 0 2px #000000,
+		0 0 4px #000000,
+		1px 1px 2px #000000,
+		-1px -1px 2px #000000,
+		1px -1px 2px #000000,
+		-1px 1px 2px #000000,
+		0 2px 4px #000000;
+	font-weight: 600;
 }
 
 /* Terminal chrome for the watch page: hairline micro-label controls. Panels

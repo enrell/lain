@@ -143,6 +143,30 @@
 	let hasSubtitle = $state(false);
 	let selectedAudio = $state('');
 	let selectedSubtitle = $state('');
+	let subtitleBg = $state<'none' | 'box'>(
+		(prefs.get('player.subtitle_bg') as 'none' | 'box') || 'none'
+	);
+	let subtitleSize = $state<'small' | 'medium' | 'large'>(
+		(prefs.get('player.subtitle_size') as 'small' | 'medium' | 'large') || 'medium'
+	);
+	const subtitleBgClass = $derived(subtitleBg === 'box' ? 'subtitles-bg-box' : 'subtitles-bg-none');
+	const subtitleSizeClass = $derived(
+		subtitleSize === 'small'
+			? 'subtitles-size-small'
+			: subtitleSize === 'large'
+				? 'subtitles-size-large'
+				: 'subtitles-size-medium'
+	);
+
+	function setSubtitleBg(val: 'none' | 'box'): void {
+		subtitleBg = val;
+		prefs.set('player.subtitle_bg', val);
+	}
+
+	function setSubtitleSize(val: 'small' | 'medium' | 'large'): void {
+		subtitleSize = val;
+		prefs.set('player.subtitle_size', val);
+	}
 	let languageMetadataKnown = $state(false);
 	// v3 session state (D-042): delivery actually used, the quality the
 	// viewer picked, why the server transcodes, and the hls.js instance.
@@ -798,7 +822,7 @@
 	 * premise true — and `pointer-events-none` keeps an invisible row from
 	 * swallowing a click meant for the picture.
 	 */
-	const REVEAL_MARGIN_PX = 56;
+	const REVEAL_MARGIN_PX = 8;
 
 	const chromeClass = $derived(
 		[
@@ -807,13 +831,15 @@
 		].join(' ')
 	);
 
-	// The pointer wakes the chrome only where the chrome lives: a move over the
-	// middle of the picture is watching, not a request for controls.
+	// The pointer wakes the chrome only where the chrome lives: when approaching
+	// close enough to touch the controls container
 	function pointerNearChrome(event: PointerEvent): boolean {
 		for (const el of [headerEl, chromeTailEl, chromeFootEl]) {
 			if (!el) continue;
 			const box = el.getBoundingClientRect();
 			if (
+				event.clientX >= box.left - REVEAL_MARGIN_PX &&
+				event.clientX <= box.right + REVEAL_MARGIN_PX &&
 				event.clientY >= box.top - REVEAL_MARGIN_PX &&
 				event.clientY <= box.bottom + REVEAL_MARGIN_PX
 			) {
@@ -824,10 +850,11 @@
 	}
 
 	function onStagePointerMove(event: PointerEvent): void {
-		// While the chrome is up, any movement re-arms the hide: a viewer moving
-		// the pointer across the picture must not watch it fade under their hand.
-		if (!controlsVisible && !pointerNearChrome(event)) return;
-		revealControls();
+		if (pointerNearChrome(event)) {
+			revealControls();
+		} else if (controlsVisible && !chromePinned()) {
+			scheduleHide();
+		}
 	}
 
 	// Keyboard focus lands on chrome that is only faded, so focus has to reveal
@@ -943,17 +970,17 @@
 	}
 
 	function seekBy(seconds: number): void {
-		seekTo(currentTime + seconds);
+		seekTo(currentTime + seconds, false);
 	}
 
-	function seekTo(seconds: number): void {
+	function seekTo(seconds: number, reveal = false): void {
 		const el = video;
 		if (!el) return;
 		// The authoritative ceiling is the media's own length; the element's
 		// duration is the fallback when the server could not probe.
 		const ceiling = totalDuration > 0 ? totalDuration : el.duration + baseOffset;
 		const target = Math.max(0, Math.min(Number.isFinite(ceiling) ? ceiling : seconds, seconds));
-		revealControls();
+		if (reveal) revealControls();
 		if (needsRebuild(target)) {
 			seekTarget = target;
 			void rebuildAt(target);
@@ -1108,7 +1135,6 @@
 			case 'K':
 				consume(event);
 				togglePlay();
-				revealControls();
 				break;
 			case 'ArrowLeft':
 				consume(event);
@@ -1129,17 +1155,14 @@
 			case 'ArrowUp':
 				consume(event);
 				setVolume(volume + 0.05);
-				revealControls();
 				break;
 			case 'ArrowDown':
 				consume(event);
 				setVolume(volume - 0.05);
-				revealControls();
 				break;
 			case 'm':
 			case 'M':
 				toggleMute();
-				revealControls();
 				break;
 			case 'f':
 			case 'F':
@@ -1202,12 +1225,10 @@
 <div
 	bind:this={container}
 	class={[
-		// The picture is the whole region and the chrome floats over it, so the
-		// chrome rows are the only children in the flow, pinned to the bottom.
-		'relative flex h-full w-full flex-col justify-end overflow-hidden bg-background',
-		// An idle pointer over a full-bleed picture is an arrow with nothing to
-		// point at; it comes back with the chrome.
-		controlsVisible ? '' : 'cursor-none'
+		'relative flex h-full w-full flex-col justify-end overflow-hidden bg-black',
+		controlsVisible ? '' : 'cursor-none',
+		subtitleBgClass,
+		subtitleSizeClass
 	].join(' ')}
 	role="region"
 	aria-label={`Player — ${title}`}
@@ -1218,33 +1239,28 @@
 	}}
 	onfocusin={revealControls}
 >
-	<!-- Palette-owned chrome, floating over the picture (D-065/D-066): the bar over the top
-	     edge and the deck over the bottom one, each on the palette's own
-	     background at 90% with a blur — the idiom the app's own nav already uses,
-	     and the opacity that keeps `muted` text above the 4.5:1 floor even when
-	     the frame behind it is white (D-020/D-037). -->
 	<header
 		bind:this={headerEl}
 		class={[
-			'absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-4 bg-background/90 px-4 backdrop-blur-xl sm:px-6',
+			'absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-4 bg-transparent bg-gradient-to-b from-black/60 to-transparent px-4 sm:px-6',
 			chromeClass
 		].join(' ')}
 	>
 		<button
 			type="button"
-			class="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-2 text-sm text-foreground transition-colors hover:bg-surface-hover"
+			class="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-2 text-sm text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] transition-colors hover:bg-surface-hover/60"
 			onclick={() => void goto(`/item/${item.id}`)}
 		>
 			<ArrowLeft class="size-5" aria-hidden="true" /> Back
 		</button>
 		<p
-			class="min-w-0 truncate text-base font-medium text-foreground sm:text-lg"
+			class="min-w-0 truncate text-base font-medium text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] sm:text-lg"
 		>
 			{title}
 		</p>
 	</header>
 
-	<div class="absolute inset-0 letterbox">
+	<div class="absolute inset-0 letterbox bg-black">
 		<video
 			bind:this={video}
 			src={streamSrc}
@@ -1498,7 +1514,7 @@
 					</select>
 				</label>
 			{/if}
-			{#if subtitleTracks.length > 0}
+			{#if subtitleTracks.length > 0 || hasSubtitle || selectedSubtitle !== ''}
 				<label class="chrome-chip">
 					Subtitles
 					<select
@@ -1515,6 +1531,31 @@
 						{/each}
 					</select>
 				</label>
+				<label class="chrome-chip">
+					Subtitle style
+					<select
+						class="chrome-select"
+						value={subtitleBg}
+						onchange={(e) => setSubtitleBg(e.currentTarget.value as 'none' | 'box')}
+						aria-label="Subtitle background style"
+					>
+						<option value="none">No background</option>
+						<option value="box">Black box</option>
+					</select>
+				</label>
+				<label class="chrome-chip">
+					Subtitle size
+					<select
+						class="chrome-select"
+						value={subtitleSize}
+						onchange={(e) => setSubtitleSize(e.currentTarget.value as 'small' | 'medium' | 'large')}
+						aria-label="Subtitle font size"
+					>
+						<option value="small">Small</option>
+						<option value="medium">Normal</option>
+						<option value="large">Large</option>
+					</select>
+				</label>
 			{/if}
 			<details class="mt-4 border-t border-line/40 pt-3 text-xs leading-relaxed text-muted">
 				<summary class="cursor-pointer py-2 text-sm">Playback information</summary>
@@ -1529,7 +1570,7 @@
 	{#if directFallbackNote}
 		<p
 			class={[
-				'relative z-20 bg-background/90 px-4 pt-2 text-xs leading-relaxed text-muted backdrop-blur-xl',
+				'relative z-20 bg-transparent px-4 pt-2 text-xs leading-relaxed text-muted drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]',
 				chromeClass
 			].join(' ')}
 		>
@@ -1537,13 +1578,11 @@
 		</p>
 	{/if}
 
-	<!-- Transport deck: it spans the whole media (D-057), it floats over the
-	     picture's bottom edge (D-065), and it fades with the rest of the chrome
-	     (D-064). -->
+	<!-- Transport deck: transparent to keep subtitles visible (D-065/D-066). -->
 	<footer
 		bind:this={chromeFootEl}
 		class={[
-			'relative z-20 bg-background/90 px-3 pb-3 pt-2 backdrop-blur-xl sm:px-6 sm:pb-4',
+			'relative z-20 bg-transparent px-3 pb-3 pt-2 sm:px-6 sm:pb-4',
 			chromeClass
 		].join(' ')}
 	>
@@ -1571,7 +1610,7 @@
 					scrubValue = v;
 				}}
 				onValueCommit={(v) => {
-					seekTo(v);
+					seekTo(v, true);
 					scrubbing = false;
 				}}
 				class="relative flex h-6 w-full touch-none select-none items-center"
@@ -1591,7 +1630,7 @@
 					class="block size-3.5 rounded-full bg-accent transition-transform duration-150 hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 				/>
 			</Slider.Root>
-			<span class="shrink-0 text-xs tabular-nums text-foreground sm:text-sm">
+			<span class="shrink-0 text-xs tabular-nums text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] sm:text-sm">
 				{formatTime(scrubbing ? scrubValue : currentTime)} <span class="text-muted">/ {formatTime(totalDuration)}</span>
 			</span>
 		</div>
@@ -1601,15 +1640,15 @@
 			<IconButton label={playing ? 'Pause' : 'Play'} class="size-11 bg-accent text-accent-fg hover:bg-accent-hover hover:text-accent-fg" onclick={togglePlay}>
 				{#if playing}<Pause class="size-6" />{:else}<Play class="size-6" />{/if}
 			</IconButton>
-			<IconButton label="Back 10 seconds" class="relative size-11" onclick={() => seekBy(-10)}>
+			<IconButton label="Back 10 seconds" class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(-10)}>
 				<SkipBack class="size-6" /><span class="absolute text-[9px] font-semibold">10</span>
 			</IconButton>
-			<IconButton label="Forward 10 seconds" class="relative size-11" onclick={() => seekBy(10)}>
+			<IconButton label="Forward 10 seconds" class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(10)}>
 				<SkipForward class="size-6" /><span class="absolute text-[9px] font-semibold">10</span>
 			</IconButton>
 
 			<div class="flex items-center gap-1">
-				<IconButton label={muted ? 'Unmute' : 'Mute'} onclick={toggleMute}>
+				<IconButton label={muted ? 'Unmute' : 'Mute'} class="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={toggleMute}>
 					<VolumeIcon class="size-5" />
 				</IconButton>
 				<div class="hidden w-20 md:block">
@@ -1634,12 +1673,13 @@
 			</div>
 
 			<div class="ml-auto flex items-center gap-1.5">
-				<button bind:this={settingsButton} type="button" aria-label="Playback settings" aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground hover:bg-surface-hover" onclick={() => (settingsOpen = !settingsOpen)}>
+				<button bind:this={settingsButton} type="button" aria-label="Playback settings" aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
 					<Settings class="size-5" />
 					<span class="sr-only">Playback settings</span>
 				</button>
 				<IconButton
 					label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+					class="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
 					onclick={() => void toggleFullscreen()}
 				>
 					{#if fullscreen}<Minimize class="size-5" />{:else}<Maximize class="size-5" />{/if}
@@ -1675,5 +1715,45 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		header, footer { transition: none; }
+	}
+
+	:global(video::cue) {
+		background-color: transparent !important;
+		background: transparent !important;
+		color: #ffffff !important;
+		text-shadow:
+			0 0 2px #000000,
+			0 0 4px #000000,
+			1px 1px 2px #000000,
+			-1px -1px 2px #000000,
+			1px -1px 2px #000000,
+			-1px 1px 2px #000000,
+			0 2px 4px #000000 !important;
+		font-family: inherit;
+		font-weight: 600;
+		line-height: 1.35;
+	}
+
+	:global(.subtitles-bg-box video::cue) {
+		background-color: rgba(0, 0, 0, 0.8) !important;
+		background: rgba(0, 0, 0, 0.8) !important;
+		text-shadow: none !important;
+	}
+
+	:global(.subtitles-bg-none video::cue) {
+		background-color: transparent !important;
+		background: transparent !important;
+	}
+
+	:global(.subtitles-size-small video::cue) {
+		font-size: 80% !important;
+	}
+
+	:global(.subtitles-size-medium video::cue) {
+		font-size: 100% !important;
+	}
+
+	:global(.subtitles-size-large video::cue) {
+		font-size: 125% !important;
 	}
 </style>
