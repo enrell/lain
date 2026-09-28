@@ -14,6 +14,7 @@
 	const links = [
 		{ href: '/', label: 'Home', exact: true },
 		{ href: '/library', label: 'Library', exact: false },
+		{ href: '/list', label: 'My list', exact: false },
 		{ href: '/search', label: 'Search', exact: false },
 		{ href: '/settings', label: 'Settings', exact: false }
 	];

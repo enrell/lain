@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import Blocks from '@lucide/svelte/icons/blocks';
+	import Cable from '@lucide/svelte/icons/cable';
 	import DatabaseBackup from '@lucide/svelte/icons/database-backup';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Library from '@lucide/svelte/icons/library';
@@ -30,6 +31,7 @@
 			{ href: '/settings/libraries', label: 'Libraries', icon: Library, admin: true },
 			{ href: '/settings/users', label: 'Users', icon: Users, admin: true },
 			{ href: '/settings/playback', label: 'Playback', icon: SlidersHorizontal, admin: true },
+			{ href: '/settings/integrations', label: 'Integrations', icon: Cable, admin: true },
 			{ href: '/settings/plugins', label: 'Plugins', icon: Blocks, admin: true },
 			{ href: '/settings/backup', label: 'Backup', icon: DatabaseBackup, admin: true }
 		].filter((tab) => !tab.admin || session.isAdmin)

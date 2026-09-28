@@ -41,6 +41,8 @@ export function routeRedirect(state: GuardState): string | null {
 export const ADMIN_ROUTES = [
 	'/settings/libraries',
 	'/settings/users',
+	'/settings/playback',
+	'/settings/integrations',
 	'/settings/plugins',
 	'/settings/backup'
 ] as const;

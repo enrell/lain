@@ -27,13 +27,15 @@ import (
 
 	"github.com/enrell/lain/internal/auth"
 	"github.com/enrell/lain/internal/component"
-	"github.com/enrell/lain/internal/plugins/backup"
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/core"
 	"github.com/enrell/lain/internal/kv"
 	"github.com/enrell/lain/internal/localplay"
+	"github.com/enrell/lain/internal/plugins/backup"
 	"github.com/enrell/lain/internal/plugins/catalog"
 	"github.com/enrell/lain/internal/plugins/ingest"
+	"github.com/enrell/lain/internal/plugins/list"
+	"github.com/enrell/lain/internal/plugins/listlink"
 	pluginlocalplay "github.com/enrell/lain/internal/plugins/localplay"
 	"github.com/enrell/lain/internal/plugins/metadata"
 	"github.com/enrell/lain/internal/plugins/playback"
@@ -90,6 +92,15 @@ type Server struct {
 	// local spawns mpv/VLC on this machine for loopback browsers (D-072).
 	local *localplay.Manager
 
+	// listSync re-imports linked list accounts on a fixed interval
+	// (D-081): an immediate catch-up plus one pass per interval, closed
+	// on shutdown. stateKey signs the OAuth link states the callback
+	// verifies (D-080).
+	stateKey         []byte
+	listSyncStarted  bool
+	listSyncDone     chan struct{}
+	listSyncInterval time.Duration // test seam: zero uses the default
+
 	// components provisions external providers from <data-dir>/plugins/
 	// (D-077). Started in NewWithOptions; nil only on spawn failure.
 	components *component.Provisioner
@@ -104,6 +115,10 @@ func (s *Server) Close() error {
 	if s.watchStarted && s.watchDone != nil {
 		close(s.watchDone)
 		s.watchDone = nil // Close may run twice (test cleanup)
+	}
+	if s.listSyncStarted && s.listSyncDone != nil {
+		close(s.listSyncDone)
+		s.listSyncDone = nil
 	}
 	if s.reg != nil {
 		s.reg.Each(func(p core.Provider) {
@@ -126,6 +141,11 @@ func (s *Server) Close() error {
 type Options struct {
 	TranscodeCacheBytes int64
 	TranscodeQueueSize  int
+	// AniListClientID/Secret seed the operator's AniList OAuth app from
+	// flags or env (D-080). They only fill an empty configuration — a
+	// saved admin-UI choice always wins.
+	AniListClientID     string
+	AniListClientSecret string
 	// transcodeProbe is a deterministic test seam. Production leaves it nil
 	// and uses the transcoder's real one-frame capability probe.
 	transcodeProbe func(contracts.TranscodeSettings) transcode.CapabilitiesReport
@@ -179,6 +199,16 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 		db.Close()
 		return nil, err
 	}
+	lst, err := list.New(db)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	stateKey, err := loadOrCreateStateKey(db)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("link state key: %w", err)
+	}
 	comp := core.DefaultComposition()
 	saved := &core.Composition{}
 	if err := st.Load("composition.json", saved); err == nil && len(saved.Bindings) > 0 {
@@ -196,6 +226,8 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	reg.Register(identifyGenericShim{})
 	reg.Register(cat)
 	reg.Register(ustate)
+	reg.Register(lst)
+	reg.Register(listlink.NewAniList())
 	reg.Register(searchProvider{reg: reg})
 	reg.Register(playback.Planner{})
 	reg.Register(probe.Provider{})
@@ -233,7 +265,7 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	if opts.transcodeProbe != nil {
 		probeTranscode = opts.transcodeProbe
 	}
-	s := &Server{reg: reg, auth: a, db: db, st: st, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, transcode: tr, probeTranscode: probeTranscode, autoEnrich: true, scan: ScanStatus{State: "idle"}, local: local, watchProv: watchProv, watchDone: make(chan struct{})}
+	s := &Server{reg: reg, auth: a, db: db, st: st, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, transcode: tr, probeTranscode: probeTranscode, autoEnrich: true, scan: ScanStatus{State: "idle"}, local: local, watchProv: watchProv, watchDone: make(chan struct{}), stateKey: stateKey, listSyncDone: make(chan struct{})}
 	s.settings = settingsResolver{s: s}
 	// First boot adopts CLI bounds as the saved policy; later boots keep
 	// the operator's admin-UI choices (D-045).
@@ -256,10 +288,22 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 		db.Close()
 		return nil, fmt.Errorf("transcode settings: %w", err)
 	}
+	// Operator-provided OAuth client (D-080): flags/env seed only an
+	// empty integrations document — saved settings are authoritative.
+	if opts.AniListClientID != "" {
+		if err := s.settings.EnsureIntegrations(contracts.IntegrationSettings{
+			AniListClientID:     opts.AniListClientID,
+			AniListClientSecret: opts.AniListClientSecret,
+		}); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("integration settings: %w", err)
+		}
+	}
 	s.routes()
 	s.routesEnrich()
 	s.routesThumbnail()
 	s.routesTranscode()
+	s.routesList()
 	// The web UI is the least specific pattern: API, health and media
 	// routes registered above keep winning their paths.
 	webui.Mount(s.mux)

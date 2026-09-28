@@ -1,8 +1,9 @@
 // Package settings serves lain.settings.transcode@1: the operator's
-// transcode policy persisted in the meta bucket (D-045, D-076). The
-// gateway resolves settings through the capability and passes them
-// inside the transcode request — the pipeline plugins never read the
-// bucket themselves.
+// transcode policy persisted in the meta bucket (D-045, D-076), and
+// lain.settings.integrations@1: operator-provided credentials for
+// external platforms (D-080). The gateway resolves settings through
+// the capabilities and passes them inside contract inputs — pipeline
+// plugins never read the bucket themselves.
 package settings
 
 import (
@@ -15,15 +16,20 @@ import (
 
 const ID = "lain-settings-bolt"
 
-const transcodeSettingsKey = "transcode_settings"
+const (
+	transcodeSettingsKey = "transcode_settings"
+	integrationsKey      = "integrations"
+)
 
 // Provider owns operator settings in the bbolt meta bucket.
 type Provider struct {
 	DB *bolt.DB
 }
 
-func (Provider) ID() string             { return ID }
-func (Provider) Capabilities() []string { return []string{contracts.CapTranscodeSettings} }
+func (Provider) ID() string { return ID }
+func (Provider) Capabilities() []string {
+	return []string{contracts.CapTranscodeSettings, contracts.CapIntegrationSettings}
+}
 
 // Health reports whether the underlying store is usable.
 func (p Provider) Health() error {
@@ -49,32 +55,59 @@ type HasOutput struct {
 	Saved bool `json:"saved"`
 }
 
+// IntPutInput replaces the integrations document. The provider stores
+// what it is given; merging "keep the saved secret" is the gateway's
+// job, not the store's.
+type IntPutInput struct {
+	Settings contracts.IntegrationSettings `json:"settings"`
+}
+
+// IntEnsureInput seeds integrations only when no document exists
+// (environment provisioning on first boot, D-080); an operator's
+// explicit save — even an empty one — is never overwritten.
+type IntEnsureInput struct {
+	Base contracts.IntegrationSettings `json:"base"`
+}
+
 func (p Provider) Invoke(cap string, input any) (any, error) {
-	if cap != contracts.CapTranscodeSettings {
-		return nil, &core.Error{Code: "invalid-message", Msg: "unsupported cap " + cap}
-	}
 	if p.DB == nil {
 		return nil, &core.Error{Code: "dependency-unavailable", Msg: "settings store has no db"}
 	}
-	switch in := input.(type) {
-	case nil:
-		return p.get(), nil
-	case PutInput:
-		saved, err := p.put(in.Settings)
-		if err != nil {
-			return nil, err
+	switch cap {
+	case contracts.CapTranscodeSettings:
+		switch in := input.(type) {
+		case nil:
+			return p.get(), nil
+		case PutInput:
+			saved, err := p.put(in.Settings)
+			if err != nil {
+				return nil, err
+			}
+			return saved, nil
+		case EnsureInput:
+			return p.ensure(in.Base)
+		case HasInput:
+			saved, err := p.has()
+			if err != nil {
+				return nil, err
+			}
+			return HasOutput{Saved: saved}, nil
+		default:
+			return nil, &core.Error{Code: "invalid-message", Msg: "settings input required"}
 		}
-		return saved, nil
-	case EnsureInput:
-		return p.ensure(in.Base)
-	case HasInput:
-		saved, err := p.has()
-		if err != nil {
-			return nil, err
+	case contracts.CapIntegrationSettings:
+		switch in := input.(type) {
+		case nil:
+			return p.getIntegrations(), nil
+		case IntPutInput:
+			return p.putIntegrations(in.Settings)
+		case IntEnsureInput:
+			return p.ensureIntegrations(in.Base)
+		default:
+			return nil, &core.Error{Code: "invalid-message", Msg: "integrations input required"}
 		}
-		return HasOutput{Saved: saved}, nil
 	default:
-		return nil, &core.Error{Code: "invalid-message", Msg: "settings input required"}
+		return nil, &core.Error{Code: "invalid-message", Msg: "unsupported cap " + cap}
 	}
 }
 
@@ -130,6 +163,38 @@ func (p Provider) ensure(base contracts.TranscodeSettings) (HasOutput, error) {
 	}
 	_, err = p.put(base)
 	if err != nil {
+		return HasOutput{}, err
+	}
+	return HasOutput{Saved: false}, nil
+}
+
+// getIntegrations returns the stored document; absent or corrupt reads
+// as an empty one — the gateway treats empty as "not configured".
+func (p Provider) getIntegrations() contracts.IntegrationSettings {
+	var out contracts.IntegrationSettings
+	_ = p.DB.View(func(tx *bolt.Tx) error {
+		return kv.GetJSON(tx, kv.BMeta, []byte(integrationsKey), &out)
+	})
+	return out
+}
+
+func (p Provider) putIntegrations(in contracts.IntegrationSettings) (contracts.IntegrationSettings, error) {
+	err := p.DB.Update(func(tx *bolt.Tx) error {
+		return kv.PutJSON(tx, kv.BMeta, []byte(integrationsKey), in)
+	})
+	return in, err
+}
+
+func (p Provider) ensureIntegrations(base contracts.IntegrationSettings) (HasOutput, error) {
+	var raw []byte
+	_ = p.DB.View(func(tx *bolt.Tx) error {
+		raw = tx.Bucket(kv.BMeta).Get([]byte(integrationsKey))
+		return nil
+	})
+	if raw != nil {
+		return HasOutput{Saved: true}, nil
+	}
+	if _, err := p.putIntegrations(base); err != nil {
 		return HasOutput{}, err
 	}
 	return HasOutput{Saved: false}, nil

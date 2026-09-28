@@ -1,6 +1,7 @@
 <script lang="ts">
 	import House from '@lucide/svelte/icons/house';
 	import Library from '@lucide/svelte/icons/library';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import Search from '@lucide/svelte/icons/search';
 	import Settings from '@lucide/svelte/icons/settings';
 	import { page } from '$app/state';
@@ -8,6 +9,7 @@
 	const items = [
 		{ href: '/', label: 'Home', icon: House, exact: true },
 		{ href: '/library', label: 'Library', icon: Library, exact: false },
+		{ href: '/list', label: 'My list', icon: ListChecks, exact: false },
 		{ href: '/search', label: 'Search', icon: Search, exact: false },
 		{ href: '/settings', label: 'Settings', icon: Settings, exact: false }
 	];
@@ -23,7 +25,7 @@
 	aria-label="Primary"
 	style="padding-bottom: env(safe-area-inset-bottom);"
 >
-	<div class="grid grid-cols-4">
+	<div class="grid grid-cols-5">
 		{#each items as item (item.href)}
 			{@const isActive = active(item.href, item.exact)}
 			{@const Icon = item.icon}

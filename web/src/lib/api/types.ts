@@ -382,6 +382,78 @@ export interface SwapErrorBody {
 export interface EnrichmentBatch {
 	items: Enrichment[];
 }
+/** gateway linkView (list.go): a linked external list account, token-free. */
+export interface LinkedAccountView {
+	platform: string;
+	remote_user_id: string;
+	remote_username: string;
+	linked_at: number;
+	last_sync_at?: number;
+	last_sync_error?: string;
+	entry_count: number;
+	token_expires_at?: number;
+	token_expired?: boolean;
+}
+
+/** GET /api/me/links. */
+export interface LinksResponse {
+	links: LinkedAccountView[];
+}
+
+/** GET /api/me/links/{platform}/authorize. */
+export interface AuthorizeResponse {
+	url: string;
+}
+
+/** POST /api/me/links/{platform}/sync. */
+export interface ListSyncStats {
+	upserted: number;
+	removed: number;
+}
+
+export interface SyncResponse {
+	status: string;
+	stats: ListSyncStats;
+}
+
+/** internal/contracts.ListEntry (list.go): one tracked media row. */
+export interface ListEntry {
+	id: string;
+	user_id: string;
+	platform: string;
+	remote_id: string;
+	media_type: string;
+	format?: string;
+	title: string;
+	cover?: string;
+	status: string;
+	progress: number;
+	progress_total?: number;
+	progress_volumes?: number;
+	score?: number;
+	repeat?: number;
+	notes?: string;
+	started_at?: string;
+	completed_at?: string;
+	updated_at: number;
+}
+
+/** GET /api/list. */
+export interface ListResponse {
+	entries: ListEntry[];
+}
+
+/** GET /api/admin/settings/integrations: per-platform OAuth state. */
+export interface IntegrationPlatform {
+	client_id: string;
+	secret_set: boolean;
+	callback_url: string;
+}
+
+export interface IntegrationsResponse {
+	platforms: Record<string, IntegrationPlatform>;
+}
+
 /** Public semantic palette resolved from the server host's Omarchy theme. */
 export interface ThemePalette {
 	source: 'omarchy' | 'default';
