@@ -132,6 +132,14 @@
 		selected = new Set();
 	}
 
+	// One click for the whole title: select every episode that still has
+	// a file — across all seasons, not just the visible filter — and open
+	// the same confirmation the manual selection uses.
+	function deleteAllFiles(): void {
+		selected = new Set(group.items.filter((i) => !isGone(i)).map((i) => i.id));
+		confirmDelete = true;
+	}
+
 	async function deleteSelected(): Promise<void> {
 		if (deleting || selected.size === 0) return;
 		deleting = true;
@@ -362,6 +370,14 @@
 						{:else}
 							<Button variant="secondary" size="sm" onclick={() => (selecting = true)}>
 								<ListChecks class="size-3.5" aria-hidden="true" /> Select
+							</Button>
+							<Button
+								variant="danger"
+								size="sm"
+								disabled={group.items.every(isGone)}
+								onclick={deleteAllFiles}
+							>
+								<Trash2 class="size-3.5" aria-hidden="true" /> Delete title
 							</Button>
 						{/if}
 					</div>
