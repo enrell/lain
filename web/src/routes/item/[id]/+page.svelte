@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Clapperboard from '@lucide/svelte/icons/clapperboard';
 	import Play from '@lucide/svelte/icons/play';
@@ -57,6 +58,8 @@
 	let resetting = $state(false);
 	let confirmRemove = $state(false);
 	let removing = $state(false);
+	let confirmDeleteFile = $state(false);
+	let deletingFile = $state(false);
 	let backdropFailedId = $state<string | null>(null);
 
 	// Cover, else poster, else a wide still extracted by the server.
@@ -158,6 +161,24 @@
 		}
 	}
 
+	// File delete (admin): the media bytes go away for every user; the
+	// catalog row stays as `missing`, so progress and metadata survive
+	// and the item restores itself if the file comes back (D-073).
+	async function deleteFile(): Promise<void> {
+		if (!item || deletingFile) return;
+		deletingFile = true;
+		try {
+			await api.items.remove(item.id);
+			toasts.success('File deleted.');
+			await goto('/library');
+		} catch (err) {
+			toasts.error(errorMessage(err, 'Could not delete the file.'));
+			confirmDeleteFile = false;
+		} finally {
+			deletingFile = false;
+		}
+	}
+
 	async function resetProgress(): Promise<void> {
 		if (!item || resetting) return;
 		resetting = true;
@@ -187,8 +208,13 @@
 			<Sparkles class="size-3.5" /> {enrichment ? 'Refetch metadata' : 'Fetch metadata'}
 		</Button>
 		{#if enrichment}
-			<Button variant="danger" size="sm" onclick={() => (confirmRemove = true)}>
+			<Button variant="secondary" size="sm" onclick={() => (confirmRemove = true)}>
 				<Trash2 class="size-3.5" /> Remove
+			</Button>
+		{/if}
+		{#if !series && !item?.missing}
+			<Button variant="danger" size="sm" onclick={() => (confirmDeleteFile = true)}>
+				<Trash2 class="size-3.5" /> Delete file
 			</Button>
 		{/if}
 	{/if}
@@ -361,4 +387,15 @@
 	<p class="text-sm text-muted">
 		Provider: <span class="text-foreground">{enrichment?.provider}</span>. You can fetch it again later.
 	</p>
+</Modal>
+
+<Modal bind:open={confirmDeleteFile} title="Delete file?" description="The file is removed from disk for every user. The catalog entry stays as missing, so progress and metadata are preserved and the item restores itself if the file returns.">
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (confirmDeleteFile = false)}>Cancel</Button>
+		<Button variant="danger" loading={deletingFile} onclick={() => void deleteFile()}>
+			Delete file
+		</Button>
+	{/snippet}
+	<p class="break-all font-mono text-xs text-muted">{item?.file_path}</p>
+	<p class="text-sm text-muted">This cannot be undone — the media bytes are gone.</p>
 </Modal>
