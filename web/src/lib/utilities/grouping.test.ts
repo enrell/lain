@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem } from '$lib/api/types';
-import { compareEpisodes, episodeLabel, groupFromEpisodes, groupItems, normalizeSeriesTitle, sortGroups } from './grouping';
+import { compareEpisodes, episodeLabel, groupFromEpisodes, groupItems, nextEpisode, normalizeSeriesTitle, sortGroups } from './grouping';
 
 function item(partial: Partial<CatalogItem> & { id: string }): CatalogItem {
 	return {
@@ -101,5 +101,25 @@ describe('sortGroups', () => {
 		]);
 		expect(sortGroups(groups, 'title').map((g) => g.title)).toEqual(['Alpha', 'Bravo']);
 		expect(sortGroups(groups, 'recent').map((g) => g.title)).toEqual(['Bravo', 'Alpha']);
+	});
+});
+
+describe('nextEpisode', () => {
+	const eps = [
+		item({ id: 'e3', season: 1, episode: 3 }),
+		item({ id: 'e1', season: 1, episode: 1 }),
+		item({ id: 'e2', season: 1, episode: 2, missing: true }),
+		item({ id: 's2e1', season: 2, episode: 1 })
+	];
+
+	it('follows watch order, skipping files missing from disk', () => {
+		expect(nextEpisode(eps, 'e1')?.id).toBe('e3');
+		expect(nextEpisode(eps, 'e3')?.id).toBe('s2e1');
+	});
+
+	it('is null after the last episode, for unknown ids and for single files', () => {
+		expect(nextEpisode(eps, 's2e1')).toBeNull();
+		expect(nextEpisode(eps, 'nope')).toBeNull();
+		expect(nextEpisode([item({ id: 'm' })], 'm')).toBeNull();
 	});
 });
