@@ -212,3 +212,70 @@ func TestJWTExpiry(t *testing.T) {
 	}
 	_ = time.Now
 }
+
+func TestPushWritesProgressAndStatus(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer tok" {
+			w.WriteHeader(401)
+			return
+		}
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		fmt.Fprint(w, `{"data":{"SaveMediaListEntry":{"progress":4,"status":"CURRENT"}}}`)
+	}))
+	defer srv.Close()
+	a := newTestAniList(srv.URL, srv.URL)
+	out, err := a.Invoke(contracts.CapListLink, contracts.LinkPushInput{
+		Platform: "anilist", Token: "tok", RemoteID: "154587", Progress: 4, Status: contracts.ListStatusCurrent,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o := out.(contracts.LinkPushOutput); o.Progress != 4 || o.Status != contracts.ListStatusCurrent {
+		t.Fatalf("output: %+v", o)
+	}
+	vars := got["variables"].(map[string]any)
+	if vars["mediaId"] != float64(154587) || vars["progress"] != float64(4) || vars["status"] != "CURRENT" {
+		t.Fatalf("variables: %+v", vars)
+	}
+}
+
+func TestPushOmitsEmptyStatus(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		fmt.Fprint(w, `{"data":{"SaveMediaListEntry":{"progress":1,"status":"CURRENT"}}}`)
+	}))
+	defer srv.Close()
+	a := newTestAniList(srv.URL, srv.URL)
+	if _, err := a.push(contracts.LinkPushInput{Platform: "anilist", Token: "t", RemoteID: "1", Progress: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := got["variables"].(map[string]any)["status"]; has {
+		t.Fatalf("empty status must not be sent: %+v", got)
+	}
+}
+
+func TestPushErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"errors":[{"message":"Not Found."}],"data":{"SaveMediaListEntry":null}}`)
+	}))
+	defer srv.Close()
+	a := newTestAniList(srv.URL, srv.URL)
+	if _, err := a.push(contracts.LinkPushInput{Platform: "anilist", Token: "t", RemoteID: "1", Progress: 1}); err == nil || !strings.Contains(err.Error(), "Not Found") {
+		t.Fatalf("graphql errors must surface, got %v", err)
+	}
+	for _, in := range []contracts.LinkPushInput{
+		{Platform: "anilist", RemoteID: "1"},
+		{Platform: "anilist", Token: "t", RemoteID: "x"},
+		{Platform: "anilist", Token: "t", RemoteID: "1", Progress: -1},
+	} {
+		_, err := a.push(in)
+		if ce, ok := err.(*core.Error); !ok || ce.Code != "invalid-message" {
+			t.Fatalf("%+v: want invalid-message, got %v", in, err)
+		}
+	}
+	if _, err := a.Invoke(contracts.CapListLink, contracts.LinkPushInput{Platform: "trakt"}); err == nil {
+		t.Fatal("other platforms must be declined")
+	}
+}

@@ -393,6 +393,8 @@ export interface LinkedAccountView {
 	entry_count: number;
 	token_expires_at?: number;
 	token_expired?: boolean;
+	/** Push finished episodes back to the platform (opt-in). */
+	scrobble: boolean;
 }
 
 /** GET /api/me/links. */

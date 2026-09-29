@@ -83,6 +83,10 @@ type LinkedAccount struct {
 	LastSyncAt     int64  `json:"last_sync_at,omitempty"`
 	LastSyncError  string `json:"last_sync_error,omitempty"`
 	EntryCount     int    `json:"entry_count,omitempty"`
+	// Scrobble opts the account into pushing watch progress back to the
+	// platform. Off by default: writing to someone's remote list is an
+	// outward action they must ask for.
+	Scrobble bool `json:"scrobble,omitempty"`
 }
 
 // Public returns the account safe to serialize to a client: the token
@@ -151,6 +155,25 @@ type LinkFetchInput struct {
 // platform and ids on its side.
 type LinkFetchOutput struct {
 	Entries []ListEntry `json:"entries"`
+}
+
+// LinkPushInput writes one entry's progress back to the platform
+// (scrobble). Served by the same lain.listlink@1 connectors as fetch:
+// a provider that does not serve the platform declines with
+// "unsupported-platform". Status is a normalized ListStatus* value;
+// empty leaves the remote status untouched.
+type LinkPushInput struct {
+	Platform string `json:"platform"`
+	Token    string `json:"token"`
+	RemoteID string `json:"remote_id"`
+	Progress int    `json:"progress"`
+	Status   string `json:"status,omitempty"`
+}
+
+// LinkPushOutput echoes what the platform stored.
+type LinkPushOutput struct {
+	Progress int    `json:"progress"`
+	Status   string `json:"status"`
 }
 
 // IntegrationSettings is the operator's external-platform credential

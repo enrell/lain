@@ -31,6 +31,13 @@ export const links = {
 			body: { code }
 		}),
 
+	/** Opt in or out of pushing watch progress to the platform. */
+	setScrobble: (platform: string, scrobble: boolean) =>
+		request<LinkedAccountView>(`/api/me/links/${encodeURIComponent(platform)}`, {
+			method: 'PATCH',
+			body: { scrobble }
+		}),
+
 	unlink: (platform: string) =>
 		request<{ status: string; removed: number }>(`/api/me/links/${encodeURIComponent(platform)}`, {
 			method: 'DELETE'
