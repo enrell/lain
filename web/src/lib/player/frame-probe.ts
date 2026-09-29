@@ -4,13 +4,13 @@ const BRIGHT_CHANNEL = 8;
 const MIN_VISIBLE_PIXELS = 4;
 const BLANK_TIMEOUT_MS = 5000;
 
-function sampleVideo(video: HTMLVideoElement): boolean {
+function sampleVideo(source: CanvasImageSource): boolean {
 	const canvas = document.createElement('canvas');
 	canvas.width = SAMPLE_WIDTH;
 	canvas.height = SAMPLE_HEIGHT;
 	const context = canvas.getContext('2d', { willReadFrequently: true });
 	if (!context) throw new Error('video frame inspection is unavailable');
-	context.drawImage(video, 0, 0, SAMPLE_WIDTH, SAMPLE_HEIGHT);
+	context.drawImage(source, 0, 0, SAMPLE_WIDTH, SAMPLE_HEIGHT);
 	const pixels = context.getImageData(0, 0, SAMPLE_WIDTH, SAMPLE_HEIGHT).data;
 	let visible = 0;
 	for (let index = 0; index < pixels.length; index += 4) {
@@ -27,16 +27,16 @@ export class DecodedFrameProbe {
 	private blankSince: number | null = null;
 
 	constructor(
-		private readonly sample: (video: HTMLVideoElement) => boolean = sampleVideo,
+		private readonly sample: (source: CanvasImageSource) => boolean = sampleVideo,
 		private readonly now: () => number = () => performance.now()
 	) {}
 
-	check(video: HTMLVideoElement): boolean {
+	check(source: CanvasImageSource): boolean {
 		this.checkedFrames++;
 		if (this.readable && this.checkedFrames % 30 !== 0) return true;
 		let visible: boolean;
 		try {
-			visible = this.sample(video);
+			visible = this.sample(source);
 		} catch (error) {
 			throw new Error(`browser cannot inspect decoded video frames: ${error instanceof Error ? error.message : String(error)}`);
 		}

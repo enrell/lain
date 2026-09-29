@@ -103,9 +103,14 @@ to canvas, WebGL and WebGPU. In that case the effect cannot process the video;
 after five seconds of blank frames the player reports the limitation and keeps
 the native video visible. `Off` never starts a shader renderer.
 
-Native sidecar subtitles are rendered by the browser on the video element. The
-player therefore pauses the WebGPU presentation layer while such a text track
-is selected. Burned-in subtitles are already pixels and need no special path.
+Sidecar subtitles keep their browser-parsed WebVTT track but switch
+presentation with the picture: while a GPU renderer is active the track runs
+in `hidden` mode (cues still parse and `cuechange` fires) and the player
+paints `activeCues` itself in a DOM overlay over the canvas; with the
+renderer off, `showing` restores native `::cue` rendering (D-082). A sidecar
+that fails to load makes the renderer yield to native video, preserving the
+original degradation. Burned-in subtitles are already pixels and need no
+special path.
 
 The no-op built-in pass runs through the production ABI. It intentionally does
 not change the image and is used for the `Off` path while the renderer is
@@ -148,6 +153,18 @@ The WebGL2 fallback uses the nine original MIT-licensed mpv hook files under
 directives used by these bundled files; it does not accept arbitrary shaders.
 The files are included in the browser bundle, with no server-side processing.
 The DoG x2 preset has the same four fragment stages in both backends.
+
+Decoded frames reach WebGL2 through `createImageBitmap(video)`: uploading the
+media element directly costs tens of milliseconds per frame on GPUs whose
+decoded frames need a GPU→CPU→GPU roundtrip (measured ~33 ms/frame on an
+entry-level iGPU), while a GPU-side bitmap uploads in ~0.1 ms. Bitmap uploads
+ignore `UNPACK_FLIP_Y_WEBGL`, so the bitmap is created with
+`imageOrientation: 'flipY'` to keep the orientation the pipeline expects.
+The final hook
+renders straight to the canvas, render-target completeness and uniform
+locations are resolved once per prepare, and `getError` proves activation
+frames then only samples periodically, so no GL call syncs the pipeline on
+every presented frame.
 
 `Settings → Video effects` saves an initial choice and ordered overrides in
 browser storage under the signed-in account. A rule can match library type,
