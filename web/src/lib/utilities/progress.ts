@@ -1,4 +1,5 @@
 import type { CatalogItem, Progress } from '$lib/api/types';
+import { nextEpisode } from './grouping';
 
 const MIN_RESUME_SEC = 5;
 const COMPLETED_RATIO = 0.95;
@@ -41,4 +42,17 @@ export function isCompleted(position: number, duration: number): boolean {
 export function progressRatio(p: Progress): number {
 	if (!p.duration_sec || p.duration_sec <= 0) return 0;
 	return Math.max(0, Math.min(1, p.position_sec / p.duration_sec));
+}
+
+/**
+ * Next Up: the episode after a finished one, unless the viewer already
+ * has any progress on it (that one belongs to Continue Watching).
+ */
+export function nextUpAfter(
+	episodes: CatalogItem[],
+	finishedId: string,
+	progress: Map<string, Progress>
+): CatalogItem | null {
+	const next = nextEpisode(episodes, finishedId);
+	return next && !progress.has(next.id) ? next : null;
 }

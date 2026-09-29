@@ -18,16 +18,41 @@
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
-	import { isInProgress, sortByRecent } from '$lib/utilities/progress';
+	import { isInProgress, nextUpAfter, sortByRecent } from '$lib/utilities/progress';
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let libraries = $state<Library[]>([]);
 	let continueItems = $state<CatalogItem[]>([]);
 	let progressMap = $state<Map<string, Progress>>(new Map());
+	let nextUpItems = $state<CatalogItem[]>([]);
 	let recent = $state<CatalogItem[]>([]);
 	let libraryRows = $state<{ lib: Library; items: CatalogItem[] }[]>([]);
 	let catalogTotal = $state(0);
+
+	const NEXT_UP_TITLES = 6;
+
+	// One suggestion per show: the episode after the most recently
+	// finished one. A failed lookup only drops that show's suggestion.
+	async function loadNextUp(list: Progress[]): Promise<CatalogItem[]> {
+		const all = new Map(list.map((p) => [p.item_id, p]));
+		const finished = sortByRecent(list.filter((p) => p.completed && p.item_id !== ''));
+		const seen = new Set<string>();
+		const found: CatalogItem[] = [];
+		for (const p of finished) {
+			if (found.length >= NEXT_UP_TITLES || seen.size >= NEXT_UP_TITLES * 3) break;
+			if (seen.has(p.item_id)) continue;
+			try {
+				const { items } = await api.catalog.episodes(p.item_id);
+				for (const e of items) seen.add(e.id);
+				const next = nextUpAfter(items, p.item_id, all);
+				if (next) found.push(next);
+			} catch {
+				seen.add(p.item_id);
+			}
+		}
+		return found;
+	}
 
 	async function load(): Promise<void> {
 		loading = true;
@@ -48,6 +73,7 @@
 				(item): item is CatalogItem => item !== undefined
 			);
 			continueItems = activeItems;
+			nextUpItems = await loadNextUp(progressList);
 
 			// One row per library when there is more than one: the
 			// catalog filter runs server-side, nothing is preloaded.
@@ -61,6 +87,7 @@
 
 			const ids = [
 				...continueItems.map((i) => i.id),
+				...nextUpItems.map((i) => i.id),
 				...recent.map((i) => i.id),
 				...libraryRows.flatMap((r) => r.items.map((i) => i.id))
 			];
@@ -162,6 +189,10 @@
 
 				{#if continueItems.length > 0}
 					<MediaRow title="Continue watching" href="/library" actionLabel="Open library" items={continueItems} {progressMap} layout="landscape" />
+				{/if}
+
+				{#if nextUpItems.length > 0}
+					<MediaRow title="Next up" href="/library" actionLabel="Open library" items={nextUpItems} {progressMap} layout="landscape" />
 				{/if}
 
 				{#if recent.length > 0}
