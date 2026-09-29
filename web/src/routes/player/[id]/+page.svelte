@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -13,7 +13,8 @@
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
-	import { episodeLabel } from '$lib/utilities/grouping';
+	import { episodeLabel, nextEpisode } from '$lib/utilities/grouping';
+	import { prefs } from '$lib/auth/storage';
 	import { itemCache } from '$lib/stores/media-cache.svelte';
 	import { loadPreferredPlayer, playbackHref, type PreferredPlayer } from '$lib/player/external-player';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
@@ -36,6 +37,46 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let notFound = $state(false);
+	const AUTOPLAY_SECONDS = 8;
+	let autoplayNext = $state(prefs.getBool('player.autoplay_next', true));
+	// Seconds left before the next episode starts; null while nothing is queued.
+	let countdown = $state<number | null>(null);
+	let upNext = $state<CatalogItem | null>(null);
+	let timer: ReturnType<typeof setInterval> | undefined;
+
+	function cancelUpNext(): void {
+		clearInterval(timer);
+		timer = undefined;
+		countdown = null;
+		upNext = null;
+	}
+
+	function playNext(target: CatalogItem): void {
+		cancelUpNext();
+		void goto(playHref(target.id));
+	}
+
+	function onFinished(): void {
+		if (!item || !autoplayNext) return;
+		const target = nextEpisode(episodes, item.id);
+		if (!target) return;
+		upNext = target;
+		countdown = AUTOPLAY_SECONDS;
+		timer = setInterval(() => {
+			if (countdown === null || !upNext) return;
+			if (countdown <= 1) playNext(upNext);
+			else countdown -= 1;
+		}, 1000);
+	}
+
+	function toggleAutoplay(): void {
+		autoplayNext = !autoplayNext;
+		prefs.set('player.autoplay_next', String(autoplayNext));
+		if (!autoplayNext) cancelUpNext();
+	}
+
+	onDestroy(cancelUpNext);
+
 	const detailHref = $derived(item ? `/item/${item.id}` : '/library');
 
 	async function load(): Promise<void> {
@@ -74,6 +115,7 @@
 	 */
 	$effect(() => {
 		void id;
+		cancelUpNext();
 		void load();
 	});
 
@@ -117,8 +159,25 @@
 				     the player (video element, transcode session, clock) instead
 				     of leaving the previous episode's state behind. -->
 				{#key item.id}
-					<Player {item} {plan} initialProgress={progress} />
+					<Player {item} {plan} initialProgress={progress} {onFinished} />
 				{/key}
+				{#if upNext && countdown !== null}
+					<div
+						class="absolute bottom-24 right-5 z-30 w-72 border border-line/40 bg-black/85 p-4 backdrop-blur"
+						role="status"
+					>
+						<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+							Up next · {countdown}s
+						</p>
+						<p class="mt-1 truncate text-sm font-semibold text-foreground">
+							{episodeLabel(upNext)}
+						</p>
+						<div class="mt-3 flex gap-2">
+							<Button variant="secondary" onclick={() => upNext && playNext(upNext)}>Play now</Button>
+							<Button variant="ghost" onclick={cancelUpNext}>Cancel</Button>
+						</div>
+					</div>
+				{/if}
 			{:else}
 				<div class="relative flex h-full items-center justify-center overflow-hidden bg-background px-6">
 					<div class="lattice absolute inset-0 opacity-30"></div>
@@ -160,6 +219,14 @@
 				<div class="border-b border-line/40 px-4 py-3">
 					<p class="truncate text-sm font-semibold text-foreground">{item.title}</p>
 					<p class="mt-0.5 text-xs text-muted">{episodes.length} episodes</p>
+					<button
+						type="button"
+						class="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted hover:text-foreground"
+						aria-pressed={autoplayNext}
+						onclick={toggleAutoplay}
+					>
+						Autoplay next: {autoplayNext ? 'on' : 'off'}
+					</button>
 				</div>
 				<ul class="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
 					{#each episodes as episode (episode.id)}

@@ -25,6 +25,17 @@ export function compareEpisodes(a: CatalogItem, b: CatalogItem): number {
 }
 
 /**
+ * The file to play after `currentId`: the next one in watch order that
+ * is still on disk, or null at the end of the title (or for a movie).
+ */
+export function nextEpisode(episodes: CatalogItem[], currentId: string): CatalogItem | null {
+	const ordered = [...episodes].sort(compareEpisodes);
+	const at = ordered.findIndex((e) => e.id === currentId);
+	if (at < 0) return null;
+	return ordered.slice(at + 1).find((e) => !e.missing) ?? null;
+}
+
+/**
  * The label a title page and the player sidebar show for one file:
  * S01E02 when the file declares a season, Episode 2 when it only
  * declares an episode, and the title itself otherwise (a movie).

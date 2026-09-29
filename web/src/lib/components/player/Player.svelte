@@ -47,11 +47,14 @@
 	let {
 		item,
 		plan,
-		initialProgress
+		initialProgress,
+		onFinished
 	}: {
 		item: CatalogItem;
 		plan: PlaybackPlan;
 		initialProgress: Progress | null;
+		/** Fired once playback reaches the end of the file. */
+		onFinished?: () => void;
 	} = $props();
 
 	const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -793,6 +796,7 @@
 		ended = true;
 		controlsVisible = true;
 		void reporter.update({ ...snapshot(), completed: true }, { force: true });
+		onFinished?.();
 	}
 
 	function onMediaError(): void {
