@@ -29,6 +29,7 @@
 	import { session } from '$lib/auth/session.svelte';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
+	import CueOverlay from './CueOverlay.svelte';
 	import { resolveTracks } from '$lib/player/track-language';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
@@ -143,6 +144,10 @@
 	let hasSubtitle = $state(false);
 	let selectedAudio = $state('');
 	let selectedSubtitle = $state('');
+	let trackEl = $state<HTMLTrackElement | null>(null);
+	// A sidecar that fails to load makes the renderer yield to native video
+	// (D-059's original degradation, kept for cue-overlay rendering D-082).
+	let trackFailed = $state(false);
 	let subtitleBg = $state<'none' | 'box'>(
 		(prefs.get('player.subtitle_bg') as 'none' | 'box') || 'none'
 	);
@@ -358,10 +363,9 @@
 		const glCanvas = webglCanvas;
 		const profile = browserProfile;
 		const ready = transcodeReady;
-		const nativeSubtitle = subtitleSrc;
 		const passes = rendererPasses;
 		const mode = computeMode;
-		if (!el || !gpuCanvas || !glCanvas || !profile || !ready || nativeSubtitle || selectedEffect === 'off') {
+		if (!el || !gpuCanvas || !glCanvas || !profile || !ready || trackFailed || selectedEffect === 'off') {
 			stopRenderer();
 			return;
 		}
@@ -420,6 +424,22 @@
 			cancelled = true;
 			if (generation === rendererGeneration) stopRenderer();
 		};
+	});
+
+	// While the renderer presents frames the sidecar track goes `hidden`:
+	// cues still parse and cuechange fires, but the CueOverlay paints them
+	// over the canvas; `showing` restores the native ::cue path (D-082). A
+	// rebuilt sidecar element clears the previous track's failure.
+	const cueTrack = $derived(trackEl?.track ?? null);
+	let lastTrackEl: HTMLTrackElement | null = null;
+	$effect(() => {
+		const el = trackEl;
+		if (el !== lastTrackEl) {
+			lastTrackEl = el;
+			trackFailed = false;
+		}
+		if (!el) return;
+		el.track.mode = rendererActive && !trackFailed ? 'hidden' : 'showing';
 	});
 
 	async function loadPlaybackOptions(): Promise<void> {
@@ -496,6 +516,9 @@
 		prepareProgress = status.progress ?? 0;
 		prepareStartedAt = status.started_at || status.queued_at || prepareStartedAt;
 		nowMs = Date.now();
+		// Extraction can land after the session becomes playable; once
+		// reported, the sidecar exists for this session's lifetime.
+		if (status.has_subtitle) hasSubtitle = true;
 	}
 
 	// A cached session is already prepared; learn its delivery and sidecar
@@ -535,17 +558,21 @@
 		prepareStartedAt = Date.now() / 1000;
 		nowMs = Date.now();
 		try {
+			const subtitleStream =
+				selection?.subtitle_stream ?? (selectedSubtitle === '' ? undefined : Number(selectedSubtitle));
 			let status = await api.playback.startTranscode(item.id, {
 				quality: (selection?.quality ?? selectedQuality) || undefined,
 				audio_stream: selection?.audio_stream ?? (selectedAudio === '' ? undefined : Number(selectedAudio)),
-				subtitle_stream: selection?.subtitle_stream ?? (selectedSubtitle === '' ? undefined : Number(selectedSubtitle)),
+				subtitle_stream: subtitleStream,
 				subtitle_mode: languageMetadataKnown && selectedSubtitle === '' ? 'off' : undefined,
 				start_sec: baseOffset || undefined
 			});
 			transcodeSession = status.session;
 			delivery = status.delivery ?? 'progressive';
 			transcodeReasons = status.reasons ?? transcodeReasons;
-			hasSubtitle = status.has_subtitle ?? selection?.subtitle_stream !== undefined;
+			// A pending extraction reports nothing yet; the poll loop raises
+			// hasSubtitle once the sidecar actually exists (D-082).
+			hasSubtitle = status.has_subtitle ?? false;
 			applyPrepareStatus(status);
 			let waitMs = 750;
 			// HLS starts playing as soon as the playlist is playable; the
@@ -1287,7 +1314,15 @@
 			     what makes switching tracks during direct play reliable. -->
 			{#if subtitleSrc}
 				{#key subtitleSrc}
-					<track kind="subtitles" srclang={selectedSubtitleLanguage} label="Subtitles" src={subtitleSrc} default />
+					<track
+						bind:this={trackEl}
+						kind="subtitles"
+						srclang={selectedSubtitleLanguage}
+						label="Subtitles"
+						src={subtitleSrc}
+						default
+						onerror={() => (trackFailed = true)}
+					/>
 				{/key}
 			{/if}
 			<track kind="captions" />
@@ -1308,6 +1343,9 @@
 			].join(' ')}
 			aria-hidden="true"
 		></canvas>
+		{#if rendererActive && cueTrack}
+			<CueOverlay track={cueTrack} video={video} size={subtitleSize} />
+		{/if}
 
 	{#if preparingTranscode}
 		<div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/85 px-6 text-center">
@@ -1562,6 +1600,11 @@
 				<p class="mt-2 font-mono">{telemetry}</p>
 				{#if browserProfile}<p class="mt-2">Renderer profile: {browserProfile.id === 'brave' ? 'Brave' : 'Default'}</p>{/if}
 				{#if rendererBackend}<p class="mt-2">Video effects: {rendererBackend}</p>{/if}
+				{#if subtitleSrc}
+					<p class="mt-2">Subtitles: {rendererActive ? 'cue overlay' : 'browser sidecar'}</p>
+				{:else if selectedSubtitle !== '' && mode === 'transcode'}
+					<p class="mt-2">Subtitles: burned in</p>
+				{/if}
 				{#if sessionNote}<p class="mt-2">{sessionNote}</p>{/if}
 			</details>
 		</div>
