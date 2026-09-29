@@ -23,6 +23,8 @@ type fakeLink struct {
 	exchangeE error
 	entries   []contracts.ListEntry
 	fetchErr  error
+	pushes    []contracts.LinkPushInput
+	pushErr   error
 }
 
 func (f *fakeLink) ID() string             { return "lain-listlink-anilist" }
@@ -43,6 +45,12 @@ func (f *fakeLink) Invoke(cap string, input any) (any, error) {
 			return nil, f.fetchErr
 		}
 		return contracts.LinkFetchOutput{Entries: f.entries}, nil
+	case contracts.LinkPushInput:
+		if f.pushErr != nil {
+			return nil, f.pushErr
+		}
+		f.pushes = append(f.pushes, in)
+		return contracts.LinkPushOutput{Progress: in.Progress, Status: in.Status}, nil
 	default:
 		return nil, &core.Error{Code: "invalid-message", Msg: "bad link input"}
 	}

@@ -899,10 +899,16 @@ func (s *Server) handleProgressPut(w http.ResponseWriter, r *http.Request, v aut
 		return
 	}
 	in.ItemID = r.PathValue("id")
+	// Scrobble only on the transition to completed: the reporter keeps
+	// re-sending the final position, and each is not a new finish.
+	prev, _ := s.ustateGet(v.UserID, in.ItemID)
 	out, _, err := s.reg.CallOne(contracts.CapUserProgress, userStatePut(v.UserID, in))
 	if err != nil {
 		writeErr(w, 503, err.Error())
 		return
+	}
+	if in.Completed && !prev.Completed {
+		go s.scrobble(v.UserID, in.ItemID)
 	}
 	writeJSON(w, 200, out)
 }

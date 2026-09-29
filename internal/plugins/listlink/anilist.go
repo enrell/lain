@@ -62,8 +62,13 @@ func (a *AniList) Invoke(cap string, input any) (any, error) {
 			return nil, unsupportedPlatform(in.Platform)
 		}
 		return a.fetch(in)
+	case contracts.LinkPushInput:
+		if in.Platform != AniListPlatform {
+			return nil, unsupportedPlatform(in.Platform)
+		}
+		return a.push(in)
 	default:
-		return nil, &core.Error{Code: "invalid-message", Msg: "LinkAuthorizeInput, LinkExchangeInput or LinkFetchInput required"}
+		return nil, &core.Error{Code: "invalid-message", Msg: "LinkAuthorizeInput, LinkExchangeInput, LinkFetchInput or LinkPushInput required"}
 	}
 }
 
@@ -242,6 +247,50 @@ func (a *AniList) fetch(in contracts.LinkFetchInput) (contracts.LinkFetchOutput,
 		out.Entries = []contracts.ListEntry{}
 	}
 	return out, nil
+}
+
+const saveEntryMutation = `mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus) {
+	SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status) {
+		progress status
+	}
+}`
+
+// push writes progress (and optionally status) to one entry. GraphQL
+// answers 200 with an "errors" array for validation failures, so the
+// body is checked, not just the status.
+func (a *AniList) push(in contracts.LinkPushInput) (contracts.LinkPushOutput, error) {
+	var mediaID int
+	if in.Token == "" {
+		return contracts.LinkPushOutput{}, &core.Error{Code: "invalid-message", Msg: "token required"}
+	}
+	if _, err := fmt.Sscanf(in.RemoteID, "%d", &mediaID); err != nil || mediaID <= 0 {
+		return contracts.LinkPushOutput{}, &core.Error{Code: "invalid-message", Msg: "remote_id must be numeric"}
+	}
+	if in.Progress < 0 {
+		return contracts.LinkPushOutput{}, &core.Error{Code: "invalid-message", Msg: "progress must not be negative"}
+	}
+	vars := map[string]any{"mediaId": mediaID, "progress": in.Progress}
+	if in.Status != "" {
+		vars["status"] = strings.ToUpper(in.Status)
+	}
+	var doc struct {
+		Data struct {
+			Save struct {
+				Progress int    `json:"progress"`
+				Status   string `json:"status"`
+			} `json:"SaveMediaListEntry"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := a.graphql(in.Token, saveEntryMutation, vars, &doc); err != nil {
+		return contracts.LinkPushOutput{}, err
+	}
+	if len(doc.Errors) > 0 {
+		return contracts.LinkPushOutput{}, fmt.Errorf("anilist rejected the entry: %.200s", doc.Errors[0].Message)
+	}
+	return contracts.LinkPushOutput{Progress: doc.Data.Save.Progress, Status: mapStatus(doc.Data.Save.Status)}, nil
 }
 
 type alDate struct {

@@ -691,9 +691,14 @@ bound provider is tried. Ops:
 - `LinkFetchInput{platform, token, remote_user_id}` →
   `LinkFetchOutput{entries}` — the remote list mapped onto
   `ListEntry` fields.
+- `LinkPushInput{platform, token, remote_id, progress, status?}` →
+  `LinkPushOutput{progress, status}` — scrobble: writes one entry's
+  progress (and optionally a normalized status) back to the platform
+  (D-084). Additive to `@1`: connectors that predate it answer
+  `invalid-message`, never crash.
 Built-in `lain-listlink-anilist`: AniList's authorization-code flow
 plus an authenticated GraphQL `MediaListCollection` fetch for `ANIME`
-and `MANGA`. A dead or revoked token surfaces as `token-invalid`.
+and `MANGA`, and a `SaveMediaListEntry` mutation for push. A dead or revoked token surfaces as `token-invalid`.
 
 ### lain.settings.integrations@1 (exactly-one)
 

@@ -188,6 +188,18 @@
 		}
 	}
 
+	async function toggleScrobble(link: LinkedAccountView): Promise<void> {
+		linkBusy = link.platform;
+		try {
+			await api.links.setScrobble(link.platform, !link.scrobble);
+			await loadLinks();
+		} catch (err) {
+			toasts.error(errorMessage(err, 'Could not change the setting.'));
+		} finally {
+			linkBusy = '';
+		}
+	}
+
 	async function disconnect(platform: string): Promise<void> {
 		linkBusy = platform;
 		try {
@@ -300,6 +312,15 @@
 										· sync failed ({link.last_sync_error})
 									{/if}
 								</p>
+								<button
+									type="button"
+									class="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted hover:text-foreground"
+									aria-pressed={link.scrobble}
+									disabled={linkBusy === p.id}
+									onclick={() => void toggleScrobble(link)}
+								>
+									Update {p.name} when I finish an episode: {link.scrobble ? 'on' : 'off'}
+								</button>
 							</div>
 							<div class="flex items-center gap-2">
 								{#if linkNeedsReconnect(link)}

@@ -37,6 +37,7 @@ func (s *Server) routesList() {
 	m.HandleFunc("GET /api/me/links/{platform}/authorize", s.requireAuth(s.handleLinkAuthorize))
 	m.HandleFunc("GET /api/me/links/{platform}/pin", s.requireAuth(s.handleLinkPin))
 	m.HandleFunc("POST /api/me/links/{platform}/code", s.requireAuth(s.handleLinkCode))
+	m.HandleFunc("PATCH /api/me/links/{platform}", s.requireAuth(s.handleLinkPatch))
 	m.HandleFunc("DELETE /api/me/links/{platform}", s.requireAuth(s.handleLinkDelete))
 	m.HandleFunc("POST /api/me/links/{platform}/sync", s.requireAuth(s.handleLinkSync))
 	m.HandleFunc("GET /api/auth/{platform}/callback", s.handleLinkCallback)
@@ -58,6 +59,7 @@ type linkView struct {
 	EntryCount     int    `json:"entry_count"`
 	TokenExpiresAt int64  `json:"token_expires_at,omitempty"`
 	TokenExpired   bool   `json:"token_expired,omitempty"`
+	Scrobble       bool   `json:"scrobble"`
 }
 
 func publicLink(a contracts.LinkedAccount, now int64) linkView {
@@ -71,6 +73,7 @@ func publicLink(a contracts.LinkedAccount, now int64) linkView {
 		EntryCount:     a.EntryCount,
 		TokenExpiresAt: a.TokenExpiresAt,
 		TokenExpired:   a.TokenExpired(now),
+		Scrobble:       a.Scrobble,
 	}
 }
 
