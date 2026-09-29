@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Progress } from '$lib/api/types';
-import { isCompleted, isInProgress, progressRatio, resumePosition, sortByRecent } from './progress';
+import type { CatalogItem, Progress } from '$lib/api/types';
+import { isCompleted, isInProgress, nextUpAfter, progressRatio, resumePosition, sortByRecent } from './progress';
 
 function progress(partial: Partial<Progress>): Progress {
 	return {
@@ -67,5 +67,38 @@ describe('sortByRecent', () => {
 		const out = sortByRecent([a, b, c]);
 		expect(out.map((p) => p.item_id)).toEqual(['b', 'c', 'a']);
 		expect(a.updated_at).toBe(1);
+	});
+});
+
+describe('nextUpAfter', () => {
+	const ep = (id: string, episode: number, missing = false): CatalogItem => ({
+		id,
+		library_id: 'lib',
+		kind: 'episode',
+		title: 'Show',
+		season: 1,
+		episode,
+		year: 0,
+		file_path: '',
+		size: 0,
+		confidence: 1,
+		origin: '',
+		provenance: '',
+		updated_at: 0,
+		missing
+	});
+	const eps = [ep('e1', 1), ep('e2', 2), ep('e3', 3)];
+
+	it('offers the episode after a finished one', () => {
+		expect(nextUpAfter(eps, 'e1', new Map())?.id).toBe('e2');
+	});
+
+	it('offers nothing when the next episode already has progress', () => {
+		const seen = new Map([['e2', progress({ item_id: 'e2', position_sec: 40 })]]);
+		expect(nextUpAfter(eps, 'e1', seen)).toBeNull();
+	});
+
+	it('offers nothing after the last episode', () => {
+		expect(nextUpAfter(eps, 'e3', new Map())).toBeNull();
 	});
 });
