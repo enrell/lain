@@ -91,6 +91,8 @@
 	}
 
 	onMount(() => {
+		// Ctrl+K "Add library" lands here with ?add.
+		if (new URL(window.location.href).searchParams.has('add')) openCreate();
 		void load();
 		void scan.refresh().then(() => {
 			if (scan.running) scan.follow();
@@ -150,7 +152,9 @@
 	const typeOptions = [
 		{ value: 'anime', label: 'Anime' },
 		{ value: 'series', label: 'Series' },
-		{ value: 'movie', label: 'Movies' }
+		{ value: 'movie', label: 'Movies' },
+		{ value: 'manga', label: 'Manga' },
+		{ value: 'comic', label: 'Comics' }
 	];
 </script>
 
@@ -158,10 +162,10 @@
 
 <div class="space-y-6">
 	<!-- Scan -->
-	<section class="rounded-card border border-line bg-surface/60 p-5">
+	<section id="scan" class="settings-section scroll-mt-28 !border-t-0 !pt-0">
 		<div class="flex flex-wrap items-center justify-between gap-3">
 			<div>
-				<h2 class="text-base font-semibold text-foreground">Scan</h2>
+				<h2 class="settings-heading">Scan</h2>
 				<p class="mt-0.5 text-sm text-muted">
 					Walks every library root and updates the catalog. Safe to run while watching.
 				</p>
@@ -213,9 +217,9 @@
 	</section>
 
 	<!-- Libraries -->
-	<section class="space-y-4">
+	<section id="libraries" class="scroll-mt-28 space-y-4 pt-8">
 		<div class="flex items-center justify-between gap-3">
-			<h2 class="text-base font-semibold text-foreground">Media libraries</h2>
+			<h2 class="settings-heading">Media libraries</h2>
 			<Button variant="secondary" size="sm" onclick={() => openCreate()}>
 				<FolderPlus class="size-4" /> Add library
 			</Button>
@@ -236,7 +240,7 @@
 				</Button>
 			</EmptyState>
 		{:else}
-			<ul class="divide-y divide-line overflow-hidden rounded-card border border-line">
+			<ul class="settings-list">
 				{#each libraries as lib (lib.id)}
 					<li class="flex flex-wrap items-center gap-3 bg-surface/40 px-4 py-3.5">
 						<div class="min-w-0 flex-1">
@@ -314,7 +318,7 @@
 				{#if browseDirs.length === 0}
 					<p class="py-2 text-sm text-muted">No subfolders here.</p>
 				{:else}
-					<ul class="mt-1 max-h-44 divide-y divide-line overflow-y-auto rounded-card border border-line">
+					<ul class="settings-list mt-1 max-h-44 overflow-y-auto">
 						{#each browseDirs as dir (dir.path)}
 							<li class="flex items-center gap-2 bg-surface/40 px-3 py-2">
 								<button

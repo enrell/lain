@@ -1,83 +1,150 @@
 <script lang="ts">
+	/*
+	 * Settings shell: a fixed rail (YOU / SERVER) beside one reading column,
+	 * like two tiled windows. Navigation is keyboard-first (AGENTS.md):
+	 *   g+letter  open a section (mnemonic, stable across roles)
+	 *   [ / ]     previous / next section
+	 *   j / k     next / previous control in the pane
+	 * Ctrl+K (global) finds any setting and lands on its row.
+	 */
+	import { tick, type Snippet } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import Blocks from '@lucide/svelte/icons/blocks';
-	import Cable from '@lucide/svelte/icons/cable';
-	import DatabaseBackup from '@lucide/svelte/icons/database-backup';
-	import Sparkles from '@lucide/svelte/icons/sparkles';
-	import Library from '@lucide/svelte/icons/library';
-	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
-	import UserRound from '@lucide/svelte/icons/user-round';
-	import Users from '@lucide/svelte/icons/users';
-	import type { Snippet } from 'svelte';
 	import { session } from '$lib/auth/session.svelte';
+	import { prefs } from '$lib/auth/storage';
+	import { sectionFor, visibleSections } from '$lib/settings/sections';
 
 	let { children }: { children: Snippet } = $props();
 
-	// The tab strip only scrolls below sm; bring the current section into
-	// view so the active tab is never the one hidden off the right edge.
-	let tabsNav = $state<HTMLElement | null>(null);
+	const sections = $derived(visibleSections(session.isAdmin));
+	const current = $derived(sectionFor(page.url.pathname));
+	let pane = $state<HTMLElement>();
+	let chord = $state(false);
+	let chordTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function typing(t: EventTarget | null): boolean {
+		const el = t as HTMLElement | null;
+		return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+	}
+
+	function focusables(): HTMLElement[] {
+		if (!pane) return [];
+		return [
+			...pane.querySelectorAll<HTMLElement>(
+				'a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]'
+			)
+		].filter((el) => el.offsetParent !== null && !el.closest('[aria-hidden="true"]'));
+	}
+
+	function onKey(e: KeyboardEvent): void {
+		if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+		if (typing(e.target) || document.querySelector('[role="dialog"]')) return;
+		const at = sections.findIndex((s) => s.href === current?.href);
+		if (chord) {
+			chord = false;
+			clearTimeout(chordTimer);
+			const target = sections.find((s) => s.key === e.key.toLowerCase());
+			if (target) {
+				e.preventDefault();
+				void goto(target.href);
+			}
+			return;
+		}
+		if (e.key === 'g') {
+			chord = true;
+			chordTimer = setTimeout(() => (chord = false), 1200);
+			return;
+		}
+		if (e.key === ']' || e.key === '[') {
+			e.preventDefault();
+			const to = (at + (e.key === ']' ? 1 : -1) + sections.length) % sections.length;
+			void goto(sections[to].href);
+			return;
+		}
+		if (e.key === 'j' || e.key === 'k') {
+			const list = focusables();
+			if (list.length === 0) return;
+			e.preventDefault();
+			const i = list.indexOf(document.activeElement as HTMLElement);
+			const next = i < 0 ? (e.key === 'j' ? 0 : list.length - 1) : Math.min(Math.max(i + (e.key === 'j' ? 1 : -1), 0), list.length - 1);
+			list[next].focus();
+			list[next].scrollIntoView({ block: 'nearest' });
+		}
+	}
+
+	// /settings reopens the section you were last in.
 	$effect(() => {
-		void page.url.pathname;
-		tabsNav?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({
-			inline: 'center',
-			block: 'nearest'
-		});
+		if (current) prefs.set('settings.last', current.href);
 	});
 
-	const tabs = $derived(
-		[
-			{ href: '/settings', label: 'Account', icon: UserRound, admin: false },
-			{ href: '/settings/effects', label: 'Video effects', icon: Sparkles, admin: false },
-			{ href: '/settings/libraries', label: 'Libraries', icon: Library, admin: true },
-			{ href: '/settings/users', label: 'Users', icon: Users, admin: true },
-			{ href: '/settings/playback', label: 'Playback', icon: SlidersHorizontal, admin: true },
-			{ href: '/settings/integrations', label: 'Integrations', icon: Cable, admin: true },
-			{ href: '/settings/plugins', label: 'Plugins', icon: Blocks, admin: true },
-			{ href: '/settings/backup', label: 'Backup', icon: DatabaseBackup, admin: true }
-		].filter((tab) => !tab.admin || session.isAdmin)
-	);
-
-	function active(href: string): boolean {
-		const path = page.url.pathname;
-		if (href === '/settings') return path === '/settings';
-		return path === href || path.startsWith(href + '/');
-	}
+	// A #anchor (from Ctrl+K or a link) scrolls to its row and pulses it.
+	$effect(() => {
+		const hash = page.url.hash.slice(1);
+		void page.url.pathname;
+		if (!hash) return;
+		let tries = 0;
+		const find = () => {
+			const el = document.getElementById(hash);
+			if (!el) {
+				if (tries++ < 80) setTimeout(find, 100); // slow pages load their data first
+				return;
+			}
+			el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+			el.classList.remove('setting-pulse');
+			void el.offsetWidth;
+			el.classList.add('setting-pulse');
+			void tick().then(() => el.querySelector<HTMLElement>('input, select, textarea, button')?.focus({ preventScroll: true }));
+		};
+		find();
+	});
 </script>
 
-<div class="space-y-6">
-	<header>
-		<h1 class="text-xl font-semibold tracking-tight text-foreground">Settings</h1>
-		<p class="mt-0.5 text-sm text-muted">
-			{session.isAdmin ? 'Account, server and composition controls.' : 'Your account.'}
-		</p>
-	</header>
+<svelte:window onkeydown={onKey} />
 
-	<!-- One row on phones: wrapped into three rows the tab strip is 120px of
-	     the 506px a 320x568 screen has, which is what pushed each settings
-	     page's first action under the fixed bottom nav. -->
-	<nav
-		bind:this={tabsNav}
-		class="no-scrollbar flex gap-1 overflow-x-auto border-b border-line sm:flex-wrap"
-		aria-label="Settings sections"
-	>
-		{#each tabs as tab (tab.href)}
-			{@const isActive = active(tab.href)}
-			{@const Icon = tab.icon}
-			<a
-				href={tab.href}
-				aria-current={isActive ? 'page' : undefined}
-				class={[
-					'-mb-px flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-					isActive
-						? 'border-accent text-foreground'
-						: 'border-transparent text-muted hover:border-line hover:text-foreground'
-				].join(' ')}
-			>
-				<Icon class="size-4" />
-				{tab.label}
-			</a>
+<div class="mx-auto grid max-w-[66rem] gap-8 md:grid-cols-[13.5rem_minmax(0,1fr)] md:gap-12">
+	<!-- Rail: fixed like a tiled window. On phones it is a scrollable strip. -->
+	<nav class="md:sticky md:top-28 md:self-start" aria-label="Settings sections">
+		<p class="hidden font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-foreground md:block">Settings</p>
+		{#each ['you', 'server'] as scope (scope)}
+			{@const group = sections.filter((s) => s.scope === scope)}
+			{#if group.length > 0}
+				<p class="mb-1 mt-6 hidden font-mono text-[10px] uppercase tracking-[0.26em] text-muted md:block">{scope}</p>
+				<ul class="no-scrollbar -mx-1 flex gap-1 overflow-x-auto md:mx-0 md:block md:space-y-px">
+					{#each group as s (s.href)}
+						{@const on = current?.href === s.href}
+						<li class="shrink-0">
+							<a
+								href={s.href}
+								aria-current={on ? 'page' : undefined}
+								aria-keyshortcuts={`g ${s.key}`}
+								title={s.hint}
+								class="group flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-sm transition-colors {on
+									? 'bg-surface-active text-foreground'
+									: 'text-muted hover:bg-surface-hover hover:text-foreground'}"
+							>
+								<span class="flex items-center gap-2">
+									<span class="h-3.5 w-0.5 rounded-full {on ? 'bg-accent' : 'bg-transparent'}" aria-hidden="true"></span>
+									{s.label}
+								</span>
+								<kbd class="hidden font-mono text-[10px] {chord ? 'text-accent' : 'text-muted/60'} md:inline">g{s.key}</kbd>
+							</a>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 		{/each}
+		<p class="mt-8 hidden font-mono text-[10px] leading-5 text-muted/70 md:block">
+			<kbd class="text-muted">Ctrl K</kbd> find a setting<br />
+			<kbd class="text-muted">j k</kbd> move · <kbd class="text-muted">[ ]</kbd> section
+		</p>
 	</nav>
 
-	{@render children()}
+	<div bind:this={pane} class="settings-body min-w-0 pb-24">
+		{#if current}
+			<p class="mb-6 font-mono text-[10px] uppercase tracking-[0.22em] text-muted" aria-hidden="true">
+				settings / {current.scope} / <span class="text-foreground">{current.label.toLowerCase()}</span>
+			</p>
+		{/if}
+		{@render children()}
+	</div>
 </div>

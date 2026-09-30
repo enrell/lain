@@ -3,6 +3,28 @@
 Read this file before touching code. The project's discipline applies
 here, adapted to Go.
 
+## Audience (drives every UX decision)
+
+Lain is not for the general public. Its users are developers and other
+technical people who run their own servers and are comfortable with
+power tools; people who only want "a Netflix" never install a media
+server. Design for them:
+
+- **Keyboard-first.** Every flow must be completable without a mouse:
+  modals trap focus and land it on the primary action, every action has
+  a key, and the key is shown next to the action (`<kbd>`). A screen
+  that needs the mouse is a bug, not an accessibility nicety.
+- Dense, fast, direct. Prefer shortcuts, visible state and precise
+  controls over wizards, hand-holding copy and hidden magic.
+- Settings follow one shape (D-087): a YOU/SERVER rail, one row pattern
+  (`SettingRow`: label + one-line hint left, control right), personal
+  settings apply instantly, server settings stage behind one Ctrl+S bar.
+  A new setting also gets an entry in `web/src/lib/settings/sections.ts`
+  so Ctrl+K can find it.
+- Post-modern visual language (see `docs/advisor/decisions.md` D-022):
+  full-bleed art, mono uppercase labels, large tight type, glass panels.
+  No boxed "banner cards" or dated framed layouts.
+
 ## Stack (do not change without explicit user instruction)
 
 - Language: Go (stdlib-first). Dependencies, each justified:

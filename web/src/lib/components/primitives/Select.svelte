@@ -56,8 +56,8 @@
 		<Select.Trigger
 			aria-label={triggerName || undefined}
 			class={[
-				'flex h-10 w-full items-center justify-between gap-2 rounded-md border border-line bg-surface px-3 text-sm text-foreground',
-				'hover:border-muted/40 focus:border-accent/60 focus:outline-none disabled:opacity-50',
+				'flex h-10 w-full items-center justify-between gap-2 rounded-md border border-transparent bg-field px-3 text-sm text-foreground',
+				'hover:border-hairline focus:border-accent/60 focus:outline-none disabled:opacity-50',
 				className
 			].join(' ')}
 		>
@@ -66,7 +66,7 @@
 		</Select.Trigger>
 		<Select.Portal>
 			<Select.Content
-				class="z-50 max-h-72 min-w-[var(--bits-select-anchor-width)] overflow-hidden rounded-md border border-line bg-surface py-1 shadow-xl"
+				class="z-50 max-h-72 min-w-[var(--bits-select-anchor-width)] overflow-hidden rounded-md border border-hairline bg-background py-1 shadow-xl"
 				sideOffset={4}
 			>
 				<Select.Viewport>

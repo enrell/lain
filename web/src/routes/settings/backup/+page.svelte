@@ -25,13 +25,13 @@
 <svelte:head><title>Backup — Settings — Lain</title></svelte:head>
 
 <div class="max-w-3xl space-y-5">
-	<section class="rounded-card border border-line bg-surface/60 p-5">
+	<section id="backup" class="settings-section scroll-mt-28 !border-t-0 !pt-0">
 		<div class="flex items-start gap-4">
 			<div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent/10">
 				<DatabaseBackup class="size-5 text-accent" />
 			</div>
 			<div class="min-w-0 flex-1">
-				<h2 class="text-base font-semibold text-foreground">Database snapshot</h2>
+				<h2 class="settings-heading">Database snapshot</h2>
 				<p class="mt-1 text-sm leading-relaxed text-muted">
 					Streams a consistent copy of <span class="font-mono text-xs">lain.db</span> from a
 					single read transaction: accounts, libraries, catalog and watch progress. Safe while
@@ -45,7 +45,7 @@
 		</div>
 	</section>
 
-	<section class="rounded-card border border-line bg-surface/40 p-5">
+	<section class="settings-section">
 		<h2 class="flex items-center gap-2 text-sm font-semibold text-foreground">
 			<Info class="size-4 text-muted" /> Restoring
 		</h2>

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Avatar from '$lib/components/profile/Avatar.svelte';
+	import { displayName } from '$lib/profile/mascots';
 	import { onMount } from 'svelte';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
@@ -113,6 +115,8 @@
 	}
 
 	onMount(() => {
+		// Ctrl+K "Add user" lands here with ?add.
+		if (new URL(window.location.href).searchParams.has('add')) createOpen = true;
 		void load();
 	});
 
@@ -179,7 +183,7 @@
 
 <svelte:head><title>Users — Settings — Lain</title></svelte:head>
 
-<div class="space-y-5">
+<div id="users" class="scroll-mt-28 space-y-5">
 	<div class="flex items-center justify-between gap-3">
 		<p class="text-sm text-muted">
 			{users.length} {users.length === 1 ? 'account' : 'accounts'}. Roles and disabling take effect
@@ -199,18 +203,15 @@
 			{#snippet icon()}<UserRound class="size-6 text-muted" />{/snippet}
 		</EmptyState>
 	{:else}
-		<ul class="divide-y divide-line overflow-hidden rounded-card border border-line">
+		<ul class="settings-list">
 			{#each users as user (user.id)}
-				<li class="flex flex-wrap items-center gap-x-4 gap-y-2 bg-surface/40 px-4 py-2.5 md:gap-y-3 md:py-3.5">
+				<li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 py-2.5 md:gap-y-3 md:py-3.5">
 					<div class="flex min-w-0 flex-1 items-center gap-3">
-						<span
-							class="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-active text-xs font-semibold text-muted"
-						>
-							{user.username.slice(0, 1).toUpperCase()}
-						</span>
+						<Avatar {user} class="size-9" />
 						<div class="min-w-0">
 							<div class="flex flex-wrap items-center gap-2">
-								<p class="truncate font-medium text-foreground">{user.username}</p>
+								<p class="truncate font-medium text-foreground">{displayName(user)}</p>
+								{#if user.profile?.display_name}<span class="font-mono text-[11px] text-muted">@{user.username}</span>{/if}
 								{#if isSelf(user)}<Badge tone="accent">you</Badge>{/if}
 								{#if user.disabled}<Badge tone="danger">disabled</Badge>{/if}
 							</div>

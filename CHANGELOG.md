@@ -6,6 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Settings redesign** (D-087). A YOU / SERVER rail replaces the tab
+  strip; personal Playback (player, language, video effects), Connections
+  and Security are their own sections, and the admin transcode policy is
+  now **Transcoding**, opening in Auto with Custom for every control.
+  Personal settings save instantly; server settings stage behind one bar
+  (Ctrl+S / Esc). **Ctrl+K** opens a launcher for every setting, section,
+  action (scan, add library or user, backup, sign out) and library title;
+  `g`+letter, `[` `]` and `j` `k` navigate without a mouse. The Library
+  page scans with `S`.
+- **User profiles** (D-086). Display name, bio, and an avatar: upload a
+  picture or pick one of eight mascots (Settings → Profile). Avatars show
+  in the navigation and account menu. The "online" badge is gone.
+- **Keyboard-complete reader.** The end-of-volume card traps focus on
+  "Next"; `N`/`P` or `]`/`[` change volume, `B` goes back, `G` jumps to
+  a page, `M` switches paged/strip, `W` toggles fit (comics), `?` lists
+  every key.
+- **Manga and comics** (D-085). New `manga` and `comic` library types scan
+  `cbz`/`cbr`/`cb7` archives; a comic identifier reads series, volume,
+  chapter/issue and year from filenames and folders. `lain.comic.pages@1`
+  indexes archive pages and the gateway streams them
+  (`/api/items/{id}/pages`), with covers from the first portrait page.
+  The web reader (`/read/{id}`) is one engine with two adaptations: manga
+  reads right to left with spreads and a webtoon strip, comics read left
+  to right with fit, zoom and continuous scroll. Progress is saved per
+  page and resumes where you left off. `cbr`/`cb7` need `bsdtar` or `7z`.
 - **External list linking with AniList** (D-078..D-081). The lain list is
   a new per-user tracking domain (`lain.list.read@1`, `lain.list.write@1`,
   `lain.list.account@1` on bbolt buckets `list`/`list_accounts`):
