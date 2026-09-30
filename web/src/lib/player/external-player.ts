@@ -1,6 +1,7 @@
 import { ApiError, api } from '$lib/api';
 import { prefs } from '$lib/auth/storage';
 import { toasts } from '$lib/stores/toasts.svelte';
+import { isReadable } from '$lib/reader/kinds';
 import { errorMessage } from '$lib/utilities/errors';
 
 export type ExternalPlayer = 'mpv' | 'vlc';
@@ -18,7 +19,14 @@ export function savePreferredPlayer(userId: string, player: PreferredPlayer): vo
 	prefs.set(`player.${userId}`, player);
 }
 
-export function playbackHref(origin: string, itemId: string, player: PreferredPlayer): string {
+export function playbackHref(
+	origin: string,
+	itemId: string,
+	player: PreferredPlayer,
+	kind?: string
+): string {
+	// Comics and manga have no external player: they open in the reader (D-085).
+	if (isReadable(kind)) return `/read/${encodeURIComponent(itemId)}`;
 	return player === 'browser' || !origin
 		? `/player/${encodeURIComponent(itemId)}`
 		: externalPlayerUrl(origin, itemId, player);

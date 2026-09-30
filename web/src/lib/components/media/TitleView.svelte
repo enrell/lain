@@ -20,13 +20,13 @@
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import { formatTime } from '$lib/utilities/format';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
+	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	onMount(() => {
 		origin = window.location.origin;
 		if (session.user) preferredPlayer = loadPreferredPlayer(session.user.id);
 	});
-	function playHref(id: string): string { return playbackHref(origin, id, preferredPlayer); }
 
 	/**
 	 * The title page body: a cinematic backdrop with the title block, a
@@ -48,6 +48,15 @@
 		libraries?: Library[];
 		actions?: Snippet;
 	} = $props();
+
+	// Comics and manga open in the reader; external players never apply (D-085).
+	const reading = $derived(isReadable(group.items[0]?.kind));
+	const player = $derived<PreferredPlayer>(reading ? 'browser' : preferredPlayer);
+	function playHref(id: string): string { return playbackHref(origin, id, player, group.items[0]?.kind); }
+	function label(item: CatalogItem): string { return reading ? readingLabel(item) : episodeLabel(item); }
+	const unitPlural = $derived(
+		!reading ? 'episodes' : group.items[0]?.kind === 'manga' ? 'volumes & chapters' : 'issues'
+	);
 
 	const seasons = $derived(
 		[...new Set(group.items.map((i) => i.season).filter((s) => s > 0))].sort((a, b) => a - b)
@@ -80,7 +89,7 @@
 		[
 			group.year > 0 ? String(group.year) : '',
 			'Series',
-			`${group.count} ${group.count === 1 ? 'episode' : 'episodes'}`
+			reading ? `${group.count} ${group.count === 1 ? 'file' : 'files'}` : `${group.count} ${group.count === 1 ? 'episode' : 'episodes'}`
 		]
 			.filter(Boolean)
 			.join('  ·  ')
@@ -170,30 +179,40 @@
 	// Resume at the first started-but-unfinished episode; otherwise play
 	// the show from the top like a fresh watch. Missing episodes can never
 	// be the target — the plan refuses them at play time anyway.
+	// Reading progress stores the 1-based page: page 1 is "just opened".
+	const minResume = $derived(reading ? 2 : 5);
 	const available = $derived(group.items.filter((i) => !isGone(i)));
 	const resumeTarget = $derived(
 		available.find((i) => {
 			const p = progressMap?.get(i.id);
-			return p && !p.completed && p.position_sec >= 5;
+			return p && !p.completed && p.position_sec >= minResume;
 		}) ?? available[0]
 	);
 	const resumeProgress = $derived(
 		resumeTarget ? (progressMap?.get(resumeTarget.id) ?? null) : null
 	);
 	const resuming = $derived(
-		!!resumeProgress && !resumeProgress.completed && resumeProgress.position_sec >= 5
+		!!resumeProgress && !resumeProgress.completed && resumeProgress.position_sec >= minResume
 	);
 	// "Resume from 4:12", never "Resume · S01E01": the smoke test and the
 	// item page both key on that phrase, and a bare "Resume" would also
 	// match the cards' "Resume at 42%" text.
-	const resumeLabel = $derived(resuming ? `Resume from ${formatTime(resumeProgress!.position_sec)}` : 'Play');
+	const resumeLabel = $derived(
+		reading
+			? resuming
+				? `Continue from page ${Math.floor(resumeProgress!.position_sec)}`
+				: 'Read'
+			: resuming
+				? `Resume from ${formatTime(resumeProgress!.position_sec)}`
+				: 'Play'
+	);
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
-			? `Up next · ${episodeLabel(resumeTarget!)} · ${Math.round((resumeProgress!.position_sec / resumeProgress!.duration_sec) * 100)}% watched`
+			? `Up next · ${label(resumeTarget!)} · ${Math.round((resumeProgress!.position_sec / resumeProgress!.duration_sec) * 100)}% ${reading ? 'read' : 'watched'}`
 			: available.length === 0
 				? 'All files missing'
 				: watched > 0
-					? `${watched} of ${group.count} watched`
+					? `${watched} of ${group.count} ${reading ? 'read' : 'watched'}`
 					: 'Not started'
 	);
 
@@ -214,29 +233,35 @@
 </script>
 
 <article class="space-y-8">
-	<div class="relative overflow-hidden rounded-2xl border border-line/70 bg-surface/30">
+	<!-- Full-bleed title hero in the home hero's language: no box, no
+	     border; the art runs under the navigation and fades into the page. -->
+	<header class="title-hero relative -mt-6 overflow-hidden md:-mt-28">
 		{#if backdrop}
-			<img src={backdrop} alt="" aria-hidden="true" class="absolute inset-0 size-full object-cover" referrerpolicy="no-referrer" />
-			<div class="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-background/10"></div>
+			<img src={backdrop} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full object-cover object-center md:w-[70%]" referrerpolicy="no-referrer" />
+		{:else}
+			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md md:w-[70%]" />
 		{/if}
-		<div class="relative px-5 pb-7 pt-20 sm:px-8 sm:pt-32">
-			<p class="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">{meta}</p>
-			<h1 class="mt-2 max-w-4xl text-3xl font-bold tracking-[-0.03em] text-foreground sm:text-5xl">{displayTitle}</h1>
-			{#if displayTitle !== group.title}
-				<p class="mt-1 text-sm text-muted">Indexed as “{group.title}”</p>
-			{/if}
-			{#if genres.length > 0}
-				<ul class="mt-4 flex flex-wrap gap-2" aria-label="Genres">
-					{#each genres as genre (genre)}
-						<li class="rounded-full border border-line/60 bg-surface/60 px-3 py-1 text-xs font-semibold text-foreground/90">{genre}</li>
-					{/each}
-				</ul>
-			{/if}
-			{#if synopsis}
-				<p class="mt-4 line-clamp-3 max-w-3xl text-sm leading-6 text-muted">{synopsis}</p>
-			{/if}
+		<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
+		<div class="relative mx-auto flex min-h-[22rem] w-full max-w-[1800px] flex-col justify-end px-5 pb-10 pt-28 sm:px-8 md:min-h-[30rem] md:pb-14 md:pt-40 lg:px-10">
+			<div class="hero-monolith-copy max-w-5xl">
+				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">{meta}</p>
+				<h1 class="title-hero-name mt-4 text-foreground">{displayTitle}</h1>
+				{#if displayTitle !== group.title}
+					<p class="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">Indexed as “{group.title}”</p>
+				{/if}
+				{#if genres.length > 0}
+					<ul class="mt-5 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground/75" aria-label="Genres">
+						{#each genres as genre, i (genre)}
+							<li>{#if i > 0}<span class="mr-4 text-muted" aria-hidden="true">/</span>{/if}{genre}</li>
+						{/each}
+					</ul>
+				{/if}
+				{#if synopsis}
+					<p class="mt-5 line-clamp-3 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{synopsis}</p>
+				{/if}
+			</div>
 		</div>
-	</div>
+	</header>
 
 	<div class="grid items-start gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
 		<div class="space-y-5 lg:sticky lg:top-24">
@@ -245,15 +270,15 @@
 			</div>
 			<div>
 				{#if resumeTarget}
-					<LinkButton href={playHref(resumeTarget.id)} size="lg" class="w-full justify-center" onclick={(e) => playExternalClick(e, resumeTarget.id, preferredPlayer)}>
+					<LinkButton href={playHref(resumeTarget.id)} size="lg" class="w-full justify-center" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 						<Play class="size-4 fill-current" aria-hidden="true" /> {resumeLabel}
 					</LinkButton>
 				{:else}
 					<Button size="lg" disabled class="w-full justify-center" title="The files are no longer on disk">
-						<Play class="size-4 fill-current" aria-hidden="true" /> Play
+						<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? 'Read' : 'Play'}
 					</Button>
 				{/if}
-				{#if resumeTarget}<div class="mt-3"><ExternalPlayers itemId={resumeTarget.id} /></div>{/if}
+				{#if resumeTarget && !reading}<div class="mt-3"><ExternalPlayers itemId={resumeTarget.id} /></div>{/if}
 				<p class="mt-2 text-center text-xs text-muted" aria-live="polite">{watchedLine}</p>
 			</div>
 			{#if actions}
@@ -281,7 +306,7 @@
 						</div>
 					{/if}
 					<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-						<dt class="text-xs uppercase tracking-wider text-muted">Episodes</dt>
+						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? 'Files' : 'Episodes'}</dt>
 						<dd class="font-semibold text-foreground">{group.count}</dd>
 					</div>
 					{#if libraryNames.length > 0}
@@ -291,7 +316,7 @@
 						</div>
 					{/if}
 					<div class="flex items-center justify-between gap-3 border-y border-line/60 py-2">
-						<dt class="text-xs uppercase tracking-wider text-muted">Watched</dt>
+						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? 'Read' : 'Watched'}</dt>
 						<dd class="font-semibold text-foreground">{watched} of {group.count}</dd>
 					</div>
 				</dl>
@@ -322,15 +347,15 @@
 								season === s ? 'bg-foreground text-background' : 'bg-surface text-muted hover:text-foreground'
 							].join(' ')}
 						>
-							Season {s}
+							{reading ? `Vol ${s}` : `Season ${s}`}
 						</button>
 					{/each}
 				</div>
 			{/if}
 
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-				<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">
-					Episodes
+				<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground capitalize">
+					{reading ? unitPlural : 'Episodes'}
 					{#if selecting}
 						<span class="ml-2 align-middle font-mono text-[11px] font-normal uppercase tracking-[0.14em] text-muted">
 							{selected.size} selected
@@ -383,7 +408,7 @@
 					</div>
 				{/if}
 			</div>
-			<ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" data-episode-grid>
+			<ul class="grid {reading ? 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'} gap-4" data-episode-grid>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
@@ -403,7 +428,7 @@
 										: 'border-line/60 hover:border-white/15',
 									gone ? 'opacity-60' : ''
 								].join(' ')}
-								aria-label={`${selected.has(item.id) ? 'Deselect' : 'Select'} ${episodeLabel(item)}`}
+								aria-label={`${selected.has(item.id) ? 'Deselect' : 'Select'} ${label(item)}`}
 							>
 								{@render episodeCard(item, progress, ratio, gone)}
 								<span
@@ -423,16 +448,16 @@
 							     not navigate. -->
 							<div
 								class="block overflow-hidden rounded-xl border border-line/60 bg-surface/30 opacity-60"
-								aria-label={`${episodeLabel(item)}, missing from disk`}
+								aria-label={`${label(item)}, missing from disk`}
 							>
 								{@render episodeCard(item, progress, ratio, gone)}
 							</div>
 						{:else}
 							<a
 								href={playHref(item.id)}
-								onclick={(e) => playExternalClick(e, item.id, preferredPlayer)}
+								onclick={(e) => playExternalClick(e, item.id, player)}
 								class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
-								aria-label={`Play ${episodeLabel(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
+								aria-label={`${reading ? 'Read' : 'Play'} ${label(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 							>
 								{@render episodeCard(item, progress, ratio, gone)}
 							</a>
@@ -445,14 +470,14 @@
 </article>
 
 {#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean)}
-	<div class="relative aspect-video overflow-hidden bg-surface">
+	<div class="relative {reading ? 'aspect-[3/4]' : 'aspect-video'} overflow-hidden bg-surface">
 		<img
 			src={stillUrl(item.id)}
 			alt=""
 			aria-hidden="true"
 			loading="lazy"
 			decoding="async"
-			class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+			class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.04]"
 		/>
 		{#if !gone}
 			<span
@@ -468,7 +493,7 @@
 		{/if}
 	</div>
 	<div class="p-3">
-		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">{episodeLabel(item)}</p>
+		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">{label(item)}</p>
 		{#if item.title !== group.title}
 			<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>
 		{/if}
@@ -476,13 +501,13 @@
 			{#if gone}
 				Missing from disk
 			{:else if progress && !progress.completed && progress.duration_sec > 0}
-				Resume at {Math.min(100, Math.round((progress.position_sec / progress.duration_sec) * 100))}%
+				{reading ? `Page ${Math.floor(progress.position_sec)} of ${Math.floor(progress.duration_sec)}` : `Resume at ${Math.min(100, Math.round((progress.position_sec / progress.duration_sec) * 100))}%`}
 			{:else if progress?.completed}
-				Watched
+				{reading ? 'Read' : 'Watched'}
 			{:else if item.size > 0}
 				{formatSize(item.size)}
 			{:else}
-				Not watched
+				{reading ? 'Unread' : 'Not watched'}
 			{/if}
 		</p>
 	</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isReadable } from '$lib/reader/kinds';
 	import Play from '@lucide/svelte/icons/play';
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
 	import { mediaSubtitle } from '$lib/utilities/format';
@@ -24,11 +25,12 @@
 			.filter(Boolean)
 			.join(' · ')
 	);
+	const reading = $derived(isReadable(item.kind));
 	const ratio = $derived(progress && !progress.completed ? progressRatio(progress) : 0);
 	// The link's aria-label replaces its inner text, so the visual 'Watching'
 	// badge has to be part of the name or a screen reader never hears it.
 	const accessibleName = $derived(
-		[title, subtitle, ratio > 0 ? 'watching' : ''].filter(Boolean).join(', ')
+		[title, subtitle, ratio > 0 ? (reading ? 'reading' : 'watching') : ''].filter(Boolean).join(', ')
 	);
 </script>
 
@@ -55,12 +57,12 @@
 			<span
 				class="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground backdrop-blur"
 			>
-				Watching
+				{reading ? 'Reading' : 'Watching'}
 			</span>
 		{/if}
 		{#if ratio > 0}
 			<div class="absolute inset-x-0 bottom-0 p-1.5">
-				<ProgressBar {ratio} label="Watch progress" class="bg-black/50" />
+				<ProgressBar {ratio} label={reading ? "Reading progress" : "Watch progress"} class="bg-black/50" />
 			</div>
 		{/if}
 	</div>

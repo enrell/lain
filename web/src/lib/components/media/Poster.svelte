@@ -2,6 +2,7 @@
 	import type { CatalogItem, Enrichment } from '$lib/api/types';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
+	import { isReadable } from '$lib/reader/kinds';
 	import PlaceholderPoster from './PlaceholderPoster.svelte';
 
 	let {
@@ -23,7 +24,7 @@
 	// poster -> cover -> still frame (extracted and cached by the server).
 	const artwork = $derived(!artworkFailed ? enrichment?.poster || enrichment?.cover || '' : '');
 	const thumb = $derived(
-		!thumbFailed ? api.thumbnail.url(item.id, session.token, { width: 320 }) : ''
+		!thumbFailed ? api.thumbnail.url(item.id, session.token, { width: isReadable(item.kind) ? 480 : 320 }) : ''
 	);
 	const src = $derived(artwork || thumb);
 	const alt = $derived(enrichment?.title || item.title);
@@ -32,7 +33,8 @@
 	 * upscaled it 1.83x and threw away most of the picture, so a still is
 	 * letterboxed inside the frame instead.
 	 */
-	const isStill = $derived(src === thumb && thumb !== '');
+	// A comic or manga cover is a real portrait page, not a video still.
+	const isStill = $derived(src === thumb && thumb !== '' && !isReadable(item.kind));
 
 	function handleError(): void {
 		if (artwork) artworkFailed = true;

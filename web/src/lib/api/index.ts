@@ -10,6 +10,7 @@ import { me } from './me';
 import { playback } from './playback';
 import { plugins } from './plugins';
 import { progress } from './progress';
+import { reader } from './reader';
 import { search } from './search';
 import { thumbnail } from './thumbnail';
 import { theme } from './theme';
@@ -36,6 +37,7 @@ export const api = {
 	playback,
 	plugins,
 	progress,
+	reader,
 	search,
 	thumbnail,
 	theme,

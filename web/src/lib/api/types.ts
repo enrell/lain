@@ -312,6 +312,21 @@ export interface User {
 	created_at: number;
 	/** Per-user playback limits (D-042); absent means unrestricted. */
 	playback?: UserPlaybackPolicy;
+	/** Public face of the account (D-086). */
+	profile?: UserProfile;
+}
+
+/** internal/auth.Profile (profile.go). */
+export interface UserProfile {
+	display_name?: string;
+	bio?: string;
+	avatar: {
+		/** '' = initials, 'mascot' = a pre-made mascot, 'upload' = the user's picture. */
+		kind?: '' | 'mascot' | 'upload';
+		mascot?: string;
+		/** Changes with every new picture; part of the image URL for caching. */
+		version?: number;
+	};
 }
 
 /** internal/auth.PlaybackPolicy (auth.go). */
@@ -474,4 +489,22 @@ export interface ThemePalette {
 	danger_foreground: string;
 	success: string;
 	warning: string;
+}
+
+/** One page of a comic or manga archive (internal/contracts/comic.go). */
+export interface ReaderPageInfo {
+	index: number;
+	mime: string;
+	size: number;
+	/** 0 when the server could not read the image header. */
+	width: number;
+	height: number;
+}
+
+/** GET /api/items/{id}/pages: the page index plus the kind's default direction. */
+export interface ReaderView {
+	kind: 'comic' | 'manga';
+	format: string;
+	direction: 'rtl' | 'ltr';
+	pages: ReaderPageInfo[];
 }

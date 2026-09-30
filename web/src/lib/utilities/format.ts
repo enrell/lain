@@ -1,4 +1,5 @@
 import type { CatalogItem } from '$lib/api/types';
+import { isReadable, readingLabel } from '$lib/reader/kinds';
 
 /** h:mm:ss for long media, m:ss below an hour. */
 export function formatTime(seconds: number | null | undefined): string {
@@ -69,7 +70,10 @@ export function formatRelative(unixSeconds: number | null | undefined): string {
 /** "S02E05", "2023", or the library kind — whatever actually exists. */
 export function mediaSubtitle(item: CatalogItem): string {
 	const parts: string[] = [];
-	if (item.season > 0 && item.episode > 0) {
+	if (isReadable(item.kind)) {
+		const label = readingLabel(item);
+		if (label !== item.title) parts.push(label);
+	} else if (item.season > 0 && item.episode > 0) {
 		parts.push(`S${String(item.season).padStart(2, '0')}E${String(item.episode).padStart(2, '0')}`);
 	} else if (item.episode > 0) {
 		parts.push(`EP ${item.episode}`);

@@ -9,13 +9,16 @@
 	import { progressRatio } from '$lib/utilities/progress';
 	import ProgressBar from './ProgressBar.svelte';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
+	import { isReadable } from '$lib/reader/kinds';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	onMount(() => {
 		origin = window.location.origin;
 		if (session.user) preferredPlayer = loadPreferredPlayer(session.user.id);
 	});
-	function playHref(id: string): string { return playbackHref(origin, id, preferredPlayer); }
+	function playHref(it: CatalogItem): string { return playbackHref(origin, it.id, preferredPlayer, it.kind); }
+	// Comics and manga open in the reader, so no external player applies (D-085).
+	function playerFor(it: CatalogItem): PreferredPlayer { return isReadable(it.kind) ? 'browser' : preferredPlayer; }
 
 	let {
 		item,
@@ -33,12 +36,20 @@
 		upNextProgress?: Progress | null;
 	} = $props();
 
+	const reading = $derived(isReadable(item.kind));
+	// A page is portrait: shown as a cover over a blurred backdrop instead of
+	// being stretched across the hero like a video still.
+	const cover = $derived(api.thumbnail.url(item.id, session.token, { width: 720 }));
 	const artwork = $derived(
-		enrichment?.cover || enrichment?.poster || api.thumbnail.url(item.id, session.token, { width: 1600 })
+		reading
+			? enrichment?.cover || enrichment?.poster || cover
+			: enrichment?.cover || enrichment?.poster || api.thumbnail.url(item.id, session.token, { width: 1600 })
 	);
 	const title = $derived(enrichment?.title || item.title);
 	const detail = $derived(mediaSubtitle(item));
-	const eyebrow = $derived(resume ? 'Continue your story' : 'Now in your library');
+	const eyebrow = $derived(
+		resume ? (reading ? 'Pick up where you left off' : 'Continue your story') : 'Now in your library'
+	);
 	const year = $derived(
 		String(enrichment?.year || item.year || '')
 	);
@@ -62,7 +73,26 @@
 </script>
 
 <section class="hero-monolith relative overflow-hidden bg-background" aria-label={title}>
-	{#if artwork}
+	{#if reading}
+		<img
+			src={artwork}
+			alt=""
+			aria-hidden="true"
+			decoding="async"
+			referrerpolicy="no-referrer"
+			class="absolute inset-0 size-full scale-125 object-cover opacity-30 blur-3xl"
+		/>
+		<img
+			src={enrichment?.poster || cover}
+			alt=""
+			aria-hidden="true"
+			loading="eager"
+			fetchpriority="high"
+			decoding="async"
+			referrerpolicy="no-referrer"
+			class="absolute right-[8%] top-[46%] hidden h-[64%] max-h-[38rem] w-auto -translate-y-1/2 rounded-xl object-contain shadow-[0_30px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/12 md:block lg:right-[12%]"
+		/>
+	{:else if artwork}
 		<img
 			src={artwork}
 			alt=""
@@ -91,12 +121,12 @@
 			{/if}
 			<div class="mt-7 flex flex-wrap gap-3">
 				<a
-					href={playHref(item.id)}
-					onclick={(e) => playExternalClick(e, item.id, preferredPlayer)}
+					href={playHref(item)}
+					onclick={(e) => playExternalClick(e, item.id, playerFor(item))}
 					class="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-black transition duration-300 ease-out hover:-translate-y-0.5 hover:bg-white/88 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
 				>
 					<Play class="size-4 fill-current" aria-hidden="true" />
-					{resume ? 'Continue watching' : 'Play'}
+					{isReadable(item.kind) ? (resume ? 'Continue reading' : 'Read') : resume ? 'Continue watching' : 'Play'}
 				</a>
 				<a
 					href={`/item/${item.id}`}
@@ -109,8 +139,8 @@
 	</div>
 	{#if upNext}
 		<a
-			href={playHref(upNext.id)}
-			onclick={(e) => playExternalClick(e, upNext.id, preferredPlayer)}
+			href={playHref(upNext)}
+			onclick={(e) => playExternalClick(e, upNext.id, playerFor(upNext))}
 			class="absolute bottom-8 right-8 z-10 hidden w-[min(26rem,32vw)] grid-cols-[7rem_1fr] items-stretch border border-white/10 bg-black/75 backdrop-blur-xl transition duration-300 ease-out hover:-translate-y-0.5 hover:border-white/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white md:grid"
 			aria-label={`Continue next: ${upNextTitle}`}
 		>
