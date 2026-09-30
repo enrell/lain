@@ -93,7 +93,7 @@ func linkAccount(t *testing.T, srv *Server, tok, uid string) {
 	if rec.Code != 302 {
 		t.Fatalf("callback: %d %s", rec.Code, rec.Body.String())
 	}
-	if loc := rec.Header().Get("Location"); loc != "/settings?linked=anilist" {
+	if loc := rec.Header().Get("Location"); loc != "/settings/connections?linked=anilist" {
 		t.Fatalf("callback redirect: %q", loc)
 	}
 }
@@ -242,7 +242,7 @@ func TestCallbackBadInputs(t *testing.T) {
 	configureAniList(t, srv, tok)
 	// Remote refused: redirect with an error flag, no panic, no link.
 	rec := do(t, srv, "GET", "/api/auth/anilist/callback?error=access_denied", nil, "")
-	if rec.Code != 302 || rec.Header().Get("Location") != "/settings?link_error=denied" {
+	if rec.Code != 302 || rec.Header().Get("Location") != "/settings/connections?link_error=denied" {
 		t.Fatalf("denied callback: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 	// Bad state: hard 400.
@@ -254,7 +254,7 @@ func TestCallbackBadInputs(t *testing.T) {
 	srv.reg.Register(&fakeLink{exchangeE: &core.Error{Code: "invalid-grant", Msg: "expired"}})
 	state := srv.signLinkState(uid, "anilist")
 	rec = do(t, srv, "GET", "/api/auth/anilist/callback?code=bad&state="+state, nil, "")
-	if rec.Code != 302 || !strings.HasPrefix(rec.Header().Get("Location"), "/settings?link_error=") {
+	if rec.Code != 302 || !strings.HasPrefix(rec.Header().Get("Location"), "/settings/connections?link_error=") {
 		t.Fatalf("failed exchange: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 	rec = do(t, srv, "GET", "/api/me/links", nil, tok)

@@ -225,3 +225,26 @@ func TestUnknownTypeFallsBackToVideo(t *testing.T) {
 		t.Fatalf("unknown type must fall back to video set, got %d", len(cands))
 	}
 }
+
+func TestEnumerateReadingLibraries(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"a.cbz", "b.CBR", "c.cb7", "d.pdf", "e.mkv"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, typ := range []string{"manga", "comic"} {
+		cands, _, err := Enumerate(EnumerateInput{Root: dir, LibraryID: "l", Type: typ})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(cands) != 3 {
+			t.Fatalf("%s: %d candidates, want the 3 archives", typ, len(cands))
+		}
+		for _, c := range cands {
+			if c.LibraryType != typ {
+				t.Fatalf("candidate library type %q, want %q", c.LibraryType, typ)
+			}
+		}
+	}
+}

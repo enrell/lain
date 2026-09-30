@@ -16,6 +16,7 @@ import (
 
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/core"
+	"github.com/enrell/lain/internal/plugins/comic"
 )
 
 const (
@@ -122,6 +123,9 @@ func (g *Generator) extract(path string, at float64, width int, out string) erro
 	defer cancel()
 	tmp := out + ".tmp"
 	_ = os.Remove(tmp)
+	if comic.Format(path) != "" {
+		return extractCover(ctx, path, width, tmp, out)
+	}
 	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-hide_banner", "-loglevel", "error", "-nostdin",
 		"-ss", fmt.Sprintf("%.3f", at),
@@ -143,4 +147,31 @@ func (g *Generator) extract(path string, at float64, width int, out string) erro
 func cacheKey(in contracts.ThumbnailRequest, mtime, size int64) string {
 	h := sha1.Sum([]byte(fmt.Sprintf("%s|%d|%d|%.1f|%d", in.FilePath, mtime, size, in.TimeSec, in.Width)))
 	return hex.EncodeToString(h[:])
+}
+
+// extractCover renders the first page of a comic archive: the page
+// bytes are read by the comic package and piped to ffmpeg, which also
+// covers formats the Go stdlib cannot decode (webp, avif).
+func extractCover(ctx context.Context, archive string, width int, tmp, out string) error {
+	first, err := comic.FirstPage(archive)
+	if err != nil {
+		return err
+	}
+	defer first.Close()
+	cmd := exec.CommandContext(ctx, "ffmpeg",
+		"-hide_banner", "-loglevel", "error", "-nostdin",
+		"-i", "pipe:0",
+		"-frames:v", "1",
+		"-vf", fmt.Sprintf("scale=%d:-2", width),
+		"-q:v", "4",
+		"-f", "image2", "-y", tmp)
+	cmd.Stdin = first
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(output)))
+	}
+	fi, err := os.Stat(tmp)
+	if err != nil || fi.Size() == 0 {
+		return fmt.Errorf("no cover")
+	}
+	return os.Rename(tmp, out)
 }

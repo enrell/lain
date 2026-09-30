@@ -2,7 +2,8 @@
 #   api → Go server on :9360, restarted on every source edit (bind mount).
 #   web → Vite HMR on :5173, proxied to the API.
 # Data lives in the `lain-dev-data` volume: never the production database.
-# Media is your own ~/Videos, mounted read-only.
+# Media is your own ~/Videos (plus ~/Comics and ~/Manga for the reading
+# slice), mounted read-only.
 services:
   api:
     build:
@@ -16,6 +17,8 @@ services:
       - go-mod-cache:/go/pkg/mod
       - lain-dev-data:/data
       - ${HOME}/Videos:/media/videos:ro
+      - ${HOME}/Comics:/media/comics:ro
+      - ${HOME}/Manga:/media/manga:ro
       # Optional Omarchy palette bridge. /dev/null keeps the fallback outside Omarchy.
       - ${LAIN_OMARCHY_CURRENT:-/dev/null}:/omarchy/current:ro
     ports:

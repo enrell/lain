@@ -110,6 +110,7 @@ func benchOneScan(path, libType string, run int) (*bench.RunResult, error) {
 	}
 	reg := core.NewRegistry(core.DefaultComposition())
 	reg.Register(source.Provider{})
+	reg.Register(identify.Comic{})
 	reg.Register(identify.Anime{})
 	reg.Register(identify.Generic{})
 	reg.Register(cat)

@@ -42,6 +42,8 @@ func componentProvider(id, dataDir string) (core.Provider, error) {
 	switch id {
 	case "lain-source-filesystem":
 		return source.Provider{}, nil
+	case "lain-identify-comic":
+		return identify.Comic{}, nil
 	case "lain-identify-anime":
 		return identify.Anime{}, nil
 	case "lain-identify-generic":

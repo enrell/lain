@@ -48,7 +48,7 @@ func TestWithdrawEndpoint(t *testing.T) {
 		t.Fatalf("withdraw: %d %s", rec.Code, rec.Body.String())
 	}
 	got := compositionProviders(t, srv, admin, "lain.media.identify@1")
-	if len(got) != 1 || got[0] != "lain-identify-generic" {
+	if len(got) != 2 || got[0] != "lain-identify-comic" || got[1] != "lain-identify-generic" {
 		t.Fatalf("identify binding after withdraw: %v", got)
 	}
 
@@ -73,7 +73,7 @@ func TestWithdrawEndpoint(t *testing.T) {
 		t.Fatalf("composition.json: %v", err)
 	}
 	got = saved.Bindings["lain.media.identify@1"].Providers
-	if len(got) != 1 || got[0] != "lain-identify-generic" {
+	if len(got) != 2 || got[0] != "lain-identify-comic" || got[1] != "lain-identify-generic" {
 		t.Fatalf("persisted identify binding: %v", got)
 	}
 }

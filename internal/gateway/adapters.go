@@ -17,6 +17,7 @@ import (
 // package (the unit that a community plugin would replace).
 type (
 	identifyAnimeShim   = identify.Anime
+	identifyComicShim   = identify.Comic
 	identifyGenericShim = identify.Generic
 )
 
