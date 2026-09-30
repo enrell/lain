@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isReadable } from '$lib/reader/kinds';
 	import Play from '@lucide/svelte/icons/play';
 	import type { Progress } from '$lib/api/types';
 	import type { SeriesGroup } from '$lib/utilities/grouping';
@@ -25,8 +26,15 @@
 	const artItem = $derived(group.items.find((i) => i.episode > 0) ?? group.items[0]);
 	const seasons = $derived([...new Set(group.items.map((i) => i.season).filter((s) => s > 0))]);
 	const detail = $derived.by(() => {
-		const parts: string[] = [`${group.count} episodes`];
-		if (seasons.length === 1) parts.push(`Season ${seasons[0]}`);
+		const parts: string[] = [
+			isReadable(group.items[0]?.kind)
+				? `${group.count} ${group.count === 1 ? 'file' : 'files'}`
+				: `${group.count} episodes`
+		];
+		// A reading file's "season" is its volume; the count already says it.
+		if (isReadable(group.items[0]?.kind)) {
+			/* no season line */
+		} else if (seasons.length === 1) parts.push(`Season ${seasons[0]}`);
 		else if (seasons.length > 1) parts.push(`Seasons ${Math.min(...seasons)}–${Math.max(...seasons)}`);
 		if (group.year > 0) parts.push(String(group.year));
 		return parts.join(' · ');

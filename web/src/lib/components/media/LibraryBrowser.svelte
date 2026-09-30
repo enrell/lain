@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isReadable } from '$lib/reader/kinds';
 	import { onMount } from 'svelte';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import Film from '@lucide/svelte/icons/film';
@@ -115,12 +116,15 @@
 	const activeType = $derived(
 		libraries.find((lib) => lib.id === (selectedLibrary || libraryId))?.type ?? ''
 	);
-	const showHeading = $derived(activeType === 'movie' ? 'Movies' : 'Shows');
-	const singleHeading = $derived(activeType === 'movie' ? 'Movies' : 'Movies & specials');
+	const reading = $derived(isReadable(activeType));
+	const showHeading = $derived(activeType === 'movie' ? 'Movies' : reading ? 'Series' : 'Shows');
+	const singleHeading = $derived(
+		activeType === 'movie' ? 'Movies' : reading ? 'One-shots' : 'Movies & specials'
+	);
 	const counts = $derived(
 		[
 			`${total} ${total === 1 ? 'item' : 'items'}`,
-			shows.length > 0 ? `${shows.length} ${shows.length === 1 ? 'show' : 'shows'}` : '',
+			shows.length > 0 ? `${shows.length} ${shows.length === 1 ? (reading ? 'series' : 'show') : reading ? 'series' : 'shows'}` : '',
 			singles.length > 0 ? `${singles.length} ${singles.length === 1 ? 'title' : 'titles'}` : '',
 			items.length < total ? `showing ${items.length}` : ''
 		]

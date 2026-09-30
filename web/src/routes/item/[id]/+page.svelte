@@ -34,9 +34,10 @@
 	import { formatBytes, formatDate, formatRelative, formatTime, mediaSubtitle } from '$lib/utilities/format';
 	import { progressRatio } from '$lib/utilities/progress';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
+	import { isReadable } from '$lib/reader/kinds';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
-	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer); }
+	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer, item?.kind); }
 
 	const id = $derived(page.params.id ?? '');
 
@@ -90,7 +91,8 @@
 		try {
 			const [it, pl, enr, libs, eps, allProgress] = await Promise.all([
 				api.catalog.get(id),
-				api.playback.plan(id),
+				// A comic or manga has no playback plan; the read never blocks the page.
+				api.playback.plan(id).catch(() => null),
 				api.enrich.get(id),
 				ensureLibraries(),
 				api.catalog.episodes(id),
@@ -124,9 +126,11 @@
 		void load();
 	});
 
-	const playable = $derived(plan?.available === true);
+	// Comics and manga open in the reader: no plan, no external player (D-085).
+	const reading = $derived(isReadable(item?.kind));
+	const playable = $derived(reading ? !item?.missing : plan?.available === true);
 	const resumeAt = $derived(
-		progress && !progress.completed && progress.position_sec >= 5 ? progress.position_sec : 0
+		progress && !progress.completed && progress.position_sec >= (reading ? 2 : 5) ? progress.position_sec : 0
 	);
 	const title = $derived(enrichment?.title || item?.title || '');
 	const ratio = $derived(progress ? progressRatio(progress) : 0);
@@ -299,9 +303,9 @@
 				     bounded content. -->
 				<div class="flex flex-wrap items-center gap-3 pt-1">
 					{#if playable || (!item.missing && preferredPlayer !== 'browser')}
-						<LinkButton href={playHref(item.id)} size="lg" onclick={(e) => playExternalClick(e, item!.id, preferredPlayer)}>
+						<LinkButton href={playHref(item.id)} size="lg" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
 							<Play class="size-4" />
-							{resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
+							{reading ? (resumeAt > 0 ? `Continue from page ${Math.floor(resumeAt)}` : 'Read') : resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
 						</LinkButton>
 					{:else}
 						<Button size="lg" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
@@ -319,7 +323,7 @@
 						</div>
 					{/if}
 				</div>
-				{#if !item.missing}<ExternalPlayers itemId={item.id} />{/if}
+				{#if !item.missing && !reading}<ExternalPlayers itemId={item.id} />{/if}
 
 				{#if item.missing}
 					<div class="max-w-2xl rounded-card border border-danger/25 bg-danger/5 px-4 py-3 text-sm">
@@ -329,7 +333,7 @@
 							back under {library?.name ?? 'its library'}, it becomes playable again on its own.
 						</p>
 					</div>
-				{:else if !playable}
+				{:else if !playable && !reading}
 					<div class="max-w-2xl rounded-card border border-warning/25 bg-warning/5 px-4 py-3 text-sm">
 						<p class="font-medium text-warning">The browser cannot play this file directly.</p>
 						<p class="mt-1 text-muted">

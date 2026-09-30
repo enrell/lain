@@ -4,6 +4,7 @@
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import { mediaSubtitle } from '$lib/utilities/format';
+	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	import { progressRatio } from '$lib/utilities/progress';
 	import ProgressBar from './ProgressBar.svelte';
 
@@ -21,16 +22,25 @@
 	// episode label over the series title.
 	const still = $derived(api.thumbnail.url(item.id, session.token, { width: 640 }));
 	const series = $derived(enrichment?.title || item.title);
+	const reading = $derived(isReadable(item.kind));
 	const epLabel = $derived(
-		item.season > 0 && item.episode > 0
+		reading
+			? readingLabel(item)
+			: item.season > 0 && item.episode > 0
 			? `S${String(item.season).padStart(2, '0')}E${String(item.episode).padStart(2, '0')}`
 			: item.episode > 0
 				? `Episode ${item.episode}`
 				: series
 	);
-	const title = $derived(item.episode > 0 ? `Episode ${item.episode}` : series);
+	const title = $derived(
+		reading ? epLabel : item.episode > 0 ? `Episode ${item.episode}` : series
+	);
 	const subtitle = $derived(
-		item.episode > 0 ? `${epLabel} - ${series}` : mediaSubtitle(item) || series
+		reading
+			? series
+			: item.episode > 0
+				? `${epLabel} - ${series}`
+				: mediaSubtitle(item) || series
 	);
 	const ratio = $derived(progress && !progress.completed ? progressRatio(progress) : 0);
 
@@ -40,7 +50,7 @@
 <a
 	href={`/item/${item.id}`}
 	class="group block transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-	aria-label={`${title}, ${subtitle}${ratio > 0 ? ', watching' : ''}`}
+	aria-label={`${title}, ${subtitle}${ratio > 0 ? (reading ? ', reading' : ', watching') : ''}`}
 >
 	<div class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/14">
 		<div class="aspect-video">
@@ -51,7 +61,7 @@
 					aria-hidden="true"
 					loading="lazy"
 					decoding="async"
-					class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.035]"
+					class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
 					onerror={() => (stillFailed = true)}
 				/>
 			{/if}

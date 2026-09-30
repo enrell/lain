@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isReadable } from '$lib/reader/kinds';
 	import { onDestroy, onMount } from 'svelte';
 	import Clapperboard from '@lucide/svelte/icons/clapperboard';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
@@ -24,8 +25,13 @@
 	let error = $state<string | null>(null);
 	let libraries = $state<Library[]>([]);
 	let continueItems = $state<CatalogItem[]>([]);
+	// Reading and watching are different habits: two rows, not one mixed shelf.
+	const continueWatching = $derived(continueItems.filter((i) => !isReadable(i.kind)));
+	const continueReading = $derived(continueItems.filter((i) => isReadable(i.kind)));
 	let progressMap = $state<Map<string, Progress>>(new Map());
 	let nextUpItems = $state<CatalogItem[]>([]);
+	const nextUpWatching = $derived(nextUpItems.filter((i) => !isReadable(i.kind)));
+	const nextUpReading = $derived(nextUpItems.filter((i) => isReadable(i.kind)));
 	let recent = $state<CatalogItem[]>([]);
 	let libraryRows = $state<{ lib: Library; items: CatalogItem[] }[]>([]);
 	let catalogTotal = $state(0);
@@ -187,12 +193,20 @@
 					<div class="flex"><Badge tone="danger">Last scan failed</Badge></div>
 				{/if}
 
-				{#if continueItems.length > 0}
-					<MediaRow title="Continue watching" href="/library" actionLabel="Open library" items={continueItems} {progressMap} layout="landscape" />
+				{#if continueWatching.length > 0}
+					<MediaRow title="Continue watching" href="/library" actionLabel="Open library" items={continueWatching} {progressMap} layout="landscape" />
 				{/if}
 
-				{#if nextUpItems.length > 0}
-					<MediaRow title="Next up" href="/library" actionLabel="Open library" items={nextUpItems} {progressMap} layout="landscape" />
+				{#if continueReading.length > 0}
+					<MediaRow title="Continue reading" href="/library" actionLabel="Open library" items={continueReading} {progressMap} layout="poster" />
+				{/if}
+
+				{#if nextUpWatching.length > 0}
+					<MediaRow title="Next up" href="/library" actionLabel="Open library" items={nextUpWatching} {progressMap} layout="landscape" />
+				{/if}
+
+				{#if nextUpReading.length > 0}
+					<MediaRow title="Read next" href="/library" actionLabel="Open library" items={nextUpReading} {progressMap} layout="poster" />
 				{/if}
 
 				{#if recent.length > 0}
@@ -200,7 +214,7 @@
 				{/if}
 
 				{#each libraryRows as row (row.lib.id)}
-					<MediaRow title={row.lib.name} href={`/library/${row.lib.id}`} items={row.items} {progressMap} layout={row.lib.type === 'movie' ? 'poster' : 'landscape'} />
+					<MediaRow title={row.lib.name} href={`/library/${row.lib.id}`} items={row.items} {progressMap} layout={row.lib.type === 'movie' || isReadable(row.lib.type) ? 'poster' : 'landscape'} />
 				{/each}
 			</div>
 		</section>

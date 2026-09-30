@@ -52,7 +52,9 @@
 	});
 
 	const isAuthPage = $derived(page.url.pathname === '/login' || page.url.pathname === '/setup');
-	const isPlayer = $derived(page.url.pathname.startsWith('/player/'));
+	const isPlayer = $derived(
+		page.url.pathname.startsWith('/player/') || page.url.pathname.startsWith('/read/')
+	);
 	const blockedAdmin = $derived(
 		session.ready &&
 			session.authenticated &&
