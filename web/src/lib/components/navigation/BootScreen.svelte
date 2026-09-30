@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import SignalMark from '../primitives/SignalMark.svelte';
 	import Button from '../primitives/Button.svelte';
@@ -18,12 +19,12 @@
 	{#if session.bootError}
 		<p class="max-w-sm text-sm text-muted" role="alert">{session.bootError}</p>
 		<Button variant="secondary" onclick={retry}>
-			<RefreshCw class="size-4" /> Try again
+			<RefreshCw class="size-4" /> {t('boot.retry')}
 		</Button>
 	{:else}
 		<div class="flex items-center gap-2 text-sm text-muted">
 			<Spinner class="size-4" />
-			Connecting to your server…
+			{t('boot.connecting')}
 		</div>
 	{/if}
 </div>

@@ -1,5 +1,6 @@
 import type { CatalogItem } from '$lib/api/types';
 import { isReadable, readingLabel } from '$lib/reader/kinds';
+import { i18n } from '$lib/i18n';
 
 /** h:mm:ss for long media, m:ss below an hour. */
 export function formatTime(seconds: number | null | undefined): string {
@@ -48,23 +49,16 @@ export function formatBytes(bytes: number | null | undefined): string {
 	return `${value.toFixed(digits)} ${units[unit]}`;
 }
 
+/** A calendar date in the interface language. */
 export function formatDate(unixSeconds: number | null | undefined): string {
 	if (!unixSeconds) return '';
-	return new Date(unixSeconds * 1000).toLocaleDateString(undefined, {
-		year: 'numeric',
-		month: 'short',
-		day: 'numeric'
-	});
+	return i18n.formatDate(unixSeconds * 1000);
 }
 
+/** "3 minutes ago" in the interface language; a date past a month. */
 export function formatRelative(unixSeconds: number | null | undefined): string {
 	if (!unixSeconds) return '';
-	const diff = Date.now() / 1000 - unixSeconds;
-	if (diff < 60) return 'just now';
-	if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-	if (diff < 86400) return `${Math.floor(diff / 3600)} h ago`;
-	if (diff < 86400 * 30) return `${Math.floor(diff / 86400)} d ago`;
-	return formatDate(unixSeconds);
+	return i18n.formatRelative(unixSeconds * 1000);
 }
 
 /** "S02E05", "2023", or the library kind — whatever actually exists. */

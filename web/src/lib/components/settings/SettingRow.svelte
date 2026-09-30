@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	/*
 	 * The one row pattern of Settings: label and a one-line hint on the
 	 * left, the control on the right, a hairline below. One vertical scan
@@ -40,7 +41,7 @@
 			{label}
 			{#if saved}
 				<span class="saved-flash inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.14em] text-accent" role="status">
-					<Check class="size-3" /> saved
+					<Check class="size-3" /> {t('settings.saved')}
 				</span>
 			{/if}
 		</p>

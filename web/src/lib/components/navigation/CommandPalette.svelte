@@ -9,14 +9,16 @@
 	import { api } from '$lib/api';
 	import type { CatalogItem } from '$lib/api/types';
 	import { session } from '$lib/auth/session.svelte';
-	import { SETTING_ENTRIES, fuzzyScore, visibleSections } from '$lib/settings/sections';
+	import { t } from '$lib/i18n';
+	import { SETTING_ENTRIES, entryLabel, fuzzyScore, sectionHint, sectionLabel, visibleSections } from '$lib/settings/sections';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 
 	interface Cmd {
 		id: string;
-		group: 'Actions' | 'Go to' | 'Settings' | 'Titles';
+		/** Stable group id; the heading text comes from `palette.group.*`. */
+		group: 'actions' | 'goTo' | 'settings' | 'titles';
 		label: string;
 		detail?: string;
 		keys?: string;
@@ -40,51 +42,58 @@
 			out.push(
 				{
 					id: 'scan',
-					group: 'Actions',
-					label: 'Scan libraries',
-					detail: 'Walk every root and update the catalog',
+					group: 'actions',
+					label: t('palette.action.scan'),
+					detail: t('palette.action.scanDetail'),
 					run: async () => {
 						try {
 							await scan.start();
-							toasts.success('Scan started.');
+							toasts.success(t('palette.action.scanStarted'));
 						} catch (err) {
-							toasts.error(errorMessage(err, 'Could not start the scan.'));
+							toasts.error(errorMessage(err, t('palette.action.scanFailed')));
 						}
 					}
 				},
-				{ id: 'add-library', group: 'Actions', label: 'Add library', run: go('/settings/libraries?add') },
-				{ id: 'add-user', group: 'Actions', label: 'Add user', run: go('/settings/users?add') },
-				{ id: 'backup', group: 'Actions', label: 'Download backup', run: go('/settings/backup#backup') }
+				{ id: 'add-library', group: 'actions', label: t('palette.action.addLibrary'), run: go('/settings/libraries?add') },
+				{ id: 'add-user', group: 'actions', label: t('palette.action.addUser'), run: go('/settings/users?add') },
+				{ id: 'backup', group: 'actions', label: t('palette.action.backup'), run: go('/settings/backup#backup') }
 			);
 		}
 		out.push({
 			id: 'sign-out',
-			group: 'Actions',
-			label: 'Sign out',
+			group: 'actions',
+			label: t('palette.action.signOut'),
 			run: () => {
 				session.logout();
 				void goto('/login');
 			}
 		});
 		for (const [href, label] of [
-			['/', 'Home'],
-			['/library', 'Library'],
-			['/list', 'My list'],
-			['/search', 'Search']
+			['/', t('nav.home')],
+			['/library', t('nav.library')],
+			['/list', t('nav.list')],
+			['/search', t('nav.search')]
 		]) {
-			out.push({ id: `nav-${href}`, group: 'Go to', label, run: go(href) });
+			out.push({ id: `nav-${href}`, group: 'goTo', label, run: go(href) });
 		}
 		for (const s of visibleSections(admin)) {
-			out.push({ id: `sec-${s.href}`, group: 'Go to', label: `Settings › ${s.label}`, detail: s.hint, keys: `g${s.key}`, run: go(s.href) });
+			out.push({
+				id: `sec-${s.href}`,
+				group: 'goTo',
+				label: t('palette.sectionPrefix', { section: sectionLabel(s) }),
+				detail: sectionHint(s),
+				keys: `g${s.key}`,
+				run: go(s.href)
+			});
 		}
 		for (const e of SETTING_ENTRIES) {
 			if (e.admin && !admin) continue;
 			const section = visibleSections(admin).find((s) => s.href === e.href);
 			out.push({
 				id: `set-${e.href}-${e.anchor}`,
-				group: 'Settings',
-				label: e.label,
-				detail: section?.label,
+				group: 'settings',
+				label: entryLabel(e),
+				detail: section ? sectionLabel(section) : undefined,
 				run: go(`${e.href}#${e.anchor}`)
 			});
 		}
@@ -105,7 +114,7 @@
 					.sort((a, b) => b.score - a.score)
 					.map((r) => r.c)
 					.slice(0, 12)
-			: staticCommands.filter((c) => c.group !== 'Settings').slice(0, 14);
+			: staticCommands.filter((c) => c.group !== 'settings').slice(0, 14);
 		// One entry per title: a series has many files but one page.
 		const seen = new Set<string>();
 		const unique = titles.filter((t) => {
@@ -116,13 +125,13 @@
 		});
 		const titleCmds: Cmd[] = unique.slice(0, 5).map((t) => ({
 			id: `title-${t.id}`,
-			group: 'Titles',
+			group: 'titles',
 			label: t.title,
 			detail: t.kind,
 			run: go(`/item/${t.id}`)
 		}));
 		// Grouped rendering needs contiguous groups; rank order holds within each.
-		const order = ['Actions', 'Go to', 'Settings', 'Titles'];
+		const order = ['actions', 'goTo', 'settings', 'titles'];
 		return [...ranked, ...titleCmds].sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
 	});
 
@@ -207,7 +216,7 @@
 		class="fixed left-1/2 top-[14vh] z-[61] w-[min(92vw,38rem)] -translate-x-1/2 overflow-hidden rounded-xl border border-hairline bg-background/95 shadow-[0_30px_80px_rgba(0,0,0,0.6)] backdrop-blur-xl"
 		role="dialog"
 		aria-modal="true"
-		aria-label="Command palette"
+		aria-label={t('palette.label')}
 	>
 		<div class="flex items-center gap-3 border-b border-hairline px-4">
 			<span class="font-mono text-xs text-accent" aria-hidden="true">›</span>
@@ -219,17 +228,17 @@
 				aria-expanded="true"
 				aria-controls="palette-list"
 				aria-activedescendant={results[active] ? `palette-${results[active].id}` : undefined}
-				placeholder="Search settings, actions and titles"
+				placeholder={t('palette.placeholder')}
 				class="h-12 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted/70"
 				spellcheck="false"
 				autocomplete="off"
 			/>
 			<kbd class="font-mono text-[10px] text-muted">Esc</kbd>
 		</div>
-		<ul bind:this={listEl} id="palette-list" role="listbox" class="max-h-[58vh] overflow-y-auto py-1.5" aria-label="Results">
+		<ul bind:this={listEl} id="palette-list" role="listbox" class="max-h-[58vh] overflow-y-auto py-1.5" aria-label={t('palette.results')}>
 			{#each results as cmd, i (cmd.id)}
 				{#if i === 0 || results[i - 1].group !== cmd.group}
-					<li role="presentation" class="px-4 pb-1 pt-2.5 font-mono text-[9px] uppercase tracking-[0.26em] text-muted">{cmd.group}</li>
+					<li role="presentation" class="px-4 pb-1 pt-2.5 font-mono text-[9px] uppercase tracking-[0.26em] text-muted">{t(`palette.group.${cmd.group}`)}</li>
 				{/if}
 				<li
 					id="palette-{cmd.id}"
@@ -249,11 +258,11 @@
 					{#if cmd.keys}<kbd class="shrink-0 font-mono text-[10px] text-muted">{cmd.keys}</kbd>{/if}
 				</li>
 			{:else}
-				<li class="px-4 py-6 text-center text-sm text-muted">Nothing matches “{query.trim()}”.</li>
+				<li class="px-4 py-6 text-center text-sm text-muted">{t('palette.empty', { query: query.trim() })}</li>
 			{/each}
 		</ul>
 		<div class="flex items-center gap-4 border-t border-hairline px-4 py-2 font-mono text-[10px] text-muted">
-			<span><kbd>↑↓</kbd> move</span><span><kbd>↵</kbd> run</span><span><kbd>Ctrl K</kbd> toggle</span>
+			<span><kbd>↑↓</kbd> {t('palette.move')}</span><span><kbd>↵</kbd> {t('palette.run')}</span><span><kbd>Ctrl K</kbd> {t('palette.toggle')}</span>
 		</div>
 	</div>
 {/if}

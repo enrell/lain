@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	/*
 	 * The single save model of server settings: changes are staged, then
 	 * applied together. Ctrl+S applies and Escape discards from anywhere
@@ -32,19 +33,19 @@
 	<div
 		class="fixed inset-x-0 bottom-16 z-40 border-t border-hairline bg-background/92 backdrop-blur-xl md:bottom-0"
 		role="region"
-		aria-label="Unsaved changes"
+		aria-label={t('settings.staged.region')}
 	>
 		<div class="mx-auto flex max-w-[1800px] items-center justify-between gap-4 px-5 py-3 sm:px-8 lg:px-10">
 			<p class="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground">
 				<span class="size-1.5 rounded-full bg-warning" aria-hidden="true"></span>
-				{count} {count === 1 ? 'change' : 'changes'} staged
+				{t('settings.staged.count', { count })}
 			</p>
 			<div class="flex items-center gap-2">
 				<Button variant="ghost" size="sm" disabled={saving} onclick={ondiscard}>
-					Discard <kbd class="ml-1 font-mono text-[10px] text-muted">Esc</kbd>
+					{t('settings.staged.discard')} <kbd class="ml-1 font-mono text-[10px] text-muted">Esc</kbd>
 				</Button>
 				<Button size="sm" loading={saving} onclick={onapply}>
-					Apply <kbd class="ml-1 font-mono text-[10px] opacity-70">Ctrl+S</kbd>
+					{t('settings.staged.apply')} <kbd class="ml-1 font-mono text-[10px] opacity-70">Ctrl+S</kbd>
 				</Button>
 			</div>
 		</div>

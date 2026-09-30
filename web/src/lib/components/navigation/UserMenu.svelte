@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import { DropdownMenu } from 'bits-ui';
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 	import LogOut from '@lucide/svelte/icons/log-out';
@@ -31,7 +32,7 @@
 			'flex items-center gap-2 rounded-full text-left transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-accent',
 			compact ? 'p-1' : 'w-full px-2 py-2'
 		].join(' ')}
-		aria-label="Account menu"
+		aria-label={t('nav.accountMenu')}
 	>
 		<Avatar user={session.user} class="size-8" />
 		{#if !compact}
@@ -58,28 +59,28 @@
 				class="flex cursor-default items-center justify-between gap-2 rounded-sm px-2.5 py-2 text-sm text-foreground outline-none data-[highlighted]:bg-surface-hover"
 				onSelect={() => void goto('/settings/profile')}
 			>
-				<span class="flex items-center gap-2"><UserRound class="size-4 text-muted" /> Profile</span>
+				<span class="flex items-center gap-2"><UserRound class="size-4 text-muted" /> {t('userMenu.profile')}</span>
 				<kbd class="font-mono text-[10px] text-muted">g p</kbd>
 			</DropdownMenu.Item>
 			<DropdownMenu.Item
 				class="flex cursor-default items-center justify-between gap-2 rounded-sm px-2.5 py-2 text-sm text-foreground outline-none data-[highlighted]:bg-surface-hover"
 				onSelect={() => void goto('/settings/playback')}
 			>
-				<span class="flex items-center gap-2"><Play class="size-4 text-muted" /> Playback</span>
+				<span class="flex items-center gap-2"><Play class="size-4 text-muted" /> {t('userMenu.playback')}</span>
 				<kbd class="font-mono text-[10px] text-muted">g y</kbd>
 			</DropdownMenu.Item>
 			<DropdownMenu.Item
 				class="flex cursor-default items-center justify-between gap-2 rounded-sm px-2.5 py-2 text-sm text-foreground outline-none data-[highlighted]:bg-surface-hover"
 				onSelect={() => void goto('/settings')}
 			>
-				<span class="flex items-center gap-2"><Settings class="size-4 text-muted" /> All settings</span>
+				<span class="flex items-center gap-2"><Settings class="size-4 text-muted" /> {t('userMenu.allSettings')}</span>
 			</DropdownMenu.Item>
 			<DropdownMenu.Separator class="my-1 h-px bg-hairline" />
 			<DropdownMenu.Item
 				class="flex cursor-default items-center gap-2 rounded-sm px-2.5 py-2 text-sm text-danger outline-none data-[highlighted]:bg-danger/10"
 				onSelect={signOut}
 			>
-				<LogOut class="size-4" /> Sign out
+				<LogOut class="size-4" /> {t('common.signOut')}
 			</DropdownMenu.Item>
 		</DropdownMenu.Content>
 	</DropdownMenu.Portal>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import House from '@lucide/svelte/icons/house';
 	import Library from '@lucide/svelte/icons/library';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
@@ -6,13 +7,13 @@
 	import Settings from '@lucide/svelte/icons/settings';
 	import { page } from '$app/state';
 
-	const items = [
-		{ href: '/', label: 'Home', icon: House, exact: true },
-		{ href: '/library', label: 'Library', icon: Library, exact: false },
-		{ href: '/list', label: 'My list', icon: ListChecks, exact: false },
-		{ href: '/search', label: 'Search', icon: Search, exact: false },
-		{ href: '/settings', label: 'Settings', icon: Settings, exact: false }
-	];
+	const items = $derived([
+		{ href: '/', label: t('nav.home'), icon: House, exact: true },
+		{ href: '/library', label: t('nav.library'), icon: Library, exact: false },
+		{ href: '/list', label: t('nav.list'), icon: ListChecks, exact: false },
+		{ href: '/search', label: t('nav.search'), icon: Search, exact: false },
+		{ href: '/settings', label: t('nav.settings'), icon: Settings, exact: false }
+	]);
 
 	function active(href: string, exact: boolean): boolean {
 		const path = page.url.pathname;
@@ -22,7 +23,7 @@
 
 <nav
 	class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-background/95 backdrop-blur md:hidden"
-	aria-label="Primary"
+	aria-label={t('nav.primary')}
 	style="padding-bottom: env(safe-area-inset-bottom);"
 >
 	<div class="grid grid-cols-5">

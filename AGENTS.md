@@ -154,6 +154,10 @@ the desktop client lives in `projects/lain-desktop`. Do not mix them.
   localization resources, or language-specific documentation variants.
 - User-facing text must be translatable; do not hard-code a second language in
   source files as a substitute for localization.
+- Web: every user-visible string goes through `t()` from `$lib/i18n`
+  with its key in `web/src/lib/i18n/messages/en.ts`; dates, numbers and
+  plurals go through the i18n formatters. Read `docs/I18N.md` before
+  writing UI text. `npm run i18n:report` lists what still bypasses it.
 
 ## Advisor protocol (mandatory for long tasks)
 

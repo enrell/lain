@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SECTIONS, SETTING_ENTRIES, fuzzyScore, sectionFor, visibleSections } from './sections';
+import { SECTIONS, SETTING_ENTRIES, entryLabel, fuzzyScore, sectionFor, sectionHint, sectionLabel, visibleSections } from './sections';
 
 describe('settings sections', () => {
 	it('gives every section a unique chord key', () => {
@@ -11,11 +11,18 @@ describe('settings sections', () => {
 		expect(visibleSections(true)).toHaveLength(SECTIONS.length);
 	});
 	it('resolves nested paths to their section', () => {
-		expect(sectionFor('/settings/libraries/x')?.label).toBe('Libraries');
+		expect(sectionFor('/settings/libraries/x')?.id).toBe('libraries');
 		expect(sectionFor('/elsewhere')).toBeUndefined();
 	});
 	it('points every entry at a known section', () => {
-		for (const e of SETTING_ENTRIES) expect(sectionFor(e.href), e.label).toBeDefined();
+		for (const e of SETTING_ENTRIES) expect(sectionFor(e.href), e.id).toBeDefined();
+	});
+	it('has a message for every section and entry', () => {
+		for (const s of SECTIONS) {
+			expect(sectionLabel(s)).not.toContain('settings.');
+			expect(sectionHint(s)).not.toContain('settings.');
+		}
+		for (const e of SETTING_ENTRIES) expect(entryLabel(e)).not.toContain('settings.');
 	});
 	it('requires every word, in any order, and prefers word starts', () => {
 		expect(fuzzyScore('hard', 'Change password')).toBe(0);

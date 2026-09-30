@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	/*
 	 * Settings shell: a fixed rail (YOU / SERVER) beside one reading column,
 	 * like two tiled windows. Navigation is keyboard-first (AGENTS.md):
@@ -12,7 +13,7 @@
 	import { page } from '$app/state';
 	import { session } from '$lib/auth/session.svelte';
 	import { prefs } from '$lib/auth/storage';
-	import { sectionFor, visibleSections } from '$lib/settings/sections';
+	import { sectionFor, sectionHint, sectionLabel, visibleSections } from '$lib/settings/sections';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -103,12 +104,12 @@
 
 <div class="mx-auto grid max-w-[66rem] gap-8 md:grid-cols-[13.5rem_minmax(0,1fr)] md:gap-12">
 	<!-- Rail: fixed like a tiled window. On phones it is a scrollable strip. -->
-	<nav class="md:sticky md:top-28 md:self-start" aria-label="Settings sections">
-		<p class="hidden font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-foreground md:block">Settings</p>
+	<nav class="md:sticky md:top-28 md:self-start" aria-label={t('settings.sections')}>
+		<p class="hidden font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-foreground md:block">{t('settings.title')}</p>
 		{#each ['you', 'server'] as scope (scope)}
 			{@const group = sections.filter((s) => s.scope === scope)}
 			{#if group.length > 0}
-				<p class="mb-1 mt-6 hidden font-mono text-[10px] uppercase tracking-[0.26em] text-muted md:block">{scope}</p>
+				<p class="mb-1 mt-6 hidden font-mono text-[10px] uppercase tracking-[0.26em] text-muted md:block">{t(scope === 'you' ? 'settings.scope.you' : 'settings.scope.server')}</p>
 				<ul class="no-scrollbar -mx-1 flex gap-1 overflow-x-auto md:mx-0 md:block md:space-y-px">
 					{#each group as s (s.href)}
 						{@const on = current?.href === s.href}
@@ -117,14 +118,14 @@
 								href={s.href}
 								aria-current={on ? 'page' : undefined}
 								aria-keyshortcuts={`g ${s.key}`}
-								title={s.hint}
+								title={sectionHint(s)}
 								class="group flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-sm transition-colors {on
 									? 'bg-surface-active text-foreground'
 									: 'text-muted hover:bg-surface-hover hover:text-foreground'}"
 							>
 								<span class="flex items-center gap-2">
 									<span class="h-3.5 w-0.5 rounded-full {on ? 'bg-accent' : 'bg-transparent'}" aria-hidden="true"></span>
-									{s.label}
+									{sectionLabel(s)}
 								</span>
 								<kbd class="hidden font-mono text-[10px] {chord ? 'text-accent' : 'text-muted/60'} md:inline">g{s.key}</kbd>
 							</a>
@@ -134,15 +135,18 @@
 			{/if}
 		{/each}
 		<p class="mt-8 hidden font-mono text-[10px] leading-5 text-muted/70 md:block">
-			<kbd class="text-muted">Ctrl K</kbd> find a setting<br />
-			<kbd class="text-muted">j k</kbd> move · <kbd class="text-muted">[ ]</kbd> section
+			<kbd class="text-muted">Ctrl K</kbd> {t('settings.hints.find')}<br />
+			<kbd class="text-muted">j k</kbd> {t('settings.hints.move')} · <kbd class="text-muted">[ ]</kbd> {t('settings.hints.section')}
 		</p>
 	</nav>
 
 	<div bind:this={pane} class="settings-body min-w-0 pb-24">
 		{#if current}
 			<p class="mb-6 font-mono text-[10px] uppercase tracking-[0.22em] text-muted" aria-hidden="true">
-				settings / {current.scope} / <span class="text-foreground">{current.label.toLowerCase()}</span>
+				{t('settings.breadcrumb', {
+					scope: t(current.scope === 'you' ? 'settings.scope.you' : 'settings.scope.server'),
+					section: sectionLabel(current)
+				}).toLowerCase()}
 			</p>
 		{/if}
 		{@render children()}

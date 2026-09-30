@@ -13,6 +13,7 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import { goto } from '$app/navigation';
 	import { SavedFlash } from '$lib/settings/flash.svelte';
+	import { i18n, localeInfo, t } from '$lib/i18n';
 	import { MASCOTS, displayName } from '$lib/profile/mascots';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -45,6 +46,11 @@
 
 	function apply(u: User): void {
 		session.user = u;
+	}
+
+	async function changeLocale(choice: string): Promise<void> {
+		await i18n.setLocale(choice);
+		flash.mark('locale');
 	}
 
 	function signOut(): void {
@@ -211,6 +217,22 @@
 					</button>
 				{/each}
 			</div>
+		</SettingRow>
+	</SettingsGroup>
+
+	<SettingsGroup id="interface" title={t('settings.interface.group')}>
+		<SettingRow label={t('settings.interface.language')} hint={t('settings.interface.languageHint')} saved={flash.is('locale')}>
+			<select
+				class="h-9 w-56 rounded-md border px-2.5 text-sm text-foreground outline-none"
+				aria-label={t('settings.interface.language')}
+				value={i18n.choice}
+				onchange={(e) => void changeLocale(e.currentTarget.value)}
+			>
+				<option value="">{t('settings.interface.system', { name: localeInfo(i18n.systemLocale).name })}</option>
+				{#each i18n.available as locale (locale.code)}
+					<option value={locale.code}>{locale.name}</option>
+				{/each}
+			</select>
 		</SettingRow>
 	</SettingsGroup>
 
