@@ -33,6 +33,7 @@ import (
 	"github.com/enrell/lain/internal/localplay"
 	"github.com/enrell/lain/internal/plugins/backup"
 	"github.com/enrell/lain/internal/plugins/catalog"
+	"github.com/enrell/lain/internal/plugins/comic"
 	"github.com/enrell/lain/internal/plugins/ingest"
 	"github.com/enrell/lain/internal/plugins/list"
 	"github.com/enrell/lain/internal/plugins/listlink"
@@ -58,6 +59,7 @@ type Server struct {
 	auth           *auth.Service
 	db             *bolt.DB
 	st             *store.Dir
+	avatarDir      string
 	libs           *LibraryStore
 	settings       settingsResolver
 	mux            *http.ServeMux
@@ -222,8 +224,10 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	}
 	reg := core.NewRegistry(comp)
 	reg.Register(source.Provider{})
+	reg.Register(identifyComicShim{})
 	reg.Register(identifyAnimeShim{})
 	reg.Register(identifyGenericShim{})
+	reg.Register(&comic.Provider{})
 	reg.Register(cat)
 	reg.Register(ustate)
 	reg.Register(lst)
@@ -267,6 +271,7 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	}
 	s := &Server{reg: reg, auth: a, db: db, st: st, libs: &LibraryStore{db: db}, mux: http.NewServeMux(), ver: ver, transcode: tr, probeTranscode: probeTranscode, autoEnrich: true, scan: ScanStatus{State: "idle"}, local: local, watchProv: watchProv, watchDone: make(chan struct{}), stateKey: stateKey, listSyncDone: make(chan struct{})}
 	s.settings = settingsResolver{s: s}
+	s.avatarDir = filepath.Join(dataDir, "avatars")
 	// First boot adopts CLI bounds as the saved policy; later boots keep
 	// the operator's admin-UI choices (D-045).
 	bootSettings := contracts.DefaultTranscodeSettings()
@@ -302,6 +307,8 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	s.routes()
 	s.routesEnrich()
 	s.routesThumbnail()
+	s.routesReader()
+	s.routesProfile()
 	s.routesTranscode()
 	s.routesList()
 	// The web UI is the least specific pattern: API, health and media

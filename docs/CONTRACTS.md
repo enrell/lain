@@ -641,6 +641,39 @@ fresh timestamp (the gateway's re-nudge when a scan is in flight);
 `close` stops the watcher. The gateway polls on a 500ms ticker and
 reconciles drained libraries through `lain.ingest.scan@1`.
 
+## lain.comic.pages@1 (exactly-one)
+
+Reading slice (D-085). Input `ComicPagesInput{path}` (supplied by the
+gateway after catalog lookup); output `ComicPages{format, pages[]}` with
+each page `{index, mime, size, width, height}` in natural reading order
+(`page2` before `page10`; directories, dotfiles, `__MACOSX` and non-image
+members are dropped). `width`/`height` are 0 when the header could not be
+read (external formats, unknown codecs); clients then measure after load.
+The archive entry name is internal (`json:"-"`): a client addresses a page
+by index, so it can never reach an arbitrary archive member. Bytes never
+cross the boundary — the gateway opens the archive (`comic.OpenPage`) and
+streams the entry.
+
+Formats: `cbz` natively; `cbr`/`cb7` through `bsdtar` or `7z` when
+installed, else `dependency-unavailable`. Errors: `invalid-archive`,
+`unsupported-format`, `dependency-unavailable`, `not-found`. Indexes are
+cached in memory by (path, mtime, size).
+
+`Candidate` gains an additive `library_type`, and the identify binding is
+now `lain-identify-comic`, `lain-identify-anime`, `lain-identify-generic`
+(composition v8; a saved composition is upgraded in place). The comic
+identifier declines everything that is not `cbz`/`cbr`/`cb7`. It stores a
+volume as `season` and a chapter or issue as `episode`, each 0 when absent.
+
+Gateway routes: `GET /api/items/{id}/pages` (auth) returns
+`{kind, format, direction, pages[]}` with the kind's default direction
+(`rtl` for manga, `ltr` for comics); `GET /api/items/{id}/pages/{n}`
+streams one page (bearer or `?token=`, `ETag`, private cache);
+`GET /api/items/{id}/thumbnail` renders the cover — the first portrait
+page among the first four — through the thumbnail provider. Reading
+progress uses the shared progress record with `position_sec` as the
+1-based page and `duration_sec` as the page count.
+
 ## The tracking list (D-078..D-081)
 
 The lain list is a per-user tracking domain next to catalog and
@@ -717,8 +750,8 @@ bound to the local user id and platform (10-minute expiry, no server
 storage, D-080); `503 not-configured` while the operator has not saved
 a client. `GET /api/auth/{platform}/callback` (public) verifies the
 state, exchanges the code, stores the account and runs the first
-import, then redirects to `/settings?linked=` or
-`/settings?link_error=` — failures never silently succeed.
+import, then redirects to `/settings/connections?linked=` or
+`/settings/connections?link_error=` — failures never silently succeed.
 
 The zero-setup alternative is auth-pin (D-083): `GET
 /api/me/links/{platform}/pin` → `{url}` built with the official Lain

@@ -58,6 +58,11 @@ type Candidate struct {
 	Size      int64  `json:"size"`
 	ModTime   int64  `json:"mod_time"`
 	LibraryID string `json:"library_id"`
+	// LibraryType is the type of the library that produced the candidate
+	// ("comic", "manga", "anime", ...). Additive: identifiers that only
+	// read the path ignore it; the reading identifiers need it to tell a
+	// manga volume from a comic issue (D-085).
+	LibraryType string `json:"library_type,omitempty"`
 }
 
 // Proposal is an identifier's hypothesis about a candidate.

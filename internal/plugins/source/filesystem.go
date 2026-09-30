@@ -26,7 +26,8 @@ var Exts = map[string]map[string]bool{
 	"video": field("mkv", "mp4", "avi", "mov", "m4v", "webm"),
 	"music": field("mp3", "flac", "m4a", "aac", "ogg", "opus", "wav"),
 	"book":  field("pdf", "epub", "mobi", "azw3"),
-	"comic": field("cbz", "cbr", "cb7", "pdf"),
+	"comic": field("cbz", "cbr", "cb7"),
+	"manga": field("cbz", "cbr", "cb7"),
 	"photo": field("jpg", "jpeg", "png", "webp", "gif", "heic", "avif"),
 }
 
@@ -134,7 +135,7 @@ func Enumerate(in EnumerateInput) ([]contracts.Candidate, EnumStats, error) {
 			Path:      path,
 			Size:      info.Size(),
 			ModTime:   info.ModTime().Unix(),
-			LibraryID: in.LibraryID,
+			LibraryID: in.LibraryID, LibraryType: strings.ToLower(in.Type),
 		})
 		return nil
 	})

@@ -294,7 +294,7 @@ func codeFromPaste(raw string) string {
 func (s *Server) handleLinkCallback(w http.ResponseWriter, r *http.Request) {
 	platform := r.PathValue("platform")
 	redirectErr := func(code string) {
-		http.Redirect(w, r, "/settings?link_error="+code, http.StatusFound)
+		http.Redirect(w, r, "/settings/connections?link_error="+code, http.StatusFound)
 	}
 	if e := r.URL.Query().Get("error"); e != "" {
 		redirectErr("denied")
@@ -351,7 +351,7 @@ func (s *Server) handleLinkCallback(w http.ResponseWriter, r *http.Request) {
 		s.logger().Warn("first list import failed", "platform", platform, "user", uid, "err", syncErr.Error())
 	}
 	s.logger().Info("list platform linked", "platform", platform, "user", uid, "remote_user", identity.RemoteUsername)
-	http.Redirect(w, r, "/settings?linked="+platform, http.StatusFound)
+	http.Redirect(w, r, "/settings/connections?linked="+platform, http.StatusFound)
 }
 
 // handleLinkDelete unlinks: the token and the platform's imported

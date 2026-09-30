@@ -52,15 +52,17 @@ type Composition struct {
 // capabilities: settings, theme, enrichment, local playback, library
 // watch and backup (D-076), and version 7 adds the tracking-list
 // domain: list read/write, linked accounts, platform connectors and
-// integration settings (D-078..D-081).
+// integration settings (D-078..D-081), and version 8 adds the reading
+// slice: the comic identifier ahead of the anime parser and the comic
+// archive page index (D-085).
 // Upgrade carries saved compositions forward without replacing
 // overrides.
 func DefaultComposition() *Composition {
 	return &Composition{
-		Version: 7,
+		Version: 8,
 		Bindings: map[string]*Binding{
 			"lain.source.enumerate@1":      {Mode: ModeExactlyOne, Providers: []string{"lain-source-filesystem"}, Generation: 1},
-			"lain.media.identify@1":        {Mode: ModeOrderedMany, Providers: []string{"lain-identify-anime", "lain-identify-generic"}, Generation: 1},
+			"lain.media.identify@1":        {Mode: ModeOrderedMany, Providers: []string{"lain-identify-comic", "lain-identify-anime", "lain-identify-generic"}, Generation: 1},
 			"lain.media.probe@1":           {Mode: ModeExactlyOne, Providers: []string{"lain-probe-ffprobe"}, Generation: 1},
 			"lain.catalog.read@1":          {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
 			"lain.catalog.write@1":         {Mode: ModeExactlyOne, Providers: []string{"lain-catalog-bolt"}, Generation: 1},
@@ -84,6 +86,7 @@ func DefaultComposition() *Composition {
 			"lain.list.write@1":            {Mode: ModeExactlyOne, Providers: []string{"lain-list-bolt"}, Generation: 1},
 			"lain.list.account@1":          {Mode: ModeExactlyOne, Providers: []string{"lain-list-bolt"}, Generation: 1},
 			"lain.listlink@1":              {Mode: ModeOrderedMany, Providers: []string{"lain-listlink-anilist"}, Generation: 1},
+			"lain.comic.pages@1":           {Mode: ModeExactlyOne, Providers: []string{"lain-comic-archive"}, Generation: 1},
 			"lain.settings.integrations@1": {Mode: ModeExactlyOne, Providers: []string{"lain-settings-bolt"}, Generation: 1},
 		},
 	}
@@ -165,6 +168,23 @@ func (c *Composition) Upgrade(fresh *Composition) []string {
 			}
 			if !found {
 				b.Providers = append(b.Providers, "lain-metadata-tvmaze")
+				b.Generation++
+			}
+		}
+	}
+	if c.Version < 8 && fresh.Version >= 8 {
+		// The comic identifier must precede the anime parser, which
+		// accepts everything. A saved composition that already lists it
+		// keeps its own order.
+		if b, ok := c.Bindings["lain.media.identify@1"]; ok {
+			found := false
+			for _, id := range b.Providers {
+				if id == "lain-identify-comic" {
+					found = true
+				}
+			}
+			if !found {
+				b.Providers = append([]string{"lain-identify-comic"}, b.Providers...)
 				b.Generation++
 			}
 		}

@@ -50,6 +50,9 @@ type User struct {
 	// values mean "not restricted", so existing accounts keep full
 	// playback after the field is added.
 	Playback PlaybackPolicy `json:"playback,omitempty"`
+
+	// Profile is what other people see of the account (D-086).
+	Profile Profile `json:"profile"`
 }
 
 // PlaybackPolicy is the per-user limit set (Jellyfin parity): which
