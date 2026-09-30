@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Internationalization groundwork** (D-088, `docs/I18N.md`). The web UI
+  routes text through a typed `t()` with plurals and `Intl` formatting,
+  picks the language from Settings → Profile or the browser, and keeps
+  `<html lang dir>` in sync. Pseudo-locales (`?locale=en-XA`,
+  `?locale=ar-XB`) reveal untranslated text and right-to-left issues;
+  `npm run i18n:report` lists what is left to migrate. English only.
 - **Settings redesign** (D-087). A YOU / SERVER rail replaces the tab
   strip; personal Playback (player, language, video effects), Connections
   and Security are their own sections, and the admin transcode policy is

@@ -1,3 +1,5 @@
+import { t, type Messages } from '$lib/i18n';
+
 /*
  * One source for settings navigation (the rail, the `g`+letter chords)
  * and the command palette index. A setting that exists in the UI but not
@@ -8,24 +10,29 @@ export type SettingsScope = 'you' | 'server';
 
 export interface SettingsSection {
 	href: string;
-	label: string;
+	/** Message id; the label is `settings.section.<id>.label`, the hint `.hint`. */
+	id: SectionId;
 	scope: SettingsScope;
-	/** Second key of the `g` chord: `g p` opens Profile. Stable across roles. */
+	/** Second key of the `g` chord: `g p` opens Profile. Stable across roles and languages. */
 	key: string;
-	hint: string;
 }
 
+export type SectionId = keyof Messages['settings']['section'];
+
+export const sectionLabel = (s: SettingsSection): string => t(`settings.section.${s.id}.label`);
+export const sectionHint = (s: SettingsSection): string => t(`settings.section.${s.id}.hint`);
+
 export const SECTIONS: SettingsSection[] = [
-	{ href: '/settings/profile', label: 'Profile', scope: 'you', key: 'p', hint: 'Name, bio, avatar, account' },
-	{ href: '/settings/playback', label: 'Playback', scope: 'you', key: 'y', hint: 'Player, language, video effects' },
-	{ href: '/settings/connections', label: 'Connections', scope: 'you', key: 'c', hint: 'AniList and other lists' },
-	{ href: '/settings/security', label: 'Security', scope: 'you', key: 's', hint: 'Password and sessions' },
-	{ href: '/settings/libraries', label: 'Libraries', scope: 'server', key: 'l', hint: 'Media folders and scans' },
-	{ href: '/settings/users', label: 'Users', scope: 'server', key: 'u', hint: 'Accounts and roles' },
-	{ href: '/settings/transcoding', label: 'Transcoding', scope: 'server', key: 't', hint: 'How files become streams' },
-	{ href: '/settings/integrations', label: 'Integrations', scope: 'server', key: 'i', hint: 'OAuth apps for list sync' },
-	{ href: '/settings/plugins', label: 'Plugins', scope: 'server', key: 'x', hint: 'Which provider does each job' },
-	{ href: '/settings/backup', label: 'Backup', scope: 'server', key: 'b', hint: 'Database snapshot' }
+	{ href: '/settings/profile', id: 'profile', scope: 'you', key: 'p' },
+	{ href: '/settings/playback', id: 'playback', scope: 'you', key: 'y' },
+	{ href: '/settings/connections', id: 'connections', scope: 'you', key: 'c' },
+	{ href: '/settings/security', id: 'security', scope: 'you', key: 's' },
+	{ href: '/settings/libraries', id: 'libraries', scope: 'server', key: 'l' },
+	{ href: '/settings/users', id: 'users', scope: 'server', key: 'u' },
+	{ href: '/settings/transcoding', id: 'transcoding', scope: 'server', key: 't' },
+	{ href: '/settings/integrations', id: 'integrations', scope: 'server', key: 'i' },
+	{ href: '/settings/plugins', id: 'plugins', scope: 'server', key: 'x' },
+	{ href: '/settings/backup', id: 'backup', scope: 'server', key: 'b' }
 ];
 
 export function visibleSections(admin: boolean): SettingsSection[] {
@@ -38,37 +45,42 @@ export function sectionFor(pathname: string): SettingsSection | undefined {
 
 /** A single setting the palette can jump to. `anchor` is a row id on the page. */
 export interface SettingEntry {
-	label: string;
+	/** Message id under `settings.entry`. */
+	id: keyof Messages['settings']['entry'];
 	href: string;
 	anchor: string;
+	/** English search aliases: they work in every language (developers type them). */
 	keywords: string;
 	admin?: boolean;
 }
 
+export const entryLabel = (e: SettingEntry): string => t(`settings.entry.${e.id}`);
+
 export const SETTING_ENTRIES: SettingEntry[] = [
-	{ label: 'Display name', href: '/settings/profile', anchor: 'display-name', keywords: 'nickname name profile' },
-	{ label: 'Bio', href: '/settings/profile', anchor: 'bio', keywords: 'about description profile' },
-	{ label: 'Avatar', href: '/settings/profile', anchor: 'avatar', keywords: 'picture photo mascot icon profile' },
-	{ label: 'Sign out', href: '/settings/profile', anchor: 'account', keywords: 'logout log out session' },
-	{ label: 'Default player', href: '/settings/playback', anchor: 'player', keywords: 'mpv vlc browser external play' },
-	{ label: 'Audio & subtitle language', href: '/settings/playback', anchor: 'language', keywords: 'idioma audio subtitle captions language dub' },
-	{ label: 'Video effects', href: '/settings/playback', anchor: 'effects', keywords: 'anime4k upscale shader webgpu effect' },
-	{ label: 'AniList', href: '/settings/connections', anchor: 'anilist', keywords: 'anilist list sync scrobble tracker connect' },
-	{ label: 'Change password', href: '/settings/security', anchor: 'password', keywords: 'password security credentials' },
-	{ label: 'Media libraries', href: '/settings/libraries', anchor: 'libraries', keywords: 'folder path library add remove root', admin: true },
-	{ label: 'Library scan', href: '/settings/libraries', anchor: 'scan', keywords: 'scan rescan index refresh', admin: true },
-	{ label: 'Users', href: '/settings/users', anchor: 'users', keywords: 'accounts roles admin disable reset password', admin: true },
-	{ label: 'Transcoding mode', href: '/settings/transcoding', anchor: 'mode', keywords: 'auto custom policy transcode', admin: true },
-	{ label: 'Delivery (HLS, segments)', href: '/settings/transcoding', anchor: 'delivery', keywords: 'hls segment timeout throttle progressive delivery stream', admin: true },
-	{ label: 'Encoding & quality ladder', href: '/settings/transcoding', anchor: 'encoding', keywords: 'crf preset hevc av1 h264 quality ladder bitrate deinterlace', admin: true },
-	{ label: 'Hardware acceleration', href: '/settings/transcoding', anchor: 'hardware', keywords: 'gpu vaapi nvenc qsv hardware decode encode', admin: true },
-	{ label: 'HDR & tone mapping', href: '/settings/transcoding', anchor: 'processing', keywords: 'hdr tone mapping luminance', admin: true },
-	{ label: 'Audio & subtitles (server)', href: '/settings/transcoding', anchor: 'audio', keywords: 'audio bitrate downmix subtitle burn font', admin: true },
-	{ label: 'Resources & storage', href: '/settings/transcoding', anchor: 'resources', keywords: 'cache threads queue storage path ffmpeg', admin: true },
-	{ label: 'Active transcode sessions', href: '/settings/transcoding', anchor: 'sessions', keywords: 'sessions running jobs cancel', admin: true },
-	{ label: 'AniList OAuth app', href: '/settings/integrations', anchor: 'integrations', keywords: 'oauth client id secret anilist', admin: true },
-	{ label: 'Plugins & capabilities', href: '/settings/plugins', anchor: 'capabilities', keywords: 'plugin provider capability composition replace', admin: true },
-	{ label: 'Download backup', href: '/settings/backup', anchor: 'backup', keywords: 'backup snapshot database export', admin: true }
+	{ id: 'displayName', href: '/settings/profile', anchor: 'display-name', keywords: 'nickname name profile' },
+	{ id: 'bio', href: '/settings/profile', anchor: 'bio', keywords: 'about description profile' },
+	{ id: 'avatar', href: '/settings/profile', anchor: 'avatar', keywords: 'picture photo mascot icon profile' },
+	{ id: 'language', href: '/settings/profile', anchor: 'interface', keywords: 'language locale idioma translation i18n interface' },
+	{ id: 'signOut', href: '/settings/profile', anchor: 'account', keywords: 'logout log out session' },
+	{ id: 'player', href: '/settings/playback', anchor: 'player', keywords: 'mpv vlc browser external play' },
+	{ id: 'playbackLanguage', href: '/settings/playback', anchor: 'language', keywords: 'idioma audio subtitle captions language dub' },
+	{ id: 'effects', href: '/settings/playback', anchor: 'effects', keywords: 'anime4k upscale shader webgpu effect' },
+	{ id: 'anilist', href: '/settings/connections', anchor: 'anilist', keywords: 'anilist list sync scrobble tracker connect' },
+	{ id: 'password', href: '/settings/security', anchor: 'password', keywords: 'password security credentials' },
+	{ id: 'libraries', href: '/settings/libraries', anchor: 'libraries', keywords: 'folder path library add remove root', admin: true },
+	{ id: 'scan', href: '/settings/libraries', anchor: 'scan', keywords: 'scan rescan index refresh', admin: true },
+	{ id: 'users', href: '/settings/users', anchor: 'users', keywords: 'accounts roles admin disable reset password', admin: true },
+	{ id: 'mode', href: '/settings/transcoding', anchor: 'mode', keywords: 'auto custom policy transcode', admin: true },
+	{ id: 'delivery', href: '/settings/transcoding', anchor: 'delivery', keywords: 'hls segment timeout throttle progressive delivery stream', admin: true },
+	{ id: 'encoding', href: '/settings/transcoding', anchor: 'encoding', keywords: 'crf preset hevc av1 h264 quality ladder bitrate deinterlace', admin: true },
+	{ id: 'hardware', href: '/settings/transcoding', anchor: 'hardware', keywords: 'gpu vaapi nvenc qsv hardware decode encode', admin: true },
+	{ id: 'processing', href: '/settings/transcoding', anchor: 'processing', keywords: 'hdr tone mapping luminance', admin: true },
+	{ id: 'audio', href: '/settings/transcoding', anchor: 'audio', keywords: 'audio bitrate downmix subtitle burn font', admin: true },
+	{ id: 'resources', href: '/settings/transcoding', anchor: 'resources', keywords: 'cache threads queue storage path ffmpeg', admin: true },
+	{ id: 'sessions', href: '/settings/transcoding', anchor: 'sessions', keywords: 'sessions running jobs cancel', admin: true },
+	{ id: 'integrations', href: '/settings/integrations', anchor: 'integrations', keywords: 'oauth client id secret anilist', admin: true },
+	{ id: 'plugins', href: '/settings/plugins', anchor: 'capabilities', keywords: 'plugin provider capability composition replace', admin: true },
+	{ id: 'backup', href: '/settings/backup', anchor: 'backup', keywords: 'backup snapshot database export', admin: true }
 ];
 
 /**

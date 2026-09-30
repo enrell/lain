@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:webgpu": "node e2e/webgpu.mjs",
-    "test:webgl": "node e2e/webgl-brave.mjs"
+    "test:webgl": "node e2e/webgl-brave.mjs",
+    "i18n:report": "node scripts/i18n-report.mjs"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.10",
