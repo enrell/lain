@@ -45,6 +45,8 @@ type QueryValue = string | number | boolean | undefined | null;
 export interface RequestOptions {
 	method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 	body?: unknown;
+	/** Sent as-is instead of JSON (file uploads). */
+	rawBody?: Blob;
 	query?: Record<string, QueryValue>;
 	signal?: AbortSignal;
 	keepalive?: boolean;
@@ -127,8 +129,11 @@ export async function fetchRaw(path: string, opts: RequestOptions = {}): Promise
 	const token = getToken();
 	if (token) headers.set('Authorization', `Bearer ${token}`);
 
-	let body: string | undefined;
-	if (opts.body !== undefined) {
+	let body: string | Blob | undefined;
+	if (opts.rawBody !== undefined) {
+		if (opts.rawBody.type) headers.set('Content-Type', opts.rawBody.type);
+		body = opts.rawBody;
+	} else if (opts.body !== undefined) {
 		headers.set('Content-Type', 'application/json');
 		body = JSON.stringify(opts.body);
 	}
