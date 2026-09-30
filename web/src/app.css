@@ -21,6 +21,12 @@
 	--color-danger-fg: #2b060d;
 	--color-success: #6ee7a8;
 	--color-warning: #ffcf5c;
+	/* Neutral separators: independent of the palette's line colour, so
+	   dense screens are never striped in the accent hue. */
+	--color-hairline: color-mix(in srgb, var(--color-foreground) 9%, transparent);
+	/* A field that stays visible even when a palette maps surface onto the
+	   background (several Omarchy themes do). */
+	--color-field: color-mix(in srgb, var(--color-foreground) 6%, var(--color-background));
 
 	--font-sans:
 		ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
@@ -38,6 +44,9 @@
 	html {
 		color-scheme: dark;
 		background: var(--color-background);
+		/* Reserve the scrollbar's width on every page, so moving between a
+		   page that scrolls and one that does not never shifts the layout. */
+		scrollbar-gutter: stable;
 	}
 
 	body {
@@ -144,6 +153,78 @@ video::cue {
 .hero-monolith-title {
 	max-width: 12ch;
 	font-size: clamp(2.5rem, 6.5vw, 6.5rem);
+	font-weight: 900;
+	letter-spacing: -0.045em;
+	line-height: 0.95;
+	text-transform: uppercase;
+	text-wrap: balance;
+}
+
+/*
+ * Settings (D-086, AGENTS.md audience): rows on hairlines, no framed cards.
+ * Form controls inside settings are fields on a surface, bordered only
+ * when focused, so a dense page is not a grid of outlined boxes.
+ */
+.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, textarea) {
+	border-color: transparent;
+	background-color: var(--color-field);
+}
+.settings-body :is(input, select, textarea):focus {
+	border-color: color-mix(in srgb, var(--color-accent) 70%, transparent);
+}
+.settings-body [data-bits-select-trigger], .settings-body button[role='combobox'] {
+	border-color: transparent;
+}
+.settings-section {
+	border-top: 1px solid var(--color-hairline);
+	padding-block: 1.75rem 0.5rem;
+}
+details.settings-section > * {
+	padding-inline: 0;
+}
+details.settings-section > summary {
+	padding-top: 0;
+}
+.settings-heading {
+	font-size: 0.9375rem;
+	font-weight: 600;
+	letter-spacing: -0.015em;
+	color: var(--color-foreground);
+}
+.settings-panel {
+	border-radius: 0.625rem;
+	background: var(--color-field);
+}
+.settings-list {
+	border-block: 1px solid var(--color-hairline);
+}
+.settings-list > * + * {
+	border-top: 1px solid var(--color-hairline);
+}
+.saved-flash {
+	animation: saved-flash 1.6s ease-out both;
+}
+@keyframes saved-flash {
+	0%, 60% { opacity: 1; }
+	100% { opacity: 0; }
+}
+/* Ctrl+K lands on a row: a brief accent wash says "this one". */
+.setting-pulse {
+	animation: setting-pulse 1.8s ease-out;
+}
+@keyframes setting-pulse {
+	0%, 35% { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+	100% { background: transparent; }
+}
+
+.title-hero {
+	/* Break out of the centred page column to the viewport edges. */
+	margin-inline: calc(50% - 50vw);
+}
+
+.title-hero-name {
+	max-width: 18ch;
+	font-size: clamp(2.25rem, 5vw, 4.75rem);
 	font-weight: 900;
 	letter-spacing: -0.045em;
 	line-height: 0.95;

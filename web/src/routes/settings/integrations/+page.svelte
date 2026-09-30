@@ -66,8 +66,8 @@
 <svelte:head><title>Integrations — Settings — Lain</title></svelte:head>
 
 <div class="grid gap-6 lg:grid-cols-2">
-	<section class="rounded-card border border-line bg-surface/60 p-5 lg:col-span-2">
-		<h2 class="text-base font-semibold text-foreground">AniList</h2>
+	<section id="integrations" class="settings-section scroll-mt-28 !border-t-0 !pt-0">
+		<h2 class="settings-heading">AniList</h2>
 		<p class="mt-1 max-w-2xl text-sm text-muted">
 			One OAuth application for the whole server (D-080). Register it in the
 			AniList developer settings, paste the client credentials below and set

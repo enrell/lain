@@ -29,9 +29,9 @@
 		bind:value
 		aria-invalid={error ? 'true' : undefined}
 		class={[
-			'h-10 w-full rounded-md border bg-surface px-3 text-sm text-foreground',
+			'h-10 w-full rounded-md border bg-field px-3 text-sm text-foreground',
 			'placeholder:text-muted/60 focus:border-accent/60 focus:outline-none',
-			error ? 'border-danger/60' : 'border-line',
+			error ? 'border-danger/60' : 'border-transparent',
 			className
 		].join(' ')}
 		{...rest}

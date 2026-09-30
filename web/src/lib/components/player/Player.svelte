@@ -1519,7 +1519,7 @@
 				</select>
 			</label>
 			{#if effectError && selectedEffect !== 'off'}<p class="mt-1 text-xs text-danger" role="status">Anime4K unavailable: {effectError}</p>{/if}
-			<a class="mt-1 block text-xs text-accent hover:underline" href="/settings/effects">Set default effects and overrides</a>
+			<a class="mt-1 block text-xs text-accent hover:underline" href="/settings/playback#effects">Set default effects and overrides</a>
 			{#if mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}
 				<label class="chrome-chip">
 					Quality

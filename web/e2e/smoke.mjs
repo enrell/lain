@@ -709,11 +709,13 @@ try {
 
 	/* ---------------- advanced playback settings ---------------- */
 	step('advanced playback settings UI');
-	await navigate(`${BASE}/settings/playback`);
+	await navigate(`${BASE}/settings/transcoding`);
+	// Auto shows a summary; Custom reveals every section.
+	await waitText('Policy', 20000);
+	await evalValue(`[...document.querySelectorAll('[role=radio]')].find((b) => b.textContent.trim() === 'Custom').click()`);
 	// Every section the advanced configuration exposes must render.
 	for (const section of [
-		'Automatic setup',
-		'A clear path from file to screen.',
+		'Video engine',
 		'Probed capabilities',
 		'Delivery',
 		'Encoding',
@@ -779,7 +781,7 @@ try {
 		10000,
 		'transcode settings save'
 	);
-	await navigate(`${BASE}/settings/playback`);
+	await navigate(`${BASE}/settings/transcoding`);
 	await waitText('Hardware acceleration', 20000);
 	const reloadedState = await evalValue(`(${firstSwitch}).getAttribute('data-state')`);
 	assert(

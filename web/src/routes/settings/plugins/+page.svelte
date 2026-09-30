@@ -182,11 +182,11 @@
 	{:else if error}
 		<ErrorState message={error} retry={() => void load()} />
 	{:else if info}
-		<section class="space-y-3">
-			<h2 class="text-base font-semibold text-foreground">Capabilities</h2>
-			<ul class="space-y-3">
+		<section id="capabilities" class="scroll-mt-28 space-y-3">
+			<h2 class="settings-heading">Capabilities</h2>
+			<ul class="settings-list">
 				{#each info.composition as binding (binding.capability)}
-					<li class="rounded-card border border-line bg-surface/50 p-4">
+					<li class="py-4">
 						<div class="flex flex-wrap items-center justify-between gap-3">
 							<div class="min-w-0">
 								{#if purposeOf(binding.capability)}
@@ -246,7 +246,7 @@
 			{#if events.length === 0}
 				<p class="text-sm text-muted">No swaps or fallbacks recorded in this process.</p>
 			{:else}
-				<ul class="divide-y divide-line overflow-hidden rounded-card border border-line">
+				<ul class="settings-list">
 					{#each [...events].reverse().slice(0, 20) as event, index (event.at + '-' + index)}
 						<li class="flex flex-wrap items-baseline gap-x-3 gap-y-1 bg-surface/30 px-4 py-2.5 text-sm">
 							<Badge

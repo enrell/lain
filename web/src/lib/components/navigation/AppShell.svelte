@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
 	import SignalMark from '../primitives/SignalMark.svelte';
 	import UserMenu from './UserMenu.svelte';
 	import MobileNav from './MobileNav.svelte';
-	import { serverStatus } from '$lib/stores/server-status.svelte';
+	import CommandPalette from './CommandPalette.svelte';
+	import { scan } from '$lib/stores/scan.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -24,11 +24,6 @@
 		return exact ? path === href : path === href || path.startsWith(href + '/');
 	}
 
-	onMount(() => {
-		serverStatus.start();
-	});
-
-	onDestroy(() => serverStatus.stop());
 </script>
 
 <div class="min-h-dvh">
@@ -63,25 +58,20 @@
 			</nav>
 
 			<div class="flex shrink-0 items-center gap-4 justify-self-end">
-				<a
-					href="/settings"
-					class="flex min-h-6 items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
-					title={`Server ${serverStatus.state}`}
-					aria-label={`Server ${serverStatus.state}`}
+				<!-- Operational state earns the header only while it is happening. -->
+				{#if scan.running}
+					<a href="/settings/libraries#scan" class="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
+						<span class="size-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true"></span>scanning
+					</a>
+				{/if}
+				<button
+					type="button"
+					class="hidden items-center gap-2 rounded-md px-2 py-1 font-mono text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-foreground lg:flex"
+					onclick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
+					aria-label="Open command palette (Ctrl+K)"
 				>
-					<span
-						class={[
-							'size-1.5 rounded-full',
-							serverStatus.state === 'online'
-								? 'bg-accent shadow-[0_0_12px_var(--color-accent)]'
-								: serverStatus.state === 'checking'
-									? 'animate-pulse bg-muted'
-									: 'bg-danger'
-						].join(' ')}
-						aria-hidden="true"
-					></span>
-					<span class="hidden xl:inline">{serverStatus.state}</span>
-				</a>
+					<kbd>Ctrl K</kbd>
+				</button>
 				<UserMenu side="bottom" compact />
 			</div>
 		</div>
@@ -95,7 +85,9 @@
 		<div class="w-40"><UserMenu /></div>
 	</header>
 
-	<main id="main" tabindex="-1">
+	<CommandPalette />
+
+	<main id="main" tabindex="-1" class="overflow-x-clip">
 		<div class={page.url.pathname === '/' ? 'w-full pb-24 md:pb-0' : 'mx-auto w-full max-w-[1800px] px-5 sm:px-8 lg:px-10 pb-28 pt-6 md:pb-14 md:pt-28'}>
 			{@render children()}
 		</div>
