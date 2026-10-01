@@ -62,9 +62,9 @@ test:
     go test ./...
     cd web && pnpm test
 
-# Real-ffmpeg end-to-end transcode suite (minutes; skipped by plain `go test`).
+# Every test that runs the host ffmpeg (minutes; skipped by plain `go test`).
 test-e2e:
-    go test -tags e2e -count=1 ./internal/gateway/
+    go test -tags e2e -count=1 ./internal/gateway/ ./internal/plugins/transcode/ ./internal/plugins/thumbnail/
 
 # Race detector on the hot packages (the race runtime requires cgo).
 test-race:

@@ -205,9 +205,7 @@ func TestKillBrowseFilters(t *testing.T) {
 }
 
 func TestKillThumbnailWidthParams(t *testing.T) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg unavailable")
-	}
+	requireRealFFmpeg(t)
 	srv := testServer(t)
 	admin := setupAdmin(t, srv)
 	id := catalogOneMKV(t, srv, admin, t.TempDir(), "[Fansub-A] Show.mkv")
@@ -241,9 +239,7 @@ func TestKillThumbnailWidthParams(t *testing.T) {
 }
 
 func TestKillThumbnailTimeParam(t *testing.T) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg unavailable")
-	}
+	requireRealFFmpeg(t)
 	dir := t.TempDir()
 	srv, err := NewWithOptions(dir, "test", Options{transcodeProbe: noTranscodeProbe})
 	if err != nil {
@@ -472,9 +468,7 @@ func TestKillTranscodeCancelValidation(t *testing.T) {
 }
 
 func TestKillTranscodeCancelBindsItem(t *testing.T) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg unavailable")
-	}
+	requireRealFFmpeg(t)
 	srv := testServer(t)
 	admin := setupAdmin(t, srv)
 	dirA, dirB := t.TempDir(), t.TempDir()
@@ -636,9 +630,7 @@ func TestKillRewritePlaylistEdges(t *testing.T) {
 // --- HLS content types (transcode.go:428-431) ---
 
 func TestKillHLSContentTypes(t *testing.T) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg unavailable")
-	}
+	requireRealFFmpeg(t)
 	srv := testServer(t)
 	admin := setupAdmin(t, srv)
 	id := catalogOneMKV(t, srv, admin, t.TempDir(), "Show.mkv")

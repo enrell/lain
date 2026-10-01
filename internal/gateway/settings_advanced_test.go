@@ -50,9 +50,7 @@ func advWaitReady(t *testing.T, srv *Server, token, id, session string) (string,
 // a missing ffmpeg or encoder skips the test cleanly.
 func advSynthMKV(t *testing.T, path string, args ...string) {
 	t.Helper()
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg not installed")
-	}
+	requireRealFFmpeg(t)
 	cmd := exec.Command("ffmpeg", append(append([]string{"-hide_banner", "-loglevel", "error", "-y"}, args...), path)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Skipf("cannot synthesize fixture: %v: %s", err, out)

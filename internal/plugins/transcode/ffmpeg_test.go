@@ -17,6 +17,9 @@ import (
 
 func requireFFmpeg(t *testing.T) {
 	t.Helper()
+	if !e2eEnabled {
+		t.Skip("real-ffmpeg test: run with -tags e2e")
+	}
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
 	}

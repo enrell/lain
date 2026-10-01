@@ -43,12 +43,7 @@ type e2eVideoProfile struct {
 
 func e2eRequireFFmpeg(t *testing.T) {
 	t.Helper()
-	if !e2eEnabled {
-		t.Skip("real-ffmpeg suite: run with -tags e2e")
-	}
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg not installed")
-	}
+	requireRealFFmpeg(t)
 	if _, err := exec.LookPath("ffprobe"); err != nil {
 		t.Skip("ffprobe not installed")
 	}

@@ -17,9 +17,7 @@ import (
 // on-demand extraction needs: ffprobe reads the track, ffmpeg converts.
 func subsRequireFFmpeg(t *testing.T) {
 	t.Helper()
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg not installed")
-	}
+	requireRealFFmpeg(t)
 	if _, err := exec.LookPath("ffprobe"); err != nil {
 		t.Skip("ffprobe not installed")
 	}

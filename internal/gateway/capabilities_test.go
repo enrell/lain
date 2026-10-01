@@ -15,9 +15,7 @@ import (
 // the right capabilities can play as it is.
 func catalogCapabilityMKV(t *testing.T, srv *Server, admin, dir, name string) string {
 	t.Helper()
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg not installed")
-	}
+	requireRealFFmpeg(t)
 	if _, err := exec.LookPath("ffprobe"); err != nil {
 		t.Skip("ffprobe not installed")
 	}
