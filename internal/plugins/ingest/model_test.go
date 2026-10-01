@@ -166,6 +166,11 @@ func modelWalk(t *testing.T, seed int64) {
 				// A missing row may legitimately disappear only when its
 				// fingerprint was reconciled onto a live path.
 				t.Fatalf("step %d: dead file %s vanished from catalog entirely", step, p)
+			} else {
+				// Adopted (D-019): the row now lives on under the live
+				// path. The tombstone is consumed — if that file goes
+				// away later, its own path is what stays missing.
+				delete(dead, p)
 			}
 		}
 		for p := range items {
@@ -176,42 +181,63 @@ func modelWalk(t *testing.T, seed int64) {
 			}
 		}
 		// Reconcile bookkeeping: every path a live item previously
-		// occupied is either its alias or its current FilePath (move-back).
-		byFp := map[string]contracts.CatalogItem{}
+		// occupied is the alias or current FilePath (move-back) of some
+		// row with that fingerprint. Two copies of one episode can be
+		// live at once, so a fingerprint maps to several rows — checking
+		// a single arbitrary one made the result depend on map order.
+		byFp := map[string][]contracts.CatalogItem{}
 		for _, it := range items {
-			byFp[fingerprint(it.FilePath)] = it
+			fp := fingerprint(it.FilePath)
+			byFp[fp] = append(byFp[fp], it)
 		}
 		for fp, seen := range aliases {
-			it, ok := byFp[fp]
-			if !ok || len(it.Aliases) >= 8 {
+			rows := byFp[fp]
+			evicted := len(rows) == 0
+			for _, it := range rows {
+				if len(it.Aliases) >= 8 {
+					evicted = true
+				}
+			}
+			if evicted {
 				continue // row gone or alias cap evicted history
 			}
 			for a := range seen {
-				if a == it.FilePath {
-					continue
-				}
 				found := false
-				for _, x := range it.Aliases {
-					if x == a {
+				for _, it := range rows {
+					if it.FilePath == a {
 						found = true
+					}
+					for _, x := range it.Aliases {
+						if x == a {
+							found = true
+						}
 					}
 				}
 				if !found {
-					t.Fatalf("step %d: item at %s lost alias %s (aliases %v)", step, it.FilePath, a, it.Aliases)
+					t.Fatalf("step %d: no row with this fingerprint keeps alias %s (rows %+v)", step, a, rows)
 				}
 			}
 		}
-		// A dead row whose fingerprint was adopted by a live item has no
-		// missing row anymore — subtract it from the expected count.
-		adopted := 0
-		for _, fp := range dead {
-			if liveFp[fp] {
-				adopted++
+		// One row per path: every live file plus every dead path whose
+		// missing row survived (the loop above already proved a vanished
+		// one was adopted). Counting raw rows, not the path-keyed map,
+		// catches two rows sharing one path. A dead fingerprint that is
+		// also live does not imply adoption — two copies of an episode
+		// keep separate rows, and deleting one leaves its row missing.
+		rows, kept := 0, 0
+		for _, it := range cat.List() {
+			if it.LibraryID == "l1" {
+				rows++
 			}
 		}
-		if len(items) != len(live)+len(dead)-adopted {
-			t.Fatalf("step %d: catalog has %d rows, model expects %d live + %d dead - %d adopted",
-				step, len(items), len(live), len(dead), adopted)
+		for p := range dead {
+			if _, ok := items[p]; ok {
+				kept++
+			}
+		}
+		if rows != len(live)+kept {
+			t.Fatalf("step %d: catalog has %d rows, model expects %d live + %d kept missing",
+				step, rows, len(live), kept)
 		}
 		checkProgress()
 	}
@@ -283,15 +309,25 @@ func modelWalk(t *testing.T, seed int64) {
 					t.Fatal(err)
 				}
 				fp := live[p]
+				if _, clobber := live[dst]; clobber {
+					// os.Rename replaced a live copy of the same episode:
+					// the destination keeps its row, and the vacated source
+					// is an ordinary deletion — its row goes missing.
+					dead[p] = fp
+					delete(live, p)
+					break
+				}
 				// The destination may be a tombstone: the file is back,
-				// so its missing row resurrects — and because the row's
-				// FilePath already equals dst, reconcile records no
-				// alias for the vacated source path.
+				// so its missing row resurrects — path identity wins
+				// (D-068) — and the source's own row has no file left,
+				// so it stays behind as missing. No alias is recorded.
 				_, wasDead := dead[dst]
 				delete(dead, dst)
 				live[dst] = fp
 				delete(live, p)
-				if !wasDead {
+				if wasDead {
+					dead[p] = fp
+				} else {
 					if aliases[fp] == nil {
 						aliases[fp] = map[string]bool{}
 					}
@@ -314,11 +350,14 @@ func modelWalk(t *testing.T, seed int64) {
 				delete(dead, dst) // resurrected tombstone, if any
 			}
 		case op < 80 && len(dead) > 0: // restore a deleted path
-			var pick string
+			// Sorted, then seeded: ranging over the map would pick by Go's
+			// randomized iteration order and make the walk unreplayable.
+			deadPaths := make([]string, 0, len(dead))
 			for p := range dead {
-				pick = p
-				break
+				deadPaths = append(deadPaths, p)
 			}
+			sort.Strings(deadPaths)
+			pick := deadPaths[rng.Intn(len(deadPaths))]
 			writeFile(t, pick)
 			live[pick] = dead[pick]
 			delete(dead, pick)
