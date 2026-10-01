@@ -140,6 +140,13 @@ per refactor/migration: differential oracle runs
   crashes: closed DB (reads empty, writes error), unwritable/vanished
   cache, missing source files, broken walks. A failed walk or an
   identify failure must never read as deletions (D-068).
+- **Shell stubs are POSIX sh** — tests that stub `ffmpeg`/`ffprobe`
+  write a `#!/bin/sh` script; CI's `/bin/sh` is dash (Ubuntu), not
+  bash, so a bashism passes locally and fails only in CI. Keep stub
+  bodies POSIX: `for last; do :; done` for the final argument, never
+  `${@: -1}`, `[[ ]]`, arrays or `$'...'`. Tests must also not assume
+  a host binary exists — control it (`t.Setenv("PATH", ...)`), and
+  reserve `t.Skip` for genuinely absent platforms.
 
 ## Commit discipline
 
