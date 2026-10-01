@@ -99,6 +99,11 @@ nightly / scheduled:    longer fuzz campaigns → more model seeds → stress -c
 per refactor/migration: differential oracle runs
 ```
 
+- **Real-ffmpeg E2E** — `internal/gateway`'s `TestE2E*` and HLS signing
+  tests encode real media and cost minutes, so they skip unless built
+  with `-tags e2e` (`just test-e2e`); CI always runs them. Builds are
+  pure Go: `.mise.toml` sets `CGO_ENABLED=0`, and only the race
+  detector re-enables cgo (`just test-race`, CI).
 - **Contract tests** — `internal/testutil/contract` runs one shared
   harness against every `core.Provider`: non-empty ID/capabilities,
   `Health` never panics, unknown capabilities and wrong input types
