@@ -9,3 +9,10 @@ go = "1.27.1"
 node = "26.8.2"
 pnpm = "12.3.4"
 just = "1.58.0"
+
+# Pure-Go builds only (AGENTS.md: no cgo). Without this, Go defaults to
+# CGO_ENABLED=1 whenever gcc exists and routes the stdlib net package
+# through gcc, producing a dynamically linked binary unlike CI/release.
+# The race detector needs cgo: use `just test-race`.
+[env]
+CGO_ENABLED = "0"

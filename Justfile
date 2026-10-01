@@ -62,6 +62,14 @@ test:
     go test ./...
     cd web && pnpm test
 
+# Real-ffmpeg end-to-end transcode suite (minutes; skipped by plain `go test`).
+test-e2e:
+    go test -tags e2e -count=1 ./internal/gateway/
+
+# Race detector on the hot packages (the race runtime requires cgo).
+test-race:
+    CGO_ENABLED=1 go test -race ./internal/gateway/ ./internal/plugins/transcode/ ./internal/plugins/ingest/
+
 # Copy the example env when none exists.
 setup:
     test -f .env || cp .env.example .env

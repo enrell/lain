@@ -8,7 +8,9 @@ package gateway
 // byte-level checks (fMP4 boxes, faststart ordering).
 //
 // The suite skips cleanly when ffmpeg (or a specific encoder it needs)
-// is unavailable, matching D-023's degrade stance.
+// is unavailable, matching D-023's degrade stance. It also skips unless
+// built with -tags e2e: real encodes cost minutes, so they run in CI and
+// on demand (`just test-e2e`), not on every local `go test ./...`.
 
 import (
 	"bytes"
@@ -41,6 +43,9 @@ type e2eVideoProfile struct {
 
 func e2eRequireFFmpeg(t *testing.T) {
 	t.Helper()
+	if !e2eEnabled {
+		t.Skip("real-ffmpeg suite: run with -tags e2e")
+	}
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
 	}
