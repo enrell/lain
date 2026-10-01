@@ -273,6 +273,9 @@ func TestAuditLibAOMCapUsesBitrate(t *testing.T) {
 // ffmpeg rejects (libaom's "rate control without a bitrate") fails here
 // instead of at a viewer's first play.
 func TestAuditEncoderArgsAcceptedByRealFFmpeg(t *testing.T) {
+	if !e2eEnabled {
+		t.Skip("real-ffmpeg test: run with -tags e2e")
+	}
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		t.Skip("ffmpeg not available")

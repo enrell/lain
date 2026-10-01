@@ -28,9 +28,7 @@ func TestThumbnailAuthAndKnownItem(t *testing.T) {
 // TestThumbnailServesJPEG is the end-to-end slice: synthesize a clip,
 // catalogue it through a scan, request a still and read JPEG magic.
 func TestThumbnailServesJPEG(t *testing.T) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg not installed")
-	}
+	requireRealFFmpeg(t)
 	srv := testServer(t)
 	admin := setupAdmin(t, srv)
 

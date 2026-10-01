@@ -482,6 +482,9 @@ func TestKillDurationSeconds(t *testing.T) {
 }
 
 func TestKillConvertMediaProgressFlag(t *testing.T) {
+	if !e2eEnabled {
+		t.Skip("real-ffmpeg test: run with -tags e2e")
+	}
 	if _, err := exec.LookPath("ffprobe"); err != nil {
 		t.Skip("ffprobe required")
 	}

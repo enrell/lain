@@ -12,6 +12,9 @@ import (
 
 func makeClip(t *testing.T, dir string) string {
 	t.Helper()
+	if !e2eEnabled {
+		t.Skip("real-ffmpeg test: run with -tags e2e")
+	}
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
 	}
@@ -129,6 +132,9 @@ func TestGenerateExtractFailureSurfaces(t *testing.T) {
 	src := filepath.Join(root, "not-a-video.mp4")
 	if err := os.WriteFile(src, []byte("definitely not a video"), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	if !e2eEnabled {
+		t.Skip("real-ffmpeg test: run with -tags e2e")
 	}
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")

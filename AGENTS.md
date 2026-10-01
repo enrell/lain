@@ -99,9 +99,13 @@ nightly / scheduled:    longer fuzz campaigns → more model seeds → stress -c
 per refactor/migration: differential oracle runs
 ```
 
-- **Real-ffmpeg E2E** — `internal/gateway`'s `TestE2E*` and HLS signing
-  tests encode real media and cost minutes, so they skip unless built
-  with `-tags e2e` (`just test-e2e`); CI always runs them. Builds are
+- **Real-ffmpeg tests** — any test that runs the host `ffmpeg`/`ffprobe`
+  (gateway `TestE2E*` and fixture synthesis, transcode, thumbnail)
+  costs minutes in total, so it skips unless built with `-tags e2e`
+  (`just test-e2e`); CI always runs them. Gate new ones through the
+  package's helper (`requireRealFFmpeg`, `requireFFmpeg`,
+  `subsRequireFFmpeg`) or an `e2eEnabled` check — never a bare
+  `exec.LookPath("ffmpeg")`. Builds are
   pure Go: `.mise.toml` sets `CGO_ENABLED=0`, and only the race
   detector re-enables cgo (`just test-race`, CI).
 - **Contract tests** — `internal/testutil/contract` runs one shared

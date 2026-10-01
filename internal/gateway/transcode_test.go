@@ -36,9 +36,7 @@ func TestTranscodeAuthAndKnownItem(t *testing.T) {
 // subtitle is extracted to WebVTT and served without leaking the
 // provider's private cache path in the status body.
 func TestTranscodeSubtitlesServesWebVTT(t *testing.T) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg not installed")
-	}
+	requireRealFFmpeg(t)
 	srv := testServer(t)
 	admin := setupAdmin(t, srv)
 	dir := t.TempDir()
@@ -116,9 +114,7 @@ func TestTranscodeSubtitlesServesWebVTT(t *testing.T) {
 // and returns its catalog id.
 func catalogOneMKV(t *testing.T, srv *Server, admin, dir, name string) string {
 	t.Helper()
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg not installed")
-	}
+	requireRealFFmpeg(t)
 	out := filepath.Join(dir, name)
 	cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error",
 		"-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=2",
@@ -153,9 +149,7 @@ func catalogDir(t *testing.T, srv *Server, admin, dir string) string {
 // a known bitrate) and returns its catalog id.
 func catalogOneMP4(t *testing.T, srv *Server, admin, dir, name string) string {
 	t.Helper()
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg not installed")
-	}
+	requireRealFFmpeg(t)
 	out := filepath.Join(dir, name)
 	cmd := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error",
 		"-f", "lavfi", "-i", "testsrc=size=320x240:rate=15:duration=2",
@@ -371,9 +365,7 @@ func TestPublicStatusCarriesProgress(t *testing.T) {
 }
 
 func TestTranscodeDegradesWithoutFFmpeg(t *testing.T) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
-		t.Skip("ffmpeg not installed")
-	}
+	requireRealFFmpeg(t)
 	srv := testServer(t)
 	admin := setupAdmin(t, srv)
 	id := catalogOneMKV(t, srv, admin, t.TempDir(), "Show.mkv")
