@@ -1534,6 +1534,16 @@ func TestKillNewWithDepsBounds(t *testing.T) {
 }
 
 func TestKillHealthAndLogger(t *testing.T) {
+	// Health probes $PATH for ffmpeg, so stub it: the assertion below is
+	// about the logger and the cache dir, not about the host toolchain
+	// (CI runners ship no ffmpeg). TestKillHealthFFmpeg owns the
+	// missing-ffmpeg verdict.
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "ffmpeg"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
 	dir := filepath.Join(t.TempDir(), "cache")
 	tr := newWithDeps(dir, Config{}, nil, time.Now)
 	t.Cleanup(func() { _ = tr.Close() })

@@ -322,7 +322,8 @@ func TestKillRunV3PlanSubtitles(t *testing.T) {
 	// Extract mode with a working stub marks hasSubtitle and produces
 	// the sidecar before the encode.
 	okFF := stubFFmpeg(t, `
-out="${@: -1}"
+for last; do :; done
+out="$last"
 case "$out" in
   *.tmp) echo WEBVTT > "$out" ;;
   *) : ;;
@@ -395,7 +396,8 @@ func TestKillRunV3PlanRename(t *testing.T) {
 	tr := newWithDeps(filepath.Join(dir, "cache"), Config{}, nil, time.Now)
 	t.Cleanup(func() { _ = tr.Close() })
 	okFF := stubFFmpeg(t, `
-out="${@: -1}"
+for last; do :; done
+out="$last"
 echo mp4 > "$out"
 `)
 	settings := contracts.TranscodeSettings{FFmpegPath: okFF}
@@ -425,7 +427,8 @@ func TestKillRunV3PlanProgress(t *testing.T) {
 	t.Cleanup(func() { _ = tr.Close() })
 	ff := stubFFmpeg(t, `
 printf 'fps=24.5\nbitrate=1200.0kbits/s\nout_time_us=500000\nprogress=continue\nprogress=end\n'
-out="${@: -1}"
+for last; do :; done
+out="$last"
 echo mp4 > "$out"
 `)
 	settings := contracts.TranscodeSettings{FFmpegPath: ff}
@@ -979,7 +982,8 @@ func TestKillExecPlanFull(t *testing.T) {
 	// output file is produced.
 	ff := stubFFmpeg(t, `
 printf 'fps=30\nout_time_us=100\nprogress=continue\nprogress=end\n'
-out="${@: -1}"
+for last; do :; done
+out="$last"
 echo mp4 > "$out"
 `)
 	var gotCmd *exec.Cmd
@@ -1002,7 +1006,7 @@ echo mp4 > "$out"
 	}
 
 	// Empty output is a failure.
-	empty := stubFFmpeg(t, `out="${@: -1}"; : > "$out"`)
+	empty := stubFFmpeg(t, `for last; do :; done; : > "$last"`)
 	p2 := encodePlanFor(func(p *encodePlan) { p.settings.FFmpegPath = empty })
 	if err := tr.execPlan(context.Background(), p2, filepath.Join(dir, "e.mp4"), "", nil, nil); err == nil || !strings.Contains(err.Error(), "no output") {
 		t.Fatalf("empty output must fail: %v", err)
