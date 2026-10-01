@@ -232,27 +232,62 @@ func sameLogical(a, b contracts.CatalogItem) bool {
 // present is updated so pruning keeps the adopted record. Genuine
 // duplicates (both paths present) and cross-library titles never merge.
 // It returns the rewritten items and the migration count.
+//
+// A file at a path that already has a row keeps that row first, before
+// any matching: an unchanged file must never lose its identity (and the
+// progress keyed on it) to another copy of the same episode. Each
+// existing row is claimed by at most one scanned file per pass.
 func (s *Service) ReconcileMoves(libraryID string, items []contracts.CatalogItem, present map[string]bool) ([]contracts.CatalogItem, int) {
 	if len(items) == 0 {
 		return items, 0
 	}
 	existing := s.ListByLibrary(libraryID)
 	byID := make(map[string]contracts.CatalogItem, len(existing))
+	byPath := make(map[string]contracts.CatalogItem, len(existing))
 	for _, it := range existing {
 		byID[it.ID] = it
+		byPath[it.FilePath] = it
 	}
+	claimed := map[string]bool{}
+	settled := make([]bool, len(items))
+
+	// Pass 1: a known path keeps its row. For a row that moved earlier
+	// its ID no longer derives from its path, so claim it explicitly.
+	for i, it := range items {
+		row, ok := byPath[it.FilePath]
+		if !ok || claimed[row.ID] {
+			continue
+		}
+		if row.ID != it.ID && !sameLogical(row, it) {
+			continue // different content at a moved row's path: match below
+		}
+		if row.ID != it.ID {
+			delete(present, it.ID)
+			it.ID = row.ID
+		}
+		// The fresh item carries no history; carry the recorded aliases
+		// forward — wholesale upsert would otherwise wipe them.
+		it.Aliases = mergeAliases(it.Aliases, row.Aliases)
+		items[i] = it
+		claimed[row.ID] = true
+		settled[i] = true
+	}
+
 	migrated := 0
 	for i, it := range items {
+		if settled[i] {
+			continue
+		}
 		if old, ok := byID[it.ID]; ok {
-			if old.FilePath == it.FilePath {
-				// Refresh of a known path: the fresh item carries no
-				// history, so carry the recorded aliases forward —
-				// wholesale upsert would otherwise wipe them.
-				it.Aliases = mergeAliases(it.Aliases, old.Aliases)
-				items[i] = it
-				continue // identity already stable
-			}
-			if sameLogical(old, it) {
+			switch {
+			case claimed[it.ID]:
+				// The row this path derives to belongs to another file
+				// that is still here (it moved away earlier and this is a
+				// new copy at the vacated path). Give the newcomer its own
+				// deterministic identity; pass 1 keeps it on rescans.
+				delete(present, it.ID)
+				it.ID = ItemID(libraryID, it.FilePath+"\x00dup")
+			case sameLogical(old, it):
 				// Move-back (A->B->A): the file returned to the path
 				// its ID derives from. The match loop below skips
 				// same-ID candidates, so reconcile here — adopt the
@@ -265,15 +300,16 @@ func (s *Service) ReconcileMoves(libraryID string, items []contracts.CatalogItem
 					it.Aliases = it.Aliases[len(it.Aliases)-8:]
 				}
 				items[i] = it
+				claimed[it.ID] = true
 				migrated++
 				continue
 			}
-			// Different logical item claiming this path-derived ID:
-			// honest takeover — the fresh item replaces the row.
+			// Otherwise a different logical item claims this path-derived
+			// ID: honest takeover — the fresh item replaces the row.
 		}
 		var match *contracts.CatalogItem
 		for _, cand := range existing {
-			if cand.ID == it.ID || present[cand.ID] {
+			if cand.ID == it.ID || present[cand.ID] || claimed[cand.ID] {
 				continue
 			}
 			if !sameLogical(cand, it) {
@@ -285,6 +321,7 @@ func (s *Service) ReconcileMoves(libraryID string, items []contracts.CatalogItem
 			}
 		}
 		if match == nil {
+			items[i] = it
 			continue
 		}
 		if match.FilePath != it.FilePath && !hasAlias(it.Aliases, match.FilePath) {
@@ -300,9 +337,14 @@ func (s *Service) ReconcileMoves(libraryID string, items []contracts.CatalogItem
 		}
 		delete(present, it.ID)
 		it.ID = match.ID
-		present[it.ID] = true
+		claimed[it.ID] = true
 		items[i] = it
 		migrated++
+	}
+	// Every final identity is present. Added last, so a derived ID
+	// dropped above can never evict an ID another item kept.
+	for _, it := range items {
+		present[it.ID] = true
 	}
 	return items, migrated
 }

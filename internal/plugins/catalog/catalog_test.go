@@ -498,3 +498,63 @@ func TestEpisodesReturnsTheTitleInWatchOrder(t *testing.T) {
 		t.Fatal("an unknown id must report ok=false")
 	}
 }
+
+// A file that never moved must keep its row even when a second copy of
+// the same episode appears at a path the row once occupied. Before the
+// fix, the newcomer's path-derived ID matched the moved row, the
+// move-back branch handed it that ID (and its progress), and the
+// unchanged file was re-catalogued under a fresh ID.
+func TestReconcileDuplicateAtVacatedPathKeepsIdentity(t *testing.T) {
+	s := testService(t)
+	commit := func(paths ...string) map[string]contracts.CatalogItem {
+		t.Helper()
+		var entries []ScanEntry
+		for _, p := range paths {
+			entries = append(entries, ScanEntry{
+				Candidate:  contracts.Candidate{Path: p, Size: 1, ModTime: 1, LibraryID: "l"},
+				Proposal:   contracts.Proposal{Kind: "episode", Title: "Show", Season: 1, Episode: 2, Confidence: 0.9},
+				Identified: true,
+			})
+		}
+		if _, err := s.CommitScan(CommitScanInput{LibraryID: "l", Entries: entries, ReconcileMissing: true}); err != nil {
+			t.Fatal(err)
+		}
+		byPath := map[string]contracts.CatalogItem{}
+		for _, it := range s.ListByLibrary("l") {
+			byPath[it.FilePath] = it
+		}
+		return byPath
+	}
+
+	first := commit("/lib/sub/Show 02.mkv")
+	id := first["/lib/sub/Show 02.mkv"].ID
+	moved := commit("/lib/Show 02.mkv") // sub -> root: same row, new path
+	if moved["/lib/Show 02.mkv"].ID != id {
+		t.Fatalf("move lost identity: %+v", moved)
+	}
+
+	both := commit("/lib/Show 02.mkv", "/lib/sub/Show 02.mkv") // a copy lands at the vacated path
+	root, dup := both["/lib/Show 02.mkv"], both["/lib/sub/Show 02.mkv"]
+	if root.ID != id {
+		t.Fatalf("unchanged file lost its row: root=%s want %s (dup=%s)", root.ID, id, dup.ID)
+	}
+	if dup.ID == "" || dup.ID == id || dup.Missing || root.Missing {
+		t.Fatalf("duplicate must be its own live row: root=%+v dup=%+v", root, dup)
+	}
+	if hasAlias(dup.Aliases, root.FilePath) {
+		t.Fatalf("duplicate must not claim the live file's path as history: %v", dup.Aliases)
+	}
+
+	again := commit("/lib/Show 02.mkv", "/lib/sub/Show 02.mkv")
+	if again["/lib/Show 02.mkv"].ID != id || again["/lib/sub/Show 02.mkv"].ID != dup.ID {
+		t.Fatalf("identities must be stable across rescans: %+v", again)
+	}
+
+	gone := commit("/lib/sub/Show 02.mkv") // the original copy is deleted
+	if !gone["/lib/Show 02.mkv"].Missing || gone["/lib/Show 02.mkv"].ID != id {
+		t.Fatalf("deleted original must stay as its own missing row: %+v", gone)
+	}
+	if gone["/lib/sub/Show 02.mkv"].ID != dup.ID || gone["/lib/sub/Show 02.mkv"].Missing {
+		t.Fatalf("surviving copy must keep its id: %+v", gone)
+	}
+}
