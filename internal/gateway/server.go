@@ -89,6 +89,7 @@ type Server struct {
 	watchProv     *sourcewatch.Provider
 	watchStarted  bool
 	watchDone     chan struct{}
+	watchClose    sync.Once     // watchDone is closed once, never reassigned
 	watchDebounce time.Duration // test seam: zero uses the default
 
 	// local spawns mpv/VLC on this machine for loopback browsers (D-072).
@@ -101,6 +102,7 @@ type Server struct {
 	stateKey         []byte
 	listSyncStarted  bool
 	listSyncDone     chan struct{}
+	listSyncClose    sync.Once     // listSyncDone is closed once, never reassigned
 	listSyncInterval time.Duration // test seam: zero uses the default
 
 	// components provisions external providers from <data-dir>/plugins/
@@ -114,13 +116,17 @@ func (s *Server) Close() error {
 	if s.components != nil {
 		s.components.Close()
 	}
-	if s.watchStarted && s.watchDone != nil {
-		close(s.watchDone)
-		s.watchDone = nil // Close may run twice (test cleanup)
+	// The done channels are written once in NewWithOptions and only ever
+	// closed here. watchLoop and listSyncLoop read them straight from
+	// their select, so reassigning the field after construction would
+	// race the reader — the Once absorbs a second Close (test cleanup)
+	// without touching the field. The started flags belong to scanMu and
+	// are deliberately not read here.
+	if s.watchDone != nil {
+		s.watchClose.Do(func() { close(s.watchDone) })
 	}
-	if s.listSyncStarted && s.listSyncDone != nil {
-		close(s.listSyncDone)
-		s.listSyncDone = nil
+	if s.listSyncDone != nil {
+		s.listSyncClose.Do(func() { close(s.listSyncDone) })
 	}
 	if s.reg != nil {
 		s.reg.Each(func(p core.Provider) {
