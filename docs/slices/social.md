@@ -1,6 +1,6 @@
 # Social slice — plan
 
-Status: in progress on `feat/social` (worktree `../lain-social`).
+Status: built on `feat/social` (worktree `../lain-social`), not merged.
 Authorized directly by the user (2026-10-03). No `advisor` subagent is
 available in this harness, so the slice cites existing decisions and
 records its own load-bearing choices below as `S-*` (to be promoted to
@@ -124,3 +124,26 @@ Provider unit tests (graph state machine, privacy matrix, dedupe,
 caps/pruning, validation), the shared provider contract harness, and
 gateway HTTP tests for every route including cross-user privacy and
 block behavior.
+
+## Status
+
+Built: everything above — provider, API, web hub (`/social`), profiles
+(`/u/{id}`), collection pages, the title-page panel, Settings › Privacy,
+nav badge. Covered by provider unit/contract tests, gateway HTTP tests,
+`svelte-check`, the web unit suite (i18n catalog parity) and a headless
+Chromium pass over every screen.
+
+Left:
+
+- Supervised local playback (D-072) writes progress inside
+  `plugins/localplay`, so mpv/VLC sessions started from the browser do
+  not yet produce activity rows; HTTP progress (web player, reader,
+  `lain watch`) does. Fix: have the gateway's local-playback path call
+  `recordSocialProgress`, or route it through `lain.social.activity@1`.
+- No delete-account path exists in auth (accounts are disabled, never
+  deleted), so social rows of a disabled account are hidden, not purged.
+- Backup/restore covers the social buckets through the whole-database
+  snapshot; no social-specific export.
+- Real-time delivery (the badge polls every 60 s), comment editing,
+  reactions and direct messages are out of scope.
+- `S-*` choices need `D-*` numbers when merged.
