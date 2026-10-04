@@ -33,7 +33,10 @@ export const SECTIONS: SettingsSection[] = [
 	{ href: '/settings/integrations', id: 'integrations', scope: 'server', key: 'i' },
 	{ href: '/settings/plugins', id: 'plugins', scope: 'server', key: 'x' },
 	{ href: '/settings/backup', id: 'backup', scope: 'server', key: 'b' },
-	{ href: '/settings/downloads', id: 'downloads', scope: 'server', key: 'd' }
+	{ href: '/settings/downloads', id: 'downloads', scope: 'server', key: 'd' },
+	// Kept last (not next to Security) so it does not touch lines the
+	// social slice edits; the rail groups by scope, not array order.
+	{ href: '/settings/offline', id: 'offline', scope: 'you', key: 'o' }
 ];
 
 export function visibleSections(admin: boolean): SettingsSection[] {
@@ -84,7 +87,8 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'backup', href: '/settings/backup', anchor: 'backup', keywords: 'backup snapshot database export', admin: true },
 	{ id: 'downloadQueue', href: '/settings/downloads', anchor: 'queue', keywords: 'download fetch url queue pause resume cancel', admin: true },
 	{ id: 'downloadStorage', href: '/settings/downloads', anchor: 'storage', keywords: 'download disk space usage cleanup partial', admin: true },
-	{ id: 'downloadLimits', href: '/settings/downloads', anchor: 'limits', keywords: 'download quota budget limit free space directory concurrency', admin: true }
+	{ id: 'downloadLimits', href: '/settings/downloads', anchor: 'limits', keywords: 'download quota budget limit free space directory concurrency', admin: true },
+	{ id: 'offlineStorage', href: '/settings/offline', anchor: 'storage', keywords: 'offline save download cache browser quota storage read' }
 ];
 
 /**

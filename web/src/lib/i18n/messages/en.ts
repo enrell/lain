@@ -72,7 +72,8 @@ const en = {
 			integrations: { label: 'Integrations', hint: 'OAuth apps for list sync' },
 			plugins: { label: 'Plugins', hint: 'Which provider does each job' },
 			backup: { label: 'Backup', hint: 'Database snapshot' },
-			downloads: { label: 'Downloads', hint: 'Fetch to server disk, limits' }
+			downloads: { label: 'Downloads', hint: 'Fetch to server disk, limits' },
+			offline: { label: 'Offline', hint: 'Saved in this browser' }
 		},
 		entry: {
 			displayName: 'Display name',
@@ -101,7 +102,8 @@ const en = {
 			backup: 'Download backup',
 			downloadQueue: 'Download queue',
 			downloadStorage: 'Download storage & cleanup',
-			downloadLimits: 'Download limits & quota'
+			downloadLimits: 'Download limits & quota',
+			offlineStorage: 'Offline storage in this browser'
 		},
 		interface: {
 			group: 'Interface',
@@ -238,6 +240,37 @@ const en = {
 				library: 'library default'
 			},
 			pages: { one: '{count} page', other: '{count} pages' }
+		}
+	},
+	offline: {
+		title: 'Offline — Settings — Lain',
+		save: 'Save offline',
+		saving: 'Saving {done} of {total}',
+		saved: 'Saved offline',
+		remove: 'Remove offline copy',
+		savedToast: 'Saved {name} for offline reading.',
+		removedToast: 'Removed the offline copy of {name}.',
+		quota: 'Not enough offline space: needs {need}, {budget} allowed in this browser.',
+		unsupported: 'This browser cannot keep items offline (it needs HTTPS or localhost).',
+		failed: 'Could not save offline.',
+		storage: {
+			group: 'This browser',
+			used: 'Offline storage',
+			usedHint: 'Comics and manga saved here open without the server.',
+			usedValue: '{used} of {budget}',
+			usedUnlimited: '{used}, no limit',
+			cap: 'Limit (GiB)',
+			capHint: 'At most this much, and never more than 80% of what the browser grants. 0 uses the browser’s grant only.',
+			clear: 'Remove everything',
+			clearHint: 'Deletes every offline copy kept in this browser.',
+			cleared: 'Offline storage cleared.'
+		},
+		items: {
+			group: 'Saved items',
+			empty: 'Nothing saved yet. On a comic or manga page, press {key} or choose Save offline.',
+			pages: { one: '{count} page', other: '{count} pages' },
+			open: 'Read',
+			keys: 'Focus a row: {open} reads it, {remove} removes it.'
 		}
 	}
 } as const;

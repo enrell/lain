@@ -55,3 +55,12 @@ acquisition branch point" (none so far).
 ### After the acquisition branch point (`c77ae57`)
 
 - None to `internal/downloads` or `internal/offline`.
+
+## Browser offline (see `web-offline.md`)
+
+| File | Change | Conflict risk |
+| --- | --- | --- |
+| `web/svelte.config.js` | `kit.serviceWorker.register: false` — the new `src/service-worker.ts` is registered by the app only after the user saves something offline. | Low, but any other slice adding a service worker must share this one (one worker per scope). |
+| `web/src/lib/settings/sections.ts` | YOU section `offline` (chord `g o`) and palette entry `offlineStorage`, both appended at the **end** of their arrays (the rail groups by scope) to stay away from social's `privacy` lines. | Low. |
+| `web/src/lib/i18n/messages/en.ts` | `settings.section.offline`, `settings.entry.offlineStorage`, new top-level `offline` namespace. | Low. |
+| `web/src/routes/item/[id]/+page.svelte` | The two `ComicInfoPanel` lines now pass `{item}` instead of `itemId`. The panel binds **`o`** (save/remove offline) on `/item/{id}` for comics and manga; social's keys there are `r s c f m`. | Low. |

@@ -137,16 +137,26 @@ Smoke-tested against a real `lain serve`: a 738-byte cbz downloaded into
 a manga library was rescanned into a readable `rtl` item with its
 ComicInfo, then copied offline with the CLI and removed again.
 
-## Left for later
+## Round 2 (2026-10-03)
 
-- A web "Download" button on the title/item page (`/stream?download=1`)
-  and a web offline library (service worker/OPFS). Skipped here to avoid
-  colliding with the social slice on the item page.
-- Showing ComicInfo (summary, writer, artist) on the title page.
+- Server downloads retry transient failures (network, 5xx, 408/429,
+  dropped transfers) with exponential backoff and jitter, honoring
+  `Retry-After`; retries resume by byte range, also from origins with no
+  validator when they advertise ranges and the total still matches.
+  `max_retries` is a setting (default 5; Settings › Downloads).
+- `lain watch --dry-run` names the offline copy it would play.
+- The title page shows ComicInfo (series, number, volume, writer,
+  artist, publisher, year, language, genres, summary, reading direction
+  and where it comes from) in a self-contained panel.
+- Browser offline reading: plan and first cut in `web-offline.md`.
+
+## Left for later (superseded items struck by round 2)
+
+- A web "Download" button on the title/item page (`/stream?download=1`),
+  held until the social branch lands. Browser offline beyond comics and
+  manga: see `web-offline.md`.
 - Desktop offline copies (`lain-desktop`, D-013).
-- Automatic retry with backoff for transient HTTP failures (a failed job
-  is resumed by hand today).
-- `lain watch --dry-run` still prints "[authenticated stream URL]" when it
-  would play a local copy.
+- Retries for the CLI offline store (`lain download run` resumes by
+  range but does not retry on its own).
 - Register the proposed decisions P-1…P-6 as `D-XXX` at merge time
   (advisor protocol could not run in this session).
