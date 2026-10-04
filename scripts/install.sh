@@ -20,6 +20,11 @@ SERVER_REPO='enrell/lain'
 DESKTOP_REPO='enrell/lain-desktop'
 GITHUB='https://github.com'
 DOCKER_IMAGE='ghcr.io/enrell/lain'
+# The filename-parser model Lain needs lives on Hugging Face; its own
+# installer verifies every file's sha256 against the channel manifest.
+PARSER_HF_REPO="${LAIN_PARSER_HF_REPO:-Enrell/lain-parser}"
+PARSER_UNIT='lain-parser.service'
+PARSER_PREFIX="${LAIN_PARSER_PREFIX:-${HOME}/.local/share/lain-parser}"
 DEFAULT_VERSION='latest'
 CONTAINER_PORT='9360'
 CONTAINER_DATA_DIR='/data'
@@ -43,6 +48,8 @@ REMOVE_IMAGE=0
 SERVER=''
 DESKTOP=''
 MODE=''
+PARSER=1
+PARSER_ONLY=0
 VERSION="$DEFAULT_VERSION"
 VERSION_SET=0
 PORT="$DEFAULT_PORT"
@@ -1291,6 +1298,47 @@ install_desktop() {
   return 1
 }
 
+# --- Filename parser (model) -----------------------------------------------
+
+# Fetches the parser's bootstrap files (installer + vendored app) from the
+# Hugging Face repo and runs its installer, which downloads the model,
+# verifies hashes, builds a CPU venv and starts a systemd user unit. The
+# socket lands in the data dir so a Docker container sees /data/parser.sock.
+install_parser() {
+  local base="https://huggingface.co/${PARSER_HF_REPO}"
+  local dir='' list='' rel='' args=()
+  step "Filename parser model (${PARSER_HF_REPO})"
+  command -v python3 >/dev/null 2>&1 || { warn "python3 is required for the parser model"; return 1; }
+  command -v curl >/dev/null 2>&1 || { warn "curl is required for the parser model"; return 1; }
+  ensure_tmp
+  dir="${TMP_DIR}/lain-parser"
+  mkdir -p -- "$dir" || return 1
+  if ! list="$(curl -fsSL --proto '=https' --retry 3 --connect-timeout 15 \
+      "https://huggingface.co/api/models/${PARSER_HF_REPO}/tree/main/app?recursive=true" 2>/dev/null |
+      python3 -c 'import json,sys; [print(e["path"]) for e in json.load(sys.stdin) if e["type"]=="file"]')" \
+      || [[ -z "$list" ]]; then
+    warn "could not list the parser app files on Hugging Face"
+    return 1
+  fi
+  for rel in install.sh requirements.txt $list; do
+    mkdir -p -- "${dir}/$(dirname "$rel")" || return 1
+    download "${base}/resolve/main/${rel}" "${dir}/${rel}" || {
+      warn "download failed: ${rel}"
+      return 1
+    }
+  done
+  args=(--prefix "$PARSER_PREFIX" --socket "${DATA_DIR}/parser.sock")
+  command -v systemctl >/dev/null 2>&1 || args+=(--no-start)
+  mkdir -p -- "$DATA_DIR" || return 1
+  if ! bash "${dir}/install.sh" "${args[@]}"; then
+    warn "parser install failed; re-run: bash install.sh --parser-only"
+    return 1
+  fi
+  add_note "parser model installed (${PARSER_PREFIX}); socket ${DATA_DIR}/parser.sock"
+  add_next "update the model later with: bash install.sh --parser-only"
+  return 0
+}
+
 # --- Interactive configuration ---------------------------------------------
 
 choose_components() {
@@ -1697,6 +1745,20 @@ remove_empty_dir() {
   return 0
 }
 
+remove_parser() {
+  local unit_file="${HOME}/.config/systemd/user/${PARSER_UNIT}"
+  [[ -f "$unit_file" ]] || return 0
+  if command -v systemctl >/dev/null 2>&1 && confirm "Stop and disable the parser service?" y; then
+    systemctl --user disable --now "$PARSER_UNIT" || warn "could not stop ${PARSER_UNIT}"
+  fi
+  if [[ "$UNINSTALL_LEVEL" != 'stop' ]] && confirm "Remove the parser model and venv (${PARSER_PREFIX})?" y; then
+    rm -f -- "$unit_file" "${unit_file}.bak"
+    rm -rf -- "$PARSER_PREFIX"
+    command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload || true
+  fi
+  return 0
+}
+
 uninstall_all() {
   local compose_file="${COMPOSE_DIR}/docker-compose.yml"
   local env_file="${COMPOSE_DIR}/.env"
@@ -1709,6 +1771,7 @@ uninstall_all() {
   info "Data: ${DATA_DIR} (media is never touched)"
   stop_container
   disable_user_service
+  remove_parser
   if [[ "$UNINSTALL_LEVEL" == 'stop' ]]; then
     info "stopped only; everything is still installed"
     info "resume with: cd \"${COMPOSE_DIR}\" && docker compose up -d"
@@ -1797,6 +1860,9 @@ Server options:
                           (default: ~/Videos when it exists)
   --port PORT             HTTP port (default: 9360)
   --compose-dir DIR       where docker-compose.yml is written (default: ~/.lain)
+  --no-parser             skip the filename-parser model (installed by default
+                          with the server, from Hugging Face Enrell/lain-parser)
+  --parser-only           install or update only the parser model
 
 General options:
   --install-dir DIR       binary install directory (default: ~/.local/bin)
@@ -1832,6 +1898,8 @@ parse_args() {
       --both) SERVER=1; DESKTOP=1; shift ;;
       --no-server) SERVER=0; shift ;;
       --no-desktop) DESKTOP=0; shift ;;
+      --no-parser) PARSER=0; shift ;;
+      --parser-only) PARSER_ONLY=1; shift ;;
       --server-mode)
         if (($# < 2)) || [[ -z "$2" ]]; then
           die "--server-mode needs a value (docker, binary or daemon)"
@@ -2023,6 +2091,11 @@ main() {
     uninstall_all
     exit 0
   fi
+  if [[ "$PARSER_ONLY" -eq 1 ]]; then
+    install_parser || exit 1
+    print_summary
+    exit 0
+  fi
   if [[ -z "$SERVER" && -z "$DESKTOP" ]]; then
     if [[ "$INTERACTIVE" -eq 1 ]]; then
       choose_components
@@ -2093,6 +2166,12 @@ main() {
         fi
         ;;
     esac
+  fi
+  if [[ "$want_server" -eq 1 && "$PARSER" -eq 1 ]]; then
+    if ! install_parser; then
+      FAILURES+=('filename parser model')
+      rc=1
+    fi
   fi
   if [[ "$want_desktop" -eq 1 ]]; then
     if ! install_desktop; then
