@@ -185,7 +185,7 @@ func waitGrab(t *testing.T, m *Manager, id string, states ...string) Grab {
 
 func (w *world) assertImported(t *testing.T) {
 	t.Helper()
-	for i, name := range []string{"SHOW - 01.mkv", "SHOW - 02.mkv"} {
+	for i, name := range []string{"[Fansub-A] SHOW - 01.mkv", "[Fansub-A] SHOW - 02.mkv"} {
 		got, err := os.ReadFile(filepath.Join(w.lib.Path, "SHOW", name))
 		if err != nil || !bytes.Equal(got, w.files[i].Data) {
 			t.Fatalf("%s: %v", name, err)
@@ -260,7 +260,7 @@ func TestSeedingStopsAtRatio(t *testing.T) {
 	waitGrab(t, m, g.ID, GrabSeeding)
 	w.assertImported(t)
 	// Hardlinked: the library file and the seeding copy share an inode.
-	a, _ := os.Stat(filepath.Join(w.lib.Path, "SHOW", "SHOW - 01.mkv"))
+	a, _ := os.Stat(filepath.Join(w.lib.Path, "SHOW", "[Fansub-A] SHOW - 01.mkv"))
 	b, _ := os.Stat(filepath.Join(m.Settings().Dir, g.ID, w.mi.Info.Name, w.files[0].Path[0]))
 	if !os.SameFile(a, b) {
 		t.Fatal("import must hardlink on the same filesystem")
@@ -283,7 +283,7 @@ func TestSeedingStopsAtRatio(t *testing.T) {
 	if final.Uploaded < final.Size || !final.DataRemoved {
 		t.Fatalf("ratio stop: %+v", final)
 	}
-	if _, err := os.Stat(filepath.Join(w.lib.Path, "SHOW", "SHOW - 01.mkv")); err != nil {
+	if _, err := os.Stat(filepath.Join(w.lib.Path, "SHOW", "[Fansub-A] SHOW - 01.mkv")); err != nil {
 		t.Fatal("removing the seeding copy must keep the library file")
 	}
 }

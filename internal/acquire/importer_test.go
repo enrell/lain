@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/enrell/lain/internal/contracts"
+	"github.com/enrell/lain/internal/plugins/identify"
 	"github.com/enrell/lain/internal/plugins/release"
 )
 
@@ -32,9 +33,9 @@ func TestPlanImportNaming(t *testing.T) {
 		want   []string
 	}{
 		{"anime", []string{"[Fansub-A] Sousou no Frieren - 05 [1080p].mkv"}, "[Fansub-A] Sousou no Frieren - 05 [1080p]", nil,
-			[]string{"Sousou no Frieren/Sousou no Frieren - 05.mkv"}},
+			[]string{"Sousou no Frieren/[Fansub-A] Sousou no Frieren - 05.mkv"}},
 		{"anime", []string{"[Fansub-A] One Piece - 1100 [720p].mkv"}, "[Fansub-A] One Piece - 1100", []string{"ONE PIECE"},
-			[]string{"ONE PIECE/ONE PIECE - 1100.mkv"}},
+			[]string{"ONE PIECE/[Fansub-A] ONE PIECE - 1100.mkv"}},
 		{"series", []string{"Show.Name.S01E02.1080p.WEB-DL.x264-GRP.mkv", "Show.Name.S01E03.1080p.WEB-DL.x264-GRP.mkv", "sample.mkv"},
 			"Show.Name.S01.1080p.WEB-DL.x264-GRP", []string{"Show: Name"},
 			[]string{"Show Name/Season 01/Show Name - S01E02.mkv", "Show Name/Season 01/Show Name - S01E03.mkv"}},
@@ -44,6 +45,10 @@ func TestPlanImportNaming(t *testing.T) {
 			[]string{"Frieren/Frieren v01 c001.cbz"}},
 		{"comic", []string{"Saga 054.cbr"}, "Saga #054 (2018)", nil,
 			[]string{"Saga/Saga c054.cbr"}},
+		{"anime", []string{"Show - 07.mkv"}, "Show - 07 [1080p]", nil,
+			[]string{"Show/Show - S00E07.mkv"}},
+		{"series", []string{"Show.S02E05E06.720p.mkv"}, "Show.S02E05E06.720p", nil,
+			[]string{"Show/Season 02/Show - S02E05-E06.mkv"}},
 	}
 	for i, c := range cases {
 		lib := contracts.Library{ID: "lib", Type: c.kind, Path: filepath.Join(t.TempDir(), "lib")}
@@ -148,5 +153,54 @@ func TestSettingsValidate(t *testing.T) {
 		if _, err := v.Validate(); CodeOf(err) != CodeInvalid {
 			t.Errorf("accepted %+v", v)
 		}
+	}
+}
+
+// TestImportedNamesRoundTrip proves every name the importer writes is
+// read back by Lain's own identifiers as the same title and numbers —
+// otherwise an import would land in the catalog as an unknown video.
+func TestImportedNamesRoundTrip(t *testing.T) {
+	cases := []struct {
+		kind string
+		r    contracts.Release
+	}{
+		{"anime", contracts.Release{Title: "Sousou no Frieren", Episodes: []int{5}, Absolute: true, Group: "Fansub-A"}},
+		{"anime", contracts.Release{Title: "One Piece", Episodes: []int{1100}, Absolute: true, Group: "Fansub-B"}},
+		{"anime", contracts.Release{Title: "Show", Episodes: []int{7}, Absolute: true}},
+		{"anime", contracts.Release{Title: "Show", Episodes: []int{1, 2}, Absolute: true, Group: "Fansub-A"}},
+		{"anime", contracts.Release{Title: "Show", Season: 2, Episodes: []int{3}}},
+		{"series", contracts.Release{Title: "Show Name", Season: 1, Episodes: []int{2}}},
+		{"series", contracts.Release{Title: "Show Name", Season: 1, Episodes: []int{5, 6}}},
+		{"manga", contracts.Release{Title: "Frieren", Volume: 1, Chapter: 1}},
+		{"manga", contracts.Release{Title: "Frieren", Volume: 3}},
+		{"comic", contracts.Release{Title: "Saga", Chapter: 54}},
+	}
+	for _, c := range cases {
+		ext := ".mkv"
+		if readingKind(c.kind) {
+			ext = ".cbz"
+		}
+		rel := destination(c.kind, c.r.Title, c.r, "x"+ext)
+		cand := contracts.Candidate{Path: filepath.Join("/lib", rel), LibraryType: c.kind}
+		if readingKind(c.kind) {
+			p := identify.IdentifyComic(cand)
+			if p.Title != c.r.Title || p.Season != c.r.Volume || p.Episode != c.r.Chapter {
+				t.Errorf("%s -> %+v", rel, p)
+			}
+			continue
+		}
+		p, ok := identify.IdentifyAnime(cand)
+		season := c.r.Season
+		if c.r.Absolute {
+			season = 0
+		}
+		if !ok || p.Title != c.r.Title || p.Season != season || p.Episode != c.r.Episodes[0] {
+			t.Errorf("%s -> ok=%v %+v", rel, ok, p)
+		}
+	}
+	// Movies are identified by the generic fallback from their folder name.
+	rel := destination("movie", "Movie Title", contracts.Release{Year: 2019}, "x.mkv")
+	if p := identify.IdentifyGeneric(contracts.Candidate{Path: filepath.Join("/lib", rel)}); p.Title != "Movie Title" {
+		t.Errorf("%s -> %+v", rel, p)
 	}
 }
