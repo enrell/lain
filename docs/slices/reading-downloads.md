@@ -108,3 +108,45 @@ Errors carry `{error, code}`; codes: `invalid-request` 400, `not-found`
 `library_id` lands in that library's root and triggers a rescan of that
 library when it finishes. Defaults: 20 GiB budget, 5 GiB free-space
 floor, 2 concurrent, records kept 30 days.
+
+## Status (2026-10-03)
+
+Built on `feat/reading-downloads`:
+
+- ComicInfo.xml parsed from cbz (stdlib) and cbr/cb7 (bsdtar/7z), capped
+  and sanitized, fuzzed (`FuzzParseInfo`); rides on `ComicPages.info` and
+  the reader view; an archive declaring right-to-left wins over the
+  library default.
+- `internal/downloads`: resumable fetcher (Range + If-Range, restart on a
+  changed origin or ignored Range, 416 = already complete), `Limits`
+  (byte budget + free-space floor), safe names, and the server manager
+  (FIFO queue, bounded concurrency, pause/resume/cancel that answer with
+  the settled state, restart resumes from `.part`, quota accounting that
+  counts a running job's full size, cleanup that never deletes finished
+  files).
+- Gateway admin routes (table above) and `?download=1` on streams.
+- `internal/offline` + `lain download …`: client store with its own
+  limits, LRU eviction of watched and synced copies, single-writer lock,
+  offline progress kept and synced; `lain watch` plays a local copy when
+  one exists.
+- Web: SERVER › Downloads (`g d`, three Ctrl+K entries) — queue with row
+  keys (`/`, `p`, `c`, `Delete`, `j`/`k`), storage usage, cleanup, and
+  limits staged behind Ctrl+S.
+
+Smoke-tested against a real `lain serve`: a 738-byte cbz downloaded into
+a manga library was rescanned into a readable `rtl` item with its
+ComicInfo, then copied offline with the CLI and removed again.
+
+## Left for later
+
+- A web "Download" button on the title/item page (`/stream?download=1`)
+  and a web offline library (service worker/OPFS). Skipped here to avoid
+  colliding with the social slice on the item page.
+- Showing ComicInfo (summary, writer, artist) on the title page.
+- Desktop offline copies (`lain-desktop`, D-013).
+- Automatic retry with backoff for transient HTTP failures (a failed job
+  is resumed by hand today).
+- `lain watch --dry-run` still prints "[authenticated stream URL]" when it
+  would play a local copy.
+- Register the proposed decisions P-1…P-6 as `D-XXX` at merge time
+  (advisor protocol could not run in this session).
