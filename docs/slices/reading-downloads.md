@@ -89,3 +89,22 @@ answer ("both") is the source for scope.
 - Torrent or indexer sources (would need dependencies and touch D-010).
 - PDF reading (D-085 excludes it).
 - Automatic deletion of finished library files (Q-040).
+
+## Server download API (admin only)
+
+| Route | Body / result |
+| --- | --- |
+| `GET /api/downloads` | `{jobs, usage, settings}` — jobs newest first |
+| `POST /api/downloads` | `{url, name?, library_id?}` → `201` job (`queued`) |
+| `GET /api/downloads/{id}` | job |
+| `POST /api/downloads/{id}/pause\|resume\|cancel` | job |
+| `DELETE /api/downloads/{id}` | forget a done/failed/canceled job (file stays) |
+| `GET/PUT /api/downloads/settings` | `{dir, max_bytes, min_free_bytes, concurrency, keep_finished_days}` |
+| `POST /api/downloads/cleanup` | `{parts, records, freed_bytes}` |
+| `GET /api/items/{id}/stream?download=1` | original file as an attachment (browser offline copy) |
+
+Errors carry `{error, code}`; codes: `invalid-request` 400, `not-found`
+404, `invalid-state` 409, `quota-exceeded`/`disk-full` 507. A job with
+`library_id` lands in that library's root and triggers a rescan of that
+library when it finishes. Defaults: 20 GiB budget, 5 GiB free-space
+floor, 2 concurrent, records kept 30 days.
