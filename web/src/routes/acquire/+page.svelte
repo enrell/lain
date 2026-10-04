@@ -2,8 +2,9 @@
 	/*
 	 * Acquire (docs/slices/acquisition.md): search indexers, grab a
 	 * release into a library, watch the queue. Admin only (A-9).
-	 * Keys: 1 search, 2 queue, / focuses the active tab's input.
-	 * Result rows: Enter grabs, j/k move. Queue rows: p pause/resume,
+	 * Keys: 1 search, 2 queue, 3 wanted, 4 blocklist, / focuses the active
+	 * tab's input. Result rows: Enter grabs, m monitors the title, j/k
+	 * move. Queue rows: p pause/resume,
 	 * i retry the import, Delete removes, j/k move.
 	 */
 	import { onDestroy, onMount, tick } from 'svelte';
@@ -20,9 +21,14 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatBytes, formatRelative } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import BlocklistTab from '$lib/components/acquire/BlocklistTab.svelte';
+	import WantedTab from '$lib/components/acquire/WantedTab.svelte';
 
-	type Tab = 'search' | 'queue';
-	const tab = $derived<Tab>(page.url.searchParams.get('tab') === 'queue' ? 'queue' : 'search');
+	type Tab = 'search' | 'queue' | 'wanted' | 'blocklist';
+	const TABS: Tab[] = ['search', 'queue', 'wanted', 'blocklist'];
+	const tab = $derived<Tab>(TABS.find((x) => x === page.url.searchParams.get('tab')) ?? 'search');
+	// A title handed from a search result to the Monitor dialog.
+	let monitorPrefill = $state('');
 
 	let libraries = $state<Library[]>([]);
 	let indexers = $state<Indexer[]>([]);
@@ -186,6 +192,10 @@
 		if (e.key === 'Enter' || e.key === 'g') {
 			e.preventDefault();
 			askGrab(c);
+		} else if (e.key === 'm') {
+			e.preventDefault();
+			monitorPrefill = c.release.title;
+			setTab('wanted');
 		}
 	}
 
@@ -211,9 +221,10 @@
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
 		if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
-		if (e.key === '1' || e.key === '2') {
+		const n = Number(e.key);
+		if (n >= 1 && n <= TABS.length) {
 			e.preventDefault();
-			setTab(e.key === '1' ? 'search' : 'queue');
+			setTab(TABS[n - 1]);
 		} else if (e.key === '/') {
 			e.preventDefault();
 			await tick();
@@ -241,7 +252,7 @@
 	</header>
 
 	<div class="flex gap-6 border-b border-hairline" role="tablist" aria-label={t('acquire.heading')}>
-		{#each [{ id: 'search', key: '1', label: t('acquire.tab.search') }, { id: 'queue', key: '2', label: t('acquire.tab.queue') }] as x (x.id)}
+		{#each [{ id: 'search', key: '1', label: t('acquire.tab.search') }, { id: 'queue', key: '2', label: t('acquire.tab.queue') }, { id: 'wanted', key: '3', label: t('acquire.tab.wanted') }, { id: 'blocklist', key: '4', label: t('acquire.tab.blocklist') }] as x (x.id)}
 			<button type="button" role="tab" aria-selected={tab === x.id} onclick={() => setTab(x.id as Tab)}
 				class="-mb-px flex items-center gap-2 border-b-2 pb-2 text-sm transition-colors {tab === x.id ? 'border-accent text-foreground' : 'border-transparent text-muted hover:text-foreground'}">
 				{x.label}
@@ -313,6 +324,10 @@
 				</div>
 			{/if}
 		{/if}
+	{:else if tab === 'wanted'}
+		<WantedTab {libraries} bind:prefill={monitorPrefill} />
+	{:else if tab === 'blocklist'}
+		<BlocklistTab />
 	{:else}
 		<form class="flex flex-wrap items-end gap-3" onsubmit={grabLink}>
 			<label class="block min-w-0 flex-1 space-y-1.5">
