@@ -59,6 +59,11 @@ type Deps struct {
 	// EpisodeCount asks metadata providers for a title's episode total
 	// (0 = unknown). Optional; A-18.
 	EpisodeCount func(title, kind string) int
+	// Phase 3 (subtitles): the media probe (duration, stream languages)
+	// and the lain.subtitle@1 calls. All optional.
+	Probe            func(path string) (contracts.MediaInfo, error)
+	SubtitleSearch   func(contracts.SubtitleSearchInput) ([]contracts.SubtitleCandidate, error)
+	SubtitleDownload func(contracts.SubtitleDownloadInput) (contracts.SubtitleDownloadOutput, error)
 }
 
 // Manager runs acquisition.
@@ -862,6 +867,14 @@ func (m *Manager) runImport(id string) {
 	}
 	_ = m.st.putGrab(g)
 	m.log.Info("grab imported", "grab", g.ID, "files", len(g.Imported), "state", g.State)
+	// Subtitles for a monitored title follow its import (A-36).
+	if g.MonitoredID != "" && m.d.SubtitleSearch != nil {
+		m.wg.Add(1)
+		go func(g Grab) {
+			defer m.wg.Done()
+			m.subtitlesAfterImport(g)
+		}(g)
+	}
 }
 
 // importFailed keeps the data so the import can be retried by hand.

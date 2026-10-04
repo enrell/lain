@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/enrell/lain/internal/contracts"
+	"github.com/enrell/lain/internal/subtitle"
 )
 
 // Quality profiles and the one decision engine (A-19, A-20). Every
@@ -38,7 +39,21 @@ type Profile struct {
 	MinSizeMB    int  `json:"min_size_mb"`
 	MaxSizeMB    int  `json:"max_size_mb"`
 	PreferProper bool `json:"prefer_proper"`
+	// Subtitles (A-32): wanted languages (ISO 639-2/T, ordered; empty =
+	// no subtitle automation); by default a language whose audio is
+	// present needs no subtitle (D-071) unless SubtitleEvenWithAudio;
+	// SubtitleHI is "include" (default), "prefer" or "exclude".
+	SubtitleLanguages     []string `json:"subtitle_languages"`
+	SubtitleEvenWithAudio bool     `json:"subtitle_even_with_audio"`
+	SubtitleHI            string   `json:"subtitle_hi"`
 }
+
+// Hearing-impaired preferences.
+const (
+	HIInclude = "include"
+	HIPrefer  = "prefer"
+	HIExclude = "exclude"
+)
 
 // DefaultProfile is created on first use: 720p or better, upgrade to
 // 1080p, at least one seeder.
@@ -113,6 +128,24 @@ func (p Profile) Validate() (Profile, error) {
 	}
 	if p.MaxSizeMB > 0 && p.MinSizeMB > p.MaxSizeMB {
 		return p, errf(CodeInvalid, "minimum size is above the maximum")
+	}
+	langs := []string{}
+	for _, l := range cleanList(p.SubtitleLanguages, 10) {
+		code := subtitle.Language(l)
+		if code == "" {
+			return p, errf(CodeInvalid, "unknown subtitle language %q", l)
+		}
+		if rankOf(langs, code) < 0 {
+			langs = append(langs, code)
+		}
+	}
+	p.SubtitleLanguages = langs
+	switch p.SubtitleHI {
+	case "":
+		p.SubtitleHI = HIInclude
+	case HIInclude, HIPrefer, HIExclude:
+	default:
+		return p, errf(CodeInvalid, "subtitle_hi must be include, prefer or exclude")
 	}
 	return p, nil
 }

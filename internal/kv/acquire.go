@@ -17,9 +17,14 @@ var (
 	BAcqBlocklist = []byte("acq_blocklist")
 	// BAcqQuality is the import ledger: library path → resolution.
 	BAcqQuality = []byte("acq_quality")
+	// Phase 3 (subtitles): provider accounts, the ledger of sidecars
+	// Lain wrote, and provider files refused by the sync check.
+	BAcqSubProviders = []byte("acq_subproviders")
+	BAcqSubtitles    = []byte("acq_subtitles")
+	BAcqSubBlock     = []byte("acq_subblock")
 )
 
 // AcquireBuckets lists every acquisition bucket.
 func AcquireBuckets() [][]byte {
-	return [][]byte{BAcqIndexers, BAcqGrabs, BAcqSettings, BAcqTorrents, BAcqMonitored, BAcqProfiles, BAcqBlocklist, BAcqQuality}
+	return [][]byte{BAcqIndexers, BAcqGrabs, BAcqSettings, BAcqTorrents, BAcqMonitored, BAcqProfiles, BAcqBlocklist, BAcqQuality, BAcqSubProviders, BAcqSubtitles, BAcqSubBlock}
 }

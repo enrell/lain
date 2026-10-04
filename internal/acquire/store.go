@@ -37,6 +37,8 @@ const (
 	CodeImport      = "import-failed"
 	CodeNoLibrary   = "no-library"
 	CodeStalled     = "stalled"
+	// CodeSubtitleMismatch: a subtitle failed the sync check (A-33).
+	CodeSubtitleMismatch = "subtitle-mismatch"
 )
 
 // Error is a typed acquisition error.
@@ -97,6 +99,9 @@ type Settings struct {
 	RSSMinutes  int  `json:"rss_minutes"`
 	SearchHours int  `json:"search_hours"`
 	StallHours  int  `json:"stall_hours"`
+	// SubtitleHours is the subtitle search period for monitored titles
+	// (A-36; 0 = on demand and after imports only).
+	SubtitleHours int `json:"subtitle_hours"`
 }
 
 // DefaultSettings fit the current small disk: seed to 1.0 or a day.
@@ -104,7 +109,7 @@ func DefaultSettings(dataDir string) Settings {
 	return Settings{
 		Dir: filepath.Join(dataDir, "acquire"), ListenPort: 51413, MaxActive: 3, MaxPeers: 40,
 		SeedRatio: 1.0, SeedMinutes: 24 * 60, RemoveAfterSeeding: true, ImportMode: ImportHardlink,
-		RSSMinutes: 30, SearchHours: 12, StallHours: 6,
+		RSSMinutes: 30, SearchHours: 12, StallHours: 6, SubtitleHours: 24,
 	}
 }
 
@@ -137,6 +142,8 @@ func (s Settings) Validate() (Settings, error) {
 		return s, errf(CodeInvalid, "search_hours must be 0-168")
 	case s.StallHours < 0 || s.StallHours > 168:
 		return s, errf(CodeInvalid, "stall_hours must be 0-168")
+	case s.SubtitleHours < 0 || s.SubtitleHours > 720:
+		return s, errf(CodeInvalid, "subtitle_hours must be 0-720")
 	}
 	switch s.ImportMode {
 	case ImportHardlink, ImportCopy, ImportMove:
