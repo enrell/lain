@@ -411,6 +411,9 @@ func playOne(client *apiClient, cfg clientConfig, item apiItem, dry bool) (playe
 
 func playOneWithPlayer(client *apiClient, cfg clientConfig, item apiItem, player string, dry bool) (playedResult, error) {
 	streamURL := cfg.Server + "/api/items/" + url.PathEscape(item.ID) + "/stream?token=" + url.QueryEscape(cfg.Token)
+	if local := localCopyPath(item.ID); local != "" {
+		streamURL = local // an offline copy (lain download) needs no network
+	}
 	label := item.Title
 	if item.Episode > 0 {
 		label = fmt.Sprintf("%s S%02dE%02d", item.Title, item.Season, item.Episode)
