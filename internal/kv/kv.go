@@ -27,6 +27,9 @@ var (
 	BCache        = []byte("metadata_cache")
 	BList         = []byte("list")
 	BListAccounts = []byte("list_accounts")
+	// BDownloads holds server download jobs and their settings
+	// (internal/downloads).
+	BDownloads = []byte("downloads")
 )
 
 // Open opens (creating if needed) the database file with owner-only
@@ -41,7 +44,7 @@ func Open(dataDir string) (*bolt.DB, error) {
 		return nil, err
 	}
 	err = db.Update(func(tx *bolt.Tx) error {
-		for _, b := range [][]byte{BUsers, BUsersByName, BLibraries, BItems, BItemsByLib, BProgress, BMeta, BEnrich, BCache, BList, BListAccounts} {
+		for _, b := range [][]byte{BUsers, BUsersByName, BLibraries, BItems, BItemsByLib, BProgress, BMeta, BEnrich, BCache, BList, BListAccounts, BDownloads} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("bucket %s: %w", b, err)
 			}
