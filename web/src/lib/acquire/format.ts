@@ -1,4 +1,4 @@
-import type { AcquireSettings, Grab, GrabState, Release } from '$lib/api';
+import type { AcquireSettings, Grab, GrabState, Numbering, Release, SeasonStart, SeasonWant, Unit } from '$lib/api';
 
 const pad = (n: number, w = 2) => String(n).padStart(w, '0');
 
@@ -66,3 +66,65 @@ export function settingsChanges(saved: AcquireSettings, draft: AcquireSettings):
 
 /** Search kind for a library type (the server maps it to t=tvsearch, …). */
 export const LIBRARY_KINDS = ['anime', 'series', 'movie', 'manga', 'comic'] as const;
+
+/** "1:1, 2:13" -> season starts; null on junk. */
+export function parseSeasonMap(raw: string): SeasonStart[] | null {
+	const out: SeasonStart[] = [];
+	for (const part of raw.split(/[\s,]+/).filter(Boolean)) {
+		const m = /^(\d+):(\d+)$/.exec(part);
+		if (!m) return null;
+		out.push({ season: Number(m[1]), first: Number(m[2]) });
+	}
+	return out;
+}
+
+export function formatSeasonMap(map: SeasonStart[] | undefined): string {
+	return (map ?? []).map((s) => `${s.season}:${s.first}`).join(', ');
+}
+
+/** "1:1-12, 2:1-" (or "2" for all of season 2) -> monitored seasons; null on junk. */
+export function parseSeasonWants(raw: string): SeasonWant[] | null {
+	const out: SeasonWant[] = [];
+	for (const part of raw.split(/[\s,]+/).filter(Boolean)) {
+		const m = /^(\d+)(?::(\d+)-(\d*))?$/.exec(part);
+		if (!m) return null;
+		const from = m[2] ? Number(m[2]) : 1;
+		const to = m[3] ? Number(m[3]) : 0;
+		if (to && to < from) return null;
+		out.push({ season: Number(m[1]), from, to });
+	}
+	return out;
+}
+
+export function formatSeasonWants(list: SeasonWant[] | undefined): string {
+	return (list ?? []).map((s) => `${s.season}:${s.from}-${s.to ? s.to : ''}`).join(', ');
+}
+
+/** A unit in the title's own notation (technical, untranslated). */
+export function unitLabel(u: Unit, numbering: Numbering): string {
+	switch (numbering) {
+		case 'seasonal':
+			return u.number === 0 ? `S${pad(u.season)}` : `S${pad(u.season)}E${pad(u.number)}`;
+		case 'chapter':
+			return `c${pad(u.number, 3)}`;
+		case 'volume':
+			return `v${pad(u.number)}`;
+		case 'movie':
+			return '';
+		default:
+			return pad(u.number);
+	}
+}
+
+/** Runs of consecutive units shown as ranges: "01–03, 07". */
+export function compressUnits(units: Unit[], numbering: Numbering): string {
+	const parts: string[] = [];
+	for (let i = 0; i < units.length; ) {
+		let j = i;
+		while (j + 1 < units.length && units[j + 1].season === units[i].season && units[j + 1].number === units[j].number + 1) j++;
+		const a = unitLabel(units[i], numbering);
+		parts.push(j > i ? `${a}–${unitLabel(units[j], numbering)}` : a);
+		i = j + 1;
+	}
+	return parts.join(', ');
+}

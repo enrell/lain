@@ -140,6 +140,10 @@ export interface AcquireSettings {
 	seed_minutes: number;
 	remove_after_seeding: boolean;
 	import_mode: 'hardlink' | 'copy' | 'move';
+	automation: boolean;
+	rss_minutes: number;
+	search_hours: number;
+	stall_hours: number;
 }
 
 export interface AcquireUsage {
@@ -162,6 +166,105 @@ export interface SearchParams {
 	season?: number;
 	episode?: number;
 	year?: number;
+}
+
+// ---- Phase 2: automation ----
+
+export type Numbering = 'absolute' | 'seasonal' | 'chapter' | 'volume' | 'movie';
+
+export interface Unit {
+	season: number;
+	number: number;
+}
+
+export interface SeasonStart {
+	season: number;
+	first: number;
+}
+
+export interface SeasonWant {
+	season: number;
+	from: number;
+	to?: number;
+}
+
+export interface Monitored {
+	id: string;
+	library_id: string;
+	kind: string;
+	title: string;
+	aliases: string[];
+	year?: number;
+	profile_id: string;
+	numbering: Numbering;
+	season_map?: SeasonStart[];
+	from?: number;
+	to?: number;
+	seasons?: SeasonWant[];
+	metadata_episodes?: number;
+	enabled: boolean;
+	last_search_at?: number;
+	created_at: number;
+}
+
+export interface Wanted {
+	missing: Unit[];
+	open_from?: Unit;
+	open_seasons?: Record<string, number>;
+	upgrades: { unit: Unit; quality: string; path: string }[];
+	present: number;
+}
+
+export interface WantedRow extends Monitored {
+	wanted: Wanted;
+	missing_count: number;
+	upgrade_count: number;
+}
+
+export interface AutomationState {
+	enabled: boolean;
+	paused?: string;
+	last_rss_at?: number;
+}
+
+export interface AutomationReport {
+	grabbed: string[];
+	considered: number;
+	rejected: number;
+	paused?: string;
+	failures?: { indexer_id: string; name: string; error: string }[];
+}
+
+export interface Profile {
+	id: string;
+	name: string;
+	resolutions: string[];
+	sources: string[];
+	cutoff: string;
+	preferred_groups: string[];
+	blocked_groups: string[];
+	blocked_words: string[];
+	min_seeders: number;
+	min_size_mb: number;
+	max_size_mb: number;
+	prefer_proper: boolean;
+}
+
+export interface BlockEntry {
+	id: string;
+	info_hash?: string;
+	title: string;
+	indexer_id?: string;
+	monitored_id?: string;
+	reason: string;
+	at: number;
+}
+
+export interface HeldFile {
+	grab_id: string;
+	path: string;
+	size: number;
+	at: number;
 }
 
 const seg = encodeURIComponent;
@@ -194,6 +297,26 @@ export const acquire = {
 		request<Grab>('/api/acquire/grabs', { method: 'POST', body }),
 	action: (id: string, action: 'pause' | 'resume' | 'import') =>
 		request<Grab>(`/api/acquire/grabs/${seg(id)}/${action}`, { method: 'POST' }),
+	profiles: () => request<{ profiles: Profile[] }>('/api/acquire/profiles'),
+	createProfile: (body: Omit<Profile, 'id'>) => request<Profile>('/api/acquire/profiles', { method: 'POST', body }),
+	updateProfile: (id: string, body: Omit<Profile, 'id'>) =>
+		request<Profile>(`/api/acquire/profiles/${seg(id)}`, { method: 'PUT', body }),
+	deleteProfile: (id: string) => request<{ removed: boolean }>(`/api/acquire/profiles/${seg(id)}`, { method: 'DELETE' }),
+
+	wanted: () => request<{ titles: WantedRow[]; automation: AutomationState }>('/api/acquire/wanted'),
+	monitor: (body: Partial<Monitored>) => request<Monitored>('/api/acquire/monitored', { method: 'POST', body }),
+	updateMonitored: (id: string, body: Partial<Monitored>) =>
+		request<Monitored>(`/api/acquire/monitored/${seg(id)}`, { method: 'PUT', body }),
+	unmonitor: (id: string) => request<{ removed: boolean }>(`/api/acquire/monitored/${seg(id)}`, { method: 'DELETE' }),
+	searchMonitored: (id: string) =>
+		request<AutomationReport>(`/api/acquire/monitored/${seg(id)}/search`, { method: 'POST' }),
+	rss: () => request<AutomationReport>('/api/acquire/rss', { method: 'POST' }),
+
+	blocklist: () => request<{ blocklist: BlockEntry[] }>('/api/acquire/blocklist'),
+	unblock: (id: string) => request<{ removed: boolean }>(`/api/acquire/blocklist/${seg(id)}`, { method: 'DELETE' }),
+	replaced: () => request<{ files: HeldFile[] }>('/api/acquire/replaced'),
+	purgeReplaced: () => request<{ deleted: number }>('/api/acquire/replaced/purge', { method: 'POST' }),
+
 	remove: (id: string, deleteData: boolean) =>
 		request<{ removed: boolean }>(`/api/acquire/grabs/${seg(id)}`, {
 			method: 'DELETE',

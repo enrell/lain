@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { grabProgress, isActiveGrab, parseCategories, ratio, releaseNumbers, releaseTags, settingsChanges } from './format';
+import {
+	compressUnits,
+	formatSeasonMap,
+	formatSeasonWants,
+	grabProgress,
+	isActiveGrab,
+	parseCategories,
+	parseSeasonMap,
+	parseSeasonWants,
+	ratio,
+	releaseNumbers,
+	releaseTags,
+	settingsChanges,
+	unitLabel
+} from './format';
 import type { AcquireSettings, Release } from '$lib/api';
 
 const r = (x: Partial<Release>): Release => ({ title: 'Show', parser: 'lain-release-tokenizer', ...x });
@@ -39,9 +53,46 @@ describe('acquire format', () => {
 	it('counts staged setting changes', () => {
 		const s: AcquireSettings = {
 			dir: '/d', listen_port: 51413, max_active: 3, max_peers: 40, upload_kbps: 0, download_kbps: 0,
-			seed_ratio: 1, seed_minutes: 1440, remove_after_seeding: true, import_mode: 'hardlink'
+			seed_ratio: 1, seed_minutes: 1440, remove_after_seeding: true, import_mode: 'hardlink',
+			automation: false, rss_minutes: 30, search_hours: 12, stall_hours: 6
 		};
 		expect(settingsChanges(s, { ...s })).toBe(0);
 		expect(settingsChanges(s, { ...s, seed_ratio: 2, import_mode: 'copy' })).toBe(2);
+	});
+});
+
+
+describe('monitored title helpers', () => {
+	it('parses and prints season maps', () => {
+		expect(parseSeasonMap('1:1, 2:13 3:25')).toEqual([
+			{ season: 1, first: 1 },
+			{ season: 2, first: 13 },
+			{ season: 3, first: 25 }
+		]);
+		expect(parseSeasonMap('')).toEqual([]);
+		expect(parseSeasonMap('1:1, x, 2:')).toBeNull();
+		expect(formatSeasonMap([{ season: 1, first: 1 }, { season: 2, first: 13 }])).toBe('1:1, 2:13');
+	});
+	it('parses and prints season ranges', () => {
+		expect(parseSeasonWants('1:1-12, 2:1-')).toEqual([
+			{ season: 1, from: 1, to: 12 },
+			{ season: 2, from: 1, to: 0 }
+		]);
+		expect(parseSeasonWants('1')).toEqual([{ season: 1, from: 1, to: 0 }]);
+		expect(parseSeasonWants('1:12-3')).toBeNull();
+		expect(formatSeasonWants([{ season: 1, from: 1, to: 12 }, { season: 2, from: 1, to: 0 }])).toBe('1:1-12, 2:1-');
+	});
+	it('labels units in the numbering of the title', () => {
+		expect(unitLabel({ season: 1, number: 5 }, 'seasonal')).toBe('S01E05');
+		expect(unitLabel({ season: 2, number: 0 }, 'seasonal')).toBe('S02');
+		expect(unitLabel({ season: 0, number: 7 }, 'absolute')).toBe('07');
+		expect(unitLabel({ season: 0, number: 25 }, 'chapter')).toBe('c025');
+		expect(unitLabel({ season: 0, number: 3 }, 'volume')).toBe('v03');
+	});
+	it('compresses runs', () => {
+		const u = (n: number, s = 0) => ({ season: s, number: n });
+		expect(compressUnits([u(1), u(2), u(3), u(7), u(9), u(10)], 'absolute')).toBe('01–03, 07, 09–10');
+		expect(compressUnits([u(1, 1), u(2, 1), u(1, 2)], 'seasonal')).toBe('S01E01–S01E02, S02E01');
+		expect(compressUnits([], 'absolute')).toBe('');
 	});
 });
