@@ -68,7 +68,7 @@ func TestWantedAbsolute(t *testing.T) {
 		item("Other", 0, 3, "/l/Other/Other - 03.mkv"),
 		{Title: "Show", Episode: 5, FilePath: "/l/Show/x05.mkv", Missing: true}, // gone from disk: still wanted
 	}
-	w := m.Wanted(items, DefaultProfile(), parse)
+	w := m.Wanted(items, DefaultProfile(), FileQuality(parse, "anime"))
 	if !reflect.DeepEqual(w.Missing, []Unit{{0, 3}, {0, 5}, {0, 6}}) || w.OpenFrom != nil {
 		t.Fatalf("missing = %+v open = %+v", w.Missing, w.OpenFrom)
 	}
@@ -79,7 +79,7 @@ func TestWantedAbsolute(t *testing.T) {
 	}
 	// Open-ended: every number after the highest present is wanted.
 	m.To = 0
-	w = m.Wanted(items, DefaultProfile(), parse)
+	w = m.Wanted(items, DefaultProfile(), FileQuality(parse, "anime"))
 	if !reflect.DeepEqual(w.Missing, []Unit{{0, 3}}) || w.OpenFrom == nil || *w.OpenFrom != (Unit{0, 5}) {
 		t.Fatalf("open: missing %+v open %+v", w.Missing, w.OpenFrom)
 	}
@@ -92,7 +92,7 @@ func TestWantedSeasonalAndMovie(t *testing.T) {
 		item("Show", 1, 3, "/l/Show/Season 01/Show - S01E03.mkv"),
 		item("Show", 2, 2, "/l/Show/Season 02/Show - S02E02.mkv"),
 	}
-	w := m.Wanted(items, DefaultProfile(), parse)
+	w := m.Wanted(items, DefaultProfile(), FileQuality(parse, "anime"))
 	if !reflect.DeepEqual(w.Missing, []Unit{{1, 2}, {2, 1}}) {
 		t.Fatalf("missing = %+v", w.Missing)
 	}
@@ -100,10 +100,10 @@ func TestWantedSeasonalAndMovie(t *testing.T) {
 		t.Fatalf("open seasons = %+v", w.OpenSeasons)
 	}
 	film := Monitored{Kind: "movie", Title: "Film", Numbering: NumberMovie}
-	if w := film.Wanted(nil, DefaultProfile(), parse); !reflect.DeepEqual(w.Missing, []Unit{{0, 1}}) {
+	if w := film.Wanted(nil, DefaultProfile(), FileQuality(parse, "anime")); !reflect.DeepEqual(w.Missing, []Unit{{0, 1}}) {
 		t.Fatalf("movie missing = %+v", w.Missing)
 	}
-	if w := film.Wanted([]contracts.CatalogItem{item("Film", 0, 0, "/l/Film (2001)/Film (2001).mkv")}, DefaultProfile(), parse); len(w.Missing) != 0 {
+	if w := film.Wanted([]contracts.CatalogItem{item("Film", 0, 0, "/l/Film (2001)/Film (2001).mkv")}, DefaultProfile(), FileQuality(parse, "anime")); len(w.Missing) != 0 {
 		t.Fatalf("present movie still wanted: %+v", w.Missing)
 	}
 }
@@ -118,12 +118,12 @@ func TestCovers(t *testing.T) {
 	}{
 		{anime, "[Fansub-A] Show - 14 [1080p]", []Unit{{0, 14}}},
 		{anime, "[Fansub-A] Shou - 01-03 [1080p]", []Unit{{0, 1}, {0, 2}, {0, 3}}},
-		{anime, "Show S02E03 1080p", []Unit{{0, 15}}},             // seasonal release, absolute title
-		{anime, "Show S02 1080p BluRay", seq(13, 24)},             // season pack via the map
-		{anime, "Show S03 1080p BluRay", nil},                     // last season: length unknown
-		{anime, "Other Show - 14 [1080p]", nil},                   // another title
+		{anime, "Show S02E03 1080p", []Unit{{0, 15}}}, // seasonal release, absolute title
+		{anime, "Show S02 1080p BluRay", seq(13, 24)}, // season pack via the map
+		{anime, "Show S03 1080p BluRay", nil},         // last season: length unknown
+		{anime, "Other Show - 14 [1080p]", nil},       // another title
 		{Monitored{Kind: "series", Title: "Show", Numbering: NumberSeasonal, SeasonMap: anime.SeasonMap},
-			"[Fansub-A] Show - 14 [1080p]", []Unit{{2, 2}}},       // absolute release, seasonal title
+			"[Fansub-A] Show - 14 [1080p]", []Unit{{2, 2}}}, // absolute release, seasonal title
 		{Monitored{Kind: "series", Title: "Show", Numbering: NumberSeasonal}, "Show.S01E05E06.1080p", []Unit{{1, 5}, {1, 6}}},
 		{Monitored{Kind: "series", Title: "Show", Numbering: NumberSeasonal}, "Show S04 Complete 1080p", []Unit{{4, 0}}}, // pack marker
 		{Monitored{Kind: "manga", Title: "Frieren", Numbering: NumberChapter}, "Frieren v03 c025.cbz", []Unit{{0, 25}}},

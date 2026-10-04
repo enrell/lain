@@ -36,6 +36,7 @@ const (
 	CodeFetch       = "fetch-failed"
 	CodeImport      = "import-failed"
 	CodeNoLibrary   = "no-library"
+	CodeStalled     = "stalled"
 )
 
 // Error is a typed acquisition error.
@@ -89,6 +90,13 @@ type Settings struct {
 	// (the library copy stays).
 	RemoveAfterSeeding bool   `json:"remove_after_seeding"`
 	ImportMode         string `json:"import_mode"`
+	// Automation (A-23) is off until enabled. RSSMinutes is the RSS
+	// sync period, SearchHours the missing-search period (0 = on demand
+	// only), StallHours fails a download that has not moved (0 = never).
+	Automation  bool `json:"automation"`
+	RSSMinutes  int  `json:"rss_minutes"`
+	SearchHours int  `json:"search_hours"`
+	StallHours  int  `json:"stall_hours"`
 }
 
 // DefaultSettings fit the current small disk: seed to 1.0 or a day.
@@ -96,6 +104,7 @@ func DefaultSettings(dataDir string) Settings {
 	return Settings{
 		Dir: filepath.Join(dataDir, "acquire"), ListenPort: 51413, MaxActive: 3, MaxPeers: 40,
 		SeedRatio: 1.0, SeedMinutes: 24 * 60, RemoveAfterSeeding: true, ImportMode: ImportHardlink,
+		RSSMinutes: 30, SearchHours: 12, StallHours: 6,
 	}
 }
 
@@ -117,6 +126,17 @@ func (s Settings) Validate() (Settings, error) {
 		return s, errf(CodeInvalid, "rates cannot be negative")
 	case s.SeedRatio < 0 || s.SeedRatio > 100 || s.SeedMinutes < 0 || s.SeedMinutes > 525600:
 		return s, errf(CodeInvalid, "seed limits out of range")
+	}
+	if s.RSSMinutes == 0 {
+		s.RSSMinutes = 30
+	}
+	switch {
+	case s.RSSMinutes < 10 || s.RSSMinutes > 1440:
+		return s, errf(CodeInvalid, "rss_minutes must be 10-1440")
+	case s.SearchHours < 0 || s.SearchHours > 168:
+		return s, errf(CodeInvalid, "search_hours must be 0-168")
+	case s.StallHours < 0 || s.StallHours > 168:
+		return s, errf(CodeInvalid, "stall_hours must be 0-168")
 	}
 	switch s.ImportMode {
 	case ImportHardlink, ImportCopy, ImportMove:
@@ -175,6 +195,14 @@ type Grab struct {
 	SeedingAt  int64    `json:"seeding_at,omitempty"`
 	// DataRemoved is true once the torrent copy is gone from Dir.
 	DataRemoved bool `json:"data_removed,omitempty"`
+	// Automation bookkeeping (Phase 2): the monitored title this grab
+	// serves and the units it covers. An upgrade lists the library files
+	// it replaces (ReplaceFrom) and where they were held (Replaced).
+	MonitoredID string   `json:"monitored_id,omitempty"`
+	Units       []Unit   `json:"units,omitempty"`
+	Upgrade     bool     `json:"upgrade,omitempty"`
+	ReplaceFrom []string `json:"replace_from,omitempty"`
+	Replaced    []string `json:"replaced,omitempty"`
 }
 
 // OnDisk reports whether the grab's torrent data counts against the
