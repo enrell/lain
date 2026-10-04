@@ -135,6 +135,11 @@ export function createOfflineStore(deps: Deps = browserDeps()) {
 			for (const path of [`/api/catalog/${id}`, `/api/catalog/${id}/episodes`, `/api/items/${id}/progress`]) {
 				await cache.put(path, await deps.get(path));
 			}
+			// The app boots with these two reads; seed them so a cold start
+			// offline right after saving still knows who is signed in.
+			for (const path of ['/api/setup/status', '/api/me']) {
+				await cache.put(path, await deps.get(path));
+			}
 			let bytes = 0;
 			for (let i = 0; i < view.pages.length; i++) {
 				const res = await deps.get(`/api/items/${id}/pages/${i}`);
