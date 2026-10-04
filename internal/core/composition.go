@@ -94,6 +94,7 @@ func DefaultComposition() *Composition {
 			// capabilities to saved compositions.
 			"lain.release.parse@1": {Mode: ModeOrderedMany, Providers: []string{"lain-release-model", "lain-release-tokenizer"}, Generation: 1},
 			"lain.indexer@1":       {Mode: ModeOrderedMany, Providers: []string{"lain-indexer-torznab"}, Generation: 1},
+			"lain.subtitle@1":      {Mode: ModeOrderedMany, Providers: []string{"lain-subtitle-opensubtitles"}, Generation: 1},
 		},
 	}
 }

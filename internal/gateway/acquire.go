@@ -118,6 +118,7 @@ func (s *Server) startAcquire(dataDir string) {
 		Titles: s.libraryTitles,
 		Rescan: s.scanLibrary,
 	}
+	s.subtitleDeps(&deps)
 	initial := acquire.DefaultSettings(dataDir)
 	if p, err := strconv.Atoi(os.Getenv("LAIN_ACQUIRE_LISTEN_PORT")); err == nil && p >= 0 && p <= 65535 {
 		initial.ListenPort = p
@@ -158,6 +159,7 @@ func (s *Server) routesAcquire() {
 	// Sidecars are read by every signed-in user (players), not only
 	// admins; they live with acquisition because Phase 3 writes them.
 	s.routesSidecars()
+	s.routesAcquireSubtitles()
 }
 
 type acqHandler func(http.ResponseWriter, *http.Request, auth.Verified)
@@ -185,7 +187,7 @@ func writeAcqErr(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case acquire.CodeQuota, acquire.CodeDiskFull:
 		status = http.StatusInsufficientStorage
-	case acquire.CodeUnsupported:
+	case acquire.CodeUnsupported, acquire.CodeSubtitleMismatch:
 		status = http.StatusUnprocessableEntity
 	case acquire.CodeImport:
 		status = http.StatusInternalServerError
