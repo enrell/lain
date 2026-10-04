@@ -17,3 +17,15 @@ expected): `internal/downloads/`, `internal/plugins/comic/`,
 | `web/src/lib/api/types.ts` | Appended `ComicInfo` (+ `ReaderView.info`) and the `Download*` types at the end of the file. | Low: append-only. |
 | `web/src/lib/i18n/messages/en.ts` | `settings.section.downloads`, three `settings.entry.download*` keys, and a new top-level `downloads` namespace at the end. | Medium: social will add keys to the same `settings.section`/`entry` maps — keep both. |
 | `web/src/lib/settings/sections.ts` | SERVER section `downloads` with chord key `d` (`g d`), three palette entries. | Medium: if social adds a section, pick a key other than `d`. |
+
+## Acquisition (`feat/acquisition`, branched from `feat/reading-downloads`)
+
+Own packages (no conflict expected): `internal/torrent/`,
+`internal/acquire/`, `internal/plugins/release/`, `internal/plugins/indexer/`,
+`internal/kv/acquire.go`, `internal/gateway/acquire*.go`, and the web
+files under `routes/acquire/`, `routes/settings/indexers/`,
+`routes/settings/acquisition/`, `lib/api/acquire.ts`,
+`lib/components/acquire/`. Rows are added below as shared files are touched.
+
+| File | Change | Conflict risk |
+| --- | --- | --- |
