@@ -7,6 +7,7 @@
 	import MobileNav from './MobileNav.svelte';
 	import CommandPalette from './CommandPalette.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
+	import { socialBadge } from '$lib/stores/social.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -16,6 +17,7 @@
 		{ href: '/', label: t('nav.home'), exact: true },
 		{ href: '/library', label: t('nav.library'), exact: false },
 		{ href: '/list', label: t('nav.list'), exact: false },
+		{ href: '/social', label: t('nav.social'), exact: false },
 		{ href: '/search', label: t('nav.search'), exact: false },
 		{ href: '/settings', label: t('nav.settings'), exact: false }
 	]);
@@ -24,6 +26,12 @@
 		const path = page.url.pathname;
 		return exact ? path === href : path === href || path.startsWith(href + '/');
 	}
+
+	// The shell only mounts for a signed-in session: poll the social badge meanwhile.
+	$effect(() => {
+		socialBadge.start();
+		return () => socialBadge.stop();
+	});
 
 </script>
 
@@ -54,6 +62,9 @@
 						].join(' ')}
 					>
 						{item.label}
+						{#if item.href === '/social' && socialBadge.unread > 0}
+							<span class="ms-1.5 rounded-full bg-accent px-1.5 font-mono text-[10px] text-background" aria-label={t('nav.unread', { count: socialBadge.unread })}>{socialBadge.unread}</span>
+						{/if}
 					</a>
 				{/each}
 			</nav>
