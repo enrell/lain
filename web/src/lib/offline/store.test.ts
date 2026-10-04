@@ -46,7 +46,7 @@ describe('offline store', () => {
 		const saved = await store.save(item(), (d) => seen.push(d));
 		expect(saved).toMatchObject({ item_id: 'v1', pages: 3, bytes: 300, saved_at: 1000 });
 		expect(seen).toEqual([1, 2, 3]);
-		for (const k of ['/api/items/v1/pages', '/api/items/v1/pages/2', '/api/catalog/v1', '/api/catalog/v1/episodes', '/api/items/v1/progress']) {
+		for (const k of ['/api/items/v1/pages', '/api/items/v1/pages/2', '/api/catalog/v1', '/api/catalog/v1/episodes', '/api/items/v1/progress', '/api/me', '/api/setup/status']) {
 			expect(cache.m.has(k), k).toBe(true);
 		}
 		expect(await store.isSaved('v1')).toBe(true);
@@ -71,7 +71,8 @@ describe('offline store', () => {
 		const cache = fakeCache();
 		const store = createOfflineStore(deps(cache, {}, 1));
 		await expect(store.save(item())).rejects.toMatchObject({ code: 'failed' });
-		expect([...cache.m.keys()]).toEqual([]);
+		// Session copies may stay (they are not the item); no item key does.
+		expect([...cache.m.keys()].filter((k) => k.includes('/v1'))).toEqual([]);
 	});
 
 	it('removes one item and keeps the others', async () => {
