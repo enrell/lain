@@ -28,9 +28,15 @@ type readerView struct {
 	Format    string                `json:"format"`
 	Direction string                `json:"direction"` // default reading direction: rtl | ltr
 	Pages     []contracts.ComicPage `json:"pages"`
+	Info      *contracts.ComicInfo  `json:"info,omitempty"`
 }
 
-func defaultDirection(kind string) string {
+// defaultDirection is the archive's own declaration when it makes one
+// (ComicInfo.xml), else the library kind's convention.
+func defaultDirection(kind string, info *contracts.ComicInfo) string {
+	if info != nil && info.Direction != "" {
+		return info.Direction
+	}
 	if kind == contracts.KindManga {
 		return "rtl"
 	}
@@ -80,7 +86,7 @@ func (s *Server) handlePages(w http.ResponseWriter, r *http.Request, _ auth.Veri
 		return
 	}
 	writeJSON(w, http.StatusOK, readerView{
-		Kind: it.Kind, Format: pages.Format, Direction: defaultDirection(it.Kind), Pages: pages.Pages,
+		Kind: it.Kind, Format: pages.Format, Direction: defaultDirection(it.Kind, pages.Info), Pages: pages.Pages, Info: pages.Info,
 	})
 }
 
