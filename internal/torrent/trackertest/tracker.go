@@ -30,8 +30,20 @@ type Tracker struct {
 	Announces map[string]int
 	http      *httptest.Server
 	udp       net.PacketConn
-	// Refuse makes every announce fail with this reason.
-	Refuse string
+	refuse    string
+}
+
+// Refuse makes every later announce fail with reason ("" accepts again).
+func (t *Tracker) Refuse(reason string) {
+	t.mu.Lock()
+	t.refuse = reason
+	t.mu.Unlock()
+}
+
+func (t *Tracker) refusal() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.refuse
 }
 
 // New starts HTTP and UDP listeners on loopback.
@@ -100,8 +112,8 @@ func (t *Tracker) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		b, _ := bencode.Encode(map[string]any{"failure reason": reason})
 		_, _ = w.Write(b)
 	}
-	if t.Refuse != "" {
-		fail(t.Refuse)
+	if r := t.refusal(); r != "" {
+		fail(r)
 		return
 	}
 	var ih torrent.InfoHash
@@ -142,10 +154,10 @@ func (t *Tracker) serveUDP() {
 		action := binary.BigEndian.Uint32(buf[8:])
 		tid := binary.BigEndian.Uint32(buf[12:])
 		reply := func(b []byte) { _, _ = t.udp.WriteTo(b, from) }
-		if t.Refuse != "" {
+		if r := t.refusal(); r != "" {
 			out := binary.BigEndian.AppendUint32(nil, 3)
 			out = binary.BigEndian.AppendUint32(out, tid)
-			reply(append(out, t.Refuse...))
+			reply(append(out, r...))
 			continue
 		}
 		switch action {
