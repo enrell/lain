@@ -215,6 +215,30 @@ const en = {
 			quotaExceeded: 'The download budget is full.',
 			diskFull: 'The disk would drop under the free-space floor.'
 		}
+	},
+	reader: {
+		info: {
+			label: 'From the archive',
+			field: {
+				series: 'Series',
+				number: 'Number',
+				volume: 'Volume',
+				writer: 'Writer',
+				artist: 'Artist',
+				publisher: 'Publisher',
+				year: 'Year',
+				language: 'Language'
+			},
+			direction: {
+				rtl: 'Reads right to left',
+				ltr: 'Reads left to right'
+			},
+			source: {
+				archive: 'declared by the archive',
+				library: 'library default'
+			},
+			pages: { one: '{count} page', other: '{count} pages' }
+		}
 	}
 } as const;
 
