@@ -76,7 +76,7 @@ type Settings struct {
 // Defaults are deliberately small for a disk-constrained host; the
 // operator raises them from Settings when a bigger disk arrives.
 const (
-	DefaultMaxBytes     = 50 << 30
+	DefaultMaxBytes     = 20 << 30
 	DefaultMinFreeBytes = 5 << 30
 	DefaultConcurrency  = 2
 	DefaultKeepDays     = 30
