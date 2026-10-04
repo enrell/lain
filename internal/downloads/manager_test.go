@@ -181,8 +181,9 @@ func TestManagerPauseKeepsBytesAndResumeContinues(t *testing.T) {
 	defer m.Close()
 	j, _ := m.Add(AddInput{URL: o.URL + "/a.cbz"})
 	waitBytes(t, m, j.ID, 10_000)
-	if _, err := m.Pause(j.ID); err != nil {
-		t.Fatal(err)
+	// Pause answers with the settled state, not "running".
+	if got, err := m.Pause(j.ID); err != nil || got.State != Paused {
+		t.Fatalf("pause: %+v %v", got, err)
 	}
 	p := waitState(t, m, j.ID, Paused)
 	if fi, err := os.Stat(p.Part); err != nil || fi.Size() != 10_000 || p.Bytes != 10_000 {
@@ -211,8 +212,8 @@ func TestManagerCancelDeletesPart(t *testing.T) {
 	defer m.Close()
 	j, _ := m.Add(AddInput{URL: o.URL + "/a.mkv"})
 	waitBytes(t, m, j.ID, 5_000)
-	if _, err := m.Cancel(j.ID); err != nil {
-		t.Fatal(err)
+	if got, err := m.Cancel(j.ID); err != nil || got.State != Canceled {
+		t.Fatalf("cancel: %+v %v", got, err)
 	}
 	c := waitState(t, m, j.ID, Canceled)
 	if _, err := os.Stat(c.Part); !os.IsNotExist(err) {

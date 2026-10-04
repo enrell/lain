@@ -162,7 +162,12 @@ type Manager struct {
 type run struct {
 	cancel context.CancelFunc
 	reason State
+	done   chan struct{} // closed once the worker has settled the job
 }
+
+// stopWait bounds how long Pause/Cancel wait for a transfer to unwind,
+// so their answer is the settled state rather than "still running".
+const stopWait = 5 * time.Second
 
 var (
 	keySettings = []byte("settings")
@@ -304,7 +309,7 @@ func (m *Manager) schedule() {
 			return
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		r := &run{cancel: cancel, reason: Failed}
+		r := &run{cancel: cancel, reason: Failed, done: make(chan struct{})}
 		m.running[j.ID] = r
 		m.setState(j, Running, "", "")
 		m.wg.Add(1)
@@ -315,6 +320,7 @@ func (m *Manager) schedule() {
 // work transfers one job and settles its state.
 func (m *Manager) work(ctx context.Context, id string, r *run) {
 	defer m.wg.Done()
+	defer close(r.done)
 	m.mu.Lock()
 	j := *m.jobs[id]
 	m.mu.Unlock()
@@ -530,19 +536,41 @@ func (m *Manager) Get(id string) (Job, error) {
 
 // Pause stops a queued or running job, keeping its partial bytes.
 func (m *Manager) Pause(id string) (Job, error) {
-	return m.transition(id, func(j *Job) error {
+	return m.stop(id, Paused, func(j *Job) error {
 		switch j.State {
 		case Queued:
 			m.setState(j, Paused, "", "")
-		case Running:
-			m.running[id].reason = Paused
-			m.running[id].cancel()
 		case Paused:
 		default:
 			return &Error{CodeState, "cannot pause a " + string(j.State) + " download"}
 		}
 		return nil
 	})
+}
+
+// stop interrupts a running job, landing it in reason, and waits for
+// the worker to settle; jobs that are not running go through idle.
+func (m *Manager) stop(id string, reason State, idle func(*Job) error) (Job, error) {
+	m.mu.Lock()
+	j, ok := m.jobs[id]
+	if !ok {
+		m.mu.Unlock()
+		return Job{}, &Error{CodeNotFound, "unknown download"}
+	}
+	if r, running := m.running[id]; running && j.State == Running {
+		r.reason = reason
+		r.cancel()
+		m.mu.Unlock()
+		select {
+		case <-r.done:
+		case <-time.After(stopWait):
+		}
+		return m.Get(id)
+	}
+	err := idle(j)
+	out := *j
+	m.mu.Unlock()
+	return out, err
 }
 
 // Resume requeues a paused or failed job; it continues from its part.
@@ -566,11 +594,8 @@ func (m *Manager) Resume(id string) (Job, error) {
 // Cancel stops a job for good and deletes its partial bytes. A finished
 // download cannot be canceled: its file is library media now.
 func (m *Manager) Cancel(id string) (Job, error) {
-	return m.transition(id, func(j *Job) error {
+	return m.stop(id, Canceled, func(j *Job) error {
 		switch j.State {
-		case Running:
-			m.running[id].reason = Canceled
-			m.running[id].cancel()
 		case Queued, Paused, Failed:
 			_ = os.Remove(j.Part)
 			j.Bytes = 0
