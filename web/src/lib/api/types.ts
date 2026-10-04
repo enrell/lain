@@ -507,4 +507,79 @@ export interface ReaderView {
 	format: string;
 	direction: 'rtl' | 'ltr';
 	pages: ReaderPageInfo[];
+	/** The archive's own ComicInfo.xml, when it has one. */
+	info?: ComicInfo;
+}
+
+export interface ComicInfo {
+	title?: string;
+	series?: string;
+	number?: string;
+	volume?: number;
+	count?: number;
+	summary?: string;
+	year?: number;
+	writer?: string;
+	artist?: string;
+	publisher?: string;
+	genres?: string[];
+	language?: string;
+	age_rating?: string;
+	direction?: 'rtl' | 'ltr';
+}
+
+export type DownloadState = 'queued' | 'running' | 'paused' | 'done' | 'failed' | 'canceled';
+
+/** One server-side download (internal/downloads.Job). */
+export interface DownloadJob {
+	id: string;
+	url: string;
+	library_id?: string;
+	dir: string;
+	name: string;
+	path?: string;
+	state: DownloadState;
+	bytes: number;
+	/** -1 or 0 while the origin has not said. */
+	total: number;
+	code?: string;
+	error?: string;
+	/** Consecutive transient failures; a queued job with retry_at waits to retry. */
+	attempts?: number;
+	retry_at?: number;
+	created_at: number;
+	updated_at: number;
+	finished_at?: number;
+}
+
+export interface DownloadSettings {
+	dir: string;
+	/** 0 = no budget. */
+	max_bytes: number;
+	/** 0 = no free-space floor. */
+	min_free_bytes: number;
+	concurrency: number;
+	keep_finished_days: number;
+	/** Transient failures retried with backoff before a job fails; 0 disables. */
+	max_retries: number;
+}
+
+export interface DownloadUsage {
+	used_bytes: number;
+	max_bytes: number;
+	/** -1 when the server cannot tell. */
+	free_bytes: number;
+	min_free_bytes: number;
+}
+
+export interface DownloadsView {
+	jobs: DownloadJob[];
+	usage: DownloadUsage;
+	settings: DownloadSettings;
+}
+
+export interface DownloadCleanup {
+	parts: number;
+	records: number;
+	freed_bytes: number;
 }

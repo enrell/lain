@@ -114,6 +114,9 @@ func (m *episodeMonitor) flushMPV(dir string) error {
 }
 
 func queueURL(cfg clientConfig, item apiItem) string {
+	if local := localCopyPath(item.ID); local != "" {
+		return local
+	}
 	return cfg.Server + "/api/items/" + url.PathEscape(item.ID) + "/stream?token=" + url.QueryEscape(cfg.Token)
 }
 

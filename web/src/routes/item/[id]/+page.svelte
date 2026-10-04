@@ -35,6 +35,7 @@
 	import { progressRatio } from '$lib/utilities/progress';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable } from '$lib/reader/kinds';
+	import ComicInfoPanel from '$lib/components/reader/ComicInfoPanel.svelte';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer, item?.kind); }
@@ -252,6 +253,7 @@
 	{#key series.key}
 		<TitleView group={series} {progressMap} {libraries} actions={adminActions} />
 	{/key}
+	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} /></div>{/if}
 {:else if item}
 	<article class="space-y-8">
 		<!-- Artwork backdrop: cover, else poster, else a generated still. It is
@@ -358,6 +360,7 @@
 				{#if enrichment?.synopsis}
 					<p class="max-w-3xl text-sm leading-relaxed text-muted">{enrichment.synopsis}</p>
 				{/if}
+				{#if reading}<ComicInfoPanel {item} />{/if}
 
 				{#if progress && ratio > 0 && !progress.completed}
 					<div class="max-w-md space-y-1.5">
