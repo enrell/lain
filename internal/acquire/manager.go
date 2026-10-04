@@ -56,6 +56,9 @@ type Deps struct {
 	Items func(libraryID string) []contracts.CatalogItem
 	// StallAfter overrides the stall window (tests).
 	StallAfter time.Duration
+	// EpisodeCount asks metadata providers for a title's episode total
+	// (0 = unknown). Optional; A-18.
+	EpisodeCount func(title, kind string) int
 }
 
 // Manager runs acquisition.

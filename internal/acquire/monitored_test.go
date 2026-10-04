@@ -85,6 +85,20 @@ func TestWantedAbsolute(t *testing.T) {
 	}
 }
 
+func TestWantedUsesTheMetadataEpisodeCount(t *testing.T) {
+	m := Monitored{Kind: "anime", Title: "Show", Numbering: NumberAbsolute, From: 1, MetadataEpisodes: 5}
+	items := []contracts.CatalogItem{item("Show", 0, 1, "/l/a.mkv"), item("Show", 0, 2, "/l/b.mkv")}
+	w := m.Wanted(items, DefaultProfile(), FileQuality(parse, "anime"))
+	if !reflect.DeepEqual(w.Missing, []Unit{{0, 3}, {0, 4}, {0, 5}}) || w.OpenFrom == nil || *w.OpenFrom != (Unit{0, 6}) {
+		t.Fatalf("missing %+v open %+v", w.Missing, w.OpenFrom)
+	}
+	// An explicit range wins over the metadata count.
+	m.To = 3
+	if w := m.Wanted(items, DefaultProfile(), FileQuality(parse, "anime")); !reflect.DeepEqual(w.Missing, []Unit{{0, 3}}) || w.OpenFrom != nil {
+		t.Fatalf("explicit range: %+v", w)
+	}
+}
+
 func TestWantedSeasonalAndMovie(t *testing.T) {
 	m := Monitored{Kind: "series", Title: "Show", Numbering: NumberSeasonal, Seasons: []SeasonWant{{Season: 1, From: 1, To: 3}, {Season: 2, From: 1}}}
 	items := []contracts.CatalogItem{
