@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// The library copy is sacred (D-110 condition, user approval
+// The library copy is sacred (D-112 condition, user approval
 // 2026-10-04): whatever cleanup does to the torrent copy — after
 // seeding, after a no-seed import, on failure or on removal — it never
 // removes or unlinks a file in a library, hardlinked or moved in place.

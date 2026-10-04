@@ -22,7 +22,11 @@ put to the user with measurements (2026-10-03):
 
 The user chose **an in-house, standard-library BitTorrent engine**.
 
-## Proposed decisions
+## Decisions (accepted 2026-10-04)
+
+Accepted by the user as written, with one condition on cleanup (see
+A-5). Recorded as `D-108`…`D-123` in `docs/advisor/decisions.md`
+(`A-n` = `D-(107+n)`); the text below is kept for context.
 
 - **A-1 No new dependency.** The BitTorrent engine, bencode, trackers,
   Torznab/Newznab client and the parser-socket client are standard
@@ -50,7 +54,11 @@ The user chose **an in-house, standard-library BitTorrent engine**.
   seed-time limit (either reached stops seeding), global defaults in
   settings; `0` means "do not seed" so a tight disk can import and
   delete immediately. Upload/download rate caps and peer limits are
-  settings, never constants (P-4).
+  settings, never constants (P-4). Defaults: ratio 1.0 or 24 h, then
+  delete the torrent copy. **Accepted with a condition:** cleanup never
+  removes or unlinks a library file (hardlinked, moved in place, or
+  inside a library root), and the download folder may not overlap a
+  library (`cleanup_test.go`).
 - **A-6 Release parsing is a capability.** `lain.release.parse@1`
   (ordered-many, first accepted): `lain-release-model` asks the
   installed lain-parser over `<data-dir>/parser.sock`
