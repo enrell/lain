@@ -311,6 +311,48 @@ placement, ledger, automation) → gateway routes (sidecars for players,
 admin subtitle routes) → web (player menu, providers and per-title
 subtitle status).
 
+Choices made while building Phase 3 (`A-38`…, for review with
+A-28…A-37):
+
+- **A-38 The audio rule is stored inverted.** A-32's
+  `subtitle_skip_if_audio` (default on) is implemented as
+  `subtitle_even_with_audio` (default off): same behavior, but profiles
+  saved before Phase 3 decode to the D-071 default with no migration.
+- **A-39 Which profile governs an item.** A video item uses the profile
+  of the monitored title in the same library whose title or alias
+  matches; anything else uses the default profile. Manual search may
+  name languages explicitly (`?languages=en,pt-BR`).
+- **A-40 Unknown duration skips the sync check.** When the probe fails
+  (no ffprobe, unreadable file) the subtitle is placed unchecked rather
+  than refused; a file with no readable cues is always refused. Refusals
+  are kept per provider file id in `acq_subblock` and are permanent in
+  v1 (no UI to clear them yet).
+- **A-41 Ranking weights.** Hash match +1000, same release group +100,
+  same resolution +20, same source +20, hearing-impaired with
+  `prefer` +30, plus 5·log2(downloads+1). Forced (foreign-parts-only)
+  subtitles, wrong-episode/season answers, unwanted languages, HI under
+  `exclude` and earlier refusals are shown but rejected.
+- **A-42 Player behavior for sidecars.** Sidecars share the web
+  player's subtitle menu (labelled as files). The player auto-selects a
+  sidecar only where D-071 wants subtitles (audio not in the account
+  language) and no embedded subtitle matches; forced sidecars are never
+  auto-selected. A sidecar plays as a `<track>` in every mode, so
+  choosing one never rebuilds a transcode and is never burned in.
+- **A-43 OpenSubtitles session.** Searches and downloads use the API
+  key alone unless a username is set; then Lain logs in once and keeps
+  the token in memory for 12 h per account. `por` asks for both `pt-br`
+  and `pt-pt`, `zho` for `zh-cn` and `zh-tw`. Download links are
+  fetched by the core with a 5 MiB cap; the provider never touches the
+  library.
+- **A-44 Keys.** On a Wanted row, `t` opens the title's subtitle panel;
+  inside it Enter searches a file or takes a subtitle, `f` fetches every
+  missing language, Backspace goes back. Taking a subtitle whose name
+  already exists asks before replacing (the old file is held, D-128).
+- **A-45 Subtitle provider accounts are managed like indexers and
+  profiles**: each change applies at once from its own dialog, outside
+  the Ctrl+S staging bar that covers the engine settings (D-087 treats
+  list items this way already).
+
 ## API (Phase 1, all admin)
 
 | Route | Purpose |
@@ -378,3 +420,47 @@ Left / needs a decision:
 - DHT, usenet and external client adapters stay as decided (D-108,
   D-110, D-123).
 - Phase 3 (subtitles) is planned only.
+
+## Status (2026-10-04) — Phase 3 built, A-28…A-45 proposed
+
+Accepted: A-17…A-27 (`D-124`…`D-134`). The D-032 metadata change
+(per-season episode lists, air dates) stays deferred; `MetadataRecord`
+is untouched.
+
+Phase 3 built on `feat/acquisition` (no new dependency, no cgo):
+
+- `internal/subtitle`: SRT/VTT/ASS parsing, WebVTT output, cue stats,
+  UTF-8/UTF-16/Windows-1252 decoding (fuzzed), sidecar discovery and
+  naming, ISO 639 folding, OpenSubtitles moviehash.
+- Players: `GET /api/items/{id}/sidecars` and `/sidecars/{n}` (WebVTT);
+  the web player lists sidecars and plays them in direct and transcode
+  modes.
+- `lain.subtitle@1` contract and `lain-subtitle-opensubtitles`, tested
+  against a local fake of the REST API (no network).
+- Acquisition: provider accounts, missing languages from the real probe,
+  search and ranking, sync check with recorded refusals, UTF-8
+  placement that never overwrites, the `acq_subtitles` ledger, holding
+  of replaced sidecars, a pass after each monitored import and every
+  `subtitle_hours`.
+- Admin API: `/api/acquire/subtitle-providers`,
+  `/api/acquire/items/{id}/subtitles` (GET search, POST fetch),
+  `/api/acquire/monitored/{id}/subtitles` (GET status, POST fetch
+  missing), `/api/acquire/subtitles` (ledger).
+- Web: subtitle providers and the subtitle schedule in Settings ›
+  Acquisition, subtitle fields in quality profiles, the per-title panel
+  (`t` on Wanted). Ctrl+K now also finds acquisition automation,
+  profiles and subtitle providers (the Phase 2 entries were missing).
+- e2e (`-tags e2e`): real ffprobe decides missing languages, and the
+  real duration drives the sync check.
+- Verified in headless Chromium against an isolated server and a local
+  fake provider: `t` → Enter → a 20-minute subtitle refused for a 10 s
+  clip → the hash match taken (Windows-1252 written as UTF-8) → `f`
+  fetched the other episode → the player route serves both as WebVTT.
+
+Not built yet:
+
+- UI for the subtitle ledger, clearing refusals, removing a sidecar,
+  and manual subtitle search for videos outside monitored titles (the
+  API already handles any video item).
+- Retiming, other providers, and legacy encodings beyond Windows-1252
+  (would need `golang.org/x/text`, a dependency decision).
