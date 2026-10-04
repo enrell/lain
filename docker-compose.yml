@@ -13,10 +13,10 @@ services:
       # volume is initialized with the image's lain user ownership, so
       # no user override is needed here.
       - lain-data:/data
-      # read-only media roots (add yours; container paths go in libraries).
-      # Media must be readable by the container user: default umask files
-      # (0644/0755) are fine.
-      - ~/Videos:/media/videos:ro
+      # media roots, read-write so "delete from disk" works (add :ro to forbid it).
+      # The container user needs write access to delete files (set `user:` to
+      # your uid:gid if your media is not owned by uid 1000).
+      - ~/Videos:/media/videos
       # Set LAIN_OMARCHY_CURRENT to mirror the host palette in the web UI.
       - ${LAIN_OMARCHY_CURRENT:-/dev/null}:/omarchy/current:ro
     environment:

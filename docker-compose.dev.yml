@@ -16,9 +16,9 @@ services:
       - go-build-cache:/root/.cache/go-build
       - go-mod-cache:/go/pkg/mod
       - lain-dev-data:/data
-      - ${HOME}/Videos:/media/videos:ro
-      - ${HOME}/Comics:/media/comics:ro
-      - ${HOME}/Manga:/media/manga:ro
+      - ${HOME}/Videos:/media/videos
+      - ${HOME}/Comics:/media/comics
+      - ${HOME}/Manga:/media/manga
       # Optional Omarchy palette bridge. /dev/null keeps the fallback outside Omarchy.
       - ${LAIN_OMARCHY_CURRENT:-/dev/null}:/omarchy/current:ro
     ports:

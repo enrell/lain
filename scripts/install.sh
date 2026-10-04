@@ -575,9 +575,9 @@ write_compose_file() {
   {
     printf '# %s -- yours to audit and edit.\n' "$GENERATED_MARKER"
     printf '# Apply edits: docker compose up -d\n'
-    printf '# Volume syntax: HOST_DIRECTORY:CONTAINER_DIRECTORY:ro\n'
+    printf '# Volume syntax: HOST_DIRECTORY:CONTAINER_DIRECTORY (read-write: Lain can delete files)\n'
     printf '# Add media mounts below, then register their CONTAINER paths in Lain.\n'
-    printf '# Example: /srv/media/films:/media/films:ro\n'
+    printf '# Example: /srv/media/films:/media/films   (append :ro for a read-only mount)\n'
     printf '# Re-running the installer reuses this file by default.\n'
     printf 'services:\n'
     printf '  lain:\n'
@@ -591,7 +591,7 @@ write_compose_file() {
     printf '    volumes:\n'
     printf '      # Persistent database and cache (read/write).\n'
     printf '      - %s\n' "$(yaml_quote "${DATA_DIR}:${CONTAINER_DATA_DIR}")"
-    printf '      # Media stays on the host; mount read-only.\n'
+    printf '      # Media stays on the host; mounted read-write so deleting from Lain works.\n'
     for volume in "$@"; do
       printf '      - %s\n' "$(yaml_quote "$volume")"
     done
@@ -699,7 +699,7 @@ install_server_docker() {
         final="${name}-${used}"
       done
       used_names["$final"]=1
-      targets+=("${dir}:/media/${final}:ro")
+      targets+=("${dir}:/media/${final}")
     done
     if ! write_compose_file "$image" "${targets[@]}"; then
       warn "could not write ${COMPOSE_DIR}/docker-compose.yml"
@@ -720,7 +720,7 @@ install_server_docker() {
   add_note "compose file: ${COMPOSE_DIR}/docker-compose.yml"
   add_note "data directory: ${DATA_DIR}"
   for dir in "${targets[@]}"; do
-    add_note "media (read-only): $dir"
+    add_note "media (read-write): $dir"
   done
   add_next "Open http://127.0.0.1:${PORT}/ and create the admin account"
   add_next "Register libraries using container paths such as /media/videos"
@@ -1856,7 +1856,7 @@ Server options:
                             binary  static release binary in --install-dir
                             daemon  static binary + systemd --user service
   --data PATH             data directory (default: ~/.local/share/lain)
-  --media PATH            media dir mounted read-only; repeatable
+  --media PATH            media dir mounted read-write; repeatable
                           (default: ~/Videos when it exists)
   --port PORT             HTTP port (default: 9360)
   --compose-dir DIR       where docker-compose.yml is written (default: ~/.lain)
