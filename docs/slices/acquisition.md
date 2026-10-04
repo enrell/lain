@@ -221,11 +221,95 @@ blocklist + stall detection → RSS sync and scheduled search → upgrades
 → gateway routes → web (Wanted tab, Monitor action, profiles,
 blocklist, automation settings).
 
-### Phase 3 — subtitles (Bazarr role), plan only
+### Phase 3 — subtitles (Bazarr role)
 
-Subtitle providers behind a `lain.subtitle.search@1` capability, wanted
-languages per profile (reuses D-071's preferred language), sidecar
-placement next to the media file, sync checks via ffprobe timing.
+Starting point: Lain only knows subtitles *inside* media files (ffprobe
+streams, extracted to WebVTT on demand, D-047). Subtitle files next to
+the media are neither discovered nor offered to players, so a
+downloaded subtitle would be invisible. Phase 3 therefore has two
+halves: make sidecars playable, then acquire them.
+
+Proposed decisions (`A-28`…, for review; none adds a dependency, none
+touches `MetadataRecord` (D-032) or the frozen playback/transcode
+shapes):
+
+- **A-28 Sidecars are discovered by name, never by content scan.** A
+  sidecar is a file in the media's folder named
+  `<media basename>[.<lang>][.forced|.sdh|.hi].<srt|ass|ssa|vtt>`
+  (the Plex/Jellyfin/Bazarr convention, which mpv also loads). The
+  language tag may be ISO 639-1 (`en`), 639-2 (`eng`, `fre`/`fra`) or a
+  region form (`pt-BR`); matching folds them to one ISO 639-2 code
+  (D-071's form) through a built-in table. Unknown tags stay listed as
+  `und`. Sidecars are not catalog items (the library scan ignores them,
+  as today) — they are read from disk when asked.
+- **A-29 Sidecars reach players through new, additive routes**, not
+  through the frozen playback plan: `GET /api/items/{id}/sidecars`
+  lists them for any signed-in user and `GET
+  /api/items/{id}/sidecars/{n}` serves one as WebVTT (SRT and VTT are
+  converted in Go; ASS/SSA dialogue is converted to plain-text cues,
+  styling dropped). The web player adds them to its subtitle menu next
+  to embedded tracks; mpv/VLC already load them by name.
+- **A-30 Subtitle providers are a capability with config in the
+  input**, the D-114 pattern: `lain.subtitle@1` (ordered-many,
+  `unsupported-provider` declines). Provider accounts (API key,
+  optional username/password) live in acquisition storage, travel in
+  the contract input, are never logged or returned (`has_*` flags), and
+  errors name the host only. First provider: `lain-subtitle-opensubtitles`
+  (OpenSubtitles.com REST API, the operator's own API key; base URL is a
+  setting so tests use a local fake). Other providers follow the same
+  contract later.
+- **A-31 Matching prefers the file's hash.** Lain computes the
+  OpenSubtitles "moviehash" (size + 64 KiB head + 64 KiB tail, stdlib)
+  and searches by hash and by parsed title/season/episode (or
+  volume/chapter-less: subtitles are for video only). Ranking: hash
+  match, then same release group, then same resolution/source, then
+  provider downloads; hearing-impaired and forced variants follow the
+  profile.
+- **A-32 Wanted subtitle languages live on the quality profile**
+  (`subtitle_languages`, ISO 639-2, ordered; empty = no subtitle
+  automation), with `subtitle_skip_if_audio` (default on, the D-071
+  rule: audio in the language makes subtitles unnecessary) and
+  `subtitle_hi` (`include`/`prefer`/`exclude`). A language is satisfied
+  by an embedded subtitle stream, an existing sidecar, or (with
+  skip-if-audio) a matching audio stream — read with the existing
+  `lain.media.probe@1` (ffprobe), never by guessing from names.
+- **A-33 Sync check before placing.** A downloaded subtitle is parsed;
+  it is refused when it has no cues, when its last cue ends more than
+  10 % (and at least 2 min) after the media's duration (wrong episode,
+  wrong cut, or a 25↔23.976 fps drift), or when its first cue starts
+  after the media ends. Refusals are recorded like the acquisition
+  blocklist (by provider file id) so automation does not retry them.
+  No automatic retiming in v1.
+- **A-34 Encoding is normalized to UTF-8 without a dependency.** Valid
+  UTF-8 (BOM stripped) and UTF-16 with a BOM are decoded with the
+  stdlib; anything else is read as Windows-1252 (a superset of Latin-1
+  that covers most legacy SRT); other legacy encodings would need
+  `golang.org/x/text` — a dependency decision, not taken.
+- **A-35 Placement and ownership.** A downloaded subtitle is written next
+  to the media as `<basename>.<lang 639-1 or 639-2>[.forced|.sdh].<ext>`
+  with the same never-overwrite rule as media (D-117); an existing name
+  is kept and the new file gets no second copy. Lain records the
+  sidecars it wrote (`acq_subtitles` ledger: path, provider, file id,
+  language, hash match). Replacing or removing a sidecar moves the old
+  one to the D-128 holding folder — library files, sidecars included,
+  are never deleted automatically (D-112).
+- **A-36 Subtitle automation reuses Phase 2.** For files of monitored
+  titles: after each import, and every `subtitle_hours` (default 24, 0
+  = on demand), wanted languages are searched and the best accepted
+  subtitle per language is downloaded. Manual search and download work
+  for any video item. Admin only, like all acquisition (D-116).
+- **A-37 Real-ffmpeg tests stay behind `-tags e2e`.** Probe-dependent
+  behavior is tested with an injected probe; a gated e2e test checks the
+  real ffprobe path on a generated clip.
+
+Work plan (tests first, small commits): subtitle formats (parse SRT/
+VTT/ASS, convert to WebVTT, cue timing, charset normalization) →
+sidecar naming and discovery → moviehash → `lain.subtitle@1` contract
+and the OpenSubtitles provider against a fake server → acquisition
+store and logic (wanted languages via probe, search, rank, sync check,
+placement, ledger, automation) → gateway routes (sidecars for players,
+admin subtitle routes) → web (player menu, providers and per-title
+subtitle status).
 
 ## API (Phase 1, all admin)
 
