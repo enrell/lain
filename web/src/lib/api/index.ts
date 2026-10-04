@@ -1,3 +1,4 @@
+import { acquire } from './acquire';
 import { auth } from './auth';
 import { backup } from './backup';
 import { catalog } from './catalog';
@@ -24,6 +25,7 @@ import { users } from './users';
  * headers outside the client.
  */
 export const api = {
+	acquire,
 	auth,
 	backup,
 	catalog,
@@ -49,3 +51,4 @@ export const api = {
 
 export { ApiError, buildUrl, mediaUrl } from './client';
 export * from './types';
+export type * from './acquire';
