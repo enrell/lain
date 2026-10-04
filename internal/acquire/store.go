@@ -145,23 +145,25 @@ const (
 
 // Grab is one release taken from an indexer (or a pasted magnet).
 type Grab struct {
-	ID         string            `json:"id"`
-	Title      string            `json:"title"`
-	IndexerID  string            `json:"indexer_id,omitempty"`
-	Source     string            `json:"source"` // "torrent-url", "magnet"
-	Magnet     string            `json:"magnet,omitempty"`
-	InfoHash   string            `json:"info_hash,omitempty"`
-	Release    contracts.Release `json:"release"`
-	LibraryID  string            `json:"library_id"`
-	Kind       string            `json:"kind"` // the library type
-	State      string            `json:"state"`
-	Size       int64             `json:"size"`
-	Downloaded int64             `json:"downloaded"`
-	Uploaded   int64             `json:"uploaded"`
-	Completed  int64             `json:"completed"`
-	Peers      int               `json:"peers"`
-	DownRate   int64             `json:"down_rate"`
-	UpRate     int64             `json:"up_rate"`
+	ID        string            `json:"id"`
+	Title     string            `json:"title"`
+	IndexerID string            `json:"indexer_id,omitempty"`
+	Source    string            `json:"source"` // "torrent-url", "magnet"
+	Magnet    string            `json:"magnet,omitempty"`
+	InfoHash  string            `json:"info_hash,omitempty"`
+	Release   contracts.Release `json:"release"`
+	LibraryID string            `json:"library_id"`
+	// Dir is the grab's own folder for torrent data.
+	Dir        string `json:"dir,omitempty"`
+	Kind       string `json:"kind"` // the library type
+	State      string `json:"state"`
+	Size       int64  `json:"size"`
+	Downloaded int64  `json:"downloaded"`
+	Uploaded   int64  `json:"uploaded"`
+	Completed  int64  `json:"completed"`
+	Peers      int    `json:"peers"`
+	DownRate   int64  `json:"down_rate"`
+	UpRate     int64  `json:"up_rate"`
 	// Imported lists library paths the import created.
 	Imported   []string `json:"imported,omitempty"`
 	Code       string   `json:"code,omitempty"`

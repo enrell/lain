@@ -37,6 +37,8 @@ type Deps struct {
 	// settings) and the bytes the HTTP download manager already uses.
 	Budget  func() (downloads.Limits, int64)
 	Library func(id string) (contracts.Library, bool)
+	// Libraries lists every library: cleanup never deletes inside one.
+	Libraries func() []contracts.Library
 	// Titles lists a library's existing titles for import matching.
 	Titles func(libraryID string) []string
 	Rescan func(libraryID string)
@@ -197,6 +199,11 @@ func (m *Manager) SetSettings(s Settings) (Settings, error) {
 	s, err := s.Validate()
 	if err != nil {
 		return s, err
+	}
+	if m.d.Libraries != nil {
+		if name, bad := overlapsLibrary(s.Dir, m.d.Libraries()); bad {
+			return s, errf(CodeInvalid, "the download folder must not be, contain or lie inside a library (%s)", name)
+		}
 	}
 	if err := m.st.saveSettings(s); err != nil {
 		return s, err
@@ -645,7 +652,7 @@ func (m *Manager) Grab(in GrabInput) (Grab, error) {
 	if err != nil {
 		return Grab{}, err
 	}
-	g.InfoHash = ih
+	g.InfoHash, g.Dir = ih, dir
 	if size > 0 {
 		g.Size = size
 	}
@@ -658,7 +665,7 @@ func (m *Manager) Grab(in GrabInput) (Grab, error) {
 		g.State = GrabDownloading
 	}
 	if err := m.st.putGrab(g); err != nil {
-		_ = c.Remove(ih, true)
+		m.discard(g)
 		return Grab{}, err
 	}
 	m.log.Info("grab added", "grab", g.ID, "library", g.LibraryID, "state", g.State, "bytes", g.Size)
@@ -722,11 +729,7 @@ func (m *Manager) fail(g Grab, err error) {
 		g.Error = e.Msg
 	}
 	if g.FinishedAt == 0 && g.InfoHash != "" {
-		m.mu.Lock()
-		c := m.client
-		m.mu.Unlock()
-		_ = c.Remove(g.InfoHash, true)
-		g.DataRemoved = true
+		g.DataRemoved = m.discard(g)
 	}
 	_ = m.st.putGrab(g)
 	m.log.Warn("grab failed", "grab", g.ID, "code", g.Code, "err", g.Error)
@@ -805,9 +808,7 @@ func (m *Manager) runImport(id string) {
 		g.State, g.SeedingAt = GrabSeeding, time.Now().Unix()
 	} else {
 		g.State = GrabDone
-		if err := c.Remove(g.InfoHash, true); err == nil {
-			g.DataRemoved = true
-		}
+		g.DataRemoved = m.discard(g)
 	}
 	_ = m.st.putGrab(g)
 	m.log.Info("grab imported", "grab", g.ID, "files", len(g.Imported), "state", g.State)
@@ -885,8 +886,10 @@ func (m *Manager) stopSeeding(g Grab, s Settings) {
 	m.mu.Unlock()
 	t := m.total(g, ClientStatus{}, false)
 	g.Downloaded, g.Uploaded = t[0], t[1]
-	if err := c.Remove(g.InfoHash, s.RemoveAfterSeeding); err == nil && s.RemoveAfterSeeding {
-		g.DataRemoved = true
+	if s.RemoveAfterSeeding {
+		g.DataRemoved = m.discard(g)
+	} else if err := c.Remove(g.InfoHash, false); err != nil && CodeOf(err) != CodeNotFound {
+		m.log.Warn("could not stop seeding", "grab", g.ID, "err", err.Error())
 	}
 	g.State = GrabDone
 	_ = m.st.putGrab(g)
@@ -1032,16 +1035,16 @@ func (m *Manager) Remove(id string, deleteData bool) error {
 	if g.State == GrabImporting {
 		return errf(CodeState, "wait for the import to finish")
 	}
-	if g.InfoHash != "" && !g.DataRemoved {
+	switch {
+	case deleteData:
+		m.discard(g) // spares library files and anything imported
+	case g.InfoHash != "" && !g.DataRemoved:
 		m.mu.Lock()
 		c := m.client
 		m.mu.Unlock()
-		if err := c.Remove(g.InfoHash, deleteData); err != nil && CodeOf(err) != CodeNotFound {
+		if err := c.Remove(g.InfoHash, false); err != nil && CodeOf(err) != CodeNotFound {
 			return err
 		}
-	}
-	if deleteData {
-		_ = os.Remove(filepath.Join(m.Settings().Dir, g.ID)) // the now-empty grab folder
 	}
 	m.mu.Lock()
 	delete(m.live, id)
