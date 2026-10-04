@@ -787,6 +787,26 @@ stored one. `LAIN_ANILIST_CLIENT_ID`/`--anilist-client-id` and
 `LAIN_ANILIST_CLIENT_SECRET` (env only, like `LAIN_PASSWORD`) seed the
 document on first boot.
 
+## Social (docs/slices/social.md)
+
+A fourth domain beside catalog, userstate and the list. One built-in
+provider, `lain-social-bolt`, serves four exactly-one capabilities;
+inputs are the Go types in `internal/plugins/social`, shared shapes in
+`internal/contracts/social.go`. Works are `WorkRef{kind, title,
+item_id?}` keyed by kind + `catalog.TitleKey(title)`, so every media
+kind (video or reading) is covered without a contract change.
+
+| Capability | Owns |
+|---|---|
+| `lain.social.graph@1` | privacy settings, favorites, friend requests, friendships, blocks, the `CanSee` rule |
+| `lain.social.activity@1` | activity log (progress / completed / rated), friends feed, notifications |
+| `lain.social.reviews@1` | ratings (1..10), reviews, comments and replies |
+| `lain.social.collections@1` | collections, collection sharing, work shares |
+
+Typed codes: `invalid-message` (400), `not-found` (404 — also how a
+block placed on the viewer reads), `forbidden` (403). Routes live under
+`/api/social/*`; the full list is in the slice plan.
+
 ## Component mode (wire protocol)
 
 Any provider can run as a supervised process (D-074). The host
