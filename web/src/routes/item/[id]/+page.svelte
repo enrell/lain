@@ -22,6 +22,7 @@
 	import ProgressBar from '$lib/components/media/ProgressBar.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import TitleView from '$lib/components/media/TitleView.svelte';
+	import TitleSocial from '$lib/components/social/TitleSocial.svelte';
 	import {
 		applyEnrichment,
 		ensureEnrichments,
@@ -379,6 +380,11 @@
 			</div>
 		</div>
 	</article>
+{/if}
+
+<!-- Social slice (docs/slices/social.md): ratings, comments, sharing for the work. -->
+{#if !loading && !notFound && !error && item}
+	<div class="mt-12"><TitleSocial target={{ item_id: item.id }} /></div>
 {/if}
 
 <Modal bind:open={confirmRemove} title="Remove metadata overlay?" description="Identity, progress and files are untouched — only the fetched artwork and description go away.">
