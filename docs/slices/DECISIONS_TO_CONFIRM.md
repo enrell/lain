@@ -1,5 +1,11 @@
 # Decisions to confirm
 
+> **Resolved 2026-10-04:** the user accepted every row below, including
+> the four points flagged at the end. They are recorded as `D-089`…`D-107`
+> in `docs/advisor/decisions.md`, which is now the source of truth; this
+> file stays as the review record. The acquisition slice continues from
+> `D-108`.
+
 The slices could not run the advisor protocol, so their load-bearing
 choices were recorded as proposals: `P-*` (reading + downloads,
 `reading-downloads.md`, `web-offline.md`) and `S-*` (social,
