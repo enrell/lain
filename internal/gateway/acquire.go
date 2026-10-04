@@ -98,9 +98,10 @@ func (s *Server) startAcquire(dataDir string) {
 		Budget: func() (downloads.Limits, int64) {
 			return s.downloads.Settings().Limits, s.downloads.Usage().UsedBytes
 		},
-		Library: s.libByID,
-		Titles:  s.libraryTitles,
-		Rescan:  s.scanLibrary,
+		Library:   s.libByID,
+		Libraries: s.libList,
+		Titles:    s.libraryTitles,
+		Rescan:    s.scanLibrary,
 	}
 	initial := acquire.DefaultSettings(dataDir)
 	if p, err := strconv.Atoi(os.Getenv("LAIN_ACQUIRE_LISTEN_PORT")); err == nil && p >= 0 && p <= 65535 {

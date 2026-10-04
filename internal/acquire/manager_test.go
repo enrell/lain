@@ -138,8 +138,9 @@ func (w *world) manager(t *testing.T, dataDir string, s Settings) *Manager {
 			defer w.mu.Unlock()
 			return w.limits, 0
 		},
-		Library: func(id string) (contracts.Library, bool) { return w.lib, id == w.lib.ID },
-		Titles:  func(string) []string { return []string{"SHOW"} },
+		Library:   func(id string) (contracts.Library, bool) { return w.lib, id == w.lib.ID },
+		Libraries: func() []contracts.Library { return []contracts.Library{w.lib} },
+		Titles:    func(string) []string { return []string{"SHOW"} },
 		Rescan: func(id string) {
 			w.mu.Lock()
 			w.rescans = append(w.rescans, id)
