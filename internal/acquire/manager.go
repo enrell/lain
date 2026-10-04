@@ -872,6 +872,9 @@ func (m *Manager) importFailed(g Grab, err error) {
 		g.Code, g.Error = e.Code, e.Msg
 	}
 	_ = m.st.putGrab(g)
+	// Automation must not grab it again; the data stays for a manual
+	// retry (RetryImport), which is not affected by the blocklist.
+	m.block(g, g.Error)
 	m.log.Warn("import failed", "grab", g.ID, "err", g.Error)
 }
 

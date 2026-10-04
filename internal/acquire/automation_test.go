@@ -296,3 +296,21 @@ func TestAutomationSchedule(t *testing.T) {
 		t.Fatal("search_hours 0 means on demand only")
 	}
 }
+
+func TestImportFailureIsBlocklistedButKeepsData(t *testing.T) {
+	w := newWorld(t)
+	w.lib.Type = "manga" // a video release cannot be imported here
+	m := w.manager(t, t.TempDir(), settings(0))
+	g, err := m.Grab(GrabInput{URL: w.index.URL + "/dl/show.torrent", LibraryID: w.lib.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := waitGrabFailed(t, m, g.ID)
+	if failed.Code != CodeImport || failed.DataRemoved {
+		t.Fatalf("import failure must keep the data for a retry: %+v", failed)
+	}
+	bl := m.Blocklist()
+	if len(bl) != 1 || bl[0].InfoHash != w.mi.InfoHash.Hex() {
+		t.Fatalf("an unimportable release must be blocklisted: %+v", bl)
+	}
+}
