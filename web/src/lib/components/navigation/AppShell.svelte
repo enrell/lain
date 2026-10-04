@@ -7,6 +7,7 @@
 	import MobileNav from './MobileNav.svelte';
 	import CommandPalette from './CommandPalette.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
+	import { session } from '$lib/auth/session.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -17,6 +18,8 @@
 		{ href: '/library', label: t('nav.library'), exact: false },
 		{ href: '/list', label: t('nav.list'), exact: false },
 		{ href: '/search', label: t('nav.search'), exact: false },
+		// Acquisition is admin-only (docs/slices/acquisition.md, A-9).
+		...(session.isAdmin ? [{ href: '/acquire', label: t('nav.acquire'), exact: false }] : []),
 		{ href: '/settings', label: t('nav.settings'), exact: false }
 	]);
 

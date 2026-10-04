@@ -33,7 +33,9 @@ export const SECTIONS: SettingsSection[] = [
 	{ href: '/settings/integrations', id: 'integrations', scope: 'server', key: 'i' },
 	{ href: '/settings/plugins', id: 'plugins', scope: 'server', key: 'x' },
 	{ href: '/settings/backup', id: 'backup', scope: 'server', key: 'b' },
-	{ href: '/settings/downloads', id: 'downloads', scope: 'server', key: 'd' }
+	{ href: '/settings/downloads', id: 'downloads', scope: 'server', key: 'd' },
+	{ href: '/settings/indexers', id: 'indexers', scope: 'server', key: 'n' },
+	{ href: '/settings/acquisition', id: 'acquisition', scope: 'server', key: 'a' }
 ];
 
 export function visibleSections(admin: boolean): SettingsSection[] {
@@ -84,7 +86,11 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'backup', href: '/settings/backup', anchor: 'backup', keywords: 'backup snapshot database export', admin: true },
 	{ id: 'downloadQueue', href: '/settings/downloads', anchor: 'queue', keywords: 'download fetch url queue pause resume cancel', admin: true },
 	{ id: 'downloadStorage', href: '/settings/downloads', anchor: 'storage', keywords: 'download disk space usage cleanup partial', admin: true },
-	{ id: 'downloadLimits', href: '/settings/downloads', anchor: 'limits', keywords: 'download quota budget limit free space directory concurrency', admin: true }
+	{ id: 'downloadLimits', href: '/settings/downloads', anchor: 'limits', keywords: 'download quota budget limit free space directory concurrency', admin: true },
+	{ id: 'indexers', href: '/settings/indexers', anchor: 'indexers', keywords: 'indexer torznab newznab jackett prowlarr tracker api key', admin: true },
+	{ id: 'acquisitionEngine', href: '/settings/acquisition', anchor: 'engine', keywords: 'torrent engine port peers rate limit speed bittorrent', admin: true },
+	{ id: 'acquisitionSeeding', href: '/settings/acquisition', anchor: 'seeding', keywords: 'seed ratio seeding time share upload', admin: true },
+	{ id: 'acquisitionImport', href: '/settings/acquisition', anchor: 'import', keywords: 'import hardlink copy move rename library', admin: true }
 ];
 
 /**
