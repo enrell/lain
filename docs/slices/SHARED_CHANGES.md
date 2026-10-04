@@ -8,3 +8,4 @@ expected): `internal/downloads/`, `internal/plugins/comic/`,
 
 | File | Change | Conflict risk |
 | --- | --- | --- |
+| `internal/kv/kv.go` | New bucket constant `BDownloads` (`downloads`) added to the `Open` bucket list. | Low: one appended identifier; if social adds a bucket too, keep both in the list. |
