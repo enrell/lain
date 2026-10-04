@@ -138,6 +138,11 @@ func Tokenize(name, kind string) contracts.Release {
 		case isTechTag(l):
 			applyTag(l, &r)
 			markAt(i)
+		case reading && i > 0 && isNumber(l) && len(l) <= 4 && r.Chapter == 0 && !isYearToken(l) && trailingNumber(toks[i+1:]):
+			// "Saga 054", "Saga 054 (2018)": a trailing bare number is the
+			// issue or chapter in a reading library.
+			r.Chapter, _ = strconv.Atoi(l)
+			markAt(i)
 		case !reading && i > 0 && isNumber(l) && len(l) <= 4 && l != "0" && r.Episodes == nil && r.Season == 0 && !isYearToken(l):
 			// "Title 05 [1080p]": a bare number after the title is an
 			// absolute episode only when tags follow it.
@@ -375,6 +380,17 @@ func followedByTags(rest []string) bool {
 		}
 	}
 	return false
+}
+
+// trailingNumber reports whether only years and tags follow.
+func trailingNumber(rest []string) bool {
+	for _, t := range rest {
+		l := strings.ToLower(t)
+		if !isYearToken(l) && !isTechTag(l) && l != "-" {
+			return false
+		}
+	}
+	return true
 }
 
 func isYearToken(s string) bool {
