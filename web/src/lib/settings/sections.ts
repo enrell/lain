@@ -27,12 +27,17 @@ export const SECTIONS: SettingsSection[] = [
 	{ href: '/settings/playback', id: 'playback', scope: 'you', key: 'y' },
 	{ href: '/settings/connections', id: 'connections', scope: 'you', key: 'c' },
 	{ href: '/settings/security', id: 'security', scope: 'you', key: 's' },
+	{ href: '/settings/privacy', id: 'privacy', scope: 'you', key: 'v' },
 	{ href: '/settings/libraries', id: 'libraries', scope: 'server', key: 'l' },
 	{ href: '/settings/users', id: 'users', scope: 'server', key: 'u' },
 	{ href: '/settings/transcoding', id: 'transcoding', scope: 'server', key: 't' },
 	{ href: '/settings/integrations', id: 'integrations', scope: 'server', key: 'i' },
 	{ href: '/settings/plugins', id: 'plugins', scope: 'server', key: 'x' },
-	{ href: '/settings/backup', id: 'backup', scope: 'server', key: 'b' }
+	{ href: '/settings/backup', id: 'backup', scope: 'server', key: 'b' },
+	{ href: '/settings/downloads', id: 'downloads', scope: 'server', key: 'd' },
+	// Kept last (not next to Security) so it does not touch lines the
+	// social slice edits; the rail groups by scope, not array order.
+	{ href: '/settings/offline', id: 'offline', scope: 'you', key: 'o' }
 ];
 
 export function visibleSections(admin: boolean): SettingsSection[] {
@@ -67,6 +72,12 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'effects', href: '/settings/playback', anchor: 'effects', keywords: 'anime4k upscale shader webgpu effect' },
 	{ id: 'anilist', href: '/settings/connections', anchor: 'anilist', keywords: 'anilist list sync scrobble tracker connect' },
 	{ id: 'password', href: '/settings/security', anchor: 'password', keywords: 'password security credentials' },
+	{ id: 'privacyProfile', href: '/settings/privacy', anchor: 'privacy-profile', keywords: 'privacy visibility profile public friends private social' },
+	{ id: 'privacyActivity', href: '/settings/privacy', anchor: 'privacy-activity', keywords: 'privacy activity feed watching reading social' },
+	{ id: 'privacyRatings', href: '/settings/privacy', anchor: 'privacy-ratings', keywords: 'privacy ratings reviews score social' },
+	{ id: 'discoverable', href: '/settings/privacy', anchor: 'privacy-discoverable', keywords: 'search find discoverable hidden friends social' },
+	{ id: 'friendRequests', href: '/settings/privacy', anchor: 'privacy-requests', keywords: 'friend requests block social' },
+	{ id: 'favorites', href: '/settings/privacy', anchor: 'privacy-favorites', keywords: 'favorites favourite profile social' },
 	{ id: 'libraries', href: '/settings/libraries', anchor: 'libraries', keywords: 'folder path library add remove root', admin: true },
 	{ id: 'scan', href: '/settings/libraries', anchor: 'scan', keywords: 'scan rescan index refresh', admin: true },
 	{ id: 'users', href: '/settings/users', anchor: 'users', keywords: 'accounts roles admin disable reset password', admin: true },
@@ -80,7 +91,11 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'sessions', href: '/settings/transcoding', anchor: 'sessions', keywords: 'sessions running jobs cancel', admin: true },
 	{ id: 'integrations', href: '/settings/integrations', anchor: 'integrations', keywords: 'oauth client id secret anilist', admin: true },
 	{ id: 'plugins', href: '/settings/plugins', anchor: 'capabilities', keywords: 'plugin provider capability composition replace', admin: true },
-	{ id: 'backup', href: '/settings/backup', anchor: 'backup', keywords: 'backup snapshot database export', admin: true }
+	{ id: 'backup', href: '/settings/backup', anchor: 'backup', keywords: 'backup snapshot database export', admin: true },
+	{ id: 'downloadQueue', href: '/settings/downloads', anchor: 'queue', keywords: 'download fetch url queue pause resume cancel', admin: true },
+	{ id: 'downloadStorage', href: '/settings/downloads', anchor: 'storage', keywords: 'download disk space usage cleanup partial', admin: true },
+	{ id: 'downloadLimits', href: '/settings/downloads', anchor: 'limits', keywords: 'download quota budget limit free space directory concurrency', admin: true },
+	{ id: 'offlineStorage', href: '/settings/offline', anchor: 'storage', keywords: 'offline save download cache browser quota storage read' }
 ];
 
 /**

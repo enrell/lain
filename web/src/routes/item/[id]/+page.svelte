@@ -22,6 +22,7 @@
 	import ProgressBar from '$lib/components/media/ProgressBar.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import TitleView from '$lib/components/media/TitleView.svelte';
+	import TitleSocial from '$lib/components/social/TitleSocial.svelte';
 	import {
 		applyEnrichment,
 		ensureEnrichments,
@@ -35,6 +36,8 @@
 	import { progressRatio } from '$lib/utilities/progress';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable } from '$lib/reader/kinds';
+	import ComicInfoPanel from '$lib/components/reader/ComicInfoPanel.svelte';
+	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer, item?.kind); }
@@ -252,6 +255,7 @@
 	{#key series.key}
 		<TitleView group={series} {progressMap} {libraries} actions={adminActions} />
 	{/key}
+	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} /></div>{/if}
 {:else if item}
 	<article class="space-y-8">
 		<!-- Artwork backdrop: cover, else poster, else a generated still. It is
@@ -317,6 +321,7 @@
 							<RotateCcw class="size-3.5" /> Start over
 						</Button>
 					{/if}
+					{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="ghost" />{/if}
 					{#if session.isAdmin}
 						<div class="flex items-center gap-2 md:ml-auto">
 							{@render adminActions()}
@@ -358,6 +363,7 @@
 				{#if enrichment?.synopsis}
 					<p class="max-w-3xl text-sm leading-relaxed text-muted">{enrichment.synopsis}</p>
 				{/if}
+				{#if reading}<ComicInfoPanel {item} />{/if}
 
 				{#if progress && ratio > 0 && !progress.completed}
 					<div class="max-w-md space-y-1.5">
@@ -379,6 +385,11 @@
 			</div>
 		</div>
 	</article>
+{/if}
+
+<!-- Social slice (docs/slices/social.md): ratings, comments, sharing for the work. -->
+{#if !loading && !notFound && !error && item}
+	<div class="mt-12"><TitleSocial target={{ item_id: item.id }} /></div>
 {/if}
 
 <Modal bind:open={confirmRemove} title="Remove metadata overlay?" description="Identity, progress and files are untouched — only the fetched artwork and description go away.">

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -29,6 +30,7 @@ import (
 	"github.com/enrell/lain/internal/component"
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/core"
+	"github.com/enrell/lain/internal/downloads"
 	"github.com/enrell/lain/internal/kv"
 	"github.com/enrell/lain/internal/localplay"
 	"github.com/enrell/lain/internal/plugins/backup"
@@ -43,6 +45,7 @@ import (
 	"github.com/enrell/lain/internal/plugins/probe"
 	"github.com/enrell/lain/internal/plugins/search"
 	"github.com/enrell/lain/internal/plugins/settings"
+	"github.com/enrell/lain/internal/plugins/social"
 	"github.com/enrell/lain/internal/plugins/source"
 	"github.com/enrell/lain/internal/plugins/sourcewatch"
 	"github.com/enrell/lain/internal/plugins/theme"
@@ -108,6 +111,10 @@ type Server struct {
 	// components provisions external providers from <data-dir>/plugins/
 	// (D-077). Started in NewWithOptions; nil only on spawn failure.
 	components *component.Provisioner
+
+	// downloads fetches URLs onto server disk (downloads.go); started in
+	// NewWithOptions, stopped in Close.
+	downloads *downloads.Manager
 }
 
 // Close stops background transforms and the library watcher before
@@ -115,6 +122,9 @@ type Server struct {
 func (s *Server) Close() error {
 	if s.components != nil {
 		s.components.Close()
+	}
+	if s.downloads != nil {
+		s.downloads.Close()
 	}
 	// The done channels are written once in NewWithOptions and only ever
 	// closed here. watchLoop and listSyncLoop read them straight from
@@ -212,6 +222,11 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 		db.Close()
 		return nil, err
 	}
+	soc, err := social.New(db)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
 	stateKey, err := loadOrCreateStateKey(db)
 	if err != nil {
 		db.Close()
@@ -237,6 +252,7 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	reg.Register(cat)
 	reg.Register(ustate)
 	reg.Register(lst)
+	reg.Register(soc)
 	reg.Register(listlink.NewAniList())
 	reg.Register(searchProvider{reg: reg})
 	reg.Register(playback.Planner{})
@@ -310,6 +326,14 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 			return nil, fmt.Errorf("integration settings: %w", err)
 		}
 	}
+	dl, err := downloads.NewManager(db, downloads.DefaultSettings(dataDir))
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("downloads: %w", err)
+	}
+	dl.OnDone = s.downloadDone
+	dl.Start()
+	s.downloads = dl
 	s.routes()
 	s.routesEnrich()
 	s.routesThumbnail()
@@ -317,6 +341,8 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	s.routesProfile()
 	s.routesTranscode()
 	s.routesList()
+	s.routesDownloads()
+	s.routesSocial()
 	// The web UI is the least specific pattern: API, health and media
 	// routes registered above keep winning their paths.
 	webui.Mount(s.mux)
@@ -880,6 +906,11 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", contentType(it.FilePath))
 	w.Header().Set("Accept-Ranges", "bytes")
+	// ?download=1 asks a browser to save the original file (an offline
+	// copy) instead of playing it inline.
+	if r.URL.Query().Get("download") == "1" {
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(it.FilePath)}))
+	}
 	http.ServeContent(w, r, filepath.Base(it.FilePath), fi.ModTime(), f)
 }
 
@@ -923,6 +954,7 @@ func (s *Server) handleProgressPut(w http.ResponseWriter, r *http.Request, v aut
 	if in.Completed && !prev.Completed {
 		go s.scrobble(v.UserID, in.ItemID)
 	}
+	s.recordSocialProgress(v.UserID, prev, in)
 	writeJSON(w, 200, out)
 }
 

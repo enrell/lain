@@ -118,3 +118,31 @@ func TestReaderRefusesNonReadableAndComicDirection(t *testing.T) {
 	}
 }
 
+func TestReaderInfoOverridesDirection(t *testing.T) {
+	srv := testServer(t)
+	tok := setupAdmin(t, srv)
+	p := filepath.Join(t.TempDir(), "Tiny Blade 01.cbz")
+	f, _ := os.Create(p)
+	zw := zip.NewWriter(f)
+	w, _ := zw.Create("ComicInfo.xml")
+	_, _ = w.Write([]byte("<ComicInfo><Series>Tiny Blade</Series><Manga>YesAndRightToLeft</Manga></ComicInfo>"))
+	var img bytes.Buffer
+	_ = png.Encode(&img, image.NewGray(image.Rect(0, 0, 4, 6)))
+	w, _ = zw.Create("p1.png")
+	_, _ = w.Write(img.Bytes())
+	_ = zw.Close()
+	f.Close()
+	// A comic library defaults to ltr; the archive declares rtl.
+	it := seedReadable(t, srv, p, "comic")
+	rec := do(t, srv, "GET", "/api/items/"+it.ID+"/pages", nil, tok)
+	var v struct {
+		Direction string
+		Info      *contracts.ComicInfo
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.Direction != "rtl" || v.Info == nil || v.Info.Series != "Tiny Blade" {
+		t.Fatalf("view = %+v info=%+v", v, v.Info)
+	}
+}

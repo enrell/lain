@@ -47,6 +47,8 @@ func main() {
 		err = cmdLogout(os.Args[2:])
 	case "watch":
 		err = cmdWatch(os.Args[2:])
+	case "download":
+		err = cmdDownload(os.Args[2:])
 	case "player":
 		err = cmdPlayer(os.Args[2:])
 	case "language":
@@ -84,6 +86,7 @@ func usage() {
   login     save API credentials (flags: --server, --username; or LAIN_PASSWORD)
   logout    forget saved credentials
   watch     play in mpv or VLC ([query] [--next] [--once] [--pick N] [--player mpv|vlc] [--dry-run])
+  download  keep offline copies (add, run, list, pause, resume, cancel, rm, play, sync, gc, config)
   player    show or set the local default player (player [mpv|vlc])
   language  show or set your account's preferred language (language [ISO 639-2 code|--clear])
   install-player-handler  register this CLI for external-player links in the web UI

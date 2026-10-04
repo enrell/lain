@@ -17,6 +17,7 @@
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Poster from '$lib/components/media/Poster.svelte';
+	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import { formatTime } from '$lib/utilities/format';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
@@ -386,6 +387,7 @@
 							>
 								None
 							</button>
+							<DownloadFileButton items={group.items.filter((i) => selected.has(i.id))} hotkey />
 							<Button variant="danger" size="sm" disabled={selected.size === 0} onclick={() => (confirmDelete = true)}>
 								<Trash2 class="size-3.5" aria-hidden="true" /> Delete
 							</Button>
