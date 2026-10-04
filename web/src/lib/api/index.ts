@@ -1,6 +1,7 @@
 import { auth } from './auth';
 import { backup } from './backup';
 import { catalog } from './catalog';
+import { downloads } from './downloads';
 import { enrich } from './enrich';
 import { items } from './items';
 import { libraries } from './libraries';
@@ -26,6 +27,7 @@ export const api = {
 	auth,
 	backup,
 	catalog,
+	downloads,
 	enrich,
 	items,
 	libraries,

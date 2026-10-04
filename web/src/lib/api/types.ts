@@ -527,3 +527,54 @@ export interface ComicInfo {
 	age_rating?: string;
 	direction?: 'rtl' | 'ltr';
 }
+
+export type DownloadState = 'queued' | 'running' | 'paused' | 'done' | 'failed' | 'canceled';
+
+/** One server-side download (internal/downloads.Job). */
+export interface DownloadJob {
+	id: string;
+	url: string;
+	library_id?: string;
+	dir: string;
+	name: string;
+	path?: string;
+	state: DownloadState;
+	bytes: number;
+	/** -1 or 0 while the origin has not said. */
+	total: number;
+	code?: string;
+	error?: string;
+	created_at: number;
+	updated_at: number;
+	finished_at?: number;
+}
+
+export interface DownloadSettings {
+	dir: string;
+	/** 0 = no budget. */
+	max_bytes: number;
+	/** 0 = no free-space floor. */
+	min_free_bytes: number;
+	concurrency: number;
+	keep_finished_days: number;
+}
+
+export interface DownloadUsage {
+	used_bytes: number;
+	max_bytes: number;
+	/** -1 when the server cannot tell. */
+	free_bytes: number;
+	min_free_bytes: number;
+}
+
+export interface DownloadsView {
+	jobs: DownloadJob[];
+	usage: DownloadUsage;
+	settings: DownloadSettings;
+}
+
+export interface DownloadCleanup {
+	parts: number;
+	records: number;
+	freed_bytes: number;
+}

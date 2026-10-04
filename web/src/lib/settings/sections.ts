@@ -32,7 +32,8 @@ export const SECTIONS: SettingsSection[] = [
 	{ href: '/settings/transcoding', id: 'transcoding', scope: 'server', key: 't' },
 	{ href: '/settings/integrations', id: 'integrations', scope: 'server', key: 'i' },
 	{ href: '/settings/plugins', id: 'plugins', scope: 'server', key: 'x' },
-	{ href: '/settings/backup', id: 'backup', scope: 'server', key: 'b' }
+	{ href: '/settings/backup', id: 'backup', scope: 'server', key: 'b' },
+	{ href: '/settings/downloads', id: 'downloads', scope: 'server', key: 'd' }
 ];
 
 export function visibleSections(admin: boolean): SettingsSection[] {
@@ -80,7 +81,10 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'sessions', href: '/settings/transcoding', anchor: 'sessions', keywords: 'sessions running jobs cancel', admin: true },
 	{ id: 'integrations', href: '/settings/integrations', anchor: 'integrations', keywords: 'oauth client id secret anilist', admin: true },
 	{ id: 'plugins', href: '/settings/plugins', anchor: 'capabilities', keywords: 'plugin provider capability composition replace', admin: true },
-	{ id: 'backup', href: '/settings/backup', anchor: 'backup', keywords: 'backup snapshot database export', admin: true }
+	{ id: 'backup', href: '/settings/backup', anchor: 'backup', keywords: 'backup snapshot database export', admin: true },
+	{ id: 'downloadQueue', href: '/settings/downloads', anchor: 'queue', keywords: 'download fetch url queue pause resume cancel', admin: true },
+	{ id: 'downloadStorage', href: '/settings/downloads', anchor: 'storage', keywords: 'download disk space usage cleanup partial', admin: true },
+	{ id: 'downloadLimits', href: '/settings/downloads', anchor: 'limits', keywords: 'download quota budget limit free space directory concurrency', admin: true }
 ];
 
 /**
