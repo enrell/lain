@@ -277,6 +277,9 @@ func (s *Service) Relate(userID, otherID, action string) (RelationOutput, error)
 				// Idempotent.
 			case contracts.RelationIncoming:
 				mine.State, theirs.State = contracts.RelationFriend, contracts.RelationFriend
+				if err := settleRequestTx(tx, userID, otherID); err != nil {
+					return err
+				}
 				if err := s.notifyTx(tx, contracts.Notification{UserID: otherID, Type: contracts.NotifyFriendAccepted, FromUserID: userID}); err != nil {
 					return err
 				}
@@ -301,9 +304,18 @@ func (s *Service) Relate(userID, otherID, action string) (RelationOutput, error)
 				return notFoundErr("no pending request from this account")
 			}
 			mine.State, theirs.State = "", ""
+			if err := settleRequestTx(tx, userID, otherID); err != nil {
+				return err
+			}
 		case ActionRemove:
 			switch mine.State {
-			case contracts.RelationFriend, contracts.RelationOutgoing, contracts.RelationIncoming:
+			case contracts.RelationOutgoing:
+				// A cancelled request must not stay actionable in their inbox.
+				if err := settleRequestTx(tx, otherID, userID); err != nil {
+					return err
+				}
+				mine.State, theirs.State = "", ""
+			case contracts.RelationFriend, contracts.RelationIncoming:
 				mine.State, theirs.State = "", ""
 			}
 		case ActionBlock:
@@ -414,4 +426,28 @@ func (s *Service) CanSee(viewer, owner, subject string) (bool, error) {
 		return err
 	})
 	return ok, err
+}
+
+// settleRequestTx marks recipient's friend-request notifications from
+// sender read once the request is answered or withdrawn, so an inbox
+// never offers to accept a request that no longer exists.
+func settleRequestTx(tx *bolt.Tx, recipient, sender string) error {
+	b := tx.Bucket(kv.BSocialNotifications)
+	var keys [][]byte
+	var rows []contracts.Notification
+	eachPrefix(b, prefix(recipient), false, func(k, v []byte) bool {
+		var n contracts.Notification
+		if decode(v, &n) == nil && !n.Read && n.Type == contracts.NotifyFriendRequest && n.FromUserID == sender {
+			n.Read = true
+			keys = append(keys, append([]byte(nil), k...))
+			rows = append(rows, n)
+		}
+		return true
+	})
+	for i, k := range keys {
+		if err := kv.PutJSON(tx, kv.BSocialNotifications, k, rows[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

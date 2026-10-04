@@ -148,6 +148,37 @@ func TestFriendLifecycle(t *testing.T) {
 	}
 }
 
+func TestAnsweredRequestsLeaveTheInbox(t *testing.T) {
+	s, _ := newService(t)
+	pending := func(user string) int {
+		t.Helper()
+		n, _ := s.Notifications(user, 0)
+		c := 0
+		for _, it := range n.Items {
+			if it.Type == contracts.NotifyFriendRequest && !it.Read {
+				c++
+			}
+		}
+		return c
+	}
+	_, _ = s.Relate("ana", "bo", ActionRequest)
+	_, _ = s.Relate("bo", "ana", ActionAccept)
+	if pending("bo") != 0 {
+		t.Fatal("accepted request still pending in the inbox")
+	}
+	_, _ = s.Relate("bo", "ana", ActionRemove)
+	_, _ = s.Relate("ana", "bo", ActionRequest)
+	_, _ = s.Relate("bo", "ana", ActionDecline)
+	if pending("bo") != 0 {
+		t.Fatal("declined request still pending")
+	}
+	_, _ = s.Relate("ana", "bo", ActionRequest)
+	_, _ = s.Relate("ana", "bo", ActionRemove)
+	if pending("bo") != 0 {
+		t.Fatal("cancelled request still pending")
+	}
+}
+
 func TestRequestsCanBeClosed(t *testing.T) {
 	s, _ := newService(t)
 	nobody := contracts.RequestsNobody
