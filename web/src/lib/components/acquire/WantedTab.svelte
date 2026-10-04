@@ -3,7 +3,7 @@
 	 * Wanted (docs/slices/acquisition.md, Phase 2): monitored titles and
 	 * what they still need. Keys: m monitors a title, r syncs RSS now; a
 	 * focused row takes s (search now), e (edit), Space (pause/resume
-	 * monitoring), Delete (stop monitoring), j/k (move).
+	 * monitoring), t (subtitles), Delete (stop monitoring), j/k (move).
 	 */
 	import { onMount } from 'svelte';
 	import { api, type AutomationState, type Library, type Monitored, type Profile, type WantedRow } from '$lib/api';
@@ -17,6 +17,7 @@
 	import { formatRelative } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
 	import MonitorDialog from './MonitorDialog.svelte';
+	import SubtitlePanel from './SubtitlePanel.svelte';
 
 	let { libraries, prefill = $bindable('') }: { libraries: Library[]; prefill?: string } = $props();
 
@@ -28,6 +29,8 @@
 	let editing = $state<Monitored | null>(null);
 	let removing = $state<WantedRow | null>(null);
 	let removeOpen = $state(false);
+	let subsFor = $state<WantedRow | null>(null);
+	let subsOpen = $state(false);
 
 	const libraryName = (id: string) => libraries.find((l) => l.id === id)?.name ?? id;
 	const profileName = (id: string) => profiles.find((p) => p.id === id)?.name ?? id;
@@ -120,6 +123,10 @@
 			case 'Enter':
 				openDialog(row);
 				break;
+			case 't':
+				subsFor = row;
+				subsOpen = true;
+				break;
 			case ' ':
 				void toggle(row);
 				break;
@@ -210,6 +217,7 @@
 				</div>
 				<div class="flex flex-wrap items-center gap-1.5" role="gridcell">
 					<Button size="sm" variant="ghost" tabindex={-1} loading={busy === row.id} onclick={() => void search(row)}>{t('acquire.wanted.search')} <kbd class="ms-1 font-mono text-[10px] text-muted">s</kbd></Button>
+					<Button size="sm" variant="ghost" tabindex={-1} onclick={() => { subsFor = row; subsOpen = true; }}>{t('acquire.wanted.subtitles')} <kbd class="ms-1 font-mono text-[10px] text-muted">t</kbd></Button>
 					<Button size="sm" variant="ghost" tabindex={-1} onclick={() => openDialog(row)}>{t('acquire.indexers.edit')} <kbd class="ms-1 font-mono text-[10px] text-muted">e</kbd></Button>
 					<Button size="sm" variant="ghost" tabindex={-1} onclick={() => askRemove(row)}>{t('acquire.wanted.unmonitor')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
 				</div>
@@ -217,6 +225,8 @@
 		{/each}
 	</div>
 {/if}
+
+{#if subsFor}<SubtitlePanel bind:open={subsOpen} monitoredId={subsFor.id} title={subsFor.title} />{/if}
 
 <MonitorDialog bind:open={dialogOpen} {libraries} {profiles} {editing} {prefill} onsaved={() => { prefill = ''; void load(); }} />
 
