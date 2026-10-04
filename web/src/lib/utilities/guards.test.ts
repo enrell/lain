@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canAccessAdmin, isAdminRoute, isTypingTarget, routeRedirect } from './guards';
+import { SECTIONS } from '$lib/settings/sections';
 
 const base = {
 	ready: true,
@@ -70,7 +71,17 @@ describe('admin gating helpers', () => {
 		expect(isAdminRoute('/settings/users')).toBe(true);
 		expect(isAdminRoute('/settings/plugins')).toBe(true);
 		expect(isAdminRoute('/settings/backup')).toBe(true);
+		expect(isAdminRoute('/settings/downloads')).toBe(true);
 		expect(isAdminRoute('/settings/libraries/extra')).toBe(true);
+		expect(isAdminRoute('/settings/offline')).toBe(false);
+	});
+
+	// The rail and the guard must agree: a SERVER section the guard does
+	// not know renders its page shell to non-admins (the API still 403s).
+	it('guards every SERVER settings section and no YOU section', () => {
+		for (const s of SECTIONS) {
+			expect(isAdminRoute(s.href), s.href).toBe(s.scope === 'server');
+		}
 	});
 
 	it('only the admin role passes', () => {
