@@ -628,3 +628,14 @@ func playLocalFile(player, label, path string, resume float64) (pos, dur float64
 	pos, dur, ok = readStateFile(stateFile)
 	return pos, dur, ok, runErr
 }
+
+// dryRunLine is what `lain watch --dry-run` prints: the player command
+// with the media named — the offline copy's path when one would play,
+// a placeholder for the stream URL (it carries the token) otherwise.
+func dryRunLine(player string, args []string, local string) string {
+	media := "[authenticated stream URL]"
+	if local != "" {
+		media = local + " [offline copy]"
+	}
+	return strings.Join(append(append([]string{player}, args...), media), " ")
+}

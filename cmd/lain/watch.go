@@ -411,7 +411,8 @@ func playOne(client *apiClient, cfg clientConfig, item apiItem, dry bool) (playe
 
 func playOneWithPlayer(client *apiClient, cfg clientConfig, item apiItem, player string, dry bool) (playedResult, error) {
 	streamURL := cfg.Server + "/api/items/" + url.PathEscape(item.ID) + "/stream?token=" + url.QueryEscape(cfg.Token)
-	if local := localCopyPath(item.ID); local != "" {
+	local := localCopyPath(item.ID)
+	if local != "" {
 		streamURL = local // an offline copy (lain download) needs no network
 	}
 	label := item.Title
@@ -462,7 +463,7 @@ func playOneWithPlayer(client *apiClient, cfg clientConfig, item apiItem, player
 	}
 	args = append(args, streamURL)
 	if dry {
-		fmt.Printf("%s %s [authenticated stream URL]\n", player, strings.Join(args[:len(args)-1], " "))
+		fmt.Println(dryRunLine(player, args[:len(args)-1], local))
 		return playedResult{}, nil
 	}
 	bin, err := exec.LookPath(player)

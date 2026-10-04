@@ -249,3 +249,15 @@ func TestCmdDownloadUsageErrors(t *testing.T) {
 		t.Fatalf("list on an empty store: %v", err)
 	}
 }
+
+func TestDryRunLineNamesTheLocalCopy(t *testing.T) {
+	if got := dryRunLine("mpv", []string{"--title=x"}, ""); got != "mpv --title=x [authenticated stream URL]" {
+		t.Fatalf("stream: %q", got)
+	}
+	if got := dryRunLine("vlc", []string{"--a"}, "/off/x.mkv"); got != "vlc --a /off/x.mkv [offline copy]" {
+		t.Fatalf("local: %q", got)
+	}
+	if got := dryRunLine("mpv", nil, ""); strings.Contains(got, "  ") {
+		t.Fatalf("spacing: %q", got)
+	}
+}
