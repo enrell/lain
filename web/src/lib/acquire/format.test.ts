@@ -54,7 +54,7 @@ describe('acquire format', () => {
 		const s: AcquireSettings = {
 			dir: '/d', listen_port: 51413, max_active: 3, max_peers: 40, upload_kbps: 0, download_kbps: 0,
 			seed_ratio: 1, seed_minutes: 1440, remove_after_seeding: true, import_mode: 'hardlink',
-			automation: false, rss_minutes: 30, search_hours: 12, stall_hours: 6
+			automation: false, rss_minutes: 30, search_hours: 12, stall_hours: 6, subtitle_hours: 24
 		};
 		expect(settingsChanges(s, { ...s })).toBe(0);
 		expect(settingsChanges(s, { ...s, seed_ratio: 2, import_mode: 'copy' })).toBe(2);

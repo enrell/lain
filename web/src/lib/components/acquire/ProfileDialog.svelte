@@ -27,6 +27,9 @@
 	let minSize = $state(0);
 	let maxSize = $state(0);
 	let proper = $state(true);
+	let subLangs = $state('');
+	let subWithAudio = $state(false);
+	let subHI = $state<Profile['subtitle_hi']>('include');
 	let saving = $state(false);
 	let nameInput = $state<HTMLInputElement>();
 
@@ -44,6 +47,9 @@
 		minSize = p?.min_size_mb ?? 0;
 		maxSize = p?.max_size_mb ?? 0;
 		proper = p?.prefer_proper ?? true;
+		subLangs = (p?.subtitle_languages ?? []).join(', ');
+		subWithAudio = p?.subtitle_even_with_audio ?? false;
+		subHI = p?.subtitle_hi ?? 'include';
 		requestAnimationFrame(() => requestAnimationFrame(() => nameInput?.focus()));
 	});
 
@@ -60,7 +66,8 @@
 		const body = {
 			name, resolutions, sources, cutoff: resolutions.includes(cutoff) ? cutoff : (resolutions[0] ?? ''),
 			preferred_groups: csv(preferred), blocked_groups: csv(blockedGroups), blocked_words: csv(blockedWords),
-			min_seeders: Number(minSeeders) || 0, min_size_mb: Number(minSize) || 0, max_size_mb: Number(maxSize) || 0, prefer_proper: proper
+			min_seeders: Number(minSeeders) || 0, min_size_mb: Number(minSize) || 0, max_size_mb: Number(maxSize) || 0, prefer_proper: proper,
+			subtitle_languages: csv(subLangs), subtitle_even_with_audio: subWithAudio, subtitle_hi: subHI
 		};
 		try {
 			if (editing) await api.acquire.updateProfile(editing.id, body);
@@ -124,6 +131,21 @@
 			</label>
 		</div>
 		<Switch label={t('acquire.profiles.proper')} bind:checked={proper} />
+		<fieldset class="space-y-3 border-t border-hairline pt-3">
+			<legend class="font-mono text-[11px] uppercase tracking-wider text-muted">{t('acquire.profiles.subtitles')}</legend>
+			<label class="block space-y-1.5"><span class="text-xs text-muted">{t('acquire.profiles.subtitleLanguages')}</span>
+				<input bind:value={subLangs} class="{field} font-mono" placeholder="en, pt-BR" />
+				<span class="block text-[11px] text-muted">{t('acquire.profiles.subtitleLanguagesHint')}</span>
+			</label>
+			<Switch label={t('acquire.profiles.subtitleWithAudio')} bind:checked={subWithAudio} />
+			<label class="block space-y-1.5"><span class="text-xs text-muted">{t('acquire.profiles.subtitleHI')}</span>
+				<select bind:value={subHI} class={field}>
+					<option value="include">{t('acquire.profiles.hiInclude')}</option>
+					<option value="prefer">{t('acquire.profiles.hiPrefer')}</option>
+					<option value="exclude">{t('acquire.profiles.hiExclude')}</option>
+				</select>
+			</label>
+		</fieldset>
 	</form>
 	{#snippet footer()}
 		<Button variant="ghost" onclick={() => (open = false)}>{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>

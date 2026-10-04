@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type AcquireSettings, type AcquireView, type Profile } from '$lib/api';
+	import { api, type AcquireSettings, type AcquireView, type Profile, type SubtitleProvider } from '$lib/api';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import ProfileDialog from '$lib/components/acquire/ProfileDialog.svelte';
+	import SubtitleProviderDialog from '$lib/components/acquire/SubtitleProviderDialog.svelte';
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import Switch from '$lib/components/primitives/Switch.svelte';
@@ -29,6 +30,52 @@
 	let editingProfile = $state<Profile | null>(null);
 	let deleteProfile = $state<Profile | null>(null);
 	let deleteOpen = $state(false);
+	let subProviders = $state<SubtitleProvider[]>([]);
+	let subOpen = $state(false);
+	let editingSub = $state<SubtitleProvider | null>(null);
+	let deleteSub = $state<SubtitleProvider | null>(null);
+	let deleteSubOpen = $state(false);
+
+	async function loadSubProviders(): Promise<void> {
+		try {
+			subProviders = (await api.acquire.subtitleProviders()).providers;
+		} catch (err) {
+			toasts.error(errorMessage(err, t('acquire.subtitles.loadFailed')));
+		}
+	}
+
+	function editSub(p: SubtitleProvider | null): void {
+		editingSub = p;
+		subOpen = true;
+	}
+
+	function askDeleteSub(p: SubtitleProvider): void {
+		deleteSub = p;
+		deleteSubOpen = true;
+		requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById('confirm-delete-subprovider')?.focus()));
+	}
+
+	async function removeSub(): Promise<void> {
+		if (!deleteSub) return;
+		try {
+			await api.acquire.deleteSubtitleProvider(deleteSub.id);
+			deleteSubOpen = false;
+			await loadSubProviders();
+		} catch (err) {
+			toasts.error(errorMessage(err, t('acquire.subtitles.failed')));
+		}
+	}
+
+	function subKey(e: KeyboardEvent, p: SubtitleProvider): void {
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		const el = e.currentTarget as HTMLElement;
+		if (e.key === 'e' || e.key === 'Enter') editSub(p);
+		else if (e.key === 'Delete') askDeleteSub(p);
+		else if (e.key === 'j' || e.key === 'ArrowDown') (el.nextElementSibling as HTMLElement | null)?.focus();
+		else if (e.key === 'k' || e.key === 'ArrowUp') (el.previousElementSibling as HTMLElement | null)?.focus();
+		else return;
+		e.preventDefault();
+	}
 
 	async function loadProfiles(): Promise<void> {
 		try {
@@ -82,7 +129,7 @@
 		try {
 			view = await api.acquire.settings();
 			draft = { ...view.settings };
-			await loadProfiles();
+			await Promise.all([loadProfiles(), loadSubProviders()]);
 		} catch (err) {
 			toasts.error(errorMessage(err, t('acquire.settings.loadFailed')));
 		}
@@ -184,6 +231,9 @@
 			<SettingRow id="acquire-stall" label={t('acquire.settings.stallHours')} hint={t('acquire.settings.stallHoursHint')}>
 				<input type="number" min="0" max="168" class={num} aria-label={t('acquire.settings.stallHours')} bind:value={draft.stall_hours} />
 			</SettingRow>
+			<SettingRow id="acquire-subtitle-hours" label={t('acquire.settings.subtitleHours')} hint={t('acquire.settings.subtitleHoursHint')}>
+				<input type="number" min="0" max="720" class={num} aria-label={t('acquire.settings.subtitleHours')} bind:value={draft.subtitle_hours} />
+			</SettingRow>
 		</SettingsGroup>
 
 		<SettingsGroup id="profiles" title={t('acquire.profiles.group')}>
@@ -209,11 +259,48 @@
 			</div>
 		</SettingsGroup>
 
+		<SettingsGroup id="subtitles" title={t('acquire.subtitles.group')}>
+			{#snippet aside()}
+				<Button size="sm" variant="secondary" onclick={() => editSub(null)}>{t('acquire.subtitles.add')}</Button>
+			{/snippet}
+			{#if subProviders.length === 0}
+				<p class="py-3 text-xs text-muted">{t('acquire.subtitles.none')}</p>
+			{:else}
+				<p class="pt-3 text-xs text-muted">{t('acquire.subtitles.keys')}</p>
+				<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.subtitles.group')}>
+					{#each subProviders as p (p.id)}
+						<div role="row" tabindex="0" onkeydown={(e) => subKey(e, p)} class="flex flex-wrap items-center justify-between gap-3 py-3 outline-none focus-visible:bg-surface-active/40">
+							<div class="min-w-0" role="gridcell">
+								<p class="text-sm font-medium text-foreground">{p.name}</p>
+								<p class="font-mono text-[10px] text-muted">
+									{t('acquire.subtitles.summary', { kind: p.kind, priority: p.priority })}
+									· {p.username || t('acquire.subtitles.anonymous')}{p.enabled ? '' : ` · ${t('acquire.subtitles.disabled')}`}
+								</p>
+							</div>
+							<div class="flex gap-1.5" role="gridcell">
+								<Button size="sm" variant="ghost" tabindex={-1} onclick={() => editSub(p)}>{t('acquire.indexers.edit')} <kbd class="ms-1 font-mono text-[10px] text-muted">e</kbd></Button>
+								<Button size="sm" variant="ghost" tabindex={-1} onclick={() => askDeleteSub(p)}>{t('acquire.subtitles.remove')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</SettingsGroup>
+
 		<StagedBar count={changeCount} {saving} onapply={() => void save()} ondiscard={() => view && (draft = { ...view.settings })} />
 	{/if}
 </div>
 
 <ProfileDialog bind:open={profileOpen} editing={editingProfile} onsaved={() => void loadProfiles()} />
+
+<SubtitleProviderDialog bind:open={subOpen} editing={editingSub} onsaved={() => void loadSubProviders()} />
+
+<Modal bind:open={deleteSubOpen} title={t('acquire.subtitles.deleteTitle', { name: deleteSub?.name ?? '' })} description={t('acquire.subtitles.deleteBody')}>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (deleteSubOpen = false)}>{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
+		<Button id="confirm-delete-subprovider" variant="danger" onclick={() => void removeSub()}>{t('acquire.subtitles.remove')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
+	{/snippet}
+</Modal>
 
 <Modal bind:open={deleteOpen} title={t('acquire.profiles.deleteTitle', { name: deleteProfile?.name ?? '' })} description={t('acquire.profiles.deleteBody')}>
 	{#snippet footer()}
