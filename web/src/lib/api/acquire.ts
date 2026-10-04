@@ -144,6 +144,7 @@ export interface AcquireSettings {
 	rss_minutes: number;
 	search_hours: number;
 	stall_hours: number;
+	subtitle_hours: number;
 }
 
 export interface AcquireUsage {
@@ -248,6 +249,78 @@ export interface Profile {
 	min_size_mb: number;
 	max_size_mb: number;
 	prefer_proper: boolean;
+	subtitle_languages: string[];
+	subtitle_even_with_audio: boolean;
+	subtitle_hi: 'include' | 'prefer' | 'exclude';
+}
+
+/* Phase 3: subtitles (A-28…A-37). */
+
+export interface SubtitleProvider {
+	id: string;
+	name: string;
+	kind: 'opensubtitles';
+	base_url?: string;
+	username?: string;
+	enabled: boolean;
+	priority: number;
+	has_api_key: boolean;
+	has_password: boolean;
+	created_at: number;
+}
+
+/** Secrets: '' keeps the stored value, '-' clears it. */
+export interface SubtitleProviderInput {
+	name?: string;
+	kind?: 'opensubtitles';
+	base_url?: string;
+	api_key?: string;
+	username?: string;
+	password?: string;
+	enabled?: boolean;
+	priority?: number;
+}
+
+export interface SubtitleChoice {
+	provider_id: string;
+	file_id: string;
+	language: string;
+	region?: string;
+	release?: string;
+	file_name?: string;
+	hash_match?: boolean;
+	hi?: boolean;
+	forced?: boolean;
+	downloads?: number;
+	accepted: boolean;
+	rejections?: string[];
+	score: number;
+}
+
+export interface SidecarInfo {
+	name: string;
+	language: string;
+	tag?: string;
+	forced?: boolean;
+	hi?: boolean;
+	format: string;
+}
+
+export interface FileSubtitles {
+	item_id: string;
+	path: string;
+	missing: string[];
+	sidecars: SidecarInfo[];
+}
+
+export interface SubtitleRecord {
+	path: string;
+	media_path: string;
+	provider_id: string;
+	file_id: string;
+	language: string;
+	hash_match?: boolean;
+	at: number;
 }
 
 export interface BlockEntry {
@@ -316,6 +389,28 @@ export const acquire = {
 	unblock: (id: string) => request<{ removed: boolean }>(`/api/acquire/blocklist/${seg(id)}`, { method: 'DELETE' }),
 	replaced: () => request<{ files: HeldFile[] }>('/api/acquire/replaced'),
 	purgeReplaced: () => request<{ deleted: number }>('/api/acquire/replaced/purge', { method: 'POST' }),
+
+	subtitleProviders: () => request<{ providers: SubtitleProvider[] }>('/api/acquire/subtitle-providers'),
+	createSubtitleProvider: (body: SubtitleProviderInput) =>
+		request<SubtitleProvider>('/api/acquire/subtitle-providers', { method: 'POST', body }),
+	updateSubtitleProvider: (id: string, body: SubtitleProviderInput) =>
+		request<SubtitleProvider>(`/api/acquire/subtitle-providers/${seg(id)}`, { method: 'PUT', body }),
+	deleteSubtitleProvider: (id: string) =>
+		request<{ removed: boolean }>(`/api/acquire/subtitle-providers/${seg(id)}`, { method: 'DELETE' }),
+	searchSubtitles: (itemId: string, languages?: string) =>
+		request<{ choices: SubtitleChoice[]; languages: string[] }>(`/api/acquire/items/${seg(itemId)}/subtitles`, {
+			query: { languages: languages || undefined }
+		}),
+	downloadSubtitle: (itemId: string, choice: SubtitleChoice, replace = false) =>
+		request<SubtitleRecord>(`/api/acquire/items/${seg(itemId)}/subtitles`, {
+			method: 'POST',
+			body: { ...choice, replace }
+		}),
+	monitoredSubtitles: (id: string) =>
+		request<{ files: FileSubtitles[] }>(`/api/acquire/monitored/${seg(id)}/subtitles`),
+	fetchMonitoredSubtitles: (id: string) =>
+		request<{ written: number }>(`/api/acquire/monitored/${seg(id)}/subtitles`, { method: 'POST' }),
+	subtitleLedger: () => request<{ subtitles: SubtitleRecord[] }>('/api/acquire/subtitles'),
 
 	remove: (id: string, deleteData: boolean) =>
 		request<{ removed: boolean }>(`/api/acquire/grabs/${seg(id)}`, {

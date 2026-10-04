@@ -509,6 +509,7 @@ func writeNew(dst string, data []byte) error {
 
 // FileSubtitles is one file of a monitored title and its subtitle state.
 type FileSubtitles struct {
+	ItemID   string             `json:"item_id"`
 	Path     string             `json:"path"`
 	Missing  []string           `json:"missing"`
 	Sidecars []subtitle.Sidecar `json:"sidecars"`
@@ -542,7 +543,7 @@ func (m *Manager) SubtitleStatus(id string) ([]FileSubtitles, error) {
 		if sc == nil {
 			sc = []subtitle.Sidecar{}
 		}
-		out = append(out, FileSubtitles{Path: it.FilePath, Missing: m.MissingSubtitles(it.FilePath, p), Sidecars: sc})
+		out = append(out, FileSubtitles{ItemID: it.ID, Path: it.FilePath, Missing: m.MissingSubtitles(it.FilePath, p), Sidecars: sc})
 	}
 	return out, nil
 }

@@ -90,7 +90,10 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'indexers', href: '/settings/indexers', anchor: 'indexers', keywords: 'indexer torznab newznab jackett prowlarr tracker api key', admin: true },
 	{ id: 'acquisitionEngine', href: '/settings/acquisition', anchor: 'engine', keywords: 'torrent engine port peers rate limit speed bittorrent', admin: true },
 	{ id: 'acquisitionSeeding', href: '/settings/acquisition', anchor: 'seeding', keywords: 'seed ratio seeding time share upload', admin: true },
-	{ id: 'acquisitionImport', href: '/settings/acquisition', anchor: 'import', keywords: 'import hardlink copy move rename library', admin: true }
+	{ id: 'acquisitionImport', href: '/settings/acquisition', anchor: 'import', keywords: 'import hardlink copy move rename library', admin: true },
+	{ id: 'acquisitionAutomation', href: '/settings/acquisition', anchor: 'automation', keywords: 'automation rss sync monitored search schedule stalled', admin: true },
+	{ id: 'acquisitionProfiles', href: '/settings/acquisition', anchor: 'profiles', keywords: 'quality profile resolution cutoff upgrade group subtitle language', admin: true },
+	{ id: 'acquisitionSubtitles', href: '/settings/acquisition', anchor: 'subtitles', keywords: 'subtitle subtitles opensubtitles provider api key captions srt', admin: true }
 ];
 
 /**
