@@ -16,7 +16,11 @@ import (
 // fakeSubtitleAPI imitates the OpenSubtitles.com API v1: one search hit
 // whose download link points back at itself. Tests never reach the
 // real service.
-func fakeSubtitleAPI(t *testing.T) *httptest.Server {
+func fakeSubtitleAPI(t *testing.T, body ...string) *httptest.Server {
+	file := "1\n00:00:01,000 --> 00:00:02,000\nHi\n"
+	if len(body) > 0 {
+		file = body[0]
+	}
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/f/") && r.Header.Get("Api-Key") != "key-1" { // file links are keyless
@@ -30,7 +34,7 @@ func fakeSubtitleAPI(t *testing.T) *httptest.Server {
 		case "/api/v1/download":
 			_, _ = w.Write([]byte(`{"link":"` + srv.URL + `/f/7.srt","remaining":5}`))
 		case "/f/7.srt":
-			_, _ = w.Write([]byte("1\n00:00:01,000 --> 00:00:02,000\nHi\n"))
+			_, _ = w.Write([]byte(file))
 		default:
 			http.NotFound(w, r)
 		}
