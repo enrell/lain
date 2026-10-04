@@ -10,7 +10,7 @@ import (
 	"github.com/enrell/lain/internal/contracts"
 )
 
-// Cleanup rule (D-110, user condition 2026-10-04): deleting a torrent
+// Cleanup rule (D-112, user condition 2026-10-04): deleting a torrent
 // copy never removes or unlinks a file in a library — whether it was
 // hardlinked (the library keeps its own name for the same bytes),
 // moved in place, or sits inside a library root because of an unusual
