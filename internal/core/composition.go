@@ -88,6 +88,12 @@ func DefaultComposition() *Composition {
 			"lain.listlink@1":              {Mode: ModeOrderedMany, Providers: []string{"lain-listlink-anilist"}, Generation: 1},
 			"lain.comic.pages@1":           {Mode: ModeExactlyOne, Providers: []string{"lain-comic-archive"}, Generation: 1},
 			"lain.settings.integrations@1": {Mode: ModeExactlyOne, Providers: []string{"lain-settings-bolt"}, Generation: 1},
+
+			// Acquisition slice (docs/slices/acquisition.md, A-6/A-7):
+			// added without a version bump; Upgrade adds missing
+			// capabilities to saved compositions.
+			"lain.release.parse@1": {Mode: ModeOrderedMany, Providers: []string{"lain-release-model", "lain-release-tokenizer"}, Generation: 1},
+			"lain.indexer@1":       {Mode: ModeOrderedMany, Providers: []string{"lain-indexer-torznab"}, Generation: 1},
 		},
 	}
 }
