@@ -29,3 +29,11 @@ files under `routes/acquire/`, `routes/settings/indexers/`,
 
 | File | Change | Conflict risk |
 | --- | --- | --- |
+| `internal/core/composition.go` | +2 bindings after `lain.settings.integrations@1`, behind a blank line and a comment so gofmt does not realign the map: `lain.release.parse@1` (ordered-many: `lain-release-model`, `lain-release-tokenizer`), `lain.indexer@1` (ordered-many: `lain-indexer-torznab`). **No `Version` bump**: `Upgrade` adds missing capabilities. | Low: append-only. |
+| `internal/gateway/server.go` | imports `acquire`, `plugins/indexer`, `plugins/release`; `Server.acquire` field after `downloads`; `s.acquire.Close()` before `s.downloads.Close()` in `Close`; three `reg.Register` lines after `listlink.NewAniList()`; `s.startAcquire(dataDir)` after `s.downloads = dl`; `s.routesAcquire()` after `s.routesDownloads()`. | Low: one-line insertions next to the reading slice's lines. |
+| `internal/plugins/release` (new) reuses `catalog.TitleKey`; `internal/acquire` reads `downloads.Limits`/`Usage` and calls `downloads.Error` with keyed fields only. | — | none |
+| `web/src/lib/api/index.ts` | `acquire` import + key; `export type * from './acquire'` (types live in `api/acquire.ts`, `types.ts` untouched). | Low. |
+| `web/src/lib/i18n/messages/en.ts` | `nav.acquire`; `settings.section.indexers`/`acquisition`; four `settings.entry.*`; a new top-level `acquire` namespace appended at the end. | Medium: append-only, same spots other slices append to. |
+| `web/src/lib/settings/sections.ts` | SERVER sections `indexers` (`g n`) and `acquisition` (`g a`) after `downloads`; four palette entries after `downloadLimits`. | Low. Chords `n` and `a` are now taken. |
+| `web/src/lib/utilities/guards.ts` | `ADMIN_ROUTES` += `/settings/indexers`, `/settings/acquisition`, `/acquire`. (Note: `/settings/downloads` is not in this list on the reading branch.) | Low. |
+| `web/src/lib/components/navigation/AppShell.svelte` | `session` import; an admin-only `/acquire` link between Search and Settings. Mobile nav unchanged. | Low. |
