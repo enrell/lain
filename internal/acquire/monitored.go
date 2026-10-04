@@ -250,8 +250,17 @@ type Wanted struct {
 	Present     int           `json:"present"`
 }
 
+// QualityOf tells the resolution of a library file ("" = unknown).
+type QualityOf func(path string) string
+
+// FileQuality reads the resolution from a file name.
+func FileQuality(parse Parser, kind string) QualityOf {
+	return func(p string) string { return parse(filepath.Base(p), kind).Resolution }
+}
+
 // Wanted compares the title's range with the library's catalog items.
-func (m Monitored) Wanted(items []contracts.CatalogItem, p Profile, parse Parser) Wanted {
+// quality tells each present file's resolution, for upgrades (A-21).
+func (m Monitored) Wanted(items []contracts.CatalogItem, p Profile, quality QualityOf) Wanted {
 	names := m.names()
 	present := map[Unit]contracts.CatalogItem{}
 	for _, it := range items {
@@ -309,7 +318,7 @@ func (m Monitored) Wanted(items []contracts.CatalogItem, p Profile, parse Parser
 	if m.Numbering != NumberChapter && m.Numbering != NumberVolume {
 		// Reading releases carry no resolution: no upgrades for them.
 		for u, it := range present {
-			q := parse(filepath.Base(it.FilePath), m.Kind).Resolution
+			q := quality(it.FilePath)
 			if !MeetsCutoff(p, q) {
 				w.Upgrades = append(w.Upgrades, UpgradeUnit{Unit: u, Quality: q, Path: it.FilePath})
 			}

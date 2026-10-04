@@ -140,6 +140,7 @@ func (w *world) manager(t *testing.T, dataDir string, s Settings) *Manager {
 		},
 		Library:   func(id string) (contracts.Library, bool) { return w.lib, id == w.lib.ID },
 		Libraries: func() []contracts.Library { return []contracts.Library{w.lib} },
+		Items:     w.libraryItems,
 		Titles:    func(string) []string { return []string{"SHOW"} },
 		Rescan: func(id string) {
 			w.mu.Lock()

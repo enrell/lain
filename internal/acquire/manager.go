@@ -20,6 +20,7 @@ import (
 
 	"github.com/enrell/lain/internal/contracts"
 	"github.com/enrell/lain/internal/downloads"
+	"github.com/enrell/lain/internal/kv"
 	"github.com/enrell/lain/internal/torrent"
 )
 
@@ -51,6 +52,10 @@ type Deps struct {
 	Tick time.Duration
 	// Initial replaces the defaults when no settings are saved yet.
 	Initial *Settings
+	// Items lists a library's catalog items (what is present).
+	Items func(libraryID string) []contracts.CatalogItem
+	// StallAfter overrides the stall window (tests).
+	StallAfter time.Duration
 }
 
 // Manager runs acquisition.
@@ -66,6 +71,12 @@ type Manager struct {
 	base      map[string][2]int64     // persisted downloaded/uploaded at session start
 	lastCall  map[string]time.Time    // indexer id -> last request
 	importing map[string]bool
+
+	// Automation state.
+	marks      map[string]mark
+	lastRSS    time.Time
+	autoBusy   bool
+	autoPaused string
 
 	// grabMu serializes Grab so two grabs cannot both pass the budget
 	// check for the same free bytes.
@@ -174,6 +185,7 @@ func (m *Manager) loop() {
 		}
 		n++
 		m.monitor()
+		m.schedule(time.Now())
 		if n%15 == 0 {
 			m.mu.Lock()
 			c := m.client
@@ -527,6 +539,10 @@ type GrabInput struct {
 	Title     string                  `json:"title,omitempty"`
 	LibraryID string                  `json:"library_id"`
 	CreatedBy string                  `json:"-"`
+	// Set by automation only.
+	MonitoredID string   `json:"-"`
+	Units       []Unit   `json:"-"`
+	ReplaceFrom []string `json:"-"`
 }
 
 // errMagnet carries a redirect to a magnet link out of the HTTP client.
@@ -580,7 +596,8 @@ func (m *Manager) Grab(in GrabInput) (Grab, error) {
 	if !ok {
 		return Grab{}, errf(CodeNoLibrary, "choose the library to import into")
 	}
-	g := Grab{ID: newID(), LibraryID: lib.ID, Kind: lib.Type, CreatedBy: in.CreatedBy, CreatedAt: time.Now().Unix(), Title: strings.TrimSpace(in.Title)}
+	g := Grab{ID: newID(), LibraryID: lib.ID, Kind: lib.Type, CreatedBy: in.CreatedBy, CreatedAt: time.Now().Unix(), Title: strings.TrimSpace(in.Title),
+		MonitoredID: in.MonitoredID, Units: in.Units, ReplaceFrom: in.ReplaceFrom, Upgrade: len(in.ReplaceFrom) > 0}
 	link, magnet := strings.TrimSpace(in.URL), strings.TrimSpace(in.Magnet)
 	if r := in.Result; r != nil {
 		if r.Protocol == contracts.ProtocolUsenet {
@@ -731,6 +748,8 @@ func (m *Manager) fail(g Grab, err error) {
 	if g.FinishedAt == 0 && g.InfoHash != "" {
 		g.DataRemoved = m.discard(g)
 	}
+	// A release that failed is not grabbed again by automation (A-22).
+	m.block(g, g.Error)
 	_ = m.st.putGrab(g)
 	m.log.Warn("grab failed", "grab", g.ID, "code", g.Code, "err", g.Error)
 }
@@ -770,12 +789,22 @@ func (m *Manager) runImport(id string) {
 	c, s := m.client, m.settings
 	m.mu.Unlock()
 	files := c.Files(g.InfoHash)
+	// An upgrade first moves the files it replaces out of the library
+	// into the holding folder, so the new names never collide with them
+	// and a failed import can put them back.
+	held, err := m.holdReplaced(g, lib)
+	if err != nil {
+		m.importFailed(g, err)
+		return
+	}
+	restore := func() { m.restoreHeld(held) }
 	var titles []string
 	if m.d.Titles != nil {
 		titles = m.d.Titles(lib.ID)
 	}
 	plan, err := PlanImport(lib, files, g.Release, m.d.Parse, titles)
 	if err != nil {
+		restore()
 		m.importFailed(g, err)
 		return
 	}
@@ -791,6 +820,9 @@ func (m *Manager) runImport(id string) {
 		}
 		used, err := Place(it.Src, it.Dst, mode)
 		if err != nil {
+			// Files already placed stay; the held ones return wherever
+			// their path is still free (restoreHeld never overwrites).
+			restore()
 			m.importFailed(g, err)
 			return
 		}
@@ -800,7 +832,22 @@ func (m *Manager) runImport(id string) {
 		}
 		g.Imported = append(g.Imported, it.Dst)
 	}
+	// The quality ledger (path → resolution) outlives the grab: Lain's
+	// names carry no quality (D-118), so this is how upgrades know a
+	// file already meets the cutoff.
+	for _, it := range plan {
+		q := it.Release.Resolution
+		if q == "" {
+			q = g.Release.Resolution
+		}
+		if q != "" {
+			_ = putJSON(m.st, kv.BAcqQuality, it.Dst, q)
+		}
+	}
 	g.Code, g.Error = "", ""
+	for _, h := range held {
+		g.Replaced = append(g.Replaced, h.to)
+	}
 	if m.d.Rescan != nil {
 		m.d.Rescan(lib.ID)
 	}
@@ -849,6 +896,11 @@ func (m *Manager) monitor() {
 			active++
 			if ok && st.State == string(torrent.StateError) {
 				m.fail(g, errf(CodeImport, "%s", st.Error))
+				continue
+			}
+			if ok && m.stalled(g, st, s, now) {
+				m.fail(g, errf(CodeStalled, "no progress for %s", m.stallWindow(s)))
+				continue
 			}
 			if ok && st.State == string(torrent.StateSeeding) && g.FinishedAt == 0 {
 				m.onComplete(g.InfoHash) // completed while the event was missed (restart)
