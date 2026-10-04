@@ -143,8 +143,12 @@ A-5). Recorded as `D-108`…`D-123` in `docs/advisor/decisions.md`
 
 ### Phase 2 — automation (Sonarr/Radarr/Mylar role)
 
-Proposed decisions for Phase 2 (`A-17`…; to be numbered `D-124`… on
-acceptance). None adds a dependency or changes a frozen contract.
+Decisions for Phase 2, **accepted 2026-10-04** and recorded as
+`D-124`…`D-134` (`A-n` = `D-(107+n)`). None adds a dependency or
+changes a frozen contract; the D-032 metadata change stays deferred.
+Note for A-22: as built and accepted (D-129), an import failure keeps
+its data for a manual retry; only download failures and stalls are
+removed.
 
 - **A-17 Monitored titles are the unit of automation.** A monitored
   title names a library, a kind (the library type), a title (plus
@@ -261,7 +265,7 @@ Left in Phase 1 scope:
 - `/settings/downloads` is missing from `ADMIN_ROUTES` on the reading
   branch (pre-existing; not changed here).
 
-## Status (2026-10-04) — Phase 2 built, proposals A-17…A-27 pending
+## Status (2026-10-04) — Phase 2 built and accepted (D-124…D-134)
 
 Accepted: A-1…A-16 (`D-108`…`D-123`), including the cleanup condition
 (`cleanup_test.go`). Phase 1's mobile Acquire entry is done.
@@ -285,7 +289,6 @@ Phase 2 built on `feat/acquisition`:
 
 Left / needs a decision:
 
-- `A-17`…`A-27` are proposals: they need acceptance and `D-124`… numbers.
 - Per-season episode lists and air dates need a `MetadataRecord` change
   (frozen by D-032).
 - DHT, usenet and external client adapters stay as decided (D-108,
