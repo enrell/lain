@@ -51,7 +51,7 @@ func TestAnnounceRefusalAndBadSchemes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tr.Close()
-	tr.Refuse = "unregistered torrent"
+	tr.Refuse("unregistered torrent")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for _, url := range []string{tr.HTTPURL(), tr.UDPURL(), "ftp://x/announce"} {
