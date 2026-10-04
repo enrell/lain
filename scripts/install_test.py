@@ -38,10 +38,11 @@ class InstallerTests(unittest.TestCase):
             compose.write_text(original)
             self.bash('''
                 COMPOSE_DIR="$ROOT"; DATA_DIR="$ROOT/data"
-                write_compose_file example:latest "$ROOT/Films:/media/films:ro"
+                write_compose_file example:latest "$ROOT/Films:/media/films"
             ''', ROOT=root)
             self.assertNotIn("do not edit", compose.read_text())
-            self.assertIn("/media/films:ro", compose.read_text())
+            self.assertIn("/media/films", compose.read_text())
+            self.assertNotIn("/media/films:ro", compose.read_text())
             backups = list(Path(root).glob("docker-compose.yml.bak.*"))
             self.assertEqual(len(backups), 1)
             self.assertEqual(backups[0].read_text(), original)

@@ -26,7 +26,7 @@ boundaries and contracts.
 docker run -d --name lain \
   -p 9360:9360 \
   -v lain-data:/data \
-  -v ~/Videos:/media/videos:ro \
+  -v ~/Videos:/media/videos \
   ghcr.io/enrell/lain:latest
 ```
 
@@ -36,7 +36,7 @@ pointing at `/media/videos`, and scan. The same image runs on
 
 Prefer compose? Start from the shipped [`docker-compose.yml`](docker-compose.yml)
 or let the installer generate a filled-in, commented one (data dir,
-read-only media mounts, port, tag). It prints the file before applying
+read-write media mounts, port, tag). It prints the file before applying
 it so you can audit every host mount. Re-running preserves manual edits
 by default; explicitly choosing regeneration creates timestamped backups.
 The image bundles `ffmpeg` for thumbnails and
@@ -388,8 +388,11 @@ itself unavailable.
 It runs as the unprivileged `lain` user with `/data` as the volume
 (`LAIN_DATA_DIR=/data`), binds `0.0.0.0:9360` and includes a
 `HEALTHCHECK`. Named volumes are initialized with the right ownership;
-media should be mounted read-only and be readable by the container user
-(default 0644/0755 umask is fine). If you bind-mount a host data
+media is mounted read-write so deleting episodes or series from Lain
+removes the files on the host; the container user must be able to write
+there (the installer runs the container as your uid; with `docker run`
+pass `--user $(id -u):$(id -g)`). Append `:ro` to a mount to forbid
+deletes. If you bind-mount a host data
 directory instead, make it writable by uid 1000 or run the container
 with `--user`.
 
