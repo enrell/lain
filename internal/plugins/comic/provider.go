@@ -67,6 +67,7 @@ func (p *Provider) Invoke(cap string, input any) (any, error) {
 	if out.Format == "cbz" {
 		probeZip(in.Path, out.Pages)
 	}
+	out.Info = ReadInfo(in.Path)
 	p.mu.Lock()
 	if p.cache == nil || len(p.cache) >= maxCached {
 		p.cache = map[cacheKey]contracts.ComicPages{}

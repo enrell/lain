@@ -507,4 +507,23 @@ export interface ReaderView {
 	format: string;
 	direction: 'rtl' | 'ltr';
 	pages: ReaderPageInfo[];
+	/** The archive's own ComicInfo.xml, when it has one. */
+	info?: ComicInfo;
+}
+
+export interface ComicInfo {
+	title?: string;
+	series?: string;
+	number?: string;
+	volume?: number;
+	count?: number;
+	summary?: string;
+	year?: number;
+	writer?: string;
+	artist?: string;
+	publisher?: string;
+	genres?: string[];
+	language?: string;
+	age_rating?: string;
+	direction?: 'rtl' | 'ltr';
 }
