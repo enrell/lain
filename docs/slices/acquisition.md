@@ -172,12 +172,23 @@ acceptance). None adds a dependency or changes a frozen contract.
   search keeps showing rejected results with their reasons; automation
   grabs only accepted ones, best score first, one grab per wanted
   number set.
-- **A-21 Upgrades until cutoff.** A present file whose parsed quality is
-  below the profile cutoff stays wanted for upgrade; a better accepted
-  release is grabbed and imported beside it; the import replaces the old
-  file only through the D-112 guarded path (the old library file is
-  moved to the grab's folder, never deleted outright), so a failed
-  upgrade cannot lose the episode.
+- **A-21 Upgrades until cutoff.** A present file whose quality is below
+  the profile cutoff stays wanted for upgrade; a better accepted release
+  is grabbed. At import the files it replaces are first moved out of the
+  library into `<dir>/replaced/<grab>/` — never deleted automatically,
+  listed in the UI and purged only by an explicit admin action — and put
+  back if placing the new files fails. This keeps D-112's spirit: Lain
+  never destroys a library file on its own.
+- **A-26 Quality ledger.** Lain's names carry no quality (D-118), so
+  each import records `library path → resolution` in its own bucket
+  `acq_quality`, independent of the queue; upgrade checks read it before
+  the file name. Without it an imported file would look "unknown",
+  hence upgradable, and automation would grab the same release forever
+  (caught by `TestSearchMonitoredGrabsUntilComplete`).
+- **A-27 Metadata episode totals are cached on the monitored title**
+  (`metadata_episodes`), refreshed when the title is searched, so
+  computing what is wanted never calls the network; tests stub the
+  lookup (D-120).
 - **A-22 Blocklist on failure.** A grab that fails (download, import,
   metadata) or stalls (no progress for `stall_hours`, default 6) is
   blocklisted by info hash and title, removed with its data (D-112
