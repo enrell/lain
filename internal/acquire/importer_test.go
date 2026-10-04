@@ -79,10 +79,10 @@ func TestPlanImportRejectsWrongMedia(t *testing.T) {
 
 func TestSafeComponent(t *testing.T) {
 	for in, want := range map[string]string{
-		"../../etc":       "etc",
-		"a/b\\c:d*e?":     "a b c d e",
-		"  ..  ":          "Unknown",
-		"Show\x00Name":    "ShowName",
+		"../../etc":      "etc",
+		"a/b\\c:d*e?":    "a b c d e",
+		"  ..  ":         "Unknown",
+		"Show\x00Name":   "ShowName",
 		"Re:Zero Season": "Re Zero Season",
 	} {
 		if got := safeComponent(in); got != want {
