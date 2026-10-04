@@ -192,6 +192,5 @@ Left in Phase 1 scope:
 - No DHT/PEX/uTP/encryption (A-2): trackerless magnets are refused.
 - No usenet client (A-16).
 - qBittorrent/Transmission adapters (the interface is ready, A-3).
-- Mobile navigation has no Acquire entry (desktop nav and Ctrl+K only).
 - `/settings/downloads` is missing from `ADMIN_ROUTES` on the reading
   branch (pre-existing; not changed here).
