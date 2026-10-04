@@ -143,13 +143,68 @@ A-5). Recorded as `D-108`…`D-123` in `docs/advisor/decisions.md`
 
 ### Phase 2 — automation (Sonarr/Radarr/Mylar role)
 
-Monitored titles and wanted lists (episodes, movies, chapters/volumes),
-RSS sync per indexer, automatic search on add and on schedule, quality
-profiles (resolution/source/codec allow-list + cutoff) and release
-scoring (preferred groups, proper/repack, seeders, size bounds),
-upgrades until cutoff, blocklist of failed/stalled releases, anime
-absolute numbering ↔ season/episode mapping, release-group preference,
-seasons vs. cours, comics/manga chapter and volume tracking.
+Proposed decisions for Phase 2 (`A-17`…; to be numbered `D-124`… on
+acceptance). None adds a dependency or changes a frozen contract.
+
+- **A-17 Monitored titles are the unit of automation.** A monitored
+  title names a library, a kind (the library type), a title (plus
+  aliases), a quality profile and a numbering mode, in its own bucket
+  `acq_monitored`. It never writes the catalog (D-008): what the library
+  has is read from the catalog by title key, every time.
+- **A-18 "Wanted" needs no new metadata contract.** Expected numbers
+  come from, in order: an explicit range the user sets; the episode
+  count of the title's metadata record (`lain.metadata.search@1` +
+  `resolve@1`, already returning `episodes`); and "newer than the
+  highest present" for ongoing titles (RSS fills it). Missing = expected
+  − present. Movies are wanted until a file exists. Manga and comics
+  track chapters (and volumes, for volume releases) the same way.
+  Per-season episode lists and air dates would need a `MetadataRecord`
+  change, frozen by D-032 — out of scope until the user specifies one.
+- **A-19 Quality profiles.** A profile is an ordered list of allowed
+  resolutions (best first), allowed sources, a cutoff resolution,
+  preferred release groups (bonus) and blocked words/groups (reject),
+  size bounds per episode/chapter/movie, a minimum seeder count and a
+  proper/repack preference. Stored in `acq_profiles`; one default
+  profile is created on first use.
+- **A-20 One decision engine.** Every candidate (manual search, RSS,
+  automatic search) goes through the same pure function: parse →
+  title/number fit → profile accept/reject with reasons → score. Manual
+  search keeps showing rejected results with their reasons; automation
+  grabs only accepted ones, best score first, one grab per wanted
+  number set.
+- **A-21 Upgrades until cutoff.** A present file whose parsed quality is
+  below the profile cutoff stays wanted for upgrade; a better accepted
+  release is grabbed and imported beside it; the import replaces the old
+  file only through the D-112 guarded path (the old library file is
+  moved to the grab's folder, never deleted outright), so a failed
+  upgrade cannot lose the episode.
+- **A-22 Blocklist on failure.** A grab that fails (download, import,
+  metadata) or stalls (no progress for `stall_hours`, default 6) is
+  blocklisted by info hash and title, removed with its data (D-112
+  path), and the wanted numbers are searched again. The blocklist is
+  `acq_blocklist`, viewable and clearable.
+- **A-23 Schedules are settings.** RSS sync every `rss_minutes`
+  (default 30, minimum 10) per enabled indexer (a query-less Torznab
+  search on the indexer's categories, which honours the per-indexer
+  rate limit, D-115), and a missing-items search every `search_hours`
+  (default 12, 0 = only on demand). Adding a monitored title can search
+  immediately. Automation is off until enabled in settings.
+- **A-24 Anime numbering.** A monitored anime is `absolute` or
+  `seasonal`. A season map (`season → first absolute episode`, e.g.
+  S2 starts at 13) converts between the two, so an `S02E01` release
+  satisfies absolute 13 and the reverse; split cours are modelled as
+  seasons in the map. The release group preference lives in the
+  profile.
+- **A-25 Automation never exceeds the budget.** Automatic grabs go
+  through `Grab` and so through the D-111 reservation and queue slots;
+  a full budget pauses automation with a visible reason instead of
+  failing grabs one by one.
+
+Work plan (tests first, small commits): quality profiles + decision
+engine → numbering map → monitored titles + wanted from the catalog →
+blocklist + stall detection → RSS sync and scheduled search → upgrades
+→ gateway routes → web (Wanted tab, Monitor action, profiles,
+blocklist, automation settings).
 
 ### Phase 3 — subtitles (Bazarr role), plan only
 
