@@ -163,33 +163,33 @@ func destination(kind, title string, r contracts.Release, original string) strin
 			}
 			return filepath.Join(t, safeComponent(original))
 		}
+		span := episodeSpan(r.Episodes)
+		eps := fmt.Sprintf("E%02d", span[0])
+		if len(span) > 1 {
+			eps += fmt.Sprintf("-E%02d", span[len(span)-1])
+		}
 		if r.Season > 0 && !r.Absolute {
-			eps := ""
-			for _, e := range episodeSpan(r.Episodes) {
-				eps += fmt.Sprintf("E%02d", e)
-			}
 			return filepath.Join(t, fmt.Sprintf("Season %02d", r.Season), fmt.Sprintf("%s - S%02d%s%s", t, r.Season, eps, ext))
 		}
-		width := 2
-		for _, e := range r.Episodes {
-			if e >= 100 {
-				width = max(width, 3)
+		// Absolute numbering is season 0 in Lain's catalog: the anime
+		// identifier reads "[Group] Title - 03" that way, and "S00E03"
+		// when no group is known. Both forms round-trip (tested).
+		if r.Group != "" && len(span) == 1 {
+			width := 2
+			if span[0] >= 100 {
+				width = 3
 			}
-			if e >= 1000 {
+			if span[0] >= 1000 {
 				width = 4
 			}
+			return filepath.Join(t, fmt.Sprintf("[%s] %s - %0*d%s", safeComponent(r.Group), t, width, span[0], ext))
 		}
-		span := episodeSpan(r.Episodes)
-		num := fmt.Sprintf("%0*d", width, span[0])
-		if len(span) > 1 {
-			num += fmt.Sprintf("-%0*d", width, span[len(span)-1])
-		}
-		return filepath.Join(t, fmt.Sprintf("%s - %s%s", t, num, ext))
+		return filepath.Join(t, fmt.Sprintf("%s - S00%s%s", t, eps, ext))
 	}
 }
 
-// episodeSpan keeps the first and last of a long run (S01E01E02 for two,
-// E01-E12 shown as first+last for a pack inside one file).
+// episodeSpan keeps the first and last of a run: one file holding
+// several episodes is named E02-E03 (the identifier reads the first).
 func episodeSpan(eps []int) []int {
 	if len(eps) <= 2 {
 		return eps
