@@ -260,3 +260,34 @@ Left in Phase 1 scope:
 - qBittorrent/Transmission adapters (the interface is ready, A-3).
 - `/settings/downloads` is missing from `ADMIN_ROUTES` on the reading
   branch (pre-existing; not changed here).
+
+## Status (2026-10-04) — Phase 2 built, proposals A-17…A-27 pending
+
+Accepted: A-1…A-16 (`D-108`…`D-123`), including the cleanup condition
+(`cleanup_test.go`). Phase 1's mobile Acquire entry is done.
+
+Phase 2 built on `feat/acquisition`:
+
+- Quality profiles and one decision engine (`decide.go`), monitored
+  titles with absolute/seasonal/chapter/volume/movie numbering, season
+  maps, wanted units from the catalog plus the cached metadata total
+  (`monitored.go`), RSS sync, on-demand and scheduled missing search,
+  greedy best-first grabbing without double grabs, upgrades with held
+  replacements and rollback, the quality ledger, blocklist on download
+  failure, stall and import failure, budget pause (`automation.go`).
+- Admin API (`gateway/acquire_auto.go`) and web: Wanted (3) and
+  Blocklist (4) tabs, `m` on a search result to monitor it, automation
+  settings and quality profiles in Settings › Acquisition.
+- Verified in headless Chromium against an isolated server and a
+  loopback swarm: search → monitor (`m`, Enter) → search now (`s`) →
+  monitored grab of two episodes → import → wanted updated (and the
+  metadata total, 28, extending the gap-fill).
+
+Left / needs a decision:
+
+- `A-17`…`A-27` are proposals: they need acceptance and `D-124`… numbers.
+- Per-season episode lists and air dates need a `MetadataRecord` change
+  (frozen by D-032).
+- DHT, usenet and external client adapters stay as decided (D-108,
+  D-110, D-123).
+- Phase 3 (subtitles) is planned only.
