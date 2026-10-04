@@ -69,3 +69,22 @@ revert in the "Implemented in" column.
   bump, so the next slice that needs one takes the next number freely.
 - **D-106** adds the app's first service worker. Any later slice that
   wants one must share it (one worker per scope).
+
+## Draft — approved, waiting for its number
+
+Approved by the user on 2026-10-04. It takes the **first number after the
+acquisition slice's entries** (acquisition keeps `D-108` onward and is
+recording them in its own worktree). Add it to
+`docs/advisor/decisions.md` only after those entries land on `main`.
+Nothing gets renumbered.
+
+- `D-???` — Docker media mounts are read-write by default, so deleting an
+  episode or series from Lain removes the files on the host. The
+  installer-generated compose file, the shipped `docker-compose.yml` /
+  `docker-compose.dev.yml` and the README drop `:ro`. The installer runs
+  the container as the invoking user's uid, and `docker run` users pass
+  `--user $(id -u):$(id -g)` so the container can write. Appending `:ro`
+  to a mount forbids deletes again. This is the deployment half of
+  "delete from disk" (Q-040). Library files are deleted only by explicit
+  user action, never by download cleanup (D-093). Source: user approval
+  2026-10-04; commit `c5150ad`.
