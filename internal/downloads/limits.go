@@ -25,13 +25,13 @@ func (l Limits) Check(dir string, used, grow int64) error {
 		return nil
 	}
 	if l.MaxBytes > 0 && used+grow > l.MaxBytes {
-		return &Error{CodeQuota, fmt.Sprintf("needs %s, %s of %s budget left",
+		return &Error{Code: CodeQuota, Msg: fmt.Sprintf("needs %s, %s of %s budget left",
 			HumanBytes(grow), HumanBytes(max(l.MaxBytes-used, 0)), HumanBytes(l.MaxBytes))}
 	}
 	if l.MinFreeBytes > 0 {
 		free, err := freeBytes(dir)
 		if err == nil && free-grow < l.MinFreeBytes {
-			return &Error{CodeDiskFull, fmt.Sprintf("needs %s, %s free and %s must stay free",
+			return &Error{Code: CodeDiskFull, Msg: fmt.Sprintf("needs %s, %s free and %s must stay free",
 				HumanBytes(grow), HumanBytes(free), HumanBytes(l.MinFreeBytes))}
 		}
 	}
@@ -43,11 +43,11 @@ func (l Limits) Check(dir string, used, grow int64) error {
 // the state of the store rather than the size of one request.
 func (l Limits) Full(dir string, used int64) error {
 	if l.MaxBytes > 0 && used >= l.MaxBytes {
-		return &Error{CodeQuota, fmt.Sprintf("download budget used up: %s of %s", HumanBytes(used), HumanBytes(l.MaxBytes))}
+		return &Error{Code: CodeQuota, Msg: fmt.Sprintf("download budget used up: %s of %s", HumanBytes(used), HumanBytes(l.MaxBytes))}
 	}
 	if l.MinFreeBytes > 0 {
 		if free, err := freeBytes(dir); err == nil && free <= l.MinFreeBytes {
-			return &Error{CodeDiskFull, fmt.Sprintf("only %s free and %s must stay free", HumanBytes(free), HumanBytes(l.MinFreeBytes))}
+			return &Error{Code: CodeDiskFull, Msg: fmt.Sprintf("only %s free and %s must stay free", HumanBytes(free), HumanBytes(l.MinFreeBytes))}
 		}
 	}
 	return nil

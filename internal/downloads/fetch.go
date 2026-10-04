@@ -15,6 +15,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Error is a typed failure with a stable code, so callers (API, CLI)
@@ -22,6 +23,11 @@ import (
 type Error struct {
 	Code string
 	Msg  string
+	// Retry marks a failure worth trying again (network trouble, 5xx,
+	// 408/429, an interrupted body); RetryAfter is the origin's own
+	// Retry-After hint, 0 when it gave none.
+	Retry      bool
+	RetryAfter time.Duration
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Msg }
@@ -37,6 +43,18 @@ const (
 	CodeState    = "invalid-state"
 )
 
+// Retryable reports whether err is a transient transfer failure and the
+// delay the origin asked for, if any.
+func Retryable(err error) (bool, time.Duration) {
+	var e *Error
+	if errors.As(err, &e) {
+		return e.Retry, e.RetryAfter
+	}
+	return false, 0
+}
+
+func transient(msg string) *Error { return &Error{Code: CodeHTTP, Msg: msg, Retry: true} }
+
 // CodeOf returns the stable code of err, "" for untyped errors.
 func CodeOf(err error) string {
 	var e *Error
@@ -49,14 +67,18 @@ func CodeOf(err error) string {
 // Request describes one transfer. Part is the partial file the bytes
 // accumulate in; it survives a pause or crash so the next Fetch
 // continues from its size. Validator is the ETag or Last-Modified the
-// previous attempt saw: a resume is only trusted when the origin still
-// serves the same representation (If-Range), else it restarts from 0
-// rather than splicing two different files together.
+// previous attempt saw: a resume is trusted when the origin still serves
+// the same representation (If-Range). An origin with no validator can
+// still resume when it advertised byte ranges (Ranges) and the total it
+// reports for the remainder equals the Total recorded before; any other
+// mismatch restarts from 0 rather than splicing two files together.
 type Request struct {
 	URL       string
 	Header    http.Header
 	Part      string
 	Validator string
+	Total     int64 // full size seen by the previous attempt, 0 unknown
+	Ranges    bool  // the previous attempt saw Accept-Ranges: bytes
 	// Reserve is consulted before bytes are written (see Budget); nil
 	// means unlimited.
 	Reserve func(n int64) error
@@ -72,6 +94,7 @@ type Result struct {
 	Validator string // to pass back on the next resume
 	Filename  string // origin-suggested name (Content-Disposition), may be ""
 	Restarted bool   // a partial file was discarded
+	Ranges    bool   // the origin serves byte ranges
 }
 
 // chunk is the write granularity; budget checks happen per chunk.
@@ -90,11 +113,11 @@ func Fetch(ctx context.Context, client *http.Client, in Request) (Result, error)
 	if fi, err := os.Stat(in.Part); err == nil {
 		have = fi.Size()
 	} else if !os.IsNotExist(err) {
-		return res, &Error{CodeIO, err.Error()}
+		return res, &Error{Code: CodeIO, Msg: err.Error()}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, in.URL, nil)
 	if err != nil {
-		return res, &Error{CodeInvalid, err.Error()}
+		return res, &Error{Code: CodeInvalid, Msg: err.Error()}
 	}
 	for k, vs := range in.Header {
 		for _, v := range vs {
@@ -102,10 +125,14 @@ func Fetch(ctx context.Context, client *http.Client, in Request) (Result, error)
 		}
 	}
 	// Ask for the remainder only when the previous representation can be
-	// named; without a validator a 206 could belong to another file.
-	if have > 0 && in.Validator != "" {
+	// named (validator) or at least sized (ranges + total); otherwise a
+	// 206 could belong to another file.
+	sized := in.Validator == "" && in.Ranges && in.Total > 0
+	if have > 0 && (in.Validator != "" || sized) {
 		req.Header.Set("Range", "bytes="+strconv.FormatInt(have, 10)+"-")
-		req.Header.Set("If-Range", in.Validator)
+		if in.Validator != "" {
+			req.Header.Set("If-Range", in.Validator)
+		}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -113,16 +140,21 @@ func Fetch(ctx context.Context, client *http.Client, in Request) (Result, error)
 			res.Bytes = have
 			return res, ctx.Err()
 		}
-		return res, &Error{CodeHTTP, err.Error()}
+		return res, transient(err.Error())
 	}
 	defer resp.Body.Close()
+	res.Ranges = resp.Header.Get("Accept-Ranges") == "bytes" || resp.StatusCode == http.StatusPartialContent
 
 	flags := os.O_WRONLY | os.O_CREATE
 	switch resp.StatusCode {
 	case http.StatusPartialContent:
 		start, total, ok := parseContentRange(resp.Header.Get("Content-Range"))
-		if !ok || start != have {
-			return res, &Error{CodeHTTP, "origin answered an unexpected range"}
+		if !ok || start != have || (sized && total != in.Total) {
+			// Not the remainder of what we hold: drop the part so the
+			// retry starts clean instead of splicing.
+			_ = os.Remove(in.Part)
+			res.Restarted = true
+			return res, transient("origin answered a different range; restarting from the beginning")
 		}
 		res.Total = total
 		flags |= os.O_APPEND
@@ -138,9 +170,16 @@ func Fetch(ctx context.Context, client *http.Client, in Request) (Result, error)
 			res.Bytes, res.Total = have, total
 			return res, nil
 		}
-		return res, &Error{CodeHTTP, "origin refused the resume range"}
+		_ = os.Remove(in.Part)
+		res.Restarted = true
+		return res, transient("origin refused the resume range; restarting from the beginning")
 	default:
-		return res, &Error{CodeHTTP, fmt.Sprintf("origin answered %d", resp.StatusCode)}
+		e := &Error{Code: CodeHTTP, Msg: fmt.Sprintf("origin answered %d", resp.StatusCode)}
+		if c := resp.StatusCode; c >= 500 || c == http.StatusRequestTimeout || c == http.StatusTooManyRequests {
+			e.Retry = true
+			e.RetryAfter = retryAfter(resp.Header.Get("Retry-After"))
+		}
+		return res, e
 	}
 	if v := resp.Header.Get("ETag"); v != "" && !strings.HasPrefix(v, "W/") {
 		res.Validator = v
@@ -161,7 +200,7 @@ func Fetch(ctx context.Context, client *http.Client, in Request) (Result, error)
 	}
 	f, err := os.OpenFile(in.Part, flags, 0o644)
 	if err != nil {
-		return res, &Error{CodeIO, err.Error()}
+		return res, &Error{Code: CodeIO, Msg: err.Error()}
 	}
 	done := have
 	report := func() {
@@ -184,7 +223,7 @@ func Fetch(ctx context.Context, client *http.Client, in Request) (Result, error)
 			if _, err := f.Write(buf[:n]); err != nil {
 				f.Close()
 				res.Bytes = done
-				return res, &Error{CodeIO, err.Error()}
+				return res, &Error{Code: CodeIO, Msg: err.Error()}
 			}
 			done += int64(n)
 			report()
@@ -198,16 +237,16 @@ func Fetch(ctx context.Context, client *http.Client, in Request) (Result, error)
 			if ctx.Err() != nil {
 				return res, ctx.Err()
 			}
-			return res, &Error{CodeHTTP, rerr.Error()}
+			return res, transient("transfer interrupted: " + rerr.Error())
 		}
 	}
 	if err := f.Close(); err != nil {
 		res.Bytes = done
-		return res, &Error{CodeIO, err.Error()}
+		return res, &Error{Code: CodeIO, Msg: err.Error()}
 	}
 	res.Bytes = done
 	if res.Total > 0 && done != res.Total {
-		return res, &Error{CodeHTTP, fmt.Sprintf("short body: %d of %d bytes", done, res.Total)}
+		return res, transient(fmt.Sprintf("short body: %d of %d bytes", done, res.Total))
 	}
 	if res.Total < 0 {
 		res.Total = done
@@ -246,4 +285,23 @@ func parseContentRange(v string) (start, total int64, ok bool) {
 		return 0, 0, false
 	}
 	return start, total, true
+}
+
+// maxRetryAfter caps an origin's Retry-After so one header cannot park
+// a job for a day.
+const maxRetryAfter = time.Hour
+
+// retryAfter parses delay-seconds or an HTTP date; 0 when absent.
+func retryAfter(v string) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	var d time.Duration
+	if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		d = time.Duration(n) * time.Second
+	} else if t, err := http.ParseTime(v); err == nil {
+		d = time.Until(t)
+	}
+	return min(max(d, 0), maxRetryAfter)
 }

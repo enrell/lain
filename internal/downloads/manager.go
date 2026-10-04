@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	mrand "math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -40,18 +41,23 @@ func (s State) terminal() bool { return s == Done || s == Failed || s == Cancele
 // lives; until then the bytes accumulate in Part, a hidden sibling so a
 // library scan never sees half a file.
 type Job struct {
-	ID         string `json:"id"`
-	URL        string `json:"url"`
-	LibraryID  string `json:"library_id,omitempty"`
-	Dir        string `json:"dir"`
-	Name       string `json:"name"`
-	NameAuto   bool   `json:"name_auto,omitempty"` // the origin may still name it
-	Path       string `json:"path,omitempty"`
-	Part       string `json:"-"`
-	State      State  `json:"state"`
-	Bytes      int64  `json:"bytes"`
-	Total      int64  `json:"total"` // -1 or 0 while unknown
-	Validator  string `json:"validator,omitempty"`
+	ID        string `json:"id"`
+	URL       string `json:"url"`
+	LibraryID string `json:"library_id,omitempty"`
+	Dir       string `json:"dir"`
+	Name      string `json:"name"`
+	NameAuto  bool   `json:"name_auto,omitempty"` // the origin may still name it
+	Path      string `json:"path,omitempty"`
+	Part      string `json:"-"`
+	State     State  `json:"state"`
+	Bytes     int64  `json:"bytes"`
+	Total     int64  `json:"total"` // -1 or 0 while unknown
+	Validator string `json:"validator,omitempty"`
+	Ranges    bool   `json:"ranges,omitempty"` // origin serves byte ranges
+	// Attempts counts consecutive transient failures; RetryAt (unix) is
+	// when a queued job that failed transiently may run again.
+	Attempts   int    `json:"attempts,omitempty"`
+	RetryAt    int64  `json:"retry_at,omitempty"`
 	Code       string `json:"code,omitempty"`
 	Error      string `json:"error,omitempty"`
 	CreatedBy  string `json:"created_by,omitempty"`
@@ -71,6 +77,10 @@ type Settings struct {
 	// KeepFinishedDays drops finished, failed and canceled records
 	// (never files) after this many days on cleanup; 0 keeps them.
 	KeepFinishedDays int `json:"keep_finished_days"`
+	// MaxRetries is how many consecutive transient failures (network
+	// errors, 5xx, an interrupted body) are retried with exponential
+	// backoff before a job is marked failed. 0 disables retries.
+	MaxRetries int `json:"max_retries"`
 }
 
 // Defaults are deliberately small for a disk-constrained host; the
@@ -80,7 +90,9 @@ const (
 	DefaultMinFreeBytes = 5 << 30
 	DefaultConcurrency  = 2
 	DefaultKeepDays     = 30
+	DefaultMaxRetries   = 5
 	maxConcurrency      = 8
+	maxRetries          = 20
 )
 
 // DefaultSettings returns the first-boot policy for a data dir.
@@ -90,6 +102,7 @@ func DefaultSettings(dataDir string) Settings {
 		Limits:           Limits{MaxBytes: DefaultMaxBytes, MinFreeBytes: DefaultMinFreeBytes},
 		Concurrency:      DefaultConcurrency,
 		KeepFinishedDays: DefaultKeepDays,
+		MaxRetries:       DefaultMaxRetries,
 	}
 }
 
@@ -97,14 +110,17 @@ func DefaultSettings(dataDir string) Settings {
 func (s Settings) Validate() (Settings, error) {
 	s.Dir = strings.TrimSpace(s.Dir)
 	if s.Dir == "" || !filepath.IsAbs(s.Dir) {
-		return s, &Error{CodeInvalid, "dir must be an absolute path"}
+		return s, &Error{Code: CodeInvalid, Msg: "dir must be an absolute path"}
 	}
 	s.Dir = filepath.Clean(s.Dir)
+	if s.MaxRetries < 0 || s.MaxRetries > maxRetries {
+		return s, &Error{Code: CodeInvalid, Msg: "max_retries must be 0-20"}
+	}
 	if s.MaxBytes < 0 || s.MinFreeBytes < 0 || s.KeepFinishedDays < 0 {
-		return s, &Error{CodeInvalid, "limits cannot be negative"}
+		return s, &Error{Code: CodeInvalid, Msg: "limits cannot be negative"}
 	}
 	if s.Concurrency < 1 || s.Concurrency > maxConcurrency {
-		return s, &Error{CodeInvalid, "concurrency must be 1-8"}
+		return s, &Error{Code: CodeInvalid, Msg: "concurrency must be 1-8"}
 	}
 	return s, nil
 }
@@ -142,6 +158,10 @@ type Manager struct {
 	client *http.Client
 	now    func() time.Time
 
+	// Backoff is the wait before retry number attempt (1-based); tests
+	// shorten it.
+	Backoff func(attempt int) time.Duration
+
 	// OnDone is called (outside the lock) after a job's file is in
 	// place, e.g. to rescan its library.
 	OnDone func(Job)
@@ -155,6 +175,16 @@ type Manager struct {
 	closed   chan struct{}
 	wg       sync.WaitGroup
 	started  bool
+	retry    *time.Timer // wakes the scheduler at the earliest RetryAt
+}
+
+// DefaultBackoff doubles from 5s up to 10 minutes, with ±20% jitter so
+// jobs failing together do not retry together.
+func DefaultBackoff(attempt int) time.Duration {
+	d := 5 * time.Second << min(max(attempt-1, 0), 7)
+	d = min(d, 10*time.Minute)
+	jitter := time.Duration(mrand.Int64N(int64(d)/5*2+1)) - d/5
+	return d + jitter
 }
 
 // run is the cancel handle of an active transfer; reason says which
@@ -178,7 +208,7 @@ var (
 // when the process stopped come back queued; their parts resume.
 func NewManager(db *bolt.DB, defaults Settings) (*Manager, error) {
 	m := &Manager{
-		db: db, now: time.Now, settings: defaults,
+		db: db, now: time.Now, settings: defaults, Backoff: DefaultBackoff,
 		jobs: map[string]*Job{}, running: map[string]*run{},
 		kick: make(chan struct{}, 1), closed: make(chan struct{}),
 		client: &http.Client{Transport: &http.Transport{
@@ -194,7 +224,8 @@ func NewManager(db *bolt.DB, defaults Settings) (*Manager, error) {
 			return err
 		}
 		if raw := b.Get(keySettings); raw != nil {
-			var s Settings
+			// Fields a newer version added keep their defaults.
+			s := defaults
 			if err := json.Unmarshal(raw, &s); err == nil {
 				if v, err := s.Validate(); err == nil {
 					m.settings = v
@@ -261,6 +292,9 @@ func (m *Manager) Close() {
 	default:
 	}
 	close(m.closed)
+	if m.retry != nil {
+		m.retry.Stop()
+	}
 	for _, r := range m.running {
 		r.reason = Queued
 		r.cancel()
@@ -298,10 +332,25 @@ func (m *Manager) schedule() {
 	default:
 	}
 	var queued []*Job
+	now := m.now()
+	next := int64(0)
 	for _, j := range m.jobs {
-		if j.State == Queued {
-			queued = append(queued, j)
+		if j.State != Queued {
+			continue
 		}
+		if j.RetryAt > now.Unix() {
+			if next == 0 || j.RetryAt < next {
+				next = j.RetryAt
+			}
+			continue
+		}
+		queued = append(queued, j)
+	}
+	if m.retry != nil {
+		m.retry.Stop()
+	}
+	if next > 0 {
+		m.retry = time.AfterFunc(time.Unix(next, 0).Sub(now), m.poke)
 	}
 	sort.Slice(queued, func(a, b int) bool { return queued[a].Seq < queued[b].Seq })
 	for _, j := range queued {
@@ -330,11 +379,12 @@ func (m *Manager) work(ctx context.Context, id string, r *run) {
 	if err == nil {
 		res, err = Fetch(ctx, m.client, Request{
 			URL: j.URL, Part: j.Part, Validator: j.Validator,
+			Total: max(j.Total, 0), Ranges: j.Ranges,
 			Reserve:  func(n int64) error { return m.reserve(id, n) },
 			Progress: func(done, total int64) { m.progress(id, done, total) },
 		})
 	} else {
-		err = &Error{CodeIO, err.Error()}
+		err = &Error{Code: CodeIO, Msg: err.Error()}
 	}
 
 	m.mu.Lock()
@@ -347,8 +397,22 @@ func (m *Manager) work(ctx context.Context, id string, r *run) {
 		return
 	}
 	jp.Validator = res.Validator
+	jp.Ranges = res.Ranges
 	if res.Total > 0 {
 		jp.Total = res.Total
+	}
+	if res.Restarted {
+		jp.Total = max(res.Total, -1)
+	}
+	if fi, serr := os.Stat(jp.Part); serr == nil {
+		jp.Bytes = fi.Size()
+	} else if err != nil {
+		jp.Bytes = 0
+	}
+	// Progress is progress: a transfer that moved bytes before failing
+	// starts its retry budget over.
+	if res.Bytes > j.Bytes {
+		jp.Attempts = 0
 	}
 	var done *Job
 	switch {
@@ -369,6 +433,14 @@ func (m *Manager) work(ctx context.Context, id string, r *run) {
 		if code == "" {
 			code = CodeIO
 		}
+		if retry, after := Retryable(err); retry && jp.Attempts < m.settings.MaxRetries {
+			jp.Attempts++
+			wait := max(m.Backoff(jp.Attempts), after)
+			// Second granularity: a sub-second wait runs on the next pass.
+			jp.RetryAt = m.now().Add(wait).Unix()
+			m.setState(jp, Queued, code, err.Error())
+			break
+		}
 		m.setState(jp, Failed, code, err.Error())
 	default:
 		if jp.NameAuto && res.Filename != "" {
@@ -381,6 +453,7 @@ func (m *Manager) work(ctx context.Context, id string, r *run) {
 		}
 		jp.Path = final
 		jp.Bytes = res.Bytes
+		jp.Attempts, jp.RetryAt = 0, 0
 		jp.FinishedAt = m.now().Unix()
 		m.setState(jp, Done, "", "")
 		c := *jp
@@ -410,7 +483,7 @@ func (m *Manager) reserve(id string, n int64) error {
 	defer m.mu.Unlock()
 	j, ok := m.jobs[id]
 	if !ok {
-		return &Error{CodeNotFound, "job removed"}
+		return &Error{Code: CodeNotFound, Msg: "job removed"}
 	}
 	used := m.usedLocked(id) + j.Bytes
 	return m.settings.Limits.Check(j.Dir, used, n)
@@ -472,11 +545,11 @@ func (m *Manager) persistLocked(j *Job) {
 func (m *Manager) Add(in AddInput) (Job, error) {
 	u, err := url.Parse(strings.TrimSpace(in.URL))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return Job{}, &Error{CodeInvalid, "url must be an absolute http or https URL"}
+		return Job{}, &Error{Code: CodeInvalid, Msg: "url must be an absolute http or https URL"}
 	}
 	id, err := newID()
 	if err != nil {
-		return Job{}, &Error{CodeIO, err.Error()}
+		return Job{}, &Error{Code: CodeIO, Msg: err.Error()}
 	}
 	m.mu.Lock()
 	dir := in.Dir
@@ -529,7 +602,7 @@ func (m *Manager) Get(id string) (Job, error) {
 	defer m.mu.Unlock()
 	j, ok := m.jobs[id]
 	if !ok {
-		return Job{}, &Error{CodeNotFound, "unknown download"}
+		return Job{}, &Error{Code: CodeNotFound, Msg: "unknown download"}
 	}
 	return *j, nil
 }
@@ -542,7 +615,7 @@ func (m *Manager) Pause(id string) (Job, error) {
 			m.setState(j, Paused, "", "")
 		case Paused:
 		default:
-			return &Error{CodeState, "cannot pause a " + string(j.State) + " download"}
+			return &Error{Code: CodeState, Msg: "cannot pause a " + string(j.State) + " download"}
 		}
 		return nil
 	})
@@ -555,7 +628,7 @@ func (m *Manager) stop(id string, reason State, idle func(*Job) error) (Job, err
 	j, ok := m.jobs[id]
 	if !ok {
 		m.mu.Unlock()
-		return Job{}, &Error{CodeNotFound, "unknown download"}
+		return Job{}, &Error{Code: CodeNotFound, Msg: "unknown download"}
 	}
 	if r, running := m.running[id]; running && j.State == Running {
 		r.reason = reason
@@ -578,10 +651,11 @@ func (m *Manager) Resume(id string) (Job, error) {
 	j, err := m.transition(id, func(j *Job) error {
 		switch j.State {
 		case Paused, Failed:
+			j.Attempts, j.RetryAt = 0, 0
 			m.setState(j, Queued, "", "")
 		case Queued, Running:
 		default:
-			return &Error{CodeState, "cannot resume a " + string(j.State) + " download"}
+			return &Error{Code: CodeState, Msg: "cannot resume a " + string(j.State) + " download"}
 		}
 		return nil
 	})
@@ -602,7 +676,7 @@ func (m *Manager) Cancel(id string) (Job, error) {
 			m.setState(j, Canceled, "", "")
 		case Canceled:
 		default:
-			return &Error{CodeState, "cannot cancel a " + string(j.State) + " download"}
+			return &Error{Code: CodeState, Msg: "cannot cancel a " + string(j.State) + " download"}
 		}
 		return nil
 	})
@@ -615,10 +689,10 @@ func (m *Manager) Remove(id string) error {
 	defer m.mu.Unlock()
 	j, ok := m.jobs[id]
 	if !ok {
-		return &Error{CodeNotFound, "unknown download"}
+		return &Error{Code: CodeNotFound, Msg: "unknown download"}
 	}
 	if !j.State.terminal() {
-		return &Error{CodeState, "cancel or let the download finish first"}
+		return &Error{Code: CodeState, Msg: "cancel or let the download finish first"}
 	}
 	if j.State != Done {
 		_ = os.Remove(j.Part)
@@ -634,7 +708,7 @@ func (m *Manager) transition(id string, f func(*Job) error) (Job, error) {
 	defer m.mu.Unlock()
 	j, ok := m.jobs[id]
 	if !ok {
-		return Job{}, &Error{CodeNotFound, "unknown download"}
+		return Job{}, &Error{Code: CodeNotFound, Msg: "unknown download"}
 	}
 	if err := f(j); err != nil {
 		return *j, err
@@ -666,7 +740,7 @@ func (m *Manager) SetSettings(s Settings) (Settings, error) {
 	}
 	m.mu.Unlock()
 	if err != nil {
-		return s, &Error{CodeIO, err.Error()}
+		return s, &Error{Code: CodeIO, Msg: err.Error()}
 	}
 	m.poke()
 	return s, nil
