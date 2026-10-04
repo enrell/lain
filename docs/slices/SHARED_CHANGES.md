@@ -22,9 +22,12 @@ expected): `internal/downloads/`, `internal/plugins/comic/`,
 
 ## `internal/downloads` public interface (consumed by feat/acquisition)
 
-The acquisition slice branches from this one and reuses the manager and
-limits. Every change after the branch point is **additive**; nothing
-existing was renamed, removed or changed meaning:
+The acquisition slice branched from this one at `c77ae57` and reuses the
+manager and limits. The list below is what changed since the first
+reading-downloads summary (`d632a04`) and is **already in that branch
+point**; all of it is additive, nothing was renamed, removed or changed
+meaning. Changes made after `c77ae57` are logged under "After the
+acquisition branch point" (none so far).
 
 - `Error` gained `Retry bool` and `RetryAfter time.Duration`. Positional
   `&Error{code, msg}` literals no longer compile; use keyed fields
@@ -48,3 +51,7 @@ existing was renamed, removed or changed meaning:
   (tests shorten it).
 - `Pause`/`Cancel` on a running job wait (up to 5s) for the transfer to
   settle and return the settled state.
+
+### After the acquisition branch point (`c77ae57`)
+
+- None to `internal/downloads` or `internal/offline`.
