@@ -203,3 +203,79 @@ found:
 		t.Fatal("removing a grab must never touch the library copy")
 	}
 }
+
+func TestAcquireAutomationRoutes(t *testing.T) {
+	srv := testServer(t)
+	admin := setupAdmin(t, srv)
+	wantCode(t, do(t, srv, "POST", "/api/users", map[string]string{"username": "ana", "password": "password123"}, admin), 201)
+	user := loginAs(t, srv, "ana", "password123")
+	for _, path := range []string{"/api/acquire/profiles", "/api/acquire/monitored", "/api/acquire/wanted", "/api/acquire/blocklist", "/api/acquire/replaced", "/api/acquire/automation"} {
+		if rec := do(t, srv, "GET", path, nil, user); rec.Code != http.StatusForbidden {
+			t.Errorf("%s as user: %d", path, rec.Code)
+		}
+	}
+
+	// Profiles: the default exists; a bad one is refused; a good one saves.
+	var profiles struct{ Profiles []acquire.Profile }
+	rec := do(t, srv, "GET", "/api/acquire/profiles", nil, admin)
+	wantCode(t, rec, 200)
+	_ = json.Unmarshal(rec.Body.Bytes(), &profiles)
+	if len(profiles.Profiles) != 1 || profiles.Profiles[0].ID != "default" {
+		t.Fatalf("profiles: %+v", profiles)
+	}
+	wantCode(t, do(t, srv, "POST", "/api/acquire/profiles", map[string]any{"name": "x", "resolutions": []string{"potato"}}, admin), 400)
+	rec = do(t, srv, "POST", "/api/acquire/profiles", map[string]any{"name": "4K", "resolutions": []string{"2160p"}}, admin)
+	wantCode(t, rec, 201)
+	var p acquire.Profile
+	_ = json.Unmarshal(rec.Body.Bytes(), &p)
+
+	// Monitored titles need a library of the same kind.
+	libDir := t.TempDir()
+	rec = do(t, srv, "POST", "/api/libraries", map[string]string{"name": "Anime", "type": "anime", "path": libDir}, admin)
+	wantCode(t, rec, 201)
+	var lib contracts.Library
+	_ = json.Unmarshal(rec.Body.Bytes(), &lib)
+	wantCode(t, do(t, srv, "POST", "/api/acquire/monitored", map[string]any{"library_id": lib.ID, "kind": "movie", "title": "Film"}, admin), 400)
+	rec = do(t, srv, "POST", "/api/acquire/monitored", map[string]any{"library_id": lib.ID, "kind": "anime", "title": "Show", "from": 1, "to": 3, "profile_id": p.ID}, admin)
+	wantCode(t, rec, 201)
+	var mon acquire.Monitored
+	_ = json.Unmarshal(rec.Body.Bytes(), &mon)
+	wantCode(t, do(t, srv, "DELETE", "/api/acquire/profiles/"+p.ID, nil, admin), 409)
+
+	rec = do(t, srv, "GET", "/api/acquire/monitored/"+mon.ID+"/wanted", nil, admin)
+	wantCode(t, rec, 200)
+	var wanted acquire.Wanted
+	_ = json.Unmarshal(rec.Body.Bytes(), &wanted)
+	if len(wanted.Missing) != 3 {
+		t.Fatalf("wanted: %+v", wanted)
+	}
+	rec = do(t, srv, "GET", "/api/acquire/wanted", nil, admin)
+	wantCode(t, rec, 200)
+	if !strings.Contains(rec.Body.String(), `"title":"Show"`) || !strings.Contains(rec.Body.String(), `"missing_count":3`) {
+		t.Fatalf("wanted overview: %s", rec.Body.String())
+	}
+	// A search with no indexer explains itself; RSS reports nothing grabbed.
+	// The metadata episode lookup is stubbed: tests never reach the
+	// network (D-120).
+	srv.episodeCountSeam = func(string, string) int { return 0 }
+	rec = do(t, srv, "POST", "/api/acquire/monitored/"+mon.ID+"/search", nil, admin)
+	wantCode(t, rec, 200)
+	rec = do(t, srv, "POST", "/api/acquire/rss", nil, admin)
+	wantCode(t, rec, 200)
+	if !strings.Contains(rec.Body.String(), `"grabbed":[]`) {
+		t.Fatalf("rss: %s", rec.Body.String())
+	}
+	mon.To = 5
+	wantCode(t, do(t, srv, "PUT", "/api/acquire/monitored/"+mon.ID, mon, admin), 200)
+	wantCode(t, do(t, srv, "GET", "/api/acquire/blocklist", nil, admin), 200)
+	wantCode(t, do(t, srv, "DELETE", "/api/acquire/blocklist/nope", nil, admin), 404)
+	wantCode(t, do(t, srv, "GET", "/api/acquire/replaced", nil, admin), 200)
+	wantCode(t, do(t, srv, "POST", "/api/acquire/replaced/purge", nil, admin), 200)
+	rec = do(t, srv, "GET", "/api/acquire/automation", nil, admin)
+	wantCode(t, rec, 200)
+	if !strings.Contains(rec.Body.String(), `"enabled":false`) {
+		t.Fatalf("automation is off by default: %s", rec.Body.String())
+	}
+	wantCode(t, do(t, srv, "DELETE", "/api/acquire/monitored/"+mon.ID, nil, admin), 200)
+	wantCode(t, do(t, srv, "DELETE", "/api/acquire/profiles/"+p.ID, nil, admin), 200)
+}
