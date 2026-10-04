@@ -44,7 +44,10 @@ export const ADMIN_ROUTES = [
 	'/settings/transcoding',
 	'/settings/integrations',
 	'/settings/plugins',
-	'/settings/backup'
+	'/settings/backup',
+	'/settings/indexers',
+	'/settings/acquisition',
+	'/acquire'
 ] as const;
 
 export function isAdminRoute(pathname: string): boolean {
