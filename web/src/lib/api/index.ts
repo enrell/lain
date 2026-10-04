@@ -1,6 +1,7 @@
 import { auth } from './auth';
 import { backup } from './backup';
 import { catalog } from './catalog';
+import { downloads } from './downloads';
 import { enrich } from './enrich';
 import { items } from './items';
 import { libraries } from './libraries';
@@ -12,6 +13,7 @@ import { plugins } from './plugins';
 import { progress } from './progress';
 import { reader } from './reader';
 import { search } from './search';
+import { social } from './social';
 import { thumbnail } from './thumbnail';
 import { theme } from './theme';
 import { transcodeAdmin } from './transcode-settings';
@@ -26,6 +28,7 @@ export const api = {
 	auth,
 	backup,
 	catalog,
+	downloads,
 	enrich,
 	items,
 	libraries,
@@ -39,6 +42,7 @@ export const api = {
 	progress,
 	reader,
 	search,
+	social,
 	thumbnail,
 	theme,
 	transcodeAdmin,
@@ -47,3 +51,5 @@ export const api = {
 
 export { ApiError, buildUrl, mediaUrl } from './client';
 export * from './types';
+export type * from './social';
+export { targetOf } from './social';
