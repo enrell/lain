@@ -37,6 +37,7 @@
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable } from '$lib/reader/kinds';
 	import ComicInfoPanel from '$lib/components/reader/ComicInfoPanel.svelte';
+	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer, item?.kind); }
@@ -320,6 +321,7 @@
 							<RotateCcw class="size-3.5" /> Start over
 						</Button>
 					{/if}
+					{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="ghost" />{/if}
 					{#if session.isAdmin}
 						<div class="flex items-center gap-2 md:ml-auto">
 							{@render adminActions()}

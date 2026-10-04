@@ -116,3 +116,6 @@ Resolved when merging both slices onto `main`; see the summary in
 | `internal/gateway/server.go` | Kept both: `s.routesDownloads()` then `s.routesSocial()` after `s.routesList()`. Everything else merged textually. |
 | `web/src/lib/i18n/messages/en.ts` | Both slices appended top-level namespaces before `} as const`; kept `downloads`, `reader`, `offline`, then `social`. |
 | `docs/slices/SHARED_CHANGES.md` | This file: one section per slice. |
+| `web/src/routes/item/[id]/+page.svelte` | Web Download button (`DownloadFileButton`, key **`d`**) in the single-item action row, before the admin actions. Keys on `/item` now: social `r s c f m`, reading `o` (comic/manga), download `d`. |
+| `web/src/lib/components/media/TitleView.svelte` | The same button in the (admin) episode-selection toolbar, downloading the selected files one after another; `d` while selecting. |
+| `web/src/lib/i18n/messages/en.ts` | New top-level `download` namespace (button labels). |

@@ -517,6 +517,10 @@ const en = {
 			loadFailed: 'Could not load privacy settings.',
 			saveFailed: 'Could not save the setting.'
 		}
+	},
+	download: {
+		file: 'Download file',
+		files: { one: 'Download {count} file', other: 'Download {count} files' }
 	}
 } as const;
 
