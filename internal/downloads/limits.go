@@ -38,6 +38,21 @@ func (l Limits) Check(dir string, used, grow int64) error {
 	return nil
 }
 
+// Full reports whether a store already at used bytes has no room left
+// at all — the check a queue runs before accepting new work, phrased as
+// the state of the store rather than the size of one request.
+func (l Limits) Full(dir string, used int64) error {
+	if l.MaxBytes > 0 && used >= l.MaxBytes {
+		return &Error{CodeQuota, fmt.Sprintf("download budget used up: %s of %s", HumanBytes(used), HumanBytes(l.MaxBytes))}
+	}
+	if l.MinFreeBytes > 0 {
+		if free, err := freeBytes(dir); err == nil && free <= l.MinFreeBytes {
+			return &Error{CodeDiskFull, fmt.Sprintf("only %s free and %s must stay free", HumanBytes(free), HumanBytes(l.MinFreeBytes))}
+		}
+	}
+	return nil
+}
+
 // HumanBytes formats a byte count with binary units.
 func HumanBytes(n int64) string {
 	const unit = 1024
