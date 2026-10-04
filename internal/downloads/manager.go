@@ -483,9 +483,8 @@ func (m *Manager) Add(in AddInput) (Job, error) {
 		name = NameFromURL(u.String())
 	}
 	now := m.now()
-	m.seq++
 	j := &Job{
-		Seq: m.seq,
+		Seq: m.seq + 1,
 		ID:  id, URL: u.String(), LibraryID: in.LibraryID, Dir: filepath.Clean(dir),
 		Name: SafeName(name, "download-"+id), NameAuto: auto, State: Queued,
 		CreatedBy: in.CreatedBy, CreatedAt: now.Unix(), UpdatedAt: now.Unix(), Total: -1,
@@ -493,10 +492,11 @@ func (m *Manager) Add(in AddInput) (Job, error) {
 	j.Part = partPath(*j)
 	// A known-full store refuses at the door instead of queueing a job
 	// that can only fail.
-	if err := m.settings.Limits.Check(j.Dir, m.usedLocked(""), 1); err != nil {
+	if err := m.settings.Limits.Full(existingParent(j.Dir), m.usedLocked("")); err != nil {
 		m.mu.Unlock()
 		return Job{}, err
 	}
+	m.seq = j.Seq
 	m.jobs[id] = j
 	m.persistLocked(j)
 	out := *j

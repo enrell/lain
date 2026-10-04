@@ -104,3 +104,20 @@ func TestHumanBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestLimitsFull(t *testing.T) {
+	defer func(f func(string) (int64, error)) { freeBytes = f }(freeBytes)
+	freeBytes = func(string) (int64, error) { return 1000, nil }
+	if err := (Limits{MaxBytes: 100}).Full("/x", 99); err != nil {
+		t.Fatalf("room left: %v", err)
+	}
+	if err := (Limits{MaxBytes: 100}).Full("/x", 100); CodeOf(err) != CodeQuota || !strings.Contains(err.Error(), "used up") {
+		t.Fatalf("budget used up: %v", err)
+	}
+	if err := (Limits{MinFreeBytes: 1000}).Full("/x", 0); CodeOf(err) != CodeDiskFull {
+		t.Fatalf("at the floor: %v", err)
+	}
+	if err := (Limits{}).Full("/x", 1<<50); err != nil {
+		t.Fatalf("no limits: %v", err)
+	}
+}
