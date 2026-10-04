@@ -88,6 +88,12 @@ func DefaultComposition() *Composition {
 			"lain.listlink@1":              {Mode: ModeOrderedMany, Providers: []string{"lain-listlink-anilist"}, Generation: 1},
 			"lain.comic.pages@1":           {Mode: ModeExactlyOne, Providers: []string{"lain-comic-archive"}, Generation: 1},
 			"lain.settings.integrations@1": {Mode: ModeExactlyOne, Providers: []string{"lain-settings-bolt"}, Generation: 1},
+			// Social slice (docs/slices/social.md): added without a version
+			// bump — Upgrade carries new capabilities into saved compositions.
+			"lain.social.graph@1":       {Mode: ModeExactlyOne, Providers: []string{"lain-social-bolt"}, Generation: 1},
+			"lain.social.activity@1":    {Mode: ModeExactlyOne, Providers: []string{"lain-social-bolt"}, Generation: 1},
+			"lain.social.reviews@1":     {Mode: ModeExactlyOne, Providers: []string{"lain-social-bolt"}, Generation: 1},
+			"lain.social.collections@1": {Mode: ModeExactlyOne, Providers: []string{"lain-social-bolt"}, Generation: 1},
 		},
 	}
 }

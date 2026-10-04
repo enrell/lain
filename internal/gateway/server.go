@@ -45,6 +45,7 @@ import (
 	"github.com/enrell/lain/internal/plugins/probe"
 	"github.com/enrell/lain/internal/plugins/search"
 	"github.com/enrell/lain/internal/plugins/settings"
+	"github.com/enrell/lain/internal/plugins/social"
 	"github.com/enrell/lain/internal/plugins/source"
 	"github.com/enrell/lain/internal/plugins/sourcewatch"
 	"github.com/enrell/lain/internal/plugins/theme"
@@ -221,6 +222,11 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 		db.Close()
 		return nil, err
 	}
+	soc, err := social.New(db)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
 	stateKey, err := loadOrCreateStateKey(db)
 	if err != nil {
 		db.Close()
@@ -246,6 +252,7 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	reg.Register(cat)
 	reg.Register(ustate)
 	reg.Register(lst)
+	reg.Register(soc)
 	reg.Register(listlink.NewAniList())
 	reg.Register(searchProvider{reg: reg})
 	reg.Register(playback.Planner{})
@@ -335,6 +342,7 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	s.routesTranscode()
 	s.routesList()
 	s.routesDownloads()
+	s.routesSocial()
 	// The web UI is the least specific pattern: API, health and media
 	// routes registered above keep winning their paths.
 	webui.Mount(s.mux)
@@ -946,6 +954,7 @@ func (s *Server) handleProgressPut(w http.ResponseWriter, r *http.Request, v aut
 	if in.Completed && !prev.Completed {
 		go s.scrobble(v.UserID, in.ItemID)
 	}
+	s.recordSocialProgress(v.UserID, prev, in)
 	writeJSON(w, 200, out)
 }
 

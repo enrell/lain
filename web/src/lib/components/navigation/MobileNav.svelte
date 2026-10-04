@@ -5,12 +5,15 @@
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import Search from '@lucide/svelte/icons/search';
 	import Settings from '@lucide/svelte/icons/settings';
+	import Users from '@lucide/svelte/icons/users';
+	import { socialBadge } from '$lib/stores/social.svelte';
 	import { page } from '$app/state';
 
 	const items = $derived([
 		{ href: '/', label: t('nav.home'), icon: House, exact: true },
 		{ href: '/library', label: t('nav.library'), icon: Library, exact: false },
 		{ href: '/list', label: t('nav.list'), icon: ListChecks, exact: false },
+		{ href: '/social', label: t('nav.social'), icon: Users, exact: false },
 		{ href: '/search', label: t('nav.search'), icon: Search, exact: false },
 		{ href: '/settings', label: t('nav.settings'), icon: Settings, exact: false }
 	]);
@@ -26,7 +29,7 @@
 	aria-label={t('nav.primary')}
 	style="padding-bottom: env(safe-area-inset-bottom);"
 >
-	<div class="grid grid-cols-5">
+	<div class="grid grid-cols-6">
 		{#each items as item (item.href)}
 			{@const isActive = active(item.href, item.exact)}
 			{@const Icon = item.icon}
@@ -38,7 +41,12 @@
 					isActive ? 'text-accent' : 'text-muted hover:text-foreground'
 				].join(' ')}
 			>
-				<Icon class="size-5" />
+				<span class="relative">
+					<Icon class="size-5" />
+					{#if item.href === '/social' && socialBadge.unread > 0}
+						<span class="absolute -end-1 -top-1 size-2 rounded-full bg-accent" aria-label={t('nav.unread', { count: socialBadge.unread })}></span>
+					{/if}
+				</span>
 				{item.label}
 			</a>
 		{/each}
