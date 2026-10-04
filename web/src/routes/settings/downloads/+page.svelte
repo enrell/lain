@@ -12,7 +12,7 @@
 	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
-	import { formatBytes } from '$lib/utilities/format';
+	import { formatBytes, formatRelative } from '$lib/utilities/format';
 	import { fromGiB, isActive, progressRatio, settingsChanges, toGiB } from './downloads';
 
 	/*
@@ -262,6 +262,11 @@
 									<span>{progressLabel(job)}</span>
 									<span class="truncate normal-case tracking-normal">{targetLabel(job)}</span>
 								</p>
+								{#if job.state === 'queued' && job.retry_at && job.attempts}
+									<p class="mt-1 text-xs text-warning">
+										{t('downloads.retrying', { attempt: job.attempts, max: view.settings.max_retries, when: formatRelative(job.retry_at) })}
+									</p>
+								{/if}
 								{#if job.error}<p class="mt-1 text-xs text-danger">{job.error}</p>{/if}
 								{#if job.state !== 'done' && job.state !== 'canceled'}
 									<div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-line" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressRatio(job) * 100)}>
@@ -367,6 +372,16 @@
 					class="h-9 w-24 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
 					aria-label={t('downloads.limits.keepDays')}
 					bind:value={draft.keep_finished_days}
+				/>
+			</SettingRow>
+			<SettingRow label={t('downloads.limits.retries')} hint={t('downloads.limits.retriesHint')}>
+				<input
+					type="number"
+					min="0"
+					max="20"
+					class="h-9 w-24 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
+					aria-label={t('downloads.limits.retries')}
+					bind:value={draft.max_retries}
 				/>
 			</SettingRow>
 		</SettingsGroup>

@@ -30,6 +30,6 @@ export function progressRatio(job: Pick<DownloadJob, 'bytes' | 'total' | 'state'
 
 /** How many staged fields differ from the saved settings. */
 export function settingsChanges(saved: DownloadSettings, draft: DownloadSettings): number {
-	const keys: (keyof DownloadSettings)[] = ['dir', 'max_bytes', 'min_free_bytes', 'concurrency', 'keep_finished_days'];
+	const keys: (keyof DownloadSettings)[] = ['dir', 'max_bytes', 'min_free_bytes', 'concurrency', 'keep_finished_days', 'max_retries'];
 	return keys.filter((k) => String(saved[k]) !== String(draft[k])).length;
 }
