@@ -50,6 +50,7 @@ import (
 	"github.com/enrell/lain/internal/plugins/settings"
 	"github.com/enrell/lain/internal/plugins/source"
 	"github.com/enrell/lain/internal/plugins/sourcewatch"
+	"github.com/enrell/lain/internal/plugins/subtitles"
 	"github.com/enrell/lain/internal/plugins/theme"
 	"github.com/enrell/lain/internal/plugins/thumbnail"
 	"github.com/enrell/lain/internal/plugins/transcode"
@@ -262,6 +263,7 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	reg.Register(release.NewModel(parserSocket(dataDir)))
 	reg.Register(release.Tokenizer{})
 	reg.Register(indexer.NewTorznab())
+	reg.Register(subtitles.NewOpenSubtitles())
 	reg.Register(searchProvider{reg: reg})
 	reg.Register(playback.Planner{})
 	reg.Register(probe.Provider{})

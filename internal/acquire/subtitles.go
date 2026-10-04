@@ -632,3 +632,14 @@ func subtitleDue(s Settings, mon Monitored, now time.Time) bool {
 	return s.Automation && mon.Enabled && s.SubtitleHours > 0 &&
 		now.Sub(time.Unix(mon.LastSubtitleAt, 0)) >= time.Duration(s.SubtitleHours)*time.Hour
 }
+
+// ProfileForItem is the profile governing a catalog item: its monitored
+// title's (same library, same title) or the default profile.
+func (m *Manager) ProfileForItem(it contracts.CatalogItem) (Profile, error) {
+	for _, mon := range m.st.monitored() {
+		if mon.LibraryID == it.LibraryID && mon.names()[looseKey(it.Title)] {
+			return m.profile(mon.ProfileID)
+		}
+	}
+	return m.profile("")
+}
