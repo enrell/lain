@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type AcquireSettings, type AcquireView } from '$lib/api';
+	import { api, type AcquireSettings, type AcquireView, type Profile } from '$lib/api';
+	import Button from '$lib/components/primitives/Button.svelte';
+	import Modal from '$lib/components/primitives/Modal.svelte';
+	import ProfileDialog from '$lib/components/acquire/ProfileDialog.svelte';
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import Switch from '$lib/components/primitives/Switch.svelte';
@@ -21,6 +24,52 @@
 	let view = $state<AcquireView | null>(null);
 	let draft = $state<AcquireSettings | null>(null);
 	let saving = $state(false);
+	let profiles = $state<Profile[]>([]);
+	let profileOpen = $state(false);
+	let editingProfile = $state<Profile | null>(null);
+	let deleteProfile = $state<Profile | null>(null);
+	let deleteOpen = $state(false);
+
+	async function loadProfiles(): Promise<void> {
+		try {
+			profiles = (await api.acquire.profiles()).profiles;
+		} catch (err) {
+			toasts.error(errorMessage(err, t('acquire.profiles.loadFailed')));
+		}
+	}
+
+	function editProfile(p: Profile | null): void {
+		editingProfile = p;
+		profileOpen = true;
+	}
+
+	function askDeleteProfile(p: Profile): void {
+		deleteProfile = p;
+		deleteOpen = true;
+		requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById('confirm-delete-profile')?.focus()));
+	}
+
+	async function removeProfile(): Promise<void> {
+		if (!deleteProfile) return;
+		try {
+			await api.acquire.deleteProfile(deleteProfile.id);
+			deleteOpen = false;
+			await loadProfiles();
+		} catch (err) {
+			toasts.error(errorMessage(err, t('acquire.profiles.failed')));
+		}
+	}
+
+	function profileKey(e: KeyboardEvent, p: Profile): void {
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		const el = e.currentTarget as HTMLElement;
+		if (e.key === 'e' || e.key === 'Enter') editProfile(p);
+		else if (e.key === 'Delete' && p.id !== 'default') askDeleteProfile(p);
+		else if (e.key === 'j' || e.key === 'ArrowDown') (el.nextElementSibling as HTMLElement | null)?.focus();
+		else if (e.key === 'k' || e.key === 'ArrowUp') (el.previousElementSibling as HTMLElement | null)?.focus();
+		else return;
+		e.preventDefault();
+	}
 
 	const changeCount = $derived(view && draft ? settingsChanges(view.settings, draft) : 0);
 	const importOptions = $derived([
@@ -33,6 +82,7 @@
 		try {
 			view = await api.acquire.settings();
 			draft = { ...view.settings };
+			await loadProfiles();
 		} catch (err) {
 			toasts.error(errorMessage(err, t('acquire.settings.loadFailed')));
 		}
@@ -121,6 +171,53 @@
 			</SettingRow>
 		</SettingsGroup>
 
+		<SettingsGroup id="automation" title={t('acquire.settings.automationGroup')}>
+			<SettingRow id="acquire-automation" label={t('acquire.settings.automation')} hint={t('acquire.settings.automationHint')}>
+				<Switch bare label={t('acquire.settings.automation')} bind:checked={draft.automation} />
+			</SettingRow>
+			<SettingRow id="acquire-rss" label={t('acquire.settings.rssMinutes')} hint={t('acquire.settings.rssMinutesHint')}>
+				<input type="number" min="10" max="1440" class={num} aria-label={t('acquire.settings.rssMinutes')} bind:value={draft.rss_minutes} />
+			</SettingRow>
+			<SettingRow id="acquire-search" label={t('acquire.settings.searchHours')} hint={t('acquire.settings.searchHoursHint')}>
+				<input type="number" min="0" max="168" class={num} aria-label={t('acquire.settings.searchHours')} bind:value={draft.search_hours} />
+			</SettingRow>
+			<SettingRow id="acquire-stall" label={t('acquire.settings.stallHours')} hint={t('acquire.settings.stallHoursHint')}>
+				<input type="number" min="0" max="168" class={num} aria-label={t('acquire.settings.stallHours')} bind:value={draft.stall_hours} />
+			</SettingRow>
+		</SettingsGroup>
+
+		<SettingsGroup id="profiles" title={t('acquire.profiles.group')}>
+			{#snippet aside()}
+				<Button size="sm" variant="secondary" onclick={() => editProfile(null)}>{t('acquire.profiles.add')}</Button>
+			{/snippet}
+			<p class="pt-3 text-xs text-muted">{t('acquire.profiles.keys')}</p>
+			<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.profiles.group')}>
+				{#each profiles as p (p.id)}
+					<div role="row" tabindex="0" onkeydown={(e) => profileKey(e, p)} class="flex flex-wrap items-center justify-between gap-3 py-3 outline-none focus-visible:bg-surface-active/40">
+						<div class="min-w-0" role="gridcell">
+							<p class="text-sm font-medium text-foreground">{p.name}</p>
+							<p class="font-mono text-[10px] text-muted">{t('acquire.profiles.summary', { resolutions: p.resolutions.join(' › '), cutoff: p.cutoff, seeders: p.min_seeders })}</p>
+						</div>
+						<div class="flex gap-1.5" role="gridcell">
+							<Button size="sm" variant="ghost" tabindex={-1} onclick={() => editProfile(p)}>{t('acquire.indexers.edit')} <kbd class="ms-1 font-mono text-[10px] text-muted">e</kbd></Button>
+							{#if p.id !== 'default'}
+								<Button size="sm" variant="ghost" tabindex={-1} onclick={() => askDeleteProfile(p)}>{t('acquire.indexers.remove')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
+							{/if}
+						</div>
+					</div>
+				{/each}
+			</div>
+		</SettingsGroup>
+
 		<StagedBar count={changeCount} {saving} onapply={() => void save()} ondiscard={() => view && (draft = { ...view.settings })} />
 	{/if}
 </div>
+
+<ProfileDialog bind:open={profileOpen} editing={editingProfile} onsaved={() => void loadProfiles()} />
+
+<Modal bind:open={deleteOpen} title={t('acquire.profiles.deleteTitle', { name: deleteProfile?.name ?? '' })} description={t('acquire.profiles.deleteBody')}>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (deleteOpen = false)}>{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
+		<Button id="confirm-delete-profile" variant="danger" onclick={() => void removeProfile()}>{t('acquire.indexers.remove')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
+	{/snippet}
+</Modal>
