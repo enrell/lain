@@ -174,6 +174,7 @@ const en = {
 		progress: '{done} of {total}',
 		progressUnknown: '{done}',
 		into: 'into {target}',
+		retrying: 'Retry {attempt} of {max} {when}',
 		storage: {
 			group: 'Storage',
 			used: 'Used by downloads',
@@ -204,6 +205,8 @@ const en = {
 			concurrencyHint: 'How many transfers run at once (1–8).',
 			keepDays: 'Keep records (days)',
 			keepDaysHint: 'Cleanup forgets finished, failed and canceled entries after this. 0 keeps them.',
+			retries: 'Automatic retries',
+			retriesHint: 'Network errors, 5xx answers and dropped transfers retry with growing waits, resuming by byte range. 0 disables.',
 			saved: 'Download limits saved.',
 			saveFailed: 'Could not save the download limits.',
 			loadFailed: 'Could not load downloads.'

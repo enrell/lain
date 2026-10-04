@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fromGiB, isActive, progressRatio, settingsChanges, toGiB } from './downloads';
 
-const base = { dir: '/srv/dl', max_bytes: 20 * 1024 ** 3, min_free_bytes: 5 * 1024 ** 3, concurrency: 2, keep_finished_days: 30 };
+const base = { dir: '/srv/dl', max_bytes: 20 * 1024 ** 3, min_free_bytes: 5 * 1024 ** 3, concurrency: 2, keep_finished_days: 30, max_retries: 5 };
 
 describe('download settings helpers', () => {
 	it('round-trips GiB inputs and treats junk as no limit', () => {
@@ -15,6 +15,7 @@ describe('download settings helpers', () => {
 	it('counts staged changes field by field', () => {
 		expect(settingsChanges(base, { ...base })).toBe(0);
 		expect(settingsChanges(base, { ...base, dir: '/x', concurrency: 3 })).toBe(2);
+		expect(settingsChanges(base, { ...base, max_retries: 0 })).toBe(1);
 		// A number input may hand back a string; equal values are not changes.
 		expect(settingsChanges(base, { ...base, concurrency: '2' as unknown as number })).toBe(0);
 	});

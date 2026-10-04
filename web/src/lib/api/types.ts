@@ -544,6 +544,9 @@ export interface DownloadJob {
 	total: number;
 	code?: string;
 	error?: string;
+	/** Consecutive transient failures; a queued job with retry_at waits to retry. */
+	attempts?: number;
+	retry_at?: number;
 	created_at: number;
 	updated_at: number;
 	finished_at?: number;
@@ -557,6 +560,8 @@ export interface DownloadSettings {
 	min_free_bytes: number;
 	concurrency: number;
 	keep_finished_days: number;
+	/** Transient failures retried with backoff before a job fails; 0 disables. */
+	max_retries: number;
 }
 
 export interface DownloadUsage {
