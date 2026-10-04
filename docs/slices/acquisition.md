@@ -81,11 +81,27 @@ The user chose **an in-house, standard-library BitTorrent engine**.
   filesystem (seeding keeps working), otherwise **copy** while seeding
   or **move** when not seeding, and the library is rescanned. Existing
   files are never overwritten.
-- **A-11 Naming scheme v1** (fixed, configurable later):
-  series/anime `Title/Season NN/Title - SNNEMM.ext` (anime without a
-  season: `Title/Title - MMM.ext`, absolute numbering kept),
-  movies `Title (Year)/Title (Year).ext`, manga/comics
-  `Title/Title v01 c001.cbz` matching the comic identifier's grammar.
+- **A-11 Naming scheme v1** (fixed, configurable later), chosen so
+  Lain's own identifiers read every imported name back as the same
+  title and numbers (`TestImportedNamesRoundTrip`):
+  seasoned episodes `Title/Season NN/Title - SNNEMM.ext` (a multi-episode
+  file `SNNEMM-EKK`); absolute anime episodes are season 0 in the
+  catalog, written `Title/[Group] Title - MMM.ext` when the group is
+  known and `Title/Title - S00EMM.ext` otherwise (the anime identifier
+  only reads a bare `- 03` after a `[Group]` tag); movies
+  `Title (Year)/Title (Year).ext`; manga/comics `Title/Title v01 c001.cbz`.
+  A download's title is matched to an existing library title first
+  (case and punctuation insensitive) so new episodes join their show.
+- **A-15 The engine always listens.** Trackers reject port 0 and a
+  seeder must be reachable, so there is no "inbound off" mode:
+  `listen_port` 0 means "a free port at each start" (default 51413,
+  forward it behind NAT). `LAIN_ACQUIRE_LISTEN_PORT` seeds the port on
+  first boot (containers, tests); if the port is taken at boot the
+  engine falls back to a free one and logs it — acquisition never
+  blocks server start, and its routes answer 503 if it cannot start.
+- **A-16 Usenet is searchable, not downloadable.** Newznab results are
+  parsed and shown, marked "no usenet client yet"; grabbing one is
+  refused with `unsupported-protocol` until an NZB client exists.
 - **A-12 Own buckets, own file.** `acq_indexers`, `acq_grabs`,
   `acq_settings`, `acq_torrents` (engine resume state) are declared in
   `internal/kv/acquire.go` and created by their owners, so `kv.Open` is
@@ -142,3 +158,32 @@ placement next to the media file, sync checks via ffprobe timing.
 | `GET /api/acquire/parse?name=` | parser diagnostics |
 | `GET/POST /api/acquire/grabs`, `POST /api/acquire/grabs/{id}/{pause,resume,import}`, `DELETE /api/acquire/grabs/{id}?data=1` | queue |
 | `GET/PUT /api/acquire/settings` | engine + seeding + import settings |
+
+## Status (2026-10-04) — Phase 1 built, not merged
+
+- `internal/torrent`: stdlib BitTorrent engine (bencode, metainfo,
+  magnets, HTTP/UDP trackers, peer wire, ut_metadata, rarest-first
+  picking with endgame, SHA-1 verification, resume/recheck, choking and
+  seeding, rate limits). Fuzzed: bencode, metainfo, tracker responses,
+  live peer messages. Loopback swarm tests incl. a corrupt seeder.
+- `lain.release.parse@1` (model over parser.sock, tokenizer fallback),
+  `lain.indexer@1` (Torznab/Newznab).
+- `internal/acquire`: indexers with write-only keys and rate limits,
+  parallel search with parse + rank, grabs from results/.torrent
+  URLs/magnets (incl. indexer redirects to magnets), shared disk budget,
+  queue slots, import with identifier-round-tripped naming and
+  hardlink/copy/move, seeding to ratio/time then cleanup, restart resume.
+- Gateway `/api/acquire/*` (admin), web `/acquire` (Search, Queue),
+  SERVER › Indexers (`g n`) and › Acquisition (`g a`).
+- Verified in headless Chromium against an isolated server and a
+  loopback swarm: keyboard-only search → grab → download → import →
+  seeding, catalog shows the episodes.
+
+Left in Phase 1 scope:
+
+- No DHT/PEX/uTP/encryption (A-2): trackerless magnets are refused.
+- No usenet client (A-16).
+- qBittorrent/Transmission adapters (the interface is ready, A-3).
+- Mobile navigation has no Acquire entry (desktop nav and Ctrl+K only).
+- `/settings/downloads` is missing from `ADMIN_ROUTES` on the reading
+  branch (pre-existing; not changed here).
