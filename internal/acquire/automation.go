@@ -487,6 +487,13 @@ func (m *Manager) schedule(now time.Time) {
 				return
 			}
 		}
+		// Then one subtitle pass per tick (A-36).
+		for _, mon := range m.st.monitored() {
+			if subtitleDue(s, mon, now) {
+				_, _ = m.SubtitlesForMonitored(mon.ID)
+				return
+			}
+		}
 	}()
 }
 

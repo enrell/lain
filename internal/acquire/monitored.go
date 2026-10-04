@@ -126,7 +126,9 @@ type Monitored struct {
 	Enabled          bool `json:"enabled"`
 	// LastSearchAt is the last automatic search for missing units.
 	LastSearchAt int64 `json:"last_search_at,omitempty"`
-	CreatedAt    int64 `json:"created_at"`
+	// LastSubtitleAt is the last subtitle pass over the title's files.
+	LastSubtitleAt int64 `json:"last_subtitle_at,omitempty"`
+	CreatedAt      int64 `json:"created_at"`
 }
 
 var numberingByKind = map[string][]string{
