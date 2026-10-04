@@ -155,6 +155,9 @@ func (s *Server) routesAcquire() {
 	m.HandleFunc("POST /api/acquire/grabs/{id}/{action}", s.requireAdmin(s.acq(s.handleAcqGrabAction)))
 	m.HandleFunc("DELETE /api/acquire/grabs/{id}", s.requireAdmin(s.acq(s.handleAcqGrabDelete)))
 	s.routesAcquireAuto()
+	// Sidecars are read by every signed-in user (players), not only
+	// admins; they live with acquisition because Phase 3 writes them.
+	s.routesSidecars()
 }
 
 type acqHandler func(http.ResponseWriter, *http.Request, auth.Verified)
