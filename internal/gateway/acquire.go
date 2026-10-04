@@ -100,8 +100,23 @@ func (s *Server) startAcquire(dataDir string) {
 		},
 		Library:   s.libByID,
 		Libraries: s.libList,
-		Titles:    s.libraryTitles,
-		Rescan:    s.scanLibrary,
+		Items: func(libraryID string) []contracts.CatalogItem {
+			var out []contracts.CatalogItem
+			for _, it := range s.catList() {
+				if it.LibraryID == libraryID {
+					out = append(out, it)
+				}
+			}
+			return out
+		},
+		EpisodeCount: func(title, kind string) int {
+			if s.episodeCountSeam != nil {
+				return s.episodeCountSeam(title, kind) // tests: never the network (D-120)
+			}
+			return s.episodeCount(title, kind)
+		},
+		Titles: s.libraryTitles,
+		Rescan: s.scanLibrary,
 	}
 	initial := acquire.DefaultSettings(dataDir)
 	if p, err := strconv.Atoi(os.Getenv("LAIN_ACQUIRE_LISTEN_PORT")); err == nil && p >= 0 && p <= 65535 {
@@ -139,6 +154,7 @@ func (s *Server) routesAcquire() {
 	m.HandleFunc("POST /api/acquire/grabs", s.requireAdmin(s.acq(s.handleAcqGrab)))
 	m.HandleFunc("POST /api/acquire/grabs/{id}/{action}", s.requireAdmin(s.acq(s.handleAcqGrabAction)))
 	m.HandleFunc("DELETE /api/acquire/grabs/{id}", s.requireAdmin(s.acq(s.handleAcqGrabDelete)))
+	s.routesAcquireAuto()
 }
 
 type acqHandler func(http.ResponseWriter, *http.Request, auth.Verified)

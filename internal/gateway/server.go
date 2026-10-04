@@ -121,6 +121,8 @@ type Server struct {
 	// acquire is the native *arr core (acquire.go); nil when its engine
 	// could not start, in which case its routes answer 503.
 	acquire *acquire.Manager
+	// episodeCountSeam replaces the metadata episode lookup in tests.
+	episodeCountSeam func(title, kind string) int
 }
 
 // Close stops background transforms and the library watcher before
