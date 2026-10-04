@@ -86,6 +86,22 @@ func TestSearchMonitoredGrabsUntilComplete(t *testing.T) {
 	}
 }
 
+func TestSearchRefreshesTheMetadataCount(t *testing.T) {
+	w := newWorld(t)
+	m := w.manager(t, t.TempDir(), settings(0))
+	asked := ""
+	m.d.EpisodeCount = func(title, kind string) int { asked = kind + ":" + title; return 4 }
+	addIndexer(t, m, w)
+	mon := monitor(t, m, w, Monitored{Title: "Show"})
+	if _, err := m.SearchMonitored(mon.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := m.Monitored(mon.ID)
+	if got.MetadataEpisodes != 4 || asked != "anime:Show" {
+		t.Fatalf("metadata count %d (asked %q)", got.MetadataEpisodes, asked)
+	}
+}
+
 func TestSearchSkipsUnitsAlreadyBeingGrabbed(t *testing.T) {
 	w := newWorld(t)
 	s := settings(0)

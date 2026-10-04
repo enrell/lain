@@ -128,7 +128,15 @@ func (m *Manager) UpdateMonitored(id string, mon Monitored) (Monitored, error) {
 		return mon, err
 	}
 	mon.ID, mon.CreatedAt, mon.LastSearchAt = id, old.CreatedAt, old.LastSearchAt
+	if mon.MetadataEpisodes == 0 {
+		mon.MetadataEpisodes = old.MetadataEpisodes
+	}
 	return mon, putJSON(m.st, kv.BAcqMonitored, id, mon)
+}
+
+// Monitored returns one monitored title.
+func (m *Manager) Monitored(id string) (Monitored, error) {
+	return getJSON[Monitored](m.st, kv.BAcqMonitored, id, "monitored title")
 }
 
 // DeleteMonitored stops monitoring; grabs and files are untouched.
@@ -406,6 +414,11 @@ func (m *Manager) SearchMonitored(id string) (Report, error) {
 		return Report{}, err
 	}
 	rep := Report{Grabbed: []string{}}
+	if mon.Numbering == NumberAbsolute && m.d.EpisodeCount != nil {
+		if n := m.d.EpisodeCount(mon.Title, mon.Kind); n > 0 && n < 100_000 {
+			mon.MetadataEpisodes = n
+		}
+	}
 	results, fails := m.query(mon.Title, mon.Kind)
 	rep.Failures = fails
 	m.consider(mon, results, &rep)

@@ -119,7 +119,11 @@ type Monitored struct {
 	From    int          `json:"from,omitempty"`
 	To      int          `json:"to,omitempty"`
 	Seasons []SeasonWant `json:"seasons,omitempty"`
-	Enabled bool         `json:"enabled"`
+	// MetadataEpisodes is the provider's episode total for an absolute
+	// title, refreshed on search; it extends gap-filling up to the total
+	// while the title stays open-ended (A-18).
+	MetadataEpisodes int  `json:"metadata_episodes,omitempty"`
+	Enabled          bool `json:"enabled"`
 	// LastSearchAt is the last automatic search for missing units.
 	LastSearchAt int64 `json:"last_search_at,omitempty"`
 	CreatedAt    int64 `json:"created_at"`
@@ -303,6 +307,9 @@ func (m Monitored) Wanted(items []contracts.CatalogItem, p Profile, quality Qual
 		top := m.To
 		if top == 0 {
 			top = m.From - 1
+			if m.Numbering == NumberAbsolute && m.MetadataEpisodes > top {
+				top = m.MetadataEpisodes
+			}
 			for u := range present {
 				if u.Number > top {
 					top = u.Number
