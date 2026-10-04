@@ -43,6 +43,8 @@ func TestTokenize(t *testing.T) {
 		{"Frieren v01 c001.cbz", "manga", contracts.Release{Title: "Frieren", Volume: 1, Chapter: 1}},
 		{"[Fansub-A] Frieren Vol. 3 Ch. 25.cbz", "manga", contracts.Release{Title: "Frieren", Volume: 3, Chapter: 25, Group: "Fansub-A"}},
 		{"Saga #054 (2018).cbr", "comic", contracts.Release{Title: "Saga", Chapter: 54, Year: 2018}},
+		{"Saga 054 (2018).cbr", "comic", contracts.Release{Title: "Saga", Chapter: 54, Year: 2018}},
+		{"20th Century Boys v01.cbz", "manga", contracts.Release{Title: "20th Century Boys", Volume: 1}},
 		{"Show Name - The Pilot [WEB-1080p]", "series", contracts.Release{Title: "Show Name", Resolution: "1080p", Source: "web"}},
 	}
 	for _, c := range cases {
