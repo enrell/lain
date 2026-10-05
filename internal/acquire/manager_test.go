@@ -373,6 +373,13 @@ func TestGrabValidation(t *testing.T) {
 
 func TestRestartResumesAPausedGrab(t *testing.T) {
 	w := newWorld(t)
+	// Hold the seeder back: on a fast local swarm the download could
+	// finish before Pause, and a finished download imports.
+	seeding, ok := w.seed.Torrent(w.mi.InfoHash)
+	if !ok {
+		t.Fatal("seeder has no torrent")
+	}
+	seeding.Pause()
 	data := t.TempDir()
 	m1 := w.manager(t, data, settings(0))
 	g, err := m1.Grab(GrabInput{URL: w.index.URL + "/dl/show.torrent", LibraryID: w.lib.ID})
@@ -390,6 +397,7 @@ func TestRestartResumesAPausedGrab(t *testing.T) {
 	if got, _ := m2.Get(g.ID); got.State != GrabPaused {
 		t.Fatalf("after restart: %+v", got)
 	}
+	seeding.Resume()
 	if _, err := m2.Resume(g.ID); err != nil {
 		t.Fatal(err)
 	}
