@@ -1,6 +1,7 @@
 package acquire
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -222,6 +223,52 @@ type SubtitleChoice struct {
 
 func subBlockKey(providerID, fileID string) string { return providerID + "\x00" + fileID }
 
+// SubtitleRefusal is a provider file the sync check refused (A-40).
+// Automation never takes it again until an admin clears it.
+type SubtitleRefusal struct {
+	ProviderID string `json:"provider_id"`
+	FileID     string `json:"file_id"`
+	Reason     string `json:"reason"`
+	MediaPath  string `json:"media_path,omitempty"`
+	At         int64  `json:"at,omitempty"`
+}
+
+func (m *Manager) subtitleRefused(providerID, fileID string) bool {
+	_, err := getJSON[json.RawMessage](m.st, kv.BAcqSubBlock, subBlockKey(providerID, fileID), "refused subtitle")
+	return err == nil
+}
+
+// SubtitleRefusals lists refused files, newest first. Entries written
+// before refusals carried a record hold the reason alone; their ids
+// come from the key.
+func (m *Manager) SubtitleRefusals() []SubtitleRefusal {
+	out := []SubtitleRefusal{}
+	eachRaw(m.st, kv.BAcqSubBlock, func(k, v []byte) {
+		var r SubtitleRefusal
+		if json.Unmarshal(v, &r) != nil {
+			_ = json.Unmarshal(v, &r.Reason)
+		}
+		r.ProviderID, r.FileID, _ = strings.Cut(string(k), "\x00")
+		out = append(out, r)
+	})
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At > out[j].At })
+	return out
+}
+
+// ClearSubtitleRefusal makes a refused file eligible again.
+func (m *Manager) ClearSubtitleRefusal(providerID, fileID string) error {
+	return deleteKey(m.st, kv.BAcqSubBlock, subBlockKey(providerID, fileID), "refused subtitle")
+}
+
+// ClearSubtitleRefusals clears every refusal and returns how many.
+func (m *Manager) ClearSubtitleRefusals() int {
+	n, err := clearBucket(m.st, kv.BAcqSubBlock)
+	if err != nil {
+		m.log.Warn("clearing subtitle refusals failed", "err", err.Error())
+	}
+	return n
+}
+
 // SearchSubtitles asks every enabled provider and ranks the answers:
 // hash match first, then release group, then resolution/source, then
 // popularity (A-31).
@@ -305,7 +352,7 @@ func (m *Manager) judgeSubtitle(c contracts.SubtitleCandidate, p Profile, wanted
 	if t.Season > 0 && c.Season > 0 && c.Season != t.Season {
 		reject("for season %d, not %d", c.Season, t.Season)
 	}
-	if _, err := getJSON[string](m.st, kv.BAcqSubBlock, subBlockKey(c.ProviderID, c.FileID), "refused subtitle"); err == nil {
+	if m.subtitleRefused(c.ProviderID, c.FileID) {
 		reject("refused earlier by the sync check")
 	}
 	if c.HashMatch {
@@ -404,7 +451,10 @@ func (m *Manager) DownloadSubtitle(mediaPath string, c contracts.SubtitleCandida
 		return SubtitleRecord{}, err
 	}
 	refuse := func(err error) (SubtitleRecord, error) {
-		_ = putJSON(m.st, kv.BAcqSubBlock, subBlockKey(c.ProviderID, c.FileID), err.Error())
+		r := SubtitleRefusal{ProviderID: c.ProviderID, FileID: c.FileID, Reason: err.Error(), MediaPath: mediaPath, At: time.Now().Unix()}
+		if perr := putJSON(m.st, kv.BAcqSubBlock, subBlockKey(c.ProviderID, c.FileID), r); perr != nil {
+			m.log.Warn("subtitle refusal write failed", "file_id", c.FileID, "err", perr.Error())
+		}
 		return SubtitleRecord{}, err
 	}
 	cues, err := subtitle.Parse(raw)
@@ -423,7 +473,7 @@ func (m *Manager) DownloadSubtitle(mediaPath string, c contracts.SubtitleCandida
 		if !replace {
 			return SubtitleRecord{}, errf(CodeState, "%s already exists", filepath.Base(dst))
 		}
-		if err := m.holdFile(dst, "subtitles"); err != nil {
+		if _, err := m.holdFile(dst, "subtitles"); err != nil {
 			return SubtitleRecord{}, err
 		}
 	}
@@ -467,8 +517,9 @@ func (m *Manager) fetchSubtitle(link string) ([]byte, error) {
 	return raw, nil
 }
 
-// holdFile moves a library file into <dir>/replaced/<group>/ (D-128).
-func (m *Manager) holdFile(p, group string) error {
+// holdFile moves a library file into <dir>/replaced/<group>/ (D-128)
+// and returns where it went.
+func (m *Manager) holdFile(p, group string) (string, error) {
 	dst := filepath.Join(m.holdDir(), group, filepath.Base(p))
 	for i := 1; ; i++ {
 		if _, err := os.Lstat(dst); os.IsNotExist(err) {
@@ -477,7 +528,39 @@ func (m *Manager) holdFile(p, group string) error {
 		dst = filepath.Join(m.holdDir(), group, filepath.Base(p)+"."+itoa(i))
 	}
 	_, err := Place(p, dst, ImportMove)
-	return err
+	return dst, err
+}
+
+// RemoveSidecar moves one sidecar of mediaPath out of the library into
+// the holding folder (A-35, D-128): nothing is deleted. name must be a
+// sidecar Discover finds for that media, so no other file is reachable.
+func (m *Manager) RemoveSidecar(mediaPath, name string) (HeldFile, error) {
+	if !m.inLibrary(mediaPath) {
+		return HeldFile{}, errf(CodeInvalid, "not a library file")
+	}
+	var sc *subtitle.Sidecar
+	for _, s := range subtitle.Discover(mediaPath) {
+		if s.Name == name {
+			sc = &s
+			break
+		}
+	}
+	if sc == nil {
+		return HeldFile{}, errf(CodeNotFound, "unknown sidecar")
+	}
+	info, err := os.Lstat(sc.Path)
+	if err != nil {
+		return HeldFile{}, errf(CodeNotFound, "unknown sidecar")
+	}
+	dst, err := m.holdFile(sc.Path, "subtitles")
+	if err != nil {
+		return HeldFile{}, errf(CodeImport, "could not move %s out of the library: %v", name, err)
+	}
+	if err := deleteKey(m.st, kv.BAcqSubtitles, sc.Path, "subtitle"); err != nil && CodeOf(err) != CodeNotFound {
+		m.log.Warn("subtitle ledger delete failed", "path", sc.Path, "err", err.Error())
+	}
+	m.log.Info("sidecar held", "from", sc.Path, "to", dst)
+	return HeldFile{GrabID: "subtitles", Path: dst, Size: info.Size(), At: time.Now().Unix()}, nil
 }
 
 // writeNew writes data at dst without ever replacing an existing file.
@@ -546,6 +629,24 @@ func (m *Manager) SubtitleStatus(id string) ([]FileSubtitles, error) {
 		out = append(out, FileSubtitles{ItemID: it.ID, Path: it.FilePath, Missing: m.MissingSubtitles(it.FilePath, p), Sidecars: sc})
 	}
 	return out, nil
+}
+
+// ItemSubtitleStatus reports any video item (monitored or not) and the
+// languages its governing profile wants (A-39).
+func (m *Manager) ItemSubtitleStatus(it contracts.CatalogItem) (FileSubtitles, []string, error) {
+	p, err := m.ProfileForItem(it)
+	if err != nil {
+		return FileSubtitles{}, nil, err
+	}
+	sc := subtitle.Discover(it.FilePath)
+	if sc == nil {
+		sc = []subtitle.Sidecar{}
+	}
+	langs := p.SubtitleLanguages
+	if langs == nil {
+		langs = []string{}
+	}
+	return FileSubtitles{ItemID: it.ID, Path: it.FilePath, Missing: m.MissingSubtitles(it.FilePath, p), Sidecars: sc}, langs, nil
 }
 
 // SubtitlePass fetches the best accepted subtitle for every missing

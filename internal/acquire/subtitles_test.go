@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/enrell/lain/internal/contracts"
+	"github.com/enrell/lain/internal/kv"
 )
 
 // subWorld fakes the subtitle provider and the probe; files are served
@@ -264,4 +265,134 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal("condition never became true")
+}
+
+func TestSubtitleRefusalsCanBeListedAndCleared(t *testing.T) {
+	w := newWorld(t)
+	m := w.manager(t, t.TempDir(), settings(0))
+	sw := newSubWorld(t)
+	sw.wire(m)
+	prov := addSubProvider(t, m)
+	file := media(t, w.lib.Path, "[Fansub-A] SHOW - 01.mkv")
+	sw.info = contracts.MediaInfo{Duration: 600}
+	sw.bodies["9"] = goodSRT // runs 20 min: refused
+	sw.bodies["10"] = "nothing"
+	for _, id := range []string{"9", "10"} {
+		if _, err := m.DownloadSubtitle(file, contracts.SubtitleCandidate{ProviderID: prov.ID, FileID: id, Language: "eng"}, false); CodeOf(err) != CodeSubtitleMismatch {
+			t.Fatalf("file %s: %v", id, err)
+		}
+	}
+	refs := m.SubtitleRefusals()
+	if len(refs) != 2 {
+		t.Fatalf("refusals: %+v", refs)
+	}
+	for _, r := range refs {
+		if r.ProviderID != prov.ID || r.Reason == "" || r.MediaPath != file || r.At == 0 {
+			t.Fatalf("refusal record: %+v", r)
+		}
+	}
+	p := subProfile(t, m, "eng")
+	sw.cands = []contracts.SubtitleCandidate{{ProviderID: prov.ID, FileID: "9", Language: "eng"}}
+	target := SubtitleTarget{Path: file, Kind: "anime", Title: "Show", Episode: 1}
+	if res, _ := m.SearchSubtitles(target, p, []string{"eng"}); len(res) != 1 || res[0].Accepted {
+		t.Fatalf("refused file must be rejected: %+v", res)
+	}
+	// Clearing one makes it eligible again; an unknown one is not found.
+	if err := m.ClearSubtitleRefusal(prov.ID, "9"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ClearSubtitleRefusal(prov.ID, "9"); CodeOf(err) != CodeNotFound {
+		t.Fatalf("second clear: %v", err)
+	}
+	if res, _ := m.SearchSubtitles(target, p, []string{"eng"}); len(res) != 1 || !res[0].Accepted {
+		t.Fatalf("cleared file must be eligible: %+v", res)
+	}
+	if n := m.ClearSubtitleRefusals(); n != 1 || len(m.SubtitleRefusals()) != 0 {
+		t.Fatalf("clear all: %d, %+v", n, m.SubtitleRefusals())
+	}
+}
+
+func TestSubtitleRefusalsReadLegacyValues(t *testing.T) {
+	w := newWorld(t)
+	m := w.manager(t, t.TempDir(), settings(0))
+	// Before refusals carried a record they stored the reason alone.
+	if err := putJSON(m.st, kv.BAcqSubBlock, subBlockKey("p1", "42"), "too long"); err != nil {
+		t.Fatal(err)
+	}
+	refs := m.SubtitleRefusals()
+	if len(refs) != 1 || refs[0].ProviderID != "p1" || refs[0].FileID != "42" || refs[0].Reason != "too long" {
+		t.Fatalf("legacy refusal: %+v", refs)
+	}
+	if !m.subtitleRefused("p1", "42") {
+		t.Fatal("a legacy refusal must still block")
+	}
+}
+
+func TestRemoveSidecarHoldsItAndNeverDeletes(t *testing.T) {
+	w := newWorld(t)
+	m := w.manager(t, t.TempDir(), settings(0))
+	sw := newSubWorld(t)
+	sw.wire(m)
+	prov := addSubProvider(t, m)
+	file := media(t, w.lib.Path, "[Fansub-A] SHOW - 01.mkv")
+	sw.bodies["9"] = goodSRT
+	rec, err := m.DownloadSubtitle(file, contracts.SubtitleCandidate{ProviderID: prov.ID, FileID: "9", Language: "eng"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A sidecar Lain did not write is removable too, the same way.
+	own := filepath.Join(filepath.Dir(file), "[Fansub-A] SHOW - 01.ja.ass")
+	_ = os.WriteFile(own, []byte("[Script Info]\n"), 0o644)
+	other := media(t, w.lib.Path, "[Fansub-A] SHOW - 02.mkv")
+	otherSub := filepath.Join(filepath.Dir(other), "[Fansub-A] SHOW - 02.en.srt")
+	_ = os.WriteFile(otherSub, []byte(goodSRT), 0o644)
+
+	for _, name := range []string{filepath.Base(rec.Path), filepath.Base(own)} {
+		held, err := m.RemoveSidecar(file, name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(file), name)); !os.IsNotExist(err) {
+			t.Fatalf("%s still in the library", name)
+		}
+		if _, err := os.Stat(held.Path); err != nil || !within(m.holdDir(), held.Path) {
+			t.Fatalf("%s must be held, not deleted: %+v %v", name, held, err)
+		}
+	}
+	if len(m.SubtitleLedger()) != 0 {
+		t.Fatalf("a removed sidecar leaves the ledger: %+v", m.SubtitleLedger())
+	}
+	if len(m.Replaced()) != 2 {
+		t.Fatalf("held: %+v", m.Replaced())
+	}
+	// Only sidecars of that media: never another file, never the media,
+	// never a path.
+	for _, name := range []string{filepath.Base(otherSub), filepath.Base(file), "../SHOW/" + filepath.Base(otherSub), "nope.en.srt"} {
+		if _, err := m.RemoveSidecar(file, name); CodeOf(err) != CodeNotFound {
+			t.Fatalf("%q: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(otherSub); err != nil {
+		t.Fatal("another file's sidecar was touched")
+	}
+	if _, err := os.Stat(file); err != nil {
+		t.Fatal("the media was touched")
+	}
+}
+
+func TestItemSubtitleStatusUsesTheGoverningProfile(t *testing.T) {
+	w := newWorld(t)
+	m := w.manager(t, t.TempDir(), settings(0))
+	sw := newSubWorld(t)
+	sw.wire(m)
+	file := media(t, w.lib.Path, "[Fansub-A] SHOW - 01.mkv")
+	_ = os.WriteFile(filepath.Join(filepath.Dir(file), "[Fansub-A] SHOW - 01.en.srt"), []byte(goodSRT), 0o644)
+	subProfile(t, m, "eng", "por")
+	st, langs, err := m.ItemSubtitleStatus(contracts.CatalogItem{ID: "i1", LibraryID: w.lib.ID, Title: "Unmonitored", FilePath: file})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(langs, ",") != "eng,por" || strings.Join(st.Missing, ",") != "por" || len(st.Sidecars) != 1 || st.ItemID != "i1" {
+		t.Fatalf("status: %+v langs %v", st, langs)
+	}
 }
