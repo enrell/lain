@@ -229,9 +229,10 @@ the media are neither discovered nor offered to players, so a
 downloaded subtitle would be invisible. Phase 3 therefore has two
 halves: make sidecars playable, then acquire them.
 
-Proposed decisions (`A-28`…, for review; none adds a dependency, none
+Decisions for Phase 3, **accepted 2026-10-05** and recorded as
+`D-135`…`D-152` (`A-n` is `D-(107+n)`); none adds a dependency, none
 touches `MetadataRecord` (D-032) or the frozen playback/transcode
-shapes):
+shapes:
 
 - **A-28 Sidecars are discovered by name, never by content scan.** A
   sidecar is a file in the media's folder named
@@ -311,7 +312,7 @@ placement, ledger, automation) → gateway routes (sidecars for players,
 admin subtitle routes) → web (player menu, providers and per-title
 subtitle status).
 
-Choices made while building Phase 3 (`A-38`…, for review with
+Choices made while building Phase 3 (`A-38`…`A-45`, accepted with
 A-28…A-37):
 
 - **A-38 The audio rule is stored inverted.** A-32's
@@ -325,8 +326,9 @@ A-28…A-37):
 - **A-40 Unknown duration skips the sync check.** When the probe fails
   (no ffprobe, unreadable file) the subtitle is placed unchecked rather
   than refused; a file with no readable cues is always refused. Refusals
-  are kept per provider file id in `acq_subblock` and are permanent in
-  v1 (no UI to clear them yet).
+  are kept per provider file id in `acq_subblock` (reason, media,
+  time) until an admin clears them in Acquire › Subtitles (amended
+  2026-10-05, `D-147`).
 - **A-41 Ranking weights.** Hash match +1000, same release group +100,
   same resolution +20, same source +20, hearing-impaired with
   `prefer` +30, plus 5·log2(downloads+1). Forced (foreign-parts-only)
@@ -344,9 +346,13 @@ A-28…A-37):
   and `pt-pt`, `zho` for `zh-cn` and `zh-tw`. Download links are
   fetched by the core with a 5 MiB cap; the provider never touches the
   library.
-- **A-44 Keys.** On a Wanted row, `t` opens the title's subtitle panel;
-  inside it Enter searches a file or takes a subtitle, `f` fetches every
-  missing language, Backspace goes back. Taking a subtitle whose name
+- **A-44 Keys.** On a Wanted row, `t` opens the title's subtitle panel
+  (on an item page, `t` opens it for that file or every file of the
+  title); inside it Enter searches a file or takes a subtitle, `f`
+  fetches every missing language, Del moves a sidecar to the holding
+  folder, `l` edits the languages, Backspace goes back. Acquire ›
+  Subtitles (`5`) lists refusals and the ledger (extended 2026-10-05,
+  `D-151`). Taking a subtitle whose name
   already exists asks before replacing (the old file is held, D-128).
 - **A-45 Subtitle provider accounts are managed like indexers and
   profiles**: each change applies at once from its own dialog, outside
@@ -362,6 +368,20 @@ A-28…A-37):
 | `GET /api/acquire/parse?name=` | parser diagnostics |
 | `GET/POST /api/acquire/grabs`, `POST /api/acquire/grabs/{id}/{pause,resume,import}`, `DELETE /api/acquire/grabs/{id}?data=1` | queue |
 | `GET/PUT /api/acquire/settings` | engine + seeding + import settings |
+
+Phase 3 routes (all admin):
+
+| Route | Purpose |
+|---|---|
+| `GET/POST /api/acquire/subtitle-providers`, `PUT/DELETE /api/acquire/subtitle-providers/{id}` | provider accounts |
+| `GET /api/acquire/items/{id}/subtitles?languages=`, `POST /api/acquire/items/{id}/subtitles` | search for any video item, fetch a candidate (`replace` holds the old file) |
+| `GET /api/acquire/items/{id}/subtitles/status` | one item's missing languages, sidecars and profile languages |
+| `DELETE /api/acquire/items/{id}/sidecars/{name}` | move one sidecar to the holding folder |
+| `GET/POST /api/acquire/monitored/{id}/subtitles` | a title's status, fetch everything missing |
+| `GET /api/acquire/subtitles` | ledger of sidecars Lain wrote |
+| `GET/DELETE /api/acquire/subtitle-refusals`, `DELETE /api/acquire/subtitle-refusals/{provider}/{file}` | refusals: list, clear all, clear one |
+
+Players (any signed-in user): `GET /api/items/{id}/sidecars`, `GET /api/items/{id}/sidecars/{n}` (WebVTT).
 
 ## Status (2026-10-04) — Phase 1 built, not merged
 
@@ -459,8 +479,32 @@ Phase 3 built on `feat/acquisition` (no new dependency, no cgo):
 
 Not built yet:
 
-- UI for the subtitle ledger, clearing refusals, removing a sidecar,
-  and manual subtitle search for videos outside monitored titles (the
-  API already handles any video item).
 - Retiming, other providers, and legacy encodings beyond Windows-1252
   (would need `golang.org/x/text`, a dependency decision).
+
+## Status (2026-10-05) — Phase 3 accepted (D-135…D-152), UI finished
+
+A-28…A-45 accepted and recorded as `D-135`…`D-152` (A-40 and A-44
+amended for what follows). Built since:
+
+- Refusals carry reason, media and time; `GET/DELETE
+  /api/acquire/subtitle-refusals[/{provider}/{file}]` list and clear
+  them. Values stored before (the reason alone) still read and block.
+- `DELETE /api/acquire/items/{id}/sidecars/{name}` moves one sidecar of
+  that item to `replaced/subtitles/` and drops its ledger entry; only
+  names `Discover` returns for that media are reachable, and nothing is
+  deleted (`TestRemoveSidecarHoldsItAndNeverDeletes`).
+- `GET /api/acquire/items/{id}/subtitles/status` for any video item.
+- Web: Acquire › Subtitles (`5`): refusals (Del, Shift+C) and the
+  ledger; the subtitle panel gained a languages field (`l`), sidecar
+  rows (Del → confirm → held) and an item mode; the item page opens it
+  with `t` (admin, video titles, one file or the whole series).
+- Verified in headless Chromium against an isolated server and a local
+  fake provider, keyboard only: `t` on an item page → `l` `en` Enter →
+  the 20-minute "other cut" refused for a 10 s clip → the hash match
+  taken (Windows-1252 → UTF-8) → the refusal listed and cleared in
+  Acquire › Subtitles → the sidecar moved out with Del → Enter and found
+  intact in the holding folder.
+
+Still not built: retiming, other providers, legacy encodings beyond
+Windows-1252 (`golang.org/x/text` would be a dependency decision).
