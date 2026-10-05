@@ -49,6 +49,37 @@ func deleteKey(s *store, bucket []byte, id, what string) error {
 	})
 }
 
+// eachRaw visits every key and raw value of a bucket.
+func eachRaw(s *store, bucket []byte, fn func(k, v []byte)) {
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucket).ForEach(func(k, v []byte) error {
+			fn(k, v)
+			return nil
+		})
+	})
+}
+
+// clearBucket deletes every key of a bucket and returns how many.
+func clearBucket(s *store, bucket []byte) (int, error) {
+	n := 0
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucket)
+		var keys [][]byte
+		_ = b.ForEach(func(k, _ []byte) error {
+			keys = append(keys, append([]byte(nil), k...))
+			return nil
+		})
+		for _, k := range keys {
+			if err := b.Delete(k); err != nil {
+				return err
+			}
+		}
+		n = len(keys)
+		return nil
+	})
+	return n, err
+}
+
 func (s *store) profiles() []Profile {
 	out := listJSON[Profile](s, kv.BAcqProfiles)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
