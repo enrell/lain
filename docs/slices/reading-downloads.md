@@ -27,6 +27,9 @@ load-bearing choices below are written as **proposed decisions**
 to the merge so it cannot collide with the social slice. The user's own
 answer ("both") is the source for scope.
 
+All six were accepted at merge (2026-10-04) as `D-089`…`D-094` in
+`docs/advisor/decisions.md`; round 2 and integration added `D-105`…`D-107`.
+
 ## Proposed decisions
 
 - **P-1 Reading metadata comes from the archive.** `ComicInfo.xml`
@@ -150,13 +153,12 @@ ComicInfo, then copied offline with the CLI and removed again.
   and where it comes from) in a self-contained panel.
 - Browser offline reading: plan and first cut in `web-offline.md`.
 
-## Left for later (superseded items struck by round 2)
+## Left for later
 
-- A web "Download" button on the title/item page (`/stream?download=1`),
-  held until the social branch lands. Browser offline beyond comics and
-  manga: see `web-offline.md`.
+- Browser offline beyond comics and manga: see `web-offline.md`.
 - Desktop offline copies (`lain-desktop`, D-013).
 - Retries for the CLI offline store (`lain download run` resumes by
   range but does not retry on its own).
-- Register the proposed decisions P-1…P-6 as `D-XXX` at merge time
-  (advisor protocol could not run in this session).
+
+Done at integration (2026-10-04): the web "Download file" action
+(`/stream?download=1`, D-107) and registering P-1…P-6 as `D-089`…`D-094`.
