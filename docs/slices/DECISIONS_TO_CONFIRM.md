@@ -70,7 +70,11 @@ revert in the "Implemented in" column.
 - **D-106** adds the app's first service worker. Any later slice that
   wants one must share it (one worker per scope).
 
-## Draft — approved, waiting for its number
+## Draft — approved, recorded as `D-153`
+
+Recorded in `docs/advisor/decisions.md` on 2026-10-05, after the
+acquisition slice's `D-108`…`D-152` landed. The text below is the
+original draft.
 
 Approved by the user on 2026-10-04. It takes the **first number after the
 acquisition slice's entries** (acquisition keeps `D-108` onward and is

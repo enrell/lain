@@ -236,4 +236,10 @@ Proposed as `A-28`…`A-45` in `docs/slices/acquisition.md`; accepted by the use
 - `D-151` — Keys: `t` opens the subtitle panel (on a Wanted row, and on an item page for its file or every file of the title); inside it Enter searches a file or takes a subtitle, `f` fetches every missing language (monitored titles), Del on a sidecar moves it to the holding folder after a confirm, `l` edits the languages, Backspace goes back. Acquire › Subtitles (`5`) lists refusals (Del clears one, Shift+C all) and the ledger. Source: A-44, extended 2026-10-05.
 - `D-152` — Subtitle provider accounts are managed like indexers and profiles: each change applies at once from its own dialog, outside the Ctrl+S staging bar (as D-087 already treats list items). Source: A-45.
 
-**Next number:** `D-153`.
+## Deployment (accepted 2026-10-04, numbered 2026-10-05)
+
+Approved by the user on 2026-10-04 as a draft in `docs/slices/DECISIONS_TO_CONFIRM.md`, waiting for the first number after the acquisition slice's entries.
+
+- `D-153` — Docker media mounts are read-write by default, so deleting an episode or series from Lain removes the files on the host. The installer-generated compose file, the shipped `docker-compose.yml` / `docker-compose.dev.yml` and the README drop `:ro`. The installer runs the container as the invoking user's uid, and `docker run` users pass `--user $(id -u):$(id -g)` so the container can write. Appending `:ro` to a mount forbids deletes again. This is the deployment half of "delete from disk" (Q-040). Library files are deleted only by explicit user action, never by download cleanup (D-093). Source: user approval 2026-10-04; commit `c5150ad`.
+
+**Next number:** `D-154`.
