@@ -323,6 +323,14 @@ export interface SubtitleRecord {
 	at: number;
 }
 
+export interface SubtitleRefusal {
+	provider_id: string;
+	file_id: string;
+	reason: string;
+	media_path?: string;
+	at?: number;
+}
+
 export interface BlockEntry {
 	id: string;
 	info_hash?: string;
@@ -411,6 +419,14 @@ export const acquire = {
 	fetchMonitoredSubtitles: (id: string) =>
 		request<{ written: number }>(`/api/acquire/monitored/${seg(id)}/subtitles`, { method: 'POST' }),
 	subtitleLedger: () => request<{ subtitles: SubtitleRecord[] }>('/api/acquire/subtitles'),
+	itemSubtitles: (itemId: string) =>
+		request<{ file: FileSubtitles; languages: string[] }>(`/api/acquire/items/${seg(itemId)}/subtitles/status`),
+	removeSidecar: (itemId: string, name: string) =>
+		request<HeldFile>(`/api/acquire/items/${seg(itemId)}/sidecars/${seg(name)}`, { method: 'DELETE' }),
+	subtitleRefusals: () => request<{ refusals: SubtitleRefusal[] }>('/api/acquire/subtitle-refusals'),
+	clearSubtitleRefusal: (providerId: string, fileId: string) =>
+		request<{ removed: boolean }>(`/api/acquire/subtitle-refusals/${seg(providerId)}/${seg(fileId)}`, { method: 'DELETE' }),
+	clearSubtitleRefusals: () => request<{ cleared: number }>('/api/acquire/subtitle-refusals', { method: 'DELETE' }),
 
 	remove: (id: string, deleteData: boolean) =>
 		request<{ removed: boolean }>(`/api/acquire/grabs/${seg(id)}`, {
