@@ -287,7 +287,7 @@ func TestSubtitleRefusalsCanBeListedAndCleared(t *testing.T) {
 		t.Fatalf("refusals: %+v", refs)
 	}
 	for _, r := range refs {
-		if r.ProviderID != prov.ID || r.Reason == "" || r.MediaPath != file || r.At == 0 {
+		if r.ProviderID != prov.ID || r.Reason == "" || strings.HasPrefix(r.Reason, CodeSubtitleMismatch) || r.MediaPath != file || r.At == 0 {
 			t.Fatalf("refusal record: %+v", r)
 		}
 	}
