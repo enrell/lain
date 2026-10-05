@@ -1754,7 +1754,9 @@ remove_parser() {
   if [[ "$UNINSTALL_LEVEL" != 'stop' ]] && confirm "Remove the parser model and venv (${PARSER_PREFIX})?" y; then
     rm -f -- "$unit_file" "${unit_file}.bak"
     rm -rf -- "$PARSER_PREFIX"
-    command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload || true
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl --user daemon-reload || true
+    fi
   fi
   return 0
 }
