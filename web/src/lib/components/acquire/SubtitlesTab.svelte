@@ -107,7 +107,7 @@
 						<p class="truncate text-sm text-foreground" title={r.media_path}>{r.media_path ? base(r.media_path) : t('acquire.subtitles.fileId', { id: r.file_id })}</p>
 						<p class="font-mono text-[10px] text-muted">{r.reason}</p>
 						<p class="font-mono text-[10px] text-muted/70">
-							{providers[r.provider_id] ?? r.provider_id} · {t('acquire.subtitles.fileId', { id: r.file_id })}{#if r.at} · {formatRelative(r.at)}{/if}
+							{providers[r.provider_id] ?? r.provider_id} · {t('acquire.subtitles.fileId', { id: r.file_id })}{#if r.at}{' · '}{formatRelative(r.at)}{/if}
 						</p>
 					</div>
 					<Button size="sm" variant="ghost" tabindex={-1} onclick={() => void clear(r)}>{t('acquire.subtitles.clear')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
@@ -131,7 +131,7 @@
 					<div class="min-w-0" role="gridcell">
 						<p class="truncate font-mono text-[11px] text-foreground" title={s.path}>{base(s.path)}</p>
 						<p class="font-mono text-[10px] text-muted">
-							{s.language} · {providers[s.provider_id] ?? s.provider_id}{#if s.hash_match} · <span class="text-accent">{t('acquire.subtitles.hash')}</span>{/if} · {formatRelative(s.at)}
+							{s.language} · {providers[s.provider_id] ?? s.provider_id}{#if s.hash_match}{' · '}<span class="text-accent">{t('acquire.subtitles.hash')}</span>{/if}{' · '}{formatRelative(s.at)}
 						</p>
 					</div>
 				</div>
