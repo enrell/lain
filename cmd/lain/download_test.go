@@ -191,18 +191,18 @@ func TestFindEntry(t *testing.T) {
 func TestDownloadConfigRoundTrip(t *testing.T) {
 	_, dataHome := isolateDownloadEnv(t)
 	cfg, err := loadOfflineConfig()
-	if err != nil || cfg.Dir != filepath.Join(dataHome, "lain", "offline") || cfg.MaxBytes != offline.DefaultMaxBytes || !cfg.EvictWatched {
+	if err != nil || cfg.Dir != filepath.Join(dataHome, "lain", "offline") || cfg.MaxBytes != offline.DefaultMaxBytes || !cfg.EvictWatched || cfg.MaxRetries != offline.DefaultMaxRetries {
 		t.Fatalf("defaults = %+v %v", cfg, err)
 	}
 	dir := t.TempDir()
-	if err := downloadConfig([]string{"--dir", dir, "--max", "2GiB", "--min-free", "0", "--evict-watched", "off"}); err != nil {
+	if err := downloadConfig([]string{"--dir", dir, "--max", "2GiB", "--min-free", "0", "--evict-watched", "off", "--retries", "0"}); err != nil {
 		t.Fatal(err)
 	}
 	cfg, _ = loadOfflineConfig()
-	if cfg.Dir != dir || cfg.MaxBytes != 2<<30 || cfg.MinFreeBytes != 0 || cfg.EvictWatched {
+	if cfg.Dir != dir || cfg.MaxBytes != 2<<30 || cfg.MinFreeBytes != 0 || cfg.EvictWatched || cfg.MaxRetries != 0 {
 		t.Fatalf("saved = %+v", cfg)
 	}
-	for _, bad := range [][]string{{"--max", "-1"}, {"--min-free", "lots"}, {"--evict-watched", "maybe"}} {
+	for _, bad := range [][]string{{"--max", "-1"}, {"--min-free", "lots"}, {"--evict-watched", "maybe"}, {"--retries", "-1"}, {"--retries", "many"}, {"--retries", "1000"}} {
 		if err := downloadConfig(bad); err == nil {
 			t.Errorf("config %v accepted", bad)
 		}

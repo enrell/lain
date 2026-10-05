@@ -157,8 +157,12 @@ ComicInfo, then copied offline with the CLI and removed again.
 
 - Browser offline beyond comics and manga: see `web-offline.md`.
 - Desktop offline copies (`lain-desktop`, D-013).
-- Retries for the CLI offline store (`lain download run` resumes by
-  range but does not retry on its own).
 
 Done at integration (2026-10-04): the web "Download file" action
 (`/stream?download=1`, D-107) and registering P-1…P-6 as `D-089`…`D-094`.
+
+Done on 2026-10-05: `lain download run` retries transient failures with
+the server's backoff policy (D-105), resuming from the partial bytes.
+The count is `lain download config --retries N` (default 5, 0 turns
+retries off); progress resets it. Ctrl+C during a wait leaves the copy
+queued for the next run.

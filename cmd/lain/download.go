@@ -36,7 +36,8 @@ const downloadUsage = `usage: lain download <command>
   add <query> [--id ID] [--rest] [--pick N] [--no-run]
                  queue an item (--rest: it and every later episode/chapter)
                  and download now; Ctrl+C pauses, nothing is lost
-  run            download everything queued, resuming partial files
+  run            download everything queued, resuming partial files and
+                 retrying dropped transfers with backoff (Ctrl+C stops)
   list           show the offline store and its usage
   pause|resume <id>
   cancel <id>    stop a download and delete its partial bytes
@@ -48,6 +49,7 @@ const downloadUsage = `usage: lain download <command>
   gc [--watched] delete orphaned partials and forgotten files;
                  --watched also deletes every watched, synced copy
   config [--dir DIR] [--max SIZE|0] [--min-free SIZE|0] [--evict-watched on|off]
+         [--retries N]
                  show or change where copies live and how much they may use
 
 <id> accepts a unique id prefix or a unique part of the title.`
@@ -238,6 +240,13 @@ func downloadConfig(args []string) error {
 	default:
 		return fmt.Errorf("--evict-watched takes on or off")
 	}
+	if v := flag(args, "retries", ""); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n > maxOfflineRetries {
+			return fmt.Errorf("--retries takes a number from 0 to %d", maxOfflineRetries)
+		}
+		cfg.MaxRetries, changed = n, true
+	}
 	if changed {
 		if err := saveOfflineConfig(cfg); err != nil {
 			return err
@@ -249,8 +258,8 @@ func downloadConfig(args []string) error {
 		}
 		return downloads.HumanBytes(n)
 	}
-	fmt.Printf("dir            %s\nmax            %s\nmin free       %s\nevict watched  %v\n",
-		cfg.Dir, limit(cfg.MaxBytes), limit(cfg.MinFreeBytes), cfg.EvictWatched)
+	fmt.Printf("dir            %s\nmax            %s\nmin free       %s\nevict watched  %v\nretries        %d\n",
+		cfg.Dir, limit(cfg.MaxBytes), limit(cfg.MinFreeBytes), cfg.EvictWatched, cfg.MaxRetries)
 	return nil
 }
 
@@ -341,23 +350,11 @@ func runOfflineQueueCtx(ctx context.Context, s *offline.Store, cfg clientConfig,
 			continue
 		}
 		label := e.Label()
-		last := time.Time{}
-		got, err := s.Fetch(ctx, hc, e.ItemID, offline.FetchInput{
-			URL:    cfg.Server + "/api/items/" + url.PathEscape(e.ItemID) + "/stream",
-			Header: http.Header{"Authorization": {"Bearer " + cfg.Token}},
-			Progress: func(done, total int64) {
-				if time.Since(last) < 250*time.Millisecond && done != total {
-					return
-				}
-				last = time.Now()
-				fmt.Fprintf(out, "\r%s  %s", label, progressText(done, total))
-			},
-			Evicted: func(v offline.Entry) {
-				fmt.Fprintf(out, "\nremoved watched copy to make room: %s\n", v.Label())
-			},
-		})
-		fmt.Fprintln(out)
+		got, err := fetchWithRetries(ctx, s, cfg, hc, e, out)
 		switch {
+		case errors.Is(err, context.Canceled) && got.State == offline.Queued:
+			fmt.Fprintf(out, "stopped: %s (retry pending; `lain download run` resumes)\n", label)
+			return nil
 		case errors.Is(err, context.Canceled):
 			fmt.Fprintf(out, "paused: %s (%s kept; `lain download run` resumes)\n", label, downloads.HumanBytes(got.Bytes))
 			return nil
@@ -376,6 +373,68 @@ func runOfflineQueueCtx(ctx context.Context, s *offline.Store, cfg clientConfig,
 		return fmt.Errorf("%d download(s) failed; `lain download resume <id>` retries", failed)
 	}
 	return nil
+}
+
+// offlineBackoff is the wait before retry number attempt (1-based);
+// tests swap it.
+var offlineBackoff = downloads.DefaultBackoff
+
+// maxOfflineRetries bounds the --retries setting.
+const maxOfflineRetries = 100
+
+// fetchWithRetries downloads one entry, retrying transient failures
+// (network, 5xx, 408/429, dropped transfers) with backoff up to the
+// store's MaxRetries; a retry resumes from the partial bytes, and any
+// progress resets the count. While it waits the entry is queued, so an
+// interrupt leaves it for the next run.
+func fetchWithRetries(ctx context.Context, s *offline.Store, cfg clientConfig, hc *http.Client, e offline.Entry, out io.Writer) (offline.Entry, error) {
+	label, limit := e.Label(), s.Config().MaxRetries
+	prev, attempts := e.Bytes, 0
+	for {
+		last := time.Time{}
+		got, err := s.Fetch(ctx, hc, e.ItemID, offline.FetchInput{
+			URL:    cfg.Server + "/api/items/" + url.PathEscape(e.ItemID) + "/stream",
+			Header: http.Header{"Authorization": {"Bearer " + cfg.Token}},
+			Progress: func(done, total int64) {
+				if time.Since(last) < 250*time.Millisecond && done != total {
+					return
+				}
+				last = time.Now()
+				fmt.Fprintf(out, "\r%s  %s", label, progressText(done, total))
+			},
+			Evicted: func(v offline.Entry) {
+				fmt.Fprintf(out, "\nremoved watched copy to make room: %s\n", v.Label())
+			},
+		})
+		fmt.Fprintln(out)
+		retry, after := downloads.Retryable(err)
+		if !retry || ctx.Err() != nil {
+			return got, err
+		}
+		if got.Bytes > prev {
+			attempts = 0
+		}
+		prev = got.Bytes
+		if attempts >= limit {
+			return got, err
+		}
+		attempts++
+		wait := max(offlineBackoff(attempts), after)
+		fmt.Fprintf(out, "retrying: %s in %s (attempt %d/%d): %v\n", label, wait.Round(time.Second), attempts, limit, err)
+		if got, err = s.Resume(e.ItemID); err != nil {
+			return got, err
+		}
+		if err := s.Save(); err != nil {
+			return got, err
+		}
+		t := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return got, ctx.Err()
+		case <-t.C:
+		}
+	}
 }
 
 func progressText(done, total int64) string {
