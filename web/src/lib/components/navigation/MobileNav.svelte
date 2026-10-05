@@ -7,16 +7,23 @@
 	import Settings from '@lucide/svelte/icons/settings';
 	import Users from '@lucide/svelte/icons/users';
 	import { socialBadge } from '$lib/stores/social.svelte';
+	import Download from '@lucide/svelte/icons/download';
 	import { page } from '$app/state';
+	import { session } from '$lib/auth/session.svelte';
+	import { MOBILE_NAV, visibleNav } from './nav-items';
 
-	const items = $derived([
-		{ href: '/', label: t('nav.home'), icon: House, exact: true },
-		{ href: '/library', label: t('nav.library'), icon: Library, exact: false },
-		{ href: '/list', label: t('nav.list'), icon: ListChecks, exact: false },
-		{ href: '/social', label: t('nav.social'), icon: Users, exact: false },
-		{ href: '/search', label: t('nav.search'), icon: Search, exact: false },
-		{ href: '/settings', label: t('nav.settings'), icon: Settings, exact: false }
-	]);
+	const icons: Record<string, typeof House> = {
+		'/': House,
+		'/library': Library,
+		'/list': ListChecks,
+		'/social': Users,
+		'/search': Search,
+		'/acquire': Download,
+		'/settings': Settings
+	};
+	const items = $derived(
+		visibleNav(MOBILE_NAV, session.isAdmin).map((e) => ({ ...e, label: t(e.label), icon: icons[e.href] ?? House }))
+	);
 
 	function active(href: string, exact: boolean): boolean {
 		const path = page.url.pathname;
@@ -29,7 +36,8 @@
 	aria-label={t('nav.primary')}
 	style="padding-bottom: env(safe-area-inset-bottom);"
 >
-	<div class="grid grid-cols-6">
+	<!-- Columns follow the item count: admins see one more (Acquire). -->
+	<div class="grid" style:grid-template-columns="repeat({items.length}, minmax(0, 1fr))">
 		{#each items as item (item.href)}
 			{@const isActive = active(item.href, item.exact)}
 			{@const Icon = item.icon}

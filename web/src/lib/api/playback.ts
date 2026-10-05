@@ -6,6 +6,7 @@ import type {
 	TranscodeSelection,
 	TranscodeStatus
 } from './types';
+import type { SidecarTrack } from '$lib/player/sidecars';
 
 /**
  * Gateway routes: GET /api/items/{id}/playback (plan),
@@ -83,5 +84,11 @@ export const playback = {
 	 * fly").
 	 */
 	streamSubtitleUrl: (id: string, token: string | null, stream: number) =>
-		mediaUrl(`/api/items/${encodeURIComponent(id)}/subtitles`, token, { stream: String(stream) })
+		mediaUrl(`/api/items/${encodeURIComponent(id)}/subtitles`, token, { stream: String(stream) }),
+
+	/** Subtitle files next to the media (A-29), served as WebVTT by index. */
+	sidecars: (id: string) =>
+		request<{ sidecars: SidecarTrack[] }>(`/api/items/${encodeURIComponent(id)}/sidecars`),
+	sidecarUrl: (id: string, token: string | null, index: number) =>
+		mediaUrl(`/api/items/${encodeURIComponent(id)}/sidecars/${index}`, token)
 };

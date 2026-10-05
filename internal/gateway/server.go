@@ -26,6 +26,7 @@ import (
 
 	bolt "go.etcd.io/bbolt"
 
+	"github.com/enrell/lain/internal/acquire"
 	"github.com/enrell/lain/internal/auth"
 	"github.com/enrell/lain/internal/component"
 	"github.com/enrell/lain/internal/contracts"
@@ -36,6 +37,7 @@ import (
 	"github.com/enrell/lain/internal/plugins/backup"
 	"github.com/enrell/lain/internal/plugins/catalog"
 	"github.com/enrell/lain/internal/plugins/comic"
+	"github.com/enrell/lain/internal/plugins/indexer"
 	"github.com/enrell/lain/internal/plugins/ingest"
 	"github.com/enrell/lain/internal/plugins/list"
 	"github.com/enrell/lain/internal/plugins/listlink"
@@ -43,11 +45,13 @@ import (
 	"github.com/enrell/lain/internal/plugins/metadata"
 	"github.com/enrell/lain/internal/plugins/playback"
 	"github.com/enrell/lain/internal/plugins/probe"
+	"github.com/enrell/lain/internal/plugins/release"
 	"github.com/enrell/lain/internal/plugins/search"
 	"github.com/enrell/lain/internal/plugins/settings"
 	"github.com/enrell/lain/internal/plugins/social"
 	"github.com/enrell/lain/internal/plugins/source"
 	"github.com/enrell/lain/internal/plugins/sourcewatch"
+	"github.com/enrell/lain/internal/plugins/subtitles"
 	"github.com/enrell/lain/internal/plugins/theme"
 	"github.com/enrell/lain/internal/plugins/thumbnail"
 	"github.com/enrell/lain/internal/plugins/transcode"
@@ -115,6 +119,12 @@ type Server struct {
 	// downloads fetches URLs onto server disk (downloads.go); started in
 	// NewWithOptions, stopped in Close.
 	downloads *downloads.Manager
+
+	// acquire is the native *arr core (acquire.go); nil when its engine
+	// could not start, in which case its routes answer 503.
+	acquire *acquire.Manager
+	// episodeCountSeam replaces the metadata episode lookup in tests.
+	episodeCountSeam func(title, kind string) int
 }
 
 // Close stops background transforms and the library watcher before
@@ -122,6 +132,9 @@ type Server struct {
 func (s *Server) Close() error {
 	if s.components != nil {
 		s.components.Close()
+	}
+	if s.acquire != nil {
+		s.acquire.Close()
 	}
 	if s.downloads != nil {
 		s.downloads.Close()
@@ -254,6 +267,10 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	reg.Register(lst)
 	reg.Register(soc)
 	reg.Register(listlink.NewAniList())
+	reg.Register(release.NewModel(parserSocket(dataDir)))
+	reg.Register(release.Tokenizer{})
+	reg.Register(indexer.NewTorznab())
+	reg.Register(subtitles.NewOpenSubtitles())
 	reg.Register(searchProvider{reg: reg})
 	reg.Register(playback.Planner{})
 	reg.Register(probe.Provider{})
@@ -334,6 +351,7 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	dl.OnDone = s.downloadDone
 	dl.Start()
 	s.downloads = dl
+	s.startAcquire(dataDir)
 	s.routes()
 	s.routesEnrich()
 	s.routesThumbnail()
@@ -343,6 +361,7 @@ func NewWithOptions(dataDir, ver string, opts Options) (*Server, error) {
 	s.routesList()
 	s.routesDownloads()
 	s.routesSocial()
+	s.routesAcquire()
 	// The web UI is the least specific pattern: API, health and media
 	// routes registered above keep winning their paths.
 	webui.Mount(s.mux)

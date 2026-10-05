@@ -807,6 +807,21 @@ Typed codes: `invalid-message` (400), `not-found` (404 — also how a
 block placed on the viewer reads), `forbidden` (403). Routes live under
 `/api/social/*`; the full list is in the slice plan.
 
+## Acquisition (docs/slices/acquisition.md)
+
+Two capabilities; the engine, queue and import are core code
+(`internal/torrent`, `internal/acquire`), not plugins (A-2).
+
+| Capability | Mode | Built-ins | Input → output |
+|---|---|---|---|
+| `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain) |
+| `lain.indexer@1` | ordered-many; `unsupported-protocol` declines | `lain-indexer-torznab` (Torznab + Newznab) | `IndexerCapsInput` → `IndexerCaps`; `IndexerSearchInput` → `IndexerSearchOutput` |
+
+Indexer API keys travel inside the input and never appear in an error
+message (errors name the host only). Typed codes: `invalid-message`,
+`unsupported-protocol`, `auth-failed`, `rate-limited`, `indexer-error`,
+`dependency-unavailable`.
+
 ## Component mode (wire protocol)
 
 Any provider can run as a supervised process (D-074). The host
