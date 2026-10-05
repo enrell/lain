@@ -119,3 +119,53 @@ Resolved when merging both slices onto `main`; see the summary in
 | `web/src/routes/item/[id]/+page.svelte` | Web Download button (`DownloadFileButton`, key **`d`**) in the single-item action row, before the admin actions. Keys on `/item` now: social `r s c f m`, reading `o` (comic/manga), download `d`. |
 | `web/src/lib/components/media/TitleView.svelte` | The same button in the (admin) episode-selection toolbar, downloading the selected files one after another; `d` while selecting. |
 | `web/src/lib/i18n/messages/en.ts` | New top-level `download` namespace (button labels). |
+
+## Acquisition (`feat/acquisition`, branched from `feat/reading-downloads`)
+
+Own packages (no conflict expected): `internal/torrent/`,
+`internal/acquire/`, `internal/plugins/release/`, `internal/plugins/indexer/`,
+`internal/kv/acquire.go`, `internal/gateway/acquire*.go`, and the web
+files under `routes/acquire/`, `routes/settings/indexers/`,
+`routes/settings/acquisition/`, `lib/api/acquire.ts`,
+`lib/components/acquire/`. Rows are added below as shared files are touched.
+
+| File | Change | Conflict risk |
+| --- | --- | --- |
+| `internal/core/composition.go` | +2 bindings after `lain.settings.integrations@1`, behind a blank line and a comment so gofmt does not realign the map: `lain.release.parse@1` (ordered-many: `lain-release-model`, `lain-release-tokenizer`), `lain.indexer@1` (ordered-many: `lain-indexer-torznab`). **No `Version` bump**: `Upgrade` adds missing capabilities. | Low: append-only. |
+| `internal/gateway/server.go` | imports `acquire`, `plugins/indexer`, `plugins/release`; `Server.acquire` field after `downloads`; `s.acquire.Close()` before `s.downloads.Close()` in `Close`; three `reg.Register` lines after `listlink.NewAniList()`; `s.startAcquire(dataDir)` after `s.downloads = dl`; `s.routesAcquire()` after `s.routesDownloads()`. | Low: one-line insertions next to the reading slice's lines. |
+| `internal/plugins/release` (new) reuses `catalog.TitleKey`; `internal/acquire` reads `downloads.Limits`/`Usage` and calls `downloads.Error` with keyed fields only. | — | none |
+| `web/src/lib/api/index.ts` | `acquire` import + key; `export type * from './acquire'` (types live in `api/acquire.ts`, `types.ts` untouched). | Low. |
+| `web/src/lib/i18n/messages/en.ts` | `nav.acquire`; `settings.section.indexers`/`acquisition`; four `settings.entry.*`; a new top-level `acquire` namespace appended at the end. | Medium: append-only, same spots other slices append to. |
+| `web/src/lib/settings/sections.ts` | SERVER sections `indexers` (`g n`) and `acquisition` (`g a`) after `downloads`; four palette entries after `downloadLimits`. | Low. Chords `n` and `a` are now taken. |
+| `web/src/lib/utilities/guards.ts` | `ADMIN_ROUTES` += `/settings/indexers`, `/settings/acquisition`, `/acquire`. (Note: `/settings/downloads` is not in this list on the reading branch.) | Low. |
+| `web/src/lib/components/navigation/AppShell.svelte` | `session` import; an admin-only `/acquire` link between Search and Settings. Mobile nav unchanged. | Low. |
+| `web/src/lib/components/navigation/MobileNav.svelte` | Items come from the new `nav-items.ts` (`MOBILE_NAV` + `visibleNav(isAdmin)`); admins get `/acquire`; the grid's column count follows the item count instead of `grid-cols-5`. Main's social slice also edits this file (Social tab, 6 columns): on merge, add `{ href: '/social', label: 'nav.social', exact: false }` to `MOBILE_NAV` and its icon to the map — the derived columns then fit both. | Medium: same file as social on main. |
+| `internal/gateway/server.go` (Phase 2) | one more field after `acquire`: `episodeCountSeam func(title, kind string) int` (test seam so acquisition tests never reach metadata providers, D-120). | Low. |
+| `web/src/lib/api/playback.ts` (Phase 3) | `SidecarTrack` type import; `sidecars(id)` and `sidecarUrl(id, token, n)` appended to `playback`. | Low: append-only. |
+| `web/src/lib/components/player/Player.svelte` (Phase 3) | Sidecar subtitles (A-29): `sidecars` state loaded in the first `onMount`; `embeddedSubtitle`/`chosenSidecar` derived from `selectedSubtitle`; `subtitleSrc` prefers a chosen sidecar; transcode requests and the burned-in note use `embeddedSubtitle` (a sidecar never reaches a transcode); `onSubtitleChoice` rebuilds only when the embedded part changes; sidecar options appended to the Subtitles menu. Helpers live in the new `lib/player/sidecars.ts`. | Medium: the player is large and shared — the edits are local to the subtitle code. |
+| `internal/core/composition.go` (Phase 3) | +1 binding after `lain.indexer@1`: `lain.subtitle@1` (ordered-many: `lain-subtitle-opensubtitles`). No `Version` bump; `Upgrade` adds it. | Low: append-only. |
+| `internal/gateway/server.go` (Phase 3) | Import `internal/plugins/subtitles`; `reg.Register(subtitles.NewOpenSubtitles())` after the Torznab registration. Subtitle routes and deps are wired from `acquire.go`, not here. | Low: two added lines. |
+| `web/src/lib/settings/sections.ts` (Phase 3) | +3 Ctrl+K entries: `acquisitionAutomation`, `acquisitionProfiles`, `acquisitionSubtitles` (all `/settings/acquisition`, admin). | Low: append-only. |
+| `web/src/lib/i18n/messages/en.ts` (Phase 3) | `settings.sections.acquisition{Automation,Profiles,Subtitles}`; `acquire.profiles.subtitle*`/`hi*`; `acquire.settings.subtitleHours*`; new `acquire.subtitles` block. | Low: keys inside the acquisition namespace. |
+| `web/src/routes/item/[id]/+page.svelte` (Phase 3 UI) | Admin-only "Subtitles" action (key `t`) in `adminActions`, a `pageKey` window handler, and a `SubtitlePanel` mounted for the item's file or the title's present files (not for comics/manga). Imports `Captions`, `SubtitlePanel`, `t`, `isTypingTarget`. | Low: additive; the rest of the page is untouched. |
+
+## Integration (`integration/acquisition`)
+
+`feat/acquisition` merged onto `main` after the reading, downloads and
+social slices. Resolutions:
+
+| File | Resolution |
+|---|---|
+| `internal/core/composition.go` | Kept both: the four `lain.social.*@1` bindings, then `lain.release.parse@1`, `lain.indexer@1`, `lain.subtitle@1`. No version bump. |
+| `internal/gateway/server.go` | Kept both: `s.routesSocial()` then `s.routesAcquire()`. |
+| `internal/gateway/acquire_test.go` | Dropped its `wantCode` helper; the identical one from `social_test.go` serves both. |
+| `web/src/lib/api/index.ts` | Kept both re-exports (`./social` with `targetOf`, `./acquire`). |
+| `web/src/lib/components/navigation/AppShell.svelte` | Kept both imports (`socialBadge`, `session`); links: Home, Library, List, Social, Search, Acquire (admin), Settings. |
+| `web/src/lib/components/navigation/MobileNav.svelte`, `nav-items.ts` | The acquisition `MOBILE_NAV` table wins and gains `/social` (Users icon) after `/list`; the social unread dot is kept. Columns follow the item count: six for users, seven for admins. |
+| `web/src/lib/settings/sections.ts` | `indexers` and `acquisition` sections before `offline`, which stays last as its comment asks; palette entries appended after `offlineStorage`. Chords stay unique (`n`, `a`, `o`). |
+| `web/src/lib/utilities/guards.ts` | `ADMIN_ROUTES` keeps `/settings/downloads` and adds `/settings/indexers`, `/settings/acquisition`, `/acquire`. |
+| `web/src/lib/i18n/messages/en.ts` | Kept both: `nav.social`/`nav.unread` and `nav.acquire`; settings sections and entries of both; the `reader`, `offline`, `social`, `download` namespaces, then `acquire`. |
+| `web/src/routes/item/[id]/+page.svelte` | Kept both: the `TitleSocial` block, then the admin `SubtitlePanel`. Keys on `/item` now: social `r s c f m`, reading `o`, download `d`, subtitles `t` (admin, video). |
+| `docs/advisor/decisions.md` | Sections in order: reading + downloads, social, downloads/offline integration, acquisition (D-108…D-123), Phase 2 (D-124…D-134), Phase 3 (D-135…D-152). The "next number" line moved to the end. |
+| `docs/CONTRACTS.md` | Kept both: `## Social`, then `## Acquisition`. |
+| `docs/slices/SHARED_CHANGES.md` | This file: one section per slice. |

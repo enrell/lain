@@ -6,6 +6,7 @@
 	import Clapperboard from '@lucide/svelte/icons/clapperboard';
 	import Play from '@lucide/svelte/icons/play';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import Captions from '@lucide/svelte/icons/captions';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import type { CatalogItem, Enrichment, Library, PlaybackPlan, Progress } from '$lib/api/types';
@@ -23,6 +24,9 @@
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import TitleView from '$lib/components/media/TitleView.svelte';
 	import TitleSocial from '$lib/components/social/TitleSocial.svelte';
+	import SubtitlePanel from '$lib/components/acquire/SubtitlePanel.svelte';
+	import { t } from '$lib/i18n';
+	import { isTypingTarget } from '$lib/utilities/guards';
 	import {
 		applyEnrichment,
 		ensureEnrichments,
@@ -136,6 +140,19 @@
 		progress && !progress.completed && progress.position_sec >= (reading ? 2 : 5) ? progress.position_sec : 0
 	);
 	const title = $derived(enrichment?.title || item?.title || '');
+
+	// Subtitles (admin, docs/slices/acquisition.md Phase 3): the panel
+	// covers this file, or every present file of the title; t opens it.
+	let subtitlesOpen = $state(false);
+	const subtitleItems = $derived(
+		reading || !item ? [] : (series ? series.items : [item]).filter((it) => !it.missing).map((it) => it.id)
+	);
+	function pageKey(e: KeyboardEvent): void {
+		if (e.key !== 't' || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if (!session.isAdmin || subtitleItems.length === 0) return;
+		e.preventDefault();
+		subtitlesOpen = true;
+	}
 	const ratio = $derived(progress ? progressRatio(progress) : 0);
 
 	async function fetchMetadata(): Promise<void> {
@@ -205,6 +222,7 @@
 </script>
 
 <svelte:head><title>{title || series?.title || 'Item'} — Lain</title></svelte:head>
+<svelte:window onkeydown={pageKey} />
 
 <!-- Admin overlay controls, shared by the title page (in the poster rail)
      and the single-title page. They act on the item the route opened, so
@@ -214,6 +232,11 @@
 		<Button variant="secondary" size="sm" loading={enriching} onclick={() => void fetchMetadata()}>
 			<Sparkles class="size-3.5" /> {enrichment ? 'Refetch metadata' : 'Fetch metadata'}
 		</Button>
+		{#if subtitleItems.length}
+			<Button variant="secondary" size="sm" onclick={() => (subtitlesOpen = true)}>
+				<Captions class="size-3.5" /> {t('acquire.subtitles.itemAction')} <kbd class="ms-1 font-mono text-[10px] text-muted">t</kbd>
+			</Button>
+		{/if}
 		{#if enrichment}
 			<Button variant="secondary" size="sm" onclick={() => (confirmRemove = true)}>
 				<Trash2 class="size-3.5" /> Remove
@@ -390,6 +413,10 @@
 <!-- Social slice (docs/slices/social.md): ratings, comments, sharing for the work. -->
 {#if !loading && !notFound && !error && item}
 	<div class="mt-12"><TitleSocial target={{ item_id: item.id }} /></div>
+{/if}
+
+{#if session.isAdmin && subtitleItems.length}
+	<SubtitlePanel bind:open={subtitlesOpen} itemIds={subtitleItems} title={series?.title || title} />
 {/if}
 
 <Modal bind:open={confirmRemove} title="Remove metadata overlay?" description="Identity, progress and files are untouched — only the fetched artwork and description go away.">

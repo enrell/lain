@@ -31,6 +31,7 @@
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
 	import { resolveTracks } from '$lib/player/track-language';
+	import { embeddedChoice, pickSidecar, sidecarIndex, sidecarLabel, sidecarValue, type SidecarTrack } from '$lib/player/sidecars';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
 	import { isCompleted } from '$lib/utilities/progress';
@@ -147,6 +148,8 @@
 	let hasSubtitle = $state(false);
 	let selectedAudio = $state('');
 	let selectedSubtitle = $state('');
+	// Subtitle files next to the media (A-29); menu values 'sc:<n>'.
+	let sidecars = $state<SidecarTrack[]>([]);
 	let trackEl = $state<HTMLTrackElement | null>(null);
 	// A sidecar that fails to load makes the renderer yield to native video
 	// (D-059's original degradation, kept for cue-overlay rendering D-082).
@@ -209,17 +212,27 @@
 	const subtitleTracks = $derived(
 		(plan.streams ?? []).filter((s) => s.type === 'subtitle' && s.convertible)
 	);
+	// The embedded stream part of the choice ('' when off or a sidecar),
+	// and the chosen sidecar (null when embedded or off).
+	const embeddedSubtitle = $derived(embeddedChoice(selectedSubtitle));
+	const chosenSidecar = $derived(sidecarIndex(selectedSubtitle));
 	const selectedSubtitleLanguage = $derived(
-		subtitleTracks.find((s) => String(s.index) === selectedSubtitle)?.language ?? 'und'
+		chosenSidecar !== null
+			? (sidecars.find((s) => s.index === chosenSidecar)?.language ?? 'und')
+			: (subtitleTracks.find((s) => String(s.index) === embeddedSubtitle)?.language ?? 'und')
 	);
 	// Transcode sessions serve the sidecar the session prepared; direct
 	// play asks the server to extract the selected track on the fly.
+	// A sidecar file plays the same in every mode: its timing is the
+	// source's, and a transcode never bakes it in.
 	const subtitleSrc = $derived(
-		mode === 'transcode' && transcodeReady && hasSubtitle && transcodeSession
-			? api.playback.subtitleUrl(item.id, session.token, transcodeSession)
-			: mode !== 'transcode' && selectedSubtitle !== ''
-				? api.playback.streamSubtitleUrl(item.id, session.token, Number(selectedSubtitle))
-				: undefined
+		chosenSidecar !== null
+			? api.playback.sidecarUrl(item.id, session.token, chosenSidecar)
+			: mode === 'transcode' && transcodeReady && hasSubtitle && transcodeSession
+				? api.playback.subtitleUrl(item.id, session.token, transcodeSession)
+				: mode !== 'transcode' && embeddedSubtitle !== ''
+					? api.playback.streamSubtitleUrl(item.id, session.token, Number(embeddedSubtitle))
+					: undefined
 	);
 
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -301,12 +314,24 @@
 		languageMetadataKnown = choice.metadataKnown;
 		selectedAudio = choice.audioIndex === undefined ? '' : String(choice.audioIndex);
 		selectedSubtitle = choice.subtitleIndex === undefined ? '' : String(choice.subtitleIndex);
+		lastEmbedded = embeddedChoice(selectedSubtitle);
 		// Native browser direct play cannot select an embedded audio track.
 		// When several exist and a preferred one was found, the existing
 		// transcode session can select it by stream index.
 		if (mode === 'direct' && choice.audioMatches && audioTracks.length > 1) {
 			forcedTranscode = true;
 		}
+		void api.playback
+			.sidecars(item.id)
+			.then((res) => {
+				sidecars = res.sidecars;
+				const pick = pickSidecar(sidecars, language, {
+					audioMatches: choice.audioMatches,
+					embeddedFound: choice.subtitleIndex !== undefined
+				});
+				if (pick !== undefined && selectedSubtitle === '') selectedSubtitle = sidecarValue(pick);
+			})
+			.catch(() => undefined); // no sidecars: embedded tracks only
 		void detectBrowserProfile().then((profile) => { browserProfile = profile; });
 		void applyEffectDefault();
 		window.addEventListener('pagehide', onPageHide);
@@ -562,12 +587,12 @@
 		nowMs = Date.now();
 		try {
 			const subtitleStream =
-				selection?.subtitle_stream ?? (selectedSubtitle === '' ? undefined : Number(selectedSubtitle));
+				selection?.subtitle_stream ?? (embeddedSubtitle === '' ? undefined : Number(embeddedSubtitle));
 			let status = await api.playback.startTranscode(item.id, {
 				quality: (selection?.quality ?? selectedQuality) || undefined,
 				audio_stream: selection?.audio_stream ?? (selectedAudio === '' ? undefined : Number(selectedAudio)),
 				subtitle_stream: subtitleStream,
-				subtitle_mode: languageMetadataKnown && selectedSubtitle === '' ? 'off' : undefined,
+				subtitle_mode: (languageMetadataKnown || chosenSidecar !== null) && embeddedSubtitle === '' ? 'off' : undefined,
 				start_sec: baseOffset || undefined
 			});
 			transcodeSession = status.session;
@@ -618,8 +643,12 @@
 
 	// A direct-play subtitle choice only swaps the sidecar; a transcode
 	// choice rebuilds the session, because the track is baked into it.
+	// Only an embedded choice rebuilds a transcode; a sidecar swap is a
+	// <track> change in every mode.
+	let lastEmbedded = '';
 	function onSubtitleChoice(): void {
-		if (mode === 'transcode') void changeTracks();
+		if (mode === 'transcode' && embeddedSubtitle !== lastEmbedded) void changeTracks();
+		lastEmbedded = embeddedSubtitle;
 	}
 
 	async function changeTracks(): Promise<void> {
@@ -642,7 +671,7 @@
 		try {
 			await prepareTranscode({
 				audio_stream: selectedAudio === '' ? undefined : Number(selectedAudio),
-				subtitle_stream: selectedSubtitle === '' ? undefined : Number(selectedSubtitle),
+				subtitle_stream: embeddedSubtitle === '' ? undefined : Number(embeddedSubtitle),
 				quality: selectedQuality || undefined
 			});
 		} finally {
@@ -1556,7 +1585,7 @@
 					</select>
 				</label>
 			{/if}
-			{#if subtitleTracks.length > 0 || hasSubtitle || selectedSubtitle !== ''}
+			{#if subtitleTracks.length > 0 || sidecars.length > 0 || hasSubtitle || selectedSubtitle !== ''}
 				<label class="chrome-chip">
 					Subtitles
 					<select
@@ -1570,6 +1599,9 @@
 							<option value={String(track.index)}>
 								{track.language || track.title || `Track ${track.index}`}
 							</option>
+						{/each}
+						{#each sidecars as file (file.index)}
+							<option value={sidecarValue(file.index)}>{sidecarLabel(file)}</option>
 						{/each}
 					</select>
 				</label>
@@ -1606,7 +1638,7 @@
 				{#if rendererBackend}<p class="mt-2">Video effects: {rendererBackend}</p>{/if}
 				{#if subtitleSrc}
 					<p class="mt-2">Subtitles: {rendererActive ? 'cue overlay' : 'browser sidecar'}</p>
-				{:else if selectedSubtitle !== '' && mode === 'transcode'}
+				{:else if embeddedSubtitle !== '' && mode === 'transcode'}
 					<p class="mt-2">Subtitles: burned in</p>
 				{/if}
 				{#if sessionNote}<p class="mt-2">{sessionNote}</p>{/if}

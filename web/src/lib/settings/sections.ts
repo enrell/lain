@@ -35,6 +35,8 @@ export const SECTIONS: SettingsSection[] = [
 	{ href: '/settings/plugins', id: 'plugins', scope: 'server', key: 'x' },
 	{ href: '/settings/backup', id: 'backup', scope: 'server', key: 'b' },
 	{ href: '/settings/downloads', id: 'downloads', scope: 'server', key: 'd' },
+	{ href: '/settings/indexers', id: 'indexers', scope: 'server', key: 'n' },
+	{ href: '/settings/acquisition', id: 'acquisition', scope: 'server', key: 'a' },
 	// Kept last (not next to Security) so it does not touch lines the
 	// social slice edits; the rail groups by scope, not array order.
 	{ href: '/settings/offline', id: 'offline', scope: 'you', key: 'o' }
@@ -95,7 +97,14 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'downloadQueue', href: '/settings/downloads', anchor: 'queue', keywords: 'download fetch url queue pause resume cancel', admin: true },
 	{ id: 'downloadStorage', href: '/settings/downloads', anchor: 'storage', keywords: 'download disk space usage cleanup partial', admin: true },
 	{ id: 'downloadLimits', href: '/settings/downloads', anchor: 'limits', keywords: 'download quota budget limit free space directory concurrency', admin: true },
-	{ id: 'offlineStorage', href: '/settings/offline', anchor: 'storage', keywords: 'offline save download cache browser quota storage read' }
+	{ id: 'offlineStorage', href: '/settings/offline', anchor: 'storage', keywords: 'offline save download cache browser quota storage read' },
+	{ id: 'indexers', href: '/settings/indexers', anchor: 'indexers', keywords: 'indexer torznab newznab jackett prowlarr tracker api key', admin: true },
+	{ id: 'acquisitionEngine', href: '/settings/acquisition', anchor: 'engine', keywords: 'torrent engine port peers rate limit speed bittorrent', admin: true },
+	{ id: 'acquisitionSeeding', href: '/settings/acquisition', anchor: 'seeding', keywords: 'seed ratio seeding time share upload', admin: true },
+	{ id: 'acquisitionImport', href: '/settings/acquisition', anchor: 'import', keywords: 'import hardlink copy move rename library', admin: true },
+	{ id: 'acquisitionAutomation', href: '/settings/acquisition', anchor: 'automation', keywords: 'automation rss sync monitored search schedule stalled', admin: true },
+	{ id: 'acquisitionProfiles', href: '/settings/acquisition', anchor: 'profiles', keywords: 'quality profile resolution cutoff upgrade group subtitle language', admin: true },
+	{ id: 'acquisitionSubtitles', href: '/settings/acquisition', anchor: 'subtitles', keywords: 'subtitle subtitles opensubtitles provider api key captions srt', admin: true }
 ];
 
 /**
