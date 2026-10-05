@@ -809,18 +809,22 @@ block placed on the viewer reads), `forbidden` (403). Routes live under
 
 ## Acquisition (docs/slices/acquisition.md)
 
-Two capabilities; the engine, queue and import are core code
-(`internal/torrent`, `internal/acquire`), not plugins (A-2).
+Three capabilities; the engine, queue, import and subtitle placement
+are core code (`internal/torrent`, `internal/acquire`), not plugins
+(A-2).
 
 | Capability | Mode | Built-ins | Input → output |
 |---|---|---|---|
 | `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain) |
 | `lain.indexer@1` | ordered-many; `unsupported-protocol` declines | `lain-indexer-torznab` (Torznab + Newznab) | `IndexerCapsInput` → `IndexerCaps`; `IndexerSearchInput` → `IndexerSearchOutput` |
+| `lain.subtitle@1` | ordered-many; `unsupported-provider` declines | `lain-subtitle-opensubtitles` (OpenSubtitles.com REST v1) | `SubtitleSearchInput` → `SubtitleSearchOutput`; `SubtitleDownloadInput` → `SubtitleDownloadOutput` (a link; the core fetches it, D-150) |
 
-Indexer API keys travel inside the input and never appear in an error
-message (errors name the host only). Typed codes: `invalid-message`,
+Indexer and subtitle-provider credentials travel inside the input and
+never appear in an error message (errors name the host only, D-114,
+D-137). Typed codes: `invalid-message`,
 `unsupported-protocol`, `auth-failed`, `rate-limited`, `indexer-error`,
-`dependency-unavailable`.
+`dependency-unavailable`; the subtitle provider adds
+`unsupported-provider` and `not-found`.
 
 ## Component mode (wire protocol)
 
