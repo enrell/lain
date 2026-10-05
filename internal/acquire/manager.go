@@ -87,7 +87,8 @@ type Manager struct {
 	autoPaused string
 
 	// grabMu serializes Grab so two grabs cannot both pass the budget
-	// check for the same free bytes.
+	// check for the same free bytes. Client events take it too, so an
+	// event that races Add waits until the grab is stored.
 	grabMu sync.Mutex
 
 	stop chan struct{}
@@ -716,7 +717,12 @@ func (m *Manager) byInfoHash(ih string) (Grab, bool) {
 	return Grab{}, false
 }
 
+// onMetadata and onComplete run on the client's goroutines, possibly
+// while Grab is still inside Add; grabMu makes them wait for the stored
+// record instead of finding none and dropping the event.
 func (m *Manager) onMetadata(ih string, size int64) {
+	m.grabMu.Lock()
+	defer m.grabMu.Unlock()
 	g, ok := m.byInfoHash(ih)
 	if !ok {
 		return
@@ -733,6 +739,8 @@ func (m *Manager) onMetadata(ih string, size int64) {
 }
 
 func (m *Manager) onComplete(ih string) {
+	m.grabMu.Lock()
+	defer m.grabMu.Unlock()
 	g, ok := m.byInfoHash(ih)
 	if !ok || g.State == GrabSeeding || g.State == GrabDone {
 		return
