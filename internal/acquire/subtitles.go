@@ -451,7 +451,11 @@ func (m *Manager) DownloadSubtitle(mediaPath string, c contracts.SubtitleCandida
 		return SubtitleRecord{}, err
 	}
 	refuse := func(err error) (SubtitleRecord, error) {
-		r := SubtitleRefusal{ProviderID: c.ProviderID, FileID: c.FileID, Reason: err.Error(), MediaPath: mediaPath, At: time.Now().Unix()}
+		reason := err.Error()
+		if ae := (*Error)(nil); errors.As(err, &ae) {
+			reason = ae.Msg // the code is implied: every refusal is a mismatch
+		}
+		r := SubtitleRefusal{ProviderID: c.ProviderID, FileID: c.FileID, Reason: reason, MediaPath: mediaPath, At: time.Now().Unix()}
 		if perr := putJSON(m.st, kv.BAcqSubBlock, subBlockKey(c.ProviderID, c.FileID), r); perr != nil {
 			m.log.Warn("subtitle refusal write failed", "file_id", c.FileID, "err", perr.Error())
 		}
