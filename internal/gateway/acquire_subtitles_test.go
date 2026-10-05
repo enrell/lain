@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/enrell/lain/internal/plugins/catalog"
 	"github.com/enrell/lain/internal/contracts"
+	"github.com/enrell/lain/internal/plugins/catalog"
 )
 
 // fakeSubtitleAPI imitates the OpenSubtitles.com API v1: one search hit
@@ -43,14 +44,9 @@ func fakeSubtitleAPI(t *testing.T, body ...string) *httptest.Server {
 	return srv
 }
 
-func TestAcquireSubtitleRoutes(t *testing.T) {
-	t.Setenv("PATH", t.TempDir()) // no host ffprobe: duration unknown, the sync check is skipped
-	srv := testServer(t)
-	admin := setupAdmin(t, srv)
-	wantCode(t, do(t, srv, "POST", "/api/users", map[string]string{"username": "ana", "password": "password123"}, admin), 201)
-	user := loginAs(t, srv, "ana", "password123")
-	api := fakeSubtitleAPI(t)
-
+// subtitleItem makes an anime library holding one catalogued episode.
+func subtitleItem(t *testing.T, srv *Server, admin string) (string, contracts.CatalogItem) {
+	t.Helper()
 	libDir := t.TempDir()
 	rec := do(t, srv, "POST", "/api/libraries", map[string]string{"name": "Anime", "type": "anime", "path": libDir}, admin)
 	wantCode(t, rec, 201)
@@ -69,12 +65,23 @@ func TestAcquireSubtitleRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	it := out.(contracts.CatalogItem)
+	return libDir, out.(contracts.CatalogItem)
+}
+
+func TestAcquireSubtitleRoutes(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // no host ffprobe: duration unknown, the sync check is skipped
+	srv := testServer(t)
+	admin := setupAdmin(t, srv)
+	wantCode(t, do(t, srv, "POST", "/api/users", map[string]string{"username": "ana", "password": "password123"}, admin), 201)
+	user := loginAs(t, srv, "ana", "password123")
+	api := fakeSubtitleAPI(t)
+
+	libDir, it := subtitleItem(t, srv, admin)
 
 	// Accounts: admin only, secrets never echoed.
 	body := map[string]any{"name": "OS", "kind": "opensubtitles", "base_url": api.URL + "/api/v1", "api_key": "key-1", "password": "pw-secret"}
 	wantCode(t, do(t, srv, "POST", "/api/acquire/subtitle-providers", body, user), 403)
-	rec = do(t, srv, "POST", "/api/acquire/subtitle-providers", body, admin)
+	rec := do(t, srv, "POST", "/api/acquire/subtitle-providers", body, admin)
 	wantCode(t, rec, 201)
 	rec = do(t, srv, "GET", "/api/acquire/subtitle-providers", nil, admin)
 	wantCode(t, rec, 200)
@@ -116,6 +123,58 @@ func TestAcquireSubtitleRoutes(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"file_id":"7"`) {
 		t.Fatalf("ledger: %s", rec.Body)
 	}
+	// One item's status, for videos outside monitored titles too.
+	wantCode(t, do(t, srv, "GET", "/api/acquire/items/"+it.ID+"/subtitles/status", nil, user), 403)
+	rec = do(t, srv, "GET", "/api/acquire/items/"+it.ID+"/subtitles/status", nil, admin)
+	wantCode(t, rec, 200)
+	if b := rec.Body.String(); !strings.Contains(b, `"item_id":"`+it.ID+`"`) || !strings.Contains(b, `"languages":[]`) || !strings.Contains(b, `.en.srt"`) {
+		t.Fatalf("status: %s", b)
+	}
+	// Removing a sidecar holds it; the player list no longer has it.
+	name := "[Fansub-A] Show - 01.en.srt"
+	wantCode(t, do(t, srv, "DELETE", "/api/acquire/items/"+it.ID+"/sidecars/"+url.PathEscape(name), nil, user), 403)
+	rec = do(t, srv, "DELETE", "/api/acquire/items/"+it.ID+"/sidecars/"+url.PathEscape(name), nil, admin)
+	wantCode(t, rec, 200)
+	if _, err := os.Stat(filepath.Join(libDir, "Show", name)); !os.IsNotExist(err) {
+		t.Fatalf("sidecar still in the library: %s", rec.Body)
+	}
+	wantCode(t, do(t, srv, "DELETE", "/api/acquire/items/"+it.ID+"/sidecars/"+url.PathEscape(name), nil, admin), 404)
+	if rec = do(t, srv, "GET", "/api/items/"+it.ID+"/sidecars", nil, user); strings.Contains(rec.Body.String(), "eng") {
+		t.Fatalf("sidecars after removal: %s", rec.Body)
+	}
 	wantCode(t, do(t, srv, "GET", "/api/acquire/items/nope/subtitles", nil, admin), 404)
 	wantCode(t, do(t, srv, "GET", "/api/acquire/items/"+it.ID+"/subtitles?languages=zz", nil, admin), 400)
+}
+
+func TestAcquireSubtitleRefusalRoutes(t *testing.T) {
+	srv := testServer(t)
+	admin := setupAdmin(t, srv)
+	wantCode(t, do(t, srv, "POST", "/api/users", map[string]string{"username": "ana", "password": "password123"}, admin), 201)
+	user := loginAs(t, srv, "ana", "password123")
+	t.Setenv("PATH", t.TempDir()) // no host ffprobe
+	_, it := subtitleItem(t, srv, admin)
+	api := fakeSubtitleAPI(t, "no cues at all") // refused whatever the duration
+	rec := do(t, srv, "POST", "/api/acquire/subtitle-providers", map[string]any{"name": "OS", "kind": "opensubtitles", "base_url": api.URL + "/api/v1", "api_key": "key-1"}, admin)
+	wantCode(t, rec, 201)
+	var prov struct{ ID string }
+	_ = json.Unmarshal(rec.Body.Bytes(), &prov)
+	for _, id := range []string{"7", "8"} {
+		rec = do(t, srv, "POST", "/api/acquire/items/"+it.ID+"/subtitles", map[string]any{"provider_id": prov.ID, "file_id": id, "language": "eng"}, admin)
+		wantCode(t, rec, 422)
+	}
+	wantCode(t, do(t, srv, "GET", "/api/acquire/subtitle-refusals", nil, user), 403)
+	rec = do(t, srv, "GET", "/api/acquire/subtitle-refusals", nil, admin)
+	wantCode(t, rec, 200)
+	if b := rec.Body.String(); strings.Count(b, `"provider_id":"`+prov.ID+`"`) != 2 || !strings.Contains(b, `"media_path"`) {
+		t.Fatalf("refusals: %s", b)
+	}
+	one := "/api/acquire/subtitle-refusals/" + prov.ID + "/7"
+	wantCode(t, do(t, srv, "DELETE", one, nil, user), 403)
+	wantCode(t, do(t, srv, "DELETE", one, nil, admin), 200)
+	wantCode(t, do(t, srv, "DELETE", one, nil, admin), 404)
+	rec = do(t, srv, "DELETE", "/api/acquire/subtitle-refusals", nil, admin)
+	wantCode(t, rec, 200)
+	if !strings.Contains(rec.Body.String(), `"cleared":1`) {
+		t.Fatalf("clear all: %s", rec.Body)
+	}
 }

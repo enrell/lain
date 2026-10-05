@@ -24,7 +24,12 @@ func (s *Server) routesAcquireSubtitles() {
 	m.HandleFunc("POST /api/acquire/items/{id}/subtitles", a(s.handleItemSubtitleDownload))
 	m.HandleFunc("GET /api/acquire/monitored/{id}/subtitles", a(s.handleMonitoredSubtitles))
 	m.HandleFunc("POST /api/acquire/monitored/{id}/subtitles", a(s.handleMonitoredSubtitlePass))
+	m.HandleFunc("GET /api/acquire/items/{id}/subtitles/status", a(s.handleItemSubtitleStatus))
+	m.HandleFunc("DELETE /api/acquire/items/{id}/sidecars/{name}", a(s.handleSidecarRemove))
 	m.HandleFunc("GET /api/acquire/subtitles", a(s.handleSubtitleLedger))
+	m.HandleFunc("GET /api/acquire/subtitle-refusals", a(s.handleSubtitleRefusals))
+	m.HandleFunc("DELETE /api/acquire/subtitle-refusals", a(s.handleSubtitleRefusalsClear))
+	m.HandleFunc("DELETE /api/acquire/subtitle-refusals/{provider}/{file}", a(s.handleSubtitleRefusalClear))
 }
 
 // subtitleDeps wires the probe and lain.subtitle@1 into acquisition.
@@ -207,4 +212,50 @@ func (s *Server) handleMonitoredSubtitlePass(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) handleSubtitleLedger(w http.ResponseWriter, _ *http.Request, _ auth.Verified) {
 	writeJSON(w, http.StatusOK, map[string]any{"subtitles": s.acquire.SubtitleLedger()})
+}
+
+func (s *Server) handleItemSubtitleStatus(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+	it, ok := s.catGet(r.PathValue("id"))
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown item", "code": acquire.CodeNotFound})
+		return
+	}
+	st, langs, err := s.acquire.ItemSubtitleStatus(it)
+	if err != nil {
+		writeAcqErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"file": st, "languages": langs})
+}
+
+// handleSidecarRemove moves a sidecar into the holding folder; nothing
+// is deleted (A-35, D-128).
+func (s *Server) handleSidecarRemove(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+	it, ok := s.catGet(r.PathValue("id"))
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown item", "code": acquire.CodeNotFound})
+		return
+	}
+	held, err := s.acquire.RemoveSidecar(it.FilePath, r.PathValue("name"))
+	if err != nil {
+		writeAcqErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, held)
+}
+
+func (s *Server) handleSubtitleRefusals(w http.ResponseWriter, _ *http.Request, _ auth.Verified) {
+	writeJSON(w, http.StatusOK, map[string]any{"refusals": s.acquire.SubtitleRefusals()})
+}
+
+func (s *Server) handleSubtitleRefusalClear(w http.ResponseWriter, r *http.Request, _ auth.Verified) {
+	if err := s.acquire.ClearSubtitleRefusal(r.PathValue("provider"), r.PathValue("file")); err != nil {
+		writeAcqErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"removed": true})
+}
+
+func (s *Server) handleSubtitleRefusalsClear(w http.ResponseWriter, _ *http.Request, _ auth.Verified) {
+	writeJSON(w, http.StatusOK, map[string]any{"cleared": s.acquire.ClearSubtitleRefusals()})
 }
