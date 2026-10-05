@@ -88,12 +88,17 @@ type Config struct {
 	// EvictWatched lets the store delete watched copies, least recently
 	// used first, when a new copy needs room.
 	EvictWatched bool `json:"evict_watched"`
+	// MaxRetries is how many consecutive transient failures `lain
+	// download run` retries per copy before marking it failed; progress
+	// resets the count.
+	MaxRetries int `json:"max_retries"`
 }
 
 // Defaults for a small disk; every one is a setting (`lain download config`).
 const (
 	DefaultMaxBytes     = 10 << 30
 	DefaultMinFreeBytes = 5 << 30
+	DefaultMaxRetries   = 5
 )
 
 // DefaultConfig places the store under the user data dir.
@@ -102,6 +107,7 @@ func DefaultConfig(dataHome string) Config {
 		Dir:          filepath.Join(dataHome, "lain", "offline"),
 		Limits:       downloads.Limits{MaxBytes: DefaultMaxBytes, MinFreeBytes: DefaultMinFreeBytes},
 		EvictWatched: true,
+		MaxRetries:   DefaultMaxRetries,
 	}
 }
 
