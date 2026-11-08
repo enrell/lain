@@ -242,4 +242,29 @@ Approved by the user on 2026-10-04 as a draft in `docs/slices/DECISIONS_TO_CONFI
 
 - `D-153` — Docker media mounts are read-write by default, so deleting an episode or series from Lain removes the files on the host. The installer-generated compose file, the shipped `docker-compose.yml` / `docker-compose.dev.yml` and the README drop `:ro`. The installer runs the container as the invoking user's uid, and `docker run` users pass `--user $(id -u):$(id -g)` so the container can write. Appending `:ro` to a mount forbids deletes again. This is the deployment half of "delete from disk" (Q-040). Library files are deleted only by explicit user action, never by download cleanup (D-093). Source: user approval 2026-10-04; commit `c5150ad`.
 
-**Next number:** `D-154`.
+## Design v2 (accepted 2026-11-08)
+
+Accepted by the owner on 2026-11-08 from `docs/DESIGN-v2.md` (PR #19), with the Rust amendment in D-171. `V-n` = `D-(153+n)`.
+
+- `D-154` — Modules are a user-facing layer over the composition: `modules.json` (`lain.modules@1`) bundles capabilities, providers, routes, library kinds, UI surfaces and component manifests; disabling withdraws bindings and unmounts routes (`module-disabled`), keeping data; `GET /api/modules` drives client navigation. Source: V-1.
+- `D-155` — The module set: core (always), watch, read, acquire, subtitles, identify, metadata, lists, social, lab (DESIGN-v2 §5.2). Source: V-2.
+- `D-156` — Private libraries are enforced in the gateway: items never appear in Home, Continue, Search, Social, thumbnails or recommendations for anyone who has not unlocked the library in this session with a per-user PIN or password. Source: V-3.
+- `D-157` — Portable library roots: libraries declare named roots, items store `root:relative/path`, each machine maps roots to directories; `lain.catalog-export@2` with import of @1 and a one-shot migration of absolute paths. Source: V-4.
+- `D-158` — Before choosing a default filename parser, lain-parser and zantetsu are benchmarked on the same set of real release names. Source: V-5.
+- `D-159` — `lain.subtitle.translate@1` is served by an animesubs component driving its `/v1/jobs` API; animesubs stays a standalone app. Source: V-6.
+- `D-160` — `lain.acquire.extract@1` (URL → candidates → job) is served by an Anything component; Anything must add token auth and Origin checks first; it stays a standalone app. Source: V-7.
+- `D-161` — animedb is an optional merge-many metadata component; it does not replace the catalog. Source: V-8.
+- `D-162` — Acquire gains stream-while-downloading; just-stream is retired after that. Source: V-9.
+- `D-163` — A `lab` module hosts opt-in experimental components (audio-enhancer first). Source: V-10.
+- `D-164` — `lain service install|uninstall|start|stop|status|logs`: systemd user unit (Linux), LaunchAgent (macOS), per-user logon task (Windows) by default; `--system` for a real Windows service with the mapped-drive caveat; data dir per OS, overridable by `LAIN_HOME`. Source: V-11.
+- `D-165` — `lain-client`: a Rust crate in its own repo with the API client, auth, discovery, offline store, progress sync and events; Kotlin bindings via UniFFI. Source: V-12.
+- `D-166` — The desktop framework is chosen from a working three-way prototype (GPUI, Slint, iced) of the same two screens (Home rail, Player with libmpv), measured and used by the owner. Source: V-13.
+- `D-167` — Modding has three tiers: themes (data tokens shared by every client), skins (runtime markup, if the chosen framework supports it), and extensions as WASM components with capability-scoped host APIs. Source: V-14.
+- `D-168` — Android: Kotlin + Jetpack Compose + Media3/ExoPlayer over `lain-client`; mpv-android as a fallback for codecs or ASS subtitles ExoPlayer cannot handle. Source: V-15.
+- `D-169` — Today's `/api/*` is frozen as v1 for clients (`CLIENTS.md`); `GET /api/events` (SSE) and `GET /api/modules` are added; new routes are additive. Source: V-16.
+- `D-170` — psyche, custom-server and media-manager are retired (the owner prefers deletion) after taking their listed ideas. Source: V-17.
+- `D-171` — The server is rewritten in Rust by strangler migration: a Cargo workspace in this repo next to the Go code, a language-neutral conformance suite (HTTP routes, component NDJSON fixtures, catalog exports) as the spec, components first, the P1 features built directly in Rust, the Go server kept in production until the Rust one passes the suite and the owner has used it daily. The Rust dependency baseline (tokio, axum, serde, redb, argon2/bcrypt, notify, tracing) still needs the owner's approval. Source: owner, DESIGN-v2 §13.
+
+- `D-172` — The Rust dependency baseline is approved: `tokio` (runtime), `axum`/`hyper` (HTTP), `serde`/`serde_json` (JSON), `redb` (embedded KV, pure Rust), `argon2` or `bcrypt` (passwords), `notify` (file watching), `tracing` (logs). Any crate beyond these follows the policy in DESIGN-v2 §13 (few, maintained, pure Rust, justified in `AGENTS.md`; no C-heavy dependencies in the server) and is still asked of the owner. Source: owner, 2026-11-08.
+
+**Next number:** `D-173`.
