@@ -1,5 +1,16 @@
 import { request } from './client';
-import type { BrowseResult, Library, ScanStatus } from './types';
+import type { BrowseResult, Library, LibraryRoot, ScanStatus } from './types';
+
+/** An admin change (lain-rs): rename, privacy, owner and members. */
+export interface LibraryPatch {
+	name?: string;
+	private?: boolean;
+	owner?: string;
+	members?: string[];
+}
+
+/** Unlock with the account's PIN or its password (D-156). */
+export type UnlockInput = { pin: string } | { password: string };
 
 export interface CreateLibraryInput {
 	name: string;
@@ -9,7 +20,8 @@ export interface CreateLibraryInput {
 
 /**
  * Gateway routes: GET/POST /api/libraries, DELETE /api/libraries/{id},
- * POST/GET /api/library/scan.
+ * POST/GET /api/library/scan. lain-rs adds PATCH /api/libraries/{id},
+ * /unlock, /lock, /api/me/pin and /api/roots (D-156, D-157).
  *
  * `path` is a directory on the *server's* filesystem, not the
  * browser's; the UI must make that distinction explicit.
@@ -28,6 +40,27 @@ export const libraries = {
 	scanStart: () => request<{ state: string }>('/api/library/scan', { method: 'POST' }),
 
 	scanStatus: () => request<ScanStatus>('/api/library/scan'),
+
+	update: (id: string, patch: LibraryPatch) =>
+		request<Library>(`/api/libraries/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+
+	/** Unlocks a private library for this session only. */
+	unlock: (id: string, input: UnlockInput) =>
+		request<Library>(`/api/libraries/${encodeURIComponent(id)}/unlock`, { method: 'POST', body: input }),
+
+	lock: (id: string) =>
+		request<Library>(`/api/libraries/${encodeURIComponent(id)}/lock`, { method: 'POST' }),
+
+	/** lain-rs only; the Go server answers 404, which callers treat as "no roots". */
+	roots: () => request<{ format: string; roots: LibraryRoot[] }>('/api/roots'),
+
+	pin: {
+		get: () => request<{ set: boolean }>('/api/me/pin'),
+		set: (pin: string, password: string) =>
+			request<{ set: boolean }>('/api/me/pin', { method: 'PUT', body: { pin, password } }),
+		clear: (password: string) =>
+			request<{ set: boolean }>('/api/me/pin', { method: 'DELETE', body: { password } })
+	},
 
 	browse: (path?: string) =>
 		request<BrowseResult>(path ? `/api/browse?path=${encodeURIComponent(path)}` : '/api/browse')

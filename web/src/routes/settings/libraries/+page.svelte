@@ -5,8 +5,13 @@
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import ScanLine from '@lucide/svelte/icons/scan-line';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import type { BrowseDir, Library } from '$lib/api/types';
+	import LockIcon from '@lucide/svelte/icons/lock';
+	import LockOpen from '@lucide/svelte/icons/lock-open';
+	import type { BrowseDir, Library, LibraryRoot } from '$lib/api/types';
 	import { api } from '$lib/api';
+	import { t } from '$lib/i18n';
+	import Switch from '$lib/components/primitives/Switch.svelte';
+	import UnlockLibraryDialog from '$lib/components/media/UnlockLibraryDialog.svelte';
 	import Badge from '$lib/components/primitives/Badge.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
@@ -33,6 +38,86 @@
 	let deleteTarget = $state<Library | null>(null);
 	let deleteOpen = $state(false);
 	let deleting = $state(false);
+
+	// lain-rs features (D-156, D-157): null until the server proves it
+	// serves them (the Go server has no /api/roots).
+	let roots = $state<LibraryRoot[] | null>(null);
+	let pinSet = $state(false);
+	let pinForm = $state({ pin: '', password: '' });
+	let pinBusy = $state(false);
+	let unlockTarget = $state<Library | null>(null);
+	let unlockOpen = $state(false);
+
+	async function loadExtras(): Promise<void> {
+		try {
+			roots = (await api.libraries.roots()).roots;
+			pinSet = (await api.libraries.pin.get()).set;
+		} catch {
+			roots = null;
+		}
+	}
+
+	function replace(lib: Library): void {
+		libraries = libraries.map((l) => (l.id === lib.id ? lib : l));
+		rememberLibrary(lib);
+	}
+
+	async function setPrivate(lib: Library, next: boolean): Promise<void> {
+		try {
+			const updated = await api.libraries.update(lib.id, { private: next });
+			replace(updated);
+			toasts.success(t(next ? 'privateLibrary.madePrivate' : 'privateLibrary.madePublic', { name: updated.name }));
+		} catch (err) {
+			toasts.error(errorMessage(err, t('privateLibrary.updateFailed')));
+		}
+	}
+
+	async function toggleLock(lib: Library): Promise<void> {
+		if (!lib.private) return;
+		if (lib.locked) {
+			unlockTarget = lib;
+			unlockOpen = true;
+			return;
+		}
+		try {
+			const updated = await api.libraries.lock(lib.id);
+			replace(updated);
+			toasts.success(t('privateLibrary.lockedToast', { name: updated.name }));
+		} catch (err) {
+			toasts.error(errorMessage(err, t('privateLibrary.updateFailed')));
+		}
+	}
+
+	async function savePin(clear: boolean): Promise<void> {
+		pinBusy = true;
+		try {
+			pinSet = clear
+				? (await api.libraries.pin.clear(pinForm.password)).set
+				: (await api.libraries.pin.set(pinForm.pin, pinForm.password)).set;
+			pinForm = { pin: '', password: '' };
+			toasts.success(t(clear ? 'privateLibrary.pinCleared' : 'privateLibrary.pinSaved'));
+		} catch (err) {
+			toasts.error(errorMessage(err, t('privateLibrary.pinFailed')));
+		} finally {
+			pinBusy = false;
+		}
+	}
+
+	// Row keys: P toggles private, U unlocks or locks, Delete removes.
+	function rowKey(e: KeyboardEvent, lib: Library): void {
+		if (e.target !== e.currentTarget || e.ctrlKey || e.metaKey || e.altKey) return;
+		const key = e.key.toLowerCase();
+		if (key === 'p' && roots !== null) {
+			e.preventDefault();
+			void setPrivate(lib, !lib.private);
+		} else if (key === 'u' && lib.private) {
+			e.preventDefault();
+			void toggleLock(lib);
+		} else if (e.key === 'Delete') {
+			e.preventDefault();
+			askRemove(lib);
+		}
+	}
 
 	let browsePath = $state('');
 	let browseParent = $state('');
@@ -94,6 +179,7 @@
 		// Ctrl+K "Add library" lands here with ?add.
 		if (new URL(window.location.href).searchParams.has('add')) openCreate();
 		void load();
+		void loadExtras();
 		void scan.refresh().then(() => {
 			if (scan.running) scan.follow();
 		});
@@ -242,17 +328,50 @@
 		{:else}
 			<ul class="settings-list">
 				{#each libraries as lib (lib.id)}
-					<li class="flex flex-wrap items-center gap-3 bg-surface/40 px-4 py-3.5">
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+					<li
+						class="flex flex-wrap items-center gap-3 bg-surface/40 px-4 py-3.5 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
+						tabindex="0"
+						onkeydown={(e) => rowKey(e, lib)}
+					>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2">
 								<p class="truncate font-medium text-foreground">{lib.name}</p>
 								<Badge>{lib.type}</Badge>
+								{#if lib.private}
+									<Badge tone="warning">{t('privateLibrary.badge')} · {lib.locked ? t('privateLibrary.locked') : t('privateLibrary.unlocked')}</Badge>
+								{/if}
+								{#if lib.root}
+									<Badge>{lib.root}:{lib.root_path || '/'}</Badge>
+								{/if}
 								{#if scan.status?.stats?.unreadable?.some((r) => r.library_id === lib.id)}
 									<Badge tone="warning">unreadable</Badge>
 								{/if}
 							</div>
 							<p class="mt-0.5 truncate font-mono text-xs text-muted">{lib.path}</p>
 						</div>
+						{#if roots !== null}
+							<div class="flex items-center gap-2 text-sm text-muted">
+								<Switch
+									bare
+									label={t('privateLibrary.makePrivate')}
+									checked={!!lib.private}
+									onCheckedChange={(next) => void setPrivate(lib, next)}
+								/>
+								<span>{t('privateLibrary.makePrivate')}</span>
+								<kbd class="font-mono text-[10px] text-muted">P</kbd>
+							</div>
+						{/if}
+						{#if lib.private}
+							<Button variant="ghost" size="sm" onclick={() => void toggleLock(lib)}>
+								{#if lib.locked}
+									<LockOpen class="size-4" /> {t('privateLibrary.unlock')}
+								{:else}
+									<LockIcon class="size-4" /> {t('privateLibrary.lock')}
+								{/if}
+								<kbd class="ms-1 font-mono text-[10px] text-muted">U</kbd>
+							</Button>
+						{/if}
 						<Button
 							variant="ghost"
 							size="sm"
@@ -260,13 +379,87 @@
 							onclick={() => askRemove(lib)}
 						>
 							<Trash2 class="size-4 text-danger" /> Remove
+							<kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd>
 						</Button>
 					</li>
 				{/each}
 			</ul>
 		{/if}
 	</section>
+
+	{#if roots !== null}
+		<section id="roots" class="settings-section scroll-mt-28 space-y-3">
+			<div>
+				<h2 class="settings-heading">{t('roots.heading')}</h2>
+				<p class="mt-0.5 text-sm text-muted">{t('roots.hint')}</p>
+			</div>
+			{#if roots.length === 0}
+				<p class="text-sm text-muted">{t('roots.none')}</p>
+			{:else}
+				<ul class="settings-list">
+					{#each roots as r (r.name)}
+						<li class="bg-surface/40 px-4 py-3">
+							<div class="flex items-center gap-2">
+								<span class="font-mono text-sm text-foreground">{r.name}</span>
+								{#if !r.available}<Badge tone="warning">{t('roots.unavailable')}</Badge>{/if}
+							</div>
+							<p class="mt-0.5 truncate font-mono text-xs text-muted">{r.path}</p>
+							{#if r.aliases.length}
+								<p class="mt-0.5 truncate font-mono text-xs text-muted">
+									{t('roots.aliases', { paths: r.aliases.join(', ') })}
+								</p>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+
+		<section id="pin" class="settings-section scroll-mt-28 space-y-3">
+			<div>
+				<h2 class="settings-heading">{t('privateLibrary.pinHeading')}</h2>
+				<p class="mt-0.5 text-sm text-muted">
+					{t('privateLibrary.pinHint')}
+					{pinSet ? t('privateLibrary.pinSet') : t('privateLibrary.pinNotSet')}
+				</p>
+			</div>
+			<form
+				class="grid gap-3 sm:grid-cols-[1fr_1fr_auto]"
+				onsubmit={(e) => {
+					e.preventDefault();
+					void savePin(false);
+				}}
+			>
+				<Input
+					label={t('privateLibrary.pinNew')}
+					type="password"
+					inputmode="numeric"
+					autocomplete="off"
+					bind:value={pinForm.pin}
+				/>
+				<Input
+					label={t('privateLibrary.password')}
+					type="password"
+					autocomplete="current-password"
+					bind:value={pinForm.password}
+					required
+				/>
+				<div class="flex items-end gap-2">
+					<Button type="submit" loading={pinBusy} disabled={!pinForm.pin || !pinForm.password}>
+						{t('privateLibrary.pinSave')} <kbd class="ms-1 font-mono text-[10px] text-muted">Enter</kbd>
+					</Button>
+					{#if pinSet}
+						<Button type="button" variant="ghost" disabled={!pinForm.password} onclick={() => void savePin(true)}>
+							{t('privateLibrary.pinClear')}
+						</Button>
+					{/if}
+				</div>
+			</form>
+		</section>
+	{/if}
 </div>
+
+<UnlockLibraryDialog bind:open={unlockOpen} library={unlockTarget} onunlocked={(lib) => replace(lib)} />
 
 <!-- Create -->
 <Modal
