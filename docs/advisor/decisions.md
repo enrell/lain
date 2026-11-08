@@ -265,4 +265,6 @@ Accepted by the owner on 2026-11-08 from `docs/DESIGN-v2.md` (PR #19), with the 
 - `D-170` — psyche, custom-server and media-manager are retired (the owner prefers deletion) after taking their listed ideas. Source: V-17.
 - `D-171` — The server is rewritten in Rust by strangler migration: a Cargo workspace in this repo next to the Go code, a language-neutral conformance suite (HTTP routes, component NDJSON fixtures, catalog exports) as the spec, components first, the P1 features built directly in Rust, the Go server kept in production until the Rust one passes the suite and the owner has used it daily. The Rust dependency baseline (tokio, axum, serde, redb, argon2/bcrypt, notify, tracing) still needs the owner's approval. Source: owner, DESIGN-v2 §13.
 
-**Next number:** `D-172`.
+- `D-172` — The Rust dependency baseline is approved: `tokio` (runtime), `axum`/`hyper` (HTTP), `serde`/`serde_json` (JSON), `redb` (embedded KV, pure Rust), `argon2` or `bcrypt` (passwords), `notify` (file watching), `tracing` (logs). Any crate beyond these follows the policy in DESIGN-v2 §13 (few, maintained, pure Rust, justified in `AGENTS.md`; no C-heavy dependencies in the server) and is still asked of the owner. Source: owner, 2026-11-08.
+
+**Next number:** `D-173`.
