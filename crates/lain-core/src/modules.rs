@@ -161,7 +161,11 @@ pub fn builtin() -> Vec<ModuleDef> {
             ],
             &[],
             &[],
-            vec![dest("home", "Home", "/"), dest("search", "Search", "/search"), dest("settings", "Settings", "/settings")],
+            vec![
+                dest("home", "Home", "/"),
+                dest("search", "Search", "/search"),
+                dest("settings", "Settings", "/settings"),
+            ],
             &["account", "users", "libraries", "plugins", "modules", "backup"],
             &["search.open", "library.scan", "settings.open"],
         ),
@@ -268,8 +272,21 @@ pub fn builtin() -> Vec<ModuleDef> {
             "lists",
             "Lists",
             true,
-            &["lain.list.read@1", "lain.list.write@1", "lain.list.account@1", "lain.listlink@1", "lain.settings.integrations@1"],
-            &["/api/list", "/api/list/*", "/api/me/links", "/api/me/links/*", "/api/auth/{platform}/callback", "/api/admin/settings/integrations"],
+            &[
+                "lain.list.read@1",
+                "lain.list.write@1",
+                "lain.list.account@1",
+                "lain.listlink@1",
+                "lain.settings.integrations@1",
+            ],
+            &[
+                "/api/list",
+                "/api/list/*",
+                "/api/me/links",
+                "/api/me/links/*",
+                "/api/auth/{platform}/callback",
+                "/api/admin/settings/integrations",
+            ],
             &[],
             vec![dest("list", "Lists", "/list")],
             &["integrations", "links"],
@@ -359,14 +376,15 @@ impl ModuleSet {
         let entries = doc.map(|d| &d.modules).unwrap_or(&empty);
 
         // Declared modules: keep only those still in the document.
-        let declared_now: Vec<&ModuleEntry> = entries
-            .iter()
-            .filter(|e| !self.defs.iter().any(|d| d.id == e.id && !d.declared))
-            .collect();
+        let declared_now: Vec<&ModuleEntry> =
+            entries.iter().filter(|e| !self.defs.iter().any(|d| d.id == e.id && !d.declared)).collect();
         self.defs.retain(|d| !d.declared || declared_now.iter().any(|e| e.id == d.id));
         for e in &declared_now {
             if e.capabilities.is_empty() && e.components.is_empty() {
-                warnings.push(format!("module {} is not built in and declares no capabilities or components; ignored", e.id));
+                warnings.push(format!(
+                    "module {} is not built in and declares no capabilities or components; ignored",
+                    e.id
+                ));
                 self.defs.retain(|d| d.id != e.id);
                 continue;
             }
@@ -524,7 +542,10 @@ mod tests {
         assert_eq!(changes, vec![Change { id: "community.extras".into(), enabled: true }]);
         assert_eq!(set.get("community.extras").unwrap().name, "Extras");
         let back = set.to_doc();
-        assert_eq!(back.modules.iter().find(|m| m.id == "community.extras").unwrap().capabilities, vec!["lain.x@1".to_string()]);
+        assert_eq!(
+            back.modules.iter().find(|m| m.id == "community.extras").unwrap().capabilities,
+            vec!["lain.x@1".to_string()]
+        );
         let (changes, _) = set.apply(Some(&ModulesDoc { format: FORMAT.into(), modules: vec![] }));
         assert_eq!(changes, vec![Change { id: "community.extras".into(), enabled: false }]);
         assert!(set.get("community.extras").is_none());

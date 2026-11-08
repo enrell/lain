@@ -18,8 +18,8 @@ use notify::{RecursiveMode, Watcher};
 
 use lain_core::Registry;
 
-use crate::host::{Process, Timeouts};
 use crate::Change;
+use crate::host::{Process, Timeouts};
 use crate::manifest::Manifest;
 
 type OnChange = Box<dyn Fn(&Change) + Send + Sync>;
@@ -147,7 +147,8 @@ impl Provisioner {
         if let Some(h) = self.thread.lock().unwrap_or_else(|e| e.into_inner()).take() {
             let _ = h.join();
         }
-        let procs: Vec<_> = std::mem::take(&mut self.inner.lock().unwrap_or_else(|e| e.into_inner()).procs).into_values().collect();
+        let procs: Vec<_> =
+            std::mem::take(&mut self.inner.lock().unwrap_or_else(|e| e.into_inner()).procs).into_values().collect();
         for p in procs {
             p.close();
         }

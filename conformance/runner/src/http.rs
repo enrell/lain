@@ -29,7 +29,8 @@ impl Base {
     }
 
     fn connect(&self, timeout: Duration) -> Result<TcpStream, String> {
-        let s = TcpStream::connect((self.host.as_str(), self.port)).map_err(|e| format!("connect {}:{}: {e}", self.host, self.port))?;
+        let s = TcpStream::connect((self.host.as_str(), self.port))
+            .map_err(|e| format!("connect {}:{}: {e}", self.host, self.port))?;
         s.set_read_timeout(Some(timeout)).ok();
         s.set_write_timeout(Some(timeout)).ok();
         Ok(s)
@@ -52,7 +53,15 @@ impl Response {
     }
 }
 
-fn write_request(s: &mut TcpStream, base: &Base, method: &str, path: &str, headers: &[(String, String)], body: Option<&[u8]>, close: bool) -> Result<(), String> {
+fn write_request(
+    s: &mut TcpStream,
+    base: &Base,
+    method: &str,
+    path: &str,
+    headers: &[(String, String)],
+    body: Option<&[u8]>,
+    close: bool,
+) -> Result<(), String> {
     let mut req = format!("{method} {path} HTTP/1.1\r\nHost: {}:{}\r\n", base.host, base.port);
     if close {
         req.push_str("Connection: close\r\n");
@@ -111,7 +120,13 @@ fn read_chunk<R: BufRead>(r: &mut R) -> Result<Option<Vec<u8>>, String> {
 }
 
 /// Sends one request and reads the whole response.
-pub fn request(base: &Base, method: &str, path: &str, headers: &[(String, String)], body: Option<&[u8]>) -> Result<Response, String> {
+pub fn request(
+    base: &Base,
+    method: &str,
+    path: &str,
+    headers: &[(String, String)],
+    body: Option<&[u8]>,
+) -> Result<Response, String> {
     let mut s = base.connect(Duration::from_secs(30))?;
     write_request(&mut s, base, method, path, headers, body, true)?;
     let mut r = BufReader::new(s);
@@ -124,7 +139,9 @@ pub fn request(base: &Base, method: &str, path: &str, headers: &[(String, String
         while let Some(c) = read_chunk(&mut r)? {
             body.extend_from_slice(&c);
         }
-    } else if let Some(n) = headers.iter().find(|(k, _)| k == "content-length").and_then(|(_, v)| v.parse::<usize>().ok()) {
+    } else if let Some(n) =
+        headers.iter().find(|(k, _)| k == "content-length").and_then(|(_, v)| v.parse::<usize>().ok())
+    {
         body.resize(n, 0);
         r.read_exact(&mut body).map_err(|e| format!("body: {e}"))?;
     } else {

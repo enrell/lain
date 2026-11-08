@@ -1,0 +1,435 @@
+//! The server's state: store, auth secret, registry with its in-process
+//! providers, the module set, the event bus and the component
+//! provisioner. Everything a handler needs hangs off [`App`].
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::time::Duration;
+
+use notify::{RecursiveMode, Watcher};
+use serde_json::{Value, json};
+
+use lain_auth::{Auth, Verified};
+use lain_component::{Change as PluginChange, Provisioner};
+use lain_core::modules::{self, ModuleSet};
+use lain_core::{Binding, BindingMode, Composition, Registry};
+use lain_store::Store;
+
+use crate::catalog::{
+    CAP_CATALOG_READ, CAP_CATALOG_WRITE, CAP_USER_PROGRESS, CATALOG_ID, Catalog, USERSTATE_ID, Userstate,
+};
+use crate::events::{EventBus, Scope};
+use crate::libraries::Libraries;
+
+/// The composition document version (the Go server's latest, so a
+/// saved document reads the same in either).
+pub const COMPOSITION_VERSION: u32 = 8;
+
+/// Retired provider ids and their Rust successors, applied when a
+/// saved composition is loaded.
+pub const RETIRED_PROVIDERS: &[(&str, &str)] = &[
+    ("lain-catalog-bolt", CATALOG_ID),
+    ("lain-userstate-bolt", USERSTATE_ID),
+    ("lain-catalog-file", CATALOG_ID),
+    ("lain-userstate-file", USERSTATE_ID),
+];
+
+/// Built-in Go providers that `lain plugin-run` serves as components:
+/// a binding may name them before their manifest is installed (they
+/// answer `dependency-unavailable` until then). This is the strangler
+/// path: Go providers keep working under the Rust core.
+pub const COMPONENT_SERVED: &[&str] = &[
+    "lain-source-filesystem",
+    "lain-identify-comic",
+    "lain-identify-anime",
+    "lain-identify-generic",
+    "lain-probe-ffprobe",
+    "lain-playback-default",
+    "lain-thumbnail-ffmpeg",
+    "lain-transcode-ffmpeg",
+    "lain-metadata-nfo",
+    "lain-metadata-kitsu",
+    "lain-metadata-anilist",
+    "lain-metadata-jikan",
+    "lain-metadata-tvmaze",
+];
+
+/// The P1a default composition: the core bindings served in-process
+/// plus identification served by components.
+pub fn default_composition() -> Composition {
+    let mut bindings = BTreeMap::new();
+    bindings.insert(CAP_CATALOG_READ.into(), Binding::new(BindingMode::ExactlyOne, &[CATALOG_ID]));
+    bindings.insert(CAP_CATALOG_WRITE.into(), Binding::new(BindingMode::ExactlyOne, &[CATALOG_ID]));
+    bindings.insert(CAP_USER_PROGRESS.into(), Binding::new(BindingMode::ExactlyOne, &[USERSTATE_ID]));
+    bindings.insert(
+        "lain.media.identify@1".into(),
+        Binding::new(
+            BindingMode::OrderedMany,
+            &["lain-identify-comic", "lain-identify-anime", "lain-identify-generic"],
+        ),
+    );
+    Composition { version: COMPOSITION_VERSION, bindings }
+}
+
+/// Server construction options.
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub data_dir: PathBuf,
+    pub version: String,
+    /// SSE keep-alive and token re-check interval.
+    pub keep_alive: Duration,
+    /// Debounce for the `modules.json` watch.
+    pub reload_debounce: Duration,
+}
+
+impl Config {
+    pub fn new(data_dir: &Path, version: &str) -> Self {
+        Config {
+            data_dir: data_dir.to_path_buf(),
+            version: version.into(),
+            keep_alive: Duration::from_secs(15),
+            reload_debounce: Duration::from_millis(200),
+        }
+    }
+}
+
+/// Writes a JSON document atomically (temp file + rename, 0600), like
+/// Go's `store.Dir.Save`.
+pub fn save_doc(path: &Path, v: &impl serde::Serialize) -> Result<(), String> {
+    let mut raw = serde_json::to_vec_pretty(v).map_err(|e| e.to_string())?;
+    raw.push(b'\n');
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    std::fs::write(&tmp, &raw).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+    }
+    std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+pub struct App {
+    pub data_dir: PathBuf,
+    pub version: String,
+    pub keep_alive: Duration,
+    reload_debounce: Duration,
+    pub store: Arc<Store>,
+    secret: Vec<u8>,
+    pub registry: Arc<Registry>,
+    pub libraries: Libraries,
+    pub modules: RwLock<ModuleSet>,
+    pub events: EventBus,
+    provisioner: Mutex<Option<Provisioner>>,
+    watcher: Mutex<Option<notify::RecommendedWatcher>>,
+    stopping: Arc<AtomicBool>,
+}
+
+impl App {
+    /// Opens the data dir and builds the server state. A Go data dir is
+    /// refused: the Rust server never writes the Go store (D-171).
+    pub fn open(cfg: Config) -> Result<Arc<App>, String> {
+        let dir = &cfg.data_dir;
+        if dir.join("lain.db").exists() {
+            return Err(format!(
+                "{} holds a Go server store (lain.db); lain-rs never writes it. Import it into a new data dir: lain-rs import --from {}",
+                dir.display(),
+                dir.display()
+            ));
+        }
+        let store = Arc::new(Store::open(dir).map_err(|e| e.to_string())?);
+        let secret = lain_auth::load_or_create_secret(&store).map_err(|e| e.to_string())?;
+
+        let comp_path = dir.join("composition.json");
+        let mut comp = default_composition();
+        if comp_path.exists() {
+            let raw = std::fs::read(&comp_path).map_err(|e| format!("{}: {e}", comp_path.display()))?;
+            let mut saved: Composition =
+                serde_json::from_slice(&raw).map_err(|e| format!("corrupt document composition.json: {e}"))?;
+            if !saved.bindings.is_empty() {
+                let moved = saved.migrate_provider_ids(RETIRED_PROVIDERS);
+                if !moved.is_empty() {
+                    tracing::info!(moved = %moved.join(","), "migrated retired providers");
+                }
+                let added = saved.upgrade(&default_composition());
+                if !added.is_empty() {
+                    tracing::info!(added = %added.join(","), "new capabilities from defaults");
+                }
+                comp = saved;
+            }
+        }
+        let registry = Arc::new(Registry::new(comp.clone()));
+        registry.register(Arc::new(Catalog::new(store.clone())));
+        registry.register(Arc::new(Userstate::new(store.clone())));
+
+        let mut known: BTreeSet<String> = registry.providers().into_iter().collect();
+        known.extend(COMPONENT_SERVED.iter().map(|s| s.to_string()));
+        known.extend(manifest_ids(&dir.join("plugins")));
+        comp.validate(&known).map_err(|e| format!("composition: {e}"))?;
+        save_doc(&comp_path, &registry.composition())?;
+
+        let app = Arc::new(App {
+            data_dir: dir.clone(),
+            version: cfg.version,
+            keep_alive: cfg.keep_alive,
+            reload_debounce: cfg.reload_debounce,
+            libraries: Libraries::new(store.clone()),
+            store,
+            secret,
+            registry,
+            modules: RwLock::new(ModuleSet::new(modules::builtin())),
+            events: EventBus::new(),
+            provisioner: Mutex::new(None),
+            watcher: Mutex::new(None),
+            stopping: Arc::new(AtomicBool::new(false)),
+        });
+        // A corrupt modules.json fails the boot (never silently
+        // ignored); later edits that do not parse keep the last state.
+        let doc = app.read_modules_doc()?;
+        app.apply_modules(doc.as_ref());
+        Ok(app)
+    }
+
+    pub fn auth(&self) -> Auth<'_> {
+        Auth::new(&self.store, self.secret.clone())
+    }
+
+    /// Verifies a token against live state.
+    pub fn verify(&self, token: &str) -> Option<Verified> {
+        self.auth().verify(token).ok()
+    }
+
+    pub fn modules_path(&self) -> PathBuf {
+        self.data_dir.join("modules.json")
+    }
+
+    fn read_modules_doc(&self) -> Result<Option<modules::ModulesDoc>, String> {
+        match std::fs::read(self.modules_path()) {
+            Ok(raw) => modules::parse_doc(&raw).map(Some),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(format!("modules.json: {e}")),
+        }
+    }
+
+    /// Applies a modules document: unbinds disabled modules'
+    /// capabilities, rebinds enabled ones and announces each change.
+    pub fn apply_modules(&self, doc: Option<&modules::ModulesDoc>) {
+        let mut set = self.modules.write().unwrap_or_else(|e| e.into_inner());
+        let caps_before: BTreeMap<String, Vec<String>> =
+            set.defs().iter().map(|d| (d.id.clone(), d.capabilities.clone())).collect();
+        let (changes, warnings) = set.apply(doc);
+        for w in warnings {
+            tracing::warn!(warning = %w, "modules.json");
+        }
+        for c in &changes {
+            match (c.enabled, set.get(&c.id).is_some()) {
+                (true, _) => {
+                    let caps = set.get(&c.id).map(|d| d.capabilities.clone()).unwrap_or_default();
+                    self.registry.resume(&c.id, &caps);
+                }
+                (false, true) => {
+                    let caps = set.exclusive_capabilities(&c.id);
+                    self.registry.suspend(&c.id, &caps);
+                }
+                (false, false) => {
+                    // A declared module vanished: release what it held.
+                    let caps = caps_before.get(&c.id).cloned().unwrap_or_default();
+                    self.registry.resume(&c.id, &caps);
+                }
+            }
+            tracing::info!(module = %c.id, enabled = c.enabled, "module state");
+        }
+        drop(set);
+        for c in changes {
+            let state = self.module_state(&c.id);
+            self.events.publish(
+                Scope::All,
+                "module-state",
+                json!({"module": c.id, "enabled": c.enabled, "state": state}),
+            );
+        }
+    }
+
+    /// Re-reads `modules.json`; a bad edit is logged and ignored.
+    pub fn reload_modules(&self) {
+        match self.read_modules_doc() {
+            Ok(doc) => self.apply_modules(doc.as_ref()),
+            Err(e) => tracing::error!(err = %e, "modules.json not applied; keeping the current module state"),
+        }
+    }
+
+    fn capability_view(&self, comp: &Composition, cap: &str, probe: bool) -> (Value, bool, bool) {
+        let bound = comp.bindings.get(cap);
+        let healthy = probe && bound.is_some() && self.registry.capability_healthy(cap);
+        let providers = bound.map(|b| b.providers.clone()).unwrap_or_default();
+        (
+            json!({"capability": cap, "bound": bound.is_some(), "healthy": healthy, "providers": providers}),
+            bound.is_some(),
+            healthy,
+        )
+    }
+
+    /// `disabled`, `unavailable` (nothing of it is served by this
+    /// server), `degraded` (a served capability has no healthy
+    /// provider) or `active`.
+    pub fn module_state(&self, id: &str) -> String {
+        self.module_view(id).and_then(|v| v["state"].as_str().map(str::to_string)).unwrap_or_else(|| "disabled".into())
+    }
+
+    pub fn module_view(&self, id: &str) -> Option<Value> {
+        let set = self.modules.read().unwrap_or_else(|e| e.into_inner());
+        let d = set.get(id)?.clone();
+        let enabled = set.is_enabled(id);
+        drop(set);
+        let comp = self.registry.composition();
+        let mut caps = Vec::new();
+        let (mut any_bound, mut all_healthy) = (false, true);
+        for c in &d.capabilities {
+            let (v, bound, healthy) = self.capability_view(&comp, c, enabled);
+            any_bound |= bound;
+            if bound && !healthy {
+                all_healthy = false;
+            }
+            caps.push(v);
+        }
+        let state = if !enabled {
+            "disabled"
+        } else if !any_bound && !d.required {
+            "unavailable"
+        } else if !all_healthy {
+            "degraded"
+        } else {
+            "active"
+        };
+        Some(json!({
+            "id": d.id,
+            "name": d.name,
+            "required": d.required,
+            "enabled": enabled,
+            "state": state,
+            "capabilities": caps,
+            "routes": d.routes,
+            "library_kinds": d.library_kinds,
+            "ui": d.ui,
+            "components": d.components,
+        }))
+    }
+
+    /// The `GET /api/modules` document.
+    pub fn modules_view(&self) -> Value {
+        let ids: Vec<String> =
+            self.modules.read().unwrap_or_else(|e| e.into_inner()).defs().iter().map(|d| d.id.clone()).collect();
+        let list: Vec<Value> = ids.iter().filter_map(|id| self.module_view(id)).collect();
+        json!({"format": modules::FORMAT, "modules": list})
+    }
+
+    /// The disabled module owning a route, if any.
+    pub fn disabled_owner(&self, path: &str) -> Option<String> {
+        let set = self.modules.read().unwrap_or_else(|e| e.into_inner());
+        let owner = set.route_owner(path)?;
+        (!set.is_enabled(&owner.id)).then(|| owner.id.clone())
+    }
+
+    /// Whether some module owns a route (enabled or not).
+    pub fn route_owned(&self, path: &str) -> bool {
+        self.modules.read().unwrap_or_else(|e| e.into_inner()).route_owner(path).is_some()
+    }
+
+    pub fn save_composition(&self) -> Result<(), String> {
+        save_doc(&self.data_dir.join("composition.json"), &self.registry.composition())
+    }
+
+    /// Starts the component provisioner and the `modules.json` watch.
+    pub fn start_background(self: &Arc<Self>) {
+        let prov = Provisioner::new(&self.data_dir.join("plugins"), self.registry.clone());
+        let weak: Weak<App> = Arc::downgrade(self);
+        prov.on_change(move |c| {
+            if let Some(app) = weak.upgrade() {
+                let (provider, action) = match c {
+                    PluginChange::Installed(id) => (id.clone(), "installed"),
+                    PluginChange::Removed(id) => (id.clone(), "removed"),
+                };
+                app.events.publish(Scope::Admins, "plugin-changed", json!({"provider": provider, "action": action}));
+            }
+        });
+        if let Err(e) = prov.start() {
+            // Never a failed boot: the operator learns why live installs
+            // do not land.
+            tracing::warn!(err = %e, "component provisioning disabled");
+        }
+        *self.provisioner.lock().unwrap_or_else(|e| e.into_inner()) = Some(prov);
+        self.watch_modules();
+    }
+
+    fn watch_modules(self: &Arc<Self>) {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let watched = self.modules_path();
+        let w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(ev) = res {
+                if ev.paths.iter().any(|p| p.file_name() == watched.file_name()) {
+                    let _ = tx.send(());
+                }
+            }
+        });
+        let mut w = match w {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::warn!(err = %e, "modules.json watch unavailable");
+                return;
+            }
+        };
+        if let Err(e) = w.watch(&self.data_dir, RecursiveMode::NonRecursive) {
+            tracing::warn!(err = %e, "modules.json watch unavailable");
+            return;
+        }
+        *self.watcher.lock().unwrap_or_else(|e| e.into_inner()) = Some(w);
+        let weak = Arc::downgrade(self);
+        let stopping = self.stopping.clone();
+        let debounce = self.reload_debounce;
+        std::thread::Builder::new()
+            .name("modules-watch".into())
+            .spawn(move || {
+                loop {
+                    match rx.recv_timeout(Duration::from_millis(250)) {
+                        Ok(()) => {
+                            while rx.recv_timeout(debounce).is_ok() {}
+                            match weak.upgrade() {
+                                Some(app) if !stopping.load(Ordering::SeqCst) => app.reload_modules(),
+                                _ => return,
+                            }
+                        }
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            if stopping.load(Ordering::SeqCst) || weak.strong_count() == 0 {
+                                return;
+                            }
+                        }
+                        Err(_) => return,
+                    }
+                }
+            })
+            .ok();
+    }
+
+    /// Ends streams, stops watches and components.
+    pub fn shutdown(&self) {
+        self.stopping.store(true, Ordering::SeqCst);
+        self.events.close_all();
+        self.watcher.lock().unwrap_or_else(|e| e.into_inner()).take();
+        if let Some(p) = self.provisioner.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            p.close();
+        }
+    }
+}
+
+/// Provider ids declared by manifests in a plugins dir.
+fn manifest_ids(dir: &Path) -> Vec<String> {
+    let Ok(rd) = std::fs::read_dir(dir) else { return Vec::new() };
+    rd.flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+        .filter_map(|e| std::fs::read(e.path()).ok())
+        .filter_map(|raw| serde_json::from_slice::<lain_component::Manifest>(&raw).ok())
+        .map(|m| m.id)
+        .filter(|id| !id.is_empty())
+        .collect()
+}

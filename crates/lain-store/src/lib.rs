@@ -17,8 +17,10 @@
 //! | `progress`         | `user\0item`             | progress JSON             |
 //! | `meta`             | `secret`, `schema`, ...  | raw bytes                 |
 //!
-//! plus the not-yet-ported Go buckets (`enrichments`, `metadata_cache`,
-//! `list`, `list_accounts`, `downloads`) so an import keeps them.
+//! plus the not-yet-ported Go buckets of `internal/kv` (`enrichments`,
+//! `metadata_cache`, `list`, `list_accounts`, `downloads`) and `go_raw`
+//! (`<bucket>\0<key>`) for every other Go bucket (social, acquire), so
+//! an import keeps all of it until those modules are ported.
 //!
 //! P1b (private libraries D-156, portable roots D-157) fits additively:
 //! library JSON gains `private` and `root`; items gain `root` and
@@ -42,7 +44,7 @@ pub const SCHEMA: &str = "lain.store@1";
 pub const FILE_NAME: &str = "lain.redb";
 
 /// One table, named like its Go bbolt bucket.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Bucket {
     Users,
     UsersByName,
@@ -56,10 +58,13 @@ pub enum Bucket {
     List,
     ListAccounts,
     Downloads,
+    /// Go buckets with no Rust table yet, kept verbatim by the import
+    /// under `<bucket>\0<key>` until their module is ported.
+    GoRaw,
 }
 
 impl Bucket {
-    pub const ALL: [Bucket; 12] = [
+    pub const ALL: [Bucket; 13] = [
         Bucket::Users,
         Bucket::UsersByName,
         Bucket::Libraries,
@@ -72,6 +77,7 @@ impl Bucket {
         Bucket::List,
         Bucket::ListAccounts,
         Bucket::Downloads,
+        Bucket::GoRaw,
     ];
 
     /// The bucket name (identical to `internal/kv`).
@@ -89,6 +95,7 @@ impl Bucket {
             Bucket::List => "list",
             Bucket::ListAccounts => "list_accounts",
             Bucket::Downloads => "downloads",
+            Bucket::GoRaw => "go_raw",
         }
     }
 

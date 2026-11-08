@@ -1,6 +1,7 @@
 //! Replays conformance/component/*.ndjson against the Rust host and the
 //! Rust component side. The Go side replays the same files in
 //! internal/component/conformance_test.go.
+#![cfg(unix)]
 
 use std::collections::BTreeMap;
 use std::io::BufReader;
@@ -31,7 +32,8 @@ fn concrete(v: &Value) -> Value {
 fn manifest_for(lines: &[Line], entry: &str, args: Vec<String>) -> Manifest {
     let hello = &lines[0].frame;
     let mut m = Manifest { id: hello["provider"].as_str().unwrap().to_string(), ..Manifest::default() };
-    m.capabilities = hello["capabilities"].as_array().unwrap().iter().map(|c| c.as_str().unwrap().to_string()).collect();
+    m.capabilities =
+        hello["capabilities"].as_array().unwrap().iter().map(|c| c.as_str().unwrap().to_string()).collect();
     m.execution.kind = "process".into();
     m.execution.entrypoint = entry.into();
     m.execution.args = args;
@@ -66,7 +68,8 @@ fn scripted_component() {
         return;
     }
     if mode == "bad-hello" {
-        write_frame(&mut w, &json!({"op": "hello", "provider": "someone-else", "protocol": 1, "capabilities": []})).unwrap();
+        write_frame(&mut w, &json!({"op": "hello", "provider": "someone-else", "protocol": 1, "capabilities": []}))
+            .unwrap();
         std::thread::sleep(Duration::from_secs(60));
         return;
     }
@@ -115,7 +118,11 @@ fn rust_host_sends_the_recorded_frames() {
             if host["op"] == "health" && host.get("cap").is_none() {
                 assert!(p.health().is_ok(), "{mode} line {}: health failed ({note})", i + 1);
             } else {
-                let got = p.invoke(host["cap"].as_str().unwrap_or(""), host["op"].as_str().unwrap_or(""), host["input"].clone());
+                let got = p.invoke(
+                    host["cap"].as_str().unwrap_or(""),
+                    host["op"].as_str().unwrap_or(""),
+                    host["input"].clone(),
+                );
                 match (want.get("output"), want.get("error")) {
                     (Some(out), _) => {
                         let out_got = got.unwrap_or_else(|e| panic!("{mode} line {}: {e} ({note})", i + 1));
@@ -194,7 +201,8 @@ fn rust_component_answers_like_go() {
                 From::Host => write_frame(&mut w, &l.frame).unwrap(),
                 From::Component => {
                     let got: Value = serde_json::from_slice(&read_frame(&mut r).unwrap()).unwrap();
-                    matches(&l.frame, &got).unwrap_or_else(|e| panic!("{} line {}: {e} ({})", file.display(), i + 1, l.note));
+                    matches(&l.frame, &got)
+                        .unwrap_or_else(|e| panic!("{} line {}: {e} ({})", file.display(), i + 1, l.note));
                 }
             }
         }
@@ -211,7 +219,11 @@ fn timeouts_are_outcome_unknown_and_respawn() {
     let lines = fixtures::load(&file).unwrap();
     let name = file.file_name().unwrap().to_str().unwrap();
     let dir = scratch("hang");
-    let t = Timeouts { invoke: Duration::from_millis(300), backoff_start: Duration::from_millis(50), ..Timeouts::default() };
+    let t = Timeouts {
+        invoke: Duration::from_millis(300),
+        backoff_start: Duration::from_millis(50),
+        ..Timeouts::default()
+    };
     let p = Process::spawn_with(self_exec_manifest(&lines, &format!("hang:{name}")), &dir, t).unwrap();
     assert!(p.wait_ready(Duration::from_secs(20)));
     let first = p.pid();
@@ -231,12 +243,16 @@ fn a_bad_hello_never_serves() {
     let file = fixtures::files().into_iter().next().unwrap();
     let lines = fixtures::load(&file).unwrap();
     let dir = scratch("bad-hello");
-    let t = Timeouts { handshake: Duration::from_secs(2), backoff_start: Duration::from_millis(50), ..Timeouts::default() };
+    let t =
+        Timeouts { handshake: Duration::from_secs(2), backoff_start: Duration::from_millis(50), ..Timeouts::default() };
     let p = Process::spawn_with(self_exec_manifest(&lines, "bad-hello"), &dir, t).unwrap();
     assert!(!p.wait_ready(Duration::from_secs(2)));
     let e = p.health().unwrap_err();
     assert_eq!(e.code, codes::DEPENDENCY_UNAVAILABLE);
-    assert_eq!(p.invoke("lain.media.identify@1", "identify", Value::Null).unwrap_err().code, codes::DEPENDENCY_UNAVAILABLE);
+    assert_eq!(
+        p.invoke("lain.media.identify@1", "identify", Value::Null).unwrap_err().code,
+        codes::DEPENDENCY_UNAVAILABLE
+    );
     p.close();
     std::fs::remove_dir_all(dir).ok();
 }

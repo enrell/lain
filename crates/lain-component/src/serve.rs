@@ -19,7 +19,12 @@ pub fn serve(sock: &Path, p: &dyn Provider) -> io::Result<()> {
     let mut reader = BufReader::new(stream);
     write_frame(
         &mut writer,
-        &Hello { op: "hello".into(), provider: p.id().to_string(), protocol: PROTOCOL_VERSION, capabilities: p.capabilities() },
+        &Hello {
+            op: "hello".into(),
+            provider: p.id().to_string(),
+            protocol: PROTOCOL_VERSION,
+            capabilities: p.capabilities(),
+        },
     )?;
     loop {
         let raw = match read_frame(&mut reader) {
@@ -67,7 +72,11 @@ pub(crate) fn answer(p: &dyn Provider, req: Request) -> Response {
                 .map(|s| s.to_string())
                 .or_else(|| panic.downcast_ref::<String>().cloned())
                 .unwrap_or_else(|| "unknown".into());
-            Response { seq, output: None, error: Some(WireError { code: codes::INTERNAL.into(), msg: format!("panic: {msg}") }) }
+            Response {
+                seq,
+                output: None,
+                error: Some(WireError { code: codes::INTERNAL.into(), msg: format!("panic: {msg}") }),
+            }
         }
     }
 }

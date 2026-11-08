@@ -93,7 +93,12 @@ impl Inner {
             }
             let kept: Vec<String> = b.providers.iter().filter(|p| *p != id).cloned().collect();
             if kept.is_empty() {
-                log.push(("withdraw-degraded", cap.clone(), b.generation, "no alternative provider; binding kept but degraded".to_string()));
+                log.push((
+                    "withdraw-degraded",
+                    cap.clone(),
+                    b.generation,
+                    "no alternative provider; binding kept but degraded".to_string(),
+                ));
                 continue;
             }
             b.providers = kept.clone();
@@ -161,7 +166,10 @@ impl Registry {
             };
             if expected_gen != 0 && expected_gen != b.generation {
                 return Err((
-                    Error::new(codes::STALE_GENERATION, format!("expected generation {expected_gen}, active is {}", b.generation)),
+                    Error::new(
+                        codes::STALE_GENERATION,
+                        format!("expected generation {expected_gen}, active is {}", b.generation),
+                    ),
                     b.generation,
                 ));
             }
@@ -196,7 +204,10 @@ impl Registry {
         let b = g.comp.bindings.get_mut(capability).expect("binding vanished");
         if b.generation != generation {
             let active = b.generation;
-            return Err((Error::new(codes::STALE_GENERATION, format!("binding changed during swap; active is {active}")), active));
+            return Err((
+                Error::new(codes::STALE_GENERATION, format!("binding changed during swap; active is {active}")),
+                active,
+            ));
         }
         let prev = std::mem::replace(&mut b.providers, providers.to_vec());
         b.generation += 1;
@@ -286,7 +297,10 @@ impl Registry {
             return Err(Error::invalid(format!("unknown capability {capability}")));
         };
         if let Some(module) = g.suspended.get(capability) {
-            return Err(Error::new(codes::MODULE_DISABLED, format!("{capability} belongs to the disabled module {module}")));
+            return Err(Error::new(
+                codes::MODULE_DISABLED,
+                format!("{capability} belongs to the disabled module {module}"),
+            ));
         }
         let provs = b.providers.iter().filter_map(|id| g.providers.get(id).cloned()).collect();
         Ok((provs, b.generation))
@@ -381,12 +395,14 @@ impl Registry {
     /// Delivers to every healthy provider of a fan-out capability and
     /// reports each provider's own result. No provider's failure stops
     /// delivery to the others.
-    pub fn call_fan_out(&self, capability: &str, op: &str, input: Value) -> Result<Vec<(String, Result<Value, Error>)>, Error> {
+    pub fn call_fan_out(
+        &self,
+        capability: &str,
+        op: &str,
+        input: Value,
+    ) -> Result<Vec<(String, Result<Value, Error>)>, Error> {
         let (provs, _) = self.ordered(capability)?;
-        Ok(provs
-            .into_iter()
-            .map(|p| (p.id().to_string(), p.invoke(capability, op, input.clone())))
-            .collect())
+        Ok(provs.into_iter().map(|p| (p.id().to_string(), p.invoke(capability, op, input.clone()))).collect())
     }
 
     /// Calls one named provider of a capability, still through
@@ -425,7 +441,11 @@ impl Registry {
         let provs: Vec<_> = self.read().providers.values().cloned().collect();
         provs
             .into_iter()
-            .map(|p| ProviderInfo { id: p.id().to_string(), capabilities: p.capabilities(), healthy: p.health().is_ok() })
+            .map(|p| ProviderInfo {
+                id: p.id().to_string(),
+                capabilities: p.capabilities(),
+                healthy: p.health().is_ok(),
+            })
             .collect()
     }
 
@@ -613,8 +633,14 @@ mod tests {
     fn invoke_provider_checks_authority() {
         let (reg, _, _, _, _) = registry();
         assert!(reg.invoke_provider(IDENT, "id-b", "identify", Value::Null).is_ok());
-        assert_eq!(reg.invoke_provider(IDENT, "cat-a", "identify", Value::Null).unwrap_err().code, codes::INVALID_MESSAGE);
-        assert_eq!(reg.invoke_provider(IDENT, "ghost", "identify", Value::Null).unwrap_err().code, codes::INVALID_MESSAGE);
+        assert_eq!(
+            reg.invoke_provider(IDENT, "cat-a", "identify", Value::Null).unwrap_err().code,
+            codes::INVALID_MESSAGE
+        );
+        assert_eq!(
+            reg.invoke_provider(IDENT, "ghost", "identify", Value::Null).unwrap_err().code,
+            codes::INVALID_MESSAGE
+        );
     }
 
     #[test]

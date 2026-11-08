@@ -259,22 +259,23 @@ impl<'s> Auth<'s> {
     fn update(&self, id: &str, f: impl FnOnce(&mut User) -> Result<(), AuthError>) -> Result<User, AuthError> {
         let mut user = None;
         let mut fail = None;
-        self.store.write(|tx| {
-            let Some(mut u) = tx.get_json::<User>(Bucket::Users, id.as_bytes())? else {
-                return Err(abort("unknown user"));
-            };
-            if let Err(e) = f(&mut u) {
-                fail = Some(e);
-                return Err(abort("rollback"));
-            }
-            tx.put_json(Bucket::Users, id.as_bytes(), &u)?;
-            user = Some(u);
-            Ok(())
-        })
-        .or_else(|e| match fail.take() {
-            Some(f) => Err(f),
-            None => Err(AuthError::from(e)),
-        })?;
+        self.store
+            .write(|tx| {
+                let Some(mut u) = tx.get_json::<User>(Bucket::Users, id.as_bytes())? else {
+                    return Err(abort("unknown user"));
+                };
+                if let Err(e) = f(&mut u) {
+                    fail = Some(e);
+                    return Err(abort("rollback"));
+                }
+                tx.put_json(Bucket::Users, id.as_bytes(), &u)?;
+                user = Some(u);
+                Ok(())
+            })
+            .or_else(|e| match fail.take() {
+                Some(f) => Err(f),
+                None => Err(AuthError::from(e)),
+            })?;
         Ok(user.expect("committed"))
     }
 
@@ -482,7 +483,8 @@ impl<'s> Auth<'s> {
     /// Signs a token for `u` issued at `now`.
     pub fn mint(&self, u: &User, now: i64) -> String {
         let head = crypto::b64_url(br#"{"alg":"HS256","typ":"JWT"}"#);
-        let claims = Claims { sub: u.id.clone(), role: u.role.clone(), pwdv: u.pwd_ver, iat: now, exp: now + TOKEN_TTL_SECS };
+        let claims =
+            Claims { sub: u.id.clone(), role: u.role.clone(), pwdv: u.pwd_ver, iat: now, exp: now + TOKEN_TTL_SECS };
         let body = crypto::b64_url(&serde_json::to_vec(&claims).expect("claims serialize"));
         let signing = format!("{head}.{body}");
         let sig = crypto::b64_url(&crypto::hmac_sha256(&self.secret, signing.as_bytes()));
@@ -552,7 +554,10 @@ mod tests {
         assert!(!a.has_users());
         assert_eq!(a.setup("admin", "short").unwrap_err().to_string(), "username required, password >= 8 chars");
         let u = a.setup("admin", "password123").unwrap();
-        assert_eq!((u.id.as_str(), u.role.as_str(), u.pwd_ver, u.pass_hash.is_none()), ("user-admin", "admin", 1, true));
+        assert_eq!(
+            (u.id.as_str(), u.role.as_str(), u.pwd_ver, u.pass_hash.is_none()),
+            ("user-admin", "admin", 1, true)
+        );
         assert_eq!(a.setup("x", "password123").unwrap_err().to_string(), "setup already completed");
         assert_eq!(a.login("admin", "nope-nope").unwrap_err().to_string(), "invalid credentials");
         assert_eq!(a.login("ghost", "password123").unwrap_err().to_string(), "invalid credentials");
@@ -571,8 +576,14 @@ mod tests {
         a.setup("admin", "password123").unwrap();
         a.create("bob", "bobpassword", "user").unwrap();
         let tok = a.login("bob", "bobpassword").unwrap();
-        assert_eq!(a.change_password("user-bob", "wrong-pass", "newpassword").unwrap_err().to_string(), "invalid credentials");
-        assert_eq!(a.change_password("user-bob", "bobpassword", "short").unwrap_err().to_string(), "password >= 8 chars");
+        assert_eq!(
+            a.change_password("user-bob", "wrong-pass", "newpassword").unwrap_err().to_string(),
+            "invalid credentials"
+        );
+        assert_eq!(
+            a.change_password("user-bob", "bobpassword", "short").unwrap_err().to_string(),
+            "password >= 8 chars"
+        );
         a.change_password("user-bob", "bobpassword", "newpassword").unwrap();
         assert_eq!(a.verify(&tok).unwrap_err().to_string(), "password rotated");
         let tok = a.login("bob", "newpassword").unwrap();
@@ -616,17 +627,27 @@ mod tests {
         let u = a
             .update_profile(
                 "user-admin",
-                &ProfilePatch { display_name: Some("  The   Admin ".into()), bio: Some("hi\nthere".into()), mascot: Some("moth".into()) },
+                &ProfilePatch {
+                    display_name: Some("  The   Admin ".into()),
+                    bio: Some("hi\nthere".into()),
+                    mascot: Some("moth".into()),
+                },
             )
             .unwrap();
         assert_eq!(u.profile.display_name, "The Admin");
         assert_eq!(u.profile.bio, "hi\nthere");
         assert_eq!(u.profile.avatar.mascot, "moth");
-        let e = a.update_profile("user-admin", &ProfilePatch { mascot: Some("nope".into()), ..Default::default() }).unwrap_err();
+        let e = a
+            .update_profile("user-admin", &ProfilePatch { mascot: Some("nope".into()), ..Default::default() })
+            .unwrap_err();
         assert_eq!(e.to_string(), "unknown mascot");
-        let e = a.update_profile("user-admin", &ProfilePatch { display_name: Some("a\nb".into()), ..Default::default() }).unwrap_err();
+        let e = a
+            .update_profile("user-admin", &ProfilePatch { display_name: Some("a\nb".into()), ..Default::default() })
+            .unwrap_err();
         assert_eq!(e.to_string(), "display_name must not contain control characters");
-        let e = a.update_profile("user-admin", &ProfilePatch { bio: Some("x".repeat(161)), ..Default::default() }).unwrap_err();
+        let e = a
+            .update_profile("user-admin", &ProfilePatch { bio: Some("x".repeat(161)), ..Default::default() })
+            .unwrap_err();
         assert_eq!(e.to_string(), "bio is too long");
         a.set_preferred_language("user-admin", " JPN ").unwrap();
         assert_eq!(a.get_public("user-admin").unwrap().preferred_language, "jpn");

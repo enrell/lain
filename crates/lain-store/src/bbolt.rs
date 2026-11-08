@@ -85,10 +85,8 @@ impl BoltFile {
     /// exclusive lock (a running Go server): stop it or import from a
     /// `lain backup` snapshot.
     pub fn open(path: &Path) -> Result<BoltFile, String> {
-        let mut f = std::fs::OpenOptions::new()
-            .read(true)
-            .open(path)
-            .map_err(|e| format!("open {}: {e}", path.display()))?;
+        let mut f =
+            std::fs::OpenOptions::new().read(true).open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
         match f.try_lock_shared() {
             Ok(()) => {}
             Err(std::fs::TryLockError::WouldBlock) => {
@@ -292,7 +290,8 @@ mod tests {
         }
         let users = f.pairs("users").unwrap();
         assert!(users.iter().any(|(k, _)| k == b"user-admin"));
-        let admin: serde_json::Value = serde_json::from_slice(&users.iter().find(|(k, _)| k == b"user-admin").unwrap().1).unwrap();
+        let admin: serde_json::Value =
+            serde_json::from_slice(&users.iter().find(|(k, _)| k == b"user-admin").unwrap().1).unwrap();
         assert_eq!(admin["role"], "admin");
         assert!(f.pairs("meta").unwrap().iter().any(|(k, _)| k == b"secret"));
         assert!(!f.pairs("items").unwrap().is_empty());

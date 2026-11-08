@@ -138,8 +138,17 @@ mod tests {
         assert!(matches(&json!({"a": "$string", "b": "$absent"}), &json!({"a": "x"})).is_ok());
         assert!(matches(&json!({"a": "$string"}), &json!({"a": "x", "c": 1})).is_err());
         assert!(matches(&json!({"a": "$string", "$open": true}), &json!({"a": "x", "c": 1})).is_ok());
-        assert!(matches(&json!({"$each": {"id": "$prefix:lib-"}, "$len": 2}), &json!([{"id": "lib-1"}, {"id": "lib-2"}])).is_ok());
-        assert!(matches(&json!({"$contains": [{"id": "b", "$open": true}]}), &json!([{"id": "a", "x": 1}, {"id": "b", "x": 2}])).is_ok());
+        assert!(
+            matches(&json!({"$each": {"id": "$prefix:lib-"}, "$len": 2}), &json!([{"id": "lib-1"}, {"id": "lib-2"}]))
+                .is_ok()
+        );
+        assert!(
+            matches(
+                &json!({"$contains": [{"id": "b", "$open": true}]}),
+                &json!([{"id": "a", "x": 1}, {"id": "b", "x": 2}])
+            )
+            .is_ok()
+        );
         assert!(matches(&json!(1), &json!(1.0)).is_ok());
         assert!(matches(&json!("$int"), &json!(1.5)).is_err());
         assert!(matches(&json!([1, 2]), &json!([1])).is_err());
