@@ -25,7 +25,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use lain_auth::User;
-use lain_store::bbolt::BoltFile;
+use lain_store::bbolt::{BoltFile, Pairs};
 use lain_store::{Bucket, Store, join_key};
 
 use crate::catalog::Catalog;
@@ -50,12 +50,12 @@ impl Report {
 /// The Go state, read into memory.
 #[derive(Default)]
 struct Source {
-    users: Vec<(Vec<u8>, Vec<u8>)>,
+    users: Pairs,
     secret: Option<Vec<u8>>,
-    libraries: Vec<(Vec<u8>, Vec<u8>)>,
+    libraries: Pairs,
     catalog: ExportDoc,
-    progress: Vec<(Vec<u8>, Vec<u8>)>,
-    raw: BTreeMap<Bucket, Vec<(Vec<u8>, Vec<u8>)>>,
+    progress: Pairs,
+    raw: BTreeMap<Bucket, Pairs>,
     go_raw_buckets: Vec<String>,
     skipped: Vec<String>,
 }

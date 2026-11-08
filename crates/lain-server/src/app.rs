@@ -366,10 +366,10 @@ impl App {
         let (tx, rx) = std::sync::mpsc::channel::<()>();
         let watched = self.modules_path();
         let w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if let Ok(ev) = res {
-                if ev.paths.iter().any(|p| p.file_name() == watched.file_name()) {
-                    let _ = tx.send(());
-                }
+            if let Ok(ev) = res
+                && ev.paths.iter().any(|p| p.file_name() == watched.file_name())
+            {
+                let _ = tx.send(());
             }
         });
         let mut w = match w {

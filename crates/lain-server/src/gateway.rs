@@ -398,10 +398,10 @@ fn users_patch(app: &App, req: &Req, v: &Verified) -> Reply {
     if id == v.user_id && i.disabled == Some(true) {
         return Reply::err(400, "cannot disable yourself");
     }
-    if let Some(d) = i.disabled {
-        if let Err(e) = auth.set_disabled(id, d) {
-            return Reply::err(404, &e.to_string());
-        }
+    if let Some(d) = i.disabled
+        && let Err(e) = auth.set_disabled(id, d)
+    {
+        return Reply::err(404, &e.to_string());
     }
     if let Some(role) = &i.role {
         if id == v.user_id && role != ROLE_ADMIN {
@@ -411,15 +411,15 @@ fn users_patch(app: &App, req: &Req, v: &Verified) -> Reply {
             return Reply::err(400, &e.to_string());
         }
     }
-    if let Some(p) = &i.password {
-        if let Err(e) = auth.admin_reset(id, p) {
-            return Reply::err(400, &e.to_string());
-        }
+    if let Some(p) = &i.password
+        && let Err(e) = auth.admin_reset(id, p)
+    {
+        return Reply::err(400, &e.to_string());
     }
-    if let Some(p) = i.playback {
-        if let Err(e) = auth.set_playback(id, p) {
-            return Reply::err(400, &e.to_string());
-        }
+    if let Some(p) = i.playback
+        && let Err(e) = auth.set_playback(id, p)
+    {
+        return Reply::err(400, &e.to_string());
     }
     match auth.get_public(id) {
         Some(u) => Reply::ok(json!(u)),
