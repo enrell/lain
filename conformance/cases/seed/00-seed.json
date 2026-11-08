@@ -1,0 +1,25 @@
+{
+  "tier": "v1",
+  "description": "Seeds a Go server for the seeded suite: admin, a user, one library over the fixture media, a scan and progress. Run against the Go server only (the Rust server gets this state through `lain-rs import`). Save the variables with --save-vars.",
+  "cases": [
+    {"name": "seed accounts", "requires": ["media_dir"], "steps": [
+      {"req": {"method": "POST", "path": "/api/setup", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 201}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 200}, "save": {"go_token": "/token"}},
+      {"req": {"method": "POST", "path": "/api/users", "auth": "go_token", "body": {"username": "bob", "password": "bobpassword"}}, "expect": {"status": 201}},
+      {"req": {"method": "PATCH", "path": "/api/me/profile", "auth": "go_token", "body": {"display_name": "The Admin", "mascot": "orbit"}}, "expect": {"status": 200}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "go_token", "body": {"preferred_language": "jpn"}}, "expect": {"status": 200}}
+    ]},
+    {"name": "seed the catalog", "requires": ["media_dir"], "steps": [
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "go_token", "body": {"name": "Anime", "path": "{{media_dir}}"}}, "expect": {"status": 201}, "save": {"lib_id": "/id"}},
+      {"req": {"method": "POST", "path": "/api/library/scan", "auth": "go_token"}, "expect": {"status": 202}},
+      {"wait_for": {"req": {"method": "GET", "path": "/api/library/scan", "auth": "go_token"}, "expect": {"status": 200, "body": {"state": "done", "$open": true}}}, "timeout_ms": 20000},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "go_token"}, "expect": {"status": 200, "body": {"total": 2, "$open": true}},
+       "save": {"item1": "/items/0/id", "item2": "/items/1/id"}}
+    ]},
+    {"name": "seed progress", "requires": ["media_dir"], "steps": [
+      {"req": {"method": "PUT", "path": "/api/items/{{item1}}/progress", "auth": "go_token", "body": {"position_sec": 30, "duration_sec": 1440}}, "expect": {"status": 200}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobpassword"}}, "expect": {"status": 200}, "save": {"bob_go_token": "/token"}},
+      {"req": {"method": "PUT", "path": "/api/items/{{item2}}/progress", "auth": "bob_go_token", "body": {"position_sec": 1440, "duration_sec": 1440, "completed": true}}, "expect": {"status": 200}}
+    ]}
+  ]
+}

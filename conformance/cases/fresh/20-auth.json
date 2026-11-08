@@ -1,0 +1,34 @@
+{
+  "tier": "v1",
+  "description": "Login and per-request token checks: Bearer header or ?token= (media-element fallback).",
+  "cases": [
+    {"name": "login returns a token", "steps": [
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "password123"}},
+       "expect": {"status": 200, "body": {"token": "$nonempty"}}, "save": {"admin_token": "/token"}}
+    ]},
+    {"name": "login rejects bad credentials", "steps": [
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "wrong-password"}},
+       "expect": {"status": 401, "body": {"error": "invalid credentials"}}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "nobody", "password": "password123"}},
+       "expect": {"status": 401, "body": {"error": "invalid credentials"}}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "raw_body": "{"}, "expect": {"status": 400, "body": {"error": "invalid json"}}}
+    ]},
+    {"name": "Bearer token authenticates", "steps": [
+      {"req": {"method": "GET", "path": "/api/me", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"id": "user-admin", "username": "admin", "pass_hash": null, "role": "admin", "disabled": false,
+         "pwd_ver": 1, "created_at": "$int", "playback": {}, "profile": {"avatar": {}}}}}
+    ]},
+    {"name": "?token= authenticates", "steps": [
+      {"req": {"method": "GET", "path": "/api/me", "auth": "query:admin_token"}, "expect": {"status": 200, "body": {"id": "user-admin", "$open": true}}}
+    ]},
+    {"name": "bad tokens are refused", "steps": [
+      {"req": {"method": "GET", "path": "/api/me", "auth": "header:Bearer garbage"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "header:Bearer {{admin_token}}x"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "header:Basic YWRtaW46cGFzc3dvcmQxMjM="}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "GET", "path": "/api/me?token=a.b.c"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]},
+    {"name": "a Bearer header wins over ?token=", "steps": [
+      {"req": {"method": "GET", "path": "/api/me?token={{admin_token}}", "auth": "header:Bearer garbage"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]}
+  ]
+}
