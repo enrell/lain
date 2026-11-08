@@ -16,7 +16,9 @@ fn usage() {
         "usage: lain-rs <command> [flags]
 
   serve     run the server (--data-dir, --port {DEFAULT_PORT}, --bind 127.0.0.1, --log-level info, --log-file)
-  import    copy a Go data dir into a fresh Rust one, read-only (--from DIR [--data-dir DIR] [--catalog export.json])
+  import    copy a Go data dir into a fresh Rust one, read-only (--from DIR [--data-dir DIR] [--catalog export.json]
+            [--roots roots.json] [--dry-run]: absolute paths move onto named roots; --dry-run only reports)
+  export    write the catalog as lain.catalog-export@3 (--data-dir, --out FILE; default stdout)
   service   install|uninstall|start|stop|status|logs the background service
             (--name lain-rs, --system, --linger, --port, --bind, --data-dir, --dry-run; logs: --follow, --lines N)
   version   print version
@@ -123,11 +125,30 @@ async fn shutdown_signal() {
 fn cmd_import(args: &[String]) -> Result<(), String> {
     let from = flag(args, "from").ok_or("import needs --from <go data dir>")?;
     let to = data_dir(args)?;
-    let catalog = flag(args, "catalog").map(PathBuf::from);
-    let report = import::run(Path::new(&from), &to, catalog.as_deref())?;
+    let opts = import::Options {
+        catalog: flag(args, "catalog").map(PathBuf::from),
+        roots: flag(args, "roots").map(PathBuf::from),
+        dry_run: has(args, "dry-run"),
+    };
+    let report = import::run_with(Path::new(&from), &to, &opts)?;
     println!("{}", serde_json::to_string_pretty(&report.to_json()).unwrap_or_default());
-    println!("imported into {}", to.display());
+    if !opts.dry_run {
+        println!("imported into {}", to.display());
+    }
     Ok(())
+}
+
+fn cmd_export(args: &[String]) -> Result<(), String> {
+    let dir = data_dir(args)?;
+    let doc = lain_server::export(&dir)?;
+    let raw = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
+    match flag(args, "out") {
+        Some(out) => std::fs::write(&out, raw).map_err(|e| format!("{out}: {e}")),
+        None => {
+            use std::io::Write;
+            std::io::stdout().write_all(&raw).map_err(|e| e.to_string())
+        }
+    }
 }
 
 fn cmd_service(args: &[String]) -> Result<(), String> {
@@ -170,6 +191,7 @@ fn main() {
     let result = match cmd.as_str() {
         "serve" => cmd_serve(rest),
         "import" => cmd_import(rest),
+        "export" => cmd_export(rest),
         "service" => cmd_service(rest),
         "version" | "--version" | "-V" => {
             println!("lain-rs {VERSION}");

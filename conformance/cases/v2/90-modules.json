@@ -36,7 +36,7 @@
     {"name": "enabling it again rebinds", "requires": ["data_dir"], "steps": [
       {"write_file": {"path": "{{data_dir}}/modules.json", "json": {"format": "lain.modules@1", "modules": [{"id": "watch", "enabled": true}]}}},
       {"sse_expect": {"stream": "mod", "event": "module-state", "data": {"module": "watch", "enabled": true, "state": "$string"}, "within_ms": 8000}},
-      {"req": {"method": "GET", "path": "/api/items/some-item/playback", "auth": "admin_token"}, "expect": {"status_not": 404}}
+      {"req": {"method": "GET", "path": "/api/items/some-item/playback", "auth": "admin_token"}, "expect": {"status": 404, "body": {"error": "unknown item"}}}
     ]},
     {"name": "a disabled module's capabilities are unbound with a new generation", "requires": ["data_dir"], "steps": [
       {"write_file": {"path": "{{data_dir}}/modules.json", "json": {"format": "lain.modules@1", "modules": [{"id": "identify", "enabled": false}]}}},

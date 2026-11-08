@@ -3,7 +3,7 @@
 //! the same capabilities and ops. Catalog owns identity; userstate owns
 //! progress; neither touches the other's table.
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -12,6 +12,7 @@ use lain_core::{Error, Provider};
 use lain_store::{Bucket, Store, StoreError, join_key, key_prefix};
 
 use crate::contracts::{CatalogItem, CatalogPage, EXPORT_FORMAT, ExportDoc, PageParams, Progress};
+use crate::roots::Roots;
 
 pub const CAP_CATALOG_READ: &str = "lain.catalog.read@1";
 pub const CAP_CATALOG_WRITE: &str = "lain.catalog.write@1";
@@ -50,9 +51,11 @@ fn watch_order(a: &CatalogItem, b: &CatalogItem) -> std::cmp::Ordering {
     a.season.cmp(&b.season).then(a.episode.cmp(&b.episode)).then(a.year.cmp(&b.year)).then(a.id.cmp(&b.id))
 }
 
-/// The catalog provider.
+/// The catalog provider. Items with a root are resolved against this
+/// machine's root mapping on every read (D-157).
 pub struct Catalog {
     store: Arc<Store>,
+    roots: Arc<RwLock<Roots>>,
 }
 
 #[derive(Deserialize)]
@@ -63,6 +66,16 @@ struct IdInput {
 
 #[derive(Deserialize)]
 struct PageInput {
+    #[serde(default)]
+    page: PageParams,
+}
+
+#[derive(Deserialize)]
+struct QueryInput {
+    #[serde(default)]
+    q: String,
+    #[serde(default)]
+    kind: String,
     #[serde(default)]
     page: PageParams,
 }
@@ -83,17 +96,32 @@ struct DeleteLibraryInput {
 
 impl Catalog {
     pub fn new(store: Arc<Store>) -> Self {
-        Catalog { store }
+        Self::with_roots(store, Arc::new(RwLock::new(Roots::default())))
+    }
+
+    pub fn with_roots(store: Arc<Store>, roots: Arc<RwLock<Roots>>) -> Self {
+        Catalog { store, roots }
+    }
+
+    fn resolve(&self, mut it: CatalogItem) -> CatalogItem {
+        if !it.root.is_empty()
+            && let Some(p) = self.roots.read().unwrap_or_else(|e| e.into_inner()).resolve(&it.root, &it.rel_path)
+        {
+            it.file_path = p;
+        }
+        it
     }
 
     fn all(&self) -> Result<Vec<CatalogItem>, Error> {
         let rows = self.store.read(|tx| tx.all(Bucket::Items)).map_err(store_err)?;
         // A record that does not decode is skipped, as in Go's walk.
-        Ok(rows.iter().filter_map(|(_, v)| serde_json::from_slice(v).ok()).collect())
+        Ok(rows.iter().filter_map(|(_, v)| serde_json::from_slice(v).ok()).map(|it| self.resolve(it)).collect())
     }
 
     pub fn get(&self, id: &str) -> Result<Option<CatalogItem>, Error> {
-        self.store.read(|tx| tx.get_json(Bucket::Items, id.as_bytes())).map_err(store_err)
+        let it: Option<CatalogItem> =
+            self.store.read(|tx| tx.get_json(Bucket::Items, id.as_bytes())).map_err(store_err)?;
+        Ok(it.map(|it| self.resolve(it)))
     }
 
     /// Filters by library, substring and kind, sorts, then pages; the
@@ -106,6 +134,7 @@ impl Catalog {
             .all()?
             .into_iter()
             .filter(|it| ll.is_empty() || it.library_id == ll)
+            .filter(|it| !p.exclude_libraries.contains(&it.library_id))
             .filter(|it| kl.is_empty() || it.kind.to_lowercase() == kl)
             .filter(|it| ql.is_empty() || it.title.to_lowercase().contains(&ql))
             .collect();
@@ -168,19 +197,24 @@ impl Catalog {
             .map_err(store_err)
     }
 
-    /// The portable document (version 2, with aliases).
+    /// The portable document, `lain.catalog-export@3` (D-175): aliases
+    /// and roots; `file_path` is this machine's resolution.
     pub fn export(&self) -> Result<ExportDoc, Error> {
-        let mut doc = ExportDoc { format: EXPORT_FORMAT.into(), version: 2, ..ExportDoc::default() };
+        let mut doc = ExportDoc { format: EXPORT_FORMAT.into(), version: 3, ..ExportDoc::default() };
         for it in self.all()? {
+            if !it.root.is_empty() && !doc.roots.contains(&it.root) {
+                doc.roots.push(it.root.clone());
+            }
             doc.items.insert(it.id.clone(), it);
         }
+        doc.roots.sort();
         Ok(doc)
     }
 
     /// Replaces the catalog with a document in one transaction, the
-    /// library index rebuilt with it. Versions 1 and 2 are accepted.
+    /// library index rebuilt with it. Versions 1, 2 and 3 are accepted.
     pub fn import(&self, doc: &ExportDoc) -> Result<usize, Error> {
-        if doc.format != EXPORT_FORMAT || !(doc.version == 1 || doc.version == 2) {
+        if doc.format != EXPORT_FORMAT || !(1..=3).contains(&doc.version) {
             return Err(Error::invalid("unsupported export format/version"));
         }
         self.store
@@ -224,6 +258,13 @@ impl Provider for Catalog {
                 json!(self.get(&i.id)?.ok_or_else(|| Error::not_found(format!("unknown item {}", i.id)))?)
             }
             (CAP_CATALOG_READ, "page") => json!(self.page(&input::<PageInput>(v, "PageInput")?.page)?),
+            // Rust-only: substring and kind filter, what lain.search.query@1
+            // serves in Go.
+            (CAP_CATALOG_READ, "query") => {
+                let i: QueryInput = input(v, "QueryInput")?;
+                let (items, total) = self.query(&i.q, &i.kind, &i.page)?;
+                json!(CatalogPage { items, total, limit: i.page.limit, offset: i.page.offset })
+            }
             (CAP_CATALOG_READ, "episodes") => {
                 let i: IdInput = input(v, "EpisodesInput")?;
                 json!(self.episodes(&i.id)?.ok_or_else(|| Error::not_found(format!("unknown item {}", i.id)))?)
@@ -387,6 +428,37 @@ mod tests {
         assert!(cat.get("a").unwrap().unwrap().missing);
         assert!(!cat.set_missing("zz", true).unwrap());
         assert!(cat.import(&ExportDoc { format: "x".into(), version: 1, ..ExportDoc::default() }).is_err());
+        assert!(cat.import(&ExportDoc { format: EXPORT_FORMAT.into(), version: 4, ..ExportDoc::default() }).is_err());
+        let mut hidden = PageParams::normalize(0, 0, "");
+        hidden.exclude_libraries = vec!["l1".into()];
+        assert_eq!(cat.page(&hidden).unwrap().total, 0, "excluded before counting");
+        drop(cat);
+        drop(store);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn rooted_items_resolve_per_machine_and_export_v3() {
+        let dir = lain_store::test_dir("catalog-roots");
+        let store = Arc::new(Store::open(&dir).unwrap());
+        let roots = Arc::new(RwLock::new(
+            Roots::parse(br#"{"format":"lain.roots@1","roots":{"media":"/mnt/v/media"}}"#).unwrap(),
+        ));
+        let cat = Catalog::with_roots(store.clone(), roots.clone());
+        let mut it = item("a", "l1", "Akira", 0, 1);
+        it.file_path = r"V:\media\movies\Akira.mkv".into();
+        it.root = "media".into();
+        it.rel_path = "movies/Akira.mkv".into();
+        let mut doc = ExportDoc { format: EXPORT_FORMAT.into(), version: 3, ..ExportDoc::default() };
+        doc.items.insert("a".into(), it);
+        cat.import(&doc).unwrap();
+        assert_eq!(cat.get("a").unwrap().unwrap().file_path, "/mnt/v/media/movies/Akira.mkv");
+        // Another machine: only the mapping changes.
+        *roots.write().unwrap() = Roots::parse(br#"{"format":"lain.roots@1","roots":{"media":"D:\\Media"}}"#).unwrap();
+        assert_eq!(cat.get("a").unwrap().unwrap().file_path, r"D:\Media\movies\Akira.mkv");
+        let out = cat.export().unwrap();
+        assert_eq!((out.version, out.roots.clone()), (3, vec!["media".to_string()]));
+        assert_eq!(out.items["a"].rel_path, "movies/Akira.mkv");
         drop(cat);
         drop(store);
         std::fs::remove_dir_all(dir).ok();

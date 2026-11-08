@@ -13,6 +13,8 @@ conformance/
   cases/seeded/   reads over seeded state: catalog items, paging, episodes,
                   per-user progress, a token minted before the move (v1)
   cases/v2/       /api/modules and modules.json, /api/events (SSE)   (v2)
+  cases/seeded-v2/ private libraries over seeded state: nothing leaks to
+                  another user or a locked session                 (v2)
   component/      NDJSON fixtures of the component protocol
   runner/         lain-conformance, one runner (Rust, std-only HTTP)
   run.sh          both servers end to end in throwaway data dirs
@@ -55,7 +57,7 @@ Seeded: run `cases/seed` against a fresh Go server with
 --data-dir <new dir>`, start `lain-rs` there and run `cases/seeded` with
 `--vars seed.json` (and the same against the Go server).
 
-`cargo test` also runs `fresh`, `v2` and `seeded` (over the bbolt
+`cargo test` also runs `fresh`, `v2`, `seeded` and `seeded-v2` (over the bbolt
 fixture in `crates/lain-store/testdata`) against an in-process
 `lain-rs`, and replays `component/` against the Rust host and the Rust
 component side; `go test ./internal/component` replays it against the

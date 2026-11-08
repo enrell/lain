@@ -12,6 +12,8 @@ pub mod gateway;
 pub mod import;
 pub mod libraries;
 pub mod logging;
+pub mod privacy;
+pub mod roots;
 pub mod service;
 
 use std::net::SocketAddr;
@@ -19,6 +21,15 @@ use std::sync::Arc;
 
 /// The version string `/health` reports.
 pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-rs");
+
+/// The catalog of a data dir as `lain.catalog-export@3` (D-175), paths
+/// resolved with that dir's `roots.json`. The server must not be
+/// running (the store is locked while it is).
+pub fn export(data_dir: &std::path::Path) -> Result<contracts::ExportDoc, String> {
+    let store = Arc::new(lain_store::Store::open(data_dir).map_err(|e| e.to_string())?);
+    let roots = roots::Roots::load(data_dir)?;
+    catalog::Catalog::with_roots(store, Arc::new(std::sync::RwLock::new(roots))).export().map_err(|e| e.to_string())
+}
 
 /// Serves `app` on `listener` until `shutdown` resolves.
 pub async fn serve(
