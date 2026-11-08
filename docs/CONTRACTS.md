@@ -829,19 +829,27 @@ D-137). Typed codes: `invalid-message`,
 ## Component mode (wire protocol)
 
 Any provider can run as a supervised process (D-074). The host
-(`internal/component`) speaks NDJSON frames over a unix socket:
+(`internal/component`, and `lain-component` in the Rust workspace)
+listens on a unix socket it allocates; the component dials it and both
+sides speak NDJSON frames:
 
-- **Handshake**: the child reads a `hello` frame (`{type:"hello"}`)
-  and answers `{type:"hello", id, version, capabilities[]}`.
-- **Invoke**: `{type:"invoke", seq, cap, op, input}` →
-  `{type:"result", seq, output}` or `{type:"error", seq, code, msg}`.
+- **Handshake**: the component's first frame is
+  `{op:"hello", provider, protocol:1, capabilities[]}`. The host checks
+  the id and protocol against the manifest and that every declared
+  capability is served.
+- **Invoke**: `{seq, cap, op, input}` →
+  `{seq, output}` or `{seq, error:{code, msg}}`.
   `op` selects the operation inside a capability (the `(capability,
   op) → input type` table lives in `internal/component/ops.go`); an
   empty op resolves when the capability has exactly one input shape.
-- **Health**: `{type:"health", seq}` → `{type:"health", seq, healthy}`
-  — transport-level, never routed through a capability.
+- **Health**: `{seq, op:"health", input:null}` → `{seq, output:{ok:true}}`
+  or `{seq, error}` — transport-level, never routed through a
+  capability.
 
-Frames are bounded (1 MiB). Sequence ids correlate requests and
+Recorded sessions live in `conformance/component/*.ndjson`; the Go
+component side and the Rust host and component sides replay them.
+
+Frames are bounded (8 MiB). Sequence ids correlate requests and
 responses. A provider panic answers `internal` — it never kills the
 socket. Timeouts and mid-call deaths are `outcome-unknown`; an
 unreachable or unspawnable component is `dependency-unavailable`.
