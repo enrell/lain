@@ -20,8 +20,11 @@ use lain_store::Store;
 use crate::catalog::{
     CAP_CATALOG_READ, CAP_CATALOG_WRITE, CAP_USER_PROGRESS, CATALOG_ID, Catalog, USERSTATE_ID, Userstate,
 };
-use crate::events::{EventBus, Scope};
+use crate::contracts::{CatalogItem, Library};
+use crate::events::{EventBus, Scope, SubInfo};
 use crate::libraries::Libraries;
+use crate::privacy::{self, Unlocks};
+use crate::roots::{self, Roots};
 
 /// The composition document version (the Go server's latest, so a
 /// saved document reads the same in either).
@@ -119,6 +122,8 @@ pub struct App {
     secret: Vec<u8>,
     pub registry: Arc<Registry>,
     pub libraries: Libraries,
+    pub roots: Arc<RwLock<Roots>>,
+    pub unlocks: Unlocks,
     pub modules: RwLock<ModuleSet>,
     pub events: EventBus,
     provisioner: Mutex<Option<Provisioner>>,
@@ -159,8 +164,9 @@ impl App {
                 comp = saved;
             }
         }
+        let roots = Arc::new(RwLock::new(Roots::load(dir)?));
         let registry = Arc::new(Registry::new(comp.clone()));
-        registry.register(Arc::new(Catalog::new(store.clone())));
+        registry.register(Arc::new(Catalog::with_roots(store.clone(), roots.clone())));
         registry.register(Arc::new(Userstate::new(store.clone())));
 
         let mut known: BTreeSet<String> = registry.providers().into_iter().collect();
@@ -174,7 +180,9 @@ impl App {
             version: cfg.version,
             keep_alive: cfg.keep_alive,
             reload_debounce: cfg.reload_debounce,
-            libraries: Libraries::new(store.clone()),
+            libraries: Libraries::new(store.clone(), roots.clone()),
+            roots,
+            unlocks: Unlocks::default(),
             store,
             secret,
             registry,
@@ -198,6 +206,64 @@ impl App {
     /// Verifies a token against live state.
     pub fn verify(&self, token: &str) -> Option<Verified> {
         self.auth().verify(token).ok()
+    }
+
+    // ---- private libraries (D-156) ----------------------------------
+
+    /// Libraries whose items this session may not see.
+    pub fn hidden_libraries(&self, v: &Verified) -> Vec<String> {
+        self.libraries
+            .list()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|l| !privacy::items_visible(l, &self.unlocks, &v.user_id, &v.session))
+            .map(|l| l.id)
+            .collect()
+    }
+
+    /// A catalog item, if it exists and this session may see it.
+    pub fn visible_item(&self, v: &Verified, item_id: &str) -> Option<CatalogItem> {
+        let (out, _) = self.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": item_id})).ok()?;
+        let it: CatalogItem = serde_json::from_value(out).ok()?;
+        match self.libraries.get(&it.library_id) {
+            Some(lib) if !privacy::items_visible(&lib, &self.unlocks, &v.user_id, &v.session) => None,
+            _ => Some(it),
+        }
+    }
+
+    /// The private library an item belongs to, if any (event filters).
+    fn private_library_of(&self, item_id: &str) -> Option<Library> {
+        let (out, _) = self.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": item_id})).ok()?;
+        let lib_id = out["library_id"].as_str()?.to_string();
+        self.libraries.get(&lib_id).filter(|l| l.private)
+    }
+
+    /// `library-changed`, delivered only to who may see the record.
+    pub fn publish_library(&self, lib: &Library, data: Value) {
+        let lib = lib.clone();
+        self.events
+            .publish_where("library-changed", data, &|s: &SubInfo| privacy::record_visible(&lib, &s.user_id, s.admin));
+    }
+
+    /// `progress-changed` for the user's own streams; for an item of a
+    /// private library only the sessions that unlocked it.
+    pub fn publish_progress(&self, user_id: &str, item_id: &str, data: Value) {
+        let lib = self.private_library_of(item_id);
+        self.events.publish_where("progress-changed", data, &|s: &SubInfo| {
+            s.user_id == user_id
+                && lib.as_ref().is_none_or(|l| privacy::items_visible(l, &self.unlocks, &s.user_id, &s.session))
+        });
+    }
+
+    /// Re-reads `roots.json`; a bad edit is logged and ignored.
+    pub fn reload_roots(&self) {
+        match Roots::load(&self.data_dir) {
+            Ok(r) => {
+                *self.roots.write().unwrap_or_else(|e| e.into_inner()) = r;
+                tracing::info!("roots.json applied");
+            }
+            Err(e) => tracing::error!(err = %e, "roots.json not applied; keeping the current roots"),
+        }
     }
 
     pub fn modules_path(&self) -> PathBuf {
@@ -363,13 +429,22 @@ impl App {
     }
 
     fn watch_modules(self: &Arc<Self>) {
-        let (tx, rx) = std::sync::mpsc::channel::<()>();
-        let watched = self.modules_path();
+        // One watch on the data dir for both documents; a pass reloads
+        // whichever changed.
+        let (tx, rx) = std::sync::mpsc::channel::<&'static str>();
         let w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if let Ok(ev) = res
-                && ev.paths.iter().any(|p| p.file_name() == watched.file_name())
-            {
-                let _ = tx.send(());
+            if let Ok(ev) = res {
+                for p in &ev.paths {
+                    match p.file_name().and_then(|n| n.to_str()) {
+                        Some("modules.json") => {
+                            let _ = tx.send("modules");
+                        }
+                        Some(roots::FILE_NAME) => {
+                            let _ = tx.send("roots");
+                        }
+                        _ => {}
+                    }
+                }
             }
         });
         let mut w = match w {
@@ -392,10 +467,20 @@ impl App {
             .spawn(move || {
                 loop {
                     match rx.recv_timeout(Duration::from_millis(250)) {
-                        Ok(()) => {
-                            while rx.recv_timeout(debounce).is_ok() {}
+                        Ok(first) => {
+                            let mut which = BTreeSet::from([first]);
+                            while let Ok(more) = rx.recv_timeout(debounce) {
+                                which.insert(more);
+                            }
                             match weak.upgrade() {
-                                Some(app) if !stopping.load(Ordering::SeqCst) => app.reload_modules(),
+                                Some(app) if !stopping.load(Ordering::SeqCst) => {
+                                    if which.contains("roots") {
+                                        app.reload_roots();
+                                    }
+                                    if which.contains("modules") {
+                                        app.reload_modules();
+                                    }
+                                }
                                 _ => return,
                             }
                         }

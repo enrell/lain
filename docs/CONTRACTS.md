@@ -892,3 +892,46 @@ the registration for a later swap-back).
 Operator surfaces can list registered providers with their
 capabilities and live health (`provider_info` on `GET /api/plugins`) so
 a swap UI only ever offers candidates that can serve the capability.
+
+## Private libraries and portable roots (lain-rs, D-156, D-157, D-175)
+
+Served by the Rust server only (P1b); the Go server is unchanged.
+
+- **Library fields** (additive, omitted when unset): `private`, `owner`,
+  `members`, `root`, `root_path`, and in responses `locked` for a
+  private library (whether this session has unlocked it).
+- `PATCH /api/libraries/{id}` (admin): `{name?, private?, owner?,
+  members?}`. Making a library private makes the caller its owner unless
+  `owner` is given; making it public clears owner and members.
+- `POST /api/libraries/{id}/unlock` `{pin}` or `{password}` and
+  `POST /api/libraries/{id}/lock`: per session (per token). Only the
+  owner and members can unlock (403 `not a member of this library` for an
+  admin who is not one); a user who cannot see the record gets 404
+  `unknown library`; a wrong secret is 403 `wrong pin or password`; five
+  failures in five minutes answer 429 until the window passes.
+- `GET|PUT|DELETE /api/me/pin`: `{set}`; `PUT {pin, password}` (4–12
+  digits), `DELETE {password}`.
+- **Visibility** (one check in the gateway): items of a library this
+  session has not unlocked are absent from `GET /api/catalog` (and its
+  `total`), `GET /api/search`, `GET /api/me/continue` and episode lists;
+  every item route (`/api/catalog/{id}…`, `/api/items/{id}/…` except
+  progress, `/api/acquire/items/{id}/…`) answers 404 `unknown item`,
+  exactly like a missing item; progress reads answer the zero value;
+  events about them reach only sessions that unlocked them, and
+  `library-changed` of a private library only admins and members.
+  Admins see the record (to manage it) but not its items unless they
+  are a member who unlocked it. Unlocks live in memory and end with the
+  token. Tokens minted by `lain-rs` carry a random `jti` so two logins
+  are two sessions; Go ignores the claim.
+- **Roots**: `<data-dir>/roots.json` (`lain.roots@1`) maps root names to
+  this machine's directories, with `aliases` for other spellings
+  (`V:\media`, `/mnt/v/media`). Items store `root` + `/`-separated
+  `rel_path`; `file_path` is resolved from them on every read.
+  `POST /api/libraries` accepts `{root, path}` with `path` relative to the
+  root; an absolute path inside a root is recorded under it, and a
+  rooted library's id derives from `root:root_path`. `GET /api/roots`
+  (admin) lists the mapping with `available`.
+- **Export**: `lain-rs export` writes `lain.catalog-export@3` (`roots`
+  plus per-item `root`/`rel_path`); import reads @1, @2 and @3.
+  `lain-rs import --roots roots.json [--dry-run]` moves absolute paths
+  onto roots and reports matches and unmatched samples.

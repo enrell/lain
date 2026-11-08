@@ -6,7 +6,8 @@
 #   conformance/run.sh go|rust    # one server
 #
 # Go:   fresh (v1) + seed + seeded
-# Rust: fresh (v1+v2) + seeded on a `lain-rs import` of the Go seed
+# Rust: fresh (v1+v2) + seeded and seeded-v2 (private libraries) on a
+#       `lain-rs import` of the Go seed
 #       (Rust alone: the seed comes from crates/lain-store/testdata)
 #
 # Env: GO_PORT (19460), RS_PORT (19461), KEEP=1 keeps the temp dir.
@@ -106,9 +107,9 @@ run_rust() {
 	[ "$before" = "$after" ] || { echo "import modified the Go data dir" >&2; exit 1; }
 	note "Import: the Go data dir is unchanged (cksum of every file); $(tr -d ' \n' <"$tmp/import.json" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
 	pid=$(start rs-seed "$url" "$lain_rs" serve --data-dir "$tmp/rs-seed" --port "$rs_port")
-	out=$(LAIN_URL=$url "$runner" --vars "$vars" conformance/cases/seeded) || { echo "$out"; exit 1; }
+	out=$(LAIN_URL=$url "$runner" --vars "$vars" --var data_dir="$tmp/rs-seed" conformance/cases/seeded conformance/cases/seeded-v2) || { echo "$out"; exit 1; }
 	echo "$out"
-	note "Rust seeded (imported, Go token): $(echo "$out" | tail -1)"
+	note "Rust seeded + private libraries (imported, Go token): $(echo "$out" | tail -1)"
 	stop "$pid"
 }
 

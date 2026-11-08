@@ -30,12 +30,16 @@ use lain_store::{Bucket, Store, join_key};
 
 use crate::catalog::Catalog;
 use crate::contracts::{CatalogItem, EXPORT_FORMAT, ExportDoc, Library, Progress};
+use crate::roots::Roots;
 
 /// What the import read and wrote.
 #[derive(Debug, Clone, Default)]
 pub struct Report {
     pub source: String,
     pub format: String,
+    pub dry_run: bool,
+    /// The absolute-path migration onto named roots (D-157).
+    pub roots: Option<Value>,
     pub counts: BTreeMap<String, usize>,
     pub skipped: Vec<String>,
     pub notes: Vec<String>,
@@ -43,7 +47,14 @@ pub struct Report {
 
 impl Report {
     pub fn to_json(&self) -> Value {
-        json!({"source": self.source, "format": self.format, "counts": self.counts, "skipped": self.skipped, "notes": self.notes})
+        let mut v = json!({"source": self.source, "format": self.format, "counts": self.counts, "skipped": self.skipped, "notes": self.notes});
+        if self.dry_run {
+            v["dry_run"] = json!(true);
+        }
+        if let Some(r) = &self.roots {
+            v["roots"] = r.clone();
+        }
+        v
     }
 }
 
@@ -171,7 +182,77 @@ pub fn fingerprint(dir: &Path) -> BTreeMap<PathBuf, (u64, std::time::SystemTime)
 
 /// Imports `from` (a Go data dir) into the Rust store at `to`.
 /// `catalog` overrides the catalog with an export document.
+/// Import options.
+#[derive(Debug, Clone, Default)]
+pub struct Options {
+    /// A `lain.catalog-export` document (@1, @2 or @3) to use instead of
+    /// the source's catalog.
+    pub catalog: Option<PathBuf>,
+    /// The root mapping to migrate absolute paths onto; default the
+    /// target's `roots.json`, if any.
+    pub roots: Option<PathBuf>,
+    /// Read and migrate in memory, write nothing anywhere.
+    pub dry_run: bool,
+}
+
+const SAMPLES: usize = 10;
+
+/// Moves absolute library and item paths onto named roots in place and
+/// reports what matched. Unmatched paths stay absolute and keep working.
+fn migrate(src: &mut Source, roots: &Roots) -> Result<Value, String> {
+    let mut per_root: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    let mut unmatched_libraries = Vec::new();
+    for (k, v) in src.libraries.iter_mut() {
+        let mut lib: Library =
+            serde_json::from_slice(v).map_err(|e| format!("libraries/{}: {e}", String::from_utf8_lossy(k)))?;
+        if lib.root.is_empty() {
+            match roots.relativize(&lib.path) {
+                Some((root, rel)) => {
+                    per_root.entry(root.clone()).or_default().0 += 1;
+                    lib.root = root;
+                    lib.root_path = rel;
+                    *v = serde_json::to_vec(&lib).map_err(|e| e.to_string())?;
+                }
+                None => unmatched_libraries.push(lib.path.clone()),
+            }
+        }
+    }
+    let (mut unmatched, mut samples) = (0usize, Vec::new());
+    for it in src.catalog.items.values_mut() {
+        if !it.root.is_empty() {
+            continue;
+        }
+        match roots.relativize(&it.file_path) {
+            Some((root, rel)) => {
+                per_root.entry(root.clone()).or_default().1 += 1;
+                it.root = root;
+                it.rel_path = rel;
+            }
+            None => {
+                unmatched += 1;
+                if samples.len() < SAMPLES {
+                    samples.push(it.file_path.clone());
+                }
+            }
+        }
+    }
+    let matched: BTreeMap<String, Value> =
+        per_root.into_iter().map(|(r, (l, i))| (r, json!({"libraries": l, "items": i}))).collect();
+    Ok(json!({
+        "roots": roots.map.keys().collect::<Vec<_>>(),
+        "matched": matched,
+        "unmatched_libraries": unmatched_libraries,
+        "unmatched_items": unmatched,
+        "unmatched_samples": samples,
+    }))
+}
+
 pub fn run(from: &Path, to: &Path, catalog: Option<&Path>) -> Result<Report, String> {
+    run_with(from, to, &Options { catalog: catalog.map(Path::to_path_buf), ..Options::default() })
+}
+
+pub fn run_with(from: &Path, to: &Path, opts: &Options) -> Result<Report, String> {
+    let catalog = opts.catalog.as_deref();
     let from_abs = from.canonicalize().map_err(|e| format!("{}: {e}", from.display()))?;
     if to.exists() && to.canonicalize().ok().as_deref() == Some(from_abs.as_path()) {
         return Err("--from and --data-dir are the same directory; the Go data dir is never written".into());
@@ -192,6 +273,30 @@ pub fn run(from: &Path, to: &Path, catalog: Option<&Path>) -> Result<Report, Str
         let raw = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         src.catalog = serde_json::from_slice(&raw).map_err(|e| format!("{}: {e}", path.display()))?;
     }
+    let roots_file = opts.roots.clone().or_else(|| Some(to.join(crate::roots::FILE_NAME)).filter(|p| p.exists()));
+    let roots = match &roots_file {
+        Some(f) => Some(Roots::load_file(f)?),
+        None => None,
+    };
+    let migration = match &roots {
+        Some(r) => Some(migrate(&mut src, r)?),
+        None => None,
+    };
+    if opts.dry_run {
+        let mut report = Report {
+            source: from_abs.display().to_string(),
+            format,
+            dry_run: true,
+            roots: migration,
+            ..Report::default()
+        };
+        report.counts.insert("users".into(), src.users.len());
+        report.counts.insert("libraries".into(), src.libraries.len());
+        report.counts.insert("items".into(), src.catalog.items.len());
+        report.counts.insert("progress".into(), src.progress.len());
+        report.notes.push("dry run: nothing was written".into());
+        return Ok(report);
+    }
 
     let store = Arc::new(Store::open(to).map_err(|e| e.to_string())?);
     let existing = store.read(|tx| tx.count(Bucket::Users)).map_err(|e| e.to_string())?;
@@ -201,6 +306,7 @@ pub fn run(from: &Path, to: &Path, catalog: Option<&Path>) -> Result<Report, Str
     let mut report = Report {
         source: from_abs.display().to_string(),
         format,
+        roots: migration,
         skipped: std::mem::take(&mut src.skipped),
         ..Report::default()
     };
@@ -248,6 +354,13 @@ pub fn run(from: &Path, to: &Path, catalog: Option<&Path>) -> Result<Report, Str
         })
         .map_err(|e| e.to_string())?;
     let items = Catalog::new(store.clone()).import(&src.catalog).map_err(|e| e.to_string())?;
+    // The server resolves roots with the target's own mapping.
+    if let Some(f) = &roots_file {
+        let dest = to.join(crate::roots::FILE_NAME);
+        if !dest.exists() {
+            std::fs::copy(f, &dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+        }
+    }
 
     report.counts.insert("users".into(), users.len());
     report.counts.insert("libraries".into(), src.libraries.len());

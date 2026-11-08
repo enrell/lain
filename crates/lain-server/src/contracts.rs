@@ -22,8 +22,28 @@ pub struct Library {
     pub path: String,
     pub source: String,
     pub created_at: i64,
+    /// D-156: hidden from everyone who has not unlocked it this session.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub private: bool,
+    /// The user who made it private; always a member.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub owner: String,
+    /// Other users who may unlock it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub members: Vec<String>,
+    /// D-157: the named root it lives in, and its path inside that root.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root_path: String,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
+}
+
+impl Library {
+    pub fn is_member(&self, user_id: &str) -> bool {
+        self.owner == user_id || self.members.iter().any(|m| m == user_id)
+    }
 }
 
 /// One catalog item: canonical identity plus provenance.
@@ -46,6 +66,12 @@ pub struct CatalogItem {
     pub updated_at: i64,
     #[serde(default, skip_serializing_if = "is_false")]
     pub missing: bool,
+    /// D-157: `root` + `/`-separated `rel_path`; `file_path` is then
+    /// this machine's resolution of them.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub root: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub rel_path: String,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -71,6 +97,10 @@ pub struct PageParams {
     pub sort: String,
     #[serde(rename = "LibraryID", default)]
     pub library_id: String,
+    /// Libraries the caller may not see (D-156): filtered before paging,
+    /// so totals do not count them. Rust-only field.
+    #[serde(rename = "ExcludeLibraries", default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude_libraries: Vec<String>,
 }
 
 impl PageParams {
@@ -82,6 +112,7 @@ impl PageParams {
             offset: offset.max(0),
             sort: if sort == "recent" { "recent".into() } else { "title".into() },
             library_id: String::new(),
+            exclude_libraries: Vec::new(),
         }
     }
 }
@@ -104,11 +135,15 @@ pub struct Progress {
 }
 
 /// `lain.catalog-export`: the portable catalog document. Version 1 has
-/// no aliases; version 2 adds them (identity v2). Both import.
+/// no aliases; version 2 adds them (identity v2); version 3 (D-175)
+/// adds roots: items carry `root` + `rel_path` and `roots` names the
+/// roots they use. All three import.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ExportDoc {
     pub format: String,
     pub version: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roots: Vec<String>,
     #[serde(default)]
     pub items: BTreeMap<String, CatalogItem>,
 }
@@ -127,15 +162,17 @@ mod tests {
         assert_eq!(back, serde_json::from_str::<Value>(raw).unwrap());
         let with_future: CatalogItem =
             serde_json::from_str(&raw.replace("}", r#","root":"anime","rel_path":"a.mkv"}"#)).unwrap();
-        assert_eq!(with_future.extra["root"], "anime");
+        assert_eq!(with_future.root, "anime");
         assert_eq!(serde_json::to_value(&with_future).unwrap()["rel_path"], "a.mkv");
+        let with_unknown: CatalogItem = serde_json::from_str(&raw.replace("}", r#","future":1}"#)).unwrap();
+        assert_eq!(serde_json::to_value(&with_unknown).unwrap()["future"], 1);
     }
 
     #[test]
     fn paging_is_clamped() {
         assert_eq!(
             PageParams::normalize(900, -5, "zzz"),
-            PageParams { limit: 500, offset: 0, sort: "title".into(), library_id: String::new() }
+            PageParams { limit: 500, offset: 0, sort: "title".into(), ..PageParams::default() }
         );
         assert_eq!(PageParams::normalize(0, 3, "recent").limit, 50);
     }

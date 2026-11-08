@@ -27,8 +27,10 @@ use lain_core::modules::route_matches;
 
 use crate::app::App;
 use crate::catalog::{CAP_CATALOG_READ, CAP_CATALOG_WRITE, CAP_USER_PROGRESS};
-use crate::contracts::{PageParams, Progress};
-use crate::events::{Scope, SseBody};
+use crate::contracts::{CatalogItem, Library, PageParams, Progress};
+use crate::events::{SseBody, SubInfo};
+use crate::libraries::LibraryPatch;
+use crate::privacy;
 
 /// A JSON answer.
 pub struct Reply {
@@ -161,7 +163,7 @@ type Handler = fn(&App, &Req, &Verified) -> Reply;
 
 fn authorize(app: &App, req: &Req, gate: Gate) -> Result<Verified, Reply> {
     if gate == Gate::Public {
-        return Ok(Verified { user_id: String::new(), role: String::new() });
+        return Ok(Verified { user_id: String::new(), role: String::new(), session: String::new(), expires_at: 0 });
     }
     let v = req.token().and_then(|t| app.verify(t)).ok_or_else(|| Reply::err(401, "unauthorized"))?;
     if gate == Gate::Admin && v.role != ROLE_ADMIN {
@@ -220,7 +222,22 @@ pub fn router(app: Arc<App>) -> Router {
             "/api/libraries",
             route(GET, Gate::User, libraries_list).merge(route(POST, Gate::Admin, libraries_create)),
         )
-        .route("/api/libraries/{id}", route(DELETE, Gate::Admin, libraries_delete))
+        .route(
+            "/api/libraries/{id}",
+            route(DELETE, Gate::Admin, libraries_delete).merge(route(PATCH, Gate::Admin, libraries_patch)),
+        )
+        .route("/api/libraries/{id}/unlock", route(POST, Gate::User, libraries_unlock))
+        .route("/api/libraries/{id}/lock", route(POST, Gate::User, libraries_lock))
+        .route(
+            "/api/me/pin",
+            route(GET, Gate::User, pin_get).merge(route(PUT, Gate::User, pin_put)).merge(route(
+                DELETE,
+                Gate::User,
+                pin_delete,
+            )),
+        )
+        .route("/api/roots", route(GET, Gate::Admin, roots_list))
+        .route("/api/search", route(GET, Gate::User, search))
         .route("/api/catalog", route(GET, Gate::User, catalog_list))
         .route("/api/catalog/{id}", route(GET, Gate::User, catalog_get))
         .route("/api/catalog/{id}/episodes", route(GET, Gate::User, catalog_episodes))
@@ -235,6 +252,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/events", axum::routing::get(events))
         .fallback(fallback)
         .method_not_allowed_fallback(fallback)
+        .layer(middleware::from_fn_with_state(app.clone(), privacy_gate))
         .layer(middleware::from_fn_with_state(app.clone(), module_gate))
         .layer(middleware::from_fn(access_log))
         .with_state(app)
@@ -340,8 +358,65 @@ fn me_profile(app: &App, req: &Req, v: &Verified) -> Reply {
 
 fn me_continue(app: &App, _: &Req, v: &Verified) -> Reply {
     match app.registry.call_one(CAP_USER_PROGRESS, "list", json!({"user_id": v.user_id})) {
-        Ok((out, _)) => Reply::ok(out),
+        Ok((out, _)) => {
+            // Progress on items of a locked private library is left out
+            // (D-156); progress on items the catalog does not know stays.
+            let hidden = app.hidden_libraries(v);
+            if hidden.is_empty() {
+                return Reply::ok(out);
+            }
+            let list: Vec<Value> = out
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|p| match item_library(app, p["item_id"].as_str().unwrap_or("")) {
+                    Some(lib) => !hidden.contains(&lib),
+                    None => true,
+                })
+                .collect();
+            Reply::ok(json!(list))
+        }
         Err(e) => Reply::err(503, &e.to_string()),
+    }
+}
+
+fn item_library(app: &App, item_id: &str) -> Option<String> {
+    let (out, _) = app.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": item_id})).ok()?;
+    out["library_id"].as_str().map(str::to_string)
+}
+
+fn pin_get(app: &App, _: &Req, v: &Verified) -> Reply {
+    Reply::ok(json!({"set": app.auth().has_pin(&v.user_id)}))
+}
+
+#[derive(Deserialize)]
+struct PinIn {
+    #[serde(default)]
+    pin: String,
+    #[serde(default)]
+    password: String,
+}
+
+fn pin_put(app: &App, req: &Req, v: &Verified) -> Reply {
+    let i: PinIn = match req.decode() {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    match app.auth().set_pin(&v.user_id, &i.pin, &i.password) {
+        Ok(()) => Reply::ok(json!({"set": true})),
+        Err(e) => Reply::err(400, &e.to_string()),
+    }
+}
+
+fn pin_delete(app: &App, req: &Req, v: &Verified) -> Reply {
+    let i: PinIn = match req.decode() {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    match app.auth().clear_pin(&v.user_id, &i.password) {
+        Ok(()) => Reply::ok(json!({"set": false})),
+        Err(e) => Reply::err(400, &e.to_string()),
     }
 }
 
@@ -429,10 +504,113 @@ fn users_patch(app: &App, req: &Req, v: &Verified) -> Reply {
 
 // ---- libraries ------------------------------------------------------------
 
-fn libraries_list(app: &App, _: &Req, _: &Verified) -> Reply {
+/// One library as this viewer sees it: private ones carry `locked`.
+fn library_view(app: &App, lib: &Library, v: &Verified) -> Value {
+    let mut out = json!(lib);
+    if lib.private {
+        out["locked"] = json!(!privacy::items_visible(lib, &app.unlocks, &v.user_id, &v.session));
+    }
+    out
+}
+
+fn libraries_list(app: &App, _: &Req, v: &Verified) -> Reply {
     match app.libraries.list() {
-        Ok(l) => Reply::ok(json!(l)),
+        Ok(l) => Reply::ok(json!(
+            l.iter()
+                .filter(|lib| privacy::record_visible(lib, &v.user_id, v.is_admin()))
+                .map(|lib| library_view(app, lib, v))
+                .collect::<Vec<_>>()
+        )),
         Err(e) => Reply::err(500, &e.to_string()),
+    }
+}
+
+fn libraries_patch(app: &App, req: &Req, v: &Verified) -> Reply {
+    let p: LibraryPatch = match req.decode() {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let auth = app.auth();
+    let before = app.libraries.get(req.param("id"));
+    match app.libraries.update(req.param("id"), &p, &v.user_id, &|u| auth.get_public(u).is_some()) {
+        Ok(lib) => {
+            let data = json!({"library_id": lib.id, "action": "updated"});
+            // Who could see it before (made private) and after (made public).
+            if let Some(b) = before.filter(|b| b.private && !lib.private) {
+                app.publish_library(&b, data.clone());
+                let public = Library { private: false, ..lib.clone() };
+                app.events.publish_where("library-changed", data, &|s: &SubInfo| {
+                    !privacy::record_visible(&b, &s.user_id, s.admin)
+                        && privacy::record_visible(&public, &s.user_id, s.admin)
+                });
+            } else {
+                app.publish_library(&lib, data);
+            }
+            Reply::ok(library_view(app, &lib, v))
+        }
+        Err(e) if e == "unknown library" => Reply::err(404, &e),
+        Err(e) => Reply::err(400, &e),
+    }
+}
+
+fn libraries_unlock(app: &App, req: &Req, v: &Verified) -> Reply {
+    #[derive(Deserialize)]
+    struct In {
+        pin: Option<String>,
+        password: Option<String>,
+    }
+    let i: In = match req.decode() {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let Some(lib) = app.libraries.get(req.param("id")).filter(|l| privacy::record_visible(l, &v.user_id, v.is_admin()))
+    else {
+        return Reply::err(404, "unknown library");
+    };
+    if !lib.private {
+        return Reply::err(400, "library is not private");
+    }
+    if !lib.is_member(&v.user_id) {
+        return Reply::err(403, "not a member of this library");
+    }
+    if !app.unlocks.may_try(&v.user_id) {
+        return Reply::err(429, "too many attempts; try again in a few minutes");
+    }
+    let auth = app.auth();
+    let ok = match (&i.pin, &i.password) {
+        (Some(pin), _) => auth.check_pin(&v.user_id, pin),
+        (None, Some(pw)) => auth.check_password(&v.user_id, pw),
+        (None, None) => return Reply::err(400, "pin or password required"),
+    };
+    if !ok {
+        app.unlocks.failed(&v.user_id);
+        return Reply::err(403, "wrong pin or password");
+    }
+    app.unlocks.succeeded(&v.user_id);
+    app.unlocks.unlock(v, &lib.id);
+    Reply::ok(library_view(app, &lib, v))
+}
+
+fn libraries_lock(app: &App, req: &Req, v: &Verified) -> Reply {
+    let Some(lib) = app.libraries.get(req.param("id")).filter(|l| privacy::record_visible(l, &v.user_id, v.is_admin()))
+    else {
+        return Reply::err(404, "unknown library");
+    };
+    app.unlocks.lock(v, &lib.id);
+    Reply::ok(library_view(app, &lib, v))
+}
+
+fn roots_list(app: &App, _: &Req, _: &Verified) -> Reply {
+    Reply::ok(app.roots.read().unwrap_or_else(|e| e.into_inner()).view())
+}
+
+fn search(app: &App, req: &Req, v: &Verified) -> Reply {
+    let mut p = PageParams::normalize(atoi(req.query("limit")), atoi(req.query("offset")), req.query("sort"));
+    p.exclude_libraries = app.hidden_libraries(v);
+    let input = json!({"q": req.query("q"), "kind": req.query("kind"), "page": p});
+    match app.registry.call_one(CAP_CATALOG_READ, "query", input) {
+        Ok((out, _)) => Reply::ok(out),
+        Err(e) => Reply::err(503, &e.to_string()),
     }
 }
 
@@ -445,14 +623,16 @@ fn libraries_create(app: &App, req: &Req, _: &Verified) -> Reply {
         kind: String,
         #[serde(default)]
         path: String,
+        #[serde(default)]
+        root: String,
     }
     let i: In = match req.decode() {
         Ok(i) => i,
         Err(r) => return r,
     };
-    match app.libraries.create(&i.name, &i.kind, &i.path) {
+    match app.libraries.create(&i.name, &i.kind, &i.path, &i.root) {
         Ok(lib) => {
-            app.events.publish(Scope::All, "library-changed", json!({"library_id": lib.id, "action": "created"}));
+            app.publish_library(&lib, json!({"library_id": lib.id, "action": "created"}));
             Reply::json(201, json!(lib))
         }
         Err(e) => Reply::err(400, &e),
@@ -461,6 +641,7 @@ fn libraries_create(app: &App, req: &Req, _: &Verified) -> Reply {
 
 fn libraries_delete(app: &App, req: &Req, _: &Verified) -> Reply {
     let id = req.param("id");
+    let record = app.libraries.get(id);
     if let Err(e) = app.libraries.delete(id) {
         return Reply::err(404, &e);
     }
@@ -473,28 +654,28 @@ fn libraries_delete(app: &App, req: &Req, _: &Verified) -> Reply {
             return Reply::err(500, "library removed, but its catalog entries could not be deleted");
         }
     };
-    app.events.publish(
-        Scope::All,
-        "library-changed",
-        json!({"library_id": id, "action": "deleted", "items_removed": removed}),
-    );
+    if let Some(lib) = record {
+        app.publish_library(&lib, json!({"library_id": id, "action": "deleted", "items_removed": removed}));
+    }
     Reply::ok(json!({"status": "ok", "items_removed": removed}))
 }
 
 // ---- catalog and progress -------------------------------------------------
 
-fn catalog_list(app: &App, req: &Req, _: &Verified) -> Reply {
+fn catalog_list(app: &App, req: &Req, v: &Verified) -> Reply {
     let mut p = PageParams::normalize(atoi(req.query("limit")), atoi(req.query("offset")), req.query("sort"));
     p.library_id = req.query("library_id").to_string();
+    p.exclude_libraries = app.hidden_libraries(v);
     match app.registry.call_one(CAP_CATALOG_READ, "page", json!({"page": p})) {
         Ok((out, _)) => Reply::ok(out),
         Err(e) => Reply::err(500, &e.to_string()),
     }
 }
 
-fn catalog_get(app: &App, req: &Req, _: &Verified) -> Reply {
+fn catalog_get(app: &App, req: &Req, v: &Verified) -> Reply {
     match app.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": req.param("id")})) {
-        Ok((out, _)) => Reply::ok(out),
+        Ok((out, _)) if app.visible_item(v, req.param("id")).is_some() => Reply::ok(out),
+        Ok(_) => Reply::err(404, "unknown item"),
         Err(e) => {
             if !e.is(codes::NOT_FOUND) {
                 tracing::warn!(item = %req.param("id"), err = %e, "catalog get failed");
@@ -504,9 +685,23 @@ fn catalog_get(app: &App, req: &Req, _: &Verified) -> Reply {
     }
 }
 
-fn catalog_episodes(app: &App, req: &Req, _: &Verified) -> Reply {
+fn catalog_episodes(app: &App, req: &Req, v: &Verified) -> Reply {
+    if app.visible_item(v, req.param("id")).is_none() {
+        return Reply::err(404, "unknown item");
+    }
     match app.registry.call_one(CAP_CATALOG_READ, "episodes", json!({"id": req.param("id")})) {
-        Ok((out, _)) => Reply::ok(json!({"items": out})),
+        Ok((out, _)) => {
+            // A title split across a public and a locked library shows
+            // only the public part.
+            let hidden = app.hidden_libraries(v);
+            let items: Vec<Value> = serde_json::from_value::<Vec<CatalogItem>>(out)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|it| !hidden.contains(&it.library_id))
+                .map(|it| json!(it))
+                .collect();
+            Reply::ok(json!({"items": items}))
+        }
         Err(e) => {
             if !e.is(codes::NOT_FOUND) {
                 tracing::warn!(item = %req.param("id"), err = %e, "catalog episodes failed");
@@ -517,6 +712,12 @@ fn catalog_episodes(app: &App, req: &Req, _: &Verified) -> Reply {
 }
 
 fn progress_get(app: &App, req: &Req, v: &Verified) -> Reply {
+    // An item of a locked private library reads like one never played.
+    if let Some(lib) = item_library(app, req.param("id"))
+        && app.hidden_libraries(v).contains(&lib)
+    {
+        return Reply::ok(json!(Progress::default()));
+    }
     match app.registry.call_one(CAP_USER_PROGRESS, "get", json!({"user_id": v.user_id, "item_id": req.param("id")})) {
         Ok((out, _)) => Reply::ok(out),
         Err(e) => Reply::err(503, &e.to_string()),
@@ -531,11 +732,7 @@ fn progress_put(app: &App, req: &Req, v: &Verified) -> Reply {
     p.item_id = req.param("id").to_string();
     match app.registry.call_one(CAP_USER_PROGRESS, "put", json!({"user_id": v.user_id, "progress": p})) {
         Ok((out, _)) => {
-            app.events.publish(
-                Scope::User(v.user_id.clone()),
-                "progress-changed",
-                json!({"item_id": p.item_id, "progress": out}),
-            );
+            app.publish_progress(&v.user_id, &p.item_id, json!({"item_id": p.item_id, "progress": out}));
             Reply::ok(out)
         }
         Err(e) => Reply::err(503, &e.to_string()),
@@ -629,8 +826,8 @@ async fn events(State(app): State<Arc<App>>, uri: Uri, headers: HeaderMap) -> Re
         Ok(Err(r)) => return r.into_response(),
         Err(_) => return Reply::err(500, "internal error").into_response(),
     };
-    let rx =
-        app.events.subscribe(&v.user_id, v.role == ROLE_ADMIN, &json!({"server": "lain-rs", "version": app.version}));
+    let info = SubInfo { user_id: v.user_id.clone(), admin: v.is_admin(), session: v.session.clone() };
+    let rx = app.events.subscribe(info, &json!({"server": "lain-rs", "version": app.version}));
     let check_app = app.clone();
     let check = Box::new(move || check_app.verify(&token).is_some());
     let mut r = Response::new(Body::new(SseBody::new(rx, app.keep_alive, check)));
@@ -654,6 +851,47 @@ async fn module_gate(State(app): State<Arc<App>>, req: Request, next: Next) -> R
     next.run(req).await
 }
 
+/// The item a route addresses, for the privacy gate. Progress is not
+/// gated here: it answers its own zero value (see `progress_get`).
+fn item_route(path: &str) -> Option<&str> {
+    let segs: Vec<&str> = path.trim_matches('/').split('/').collect();
+    match segs.as_slice() {
+        ["api", "items", id, "progress"] if !id.is_empty() => None,
+        ["api", "items", id, ..] | ["api", "catalog", id, ..] | ["api", "acquire", "items", id, ..]
+            if !id.is_empty() =>
+        {
+            Some(id)
+        }
+        _ => None,
+    }
+}
+
+/// D-156 at the boundary: every item route (detail, episodes,
+/// thumbnails, sidecars, stream, pages, playback, ...) answers 404
+/// `unknown item` for an item this session may not see, exactly as for
+/// one that does not exist, whether or not the route is ported yet.
+async fn privacy_gate(State(app): State<Arc<App>>, req: Request, next: Next) -> Response {
+    let Some(id) = item_route(req.uri().path()).map(str::to_string) else { return next.run(req).await };
+    let r = Req {
+        query: parse_query(req.uri().query().unwrap_or("")),
+        authorization: req.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).map(str::to_string),
+        body: Bytes::new(),
+        params: BTreeMap::new(),
+    };
+    let app2 = app.clone();
+    let blocked = tokio::task::spawn_blocking(move || match r.token().and_then(|t| app2.verify(t)) {
+        // Anonymous calls fall through to the route's own 401.
+        None => false,
+        Some(v) => app2.visible_item(&v, &id).is_none(),
+    })
+    .await
+    .unwrap_or(true);
+    if blocked {
+        return Reply::err(404, "unknown item").into_response();
+    }
+    next.run(req).await
+}
+
 /// Every route of the Go gateway, for telling "not ported yet" apart
 /// from "no such route".
 const GO_ROUTES: &[&str] = &[
@@ -661,7 +899,6 @@ const GO_ROUTES: &[&str] = &[
     "GET /api/browse",
     "POST /api/library/scan",
     "GET /api/library/scan",
-    "GET /api/search",
     "DELETE /api/items/{id}",
     "GET /api/admin/backup",
     "PUT /api/me/avatar",

@@ -22,12 +22,11 @@
 //! (`<bucket>\0<key>`) for every other Go bucket (social, acquire), so
 //! an import keeps all of it until those modules are ported.
 //!
-//! P1b (private libraries D-156, portable roots D-157) fits additively:
-//! library JSON gains `private` and `root`; items gain `root` and
-//! `rel_path` next to `file_path`; new tables `library_pins`
-//! (`user\0library` → PIN hash) and `items_by_root` (`root\0rel_path` →
-//! item id). The `meta/schema` key versions the layout so a migration
-//! runs once.
+//! Private libraries (D-156) and portable roots (D-157) are additive:
+//! library JSON carries `private`, `owner`, `members`, `root` and
+//! `root_path`; items carry `root` and `rel_path` next to `file_path`;
+//! `user_pins` holds each user's PIN hash (`user` → bcrypt). Unlocks are
+//! never stored: they live in memory per session.
 
 pub mod bbolt;
 
@@ -61,10 +60,12 @@ pub enum Bucket {
     /// Go buckets with no Rust table yet, kept verbatim by the import
     /// under `<bucket>\0<key>` until their module is ported.
     GoRaw,
+    /// Per-user library PIN hashes (bcrypt), D-156.
+    UserPins,
 }
 
 impl Bucket {
-    pub const ALL: [Bucket; 13] = [
+    pub const ALL: [Bucket; 14] = [
         Bucket::Users,
         Bucket::UsersByName,
         Bucket::Libraries,
@@ -78,6 +79,7 @@ impl Bucket {
         Bucket::ListAccounts,
         Bucket::Downloads,
         Bucket::GoRaw,
+        Bucket::UserPins,
     ];
 
     /// The bucket name (identical to `internal/kv`).
@@ -96,6 +98,7 @@ impl Bucket {
             Bucket::ListAccounts => "list_accounts",
             Bucket::Downloads => "downloads",
             Bucket::GoRaw => "go_raw",
+            Bucket::UserPins => "user_pins",
         }
     }
 

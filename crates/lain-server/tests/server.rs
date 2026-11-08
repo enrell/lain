@@ -173,7 +173,9 @@ fn seeded_suite_passes_after_import() {
     let auth = server.app.auth();
     let admin = auth.get_public("user-admin").unwrap();
     runner.vars.insert("go_token".into(), json!(auth.mint(&admin, lain_core::now_unix())));
+    runner.vars.insert("data_dir".into(), json!(data.to_string_lossy()));
     run(&mut runner, "seeded");
+    run(&mut runner, "seeded-v2");
     drop(server);
     std::fs::remove_dir_all(root).ok();
 }
@@ -233,5 +235,69 @@ fn import_reads_v01_json_documents() {
         .unwrap();
     assert_eq!(p["position_sec"], 3.0);
     drop(app);
+    std::fs::remove_dir_all(root).ok();
+}
+
+#[test]
+fn import_migrates_windows_and_wsl_paths_onto_one_root() {
+    let root = lain_store::test_dir("rs-roots");
+    let here = root.join("media"); // where the root lives on this machine
+    std::fs::create_dir_all(here.join("anime")).unwrap();
+    let go = root.join("go");
+    std::fs::create_dir_all(&go).unwrap();
+    let hash = lain_auth::hash_password("password123").unwrap();
+    let users = json!([{"id": "user-admin", "username": "admin", "pass_hash": lain_auth::crypto::b64_std(hash.as_bytes()), "created_at": 1}]);
+    std::fs::write(go.join("users.json"), users.to_string()).unwrap();
+    let libs = json!([{"id": "lib-1", "name": "Anime", "type": "anime", "path": "V:\\media\\anime", "source": "lain-source-filesystem", "created_at": 1}]);
+    std::fs::write(go.join("libraries.json"), libs.to_string()).unwrap();
+    let item = |id: &str, path: &str| {
+        json!({"id": id, "library_id": "lib-1", "kind": "episode", "title": "Frieren", "season": 0, "episode": 1, "year": 0,
+               "file_path": path, "size": 0, "confidence": 0.5, "origin": "x", "provenance": "y", "updated_at": 1})
+    };
+    let catalog = json!({
+        "i1": item("i1", "V:\\media\\anime\\Frieren\\01.mkv"),
+        "i2": item("i2", "/mnt/v/media/anime/Frieren/02.mkv"),
+        "i3": item("i3", "E:\\elsewhere\\03.mkv"),
+    });
+    std::fs::write(go.join("catalog.json"), catalog.to_string()).unwrap();
+    let roots = root.join("roots.json");
+    let doc = json!({"format": "lain.roots@1", "roots": {"media": {"path": here.to_string_lossy(), "aliases": ["V:\\media", "/mnt/v/media"]}}});
+    std::fs::write(&roots, doc.to_string()).unwrap();
+    let data = root.join("data");
+
+    // Dry run: the report, and nothing written anywhere.
+    let opts = lain_server::import::Options { roots: Some(roots.clone()), dry_run: true, ..Default::default() };
+    let report = lain_server::import::run_with(&go, &data, &opts).unwrap().to_json();
+    assert_eq!(report["dry_run"], true);
+    assert_eq!(report["roots"]["matched"]["media"], json!({"libraries": 1, "items": 2}));
+    assert_eq!(report["roots"]["unmatched_items"], 1);
+    assert_eq!(report["roots"]["unmatched_samples"], json!(["E:\\elsewhere\\03.mkv"]));
+    assert!(!data.exists(), "a dry run writes nothing");
+
+    let opts = lain_server::import::Options { roots: Some(roots), ..Default::default() };
+    lain_server::import::run_with(&go, &data, &opts).unwrap();
+    assert!(data.join("roots.json").exists(), "the mapping travels with the import");
+    let app = App::open(Config::new(&data, "t")).unwrap();
+    let get = |id: &str| app.registry.call_one("lain.catalog.read@1", "get", json!({"id": id})).unwrap().0;
+    for (id, rel) in [("i1", "anime/Frieren/01.mkv"), ("i2", "anime/Frieren/02.mkv")] {
+        let it = get(id);
+        assert_eq!((it["root"].as_str(), it["rel_path"].as_str()), (Some("media"), Some(rel)), "{it}");
+        let want = format!("{}/{rel}", here.to_string_lossy());
+        assert_eq!(it["file_path"].as_str().unwrap().replace('\\', "/"), want.replace('\\', "/"));
+    }
+    assert_eq!(get("i3")["root"], Value::Null);
+    assert_eq!(get("i3")["file_path"], "E:\\elsewhere\\03.mkv");
+    let lib = app.libraries.get("lib-1").unwrap();
+    assert_eq!((lib.root.as_str(), lib.root_path.as_str()), ("media", "anime"));
+    assert_eq!(lib.path.replace('\\', "/"), format!("{}/anime", here.to_string_lossy()).replace('\\', "/"));
+    drop(app);
+
+    // Export @3, and it imports back.
+    let out = lain_server::export(&data).unwrap();
+    assert_eq!((out.version, out.roots.clone()), (3, vec!["media".to_string()]));
+    assert_eq!(out.items["i1"].rel_path, "anime/Frieren/01.mkv");
+    let other = root.join("other");
+    let store = Arc::new(lain_store::Store::open(&other).unwrap());
+    assert_eq!(lain_server::catalog::Catalog::new(store).import(&out).unwrap(), 3);
     std::fs::remove_dir_all(root).ok();
 }

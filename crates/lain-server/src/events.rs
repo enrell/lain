@@ -7,9 +7,11 @@
 //! | `module-state`     | `{module, enabled, state}`                   | everyone    |
 //! | `library-changed`  | `{library_id, action, items_removed?}`       | everyone    |
 //! | `progress-changed` | `{item_id, progress}`                        | that user   |
+//! | `library-changed` of a private library | (same)                   | admins and members |
 //! | `plugin-changed`   | `{provider, action}`                         | admins      |
 //!
-//! Each frame carries an `id:` sequence. A slow client whose buffer
+//! Events about items of a private library reach only sessions that
+//! unlocked it (D-156). Each frame carries an `id:` sequence. A slow client whose buffer
 //! fills is disconnected (it reconnects); memory stays bounded. The
 //! token is re-verified on every keep-alive, so a disabled account or a
 //! rotated password ends the stream like any other request.
@@ -33,9 +35,17 @@ pub enum Scope {
     User(String),
 }
 
+/// Who a stream belongs to.
+#[derive(Debug, Clone)]
+pub struct SubInfo {
+    pub user_id: String,
+    pub admin: bool,
+    /// The token's session (private-library unlocks are per session).
+    pub session: String,
+}
+
 struct Subscriber {
-    user_id: String,
-    admin: bool,
+    info: SubInfo,
     tx: mpsc::Sender<Bytes>,
 }
 
@@ -58,28 +68,30 @@ impl EventBus {
     }
 
     /// Registers a stream; the first frame is `ready`.
-    pub fn subscribe(&self, user_id: &str, admin: bool, ready: &Value) -> mpsc::Receiver<Bytes> {
+    pub fn subscribe(&self, info: SubInfo, ready: &Value) -> mpsc::Receiver<Bytes> {
         let (tx, rx) = mpsc::channel(BUFFER);
         let id = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
         let _ = tx.try_send(frame(id, "ready", ready));
-        self.subs.lock().unwrap_or_else(|e| e.into_inner()).push(Subscriber { user_id: user_id.into(), admin, tx });
+        self.subs.lock().unwrap_or_else(|e| e.into_inner()).push(Subscriber { info, tx });
         rx
     }
 
     /// Delivers to every matching stream; closed or full ones are
     /// dropped.
     pub fn publish(&self, scope: Scope, event: &str, data: Value) {
+        self.publish_where(event, data, &|s| match &scope {
+            Scope::All => true,
+            Scope::Admins => s.admin,
+            Scope::User(u) => &s.user_id == u,
+        });
+    }
+
+    /// Delivers to the streams `keep` accepts (privacy filters, D-156).
+    pub fn publish_where(&self, event: &str, data: Value, keep: &dyn Fn(&SubInfo) -> bool) {
         let id = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
         let bytes = frame(id, event, &data);
         let mut subs = self.subs.lock().unwrap_or_else(|e| e.into_inner());
-        subs.retain(|s| {
-            let wanted = match &scope {
-                Scope::All => true,
-                Scope::Admins => s.admin,
-                Scope::User(u) => &s.user_id == u,
-            };
-            !wanted || s.tx.try_send(bytes.clone()).is_ok()
-        });
+        subs.retain(|s| !keep(&s.info) || s.tx.try_send(bytes.clone()).is_ok());
     }
 
     /// Ends every stream (shutdown).
@@ -143,8 +155,9 @@ mod tests {
     #[test]
     fn scopes_and_slow_clients() {
         let bus = EventBus::new();
-        let mut a = bus.subscribe("u1", false, &json!({}));
-        let mut admin = bus.subscribe("u2", true, &json!({}));
+        let info = |u: &str, admin: bool| SubInfo { user_id: u.into(), admin, session: format!("s-{u}") };
+        let mut a = bus.subscribe(info("u1", false), &json!({}));
+        let mut admin = bus.subscribe(info("u2", true), &json!({}));
         assert!(String::from_utf8_lossy(&a.try_recv().unwrap()).contains("event: ready"));
         admin.try_recv().unwrap();
         bus.publish(Scope::User("u1".into()), "progress-changed", json!({"item_id": "i"}));

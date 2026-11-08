@@ -123,6 +123,17 @@ pub struct ProfilePatch {
 pub struct Verified {
     pub user_id: String,
     pub role: String,
+    /// Identifies this token (a login session): unlocks of private
+    /// libraries are kept per session (D-156).
+    pub session: String,
+    /// When the token stops verifying.
+    pub expires_at: i64,
+}
+
+impl Verified {
+    pub fn is_admin(&self) -> bool {
+        self.role == ROLE_ADMIN
+    }
 }
 
 /// An account failure. `Msg` texts are the Go server's, verbatim:
@@ -190,6 +201,11 @@ struct Claims {
     pwdv: u64,
     iat: i64,
     exp: i64,
+    /// A random id per login, so two logins in the same second are two
+    /// sessions (private-library unlocks are per session, D-156). Go
+    /// tokens have none and Go ignores it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    jti: String,
 }
 
 /// Trims, collapses whitespace (single-line) and rejects control
@@ -460,6 +476,46 @@ impl<'s> Auth<'s> {
         .map(User::public)
     }
 
+    /// Checks a user's password (re-authentication for PIN changes and
+    /// library unlocks).
+    pub fn check_password(&self, id: &str, password: &str) -> bool {
+        self.get(id).ok().flatten().and_then(|u| u.hash_str()).is_some_and(|h| verify_password(password, &h))
+    }
+
+    /// Sets the user's library PIN (4 to 12 digits) after checking the
+    /// password. The PIN is bcrypt-hashed in `user_pins` (D-156).
+    pub fn set_pin(&self, id: &str, pin: &str, password: &str) -> Result<(), AuthError> {
+        if !self.check_password(id, password) {
+            return Err(msg("invalid credentials"));
+        }
+        if !(4..=12).contains(&pin.len()) || !pin.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(msg("pin must be 4 to 12 digits"));
+        }
+        let hash = hash_password(pin)?;
+        self.store.write(|tx| tx.put_json(Bucket::UserPins, id.as_bytes(), &serde_json::json!({"hash": hash})))?;
+        Ok(())
+    }
+
+    /// Removes the user's PIN after checking the password.
+    pub fn clear_pin(&self, id: &str, password: &str) -> Result<(), AuthError> {
+        if !self.check_password(id, password) {
+            return Err(msg("invalid credentials"));
+        }
+        self.store.write(|tx| tx.delete(Bucket::UserPins, id.as_bytes()))?;
+        Ok(())
+    }
+
+    pub fn has_pin(&self, id: &str) -> bool {
+        self.store.read(|tx| tx.get(Bucket::UserPins, id.as_bytes())).ok().flatten().is_some()
+    }
+
+    /// Checks a PIN; false when none is set.
+    pub fn check_pin(&self, id: &str, pin: &str) -> bool {
+        let rec: Option<serde_json::Value> =
+            self.store.read(|tx| tx.get_json(Bucket::UserPins, id.as_bytes())).ok().flatten();
+        rec.and_then(|r| r["hash"].as_str().map(str::to_string)).is_some_and(|h| verify_password(pin, &h))
+    }
+
     /// Verifies credentials and liveness, then mints a 24 h token.
     pub fn login(&self, username: &str, password: &str) -> Result<String, AuthError> {
         let invalid = || msg("invalid credentials");
@@ -483,8 +539,19 @@ impl<'s> Auth<'s> {
     /// Signs a token for `u` issued at `now`.
     pub fn mint(&self, u: &User, now: i64) -> String {
         let head = crypto::b64_url(br#"{"alg":"HS256","typ":"JWT"}"#);
-        let claims =
-            Claims { sub: u.id.clone(), role: u.role.clone(), pwdv: u.pwd_ver, iat: now, exp: now + TOKEN_TTL_SECS };
+        let mut id = [0u8; 12];
+        let jti = match crypto::random_bytes(&mut id) {
+            Ok(()) => crypto::b64_url(&id),
+            Err(_) => String::new(),
+        };
+        let claims = Claims {
+            sub: u.id.clone(),
+            role: u.role.clone(),
+            pwdv: u.pwd_ver,
+            iat: now,
+            exp: now + TOKEN_TTL_SECS,
+            jti,
+        };
         let body = crypto::b64_url(&serde_json::to_vec(&claims).expect("claims serialize"));
         let signing = format!("{head}.{body}");
         let sig = crypto::b64_url(&crypto::hmac_sha256(&self.secret, signing.as_bytes()));
@@ -514,7 +581,13 @@ impl<'s> Auth<'s> {
         if u.pwd_ver != c.pwdv {
             return Err(msg("password rotated"));
         }
-        Ok(Verified { user_id: u.id, role: u.role })
+        let session = if c.jti.is_empty() {
+            let digest = crypto::sha256(token.as_bytes());
+            digest[..12].iter().map(|b| format!("{b:02x}")).collect()
+        } else {
+            c.jti.clone()
+        };
+        Ok(Verified { user_id: u.id, role: u.role, session, expires_at: c.exp })
     }
 }
 
@@ -562,7 +635,9 @@ mod tests {
         assert_eq!(a.login("admin", "nope-nope").unwrap_err().to_string(), "invalid credentials");
         assert_eq!(a.login("ghost", "password123").unwrap_err().to_string(), "invalid credentials");
         let tok = a.login("admin", "password123").unwrap();
-        assert_eq!(a.verify(&tok).unwrap(), Verified { user_id: "user-admin".into(), role: "admin".into() });
+        let v = a.verify(&tok).unwrap();
+        assert_eq!((v.user_id.as_str(), v.role.as_str(), v.session.len()), ("user-admin", "admin", 16));
+        assert!(v.expires_at > lain_core::now_unix());
         assert!(a.verify("a.b").is_err());
         let mut forged = tok.clone();
         forged.push('x');
@@ -594,6 +669,37 @@ mod tests {
         a.set_role("user-bob", "admin").unwrap();
         assert_eq!(a.verify(&tok).unwrap().role, "admin", "role is read live");
         assert_eq!(a.set_disabled("user-ghost", true).unwrap_err(), AuthError::UnknownUser);
+    }
+
+    #[test]
+    fn pins() {
+        let f = Fixture::new();
+        let a = f.auth();
+        a.setup("admin", "password123").unwrap();
+        assert!(!a.has_pin("user-admin"));
+        assert_eq!(a.set_pin("user-admin", "1234", "wrong-pass").unwrap_err().to_string(), "invalid credentials");
+        assert_eq!(
+            a.set_pin("user-admin", "12a4", "password123").unwrap_err().to_string(),
+            "pin must be 4 to 12 digits"
+        );
+        assert!(a.set_pin("user-admin", "123", "password123").is_err());
+        a.set_pin("user-admin", "1234", "password123").unwrap();
+        assert!(a.has_pin("user-admin") && a.check_pin("user-admin", "1234") && !a.check_pin("user-admin", "4321"));
+        assert!(!a.check_pin("user-nobody", "1234"));
+        a.clear_pin("user-admin", "password123").unwrap();
+        assert!(!a.check_pin("user-admin", "1234"));
+    }
+
+    #[test]
+    fn sessions_differ_per_token() {
+        let f = Fixture::new();
+        let a = f.auth();
+        let u = a.setup("admin", "password123").unwrap();
+        let stored = a.get(&u.id).unwrap().unwrap();
+        let now = lain_core::now_unix();
+        let (t1, t2) = (a.mint(&stored, now), a.mint(&stored, now));
+        assert_ne!(a.verify(&t1).unwrap().session, a.verify(&t2).unwrap().session);
+        assert_eq!(a.verify(&t1).unwrap().session, a.verify(&t1).unwrap().session);
     }
 
     #[test]

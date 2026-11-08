@@ -1,0 +1,110 @@
+{
+  "tier": "v2",
+  "description": "Private libraries (D-156) over seeded state: a second user, and the same user before unlocking, can neither see nor infer private items: not in lists, totals, search, Continue, item routes, progress or events. Runs after the seeded suite; needs its variables and the server's data_dir (a public directory for a second library).",
+  "cases": [
+    {"name": "making a library private", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 200}, "save": {"a1": "/token"}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobpassword"}}, "expect": {"status": 200}, "save": {"b1": "/token"}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "b1", "body": {"private": true}}, "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "a1", "body": {"private": true, "members": ["user-nobody"]}}, "expect": {"status": 400, "body": {"error": "unknown user user-nobody"}}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "a1", "body": {"private": true}},
+       "expect": {"status": 200, "body": {"id": "{{lib_id}}", "private": true, "owner": "user-admin", "locked": true, "$open": true}}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/lib-nope", "auth": "a1", "body": {"private": true}}, "expect": {"status": 404, "body": {"error": "unknown library"}}}
+    ]},
+    {"name": "another user cannot see or infer private items", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "GET", "path": "/api/libraries", "auth": "b1"}, "expect": {"status": 200, "body": []}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "b1"}, "expect": {"status": 200, "body": {"items": [], "total": 0, "limit": 50, "offset": 0}}},
+      {"req": {"method": "GET", "path": "/api/catalog?library_id={{lib_id}}", "auth": "b1"}, "expect": {"status": 200, "body": {"items": [], "total": 0, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/search?q=Frieren", "auth": "b1"}, "expect": {"status": 200, "body": {"items": [], "total": 0, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{item1}}", "auth": "b1"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/catalog/no-such-item", "auth": "b1"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{item1}}/episodes", "auth": "b1"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{item1}}/thumbnail", "auth": "b1"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/no-such-item/thumbnail", "auth": "b1"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{item2}}/sidecars", "auth": "b1"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{item2}}/stream?token={{b1}}"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{item2}}/progress", "auth": "b1"},
+       "expect": {"status": 200, "body": {"item_id": "", "user_id": "", "position_sec": 0, "duration_sec": 0, "completed": false, "updated_at": 0}}},
+      {"req": {"method": "GET", "path": "/api/me/continue", "auth": "b1"}, "expect": {"status": 200, "body": []}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "b1", "body": {"password": "bobpassword"}}, "expect": {"status": 404, "body": {"error": "unknown library"}}},
+      {"req": {"method": "POST", "path": "/api/libraries/lib-nope/unlock", "auth": "b1", "body": {"password": "bobpassword"}}, "expect": {"status": 404, "body": {"error": "unknown library"}}}
+    ]},
+    {"name": "the owner sees it only after unlocking, in that session only", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "GET", "path": "/api/libraries", "auth": "a1"}, "expect": {"status": 200, "body": [{"id": "{{lib_id}}", "private": true, "locked": true, "owner": "user-admin", "$open": true}]}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "a1"}, "expect": {"status": 200, "body": {"total": 0, "items": [], "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{item1}}", "auth": "a1"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/me/continue", "auth": "a1"}, "expect": {"status": 200, "body": []}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a1", "body": {}}, "expect": {"status": 400, "body": {"error": "pin or password required"}}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a1", "body": {"password": "wrong-password"}}, "expect": {"status": 403, "body": {"error": "wrong pin or password"}}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a1", "body": {"password": "password123"}},
+       "expect": {"status": 200, "body": {"id": "{{lib_id}}", "locked": false, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "a1"}, "expect": {"status": 200, "body": {"total": 2, "items": {"$len": 2}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{item1}}", "auth": "a1"}, "expect": {"status": 200, "body": {"id": "{{item1}}", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{item1}}/episodes", "auth": "a1"}, "expect": {"status": 200, "body": {"items": {"$len": 2}}}},
+      {"req": {"method": "GET", "path": "/api/search?q=frieren", "auth": "a1"}, "expect": {"status": 200, "body": {"total": 2, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/me/continue", "auth": "a1"}, "expect": {"status": 200, "body": [{"item_id": "{{item1}}", "position_sec": 30, "$open": true}]}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 200}, "save": {"a2": "/token"}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "a2"}, "expect": {"status": 200, "body": {"total": 0, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/libraries", "auth": "a2"}, "expect": {"status": 200, "body": [{"id": "{{lib_id}}", "locked": true, "$open": true}]}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/lock", "auth": "a1"}, "expect": {"status": 200, "body": {"locked": true, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "a1"}, "expect": {"status": 200, "body": {"total": 0, "$open": true}}}
+    ]},
+    {"name": "a PIN unlocks too", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "GET", "path": "/api/me/pin", "auth": "a2"}, "expect": {"status": 200, "body": {"set": false}}},
+      {"req": {"method": "PUT", "path": "/api/me/pin", "auth": "a2", "body": {"pin": "2468", "password": "wrong-password"}}, "expect": {"status": 400, "body": {"error": "invalid credentials"}}},
+      {"req": {"method": "PUT", "path": "/api/me/pin", "auth": "a2", "body": {"pin": "24a8", "password": "password123"}}, "expect": {"status": 400, "body": {"error": "pin must be 4 to 12 digits"}}},
+      {"req": {"method": "PUT", "path": "/api/me/pin", "auth": "a2", "body": {"pin": "2468", "password": "password123"}}, "expect": {"status": 200, "body": {"set": true}}},
+      {"req": {"method": "GET", "path": "/api/me/pin", "auth": "a2"}, "expect": {"status": 200, "body": {"set": true}}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a2", "body": {"pin": "1357"}}, "expect": {"status": 403, "body": {"error": "wrong pin or password"}}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a2", "body": {"pin": "2468"}}, "expect": {"status": 200, "body": {"locked": false, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "a2"}, "expect": {"status": 200, "body": {"total": 2, "$open": true}}}
+    ]},
+    {"name": "members unlock with their own credentials", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "a2", "body": {"members": ["user-bob"]}},
+       "expect": {"status": 200, "body": {"members": ["user-bob"], "owner": "user-admin", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/libraries", "auth": "b1"}, "expect": {"status": 200, "body": [{"id": "{{lib_id}}", "private": true, "locked": true, "$open": true}]}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "b1"}, "expect": {"status": 200, "body": {"total": 0, "$open": true}}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "b1", "body": {"password": "password123"}}, "expect": {"status": 403, "body": {"error": "wrong pin or password"}}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "b1", "body": {"password": "bobpassword"}}, "expect": {"status": 200, "body": {"locked": false, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{item2}}/progress", "auth": "b1"}, "expect": {"status": 200, "body": {"item_id": "{{item2}}", "completed": true, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/me/continue", "auth": "b1"}, "expect": {"status": 200, "body": [{"item_id": "{{item2}}", "$open": true}]}}
+    ]},
+    {"name": "events reach only sessions that may see them", "requires": ["lib_id", "data_dir"], "steps": [
+      {"req": {"method": "POST", "path": "/api/users", "auth": "a2", "body": {"username": "eve", "password": "evepassword"}}, "expect": {"status": 201}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "eve", "password": "evepassword"}}, "expect": {"status": 200}, "save": {"e1": "/token"}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobpassword"}}, "expect": {"status": 200}, "save": {"b2": "/token"}},
+      {"sse_open": {"path": "/api/events", "auth": "query:e1", "as": "eve"}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "eve", "event": "ready"}},
+      {"sse_open": {"path": "/api/events", "auth": "query:b2", "as": "bob_locked"}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "bob_locked", "event": "ready"}},
+      {"sse_open": {"path": "/api/events", "auth": "query:b1", "as": "bob_open"}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "bob_open", "event": "ready"}},
+      {"req": {"method": "PUT", "path": "/api/items/{{item2}}/progress", "auth": "b1", "body": {"position_sec": 600, "duration_sec": 1440}}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "bob_open", "event": "progress-changed", "strict": true, "data": {"item_id": "{{item2}}", "$open": true}}},
+      {"req": {"method": "PUT", "path": "/api/items/some-public-item/progress", "auth": "b1", "body": {"position_sec": 1}}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "bob_locked", "event": "progress-changed", "strict": true, "data": {"item_id": "some-public-item", "$open": true}}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "a2", "body": {"name": "Anime (private)"}}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "bob_locked", "event": "library-changed", "strict": true, "data": {"library_id": "{{lib_id}}", "action": "updated"}}},
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "a2", "body": {"name": "Public", "path": "{{data_dir}}"}}, "expect": {"status": 201}, "save": {"public_lib": "/id"}},
+      {"sse_expect": {"stream": "eve", "event": "library-changed", "strict": true, "data": {"library_id": "{{public_lib}}", "action": "created"}}},
+      {"req": {"method": "DELETE", "path": "/api/libraries/{{public_lib}}", "auth": "a2"}, "expect": {"status": 200}}
+    ]},
+    {"name": "making it public again shows it to everyone", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "a2", "body": {"private": false, "name": "Anime"}},
+       "expect": {"status": 200, "body": {"private": "$absent", "owner": "$absent", "members": "$absent", "locked": "$absent", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "e1"}, "expect": {"status": 200, "body": {"total": 2, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/libraries", "auth": "e1"}, "expect": {"status": 200, "body": [{"id": "{{lib_id}}", "private": "$absent", "$open": true}]}}
+    ]},
+    {"name": "unlock guesses are limited", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "a2", "body": {"private": true}}, "expect": {"status": 200}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a1", "body": {"pin": "0000"}}, "expect": {"status": 403}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a1", "body": {"pin": "0001"}}, "expect": {"status": 403}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a1", "body": {"pin": "0002"}}, "expect": {"status": 403}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a1", "body": {"pin": "0003"}}, "expect": {"status": 403}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a1", "body": {"pin": "0004"}}, "expect": {"status": 403}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "a1", "body": {"pin": "2468"}},
+       "expect": {"status": 429, "body": {"error": "too many attempts; try again in a few minutes"}}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "a1"}, "expect": {"status": 200, "body": {"total": 0, "$open": true}}}
+    ]}
+  ]
+}
