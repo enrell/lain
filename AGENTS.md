@@ -43,6 +43,64 @@ server. Design for them:
   liveness and password-version checks.
 - No cgo. The whole point is a seconds-long build; keep it that way.
 
+## Rust (migration in progress)
+
+The server is being rewritten in Rust by strangler migration (D-171,
+DESIGN-v2 §13). The Go stack above stays the production server until
+the Rust one passes the conformance suite and the owner has used it
+daily; until cutover this file documents both stacks.
+
+- Workspace: `Cargo.toml` at the root, crates in `crates/`:
+  - `lain-core` — composition, provider registry (modes, health-gated
+    swap, generation fencing, last-good fallback, withdraw, module
+    suspend/resume) and the module layer (`lain.modules@1`, D-154).
+  - `lain-store` — redb with the bucket semantics of `internal/kv`, and
+    a read-only bbolt reader for import.
+  - `lain-auth` — setup, bcrypt, HS256 tokens with live checks.
+  - `lain-component` — the component host, `serve` for Rust components
+    and the `<data-dir>/plugins/` watcher; the Go wire, byte for byte.
+  - `lain-server` — the axum gateway, `/api/modules`, `/api/events`,
+    service mode, `import`; binary `lain-rs` (data dir `lain-rs`, port
+    9361) so it never collides with the Go `lain`.
+  - `conformance/runner` — the conformance runner (`lain-conformance`).
+- Dependencies: the D-172 baseline only, versions pinned with `=` in
+  the workspace `Cargo.toml`, `Cargo.lock` committed. A crate outside
+  this list is asked of the owner first (DESIGN-v2 §13 policy: few,
+  maintained, pure Rust, no C-heavy dependency in the server).
+  - `tokio` — the async runtime under axum; only the `rt-multi-thread`,
+    `net`, `time`, `sync`, `macros` and `signal` features.
+  - `axum` / `hyper` — HTTP routing, default features off (`http1`,
+    `json`, `query`, `tokio`). `hyper` is used directly only for its
+    `Body` trait, which the SSE stream implements.
+  - `serde` / `serde_json` — the JSON contracts.
+  - `redb` — the embedded store, pure Rust, the bbolt equivalent.
+  - `bcrypt` — passwords. Chosen over argon2 because every hash in the
+    Go store is bcrypt (`$2a$10$`) and must keep verifying after import;
+    one algorithm keeps one verifier. Moving to argon2 later is a
+    rehash-on-login change, not a migration.
+  - `notify` — file watching for `plugins/` and `modules.json`, default
+    features off.
+  - `tracing` — log events; `lain-server/src/logging.rs` is a small JSON
+    subscriber, so `tracing-subscriber` is not needed.
+  - Written in-tree instead of adding crates: SHA-256, HMAC-SHA256 and
+    base64 (`lain-auth/src/crypto.rs`, checked against FIPS 180-4,
+    RFC 4231 and RFC 4648 vectors), OS randomness (`/dev/urandom`,
+    `RtlGenRandom`), the bbolt reader, and the runner's HTTP client.
+  - No test-only crates.
+- Rules that carry over unchanged: plugin boundaries, media bytes never
+  in a plugin call, catalog/userstate separation, typed errors with
+  stable codes and no panic on bad input, English prose.
+- Component mode needs Unix sockets, which Rust's standard library does
+  not offer on Windows yet; there it reports itself unavailable.
+
+```sh
+cargo build                        # the workspace (keep it incremental)
+cargo test                         # every crate, including the conformance
+                                   # suites against an in-process lain-rs
+conformance/run.sh                 # the suite against the Go and Rust servers
+cargo run -p lain-server --bin lain-rs -- serve --data-dir /tmp/lain-rs-dev
+```
+
 ## Workflow
 
 1. Read the relevant source + `docs/` before changing conventions.
