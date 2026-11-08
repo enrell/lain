@@ -1,10 +1,10 @@
 # Lain — Design v2: the media superapp
 
-Status: **proposal for review** (2026-11-08). Nothing here is decided until the
-owner approves it. Load-bearing choices are written as proposals `V-1`…, to be
-numbered `D-155`… on approval, following the slice convention
-(`docs/slices/DECISIONS_TO_CONFIRM.md`). Rows marked **[owner]** fall under
-`taste.md` → "Never decide without the user".
+Status: **accepted by the owner on 2026-11-08**, with one amendment: the server
+is rewritten in Rust (§13). The proposals `V-1`…`V-17` are recorded as
+`D-154`…`D-170` and the Rust decision as `D-171` in `docs/advisor/decisions.md`
+(`V-n` = `D-(153+n)`). The open questions in §12 stay open. Rows marked
+**[owner]** fall under `taste.md` → "Never decide without the user".
 
 ## 1. Goal
 
@@ -322,8 +322,8 @@ app. It builds its navigation from `/api/modules`, so it follows module state.
 
 | Phase | Content | Exit criteria |
 |---|---|---|
-| **P0 — this doc** | Owner review; `V-*` become `D-155+` | Approved table |
-| **P1 — server foundations** | Module layer (`V-1`, `V-2`), `/api/modules`, `/api/events`, service mode (`V-11`), private libraries (`V-3`), portable roots (`V-4`) | Web client follows modules; `lain service` works on all three OSes; a private library is invisible to another user end to end |
+| **P0 — this doc** | Owner review; `V-*` become `D-154…D-170` | **Done 2026-11-08** |
+| **P1 — Rust core + server foundations** | The Rust server core (§13: registry, component host, gateway, auth, store) built with the P1 features in it from day one: module layer (`V-1`, `V-2`), `/api/modules`, `/api/events`, service mode (`V-11`), private libraries (`V-3`), portable roots (`V-4`). The Go server keeps running unchanged | The conformance suite passes for the core routes; `lain service` works on all three OSes; a private library is invisible to another user end to end |
 | **P2 — client core + desktop prototype** | `lain-client` crate; prototype in GPUI / Slint / iced (`V-13`) | Owner picks a framework from working builds |
 | **P3 — desktop app v1** | Parity checklist (§8.4) with the chosen framework; themes (tier 1) | Owner uses it daily instead of lain-desktop |
 | **P4 — components** | lain-parser manifest, parser benchmark (`V-5`), animesubs translate (`V-6`), Anything extract (`V-7`) | Each works as a component with health and declines |
@@ -352,6 +352,71 @@ app. It builds its navigation from `/api/modules`, so it follows module state.
 | V-15 | Android: Compose + Media3 + `lain-client`; mpv-android fallback | — |
 | V-16 | Freeze `/api/*` as v1; add `/api/events` and `/api/modules` | public API |
 | V-17 | Retire psyche, custom-server and media-manager after taking the listed ideas (owner prefers deletion over archiving) | repo deletion |
+
+## 13. Server language: Rust (`D-171`, owner decision)
+
+The owner chose to rewrite the server in Rust. Lain is becoming a superapp whose
+components and clients are already mostly Rust: animesubs, animedb, zantetsu and
+`lain-client`. In one language those integrate as crates instead of processes,
+and the server gets fine-grained control of memory and resources without a GC.
+Go is already memory-safe; the gain is mainly the shared ecosystem and the
+resource control. The cost is a rewrite of ~79k lines, so the migration is
+incremental and the Go server is never switched off before its replacement is
+proven.
+
+- **Strangler migration.**
+  - A Cargo workspace (`crates/`) lives in this repo next to the Go code until
+    cutover, so the decision log, contracts and docs stay in one place.
+  - The Go server stays the production server until the Rust one passes the
+    conformance suite and the owner has used it daily.
+- **Contracts are the spec.**
+  - Before porting, freeze today's behavior into a **language-neutral
+    conformance suite**: HTTP-level tests for every `/api/*` route that clients
+    use (§8.4), NDJSON fixtures for the component protocol, and the
+    `lain.catalog-export` documents.
+  - Both servers run the same suite, and a route moves only when the Rust side
+    passes it.
+- **Components first.** The component protocol is language-neutral, so new
+  providers are written in Rust as components and run under the Go server today.
+  They move in-process when the Rust core lands, with no rewrite.
+- **Order:**
+  1. conformance suite;
+  2. Rust core (registry and composition, the component host, gateway and auth,
+     the store);
+  3. the P1 features, built directly in Rust and not first in Go;
+  4. modules one by one: watch, read, acquire (including the in-house
+     BitTorrent engine, kept in-house), subtitles, lists, social;
+  5. cutover;
+  6. Go removed.
+- **Data:**
+  - bbolt documents migrate through `lain.catalog-export@2` (`D-157`) plus a
+    userstate export, with a one-shot importer in the Rust server.
+  - The existing data dir is read, never written, until the owner confirms the
+    cutover.
+- **Web SPA:** unchanged; the Rust server embeds and serves the same build.
+- **Dependency policy for Rust** (replaces D-001/D-002 for the Rust code, and
+  needs the owner's approval of the list, **[owner]**):
+  - few, maintained, pure-Rust crates, each justified in `AGENTS.md`;
+  - no C-heavy dependencies inside the server: ffmpeg and mpv stay external
+    processes or are linked only in clients;
+  - build time is measured and kept low with a workspace split and
+    incremental builds.
+  - Proposed baseline:
+
+    | Crate | Purpose |
+    |---|---|
+    | `tokio` | runtime |
+    | `axum` / `hyper` | HTTP |
+    | `serde` / `serde_json` | JSON |
+    | `redb` | embedded KV, pure Rust, the bbolt equivalent |
+    | `argon2` or `bcrypt` | passwords |
+    | `notify` | file watching (the fsnotify equivalent) |
+    | `tracing` | logs |
+- **Rules that carry over unchanged:** plugin boundaries, "media bytes never
+  enter a plugin call", catalog/userstate separation, keyboard-first UI rules,
+  English prose.
+- **`AGENTS.md`'s stack section is rewritten when the Rust core lands.** Until
+  cutover it documents both stacks.
 
 ## 12. Open questions for the owner
 
