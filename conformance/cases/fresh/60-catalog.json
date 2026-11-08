@@ -1,0 +1,25 @@
+{
+  "tier": "v1",
+  "description": "Catalog reads on an empty catalog: the page envelope, paging bounds and unknown ids.",
+  "cases": [
+    {"name": "empty page envelope", "steps": [
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "admin_token"}, "expect": {"status": 200, "body": {"items": [], "total": 0, "limit": 50, "offset": 0}}}
+    ]},
+    {"name": "paging is clamped", "steps": [
+      {"req": {"method": "GET", "path": "/api/catalog?limit=900&offset=-5&sort=zzz", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"items": [], "total": 0, "limit": 500, "offset": 0}}},
+      {"req": {"method": "GET", "path": "/api/catalog?limit=0&offset=3", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"items": [], "total": 0, "limit": 50, "offset": 3}}},
+      {"req": {"method": "GET", "path": "/api/catalog?limit=abc&sort=recent&library_id=lib-x", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"items": [], "total": 0, "limit": 50, "offset": 0}}}
+    ]},
+    {"name": "any user reads the catalog", "steps": [
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "bob_token"}, "expect": {"status": 200, "body": {"total": 0, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]},
+    {"name": "unknown item", "steps": [
+      {"req": {"method": "GET", "path": "/api/catalog/no-such-item", "auth": "admin_token"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/catalog/no-such-item/episodes", "auth": "admin_token"}, "expect": {"status": 404, "body": {"error": "unknown item"}}}
+    ]}
+  ]
+}

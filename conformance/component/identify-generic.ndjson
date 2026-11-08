@@ -1,0 +1,17 @@
+{"from":"component","note":"hello: identity plus every capability the manifest declares","frame":{"op":"hello","provider":"lain-identify-generic","protocol":1,"capabilities":["lain.media.identify@1"]}}
+{"from":"host","note":"transport-level health, never routed through a capability","frame":{"seq":1,"op":"health","input":null}}
+{"from":"component","frame":{"seq":1,"output":{"ok":true}}}
+{"from":"host","note":"invoke with an explicit op","frame":{"seq":2,"cap":"lain.media.identify@1","op":"identify","input":{"path":"/media/movies/Some Movie (2020) [1080p].mkv","size":1024,"mod_time":0,"library_id":"lib-1","library_type":"movie"}}}
+{"from":"component","frame":{"seq":2,"output":{"kind":"video","title":"Some Movie","season":0,"episode":0,"year":0,"confidence":0.4,"evidence":["extension"],"plugin_id":"lain-identify-generic"}}}
+{"from":"host","note":"op may be omitted when the capability has one input shape","frame":{"seq":3,"cap":"lain.media.identify@1","input":{"path":"/media/x/notes.txt","size":1,"mod_time":0,"library_id":"lib-1"}}}
+{"from":"component","frame":{"seq":3,"output":{"kind":"video","title":"notes","season":0,"episode":0,"year":0,"confidence":0.4,"evidence":["extension"],"plugin_id":"lain-identify-generic"}}}
+{"from":"host","note":"a capability the component does not serve","frame":{"seq":4,"cap":"lain.nope@1","op":"x","input":{}}}
+{"from":"component","frame":{"seq":4,"error":{"code":"invalid-message","msg":"$string"}}}
+{"from":"host","note":"an invoke without cap","frame":{"seq":5,"op":"identify","input":{}}}
+{"from":"component","frame":{"seq":5,"error":{"code":"invalid-message","msg":"cap required"}}}
+{"from":"host","note":"an op the capability does not have","frame":{"seq":6,"cap":"lain.media.identify@1","op":"bogus","input":{}}}
+{"from":"component","frame":{"seq":6,"error":{"code":"invalid-message","msg":"$string"}}}
+{"from":"host","note":"an input of the wrong shape is invalid-message, never a dead socket","frame":{"seq":7,"cap":"lain.media.identify@1","op":"identify","input":{"path":42}}}
+{"from":"component","frame":{"seq":7,"error":{"code":"invalid-message","msg":"$string"}}}
+{"from":"host","note":"the connection survives errors","frame":{"seq":8,"op":"health","input":null}}
+{"from":"component","frame":{"seq":8,"output":{"ok":true}}}

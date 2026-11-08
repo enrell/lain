@@ -1,0 +1,109 @@
+{
+  "tier": "v1",
+  "description": "Admin user management, roles, liveness and password versions, read live on every request.",
+  "cases": [
+    {"name": "admin lists users", "steps": [
+      {"req": {"method": "GET", "path": "/api/users", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"$len": 1, "$each": {"id": "user-admin", "username": "admin", "pass_hash": null, "role": "admin",
+         "disabled": false, "pwd_ver": 1, "created_at": "$int", "playback": {}, "profile": "$object"}}}}
+    ]},
+    {"name": "admin creates users", "steps": [
+      {"req": {"method": "POST", "path": "/api/users", "auth": "admin_token", "body": {"username": "bob", "password": "bobpassword"}},
+       "expect": {"status": 201, "body": {"id": "user-bob", "username": "bob", "pass_hash": null, "role": "user", "disabled": false,
+         "pwd_ver": 1, "created_at": "$int", "playback": {}, "profile": {"avatar": {}}}}},
+      {"req": {"method": "POST", "path": "/api/users", "auth": "admin_token", "body": {"username": "carol", "password": "carolpassword", "role": "admin"}},
+       "expect": {"status": 201, "body": {"id": "user-carol", "role": "admin", "$open": true}}}
+    ]},
+    {"name": "user creation rejects bad input", "steps": [
+      {"req": {"method": "POST", "path": "/api/users", "auth": "admin_token", "body": {"username": "bob", "password": "bobpassword"}},
+       "expect": {"status": 400, "body": {"error": "username taken"}}},
+      {"req": {"method": "POST", "path": "/api/users", "auth": "admin_token", "body": {"username": "eve", "password": "evepassword", "role": "root"}},
+       "expect": {"status": 400, "body": {"error": "unknown role"}}},
+      {"req": {"method": "POST", "path": "/api/users", "auth": "admin_token", "body": {"username": "eve", "password": "short"}},
+       "expect": {"status": 400, "body": {"error": "username required, password >= 8 chars"}}},
+      {"req": {"method": "POST", "path": "/api/users", "auth": "admin_token", "raw_body": "x"}, "expect": {"status": 400, "body": {"error": "invalid json"}}}
+    ]},
+    {"name": "users are listed by username", "steps": [
+      {"req": {"method": "GET", "path": "/api/users", "auth": "admin_token"},
+       "expect": {"status": 200, "body": [
+         {"username": "admin", "$open": true}, {"username": "bob", "$open": true}, {"username": "carol", "$open": true}]}}
+    ]},
+    {"name": "user routes need an admin", "steps": [
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobpassword"}},
+       "expect": {"status": 200}, "save": {"bob_token": "/token"}},
+      {"req": {"method": "GET", "path": "/api/users", "auth": "bob_token"}, "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "POST", "path": "/api/users", "auth": "bob_token", "body": {"username": "x", "password": "xpassword"}},
+       "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "bob_token", "body": {"role": "admin"}},
+       "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "GET", "path": "/api/users"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]},
+    {"name": "playback limits are validated and stored", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"playback": {"max_streams": 40}}},
+       "expect": {"status": 400, "body": {"error": "max_streams must be 0..32"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"playback": {"max_bitrate_kbps": -1}}},
+       "expect": {"status": 400, "body": {"error": "max_bitrate_kbps must not be negative"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"playback": {"subtitle_mode": "loud"}}},
+       "expect": {"status": 400, "body": {"error": "subtitle_mode must be auto, extract, burn or off"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"playback": {"max_streams": 2, "allow_remux": false, "subtitle_mode": "burn"}}},
+       "expect": {"status": 200, "body": {"id": "user-bob", "playback": {"allow_remux": false, "max_streams": 2, "subtitle_mode": "burn"}, "$open": true}}}
+    ]},
+    {"name": "user patch guards", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/users/user-nobody", "auth": "admin_token", "body": {"disabled": true}},
+       "expect": {"status": 404, "body": {"error": "unknown user"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-nobody", "auth": "admin_token", "body": {}},
+       "expect": {"status": 404, "body": {"error": "unknown user"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-admin", "auth": "admin_token", "body": {"disabled": true}},
+       "expect": {"status": 400, "body": {"error": "cannot disable yourself"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-admin", "auth": "admin_token", "body": {"role": "user"}},
+       "expect": {"status": 400, "body": {"error": "cannot demote yourself"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"role": "root"}},
+       "expect": {"status": 400, "body": {"error": "unknown role"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"password": "short"}},
+       "expect": {"status": 400, "body": {"error": "password >= 8 chars"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "raw_body": "nope"},
+       "expect": {"status": 400, "body": {"error": "invalid json"}}}
+    ]},
+    {"name": "disabling locks out within one request", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"disabled": true}},
+       "expect": {"status": 200, "body": {"id": "user-bob", "disabled": true, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "bob_token"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobpassword"}},
+       "expect": {"status": 401, "body": {"error": "account disabled"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"disabled": false}},
+       "expect": {"status": 200, "body": {"disabled": false, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "bob_token"}, "expect": {"status": 200, "body": {"id": "user-bob", "$open": true}}}
+    ]},
+    {"name": "roles are read live", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"role": "admin"}},
+       "expect": {"status": 200, "body": {"role": "admin", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/users", "auth": "bob_token"}, "expect": {"status": 200}},
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"role": "user"}},
+       "expect": {"status": 200, "body": {"role": "user", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/users", "auth": "bob_token"}, "expect": {"status": 403, "body": {"error": "admin required"}}}
+    ]},
+    {"name": "own password change rotates tokens", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/me/password", "auth": "bob_token", "body": {"old": "wrong-password", "new": "bobpassword2"}},
+       "expect": {"status": 400, "body": {"error": "invalid credentials"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/password", "auth": "bob_token", "body": {"old": "bobpassword", "new": "short"}},
+       "expect": {"status": 400, "body": {"error": "password >= 8 chars"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/password", "auth": "bob_token", "raw_body": "x"},
+       "expect": {"status": 400, "body": {"error": "invalid json"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/password", "auth": "bob_token", "body": {"old": "bobpassword", "new": "bobpassword2"}},
+       "expect": {"status": 200, "body": {"status": "ok"}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "bob_token"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobpassword"}},
+       "expect": {"status": 401, "body": {"error": "invalid credentials"}}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobpassword2"}},
+       "expect": {"status": 200}, "save": {"bob_token": "/token"}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "bob_token"}, "expect": {"status": 200, "body": {"pwd_ver": 2, "$open": true}}}
+    ]},
+    {"name": "admin password reset rotates tokens", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/users/user-bob", "auth": "admin_token", "body": {"password": "bobreset123"}},
+       "expect": {"status": 200, "body": {"id": "user-bob", "pwd_ver": 3, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "bob_token"}, "expect": {"status": 401}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobreset123"}},
+       "expect": {"status": 200}, "save": {"bob_token": "/token"}}
+    ]}
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "tier": "v1",
+  "description": "Per-user progress: userstate owns it, keyed by user and item; the path and token decide the keys, never the body.",
+  "cases": [
+    {"name": "unrecorded progress is the zero value", "steps": [
+      {"req": {"method": "GET", "path": "/api/items/item-one/progress", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"item_id": "", "user_id": "", "position_sec": 0, "duration_sec": 0, "completed": false, "updated_at": 0}}}
+    ]},
+    {"name": "put ignores ids and time from the body", "steps": [
+      {"req": {"method": "PUT", "path": "/api/items/item-one/progress", "auth": "admin_token",
+        "body": {"position_sec": 12.5, "duration_sec": 1440, "item_id": "other", "user_id": "user-bob", "updated_at": 5}},
+       "expect": {"status": 200, "body": {"item_id": "item-one", "user_id": "user-admin", "position_sec": 12.5, "duration_sec": 1440, "completed": false, "updated_at": "$int"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-one/progress", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"item_id": "item-one", "user_id": "user-admin", "position_sec": 12.5, "duration_sec": 1440, "completed": false, "updated_at": "$int"}}}
+    ]},
+    {"name": "progress is per user", "steps": [
+      {"req": {"method": "GET", "path": "/api/items/item-one/progress", "auth": "bob_token"},
+       "expect": {"status": 200, "body": {"item_id": "", "user_id": "", "position_sec": 0, "duration_sec": 0, "completed": false, "updated_at": 0}}},
+      {"req": {"method": "PUT", "path": "/api/items/item-one/progress", "auth": "bob_token", "body": {"position_sec": 99, "completed": true}},
+       "expect": {"status": 200, "body": {"item_id": "item-one", "user_id": "user-bob", "position_sec": 99, "duration_sec": 0, "completed": true, "updated_at": "$int"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-one/progress", "auth": "admin_token"}, "expect": {"status": 200, "body": {"position_sec": 12.5, "$open": true}}}
+    ]},
+    {"name": "progress for an item the catalog does not know is still stored", "steps": [
+      {"req": {"method": "PUT", "path": "/api/items/item-two/progress", "auth": "admin_token", "body": {"position_sec": 1}},
+       "expect": {"status": 200, "body": {"item_id": "item-two", "position_sec": 1, "$open": true}}}
+    ]},
+    {"name": "continue lists the user's progress in key order", "steps": [
+      {"req": {"method": "GET", "path": "/api/me/continue", "auth": "admin_token"},
+       "expect": {"status": 200, "body": [{"item_id": "item-one", "user_id": "user-admin", "$open": true}, {"item_id": "item-two", "user_id": "user-admin", "$open": true}]}},
+      {"req": {"method": "GET", "path": "/api/me/continue", "auth": "bob_token"}, "expect": {"status": 200, "body": [{"item_id": "item-one", "completed": true, "$open": true}]}}
+    ]},
+    {"name": "progress rejects bad input and anonymous calls", "steps": [
+      {"req": {"method": "PUT", "path": "/api/items/item-one/progress", "auth": "admin_token", "raw_body": "x"}, "expect": {"status": 400, "body": {"error": "invalid json"}}},
+      {"req": {"method": "PUT", "path": "/api/items/item-one/progress", "auth": "admin_token", "body": {"position_sec": "ten"}}, "expect": {"status": 400, "body": {"error": "invalid json"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-one/progress"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "PUT", "path": "/api/items/item-one/progress", "body": {"position_sec": 1}}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]}
+  ]
+}
