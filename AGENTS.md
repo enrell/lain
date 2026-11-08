@@ -63,35 +63,41 @@ daily; until cutover this file documents both stacks.
     service mode, `import`; binary `lain-rs` (data dir `lain-rs`, port
     9361) so it never collides with the Go `lain`.
   - `conformance/runner` — the conformance runner (`lain-conformance`).
-- Dependencies: the D-172 baseline only, versions pinned with `=` in
-  the workspace `Cargo.toml`, `Cargo.lock` committed. A crate outside
+- Dependencies: the D-172 baseline plus D-173, versions pinned with `=`
+  in the workspace `Cargo.toml`, `Cargo.lock` committed. A crate outside
   this list is asked of the owner first (DESIGN-v2 §13 policy: few,
   maintained, pure Rust, no C-heavy dependency in the server).
-  - `tokio` — the async runtime under axum; only the `rt-multi-thread`,
-    `net`, `time`, `sync`, `macros` and `signal` features.
+  - `tokio` — the async runtime under axum, and the Windows named-pipe
+    transport of the component host (D-174); only the `rt-multi-thread`,
+    `net`, `time`, `sync`, `macros`, `signal` and `io-util` features.
   - `axum` / `hyper` — HTTP routing, default features off (`http1`,
     `json`, `query`, `tokio`). `hyper` is used directly only for its
     `Body` trait, which the SSE stream implements.
   - `serde` / `serde_json` — the JSON contracts.
   - `redb` — the embedded store, pure Rust, the bbolt equivalent.
-  - `bcrypt` — passwords. Chosen over argon2 because every hash in the
-    Go store is bcrypt (`$2a$10$`) and must keep verifying after import;
-    one algorithm keeps one verifier. Moving to argon2 later is a
+  - `bcrypt` — passwords and PINs. Chosen over argon2 because every hash
+    in the Go store is bcrypt (`$2a$10$`) and must keep verifying after
+    import; one algorithm keeps one verifier. Moving to argon2 later is a
     rehash-on-login change, not a migration.
   - `notify` — file watching for `plugins/` and `modules.json`, default
-    features off.
-  - `tracing` — log events; `lain-server/src/logging.rs` is a small JSON
-    subscriber, so `tracing-subscriber` is not needed.
-  - Written in-tree instead of adding crates: SHA-256, HMAC-SHA256 and
-    base64 (`lain-auth/src/crypto.rs`, checked against FIPS 180-4,
-    RFC 4231 and RFC 4648 vectors), OS randomness (`/dev/urandom`,
-    `RtlGenRandom`), the bbolt reader, and the runner's HTTP client.
+    features (macOS needs `macos_fsevent` to build).
+  - `tracing` — log events.
+  - `tracing-subscriber` (D-173) — JSON log output to stderr or a file
+    (`fmt` + `json` only, no env-filter/regex).
+  - `sha2` + `hmac` (D-173, RustCrypto, pure Rust) — the HS256 token
+    signature and its constant-time check.
+  - `getrandom` (D-173) — OS randomness for the token secret; already in
+    the tree through `bcrypt`.
+  - In-tree instead of a crate: base64 (`lain-auth/src/crypto.rs`; no
+    approved crate exposes it and the store needs Go's two encodings),
+    the bbolt reader, and the runner's HTTP client.
   - No test-only crates.
 - Rules that carry over unchanged: plugin boundaries, media bytes never
   in a plugin call, catalog/userstate separation, typed errors with
   stable codes and no panic on bad input, English prose.
-- Component mode needs Unix sockets, which Rust's standard library does
-  not offer on Windows yet; there it reports itself unavailable.
+- Component transport: a Unix socket, or a named pipe on Windows
+  (D-174); the NDJSON frames are identical. Go components dial Unix
+  sockets only, so on Windows a Go component needs a pipe dialer first.
 
 ```sh
 cargo build                        # the workspace (keep it incremental)

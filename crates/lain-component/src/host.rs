@@ -1,8 +1,6 @@
 //! The host side: a supervised child process behind a Provider.
 
-use std::io::{self, BufReader};
-use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -14,7 +12,8 @@ use serde_json::Value;
 use lain_core::{Error, Provider, codes};
 
 use crate::manifest::Manifest;
-use crate::protocol::{HEALTH_OP, Hello, PROTOCOL_VERSION, Request, Response, read_frame, write_frame};
+use crate::protocol::{HEALTH_OP, Hello, PROTOCOL_VERSION, Request, Response};
+use crate::transport::{Conn, Listener, is_timeout};
 
 /// The time bounds of one component; the defaults are the Go host's.
 #[derive(Debug, Clone, Copy)]
@@ -43,14 +42,9 @@ impl Default for Timeouts {
     }
 }
 
-struct Conn {
-    reader: BufReader<UnixStream>,
-    writer: UnixStream,
-}
-
 #[derive(Default)]
 struct State {
-    conn: Option<Conn>,
+    conn: Option<Box<dyn Conn>>,
     ready: bool,
     /// The last lifecycle error, surfaced through health.
     last: String,
@@ -59,14 +53,13 @@ struct State {
 
 struct Shared {
     manifest: Manifest,
-    sock_path: PathBuf,
     argv: Vec<String>,
     timeouts: Timeouts,
     /// Serializes requests on the one connection; guards its state.
     state: Mutex<State>,
     child: Mutex<Option<Child>>,
     closed: AtomicBool,
-    listener: UnixListener,
+    listener: Listener,
 }
 
 /// A Provider served by a supervised child process (D-074). Spawning
@@ -79,42 +72,6 @@ pub struct Process {
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-/// The longest socket path every Unix accepts (`sun_path` is 104 bytes
-/// on macOS and the BSDs, 108 on Linux, including the terminator).
-const MAX_SOCK_PATH: usize = 100;
-
-fn fnv(s: &str) -> u64 {
-    s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3))
-}
-
-/// `<sock_dir>/<id>.sock`, or, when that is too long for `sun_path`
-/// (deep data dirs, macOS's `$TMPDIR`), a private 0700 directory under
-/// `/tmp` named after it.
-fn socket_path(sock_dir: &Path, id: &str) -> Result<PathBuf, Error> {
-    let mkdir = |d: &Path| -> Result<(), Error> {
-        std::fs::create_dir_all(d).map_err(|e| Error::internal(format!("component socket dir: {e}")))?;
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o700));
-        Ok(())
-    };
-    let preferred = sock_dir.join(format!("{id}.sock"));
-    if preferred.as_os_str().len() < MAX_SOCK_PATH {
-        mkdir(sock_dir)?;
-        return Ok(preferred);
-    }
-    let short = PathBuf::from("/tmp").join(format!("lain-{:016x}", fnv(&sock_dir.to_string_lossy())));
-    mkdir(&short)?;
-    let path = short.join(format!("{:016x}.sock", fnv(id)));
-    if path.as_os_str().len() >= MAX_SOCK_PATH {
-        return Err(Error::internal("component socket path too long"));
-    }
-    Ok(path)
-}
-
-fn is_timeout(e: &io::Error) -> bool {
-    matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut)
 }
 
 impl Process {
@@ -135,14 +92,10 @@ impl Process {
         if manifest.id.is_empty() || manifest.id.contains('/') || manifest.id.contains('\0') {
             return Err(Error::invalid("manifest id must be a plain name"));
         }
-        let sock_path = socket_path(sock_dir, &manifest.id)?;
-        // A stale socket from a crashed host would block the bind.
-        let _ = std::fs::remove_file(&sock_path);
-        let listener = UnixListener::bind(&sock_path).map_err(|e| Error::internal(format!("component socket: {e}")))?;
-        let argv = manifest.argv(&sock_path.to_string_lossy());
+        let listener = Listener::bind(sock_dir, &manifest.id)?;
+        let argv = manifest.argv(&listener.address());
         let shared = Arc::new(Shared {
             manifest,
-            sock_path,
             argv,
             timeouts,
             state: Mutex::new(State::default()),
@@ -166,6 +119,15 @@ impl Process {
     /// The running child's pid, if any (diagnostics and tests).
     pub fn pid(&self) -> Option<u32> {
         lock(&self.shared.child).as_ref().map(Child::id)
+    }
+
+    /// Kills the child without telling the supervisor, as a crash would
+    /// (tests of the respawn path).
+    #[doc(hidden)]
+    pub fn kill_child_for_test(&self) {
+        if let Some(c) = lock(&self.shared.child).as_mut() {
+            let _ = c.kill();
+        }
     }
 
     /// Whether the handshake completed and the connection is up.
@@ -202,7 +164,7 @@ impl Process {
         if let Some(h) = lock(&self.supervisor).take() {
             let _ = h.join();
         }
-        let _ = std::fs::remove_file(&self.shared.sock_path);
+        self.shared.listener.cleanup();
     }
 }
 
@@ -254,30 +216,6 @@ impl Shared {
         }
     }
 
-    /// Accepts the child's connection within the handshake bound.
-    fn accept(&self) -> Result<UnixStream, String> {
-        self.listener.set_nonblocking(true).map_err(|e| e.to_string())?;
-        let deadline = Instant::now() + self.timeouts.handshake;
-        loop {
-            match self.listener.accept() {
-                Ok((s, _)) => {
-                    s.set_nonblocking(false).map_err(|e| e.to_string())?;
-                    return Ok(s);
-                }
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    if self.closed() {
-                        return Err("closed".into());
-                    }
-                    if Instant::now() >= deadline || self.child_exited() {
-                        return Err("child never connected".into());
-                    }
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                Err(e) => return Err(e.to_string()),
-            }
-        }
-    }
-
     fn check_hello(&self, h: &Hello) -> bool {
         h.op == "hello"
             && h.protocol == PROTOCOL_VERSION
@@ -302,8 +240,9 @@ impl Shared {
                     continue;
                 }
             }
-            let stream = match self.accept() {
-                Ok(s) => s,
+            let deadline = Instant::now() + self.timeouts.handshake;
+            let mut conn = match self.listener.accept(deadline, &|| self.closed() || self.child_exited()) {
+                Ok(c) => c,
                 Err(e) => {
                     self.kill_child();
                     if self.closed() {
@@ -317,21 +256,10 @@ impl Shared {
                     continue;
                 }
             };
-            let _ = stream.set_read_timeout(Some(self.timeouts.handshake));
-            let writer = match stream.try_clone() {
-                Ok(w) => w,
-                Err(e) => {
-                    self.kill_child();
-                    self.fail(&e.to_string());
-                    if !self.sleep(backoff) {
-                        return;
-                    }
-                    backoff = self.next_backoff(backoff);
-                    continue;
-                }
-            };
-            let mut reader = BufReader::new(stream);
-            let hello = read_frame(&mut reader).ok().and_then(|raw| serde_json::from_slice::<Hello>(&raw).ok());
+            let hello = conn
+                .read_frame(Some(self.timeouts.handshake))
+                .ok()
+                .and_then(|raw| serde_json::from_slice::<Hello>(&raw).ok());
             if !hello.as_ref().is_some_and(|h| self.check_hello(h)) {
                 tracing::warn!(id = %self.manifest.id, "component handshake failed");
                 self.kill_child();
@@ -342,11 +270,10 @@ impl Shared {
                 backoff = self.next_backoff(backoff);
                 continue;
             }
-            let _ = reader.get_ref().set_read_timeout(None);
             backoff = self.timeouts.backoff_start;
             {
                 let mut st = lock(&self.state);
-                st.conn = Some(Conn { reader, writer });
+                st.conn = Some(conn);
                 st.ready = true;
                 st.last.clear();
             }
@@ -393,13 +320,12 @@ impl Shared {
         let Some(conn) = st.conn.as_mut() else {
             return Err(Error::unavailable("component down"));
         };
-        let _ = conn.writer.set_write_timeout(Some(timeout));
-        let _ = conn.reader.get_ref().set_read_timeout(Some(timeout));
-        if let Err(e) = write_frame(&mut conn.writer, &req) {
+        let frame = serde_json::to_vec(&req).map_err(|e| Error::invalid(e.to_string()))?;
+        if let Err(e) = conn.write_frame(&frame, Some(timeout)) {
             self.reset(st);
             return Err(Error::unavailable(format!("component write: {e}")));
         }
-        let raw = match read_frame(&mut conn.reader) {
+        let raw = match conn.read_frame(Some(timeout)) {
             Ok(raw) => raw,
             Err(e) => {
                 self.reset(st);
@@ -462,24 +388,5 @@ impl Provider for Process {
         }
         let timeout = self.shared.timeouts.invoke;
         self.shared.round_trip(&mut st, op, cap, input, timeout)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn long_socket_dirs_fall_back_to_a_private_tmp_dir() {
-        let short = socket_path(Path::new("/tmp/lain-short-test"), "a").unwrap();
-        assert_eq!(short, PathBuf::from("/tmp/lain-short-test/a.sock"));
-        let deep = PathBuf::from("/tmp").join("x".repeat(120));
-        let p = socket_path(&deep, "community.anime-parser").unwrap();
-        assert!(p.starts_with("/tmp") && p.as_os_str().len() < MAX_SOCK_PATH, "{}", p.display());
-        assert_eq!(p, socket_path(&deep, "community.anime-parser").unwrap(), "stable");
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(std::fs::metadata(p.parent().unwrap()).unwrap().permissions().mode() & 0o777, 0o700);
-        let _ = std::fs::remove_dir_all(p.parent().unwrap());
-        let _ = std::fs::remove_dir_all("/tmp/lain-short-test");
     }
 }

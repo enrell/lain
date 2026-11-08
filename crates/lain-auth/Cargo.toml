@@ -9,6 +9,9 @@ publish.workspace = true
 
 [dependencies]
 bcrypt.workspace = true
+getrandom.workspace = true
+hmac.workspace = true
+sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 lain-core.workspace = true
