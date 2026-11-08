@@ -81,6 +81,38 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// The longest socket path every Unix accepts (`sun_path` is 104 bytes
+/// on macOS and the BSDs, 108 on Linux, including the terminator).
+const MAX_SOCK_PATH: usize = 100;
+
+fn fnv(s: &str) -> u64 {
+    s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3))
+}
+
+/// `<sock_dir>/<id>.sock`, or, when that is too long for `sun_path`
+/// (deep data dirs, macOS's `$TMPDIR`), a private 0700 directory under
+/// `/tmp` named after it.
+fn socket_path(sock_dir: &Path, id: &str) -> Result<PathBuf, Error> {
+    let mkdir = |d: &Path| -> Result<(), Error> {
+        std::fs::create_dir_all(d).map_err(|e| Error::internal(format!("component socket dir: {e}")))?;
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o700));
+        Ok(())
+    };
+    let preferred = sock_dir.join(format!("{id}.sock"));
+    if preferred.as_os_str().len() < MAX_SOCK_PATH {
+        mkdir(sock_dir)?;
+        return Ok(preferred);
+    }
+    let short = PathBuf::from("/tmp").join(format!("lain-{:016x}", fnv(&sock_dir.to_string_lossy())));
+    mkdir(&short)?;
+    let path = short.join(format!("{:016x}.sock", fnv(id)));
+    if path.as_os_str().len() >= MAX_SOCK_PATH {
+        return Err(Error::internal("component socket path too long"));
+    }
+    Ok(path)
+}
+
 fn is_timeout(e: &io::Error) -> bool {
     matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut)
 }
@@ -103,8 +135,7 @@ impl Process {
         if manifest.id.is_empty() || manifest.id.contains('/') || manifest.id.contains('\0') {
             return Err(Error::invalid("manifest id must be a plain name"));
         }
-        std::fs::create_dir_all(sock_dir).map_err(|e| Error::internal(format!("component socket dir: {e}")))?;
-        let sock_path = sock_dir.join(format!("{}.sock", manifest.id));
+        let sock_path = socket_path(sock_dir, &manifest.id)?;
         // A stale socket from a crashed host would block the bind.
         let _ = std::fs::remove_file(&sock_path);
         let listener = UnixListener::bind(&sock_path).map_err(|e| Error::internal(format!("component socket: {e}")))?;
@@ -431,5 +462,24 @@ impl Provider for Process {
         }
         let timeout = self.shared.timeouts.invoke;
         self.shared.round_trip(&mut st, op, cap, input, timeout)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_socket_dirs_fall_back_to_a_private_tmp_dir() {
+        let short = socket_path(Path::new("/tmp/lain-short-test"), "a").unwrap();
+        assert_eq!(short, PathBuf::from("/tmp/lain-short-test/a.sock"));
+        let deep = PathBuf::from("/tmp").join("x".repeat(120));
+        let p = socket_path(&deep, "community.anime-parser").unwrap();
+        assert!(p.starts_with("/tmp") && p.as_os_str().len() < MAX_SOCK_PATH, "{}", p.display());
+        assert_eq!(p, socket_path(&deep, "community.anime-parser").unwrap(), "stable");
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(p.parent().unwrap()).unwrap().permissions().mode() & 0o777, 0o700);
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+        let _ = std::fs::remove_dir_all("/tmp/lain-short-test");
     }
 }

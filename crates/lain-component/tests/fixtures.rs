@@ -188,7 +188,9 @@ fn rust_component_answers_like_go() {
             answers,
         };
         let dir = scratch("serve-fixture");
-        let sock = dir.join("c.sock");
+        // macOS's $TMPDIR is too deep for sun_path; /tmp is short everywhere.
+        let sock = PathBuf::from(format!("/tmp/lain-fx-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&sock);
         let lis = UnixListener::bind(&sock).unwrap();
         let sock2 = sock.clone();
         let t = std::thread::spawn(move || lain_component::serve(Path::new(&sock2), &provider));
@@ -209,6 +211,7 @@ fn rust_component_answers_like_go() {
         drop(w);
         drop(r);
         t.join().unwrap().unwrap();
+        std::fs::remove_file(&sock).ok();
         std::fs::remove_dir_all(dir).ok();
     }
 }
