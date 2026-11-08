@@ -27,7 +27,11 @@ pub fn dir() -> PathBuf {
 /// Every fixture file, sorted.
 pub fn files() -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = std::fs::read_dir(dir())
-        .map(|rd| rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "ndjson")).collect())
+        .map(|rd| {
+            rd.filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.extension().is_some_and(|x| x == "ndjson"))
+                .collect()
+        })
         .unwrap_or_default();
     out.sort();
     out

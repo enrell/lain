@@ -32,9 +32,9 @@ mod provision;
 #[cfg(unix)]
 mod serve;
 
-pub use manifest::Manifest;
 #[cfg(unix)]
 pub use host::{Process, Timeouts};
+pub use manifest::Manifest;
 #[cfg(unix)]
 pub use provision::Provisioner;
 #[cfg(unix)]

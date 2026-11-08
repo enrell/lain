@@ -33,7 +33,9 @@ fn main() {
             "--url" => url = args.next(),
             "--verbose" | "-v" => verbose = true,
             "-h" | "--help" => {
-                eprintln!("usage: LAIN_URL=http://host:port lain-conformance [--tier v1,v2] [--var k=v] [--vars f.json] [--save-vars f.json] [-v] <suite dir>...");
+                eprintln!(
+                    "usage: LAIN_URL=http://host:port lain-conformance [--tier v1,v2] [--var k=v] [--vars f.json] [--save-vars f.json] [-v] <suite dir>..."
+                );
                 return;
             }
             _ => suites.push(PathBuf::from(a)),
@@ -57,7 +59,8 @@ fn main() {
     let mut runner = Runner::new(base);
     runner.verbose = verbose;
     for f in load {
-        match std::fs::read(&f).ok().and_then(|raw| serde_json::from_slice::<serde_json::Map<String, Value>>(&raw).ok()) {
+        match std::fs::read(&f).ok().and_then(|raw| serde_json::from_slice::<serde_json::Map<String, Value>>(&raw).ok())
+        {
             Some(m) => runner.vars.extend(m),
             None => {
                 eprintln!("cannot read vars file {}", f.display());
@@ -94,7 +97,11 @@ fn main() {
         }
     }
     let total = pass + fail + skip;
-    println!("{url}: {pass}/{} passed, {fail} failed, {skip} skipped ({total} cases; tiers {})", pass + fail, tiers.join(","));
+    println!(
+        "{url}: {pass}/{} passed, {fail} failed, {skip} skipped ({total} cases; tiers {})",
+        pass + fail,
+        tiers.join(",")
+    );
     if fail > 0 {
         std::process::exit(1);
     }

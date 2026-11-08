@@ -81,10 +81,7 @@ impl Composition {
                 return Err(format!("capability {cap}: no providers"));
             }
             if b.mode == BindingMode::ExactlyOne && b.providers.len() != 1 {
-                return Err(format!(
-                    "capability {cap}: exactly-one needs 1 provider, got {}",
-                    b.providers.len()
-                ));
+                return Err(format!("capability {cap}: exactly-one needs 1 provider, got {}", b.providers.len()));
             }
             for id in &b.providers {
                 if !known.contains(id) {

@@ -5,14 +5,15 @@
 //! a case is `{"name", "requires"?, "steps"}`. Steps:
 //!
 //! - `{"req": {method, path, auth?, body?, raw_body?, headers?},
-//!    "expect": {status?, body?, headers?}, "save": {var: "/pointer"}}`
+//!    "expect": {status?, status_not?, body?, headers?}, "save": {var: "/pointer"}}`
 //!   `auth` is `"<token var>"` (Bearer), `"query:<token var>"`
 //!   (`?token=`) or `"header:<raw Authorization value>"`.
 //! - `{"wait_for": <req step>, "timeout_ms"}`: repeats the request until
 //!   the expectation holds.
 //! - `{"sse_open": {path, auth, as}, "expect": {status?, headers?}}`
-//! - `{"sse_expect": {stream, event, data?, within_ms?}}`: the next
-//!   matching event on that stream (others are skipped).
+//! - `{"sse_expect": {stream, event, data?, within_ms?, strict?}}`: the
+//!   next matching event on that stream (others are skipped; with
+//!   `strict`, the next event of that name must match).
 //! - `{"write_file": {path, json? | text?}}`, `{"remove_file": path}`,
 //!   `{"sleep_ms": n}`.
 //!
@@ -119,7 +120,8 @@ impl Runner {
             Some(v) => (true, v),
             None => (false, auth),
         };
-        let tok = self.vars.get(var).and_then(Value::as_str).ok_or_else(|| format!("auth: unset token variable {var}"))?;
+        let tok =
+            self.vars.get(var).and_then(Value::as_str).ok_or_else(|| format!("auth: unset token variable {var}"))?;
         if query {
             let sep = if path.contains('?') { '&' } else { '?' };
             Ok(format!("{path}{sep}token={}", percent_encode(tok)))
@@ -156,11 +158,21 @@ impl Runner {
         let body: Value = if resp.body.is_empty() {
             Value::Null
         } else {
-            serde_json::from_slice(&resp.body).unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&resp.body).into_owned()))
+            serde_json::from_slice(&resp.body)
+                .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&resp.body).into_owned()))
         };
         if let Some(st) = expect["status"].as_u64() {
             if resp.status as u64 != st {
-                return Err(format!("status: want {st}, got {} (body {})", resp.status, String::from_utf8_lossy(&resp.body)));
+                return Err(format!(
+                    "status: want {st}, got {} (body {})",
+                    resp.status,
+                    String::from_utf8_lossy(&resp.body)
+                ));
+            }
+        }
+        if let Some(st) = expect["status_not"].as_u64() {
+            if resp.status as u64 == st {
+                return Err(format!("status: want anything but {st} (body {})", String::from_utf8_lossy(&resp.body)));
             }
         }
         if let Some(h) = expect["headers"].as_object() {
@@ -214,7 +226,8 @@ impl Runner {
             let open = subst(open, &self.vars)?;
             let name = open["as"].as_str().ok_or("sse_open.as required")?.to_string();
             let mut headers = Vec::new();
-            let path = self.auth(open["auth"].as_str(), open["path"].as_str().ok_or("sse_open.path required")?, &mut headers)?;
+            let path =
+                self.auth(open["auth"].as_str(), open["path"].as_str().ok_or("sse_open.path required")?, &mut headers)?;
             let stream = http::open_sse(&self.base, &path, &headers)?;
             if let Some(expect) = step.get("expect") {
                 let fake = http::Response { status: stream.status, headers: stream.headers.clone(), body: Vec::new() };
@@ -232,6 +245,7 @@ impl Runner {
             let name = exp["stream"].as_str().ok_or("sse_expect.stream required")?;
             let stream = self.streams.get(name).ok_or_else(|| format!("no open stream {name}"))?;
             let event = exp["event"].as_str().unwrap_or("message");
+            let strict = exp["strict"].as_bool().unwrap_or(false);
             let deadline = Instant::now() + Duration::from_millis(exp["within_ms"].as_u64().unwrap_or(5_000));
             let mut seen = Vec::new();
             loop {
@@ -247,6 +261,9 @@ impl Runner {
                             None | Some(Ok(())) => {
                                 let save = step.get("save").cloned().unwrap_or(Value::Null);
                                 return self.save(&data, &save);
+                            }
+                            Some(Err(e)) if strict => {
+                                return Err(format!("first {event} event does not match: {e} (data {})", ev.data));
                             }
                             Some(Err(_)) => seen.push(format!("{} {}", ev.event, ev.data)),
                         }
@@ -318,7 +335,11 @@ impl Runner {
             if !tiers.iter().any(|t| t == tier) {
                 continue;
             }
-            let file = format!("{}/{}", dir.file_name().unwrap_or_default().to_string_lossy(), f.file_name().unwrap_or_default().to_string_lossy());
+            let file = format!(
+                "{}/{}",
+                dir.file_name().unwrap_or_default().to_string_lossy(),
+                f.file_name().unwrap_or_default().to_string_lossy()
+            );
             for case in doc["cases"].as_array().cloned().unwrap_or_default() {
                 let name = case["name"].as_str().unwrap_or("?").to_string();
                 let outcome = self.run_case(&case);
@@ -347,7 +368,10 @@ mod tests {
         let mut vars = BTreeMap::new();
         vars.insert("id".to_string(), json!("lib-1"));
         vars.insert("n".to_string(), json!(3));
-        assert_eq!(subst(&json!({"p": "/api/{{id}}/x", "n": "{{n}}", "s": "n={{n}}"}), &vars).unwrap(), json!({"p": "/api/lib-1/x", "n": 3, "s": "n=3"}));
+        assert_eq!(
+            subst(&json!({"p": "/api/{{id}}/x", "n": "{{n}}", "s": "n={{n}}"}), &vars).unwrap(),
+            json!({"p": "/api/lib-1/x", "n": 3, "s": "n=3"})
+        );
         assert!(subst(&json!("{{missing}}"), &vars).is_err());
         assert_eq!(percent_encode("a.b-c_d~"), "a.b-c_d~");
         assert_eq!(percent_encode("a b/"), "a%20b%2F");

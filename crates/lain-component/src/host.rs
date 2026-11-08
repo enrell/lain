@@ -258,10 +258,7 @@ impl Shared {
     fn supervise(&self) {
         let mut backoff = self.timeouts.backoff_start;
         while !self.closed() {
-            let spawned = Command::new(&self.argv[0])
-                .args(&self.argv[1..])
-                .stdin(Stdio::null())
-                .spawn();
+            let spawned = Command::new(&self.argv[0]).args(&self.argv[1..]).stdin(Stdio::null()).spawn();
             match spawned {
                 Ok(child) => *lock(&self.child) = Some(child),
                 Err(e) => {
@@ -376,7 +373,10 @@ impl Shared {
             Err(e) => {
                 self.reset(st);
                 if is_timeout(&e) {
-                    return Err(Error::new(codes::OUTCOME_UNKNOWN, "component call timed out; it may or may not have run"));
+                    return Err(Error::new(
+                        codes::OUTCOME_UNKNOWN,
+                        "component call timed out; it may or may not have run",
+                    ));
                 }
                 return Err(Error::unavailable(format!("component read: {e}")));
             }

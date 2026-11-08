@@ -6,6 +6,7 @@
 //! The Go binary is `LAIN_GO_BIN`, or built from this checkout with
 //! `go build` when Go is on PATH. Without either the tests skip, unless
 //! `LAIN_REQUIRE_GO=1` (CI) makes that a failure.
+#![cfg(unix)]
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -53,7 +54,8 @@ fn require_go() -> Option<PathBuf> {
 }
 
 fn manifest(bin: &Path, version: &str) -> Manifest {
-    let mut m = Manifest { id: ID.into(), version: version.into(), capabilities: vec![CAP.into()], ..Manifest::default() };
+    let mut m =
+        Manifest { id: ID.into(), version: version.into(), capabilities: vec![CAP.into()], ..Manifest::default() };
     m.execution.kind = "process".into();
     m.execution.entrypoint = bin.to_string_lossy().into_owned();
     m.execution.args = ["plugin-run", "--id", ID, "--sock", "{sock}"].iter().map(|s| s.to_string()).collect();
@@ -115,7 +117,11 @@ fn go_component_through_registry_and_plugins_dir() {
     let mut bindings = BTreeMap::new();
     bindings.insert(CAP.to_string(), Binding::new(BindingMode::OrderedMany, &[ID]));
     let reg = Arc::new(Registry::new(Composition { version: 1, bindings }));
-    let prov = Provisioner::with_timeouts(&plugins, reg.clone(), Timeouts { backoff_start: Duration::from_millis(100), ..Timeouts::default() });
+    let prov = Provisioner::with_timeouts(
+        &plugins,
+        reg.clone(),
+        Timeouts { backoff_start: Duration::from_millis(100), ..Timeouts::default() },
+    );
     prov.start().unwrap();
     assert!(reg.call_first(CAP, "identify", candidate(), |_| true).is_err(), "nothing installed yet");
 

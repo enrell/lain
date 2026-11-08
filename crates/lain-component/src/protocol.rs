@@ -83,7 +83,10 @@ pub fn read_frame<R: BufRead>(r: &mut R) -> io::Result<Vec<u8>> {
     loop {
         let chunk = r.fill_buf()?;
         if chunk.is_empty() {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, if buf.is_empty() { "eof" } else { "eof inside a frame" }));
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                if buf.is_empty() { "eof" } else { "eof inside a frame" },
+            ));
         }
         if let Some(pos) = chunk.iter().position(|b| *b == b'\n') {
             buf.extend_from_slice(&chunk[..pos]);
@@ -110,7 +113,8 @@ mod tests {
     #[test]
     fn frames_match_the_go_encoding() {
         let mut out = Vec::new();
-        write_frame(&mut out, &Request { seq: 1, cap: String::new(), op: HEALTH_OP.into(), input: Value::Null }).unwrap();
+        write_frame(&mut out, &Request { seq: 1, cap: String::new(), op: HEALTH_OP.into(), input: Value::Null })
+            .unwrap();
         assert_eq!(out, b"{\"seq\":1,\"op\":\"health\",\"input\":null}\n");
         let r: Response = serde_json::from_slice(br#"{"seq":2,"error":{"code":"not-found","msg":"x"}}"#).unwrap();
         assert_eq!(r.error.unwrap().code, "not-found");
