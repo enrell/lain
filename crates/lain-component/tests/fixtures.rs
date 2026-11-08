@@ -1,17 +1,14 @@
 //! Replays conformance/component/*.ndjson against the Rust host and the
 //! Rust component side. The Go side replays the same files in
 //! internal/component/conformance_test.go.
-#![cfg(unix)]
 
-use std::collections::BTreeMap;
-use std::io::BufReader;
-use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::{Value, json};
 
 use lain_component::protocol::{read_frame, write_frame};
+use lain_component::transport;
 use lain_component::{Manifest, Process, Timeouts};
 use lain_conformance::fixtures::{self, From, Line};
 use lain_conformance::matcher::matches;
@@ -54,11 +51,15 @@ fn self_exec_manifest(lines: &[Line], mode: &str) -> Manifest {
 #[ignore = "helper: runs only as a re-executed component"]
 fn scripted_component() {
     let args: Vec<String> = std::env::args().collect();
-    let Some(sock) = args.last().filter(|s| s.ends_with(".sock")).cloned() else { return };
+    let Some(sock) = args.last().filter(|s| s.ends_with(".sock") || s.starts_with(r"\\.\pipe\")).cloned() else {
+        return;
+    };
     let mode = args[args.len() - 2].clone();
-    let stream = UnixStream::connect(&sock).unwrap();
-    let mut w = stream.try_clone().unwrap();
-    let mut r = BufReader::new(stream);
+    if mode == "serve-echo" {
+        lain_component::serve(&sock, &Echo).unwrap();
+        return;
+    }
+    let (mut r, mut w) = transport::connect(&sock).unwrap();
     if let Some(name) = mode.strip_prefix("hang:") {
         let lines = fixtures::load(&fixtures::dir().join(name)).unwrap();
         write_frame(&mut w, &lines[0].frame).unwrap();
@@ -144,12 +145,14 @@ fn rust_host_sends_the_recorded_frames() {
 
 /// A provider answering from a fixture's recorded outputs, to check
 /// the Rust component side frames them exactly as Go does.
+#[cfg(unix)]
 struct Recorded {
     id: String,
     caps: Vec<String>,
-    answers: BTreeMap<String, Value>,
+    answers: std::collections::BTreeMap<String, Value>,
 }
 
+#[cfg(unix)]
 impl Provider for Recorded {
     fn id(&self) -> &str {
         &self.id
@@ -171,12 +174,15 @@ impl Provider for Recorded {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn rust_component_answers_like_go() {
+    use std::io::BufReader;
+    use std::os::unix::net::UnixListener;
     for file in fixtures::files() {
         let lines = fixtures::load(&file).unwrap();
         let hello = &lines[0].frame;
-        let mut answers = BTreeMap::new();
+        let mut answers = std::collections::BTreeMap::new();
         for pair in lines[1..].chunks(2) {
             if let Some(out) = pair[1].frame.get("output") {
                 answers.insert(pair[0].frame["input"].to_string(), out.clone());
@@ -193,7 +199,7 @@ fn rust_component_answers_like_go() {
         let _ = std::fs::remove_file(&sock);
         let lis = UnixListener::bind(&sock).unwrap();
         let sock2 = sock.clone();
-        let t = std::thread::spawn(move || lain_component::serve(Path::new(&sock2), &provider));
+        let t = std::thread::spawn(move || lain_component::serve(&sock2.to_string_lossy(), &provider));
         let (conn, _) = lis.accept().unwrap();
         conn.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
         let mut w = conn.try_clone().unwrap();
@@ -273,5 +279,67 @@ fn an_unspawnable_entrypoint_degrades() {
     p.close();
     m.execution.kind = "wasm".into();
     assert_eq!(Process::spawn(m, &dir).err().unwrap().code, codes::INVALID_MESSAGE);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A Rust provider for the Rust-to-Rust test: echoes its input.
+struct Echo;
+
+impl Provider for Echo {
+    fn id(&self) -> &str {
+        "test-echo"
+    }
+    fn capabilities(&self) -> Vec<String> {
+        vec!["lain.test.echo@1".into()]
+    }
+    fn health(&self) -> Result<(), Error> {
+        Ok(())
+    }
+    fn invoke(&self, _cap: &str, op: &str, input: Value) -> Result<Value, Error> {
+        match op {
+            "echo" => Ok(json!({"echo": input})),
+            "panic" => panic!("asked to"),
+            _ => Err(Error::not_found(format!("no op {op}"))),
+        }
+    }
+}
+
+/// A Rust component (`serve`) under the Rust host, through the
+/// platform transport: a Unix socket, or a named pipe on Windows.
+#[test]
+fn rust_component_under_the_rust_host() {
+    let exe = std::env::current_exe().unwrap();
+    let mut m =
+        Manifest { id: "test-echo".into(), capabilities: vec!["lain.test.echo@1".into()], ..Manifest::default() };
+    m.execution.kind = "process".into();
+    m.execution.entrypoint = exe.to_string_lossy().into_owned();
+    m.execution.args =
+        ["--exact", "scripted_component", "--include-ignored", "--quiet", "--test-threads=1", "serve-echo", "{sock}"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+    let dir = scratch("echo");
+    let t = Timeouts { backoff_start: Duration::from_millis(50), ..Timeouts::default() };
+    let p = Process::spawn_with(m, &dir, t).unwrap();
+    assert!(p.wait_ready(Duration::from_secs(20)), "never ready: {:?}", p.health());
+    p.health().unwrap();
+    let big = "x".repeat(200_000);
+    let out = p.invoke("lain.test.echo@1", "echo", json!({"n": 1, "big": big})).unwrap();
+    assert_eq!(out["echo"]["n"], 1);
+    assert_eq!(out["echo"]["big"].as_str().unwrap().len(), 200_000);
+    assert_eq!(p.invoke("lain.test.echo@1", "nope", Value::Null).unwrap_err().code, codes::NOT_FOUND);
+    assert_eq!(p.invoke("lain.test.echo@1", "panic", Value::Null).unwrap_err().code, codes::INTERNAL);
+    assert_eq!(p.invoke("lain.other@1", "echo", Value::Null).unwrap_err().code, codes::INVALID_MESSAGE);
+    // Survives errors and panics; respawns after the child dies.
+    p.health().unwrap();
+    let pid = p.pid();
+    p.kill_child_for_test();
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while (p.pid() == pid || p.health().is_err()) && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_ne!(p.pid(), pid, "no respawn");
+    assert_eq!(p.invoke("lain.test.echo@1", "echo", json!(2)).unwrap()["echo"], 2);
+    p.close();
     std::fs::remove_dir_all(dir).ok();
 }

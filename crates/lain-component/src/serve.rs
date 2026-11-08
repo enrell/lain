@@ -1,10 +1,8 @@
 //! The component side, for providers written in Rust: dial the host
 //! socket, announce with `hello`, answer frames until the host hangs up.
 
-use std::io::{self, BufReader};
-use std::os::unix::net::UnixStream;
+use std::io;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::Path;
 
 use serde_json::{Value, json};
 
@@ -12,11 +10,10 @@ use lain_core::{Error, Provider, codes};
 
 use crate::protocol::{HEALTH_OP, Hello, PROTOCOL_VERSION, Request, Response, WireError, read_frame, write_frame};
 
-/// Serves `p` on the host socket at `sock` until EOF.
-pub fn serve(sock: &Path, p: &dyn Provider) -> io::Result<()> {
-    let stream = UnixStream::connect(sock)?;
-    let mut writer = stream.try_clone()?;
-    let mut reader = BufReader::new(stream);
+/// Serves `p` on the host address (`{sock}`: a socket path, or a pipe
+/// name on Windows) until EOF.
+pub fn serve(address: &str, p: &dyn Provider) -> io::Result<()> {
+    let (mut reader, mut writer) = crate::transport::connect(address)?;
     write_frame(
         &mut writer,
         &Hello {

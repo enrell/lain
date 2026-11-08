@@ -498,8 +498,8 @@ impl<'s> Auth<'s> {
         if parts.len() != 3 {
             return Err(msg("bad token"));
         }
-        let want = crypto::b64_url(&crypto::hmac_sha256(&self.secret, format!("{}.{}", parts[0], parts[1]).as_bytes()));
-        if !crypto::ct_eq(want.as_bytes(), parts[2].as_bytes()) {
+        let tag = crypto::b64_url_decode(parts[2]).ok_or_else(|| msg("bad token"))?;
+        if !crypto::hmac_sha256_verify(&self.secret, format!("{}.{}", parts[0], parts[1]).as_bytes(), &tag) {
             return Err(msg("bad token"));
         }
         let raw = crypto::b64_url_decode(parts[1]).ok_or_else(|| msg("bad token"))?;

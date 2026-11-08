@@ -18,10 +18,10 @@ license = "Apache-2.0"
 rust-version = "1.90"
 publish = false
 
-# D-172 baseline only; versions are pinned exactly and Cargo.lock is
-# committed. A crate outside this list needs the owner's approval.
+# D-172 baseline plus D-173; versions are pinned exactly and Cargo.lock
+# is committed. A crate outside this list needs the owner's approval.
 [workspace.dependencies]
-tokio = { version = "=1.54.1", default-features = false, features = ["rt-multi-thread", "net", "time", "sync", "macros", "signal"] }
+tokio = { version = "=1.54.1", default-features = false, features = ["rt-multi-thread", "net", "time", "sync", "macros", "signal", "io-util"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
 hyper = { version = "=1.12.0", default-features = false }
 serde = { version = "=1.0.229", features = ["derive"] }
@@ -32,6 +32,11 @@ bcrypt = { version = "=0.19.3", default-features = false, features = ["std"] }
 # there without it); on Linux and Windows they add nothing.
 notify = "=8.2.2"
 tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
+# D-173 (Q-043): token hashing, OS randomness, log output.
+sha2 = { version = "=0.11.1", default-features = false }
+hmac = { version = "=0.13.0", default-features = false }
+getrandom = { version = "=0.4.3", features = ["std"] }
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "json", "std"] }
 
 lain-core = { path = "crates/lain-core" }
 lain-store = { path = "crates/lain-store" }
