@@ -1,0 +1,68 @@
+{
+  "tier": "v2",
+  "description": "GET /api/modules (D-154) and modules.json (lain.modules@1): enable/disable unbinds capabilities and unmounts routes, which answer module-disabled. Runs after the fresh suite (needs its tokens). Toggling needs the server's data dir (--var data_dir=...).",
+  "cases": [
+    {"name": "modules list with state and UI surfaces", "steps": [
+      {"req": {"method": "GET", "path": "/api/modules", "auth": "bob_token"},
+       "expect": {"status": 200, "body": {"format": "lain.modules@1", "modules": {
+         "$each": {"id": "$string", "name": "$string", "required": "$bool", "enabled": "$bool", "state": "$string",
+           "capabilities": {"$each": {"capability": "$string", "bound": "$bool", "healthy": "$bool", "providers": "$array"}},
+           "routes": "$array", "library_kinds": "$array", "ui": {"destinations": "$array", "settings": "$array", "commands": "$array"}, "components": "$array"},
+         "$contains": [
+           {"id": "core", "required": true, "enabled": true, "state": "active", "$open": true},
+           {"id": "watch", "required": false, "enabled": true, "library_kinds": ["anime", "movie", "video"], "$open": true},
+           {"id": "read", "library_kinds": ["manga", "comic"], "$open": true},
+           {"id": "acquire", "$open": true}, {"id": "subtitles", "$open": true}, {"id": "identify", "$open": true},
+           {"id": "metadata", "$open": true}, {"id": "lists", "$open": true}, {"id": "social", "$open": true},
+           {"id": "lab", "enabled": false, "state": "disabled", "$open": true}]}}}}
+    ]},
+    {"name": "modules need a token", "steps": [
+      {"req": {"method": "GET", "path": "/api/modules"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]},
+    {"name": "disabling a module unmounts its routes and announces it", "requires": ["data_dir"], "steps": [
+      {"remove_file": "{{data_dir}}/modules.json"},
+      {"sse_open": {"path": "/api/events", "auth": "query:admin_token", "as": "mod"}, "expect": {"status": 200, "headers": {"content-type": "$prefix:text/event-stream"}}},
+      {"sse_expect": {"stream": "mod", "event": "ready", "data": {"server": "$string", "version": "$string"}}},
+      {"write_file": {"path": "{{data_dir}}/modules.json", "json": {"format": "lain.modules@1", "modules": [{"id": "watch", "enabled": false}]}}},
+      {"sse_expect": {"stream": "mod", "event": "module-state", "data": {"module": "watch", "enabled": false, "state": "disabled"}, "within_ms": 8000}},
+      {"req": {"method": "GET", "path": "/api/items/some-item/playback", "auth": "admin_token"},
+       "expect": {"status": 404, "body": {"error": "module watch is disabled", "code": "module-disabled", "module": "watch"}}},
+      {"req": {"method": "GET", "path": "/api/admin/transcodes", "auth": "admin_token"},
+       "expect": {"status": 404, "body": {"code": "module-disabled", "module": "watch", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/modules", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"modules": {"$contains": [{"id": "watch", "enabled": false, "state": "disabled", "$open": true}]}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "admin_token"}, "expect": {"status": 200}}
+    ]},
+    {"name": "enabling it again rebinds", "requires": ["data_dir"], "steps": [
+      {"write_file": {"path": "{{data_dir}}/modules.json", "json": {"format": "lain.modules@1", "modules": [{"id": "watch", "enabled": true}]}}},
+      {"sse_expect": {"stream": "mod", "event": "module-state", "data": {"module": "watch", "enabled": true, "state": "$string"}, "within_ms": 8000}},
+      {"req": {"method": "GET", "path": "/api/items/some-item/playback", "auth": "admin_token"}, "expect": {"status_not": 404}}
+    ]},
+    {"name": "a disabled module's capabilities are unbound with a new generation", "requires": ["data_dir"], "steps": [
+      {"write_file": {"path": "{{data_dir}}/modules.json", "json": {"format": "lain.modules@1", "modules": [{"id": "identify", "enabled": false}]}}},
+      {"sse_expect": {"stream": "mod", "event": "module-state", "data": {"module": "identify", "enabled": false, "state": "disabled"}, "within_ms": 8000}},
+      {"req": {"method": "GET", "path": "/api/plugins", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"events": {"$contains": [{"kind": "module-disabled", "capability": "lain.media.identify@1", "$open": true}]}, "$open": true}}},
+      {"remove_file": "{{data_dir}}/modules.json"},
+      {"sse_expect": {"stream": "mod", "event": "module-state", "data": {"module": "identify", "enabled": true, "state": "$string"}, "within_ms": 8000}},
+      {"req": {"method": "GET", "path": "/api/plugins", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"events": {"$contains": [{"kind": "module-enabled", "capability": "lain.media.identify@1", "$open": true}]}, "$open": true}}}
+    ]},
+    {"name": "the core module cannot be disabled", "requires": ["data_dir"], "steps": [
+      {"write_file": {"path": "{{data_dir}}/modules.json", "json": {"format": "lain.modules@1", "modules": [{"id": "core", "enabled": false}, {"id": "lab", "enabled": true}]}}},
+      {"sse_expect": {"stream": "mod", "event": "module-state", "data": {"module": "lab", "enabled": true, "state": "$string"}, "within_ms": 8000}},
+      {"req": {"method": "GET", "path": "/api/modules", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"modules": {"$contains": [{"id": "core", "enabled": true, "$open": true}, {"id": "lab", "enabled": true, "$open": true}]}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "admin_token"}, "expect": {"status": 200}},
+      {"remove_file": "{{data_dir}}/modules.json"},
+      {"sse_expect": {"stream": "mod", "event": "module-state", "data": {"module": "lab", "enabled": false, "state": "disabled"}, "within_ms": 8000}}
+    ]},
+    {"name": "a broken modules.json keeps the current state", "requires": ["data_dir"], "steps": [
+      {"write_file": {"path": "{{data_dir}}/modules.json", "text": "{not json"}},
+      {"sleep_ms": 800},
+      {"req": {"method": "GET", "path": "/api/modules", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"modules": {"$contains": [{"id": "watch", "enabled": true, "$open": true}, {"id": "lab", "enabled": false, "$open": true}]}, "$open": true}}},
+      {"remove_file": "{{data_dir}}/modules.json"}
+    ]}
+  ]
+}
