@@ -267,4 +267,13 @@ Accepted by the owner on 2026-11-08 from `docs/DESIGN-v2.md` (PR #19), with the 
 
 - `D-172` — The Rust dependency baseline is approved: `tokio` (runtime), `axum`/`hyper` (HTTP), `serde`/`serde_json` (JSON), `redb` (embedded KV, pure Rust), `argon2` or `bcrypt` (passwords), `notify` (file watching), `tracing` (logs). Any crate beyond these follows the policy in DESIGN-v2 §13 (few, maintained, pure Rust, justified in `AGENTS.md`; no C-heavy dependencies in the server) and is still asked of the owner. Source: owner, 2026-11-08.
 
-**Next number:** `D-173`.
+## Rust P1 follow-ups (accepted 2026-11-08)
+
+Approved by the owner on 2026-11-08 from the P1a report (PR #20).
+
+- `D-173` — The Rust workspace adds `sha2` and `hmac` (RustCrypto) for the HS256 token, `getrandom` for OS randomness and `tracing-subscriber` for log output; the hand-written SHA-256, HMAC, randomness and log-writer code is removed. Base64 stays a small in-tree function because no approved crate exposes it (`bcrypt` uses `base64` only internally). Source: Q-043.
+- `D-174` — On Windows the component transport is a named pipe through tokio's built-in `tokio::net::windows::named_pipe` (no new crate); the NDJSON protocol is identical on every OS, and `{sock}` expands to the pipe name. CI on Windows runs a Rust-to-Rust component test through the pipe. Source: Q-044.
+- `D-175` — The portable-roots catalog document is `lain.catalog-export@3` (Go already writes version 2 for identity v2 aliases); importers accept @1, @2 and @3. This amends the export number in D-157 and DESIGN-v2 §5.4/§13; the rest of D-157 stands. Source: Q-042.
+- `D-176` — The Go provisioner's manifest reload is fixed: rewriting a manifest stops the old component before spawning the new one, so the new process can bind the socket instead of failing with "address already in use" while the old one keeps serving. Source: P1a report (PR #20), owner approval 2026-11-08.
+
+**Next number:** `D-177`.

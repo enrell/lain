@@ -133,7 +133,7 @@ config. Moving from Windows/WSL (`V:\media`, `/mnt/v/...`) to Linux (Omarchy)
 then becomes a mapping change, not a catalog rewrite. A one-shot
 migration converts existing absolute paths. This implements the "portable paths"
 rule from hq-app DESIGN "Dados dos apps". **[owner]**: it changes the catalog
-export document (`lain.catalog-export@2`, with import of @1).
+export document (`lain.catalog-export@3`, with import of @1 and @2; D-175).
 
 ## 6. The owner's other repos
 
@@ -338,7 +338,7 @@ app. It builds its navigation from `/api/modules`, so it follows module state.
 | V-1 | Modules as a bundle layer over composition; `modules.json` (`lain.modules@1`); disable = withdraw + unmount, data kept | public API |
 | V-2 | The module set in §5.2 | — |
 | V-3 | Private libraries enforced in the gateway; per-session unlock with PIN/password | auth surface |
-| V-4 | Named library roots; `lain.catalog-export@2` with @1 import | storage contract |
+| V-4 | Named library roots; `lain.catalog-export@3` with @1/@2 import (D-175) | storage contract |
 | V-5 | Benchmark lain-parser vs zantetsu on the same real names before keeping either as the default | — |
 | V-6 | `lain.subtitle.translate@1` served by an animesubs component | public contract |
 | V-7 | `lain.acquire.extract@1` served by an Anything component; Anything must add auth first | public contract |
@@ -389,7 +389,7 @@ proven.
   5. cutover;
   6. Go removed.
 - **Data:**
-  - bbolt documents migrate through `lain.catalog-export@2` (`D-157`) plus a
+  - bbolt documents migrate through `lain.catalog-export@3` (`D-157`, `D-175`) plus a
     userstate export, with a one-shot importer in the Rust server.
   - The existing data dir is read, never written, until the owner confirms the
     cutover.

@@ -189,3 +189,51 @@ installed:
 	}
 	t.Fatal("provider still registered after manifest removal")
 }
+
+// TestProvisionerReloadOnRewrite rewrites a manifest and expects a new,
+// healthy process (D-176). Before the fix the new spawn failed with
+// "address already in use" and the old process kept serving.
+func TestProvisionerReloadOnRewrite(t *testing.T) {
+	reg := core.NewRegistry(core.DefaultComposition())
+	dir := t.TempDir()
+	prov := NewProvisioner(dir, reg, nil)
+	if err := prov.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer prov.Close()
+	manifest := func(version string) []byte {
+		return []byte(`{"id":"test-stub","version":"` + version + `","capabilities":["lain.media.probe@1"],` +
+			`"execution":{"kind":"process","entrypoint":"` + os.Args[0] +
+			`","args":["-test.run=^TestHelperProcess$","component-serve","{sock}"]}}`)
+	}
+	current := func() *Process {
+		prov.mu.Lock()
+		defer prov.mu.Unlock()
+		return prov.procs["test-stub"]
+	}
+	if err := os.WriteFile(dir+"/test-stub.json", manifest("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for current() == nil && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	first := current()
+	if first == nil {
+		t.Fatal("manifest not provisioned")
+	}
+	waitHealthy(t, first)
+
+	if err := os.WriteFile(dir+"/test-stub.json", manifest("2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if p := current(); p != nil && p != first && p.manifest.Version == "2" {
+			waitHealthy(t, p)
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("rewritten manifest was not reloaded")
+}
