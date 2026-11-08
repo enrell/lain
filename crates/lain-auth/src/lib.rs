@@ -272,9 +272,9 @@ impl<'s> Auth<'s> {
                 user = Some(u);
                 Ok(())
             })
-            .or_else(|e| match fail.take() {
-                Some(f) => Err(f),
-                None => Err(AuthError::from(e)),
+            .map_err(|e| match fail.take() {
+                Some(f) => f,
+                None => AuthError::from(e),
             })?;
         Ok(user.expect("committed"))
     }

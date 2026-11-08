@@ -30,6 +30,12 @@ const FLAG_LEAF: u16 = 0x02;
 const LEAF_BUCKET: u32 = 0x01;
 const MAX_DEPTH: usize = 64;
 
+/// A top-level entry: key, value and whether it is a bucket.
+type RootEntry = (Vec<u8>, Vec<u8>, bool);
+
+/// Key/value pairs in key order.
+pub type Pairs = Vec<(Vec<u8>, Vec<u8>)>;
+
 /// One key/value pair (or a nested bucket) of a bucket.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
@@ -201,7 +207,7 @@ impl BoltFile {
         Ok(out)
     }
 
-    fn root_entries(&self) -> Result<Vec<(Vec<u8>, Vec<u8>, bool)>, String> {
+    fn root_entries(&self) -> Result<Vec<RootEntry>, String> {
         // The root bucket's leaves hold every top-level bucket header.
         let mut out = Vec::new();
         let mut stack = vec![(self.root, 0usize)];
@@ -259,7 +265,7 @@ impl BoltFile {
 
     /// The key/value pairs of a top-level bucket (nested buckets are
     /// skipped; lain's buckets have none).
-    pub fn pairs(&self, name: &str) -> Result<Vec<(Vec<u8>, Vec<u8>)>, String> {
+    pub fn pairs(&self, name: &str) -> Result<Pairs, String> {
         Ok(self
             .bucket(name)?
             .unwrap_or_default()

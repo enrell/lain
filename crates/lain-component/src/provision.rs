@@ -212,10 +212,10 @@ impl Reconciler {
                 if running && unchanged {
                     continue;
                 }
-                if let Some((old_id, _, _)) = prev {
-                    if *old_id != m.id {
-                        to_remove.push(old_id.clone());
-                    }
+                if let Some((old_id, _, _)) = prev
+                    && *old_id != m.id
+                {
+                    to_remove.push(old_id.clone());
                 }
                 to_install.push(m.clone());
             }

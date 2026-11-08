@@ -28,7 +28,9 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 redb = "=4.5.0"
 bcrypt = { version = "=0.19.3", default-features = false, features = ["std"] }
-notify = { version = "=8.2.2", default-features = false }
+# Default features: macOS needs `macos_fsevent` (the crate does not build
+# there without it); on Linux and Windows they add nothing.
+notify = "=8.2.2"
 tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
 
 lain-core = { path = "crates/lain-core" }

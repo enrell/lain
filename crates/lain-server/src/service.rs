@@ -668,10 +668,8 @@ mod tests {
         let h = host();
         let pl = plan(Os::MacOs, &Action::Install, &spec(false), &h).unwrap();
         assert_eq!(pl.write[0].0, PathBuf::from("/home/u/Library/LaunchAgents/dev.lain.lain-rs.plist"));
-        assert_eq!(
-            pl.commands[1].argv,
-            ["launchctl", "bootstrap", "gui/501", "/home/u/Library/LaunchAgents/dev.lain.lain-rs.plist"]
-        );
+        let plist = plist_path(&spec(false), &h).to_string_lossy().into_owned();
+        assert_eq!(pl.commands[1].argv, ["launchctl", "bootstrap", "gui/501", plist.as_str()]);
         assert_eq!(
             plan(Os::MacOs, &Action::Stop, &spec(false), &h).unwrap().commands[0].argv,
             ["launchctl", "kill", "SIGTERM", "gui/501/dev.lain.lain-rs"]

@@ -56,15 +56,15 @@ fn at(path: &str, want: &Value, got: &Value) -> Result<(), String> {
     match want {
         Value::Object(w) if w.keys().any(|k| matches!(k.as_str(), "$each" | "$len" | "$min_len" | "$contains")) => {
             let Value::Array(g) = got else { return fail(format!("want array, got {}", type_name(got))) };
-            if let Some(n) = w.get("$len").and_then(Value::as_u64) {
-                if g.len() as u64 != n {
-                    return fail(format!("want length {n}, got {}", g.len()));
-                }
+            if let Some(n) = w.get("$len").and_then(Value::as_u64)
+                && g.len() as u64 != n
+            {
+                return fail(format!("want length {n}, got {}", g.len()));
             }
-            if let Some(n) = w.get("$min_len").and_then(Value::as_u64) {
-                if (g.len() as u64) < n {
-                    return fail(format!("want length >= {n}, got {}", g.len()));
-                }
+            if let Some(n) = w.get("$min_len").and_then(Value::as_u64)
+                && (g.len() as u64) < n
+            {
+                return fail(format!("want length >= {n}, got {}", g.len()));
             }
             if let Some(each) = w.get("$each") {
                 for (i, el) in g.iter().enumerate() {

@@ -26,9 +26,9 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
         msg.push(0);
     }
     msg.extend_from_slice(&bit_len.to_be_bytes());
-    for chunk in msg.chunks_exact(64) {
+    for chunk in msg.as_chunks::<64>().0 {
         let mut w = [0u32; 64];
-        for (i, word) in chunk.chunks_exact(4).enumerate() {
+        for (i, word) in chunk.as_chunks::<4>().0.iter().enumerate() {
             w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
         }
         for i in 16..64 {
@@ -113,7 +113,7 @@ fn encode(data: &[u8], alphabet: &[u8; 64], pad: bool) -> String {
 fn decode(s: &str, alphabet: &[u8; 64], padded: bool) -> Option<Vec<u8>> {
     let bytes = s.as_bytes();
     let body = if padded {
-        if bytes.len() % 4 != 0 {
+        if !bytes.len().is_multiple_of(4) {
             return None;
         }
         let pads = bytes.iter().rev().take_while(|b| **b == b'=').count();

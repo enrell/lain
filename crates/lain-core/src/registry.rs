@@ -56,6 +56,12 @@ pub struct ProviderError {
     pub error: Error,
 }
 
+/// Merge-many outputs with the id of the provider that produced each.
+pub type Outputs = Vec<(String, Value)>;
+
+/// Fan-out results, one per provider.
+pub type Deliveries = Vec<(String, Result<Value, Error>)>;
+
 const MAX_EVENTS: usize = 256;
 
 struct Inner {
@@ -331,14 +337,14 @@ impl Registry {
             let g = self.read();
             g.last_good.get(capability).and_then(|id| g.providers.get(id).cloned())
         };
-        if let Some(fb) = fallback {
-            if fb.id() != active.id() && fb.health().is_ok() {
-                if let Ok(out) = fb.invoke(capability, op, input) {
-                    let mut g = self.write();
-                    g.log("fallback", capability, fb.id(), generation, format!("active {} failed: {err}", active.id()));
-                    return Ok((out, fb.id().to_string()));
-                }
-            }
+        if let Some(fb) = fallback
+            && fb.id() != active.id()
+            && fb.health().is_ok()
+            && let Ok(out) = fb.invoke(capability, op, input)
+        {
+            let mut g = self.write();
+            g.log("fallback", capability, fb.id(), generation, format!("active {} failed: {err}", active.id()));
+            return Ok((out, fb.id().to_string()));
         }
         Err(err)
     }
@@ -376,7 +382,7 @@ impl Registry {
         capability: &str,
         op: &str,
         input: Value,
-    ) -> Result<(Vec<(String, Value)>, Vec<ProviderError>), Error> {
+    ) -> Result<(Outputs, Vec<ProviderError>), Error> {
         let (provs, _) = self.ordered(capability)?;
         let mut outputs = Vec::new();
         let mut failed = Vec::new();
@@ -395,12 +401,7 @@ impl Registry {
     /// Delivers to every healthy provider of a fan-out capability and
     /// reports each provider's own result. No provider's failure stops
     /// delivery to the others.
-    pub fn call_fan_out(
-        &self,
-        capability: &str,
-        op: &str,
-        input: Value,
-    ) -> Result<Vec<(String, Result<Value, Error>)>, Error> {
+    pub fn call_fan_out(&self, capability: &str, op: &str, input: Value) -> Result<Deliveries, Error> {
         let (provs, _) = self.ordered(capability)?;
         Ok(provs.into_iter().map(|p| (p.id().to_string(), p.invoke(capability, op, input.clone()))).collect())
     }

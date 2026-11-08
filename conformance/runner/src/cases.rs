@@ -58,10 +58,10 @@ pub struct Runner {
 pub fn subst(v: &Value, vars: &BTreeMap<String, Value>) -> Result<Value, String> {
     Ok(match v {
         Value::String(s) => {
-            if let Some(name) = s.strip_prefix("{{").and_then(|r| r.strip_suffix("}}")) {
-                if !name.contains("{{") {
-                    return vars.get(name).cloned().ok_or_else(|| format!("unset variable {name}"));
-                }
+            if let Some(name) = s.strip_prefix("{{").and_then(|r| r.strip_suffix("}}"))
+                && !name.contains("{{")
+            {
+                return vars.get(name).cloned().ok_or_else(|| format!("unset variable {name}"));
             }
             Value::String(subst_str(s, vars)?)
         }
@@ -161,19 +161,19 @@ impl Runner {
             serde_json::from_slice(&resp.body)
                 .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&resp.body).into_owned()))
         };
-        if let Some(st) = expect["status"].as_u64() {
-            if resp.status as u64 != st {
-                return Err(format!(
-                    "status: want {st}, got {} (body {})",
-                    resp.status,
-                    String::from_utf8_lossy(&resp.body)
-                ));
-            }
+        if let Some(st) = expect["status"].as_u64()
+            && resp.status as u64 != st
+        {
+            return Err(format!(
+                "status: want {st}, got {} (body {})",
+                resp.status,
+                String::from_utf8_lossy(&resp.body)
+            ));
         }
-        if let Some(st) = expect["status_not"].as_u64() {
-            if resp.status as u64 == st {
-                return Err(format!("status: want anything but {st} (body {})", String::from_utf8_lossy(&resp.body)));
-            }
+        if let Some(st) = expect["status_not"].as_u64()
+            && resp.status as u64 == st
+        {
+            return Err(format!("status: want anything but {st} (body {})", String::from_utf8_lossy(&resp.body)));
         }
         if let Some(h) = expect["headers"].as_object() {
             for (k, want) in h {
