@@ -1,0 +1,45 @@
+# Rust server workspace (D-171, strangler migration). The Go server in
+# cmd/ and internal/ stays the production server until cutover.
+[workspace]
+resolver = "3"
+members = [
+    "crates/lain-core",
+    "crates/lain-store",
+    "crates/lain-auth",
+    "crates/lain-component",
+    "crates/lain-server",
+    "conformance/runner",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.90"
+publish = false
+
+# D-172 baseline only; versions are pinned exactly and Cargo.lock is
+# committed. A crate outside this list needs the owner's approval.
+[workspace.dependencies]
+tokio = { version = "=1.54.1", default-features = false, features = ["rt-multi-thread", "net", "time", "sync", "macros", "signal"] }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
+hyper = { version = "=1.12.0", default-features = false }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+redb = "=4.5.0"
+bcrypt = { version = "=0.19.3", default-features = false, features = ["std"] }
+notify = { version = "=8.2.2", default-features = false }
+tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
+
+lain-core = { path = "crates/lain-core" }
+lain-store = { path = "crates/lain-store" }
+lain-auth = { path = "crates/lain-auth" }
+lain-component = { path = "crates/lain-component" }
+
+[profile.dev]
+# Keep target/ small on a tight disk; line tables are enough for
+# backtraces.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

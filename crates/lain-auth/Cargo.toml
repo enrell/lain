@@ -1,0 +1,15 @@
+[package]
+name = "lain-auth"
+description = "Lain accounts: first-run setup, bcrypt passwords and HS256 tokens with live checks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bcrypt.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+lain-core.workspace = true
+lain-store.workspace = true

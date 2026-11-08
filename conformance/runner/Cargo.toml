@@ -1,0 +1,18 @@
+[package]
+name = "lain-conformance"
+description = "Language-neutral conformance runner for lain servers (D-171): HTTP cases and component NDJSON fixtures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "lain-conformance"
+path = "src/main.rs"
+
+[dependencies]
+serde_json.workspace = true
