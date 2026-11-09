@@ -203,6 +203,29 @@ conformance/run.sh                 # the suite against the Go and Rust servers
 cargo run -p lain-server --bin lain-rs -- serve --data-dir /tmp/lain-rs-dev
 ```
 
+## Desktop app (`apps/desktop`, GPUI, D-180)
+
+Its own cargo workspace and `Cargo.lock` (the server workspace stays
+untouched), path dependencies on `crates/lain-client` and `crates/lain-api`.
+It is a client, so it may link libmpv (loaded at run time, D-182). Build
+natively on Windows (`cargo build` in `apps/desktop`; output on C: per
+`.cargo/config.toml`) or on Linux. GUI test runs follow
+`apps/desktop/README.md` ("Test runs"). Direct dependencies (D-184):
+
+- `gpui` (=0.2.2) — the UI framework.
+- `lain-client` (path) — every server call; the app never speaks HTTP itself.
+- `tokio` — `lain-client` is async on it; a two-thread runtime.
+- `serde` / `serde_json` — theme and config files.
+- `image` (`jpeg`, `png`, `webp`) — art decode, resize and blur off the UI
+  thread, and PNG window captures; GPUI already depends on it.
+- `flate2` (`rust_backend`) — deflate for theme zips (in-tree zip reader);
+  already in the tree under GPUI.
+- `raw-window-handle` — the native window handle mpv renders into.
+- `windows` 0.61 (Windows only) — the video host window, window placement,
+  PrintWindow captures; the version GPUI compiles.
+- `patches/xattr-0.2.3` — a one-constant patch so GPUI's transitive `xattr`
+  builds on Linux against the `libc` pin (see `patches/README.md`).
+
 ## Workflow
 
 1. Read the relevant source + `docs/` before changing conventions.
@@ -325,8 +348,9 @@ per refactor/migration: differential oracle runs
 
 ## Commit discipline
 
-Short imperative subjects. This repo (`projects/lain`) is the server;
-the desktop client lives in `projects/lain-desktop`. Do not mix them.
+Short imperative subjects. This repo (`projects/lain`) is the server and,
+since P3, the GPUI desktop app (`apps/desktop`); the Qt desktop client
+lives in `projects/lain-desktop` until v1 replaces it. Do not mix them.
 
 ## Repository language
 
