@@ -28,8 +28,8 @@ type AniList struct {
 
 func NewAniList() *AniList {
 	return &AniList{
-		GraphQL: "https://graphql.anilist.co",
-		OAuth:   "https://anilist.co/api/v2/oauth",
+		GraphQL: baseURL("LAIN_LISTLINK_ANILIST_GRAPHQL_URL", "https://graphql.anilist.co"),
+		OAuth:   baseURL("LAIN_LISTLINK_ANILIST_OAUTH_URL", "https://anilist.co/api/v2/oauth"),
 		http:    newPoliteClient(700 * time.Millisecond),
 	}
 }

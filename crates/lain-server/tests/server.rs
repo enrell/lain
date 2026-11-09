@@ -478,3 +478,165 @@ fn avatar_limit_and_backup_archive() {
     drop(server);
     std::fs::remove_dir_all(root).ok();
 }
+
+/// The lists and social suites on fresh servers, the OAuth flows
+/// against the upstream fixture server, as `run.sh` runs them.
+#[test]
+fn lists_and_social_suites_pass() {
+    let upstream = lain_conformance::upstream::Upstream::start(&lain_conformance::upstream::dir(), 0).unwrap();
+    for suite in ["lists", "social"] {
+        let dir = lain_store::test_dir(&format!("rs-{suite}"));
+        let server = Server::start_with(&dir, |c| {
+            c.offline = false;
+            c.list_sync = false;
+            c.anilist_endpoints = lain_lists::anilist::Endpoints {
+                graphql: format!("{}/anilist-list/graphql", upstream.url),
+                oauth: format!("{}/anilist-list/oauth", upstream.url),
+            };
+        });
+        let mut runner = Runner::new(Base::parse(&server.url).unwrap());
+        runner.vars.insert("upstream".into(), json!(upstream.url));
+        run(&mut runner, suite);
+        drop(server);
+        std::fs::remove_dir_all(dir).ok();
+    }
+    assert!(upstream.hits("/anilist-list/") > 0, "the OAuth cases reached the fixture");
+}
+
+#[path = "../../lain-lists/tests/support/fixture.rs"]
+mod fixture;
+
+fn next_event(stream: &http::SseStream, name: &str) -> serde_json::Value {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        if let Ok(ev) = stream.events.recv_timeout(Duration::from_millis(200))
+            && ev.event == name
+        {
+            return serde_json::from_str(&ev.data).unwrap();
+        }
+    }
+    panic!("no {name} event");
+}
+
+/// A finished episode scrobbles to an opted-in account (and announces
+/// `list-changed`), but an item of a private library never leaves the
+/// server (D-156); progress feeds the social activity log either way,
+/// and friend requests announce `social-notification`.
+#[test]
+fn scrobbles_skip_private_libraries_and_events_flow() {
+    let root = lain_store::test_dir("rs-scrobble");
+    let media = root.join("media");
+    std::fs::create_dir_all(media.join("Frieren")).unwrap();
+    let data = root.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let roots = json!({"format": "lain.roots@1", "roots": {"media": media.to_string_lossy()}});
+    std::fs::write(data.join("roots.json"), serde_json::to_vec(&roots).unwrap()).unwrap();
+    let raw = std::fs::read(fixtures().join("catalog.json")).unwrap();
+    lain_server::import(&data, &serde_json::from_slice(&raw).unwrap()).unwrap();
+    let remote = std::sync::Arc::new(std::sync::Mutex::new(fixture::AniListState {
+        anime: json!([{"name": "Watching", "isCustomList": false, "entries": [fixture::al_entry(154587, "ANIME", "Frieren", "CURRENT", 0, 28)]}]),
+        manga: json!([]),
+        token_ok: true,
+    }));
+    let remote_srv = fixture::Fixture::start(fixture::anilist(remote));
+    let server = Server::start_with(&data, |c| {
+        c.offline = false;
+        c.list_sync = false;
+        c.anilist_endpoints = lain_lists::anilist::Endpoints {
+            graphql: format!("{}/graphql", remote_srv.url),
+            oauth: format!("{}/oauth", remote_srv.url),
+        };
+    });
+    let base = Base::parse(&server.url).unwrap();
+    assert_eq!(
+        call(&base, "POST", "/api/setup", "", Some(json!({"username": "admin", "password": "password123"}))).0,
+        201
+    );
+    let admin = login(&base, "admin", "password123");
+    call(&base, "POST", "/api/users", &admin, Some(json!({"username": "bob", "password": "bobpassword"})));
+    let bob = login(&base, "bob", "bobpassword");
+    let (st, lib) = call(
+        &base,
+        "POST",
+        "/api/libraries",
+        &admin,
+        Some(json!({"name": "Anime", "root": "media", "path": "Frieren"})),
+    );
+    assert_eq!(st, 201, "{lib}");
+    let lib_id = lib["id"].as_str().unwrap().to_string();
+
+    let stream = http::open_sse(&base, &format!("/api/events?token={admin}"), &[]).unwrap();
+    assert_eq!(next_event(&stream, "ready")["server"], "lain-rs");
+    let (st, v) = call(&base, "POST", "/api/me/links/anilist/code", &admin, Some(json!({"code": "good"})));
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(next_event(&stream, "list-changed"), json!({"platform": "anilist", "action": "linked"}));
+    assert_eq!(
+        next_event(&stream, "list-changed"),
+        json!({"platform": "anilist", "action": "synced", "upserted": 1, "removed": 0})
+    );
+    assert_eq!(call(&base, "PATCH", "/api/me/links/anilist", &admin, Some(json!({"scrobble": true}))).0, 200);
+    assert_eq!(next_event(&stream, "list-changed")["action"], "updated");
+    remote_srv.taken();
+
+    // A public library's episode scrobbles.
+    let done = json!({"position_sec": 1440, "duration_sec": 1440, "completed": true});
+    assert_eq!(call(&base, "PUT", "/api/items/item-frieren-01/progress", &admin, Some(done.clone())).0, 200);
+    let ev = next_event(&stream, "list-changed");
+    assert_eq!((ev["action"].as_str(), ev["progress"].as_i64()), (Some("scrobbled"), Some(1)), "{ev}");
+    let pushes: Vec<_> = remote_srv.taken().into_iter().filter(|r| r.body.contains("SaveMediaListEntry")).collect();
+    assert_eq!(pushes.len(), 1);
+    // Re-sending the final position is not a new finish.
+    assert_eq!(call(&base, "PUT", "/api/items/item-frieren-01/progress", &admin, Some(done.clone())).0, 200);
+
+    // A private library's episode never leaves the server.
+    let (st, v) = call(&base, "PATCH", &format!("/api/libraries/{lib_id}"), &admin, Some(json!({"private": true})));
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(call(&base, "PUT", "/api/items/item-frieren-02/progress", &admin, Some(done)).0, 200);
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(remote_srv.taken().iter().all(|r| !r.body.contains("SaveMediaListEntry")), "a private item was scrobbled");
+
+    // Progress fed the activity log; a locked session sees none of it.
+    let (_, act) = call(&base, "GET", "/api/social/users/user-admin/activity", &admin, None);
+    assert_eq!(act["items"], json!([]), "{act}");
+    let (st, _) = call(
+        &base,
+        "POST",
+        &format!("/api/libraries/{lib_id}/unlock"),
+        &admin,
+        Some(json!({"password": "password123"})),
+    );
+    assert_eq!(st, 200);
+    let (_, act) = call(&base, "GET", "/api/social/users/user-admin/activity", &admin, None);
+    let kinds: Vec<&str> = act["items"].as_array().unwrap().iter().map(|a| a["type"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["completed", "completed"], "{act}");
+
+    // Friend requests are announced to the recipient only.
+    assert_eq!(call(&base, "POST", "/api/social/friends/user-admin", &bob, None).0, 200);
+    let ev = next_event(&stream, "social-notification");
+    assert_eq!((ev["type"].as_str(), ev["from_user_id"].as_str()), (Some("friend_request"), Some("user-bob")));
+    assert!(ev["id"].is_string());
+
+    // Disabling the social module unmounts its routes; progress still
+    // writes.
+    std::fs::write(
+        data.join("modules.json"),
+        br#"{"format":"lain.modules@1","modules":[{"id":"social","enabled":false}]}"#,
+    )
+    .unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let (st, v) = call(&base, "GET", "/api/social/feed", &admin, None);
+        if st == 404 {
+            assert_eq!(v["code"], "module-disabled");
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "the social module never went down");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert_eq!(
+        call(&base, "PUT", "/api/items/item-frieren-01/progress", &admin, Some(json!({"position_sec": 5}))).0,
+        200
+    );
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}

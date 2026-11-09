@@ -15,8 +15,8 @@ use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 
 use lain_api::{
-    LibraryChangedEvent, ModuleStateEvent, PluginChangedEvent, ProgressChangedEvent, ReadyEvent, ScanStateEvent,
-    TranscodeChangedEvent,
+    LibraryChangedEvent, ListChangedEvent, ModuleStateEvent, PluginChangedEvent, ProgressChangedEvent, ReadyEvent,
+    ScanStateEvent, SocialNotificationEvent, TranscodeChangedEvent,
 };
 
 use crate::api::Client;
@@ -35,6 +35,10 @@ pub enum ServerEvent {
     /// A transcode session of this account reached a terminal state or
     /// was cancelled (D-193).
     TranscodeChanged(TranscodeChangedEvent),
+    /// A linked list account or its entries changed (lists module).
+    ListChanged(ListChangedEvent),
+    /// A social notification arrived for this account.
+    SocialNotification(SocialNotificationEvent),
     /// An event this build does not know, kept raw (forward compatible).
     Other {
         event: String,
@@ -148,6 +152,8 @@ fn decode(f: Frame) -> Option<StreamItem> {
         "plugin-changed" => parse(&f).map(ServerEvent::PluginChanged),
         "scan-state" => parse(&f).map(ServerEvent::ScanState),
         "transcode-changed" => parse(&f).map(ServerEvent::TranscodeChanged),
+        "list-changed" => parse(&f).map(ServerEvent::ListChanged),
+        "social-notification" => parse(&f).map(ServerEvent::SocialNotification),
         _ => None,
     };
     Some(StreamItem::Event(ev.unwrap_or(ServerEvent::Other { event: f.event, data: f.data })))
