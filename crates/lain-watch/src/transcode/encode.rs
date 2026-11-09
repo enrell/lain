@@ -76,6 +76,14 @@ fn libaom_cpu_used(p: &str) -> &'static str {
 /// lain's own dialogue-lifting 5.1 to stereo matrix (not Jellyfin's).
 pub const NIGHTMODE_PAN: &str = "pan=stereo|c0=0.4*c0+0.4*c1+0.8*c2+0.2*c4|c1=0.4*c0+0.4*c1+0.8*c2+0.2*c5";
 
+/// A path for ffmpeg's HLS muxer. It finds a playlist's directory (where
+/// the init segment goes) by the last `/`, so on Windows a backslash
+/// path put `init.mp4` in the working directory; Windows takes `/` too.
+fn ff_path(p: &Path) -> String {
+    let s = p.to_string_lossy().into_owned();
+    if cfg!(windows) { s.replace('\\', "/") } else { s }
+}
+
 fn s(v: &str) -> String {
     v.to_string()
 }
@@ -226,7 +234,7 @@ impl EncodePlan {
                 s("-hls_segment_type"),
                 s("mpegts"),
                 s("-hls_segment_filename"),
-                dir.join("seg%05d.ts").to_string_lossy().into_owned(),
+                ff_path(&dir.join("seg%05d.ts")),
             ]);
         } else {
             a.extend([
@@ -235,7 +243,7 @@ impl EncodePlan {
                 s("-hls_fmp4_init_filename"),
                 s("init.mp4"),
                 s("-hls_segment_filename"),
-                dir.join("seg%05d.m4s").to_string_lossy().into_owned(),
+                ff_path(&dir.join("seg%05d.m4s")),
             ]);
         }
         a.extend([s("-hls_flags"), s("independent_segments+temp_file")]);
@@ -250,7 +258,7 @@ impl EncodePlan {
                 }
             }
         }
-        a.push(output.to_string_lossy().into_owned());
+        a.push(ff_path(output));
         a
     }
 
