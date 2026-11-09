@@ -12,7 +12,7 @@
 //!   chrome visible), `seek:<s>`, `sub:<id>`
 //! - `theme:<id>`, `focus:<widget id>`, `tab`, `key:<down|up|right|left>`
 //!   (in-app focus moves, not OS input)
-//! - `set:<field>=<text>`, `kind:<library kind>`, `run:<create-library|scan|refresh|set-pin|save-profile>`
+//! - `set:<field>=<text>`, `kind:<library kind>`, `run:<create-library|scan|refresh|set-pin|save-profile|save-pathmap>`
 //!   (fill fields and run actions as a user would)
 //! - `shot:<name>`: a PNG of this window into the `--shot` directory
 //! - `log:<text>`, `quit`
@@ -219,6 +219,7 @@ fn step_now(app: &mut LainApp, cmd: &str, arg: &str, window: &mut gpui::Window, 
                 "refresh" => Some(Act::Refresh),
                 "set-pin" => Some(Act::SetPin),
                 "save-profile" => Some(Act::SaveProfile),
+                "save-pathmap" => Some(Act::SavePathMap),
                 _ => None,
             };
             match act {
