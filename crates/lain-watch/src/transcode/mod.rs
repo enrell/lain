@@ -1420,7 +1420,11 @@ impl Transcoder {
         };
         let mut size = if p.is_hls() {
             if !hls::playable(&paths.hls_dir) {
-                return Err(Fail::Plain("no playable HLS output produced".into()));
+                let mut names: Vec<String> = std::fs::read_dir(&paths.hls_dir)
+                    .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+                    .unwrap_or_default();
+                names.sort();
+                return Err(Fail::Plain(format!("no playable HLS output produced (files: {})", names.join(", "))));
             }
             hls::dir_size(&paths.hls_dir)
         } else {
