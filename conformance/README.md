@@ -13,8 +13,10 @@ conformance/
   cases/v2/       /api/modules and modules.json, /api/events (SSE)   (v2)
   cases/scan/     catalog population from a fresh server: scan, identified
                   catalog, grouping, search, sidecars (WebVTT), NFO metadata
-                  overlays, browse, item delete, incremental rescans (v1),
-                  scan events (v2); writes its own fixture media
+                  overlays, overlays from the network providers against
+                  the upstream fixtures (35, needs `upstream`), browse,
+                  item delete, incremental rescans (v1), scan events (v2);
+                  writes its own fixture media
   cases/private/  lain-rs over a populated catalog: catalog items, paging,
                   episodes, per-user progress, then private libraries:
                   nothing leaks to another user or a locked session (v2)
@@ -31,10 +33,14 @@ conformance/
                   parsers' answers the Rust parsers must give (written by
                   internal/plugins/identify/parity_test.go); read-catalog.json
                   and read/ (small CBZ archives) for the read suite;
-                  watch-catalog.json, the watch suite's catalog on lain-rs
+                  watch-catalog.json, the watch suite's catalog on lain-rs;
+                  upstream/, recorded answers of the remote APIs the
+                  network providers call (routes.json, D-203)
   make-clips.sh   writes the watch clips with ffmpeg's lavfi sources
   component/      NDJSON fixtures of the component protocol
-  runner/         lain-conformance, one runner (Rust, std-only HTTP)
+  runner/         lain-conformance, one runner (Rust, std-only HTTP), and
+                  `lain-conformance upstream`, the fixture server for
+                  upstream/
   run.sh          both servers end to end in throwaway data dirs
 ```
 
@@ -44,7 +50,8 @@ Rust server serves.
 
 ## Run it
 
-Everything (builds both, temp data dirs, ports 19460/19461; never your
+Everything (builds both, temp data dirs, ports 19460/19461, the
+upstream fixture server on 19462 so nothing reaches the network; never your
 real data dir):
 
 ```sh
@@ -70,11 +77,16 @@ LAIN_URL=http://127.0.0.1:19461 $R --var media_dir=/tmp/m/a --var media_dir2=/tm
 ```
 
 Scan (both servers; watching and the post-scan metadata pass off so no
-scan races the cases and nothing reaches the network):
+scan races the cases; the network metadata providers point at the
+upstream fixture server):
 
 ```sh
+$R upstream --port 19462 &          # recorded remote APIs
+U=http://127.0.0.1:19462
+export LAIN_METADATA_KITSU_URL=$U/kitsu LAIN_METADATA_ANILIST_URL=$U/anilist \
+  LAIN_METADATA_JIKAN_URL=$U/jikan LAIN_METADATA_TVMAZE_URL=$U/tvmaze
 LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 go run ./cmd/lain serve --data-dir /tmp/go-s --port 19460 &
-LAIN_URL=http://127.0.0.1:19460 $R --tier v1 --var scan_media=/tmp/go-media conformance/cases/scan
+LAIN_URL=http://127.0.0.1:19460 $R --tier v1 --var scan_media=/tmp/go-media --var upstream=$U conformance/cases/scan
 ```
 
 Private (Rust only; the catalog comes from the fixture): write `<data dir>/roots.json` as

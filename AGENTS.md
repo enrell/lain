@@ -81,10 +81,15 @@ documents both stacks until those are ported.
     locations D-157/D-186), the library watcher on `notify`, the scan
     controller and the folder picker.
   - `lain-metadata` — the metadata module: enrich, the NFO provider,
-    the merge and the overlay and cache tables (network providers stay
-    Go components until the server speaks HTTPS, D-187).
-  - `lain-subtitle` — sidecar discovery and SRT/WebVTT/ASS to WebVTT,
-    shared with the subtitles module.
+    the network providers (Kitsu, AniList, Jikan, TVMaze, in-process,
+    D-201), the merge and the overlay and cache tables.
+  - `lain-subtitle` — sidecar discovery, naming and the moviehash,
+    SRT/WebVTT/ASS to WebVTT, and the subtitles module's
+    `lain-subtitle-opensubtitles` (`lain.subtitle@1`, D-202).
+  - `lain-http` — outbound HTTP(S) for every network provider (D-200):
+    one shared client with rustls, timeouts, retries with backoff,
+    per-host pacing, size caps and JSON helpers; no server types, so
+    `lain-client` can reuse it.
   - `lain-api` — the HTTP API's JSON types (serde only), re-exported by
     the server crates and decoded by `lain-client` (D-179).
   - `lain-client` — the client core every native client shares
@@ -147,10 +152,20 @@ documents both stacks until those are ported.
     DEFLATE for CBZ pages; `default-features = false`, `with-alloc`.
     The ZIP container, CRC-32, image headers, `ComicInfo.xml` and the
     backup tar are in-tree.
+  - `rustls` + `tokio-rustls` + `webpki-roots` (D-200, Q-045 C) —
+    outbound HTTPS in `lain-http`: rustls with the `ring` provider
+    (`ring`, `std`, `tls12`; no aws-lc-rs), the Mozilla root set compiled
+    in (no OS certificate store or TLS library). They bring
+    `rustls-webpki`, `rustls-pki-types`, `untrusted`, `subtle`,
+    `zeroize` and `ring`, whose build compiles its C and assembly
+    (with `getrandom` 0.2, a second version next to 0.4); `ring` is the
+    one C-backed crate, accepted for TLS by the coordinator's D-200.
   - In-tree instead of a crate: URL-safe base64 for the JWT segments
     (`lain-auth/src/crypto.rs`; no approved crate exposes one), the
-    runner's HTTP client, the comic identifier's patterns (no regex
-    crate) and the `.nfo` reader (no XML crate).
+    runner's HTTP client and upstream fixture server, the comic
+    identifier's patterns (no regex crate), the `.nfo` reader (no XML
+    crate), and `lain-http`'s URL parsing, escaping and keep-alive pool
+    (no `url`, `reqwest` or `hyper-rustls`).
   - No test-only crates.
 - Rules that carry over unchanged: plugin boundaries, media bytes never
   in a plugin call, catalog/userstate separation, typed errors with

@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -95,6 +97,16 @@ func (c *politeClient) postJSON(url string, body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("POST %s: status %d: %.200s", url, resp.StatusCode, raw)
 	}
 	return raw, nil
+}
+
+// baseURL is a provider's API root: the environment variable when set
+// (the conformance suite points it at recorded fixtures, so no case
+// reaches the network), else the public service.
+func baseURL(env, public string) string {
+	if v := strings.TrimSpace(os.Getenv(env)); v != "" {
+		return strings.TrimSuffix(v, "/")
+	}
+	return public
 }
 
 func parseRetryAfter(h string) time.Duration {

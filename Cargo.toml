@@ -4,6 +4,7 @@
 resolver = "3"
 members = [
     "crates/lain-api",
+    "crates/lain-http",
     "crates/lain-identify",
     "crates/lain-ingest",
     "crates/lain-metadata",
@@ -59,8 +60,15 @@ libc = "=0.2.191"
 # container itself is read in-tree (crates/lain-read/src/zip.rs).
 miniz_oxide = { version = "=0.8.9", default-features = false, features = ["with-alloc"] }
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "json", "std"] }
+# D-200: outbound HTTPS for lain-http. rustls with the `ring` provider
+# (no aws-lc-rs, no OS TLS library), TLS 1.2 + 1.3, and the Mozilla
+# root set from webpki-roots (no OS certificate store).
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
+webpki-roots = "=1.0.11"
 
 lain-api = { path = "crates/lain-api" }
+lain-http = { path = "crates/lain-http" }
 lain-core = { path = "crates/lain-core" }
 lain-store = { path = "crates/lain-store" }
 lain-auth = { path = "crates/lain-auth" }

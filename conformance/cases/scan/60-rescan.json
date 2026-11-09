@@ -49,7 +49,10 @@
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{show}}",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "id": "{{show}}",
        "library_id": "{{lib}}",
@@ -59,9 +62,6 @@
        "$open": true,
        "missing": true
       }
-     },
-     "expect": {
-      "status": 200
      }
     }
    ]
@@ -121,7 +121,10 @@
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{akira}}",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "id": "{{akira}}",
        "library_id": "{{lib}}",
@@ -135,23 +138,20 @@
        },
        "missing": "$absent"
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/catalog",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "total": 4,
        "$open": true
       }
-     },
-     "expect": {
-      "status": 200
      }
     }
    ]
@@ -208,7 +208,10 @@
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{show}}",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "id": "{{show}}",
        "library_id": "{{lib}}",
@@ -218,24 +221,21 @@
        "$open": true,
        "missing": "$absent"
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/items/{{show}}/progress",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "item_id": "{{show}}",
        "position_sec": 30,
        "$open": true
       }
-     },
-     "expect": {
-      "status": 200
      }
     }
    ]
@@ -287,7 +287,10 @@
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{f2}}",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "id": "{{f2}}",
        "library_id": "{{lib}}",
@@ -297,23 +300,20 @@
        "$open": true,
        "missing": true
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/catalog",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "total": 4,
        "$open": true
       }
-     },
-     "expect": {
-      "status": 200
      }
     }
    ]
@@ -328,30 +328,30 @@
      "req": {
       "method": "DELETE",
       "path": "/api/libraries/{{lib}}",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "status": "ok",
        "items_removed": 4
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/catalog",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "total": 0,
        "items": [],
        "limit": 50,
        "offset": 0
       }
-     },
-     "expect": {
-      "status": 200
      }
     }
    ]

@@ -7,6 +7,13 @@
 //! ```
 //!
 //! Exit status 0 when every non-skipped case passed.
+//!
+//! ```text
+//! lain-conformance upstream [--dir <fixtures>] [--port <port>]
+//! ```
+//!
+//! serves the recorded upstream answers (`conformance/fixtures/upstream`)
+//! until killed, printing its URL first.
 
 use std::path::PathBuf;
 
@@ -14,8 +21,39 @@ use lain_conformance::cases::{Outcome, Runner};
 use lain_conformance::http::Base;
 use serde_json::Value;
 
+fn upstream(mut args: impl Iterator<Item = String>) -> ! {
+    let mut dir = lain_conformance::upstream::dir();
+    let mut port = 0;
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--dir" => dir = PathBuf::from(args.next().unwrap_or_default()),
+            "--port" => port = args.next().and_then(|p| p.parse().ok()).unwrap_or(0),
+            _ => {
+                eprintln!("usage: lain-conformance upstream [--dir <fixtures>] [--port <port>]");
+                std::process::exit(2);
+            }
+        }
+    }
+    match lain_conformance::upstream::Upstream::start(&dir, port) {
+        Ok(u) => {
+            println!("{}", u.url);
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+            u.wait()
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(2);
+        }
+    }
+}
+
 fn main() {
-    let mut args = std::env::args().skip(1);
+    let mut args = std::env::args().skip(1).peekable();
+    if args.peek().map(String::as_str) == Some("upstream") {
+        args.next();
+        upstream(args);
+    }
     let mut tiers = vec!["v1".to_string(), "v2".to_string()];
     let mut suites = Vec::new();
     let mut vars = Vec::new();

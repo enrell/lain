@@ -304,6 +304,58 @@ async fn not_ported_and_module_disabled() {
     std::fs::remove_dir_all(root).ok();
 }
 
+/// Overlays from the network metadata providers (D-201) through the
+/// typed client, against the recorded upstream answers: merge-many
+/// skips the failing and the unrelated providers, the exact TVMaze
+/// title wins; one named provider without a hit is a 404.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn enrich_from_network_providers() {
+    let root = temp("remote-enrich");
+    let media = root.join("media/Show");
+    std::fs::create_dir_all(&media).unwrap();
+    std::fs::write(media.join("Show.Name.S01E02.1080p.WEB-DL.mkv"), b"x").unwrap();
+    let upstream = lain_conformance::upstream::Upstream::start(&lain_conformance::upstream::dir(), 0).unwrap();
+    let endpoints = lain_metadata::Endpoints::under(&upstream.url);
+    let server = Server::start_with(&root.join("data"), move |c| {
+        c.offline = false;
+        c.auto_enrich = false;
+        c.watch = false;
+        c.metadata_endpoints = endpoints;
+    })
+    .await;
+    let (admin, bob) = admin_and_bob(&server.url).await;
+    admin
+        .create_library(NewLibrary {
+            name: "Shows".into(),
+            path: root.join("media").to_string_lossy().into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    admin.start_scan().await.unwrap();
+    for _ in 0..200 {
+        if admin.scan_status().await.unwrap().state == "done" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let item = bob.catalog(CatalogQuery::default()).await.unwrap().items[0].clone();
+    assert_eq!(item.title, "Show Name");
+    let miss = admin.enrich(&item.id, "lain-metadata-kitsu").await.unwrap_err();
+    assert!(matches!(miss, ClientError::NotFound { .. }), "{miss:?}");
+    let e = admin.enrich(&item.id, "").await.unwrap();
+    assert_eq!(
+        (e.provider.as_str(), e.remote_id.as_str(), e.title.as_str(), e.year),
+        ("lain-metadata-tvmaze", "9001", "Show Name", 2021)
+    );
+    assert_eq!(e.synopsis, "A keeper returns to the lighthouse.");
+    assert_eq!(bob.enrichment(&item.id).await.unwrap(), e);
+    assert_eq!(upstream.hits("/tvmaze/shows/9001"), 1);
+    assert_eq!(upstream.hits("/jikan/"), 6, "both enrichments asked Jikan, retried its 503 twice, then skipped it");
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}
+
 /// Scan, identified catalog, sidecars, overlays and item delete through
 /// the typed client, with the scan's events on the stream.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -363,7 +415,7 @@ async fn catalog_population() {
     assert_eq!(bob.sidecar_vtt(&item.id, 0).await.unwrap(), "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHi\n\n");
     assert!(matches!(bob.sidecar_vtt(&item.id, 3).await.unwrap_err(), ClientError::NotFound { .. }));
 
-    // The default composition reaches only the offline NFO provider.
+    // Offline (the harness default), only the NFO provider answers.
     let e = admin.enrich(&item.id, "").await.unwrap();
     assert_eq!((e.title.as_str(), e.year, e.provider.as_str()), ("Sousou no Frieren", 2023, "lain-metadata-nfo"));
     assert_eq!(bob.enrichment(&item.id).await.unwrap(), e);

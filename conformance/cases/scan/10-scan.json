@@ -12,25 +12,25 @@
      "req": {
       "method": "GET",
       "path": "/api/library/scan",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "state": "idle"
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
-      "path": "/api/library/scan",
+      "path": "/api/library/scan"
+     },
+     "expect": {
+      "status": 401,
       "body": {
        "error": "unauthorized"
       }
-     },
-     "expect": {
-      "status": 401
      }
     }
    ]
@@ -45,25 +45,25 @@
      "req": {
       "method": "POST",
       "path": "/api/library/scan",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
       "body": {
        "error": "admin required"
       }
-     },
-     "expect": {
-      "status": 403
      }
     },
     {
      "req": {
       "method": "POST",
-      "path": "/api/library/scan",
+      "path": "/api/library/scan"
+     },
+     "expect": {
+      "status": 401,
       "body": {
        "error": "unauthorized"
       }
-     },
-     "expect": {
-      "status": 401
      }
     }
    ]
@@ -78,13 +78,13 @@
      "req": {
       "method": "POST",
       "path": "/api/library/scan",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 202,
       "body": {
        "state": "running"
       }
-     },
-     "expect": {
-      "status": 202
      }
     },
     {
@@ -141,13 +141,13 @@
      "req": {
       "method": "POST",
       "path": "/api/library/scan",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 202,
       "body": {
        "state": "running"
       }
-     },
-     "expect": {
-      "status": 202
      }
     },
     {
@@ -188,7 +188,10 @@
      "req": {
       "method": "GET",
       "path": "/api/library/scan",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "state": "done",
        "started_at": "$int",
@@ -199,9 +202,6 @@
         "$open": true
        }
       }
-     },
-     "expect": {
-      "status": 200
      }
     }
    ]

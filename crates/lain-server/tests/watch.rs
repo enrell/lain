@@ -31,6 +31,7 @@ impl Server {
         // The fixture catalog is the library: no scan, no network.
         cfg.watch = false;
         cfg.auto_enrich = false;
+        cfg.offline = true;
         let app = App::open(cfg).unwrap();
         let listener = rt.block_on(tokio::net::TcpListener::bind("127.0.0.1:0")).unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());

@@ -30,6 +30,9 @@ impl Server {
         let mut cfg = Config::new(dir, lain_server::VERSION);
         cfg.keep_alive = Duration::from_millis(300);
         cfg.reload_debounce = Duration::from_millis(100);
+        // No test reaches the network: a test that wants the network
+        // providers points them at the upstream fixture server.
+        cfg.offline = true;
         tune(&mut cfg);
         // Never the host's own Omarchy colors.
         cfg.theme_path = Some(dir.join("no-colors.toml"));
@@ -120,18 +123,23 @@ fn fresh_and_v2_suites_pass() {
 }
 
 /// The scan suite (catalog population) on a fresh server with library
-/// watching and the post-scan metadata pass off, like `run.sh` runs it.
+/// watching and the post-scan metadata pass off, like `run.sh` runs it;
+/// the network metadata providers talk to the upstream fixture server.
 #[test]
 fn scan_suite_passes() {
     let dir = lain_store::test_dir("rs-scan");
     let media = dir.join("media");
     std::fs::create_dir_all(&media).unwrap();
+    let upstream = lain_conformance::upstream::Upstream::start(&lain_conformance::upstream::dir(), 0).unwrap();
     let server = Server::start_with(&dir.join("data"), |c| {
         c.watch = false;
         c.auto_enrich = false;
+        c.offline = false;
+        c.metadata_endpoints = lain_metadata::Endpoints::under(&upstream.url);
     });
     let mut runner = Runner::new(Base::parse(&server.url).unwrap());
     runner.vars.insert("scan_media".into(), json!(media.to_string_lossy()));
+    runner.vars.insert("upstream".into(), json!(upstream.url));
     run(&mut runner, "scan");
     drop(server);
     std::fs::remove_dir_all(dir).ok();

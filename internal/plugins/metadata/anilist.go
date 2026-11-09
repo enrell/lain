@@ -18,7 +18,7 @@ type AniList struct {
 }
 
 func NewAniList() *AniList {
-	return &AniList{BaseURL: "https://graphql.anilist.co", http: newPoliteClient(700 * time.Millisecond)}
+	return &AniList{BaseURL: baseURL("LAIN_METADATA_ANILIST_URL", "https://graphql.anilist.co"), http: newPoliteClient(700 * time.Millisecond)}
 }
 
 func (a *AniList) ID() string { return "lain-metadata-anilist" }
