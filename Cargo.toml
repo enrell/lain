@@ -16,6 +16,8 @@ members = [
     "crates/lain-admin",
     "crates/lain-server",
     "crates/lain-client",
+    "crates/lain-probe",
+    "crates/lain-watch",
     "conformance/runner",
 ]
 
@@ -69,6 +71,8 @@ lain-metadata = { path = "crates/lain-metadata" }
 lain-subtitle = { path = "crates/lain-subtitle" }
 lain-read = { path = "crates/lain-read" }
 lain-admin = { path = "crates/lain-admin" }
+lain-probe = { path = "crates/lain-probe" }
+lain-watch = { path = "crates/lain-watch" }
 
 [profile.dev]
 # Keep target/ small on a tight disk; line tables are enough for

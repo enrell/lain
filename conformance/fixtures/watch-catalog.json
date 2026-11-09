@@ -1,0 +1,19 @@
+{
+  "format": "lain.catalog-export",
+  "version": 3,
+  "roots": ["media"],
+  "items": {
+    "item-alpha": {
+      "id": "item-alpha", "library_id": "lib-be88dfed", "kind": "movie", "title": "Alpha",
+      "season": 0, "episode": 0, "year": 0, "size": 0, "confidence": 0.5,
+      "origin": "lain-identify-generic", "provenance": "identify:lain-identify-generic", "updated_at": 1794173709,
+      "root": "media", "rel_path": "Clips/Alpha.mp4"
+    },
+    "item-beta": {
+      "id": "item-beta", "library_id": "lib-be88dfed", "kind": "movie", "title": "Beta",
+      "season": 0, "episode": 0, "year": 0, "size": 0, "confidence": 0.5,
+      "origin": "lain-identify-generic", "provenance": "identify:lain-identify-generic", "updated_at": 1794173710,
+      "root": "media", "rel_path": "Clips/Beta.mkv"
+    }
+  }
+}

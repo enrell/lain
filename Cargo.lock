@@ -485,6 +485,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lain-probe"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lain-read"
 version = "0.1.0"
 dependencies = [
@@ -501,6 +510,7 @@ name = "lain-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "getrandom",
  "hyper",
  "lain-admin",
  "lain-api",
@@ -511,9 +521,11 @@ dependencies = [
  "lain-identify",
  "lain-ingest",
  "lain-metadata",
+ "lain-probe",
  "lain-read",
  "lain-store",
  "lain-subtitle",
+ "lain-watch",
  "notify",
  "serde",
  "serde_json",
@@ -536,6 +548,22 @@ name = "lain-subtitle"
 version = "0.1.0"
 dependencies = [
  "lain-api",
+]
+
+[[package]]
+name = "lain-watch"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
+ "lain-core",
+ "lain-probe",
+ "lain-read",
+ "lain-store",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tracing",
 ]
 
 [[package]]

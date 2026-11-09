@@ -16,6 +16,7 @@ use tokio::sync::Mutex;
 
 use lain_api::{
     LibraryChangedEvent, ModuleStateEvent, PluginChangedEvent, ProgressChangedEvent, ReadyEvent, ScanStateEvent,
+    TranscodeChangedEvent,
 };
 
 use crate::api::Client;
@@ -31,6 +32,9 @@ pub enum ServerEvent {
     PluginChanged(PluginChangedEvent),
     /// A library scan started, finished a library or ended.
     ScanState(ScanStateEvent),
+    /// A transcode session of this account reached a terminal state or
+    /// was cancelled (D-193).
+    TranscodeChanged(TranscodeChangedEvent),
     /// An event this build does not know, kept raw (forward compatible).
     Other {
         event: String,
@@ -143,6 +147,7 @@ fn decode(f: Frame) -> Option<StreamItem> {
         "progress-changed" => parse(&f).map(ServerEvent::ProgressChanged),
         "plugin-changed" => parse(&f).map(ServerEvent::PluginChanged),
         "scan-state" => parse(&f).map(ServerEvent::ScanState),
+        "transcode-changed" => parse(&f).map(ServerEvent::TranscodeChanged),
         _ => None,
     };
     Some(StreamItem::Event(ev.unwrap_or(ServerEvent::Other { event: f.event, data: f.data })))

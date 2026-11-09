@@ -12,6 +12,7 @@
 //! | `progress-changed` | `{item_id, progress}`                        | that user   |
 //! | `library-changed` of a private library | (same)                   | admins and members |
 //! | `plugin-changed`   | `{provider, action}`                         | admins      |
+//! | `transcode-changed`| `{session, state, item_id}` (D-193)          | its owner and admins |
 //!
 //! Events about items of a private library reach only sessions that
 //! unlocked it (D-156). Each frame carries an `id:` sequence. A slow client whose buffer

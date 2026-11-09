@@ -60,6 +60,17 @@ jobs:
       - name: Toolchain
         shell: bash
         run: rustup toolchain install stable --profile minimal --component clippy,rustfmt && rustc --version
+      # The watch module's tests run the real ffmpeg/ffprobe (D-190);
+      # LAIN_REQUIRE_FFMPEG below makes a missing one a failure.
+      - name: ffmpeg
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg ;;
+            macOS) brew install ffmpeg ;;
+            Windows) choco install ffmpeg -y --no-progress ;;
+          esac
+          ffmpeg -hide_banner -version | head -1
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --all -- --check
@@ -70,6 +81,7 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" != Windows ]; then export LAIN_REQUIRE_GO=1; fi
+          export LAIN_REQUIRE_FFMPEG=1
           cargo test --workspace --locked
 
   conformance:
@@ -83,10 +95,12 @@ jobs:
           cache-dependency-path: go.sum
       - name: Toolchain
         run: rustup toolchain install stable --profile minimal && rustc --version
-      - name: Lint the runner script
-        run: sh -n conformance/run.sh && shellcheck conformance/run.sh
+      - name: ffmpeg (watch suite clips and transcodes)
+        run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg
+      - name: Lint the runner scripts
+        run: sh -n conformance/run.sh && sh -n conformance/make-clips.sh && shellcheck conformance/run.sh conformance/make-clips.sh
       - name: Run the suite against both servers
-        run: conformance/run.sh
+        run: LAIN_REQUIRE_FFMPEG=1 conformance/run.sh
 
   web:
     name: web check, test, build

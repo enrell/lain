@@ -2,9 +2,10 @@
 //! core routes the clients use, `GET /api/modules` (D-154), `GET
 //! /api/events` (D-169), service mode (D-164), private libraries (D-156)
 //! and portable roots (D-157), plus the ported modules: core
-//! administration (theme, backup, integrations, avatars; `lain-admin`)
-//! and read (`lain-read`). It starts from an empty data dir; nothing is
-//! imported from the Go server (D-177). The binary is `lain-rs`.
+//! administration (theme, backup, integrations, avatars; `lain-admin`),
+//! read (`lain-read`) and watch (D-190: `watch.rs`, byte serving in
+//! `serve.rs`). It starts from an empty data dir; nothing is imported
+//! from the Go server (D-177). The binary is `lain-rs`.
 
 pub mod app;
 pub mod catalog;
@@ -18,7 +19,9 @@ pub mod logging;
 pub mod population;
 pub mod privacy;
 pub mod roots;
+pub mod serve;
 pub mod service;
+pub mod watch;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -52,7 +55,7 @@ pub async fn serve(
     let addr: Option<SocketAddr> = listener.local_addr().ok();
     tracing::info!(addr = %addr.map(|a| a.to_string()).unwrap_or_default(), data_dir = %app.data_dir.display(), "lain-rs listening");
     let app2 = app.clone();
-    axum::serve(listener, router)
+    axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(async move {
             shutdown.await;
             // Event streams never end on their own: close them so the
