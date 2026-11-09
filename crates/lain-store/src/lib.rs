@@ -56,10 +56,34 @@ pub enum Bucket {
     Enrichments,
     /// TTL memo of metadata searches and resolved records.
     MetadataCache,
+    /// Tracking-list entries, `user\0platform\0remote_id` (lists module).
+    List,
+    /// Linked external list accounts, `user\0platform` (lists module).
+    ListAccounts,
+    /// Social privacy settings and favorites, by user (social module).
+    SocialSettings,
+    /// Relationship edges, `owner\0other`.
+    SocialEdges,
+    /// Activity rows, `user\0id` (time-ordered ids).
+    SocialActivity,
+    /// The last progress row per work, `user\0work key` (dedupe window).
+    SocialActivityLast,
+    /// Notifications, `recipient\0id`.
+    SocialNotifications,
+    /// Ratings, `work key\0user`.
+    SocialRatings,
+    /// The by-user ratings index, `user\0work key` (empty values).
+    SocialRatingsByUser,
+    /// Comments, by id.
+    SocialComments,
+    /// The by-work comments index, `work key\0comment id`.
+    SocialCommentsByWork,
+    /// Collections, by id.
+    SocialCollections,
 }
 
 impl Bucket {
-    pub const ALL: [Bucket; 10] = [
+    pub const ALL: [Bucket; 22] = [
         Bucket::Users,
         Bucket::UsersByName,
         Bucket::Libraries,
@@ -70,6 +94,18 @@ impl Bucket {
         Bucket::UserPins,
         Bucket::Enrichments,
         Bucket::MetadataCache,
+        Bucket::List,
+        Bucket::ListAccounts,
+        Bucket::SocialSettings,
+        Bucket::SocialEdges,
+        Bucket::SocialActivity,
+        Bucket::SocialActivityLast,
+        Bucket::SocialNotifications,
+        Bucket::SocialRatings,
+        Bucket::SocialRatingsByUser,
+        Bucket::SocialComments,
+        Bucket::SocialCommentsByWork,
+        Bucket::SocialCollections,
     ];
 
     /// The table name.
@@ -85,6 +121,18 @@ impl Bucket {
             Bucket::UserPins => "user_pins",
             Bucket::Enrichments => "enrichments",
             Bucket::MetadataCache => "metadata_cache",
+            Bucket::List => "list",
+            Bucket::ListAccounts => "list_accounts",
+            Bucket::SocialSettings => "social_settings",
+            Bucket::SocialEdges => "social_edges",
+            Bucket::SocialActivity => "social_activity",
+            Bucket::SocialActivityLast => "social_activity_last",
+            Bucket::SocialNotifications => "social_notifications",
+            Bucket::SocialRatings => "social_ratings",
+            Bucket::SocialRatingsByUser => "social_ratings_by_user",
+            Bucket::SocialComments => "social_comments",
+            Bucket::SocialCommentsByWork => "social_comments_by_work",
+            Bucket::SocialCollections => "social_collections",
         }
     }
 
