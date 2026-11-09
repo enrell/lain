@@ -14,27 +14,7 @@ use serde::{Deserialize, Serialize};
 /// The document format this build reads and writes.
 pub const FORMAT: &str = "lain.modules@1";
 
-/// One top-level client destination.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Destination {
-    pub id: String,
-    pub label: String,
-    /// The web client's route for it (other clients map the id).
-    pub path: String,
-}
-
-/// What a module shows in each client.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UiSurfaces {
-    #[serde(default)]
-    pub destinations: Vec<Destination>,
-    /// Settings section ids.
-    #[serde(default)]
-    pub settings: Vec<String>,
-    /// Ctrl+K command ids.
-    #[serde(default)]
-    pub commands: Vec<String>,
-}
+pub use lain_api::{Destination, UiSurfaces};
 
 /// A module definition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

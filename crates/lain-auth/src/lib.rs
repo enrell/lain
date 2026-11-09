@@ -29,48 +29,7 @@ pub const MASCOTS: [&str; 8] = ["wired", "moth", "static", "orbit", "glyph", "sh
 const MAX_DISPLAY_NAME: usize = 40;
 const MAX_BIO: usize = 160;
 
-fn is_zero_i64(v: &i64) -> bool {
-    *v == 0
-}
-
-/// Per-user playback limits (D-042). Unset means unrestricted.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlaybackPolicy {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub allow_video_transcode: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub allow_audio_transcode: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub allow_remux: Option<bool>,
-    #[serde(default, skip_serializing_if = "is_zero_i64")]
-    pub max_bitrate_kbps: i64,
-    #[serde(default, skip_serializing_if = "is_zero_i64")]
-    pub max_streams: i64,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub subtitle_mode: String,
-}
-
-/// The avatar shown for an account.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Avatar {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub kind: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub mascot: String,
-    #[serde(default, skip_serializing_if = "is_zero_i64")]
-    pub version: i64,
-}
-
-/// What other people see of an account.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Profile {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub display_name: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub bio: String,
-    #[serde(default)]
-    pub avatar: Avatar,
-}
+pub use lain_api::{Avatar, PlaybackPolicy, Profile, ProfilePatch};
 
 /// A local account. `pass_hash` is an Argon2id PHC string; `null` in
 /// every response.
@@ -105,15 +64,6 @@ impl User {
     fn password_ok(&self, password: &str) -> bool {
         self.pass_hash.as_deref().is_some_and(|h| verify_password(password, h))
     }
-}
-
-/// A profile change: only the fields present apply. `mascot: ""`
-/// clears the avatar.
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct ProfilePatch {
-    pub display_name: Option<String>,
-    pub bio: Option<String>,
-    pub mascot: Option<String>,
 }
 
 /// An authenticated identity.

@@ -1,0 +1,12 @@
+[package]
+name = "lain-api"
+description = "The JSON shapes of lain's HTTP API, shared by the server and lain-client (D-179)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

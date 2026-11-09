@@ -1,91 +1,11 @@
-//! The JSON shapes the P1 routes serve. Field names, `omitempty`
-//! behavior and number types follow `internal/contracts`, because the
-//! web client and lain-desktop read them; unknown fields of stored
-//! records are kept (`extra`) so additive fields round-trip.
+//! The server-side JSON shapes: paging input and the catalog export.
+//! The response types clients read live in `lain-api` (D-179), shared
+//! with `lain-client`, and are re-exported here.
 
 use std::collections::BTreeMap;
 
+pub use lain_api::{CatalogItem, CatalogPage, Library, Progress};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-fn is_false(v: &bool) -> bool {
-    !*v
-}
-
-/// A configured media root.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct Library {
-    pub id: String,
-    pub name: String,
-    #[serde(rename = "type")]
-    pub kind: String,
-    pub path: String,
-    pub source: String,
-    pub created_at: i64,
-    /// D-156: hidden from everyone who has not unlocked it this session.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub private: bool,
-    /// The user who made it private; always a member.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub owner: String,
-    /// Other users who may unlock it.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub members: Vec<String>,
-    /// D-157: the named root it lives in, and its path inside that root.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub root: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub root_path: String,
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-impl Library {
-    pub fn is_member(&self, user_id: &str) -> bool {
-        self.owner == user_id || self.members.iter().any(|m| m == user_id)
-    }
-}
-
-/// One catalog item: canonical identity plus provenance.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct CatalogItem {
-    pub id: String,
-    pub library_id: String,
-    pub kind: String,
-    pub title: String,
-    pub season: i64,
-    pub episode: i64,
-    pub year: i64,
-    #[serde(default)]
-    pub file_path: String,
-    pub size: i64,
-    pub confidence: f64,
-    pub origin: String,
-    pub provenance: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub aliases: Vec<String>,
-    pub updated_at: i64,
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub missing: bool,
-    /// D-157: `root` + `/`-separated `rel_path`. A rooted item stores no
-    /// `file_path`: responses and exports fill it with this machine's
-    /// resolution of the root.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub root: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub rel_path: String,
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// The paged envelope of catalog reads (default limit 50, cap 500).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct CatalogPage {
-    pub items: Vec<CatalogItem>,
-    pub total: i64,
-    pub limit: i64,
-    pub offset: i64,
-}
 
 /// Validated paging input. Go's struct has no JSON tags, so its wire
 /// names are the Go field names.
@@ -119,23 +39,6 @@ impl PageParams {
     }
 }
 
-/// One user's progress on one item.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct Progress {
-    #[serde(default)]
-    pub item_id: String,
-    #[serde(default)]
-    pub user_id: String,
-    #[serde(default)]
-    pub position_sec: f64,
-    #[serde(default)]
-    pub duration_sec: f64,
-    #[serde(default)]
-    pub completed: bool,
-    #[serde(default)]
-    pub updated_at: i64,
-}
-
 /// `lain.catalog-export@3` (D-175, D-177): the portable catalog
 /// document. Items carry aliases and `root` + `rel_path`; `roots` names
 /// the roots they use. It is the only version lain-rs reads or writes.
@@ -158,20 +61,6 @@ pub const EXPORT_VERSION: i64 = 3;
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn item_round_trips() {
-        let raw = r#"{"id":"e4622164393ba829","library_id":"lib-1","kind":"episode","title":"Frieren","season":0,"episode":1,"year":0,"file_path":"/m/a.mkv","size":0,"confidence":0.8799999999999999,"origin":"lain-identify-anime","provenance":"identify:lain-identify-anime","updated_at":1794173709}"#;
-        let it: CatalogItem = serde_json::from_str(raw).unwrap();
-        let back = serde_json::to_value(&it).unwrap();
-        assert_eq!(back, serde_json::from_str::<Value>(raw).unwrap());
-        let with_future: CatalogItem =
-            serde_json::from_str(&raw.replace("}", r#","root":"anime","rel_path":"a.mkv"}"#)).unwrap();
-        assert_eq!(with_future.root, "anime");
-        assert_eq!(serde_json::to_value(&with_future).unwrap()["rel_path"], "a.mkv");
-        let with_unknown: CatalogItem = serde_json::from_str(&raw.replace("}", r#","future":1}"#)).unwrap();
-        assert_eq!(serde_json::to_value(&with_unknown).unwrap()["future"], 1);
-    }
 
     #[test]
     fn paging_is_clamped() {
