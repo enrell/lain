@@ -155,27 +155,19 @@ pub fn run(
     let handle = Handle { child: Arc::new(Mutex::new(child)), pid };
     on_start(&handle);
     let out = stdout.map(|s| {
-        std::thread::spawn(move || match on_sample {
-            Some(mut f) => consume_progress(s, total_sec, &mut *f),
-            None => {
-                let _ = std::io::copy(&mut BufReader::new(s), &mut std::io::sink());
-            }
-        })
-    });
-    let err = stderr.map(|mut s| {
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
         std::thread::spawn(move || {
-            let mut keep = Vec::new();
-            let mut buf = [0u8; 4096];
-            while let Ok(n) = s.read(&mut buf) {
-                if n == 0 {
-                    break;
+            match on_sample {
+                Some(mut f) => consume_progress(s, total_sec, &mut *f),
+                None => {
+                    let _ = std::io::copy(&mut BufReader::new(s), &mut std::io::sink());
                 }
-                let room = (16usize << 10).saturating_sub(keep.len());
-                keep.extend_from_slice(&buf[..n.min(room)]);
             }
-            keep
-        })
+            let _ = tx.send(());
+        });
+        rx
     });
+    let err = stderr.map(|s| lain_probe::exec::drain(s, 16 << 10));
     let start = Instant::now();
     let mut stopped = false;
     let status = loop {
@@ -194,10 +186,12 @@ pub fn run(
         }
         std::thread::sleep(Duration::from_millis(40));
     };
-    if let Some(h) = out {
-        let _ = h.join();
+    // The pipes close when ffmpeg exits; a grandchild holding them must
+    // not hold the runner (bounded wait).
+    if let Some(rx) = out {
+        let _ = rx.recv_timeout(Duration::from_secs(2));
     }
-    let stderr = err.and_then(|h| h.join().ok()).unwrap_or_default();
+    let stderr = if stopped { Vec::new() } else { lain_probe::exec::collect(err) };
     if stopped {
         return Err(RunError::Stopped);
     }
@@ -230,7 +224,7 @@ mod tests {
     #[test]
     fn stop_kills_and_failure_keeps_stderr() {
         let mut c = Command::new("/bin/sh");
-        c.args(["-c", "sleep 30"]);
+        c.args(["-c", "sleep 30; true"]);
         let flag = std::sync::atomic::AtomicBool::new(false);
         let t = Instant::now();
         let e = run(
@@ -250,7 +244,7 @@ mod tests {
             other => panic!("{other:?}"),
         }
         let mut c = Command::new("/bin/sh");
-        c.args(["-c", "sleep 30"]);
+        c.args(["-c", "sleep 30; true"]);
         assert_eq!(run(c, 0.0, Some(Duration::from_millis(100)), |_| {}, None, || false), Err(RunError::Stopped));
     }
 }

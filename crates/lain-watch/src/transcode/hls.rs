@@ -82,12 +82,27 @@ pub fn map_uri(text: &str) -> Option<String> {
 }
 
 /// Writes `path` through a temp file and a rename.
+///
+/// The temp name is unique per call: the ticker and a finishing run
+/// rewrite the same playlist concurrently, and on Windows two writers
+/// of one temp file (or a rename racing a reader) fail outright, so the
+/// rename is retried briefly too.
 pub fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_file_name(format!("{}.tmp", path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()));
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = path.with_file_name(format!("{name}.{}-{n}.tmp", std::process::id()));
     std::fs::write(&tmp, data)?;
-    std::fs::rename(&tmp, path).inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
+    let mut last = None;
+    for _ in 0..5 {
+        match std::fs::rename(&tmp, path) {
+            Ok(()) => return Ok(()),
+            Err(e) => last = Some(e),
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let _ = std::fs::remove_file(&tmp);
+    Err(last.unwrap_or_else(|| std::io::Error::other("rename failed")))
 }
 
 /// Regenerates the client playlist from the raw one: segments that no
