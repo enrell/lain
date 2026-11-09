@@ -1,7 +1,9 @@
 # Clients
 
-Lain currently serves a browser UI, a Go CLI (`lain login` / `lain watch`),
-and a separate Linux desktop client in `projects/lain-desktop`. When the
+Lain currently serves a browser UI, the `lain` CLI (`lain login` /
+`lain watch` / `lain download`, on `lain-client`, D-237), and a desktop
+client (`apps/desktop` on `lain-client`; the older Qt client lives in
+`projects/lain-desktop`). When the
 browser and a natively running server share a machine, the server opens
 mpv or VLC itself for the web UI (D-072); browsers on other computers use
 the optional `lain://` local player handler (D-070). The desktop app keeps
@@ -16,7 +18,7 @@ A terminal user interface is wanted as another Lain client for users who
 prefer keyboard-driven browsing and playback. This is a product direction,
 not an implementation plan. No TUI command, toolkit, language, packaging
 format, or repository layout has been chosen yet. In particular, whether
-the TUI is written in Go and whether the current repositories become a
+the TUI is written in Rust on `lain-client` and whether the current repositories become a
 server repository plus separate helper/client repositories remain open.
 Decide those questions before starting the TUI slice; preserve the existing
 server API and authentication boundary when planning it.

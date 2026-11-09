@@ -1,5 +1,5 @@
-# Rust server workspace (D-171, strangler migration). The Go server in
-# cmd/ and internal/ stays the production server until cutover.
+# The lain workspace (D-171): the server crates, the client core and
+# the `lain` binary (crates/lain).
 [workspace]
 resolver = "3"
 # Standalone benchmark tools with their own dependency trees.
@@ -24,10 +24,10 @@ members = [
     "crates/lain-client",
     "crates/lain-probe",
     "crates/lain-watch",
-    
     "crates/lain-lists",
     "crates/lain-social",
     "crates/lain-bridge",
+    "crates/lain",
     "conformance/runner",
 ]
 
@@ -99,6 +99,8 @@ lain-torrent = { path = "crates/lain-torrent" }
 lain-downloads = { path = "crates/lain-downloads" }
 lain-acquire = { path = "crates/lain-acquire" }
 lain-bridge = { path = "crates/lain-bridge" }
+lain-server = { path = "crates/lain-server" }
+lain-client = { path = "crates/lain-client" }
 
 [profile.dev]
 # Keep target/ small on a tight disk; line tables are enough for

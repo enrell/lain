@@ -1,40 +1,32 @@
 #!/bin/sh
-# Runs the conformance suite against both servers, each in its own
-# throwaway data dir on its own port; no real data dir is touched.
+# Runs the conformance suite against the lain server, each suite in its
+# own throwaway data dir; no real data dir is touched.
 #
-#   conformance/run.sh            # Go and Rust
-#   conformance/run.sh go|rust    # one server
+#   conformance/run.sh
 #
-# Go:   fresh (v1), then scan (v1) on a fresh data dir, lists, social
-#       and acquire (v1) on fresh data dirs, then watch (v1)
-#       on a scanned library of test clips
-# Rust: fresh (v1+v2), scan (v1+v2), lists, social and acquire (v1+v2)
-#       on fresh data dirs, then private
-#       (private libraries) on a data dir with a `media` root and the
-#       fixture catalog (conformance/fixtures/catalog.json,
-#       `lain-rs import --in`), then read (comic pages) with `media` at
-#       conformance/fixtures/read and conformance/fixtures/read-catalog.json,
-#       then watch (v1+v2) over the clips and
-#       conformance/fixtures/watch-catalog.json
+# fresh (v1+v2), scan (v1+v2), lists, social and acquire (v1+v2) on
+# fresh data dirs, then private (private libraries) on a data dir with
+# a `media` root and the fixture catalog (conformance/fixtures/catalog.json,
+# `lain import --in`), then read (comic pages) with `media` at
+# conformance/fixtures/read and conformance/fixtures/read-catalog.json,
+# then watch (v1+v2) over the clips and
+# conformance/fixtures/watch-catalog.json
 # The scan suite writes its own fixture media and runs with library
 # watching and the post-scan metadata pass off, so no scan races the
 # cases; so does read, whose fixture catalog must stay as imported.
 # Nothing reaches the network: `lain-conformance upstream` serves the
 # recorded answers of the remote APIs (conformance/fixtures/upstream)
-# and every server's LAIN_METADATA_<NAME>_URL points at it.
+# and the server's LAIN_METADATA_<NAME>_URL points at it.
 #
 # The watch suite needs ffmpeg (conformance/make-clips.sh writes the
 # clips); without it the suite is skipped, unless LAIN_REQUIRE_FFMPEG=1
 # (CI) makes that a failure.
 #
-# Env: GO_PORT (19460), RS_PORT (19461), UPSTREAM_PORT (19462), KEEP=1
-# keeps the temp dir.
+# Env: RS_PORT (19461), UPSTREAM_PORT (19462), KEEP=1 keeps the temp dir.
 set -eu
 
-which="${1:-both}"
 root=$(cd "$(dirname "$0")/.." && pwd)
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/lain-conformance.XXXXXX")
-go_port="${GO_PORT:-19460}"
 rs_port="${RS_PORT:-19461}"
 upstream_port="${UPSTREAM_PORT:-19462}"
 cleanup() {
@@ -53,11 +45,11 @@ LAIN_ACQUIRE_LISTEN_PORT=0
 export LAIN_ACQUIRE_LISTEN_PORT
 
 cd "$root"
-cargo build -q -p lain-conformance -p lain-server
+cargo build -q -p lain-conformance -p lain
 runner="$root/target/debug/lain-conformance"
-lain_rs="$root/target/debug/lain-rs"
+lain="$root/target/debug/lain"
 
-# The upstream fixture server, for both servers' network providers.
+# The upstream fixture server, for the network providers.
 upstream="http://127.0.0.1:$upstream_port"
 "$runner" upstream --port "$upstream_port" >"$tmp/upstream.log" 2>&1 &
 echo "$!" >>"$tmp/pids"
@@ -116,116 +108,71 @@ summary=""
 note() { summary="$summary
 $1"; }
 
-run_go() {
-	# The web UI embed needs its directory (dist is gitignored).
-	mkdir -p internal/webui/dist
-	[ -e internal/webui/dist/.gitkeep ] || : >internal/webui/dist/.gitkeep
-	go build -o "$tmp/lain" ./cmd/lain
-	url="http://127.0.0.1:$go_port"
-	pid=$(LAIN_AUTO_ENRICH=0 start go-fresh "$url" "$tmp/lain" serve --data-dir "$tmp/go-fresh" --port "$go_port")
-	out=$(LAIN_URL=$url "$runner" --tier v1 --var media_dir="$tmp/media" --var media_dir2="$tmp/media2" conformance/cases/fresh) || { echo "$out"; exit 1; }
-	echo "$out"
-	note "Go   fresh v1: $(echo "$out" | tail -1)"
-	stop "$pid"
-
-	mkdir -p "$tmp/go-scanmedia"
-	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start go-scan "$url" "$tmp/lain" serve --data-dir "$tmp/go-scan" --port "$go_port")
-	out=$(LAIN_URL=$url "$runner" --tier v1 --var scan_media="$tmp/go-scanmedia" --var upstream="$upstream" conformance/cases/scan) || { echo "$out"; exit 1; }
-	echo "$out"
-	note "Go   scan v1: $(echo "$out" | tail -1)"
-	stop "$pid"
-
-	for suite in lists social; do
-		pid=$(LAIN_AUTO_ENRICH=0 start "go-$suite" "$url" "$tmp/lain" serve --data-dir "$tmp/go-$suite" --port "$go_port")
-		out=$(LAIN_URL=$url "$runner" --tier v1 --var upstream="$upstream" "conformance/cases/$suite") || { echo "$out"; exit 1; }
-		echo "$out"
-		note "Go   $suite v1: $(echo "$out" | tail -1)"
-		stop "$pid"
-	done
-	mkdir -p "$tmp/go-acqmedia"
-	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start go-acquire "$url" "$tmp/lain" serve --data-dir "$tmp/go-acquire" --port "$go_port")
-	out=$(LAIN_URL=$url "$runner" --tier v1 --var acq_media="$tmp/go-acqmedia" conformance/cases/acquire) || { echo "$out"; exit 1; }
-	echo "$out"
-	note "Go   acquire v1: $(echo "$out" | tail -1)"
-	stop "$pid"
-
-	if [ "$clips" = 1 ]; then
-		pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start go-watch "$url" "$tmp/lain" serve --data-dir "$tmp/go-watch" --port "$go_port")
-		out=$(LAIN_URL=$url "$runner" --tier v1 --var clips=1 --var scan_dir="$tmp/watch/Clips" conformance/cases/watch) || { echo "$out"; exit 1; }
-		echo "$out"
-		note "Go   watch v1: $(echo "$out" | tail -1)"
-		stop "$pid"
-	else
-		note "Go   watch v1: skipped (no ffmpeg)"
-	fi
-}
-
-run_rust() {
+run_suites() {
 	url="http://127.0.0.1:$rs_port"
-	pid=$(start rs-fresh "$url" "$lain_rs" serve --data-dir "$tmp/rs-fresh" --port "$rs_port")
+	pid=$(start rs-fresh "$url" "$lain" serve --data-dir "$tmp/rs-fresh" --port "$rs_port")
 	out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var media_dir="$tmp/media" --var media_dir2="$tmp/media2" --var data_dir="$tmp/rs-fresh" conformance/cases/fresh conformance/cases/v2) || { echo "$out"; exit 1; }
 	echo "$out"
-	note "Rust fresh v1+v2: $(echo "$out" | tail -1)"
+	note "fresh v1+v2: $(echo "$out" | tail -1)"
 	stop "$pid"
 
 	mkdir -p "$tmp/rs-scanmedia"
-	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-scan "$url" "$lain_rs" serve --data-dir "$tmp/rs-scan" --port "$rs_port")
+	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-scan "$url" "$lain" serve --data-dir "$tmp/rs-scan" --port "$rs_port")
 	out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var scan_media="$tmp/rs-scanmedia" --var upstream="$upstream" conformance/cases/scan) || { echo "$out"; exit 1; }
 	echo "$out"
-	note "Rust scan v1+v2: $(echo "$out" | tail -1)"
+	note "scan v1+v2: $(echo "$out" | tail -1)"
 	stop "$pid"
 
 	for suite in lists social; do
-		pid=$(start "rs-$suite" "$url" "$lain_rs" serve --data-dir "$tmp/rs-$suite" --port "$rs_port")
+		pid=$(start "rs-$suite" "$url" "$lain" serve --data-dir "$tmp/rs-$suite" --port "$rs_port")
 		out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var upstream="$upstream" "conformance/cases/$suite") || { echo "$out"; exit 1; }
 		echo "$out"
-		note "Rust $suite v1+v2: $(echo "$out" | tail -1)"
+		note "$suite v1+v2: $(echo "$out" | tail -1)"
 		stop "$pid"
 	done
 	mkdir -p "$tmp/rs-acqmedia"
-	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-acquire "$url" "$lain_rs" serve --data-dir "$tmp/rs-acquire" --port "$rs_port")
+	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-acquire "$url" "$lain" serve --data-dir "$tmp/rs-acquire" --port "$rs_port")
 	out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var acq_media="$tmp/rs-acqmedia" conformance/cases/acquire) || { echo "$out"; exit 1; }
 	echo "$out"
-	note "Rust acquire v1+v2: $(echo "$out" | tail -1)"
+	note "acquire v1+v2: $(echo "$out" | tail -1)"
 	stop "$pid"
 
 	mkdir -p "$tmp/rs-private"
 	printf '{"format":"lain.roots@1","roots":{"media":"%s"}}\n' "$tmp/rootmedia" >"$tmp/rs-private/roots.json"
-	"$lain_rs" import --in conformance/fixtures/catalog.json --data-dir "$tmp/rs-private"
-	pid=$(start rs-private "$url" "$lain_rs" serve --data-dir "$tmp/rs-private" --port "$rs_port")
+	"$lain" import --in conformance/fixtures/catalog.json --data-dir "$tmp/rs-private"
+	pid=$(start rs-private "$url" "$lain" serve --data-dir "$tmp/rs-private" --port "$rs_port")
 	out=$(LAIN_URL=$url "$runner" --var media_root="$tmp/rootmedia" --var data_dir="$tmp/rs-private" conformance/cases/private) || { echo "$out"; exit 1; }
 	echo "$out"
-	note "Rust private libraries: $(echo "$out" | tail -1)"
+	note "private libraries: $(echo "$out" | tail -1)"
 	stop "$pid"
 
 	mkdir -p "$tmp/rs-read"
 	printf '{"format":"lain.roots@1","roots":{"media":"%s"}}\n' "$root/conformance/fixtures/read" >"$tmp/rs-read/roots.json"
-	"$lain_rs" import --in conformance/fixtures/read-catalog.json --data-dir "$tmp/rs-read"
-	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-read "$url" "$lain_rs" serve --data-dir "$tmp/rs-read" --port "$rs_port")
+	"$lain" import --in conformance/fixtures/read-catalog.json --data-dir "$tmp/rs-read"
+	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-read "$url" "$lain" serve --data-dir "$tmp/rs-read" --port "$rs_port")
 	out=$(LAIN_URL=$url "$runner" --var media_root="$root/conformance/fixtures/read" --var data_dir="$tmp/rs-read" conformance/cases/read) || { echo "$out"; exit 1; }
 	echo "$out"
-	note "Rust read: $(echo "$out" | tail -1)"
+	note "read: $(echo "$out" | tail -1)"
 	stop "$pid"
 	if [ "$clips" = 1 ]; then
 		mkdir -p "$tmp/rs-watch"
 		printf '{"format":"lain.roots@1","roots":{"media":"%s"}}\n' "$tmp/watch" >"$tmp/rs-watch/roots.json"
-		"$lain_rs" import --in conformance/fixtures/watch-catalog.json --data-dir "$tmp/rs-watch"
-		pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-watch "$url" "$lain_rs" serve --data-dir "$tmp/rs-watch" --port "$rs_port")
+		"$lain" import --in conformance/fixtures/watch-catalog.json --data-dir "$tmp/rs-watch"
+		pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-watch "$url" "$lain" serve --data-dir "$tmp/rs-watch" --port "$rs_port")
 		out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var clips=1 --var media_root="$tmp/watch" conformance/cases/watch) || { echo "$out"; exit 1; }
 		echo "$out"
-		note "Rust watch v1+v2: $(echo "$out" | tail -1)"
+		note "watch v1+v2: $(echo "$out" | tail -1)"
 		stop "$pid"
 	else
-		note "Rust watch v1+v2: skipped (no ffmpeg)"
+		note "watch v1+v2: skipped (no ffmpeg)"
 	fi
 }
 
-case "$which" in
-go) run_go ;;
-rust) run_rust ;;
-both) run_go; run_rust ;;
-*) echo "usage: $0 [go|rust|both]" >&2; exit 2 ;;
-esac
+if [ "$#" -gt 0 ] && [ "$1" != rust ]; then
+	echo "usage: $0" >&2
+	exit 2
+fi
+run_suites
 echo
 echo "== conformance summary =="
 echo "$summary" | sed '/^$/d'

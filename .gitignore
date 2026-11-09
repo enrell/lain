@@ -17,9 +17,9 @@ backups/
 web/node_modules/
 web/.svelte-kit/
 web/build/
-# compiled UI embedded into the Go binary (built by `make web` / Docker)
-internal/webui/dist/*
-!internal/webui/dist/.gitkeep
+# compiled UI embedded into the lain binary (`just web`, CI, Docker)
+crates/lain/webui/*
+!crates/lain/webui/.gitkeep
 
 # agent session tooling (never commit)
 .opencode/

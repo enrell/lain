@@ -10,8 +10,8 @@ you can, honestly, in the smallest correct slice, and commit each one.
   never rebase, never amend a commit you did not make, never touch `main`.
 - Do not edit anything under `qa/runs/` — those are other agents' reports.
 - Do not edit `.env`, `.env.example`, or any file holding credentials.
-- The deterministic suite is the floor: `go vet ./...`, `go test ./...` and
-  `cd web && pnpm test` must pass before you commit each slice. If you touched
+- The deterministic suite is the floor: `cargo clippy --workspace --all-targets -- -D warnings`,
+  `cargo test --workspace` and `cd web && pnpm test` must pass before you commit each slice. If you touched
   the Svelte app, also run `cd web && pnpm check`.
 - `web/e2e/smoke.mjs` is the reproducible browser gate. Do not delete or weaken
   assertions in it. If your fix changes behaviour it asserts, that is a signal
@@ -46,11 +46,11 @@ you can, honestly, in the smallest correct slice, and commit each one.
 ## Target
 
 - Base URL: {{BASE_URL}} (disposable instance, safe to mutate)
-- The target serves the build from **before** your edits. A Svelte or Go change is
+- The target serves the build from **before** your edits. A Svelte or Rust change is
   not on screen until the runner rebuilds and restarts it, which it does before
   the auditor re-tests your commit. So confirm a fix with the checks above and
   with the code, not by watching the old build — and **never start a server of
-  your own** (`lain serve`, `go run`, `just up`, `setsid … &`). The runner owns
+  your own** (`lain serve`, `cargo run`, `just up`, `setsid … &`). The runner owns
   the target; a process you detach outlives the round and is not cleaned up.
 - Administrator: username `{{ADMIN_USER}}` password `{{ADMIN_PASSWORD}}`
 - Member: username `{{MEMBER_USER}}` password `{{MEMBER_PASSWORD}}`

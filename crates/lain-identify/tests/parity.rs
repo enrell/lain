@@ -1,6 +1,6 @@
-//! The Go parsers' answers (`conformance/fixtures/parse-parity.json`,
-//! written by `internal/plugins/identify/parity_test.go`) must be the
-//! Rust parsers' answers, name for name.
+//! The retired Go parsers' answers (`conformance/fixtures/parse-parity.json`,
+//! recorded by a Go test before Go was removed and now frozen, D-240)
+//! must be the Rust parsers' answers, name for name.
 
 use serde_json::{Value, json};
 

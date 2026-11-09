@@ -8,7 +8,7 @@
 //! read (`lain-read`) and watch (D-190: `watch.rs`, byte serving in
 //! `serve.rs`) and acquire (D-205..D-214: `acquire.rs`, the crates
 //! `lain-acquire`, `lain-torrent` and `lain-downloads`). It starts from an empty data dir; nothing is imported
-//! from the Go server (D-177). The binary is `lain-rs`.
+//! from the Go server (D-177). The binary is `lain` (`crates/lain`).
 
 pub mod acquire;
 pub mod app;
@@ -29,12 +29,17 @@ pub mod service;
 pub mod social;
 pub mod translate;
 pub mod watch;
+pub mod webui;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-/// The version string `/health` reports.
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-rs");
+/// The version string `/health` reports: `LAIN_VERSION` at build time
+/// (release builds set the tag), else the crate version.
+pub const VERSION: &str = match option_env!("LAIN_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
 
 /// The catalog of a data dir as `lain.catalog-export@3` (D-175), paths
 /// resolved with that dir's `roots.json`. The server must not be
@@ -60,7 +65,7 @@ pub async fn serve(
 ) -> std::io::Result<()> {
     let router = gateway::router(app.clone());
     let addr: Option<SocketAddr> = listener.local_addr().ok();
-    tracing::info!(addr = %addr.map(|a| a.to_string()).unwrap_or_default(), data_dir = %app.data_dir.display(), "lain-rs listening");
+    tracing::info!(addr = %addr.map(|a| a.to_string()).unwrap_or_default(), data_dir = %app.data_dir.display(), "lain listening");
     let app2 = app.clone();
     axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(async move {

@@ -1,6 +1,5 @@
 //! Replays conformance/component/*.ndjson against the Rust host and the
-//! Rust component side. The Go side replays the same files in
-//! internal/component/conformance_test.go.
+//! Rust component side.
 
 use std::path::PathBuf;
 use std::time::Duration;

@@ -13,31 +13,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  go:
-    name: go vet, test, build
+  # The web SPA builds first: the lain binary embeds it (crates/lain/build.rs).
+  web:
+    name: web check, test, build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-      - name: Placeholder web UI for embed (dist is gitignored)
-        run: mkdir -p internal/webui/dist && touch internal/webui/dist/.gitkeep
-      - name: Vet
-        run: go vet ./...
-      - name: Test
-        run: CGO_ENABLED=1 go test -race -shuffle=on -tags e2e ./...
+          version: 12.3.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Install
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Check
+        working-directory: web
+        run: pnpm check
+      - name: Unit tests
+        working-directory: web
+        run: pnpm test
       - name: Build
-        run: CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=ci" -o /tmp/lain ./cmd/lain
-      - name: Installer tests
-        run: |
-          bash -n scripts/install.sh
-          shellcheck scripts/install.sh
-          python3 scripts/install_test.py
+        working-directory: web
+        run: pnpm build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web-build
+          path: web/build
+          if-no-files-found: error
+          retention-days: 3
 
   rust:
     name: rust test (${{ matrix.os }})
+    needs: web
     strategy:
       fail-fast: false
       matrix:
@@ -48,15 +59,11 @@ jobs:
       CARGO_BUILD_JOBS: "4"
     steps:
       - uses: actions/checkout@v7
-      # The Go server builds the component the Rust host runs in the
-      # interop test (crates/lain-component/tests/go_interop.rs).
-      - uses: actions/setup-go@v7
+      - name: Embed the web build
+        uses: actions/download-artifact@v8
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-      - name: Placeholder web UI for embed (dist is gitignored)
-        shell: bash
-        run: mkdir -p internal/webui/dist && touch internal/webui/dist/.gitkeep
+          name: web-build
+          path: crates/lain/webui
       - name: Toolchain
         shell: bash
         run: rustup toolchain install stable --profile minimal --component clippy,rustfmt && rustc --version
@@ -81,10 +88,7 @@ jobs:
         shell: bash
         # A hung network test fails the job instead of holding it.
         timeout-minutes: 25
-        run: |
-          if [ "$RUNNER_OS" != Windows ]; then export LAIN_REQUIRE_GO=1; fi
-          export LAIN_REQUIRE_FFMPEG=1
-          cargo test --workspace --locked --no-fail-fast
+        run: LAIN_REQUIRE_FFMPEG=1 cargo test --workspace --locked --no-fail-fast
 
   desktop:
     # The GPUI desktop app (apps/desktop, its own cargo workspace and
@@ -139,45 +143,42 @@ jobs:
         run: cargo test --locked
 
   conformance:
-    name: conformance (Go and Rust servers)
+    name: conformance (lain server)
+    needs: web
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - name: Embed the web build
+        uses: actions/download-artifact@v8
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
+          name: web-build
+          path: crates/lain/webui
       - name: Toolchain
         run: rustup toolchain install stable --profile minimal && rustc --version
       - name: ffmpeg (watch suite clips and transcodes)
         run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg
       - name: Lint the runner scripts
         run: sh -n conformance/run.sh && sh -n conformance/make-clips.sh && shellcheck conformance/run.sh conformance/make-clips.sh
-      - name: Run the suite against both servers
+      - name: Run the suite
         run: LAIN_REQUIRE_FFMPEG=1 conformance/run.sh
+      - name: The binary serves the SPA
+        run: |
+          set -eu
+          d=$(mktemp -d)
+          LAIN_ACQUIRE_LISTEN_PORT=0 target/debug/lain serve --data-dir "$d" --port 19470 &
+          trap 'kill $!' EXIT
+          for _ in $(seq 100); do curl -fsS http://127.0.0.1:19470/health >/dev/null 2>&1 && break; sleep 0.1; done
+          curl -fsS http://127.0.0.1:19470/library | grep -q '<!doctype html>'
+          curl -fsSI http://127.0.0.1:19470/ | grep -qi '^cache-control: no-cache'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:19470/api/nope)" = 404
 
-  web:
-    name: web check, test, build
+  installer:
+    name: installer script
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          version: 12.3.4
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 26
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
-      - name: Install
-        working-directory: web
-        run: pnpm install --frozen-lockfile
-      - name: Check
-        working-directory: web
-        run: pnpm check
-      - name: Unit tests
-        working-directory: web
-        run: pnpm test
-      - name: Build
-        working-directory: web
-        run: pnpm build
+      - name: Lint and test
+        run: |
+          bash -n scripts/install.sh
+          shellcheck scripts/install.sh
+          python3 scripts/install_test.py

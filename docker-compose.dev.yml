@@ -1,5 +1,5 @@
 # Development stack with hot reload: `just up`.
-#   api → Go server on :9360, restarted on every source edit (bind mount).
+#   api → the lain server on :9360, rebuilt and restarted on every source edit (bind mount).
 #   web → Vite HMR on :5173, proxied to the API.
 # Data lives in the `lain-dev-data` volume: never the production database.
 # Media is your own ~/Videos (plus ~/Comics and ~/Manga for the reading
@@ -10,11 +10,11 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     working_dir: /src
-    command: ["go", "run", "./cmd/lain", "serve", "--data-dir", "/data", "--port", "9360", "--bind", "0.0.0.0"]
+    command: ["cargo", "run", "-p", "lain", "--", "serve", "--data-dir", "/data", "--port", "9360", "--bind", "0.0.0.0"]
     volumes:
       - .:/src
-      - go-build-cache:/root/.cache/go-build
-      - go-mod-cache:/go/pkg/mod
+      - cargo-target:/src/target
+      - cargo-registry:/usr/local/cargo/registry
       - lain-dev-data:/data
       - ${HOME}/Videos:/media/videos
       - ${HOME}/Comics:/media/comics
@@ -24,8 +24,7 @@ services:
     ports:
       - "${LAIN_DEV_PORT:-9360}:9360"
     environment:
-      GOMEMLIMIT: 256MiB
-      GOGC: "100"
+      CARGO_BUILD_JOBS: "4"
       LAIN_OMARCHY_COLORS: /omarchy/current/theme/colors.toml
       # Dev container runs full log: every request plus provider-level
       # diagnostics (see docs/LOGGING.md). Agents grep this stream.
@@ -34,18 +33,17 @@ services:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9360/health"]
       interval: 30s
       timeout: 5s
-      start_period: 10s
+      # The first start compiles the workspace.
+      start_period: 600s
       retries: 3
     develop:
       watch:
-        - path: ./internal
+        - path: ./crates
           action: restart
-        - path: ./cmd
+        - path: ./Cargo.toml
           action: restart
-        - path: ./go.mod
-          action: rebuild
-        - path: ./go.sum
-          action: rebuild
+        - path: ./Cargo.lock
+          action: restart
 
   web:
     image: node:26-alpine
@@ -66,6 +64,6 @@ services:
 
 volumes:
   lain-dev-data:
-  go-build-cache:
-  go-mod-cache:
+  cargo-target:
+  cargo-registry:
   web-modules:
