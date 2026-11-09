@@ -426,10 +426,10 @@ pub fn themes_dir(client_dir: &Path) -> PathBuf {
 pub fn install_builtins(dir: &Path) {
     for (id, json) in BUILTIN {
         let d = dir.join(id);
-        if !d.join("theme.json").exists() {
-            if let Err(e) = std::fs::create_dir_all(&d).and_then(|_| std::fs::write(d.join("theme.json"), json)) {
-                eprintln!("theme {id}: {e}");
-            }
+        if !d.join("theme.json").exists()
+            && let Err(e) = std::fs::create_dir_all(&d).and_then(|_| std::fs::write(d.join("theme.json"), json))
+        {
+            eprintln!("theme {id}: {e}");
         }
     }
 }
@@ -458,7 +458,7 @@ pub fn list(dir: &Path) -> Vec<ThemeEntry> {
             Err(err) => out.push(ThemeEntry { name: id.clone(), id, dir: p, scheme: String::new(), error: Some(err) }),
         }
     }
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out.sort_by_key(|a| a.name.to_lowercase());
     out
 }
 

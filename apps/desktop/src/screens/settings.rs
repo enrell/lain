@@ -408,11 +408,8 @@ impl LainApp {
             Act::Swap(cap, providers, generation) => {
                 let req = SwapRequest { capability: cap, providers, generation };
                 self.spawn_ui(cx, async move { c.swap_providers(req).await }, |app, r, cx| {
-                    if app.report(&r, "Provider swapped") {
-                        app.enter_settings(Section::Plugins, cx);
-                    } else {
-                        app.enter_settings(Section::Plugins, cx);
-                    }
+                    app.report(&r, "Provider swapped");
+                    app.enter_settings(Section::Plugins, cx);
                 });
             }
             Act::Withdraw(p) => {

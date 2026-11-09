@@ -8,7 +8,7 @@
 //! for IME and selection, which v1 does not need (D-181).
 
 use gpui::prelude::*;
-use gpui::{AnyElement, ClickEvent, Context, Div, FontWeight, Hsla, SharedString, Stateful, Window, div, px, svg};
+use gpui::{ClickEvent, Context, Div, FontWeight, Hsla, SharedString, Stateful, Window, div, px, svg};
 
 use crate::app::{Act, FocusItem, LainApp};
 
@@ -219,26 +219,6 @@ impl LainApp {
         }))
     }
 
-    /// An icon-only button.
-    pub fn icon_btn(&mut self, id: &str, icon: &str, size: f32, act: Act, cx: &mut Context<Self>) -> Stateful<Div> {
-        let focused = self.stop(id, Some(act.clone()), false);
-        let pal = &self.pal;
-        div()
-            .id(SharedString::from(id.to_string()))
-            .size(px(size))
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .rounded(px(self.theme.radius.button))
-            .cursor_pointer()
-            .border_1()
-            .border_color(if focused { pal.focus } else { pal.text.opacity(0.) })
-            .hover(|s| s.bg(gpui::white().opacity(0.1)))
-            .child(self.icon(icon, size * 0.5, pal.text))
-            .on_click(cx.listener(move |app, _: &ClickEvent, w, cx| app.run(act.clone(), w, cx)))
-    }
-
     /// A one-line text field; Enter runs `submit`.
     pub fn field(
         &mut self,
@@ -411,10 +391,6 @@ impl LainApp {
             .font_family(self.fonts.mono.clone())
             .text_size(px(self.theme.ts(-2)))
             .child(text.to_uppercase())
-    }
-
-    pub fn any(&self, e: impl IntoElement) -> AnyElement {
-        e.into_any_element()
     }
 }
 

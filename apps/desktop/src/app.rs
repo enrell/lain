@@ -196,7 +196,6 @@ pub enum Act {
     RemoveDownload(String),
     PauseDownload(String),
     ResumeDownload(String),
-    SelectEpisode(usize),
     // library
     LibSort(LibSort),
     LibPage(i32),
@@ -235,10 +234,6 @@ pub enum Act {
     Backup,
     ConfirmYes,
     ConfirmNo,
-    // reader
-    ReaderTurn(i64),
-    // player
-    PlayerNext,
 }
 
 pub struct FocusItem {
@@ -250,7 +245,6 @@ pub struct FocusItem {
 /// One title: the items of a library that share a title.
 #[derive(Debug, Clone)]
 pub struct Series {
-    pub key: String,
     pub title: String,
     pub kind: String,
     pub library_id: String,
@@ -650,9 +644,8 @@ impl LainApp {
         let mut series: Vec<Series> = Vec::new();
         for (i, it) in self.catalog.iter().enumerate() {
             let key = format!("{}\u{0}{}", it.library_id, it.title.to_lowercase());
-            let idx = *groups.entry(key.clone()).or_insert_with(|| {
+            let idx = *groups.entry(key).or_insert_with(|| {
                 series.push(Series {
-                    key,
                     title: it.title.clone(),
                     kind: it.kind.clone(),
                     library_id: it.library_id.clone(),
@@ -676,7 +669,7 @@ impl LainApp {
                 (x.season, x.episode, &x.file_path).cmp(&(y.season, y.episode, &y.file_path))
             });
         }
-        series.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        series.sort_by_key(|a| a.title.to_lowercase());
         self.series_of.clear();
         for (si, s) in series.iter().enumerate() {
             for &i in &s.items {
@@ -696,7 +689,7 @@ impl LainApp {
                     app.progress.insert(p.item_id.clone(), p.clone());
                 }
                 app.continues = list.into_iter().filter(|p| !p.completed).collect();
-                app.continues.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                app.continues.sort_by_key(|p| std::cmp::Reverse(p.updated_at));
                 app.home.dirty = true;
             }
             Err(e) => eprintln!("continue: {e}"),
@@ -747,7 +740,7 @@ impl LainApp {
                     }
                     prog = true;
                 }
-                Poke::Lost(_) => {
+                Poke::Lost => {
                     if self.online {
                         self.online = false;
                         self.toast("Connection to the server lost; retrying", true);
@@ -953,7 +946,6 @@ impl LainApp {
             Act::RemoveDownload(id) => self.offline_op(&id, "remove", cx),
             Act::PauseDownload(id) => self.offline_op(&id, "pause", cx),
             Act::ResumeDownload(id) => self.download(&id, cx),
-            Act::SelectEpisode(i) => self.select_episode(i, cx),
             Act::LibSort(s) => {
                 self.lib.sort = s;
                 self.lib.page = 0;
@@ -963,8 +955,6 @@ impl LainApp {
                 self.search.kind = if self.search.kind == k { String::new() } else { k };
                 self.run_search(cx);
             }
-            Act::PlayerNext => self.player_next(cx),
-            Act::ReaderTurn(d) => self.reader_turn(d, cx),
             Act::ConfirmYes => {
                 if let Some((_, a)) = self.confirm.take() {
                     self.run(a, window, cx);
@@ -1072,14 +1062,14 @@ impl LainApp {
     // ---- ticking -----------------------------------------------------------------
 
     fn tick(&mut self, n: u64, cx: &mut Context<Self>) {
-        if n % 15 == 0 {
+        if n.is_multiple_of(15) {
             self.check_theme(cx);
         }
         platform::tick_placement(self, n);
         if self.player.is_some() {
             self.player_tick(cx);
         }
-        if n % 30 == 0 {
+        if n.is_multiple_of(30) {
             self.settings_tick(cx);
             self.downloads_tick(cx);
             if self.item.dirty
@@ -1202,10 +1192,8 @@ impl LainApp {
                     .key_char
                     .as_ref()
                     .is_some_and(|c| !c.is_empty() && !c.chars().any(|ch| ch.is_control()));
-            if typed {
-                if let Some(c) = &ev.keystroke.key_char {
-                    f.insert(c);
-                }
+            if typed && let Some(c) = &ev.keystroke.key_char {
+                f.insert(c);
             }
             if edited || typed {
                 self.field_changed(key, cx);

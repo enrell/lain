@@ -138,7 +138,7 @@ pub fn capture(hwnd: isize, out: &std::path::Path) -> Result<(), String> {
         if !ok || lines == 0 {
             return Err("PrintWindow failed".into());
         }
-        for px in buf.chunks_exact_mut(4) {
+        for px in buf.as_chunks_mut::<4>().0 {
             px.swap(0, 2);
             px[3] = 255;
         }

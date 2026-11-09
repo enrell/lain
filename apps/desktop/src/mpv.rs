@@ -59,7 +59,6 @@ struct MpvEventEndFile {
 const FMT_NONE: c_int = 0;
 const FMT_STRING: c_int = 1;
 const FMT_FLAG: c_int = 3;
-const FMT_INT64: c_int = 4;
 const FMT_DOUBLE: c_int = 5;
 
 const EV_SHUTDOWN: c_int = 1;
@@ -79,8 +78,6 @@ struct Lib {
     set_option_string: unsafe extern "C" fn(*mut MpvHandle, *const c_char, *const c_char) -> c_int,
     command: unsafe extern "C" fn(*mut MpvHandle, *mut *const c_char) -> c_int,
     command_async: unsafe extern "C" fn(*mut MpvHandle, u64, *mut *const c_char) -> c_int,
-    set_property_string: unsafe extern "C" fn(*mut MpvHandle, *const c_char, *const c_char) -> c_int,
-    get_property: unsafe extern "C" fn(*mut MpvHandle, *const c_char, c_int, *mut c_void) -> c_int,
     get_property_string: unsafe extern "C" fn(*mut MpvHandle, *const c_char) -> *mut c_char,
     observe_property: unsafe extern "C" fn(*mut MpvHandle, u64, *const c_char, c_int) -> c_int,
     wait_event: unsafe extern "C" fn(*mut MpvHandle, f64) -> *mut MpvEvent,
@@ -88,6 +85,7 @@ struct Lib {
     error_string: unsafe extern "C" fn(c_int) -> *const c_char,
 }
 
+#[allow(clippy::missing_transmute_annotations)]
 fn lib() -> Result<&'static Lib, String> {
     static LIB: OnceLock<Result<Lib, String>> = OnceLock::new();
     LIB.get_or_init(|| unsafe {
@@ -108,8 +106,6 @@ fn lib() -> Result<&'static Lib, String> {
             set_option_string: sym!("mpv_set_option_string"),
             command: sym!("mpv_command"),
             command_async: sym!("mpv_command_async"),
-            set_property_string: sym!("mpv_set_property_string"),
-            get_property: sym!("mpv_get_property"),
             get_property_string: sym!("mpv_get_property_string"),
             observe_property: sym!("mpv_observe_property"),
             wait_event: sym!("mpv_wait_event"),
@@ -137,8 +133,6 @@ fwd!(mpv_terminate_destroy, terminate_destroy, (ctx: *mut MpvHandle) -> ());
 fwd!(mpv_set_option_string, set_option_string, (ctx: *mut MpvHandle, n: *const c_char, d: *const c_char) -> c_int);
 fwd!(mpv_command, command, (ctx: *mut MpvHandle, a: *mut *const c_char) -> c_int);
 fwd!(mpv_command_async, command_async, (ctx: *mut MpvHandle, r: u64, a: *mut *const c_char) -> c_int);
-fwd!(mpv_set_property_string, set_property_string, (ctx: *mut MpvHandle, n: *const c_char, d: *const c_char) -> c_int);
-fwd!(mpv_get_property, get_property, (ctx: *mut MpvHandle, n: *const c_char, f: c_int, d: *mut c_void) -> c_int);
 fwd!(mpv_get_property_string, get_property_string, (ctx: *mut MpvHandle, n: *const c_char) -> *mut c_char);
 fwd!(mpv_observe_property, observe_property, (ctx: *mut MpvHandle, r: u64, n: *const c_char, f: c_int) -> c_int);
 fwd!(mpv_wait_event, wait_event, (ctx: *mut MpvHandle, t: f64) -> *mut MpvEvent);
@@ -256,24 +250,8 @@ impl Mpv {
         unsafe { mpv_command_async(self.h, 0, ptrs.as_mut_ptr()) };
     }
 
-    pub fn set(&self, name: &str, value: &str) {
-        unsafe { mpv_set_property_string(self.h, cstr(name).as_ptr(), cstr(value).as_ptr()) };
-    }
-
     pub fn get_string(&self, name: &str) -> Option<String> {
         get_string(self.h, name)
-    }
-
-    pub fn get_f64(&self, name: &str) -> Option<f64> {
-        let mut v = 0f64;
-        let r = unsafe { mpv_get_property(self.h, cstr(name).as_ptr(), FMT_DOUBLE, &mut v as *mut f64 as *mut c_void) };
-        (r >= 0).then_some(v)
-    }
-
-    pub fn get_i64(&self, name: &str) -> Option<i64> {
-        let mut v = 0i64;
-        let r = unsafe { mpv_get_property(self.h, cstr(name).as_ptr(), FMT_INT64, &mut v as *mut i64 as *mut c_void) };
-        (r >= 0).then_some(v)
     }
 
     pub fn snapshot(&self) -> PlayerState {

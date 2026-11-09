@@ -40,3 +40,7 @@ debug = false
 strip = true
 lto = "thin"
 codegen-units = 16
+
+# xattr 0.2.3 does not build on Linux with libc 0.2.191 (patches/README.md).
+[patch.crates-io]
+xattr = { path = "patches/xattr-0.2.3" }

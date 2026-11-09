@@ -86,7 +86,7 @@ impl LainApp {
         let Some(b) = self.backend.clone() else { return };
         if let Some(o) = &b.offline {
             self.dl.entries = o.list().unwrap_or_default();
-            self.dl.entries.sort_by(|a, b| b.added_at_ms.cmp(&a.added_at_ms));
+            self.dl.entries.sort_by_key(|e| std::cmp::Reverse(e.added_at_ms));
         }
     }
 
