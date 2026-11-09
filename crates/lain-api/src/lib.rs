@@ -708,6 +708,185 @@ pub struct SubtitleDownloadOutput {
     pub remaining: i64,
 }
 
+// ---- component jobs (lain.subtitle.translate@1, lain.acquire.extract@1) ------
+
+/// A typed failure of a component job (`error` of [`TranslateJob`] and
+/// [`ExtractJob`]): the app's own code and message, never a credential.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobError {
+    pub code: String,
+    pub msg: String,
+}
+
+/// Names one job of a component capability (ops `status` and `cancel`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobRef {
+    pub job: String,
+}
+
+/// The translation model a job uses (`lain.subtitle.translate@1`). The
+/// key is a credential: carried in contract input only, never logged
+/// (`Debug` redacts it) and never returned.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TranslateModel {
+    /// The app's provider kind (`ollama`, `openai`, `openrouter`, …).
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub base_url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub api_key: String,
+}
+
+impl std::fmt::Debug for TranslateModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TranslateModel")
+            .field("kind", &self.kind)
+            .field("model", &self.model)
+            .field("base_url", &self.base_url)
+            .field("api_key", &if self.api_key.is_empty() { "" } else { "<redacted>" })
+            .finish()
+    }
+}
+
+/// Op `start` of `lain.subtitle.translate@1`: translate one subtitle
+/// file. Paths are absolute on the host both sides run on; the
+/// component reads and writes the files, lain never sends their bytes.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TranslateStartInput {
+    pub input: String,
+    /// Empty: the app's default (`<stem>.<lang>.<ext>` next to `input`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub output: String,
+    /// BCP 47 (`pt-BR`).
+    pub target_language: String,
+    /// `None`: the app's configured default model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<TranslateModel>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub overwrite: bool,
+}
+
+/// One translation job. `state` is `queued`, `running`, `succeeded`,
+/// `failed` or `cancelled` (terminal: the last three); `phase` is the
+/// app's finer step and clients accept unknown phases. `done`/`total`
+/// count cues (`total` 0 = not known yet).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TranslateJob {
+    pub job: String,
+    /// The provider serving it; `status` and `cancel` go to this one.
+    pub provider: String,
+    pub state: String,
+    #[serde(default)]
+    pub phase: String,
+    #[serde(default)]
+    pub done: u64,
+    #[serde(default)]
+    pub total: u64,
+    #[serde(default)]
+    pub input: String,
+    #[serde(default)]
+    pub output: String,
+    #[serde(default)]
+    pub target_language: String,
+    #[serde(default)]
+    pub created_at_ms: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub finished_at_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<JobError>,
+}
+
+/// Op `extract` of `lain.acquire.extract@1`: what a web page offers.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtractInput {
+    pub url: String,
+}
+
+/// One downloadable rendition found on a page. Stream URLs stay inside
+/// the component (they are often signed and short-lived); a job names
+/// what it wants by `format`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ExtractCandidate {
+    pub id: String,
+    /// `video` (with audio), `video-only` or `audio`.
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub quality: String,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub width: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub height: i64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub codec: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub mime_type: String,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub filesize: i64,
+}
+
+/// The answer of op `extract`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ExtractOutput {
+    /// The page the extraction settled on.
+    pub url: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub site: String,
+    #[serde(default)]
+    pub duration_s: f64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub thumbnail: String,
+    /// The app's content class (`anime-2d`, `live-action`, …).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub content_class: String,
+    pub candidates: Vec<ExtractCandidate>,
+    /// Subtitle languages offered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subtitles: Vec<String>,
+    /// The provider that answered.
+    #[serde(default)]
+    pub provider: String,
+}
+
+/// Op `enqueue`: download one page's media.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtractEnqueueInput {
+    pub url: String,
+    /// The app's selection (`best`, a quality such as `1080p`); empty:
+    /// its default.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub format: String,
+    /// Absolute directory to download into (a library folder); empty:
+    /// the app's own routing.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub output_dir: String,
+}
+
+/// One download job. `state` is `queued`, `running`, `paused`,
+/// `succeeded`, `failed` or `cancelled` (terminal: the last three).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtractJob {
+    pub job: String,
+    pub provider: String,
+    pub state: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    /// The downloaded file, once known.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub output_path: String,
+    #[serde(default)]
+    pub downloaded_bytes: i64,
+    /// 0 = not known.
+    #[serde(default)]
+    pub total_bytes: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<JobError>,
+}
+
 /// A parsed release name (`lain.release.parse@1`). Zero numbers mean
 /// "not stated"; `episodes` lists every episode a pack covers and
 /// `absolute` marks absolute numbering (anime with no season marker).
