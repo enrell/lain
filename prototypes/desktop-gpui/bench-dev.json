@@ -1,0 +1,75 @@
+{
+  "framework": "gpui",
+  "gpui": "0.2.2 (crates.io)",
+  "renderer": "DirectX 11 + DirectComposition",
+  "cold_start_ms": 300.0,
+  "rss_mb_home": 65.5,
+  "scroll_frame_ms": {
+    "p50": 13.34,
+    "p95": 14.52,
+    "p99": 15.62,
+    "max": 18.09,
+    "frames": 8999
+  },
+  "scroll_build_ms": {
+    "p50": 0.05,
+    "p95": 0.22,
+    "p99": 0.26,
+    "max": 0.46,
+    "frames": 8999
+  },
+  "scroll": {
+    "cards": 500,
+    "px_per_s": 2400.0
+  },
+  "rss_mb_player_4k": 492.7,
+  "mpv": {
+    "4k": {
+      "vo": "gpu-next",
+      "gpu-api": "d3d11",
+      "hwdec-current": "d3d11va",
+      "frame-drop-count": 150,
+      "decoder-frame-drop-count": 0,
+      "vo-delayed-frame-count": 0,
+      "estimated-vf-fps": 60.00000239999994,
+      "container-fps": 60.000003814697266,
+      "video-params": "d3d11",
+      "size": "3840x2160",
+      "file": "teste-4k-hevc-60fps.mkv"
+    },
+    "10bit": {
+      "vo": "gpu-next",
+      "gpu-api": "d3d11",
+      "hwdec-current": "d3d11va",
+      "frame-drop-count": 0,
+      "decoder-frame-drop-count": 0,
+      "vo-delayed-frame-count": 0,
+      "estimated-vf-fps": 24.00000038400005,
+      "container-fps": 24.0,
+      "video-params": "d3d11",
+      "size": "1920x1080",
+      "file": "teste-1080p-hevc-10bit-legendas.mkv"
+    }
+  },
+  "ui_frame_ms_during_video": {
+    "p50": 13.31,
+    "p95": 16.14,
+    "per_file": {
+      "4k": {
+        "p50": 13.29,
+        "p95": 16.85,
+        "p99": 19.15,
+        "max": 25.64,
+        "frames": 1506
+      },
+      "10bit": {
+        "p50": 13.33,
+        "p95": 15.3,
+        "p99": 16.14,
+        "max": 18.87,
+        "frames": 1500
+      }
+    }
+  },
+  "errors": []
+}

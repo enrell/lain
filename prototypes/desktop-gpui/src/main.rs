@@ -419,11 +419,7 @@ impl LainApp {
             let (w, h) = self.args.window_size.unwrap_or((1440, 860));
             place_window(self.hwnd, x, y, w, h, true);
         }
-        if n == 60 {
-            // Placement settled: let fullscreen and the user move it.
-            *PLACE.lock().unwrap_or_else(|e| e.into_inner()) = None;
-        }
-        if matches!(n, 2 | 4 | 30) && self.args.window_pos.is_some() {
+        if matches!(n, 2 | 4 | 30 | 300) && self.args.window_pos.is_some() {
             log_windows(&format!("t+{}ms", n * 33));
         }
         if self.player.is_some() {
@@ -488,55 +484,7 @@ fn redirect_stderr(path: &str) {
 
 /// Moves the window to a virtual-desktop rect and shows it without
 /// activating it.
-static PLACE: std::sync::Mutex<Option<(i32, i32, i32, i32)>> = std::sync::Mutex::new(None);
-
-/// GPUI applies the rect Windows suggests in WM_DPICHANGED; when the window
-/// is first shown on the panel that rect is on the primary monitor. Keep
-/// the requested rect instead.
-unsafe extern "system" fn keep_place(
-    hwnd: windows::Win32::Foundation::HWND,
-    msg: u32,
-    wp: windows::Win32::Foundation::WPARAM,
-    lp: windows::Win32::Foundation::LPARAM,
-    _id: usize,
-    _data: usize,
-) -> windows::Win32::Foundation::LRESULT {
-    use windows::Win32::Foundation::RECT;
-    use windows::Win32::UI::WindowsAndMessaging::{SWP_NOMOVE, WINDOWPOS, WM_DPICHANGED, WM_WINDOWPOSCHANGING};
-    if msg == WM_WINDOWPOSCHANGING
-        && let Some((x, y, w, h)) = *PLACE.lock().unwrap_or_else(|e| e.into_inner())
-    {
-        let pos = unsafe { &mut *(lp.0 as *mut WINDOWPOS) };
-        if (pos.flags.0 & SWP_NOMOVE.0) == 0 && (pos.x != x || pos.y != y) {
-            eprintln!("pinned: a move to {},{} {}x{} (flags {:#x})", pos.x, pos.y, pos.cx, pos.cy, pos.flags.0);
-            pos.x = x;
-            pos.y = y;
-            pos.cx = w;
-            pos.cy = h;
-        }
-    }
-    if msg == WM_DPICHANGED
-        && let Some((x, y, w, h)) = *PLACE.lock().unwrap_or_else(|e| e.into_inner())
-    {
-        let rc = unsafe { &mut *(lp.0 as *mut RECT) };
-        eprintln!("WM_DPICHANGED dpi={} suggested={},{} {}x{} -> kept {x},{y} {w}x{h}", wp.0 & 0xffff, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
-        *rc = RECT { left: x, top: y, right: x + w, bottom: y + h };
-    }
-    unsafe { windows::Win32::UI::Shell::DefSubclassProc(hwnd, msg, wp, lp) }
-}
-
 fn place_window(hwnd: isize, x: i32, y: i32, w: i32, h: i32, show: bool) {
-    if !show {
-        *PLACE.lock().unwrap_or_else(|e| e.into_inner()) = Some((x, y, w, h));
-        unsafe {
-            let _ = windows::Win32::UI::Shell::SetWindowSubclass(
-                windows::Win32::Foundation::HWND(hwnd as *mut std::ffi::c_void),
-                Some(keep_place),
-                1,
-                0,
-            );
-        }
-    }
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{SW_SHOWNA, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, ShowWindow};
     let hwnd = HWND(hwnd as *mut std::ffi::c_void);
@@ -629,9 +577,8 @@ fn main() {
         let place = args.window_pos.map(|p| (p, args.window_size.unwrap_or((1440, 860))));
         cx.open_window(opts, move |window, cx| {
             if let (Some(((x, y), (w, h))), Some(hwnd)) = (place, window_hwnd(window)) {
-                // Moving across monitors changes DPI, and GPUI answers the
-                // WM_DPICHANGED with a rect of its own: move it while still
-                // hidden, then again (and show it) once that has settled.
+                // Move it while still hidden, then again (and show it) once
+                // GPUI's own setup and the DPI change have settled.
                 place_window(hwnd, x, y, w, h, false);
             }
             cx.new(|cx| LainApp::new(args, window, cx))
