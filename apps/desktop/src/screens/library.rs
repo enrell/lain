@@ -80,7 +80,7 @@ impl LainApp {
             "f" => self.focused = Some("library.filter".into()),
             "enter" | "space" => {
                 if let Some(&si) = self.lib.shown.get(s)
-                    && let Some(&first) = self.series[si].items.first()
+                    && let Some(&first) = self.series.get(si).and_then(|x| x.items.first())
                 {
                     let id = self.catalog[first].id.clone();
                     self.navigate(Screen::Item(id), cx);

@@ -136,6 +136,20 @@ impl LainApp {
         self.focused.as_ref().map(|s| s.as_ref()) == Some(id)
     }
 
+    /// An invisible child that records where a focus stop is painted.
+    pub fn probe(&self, id: &str) -> impl IntoElement + use<> {
+        let map = self.stop_bounds.clone();
+        let id = SharedString::from(id.to_string());
+        gpui::canvas(
+            move |b, _, _| {
+                map.borrow_mut().insert(id.clone(), b);
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .inset_0()
+    }
+
     /// A mono uppercase label (D-022).
     pub fn label(&self, text: impl Into<SharedString>) -> Div {
         div()
@@ -186,8 +200,11 @@ impl LainApp {
             Tone::Quiet => (pal.text.opacity(0.), pal.text.opacity(0.85), pal.text.opacity(0.)),
             Tone::Danger => (pal.danger.opacity(0.14), pal.danger, pal.danger.opacity(0.4)),
         };
+        let probe = self.probe(id);
         let mut b = div()
             .id(SharedString::from(id.to_string()))
+            .relative()
+            .child(probe)
             .flex()
             .flex_none()
             .items_center()
@@ -249,8 +266,11 @@ impl LainApp {
                 inner = inner.child(div().pl(px(4.)).text_color(pal.muted).child(placeholder.to_string()));
             }
         }
+        let probe = self.probe(id);
         div()
             .id(id)
+            .relative()
+            .child(probe)
             .flex()
             .items_center()
             .h(px(th.ts(0) * 2.5))

@@ -122,7 +122,7 @@ pub struct Geo {
 impl LainApp {
     /// Rebuilds the rails from the catalog, Continue and the libraries,
     /// keeping offsets and focus where the rails still exist.
-    fn build_home(&mut self) {
+    pub fn build_home(&mut self) {
         let old: Vec<(String, Anim, f32)> =
             self.home.rails.iter().map(|r| (r.title.clone(), r.off, r.target)).collect();
         let mut rails: Vec<RailState> = Vec::new();
