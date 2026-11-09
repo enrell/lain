@@ -13,10 +13,12 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 
 use lain_api::{
-    BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health, IntegrationsUpdate,
-    IntegrationsView, Library, LibraryDeleted, LibraryPatch, LoginReply, Mascots, ModulesView, NewLibrary, Palette,
-    PinState, PlaybackPlan, PluginsView, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus,
-    Sidecar, Sidecars, StatusReply, SwapReply, SwapRequest, User, UserPatch, WithdrawReply,
+    AdminTranscodes, BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health,
+    IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryPatch, LocalPlayers, LoginReply, Mascots,
+    ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions, PlaybackPlan,
+    PluginsView, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar, Sidecars,
+    StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings, TranscodeSettingsView, TranscodeStatus,
+    User, UserPatch, WithdrawReply,
 };
 
 use crate::error::ClientError;
@@ -556,15 +558,28 @@ impl Client {
         Ok(self.raw(Method::GET, "/api/admin/backup", Body::None, true).await?.to_vec())
     }
 
-    // ---- desktop parity routes (§8.4) not served by lain-rs yet ------
-    //
-    // lain-rs answers these 501 `not-ported` ([`ClientError::NotPorted`])
-    // until their module is ported.
+    // ---- the watch module (D-190) ------------------------------------
 
     /// How to play an item; `client` is `mpv`, `desktop` or `browser`.
     pub async fn playback_plan(&self, item_id: &str, client: &str) -> Result<PlaybackPlan, ClientError> {
-        let path = format!("/api/items/{}/playback{}", encode(item_id), query(&[("client", client.to_string())]));
-        self.call(Method::GET, &path, Body::None).await
+        self.playback_plan_for(item_id, client, None).await
+    }
+
+    /// [`Client::playback_plan`] with the client's decode claim (D-058):
+    /// container tokens (`mkv`) and container/codec pairs (`mkv/h264`).
+    /// `None` is "unknown"; an empty list claims nothing.
+    pub async fn playback_plan_for(
+        &self,
+        item_id: &str,
+        client: &str,
+        caps: Option<Vec<String>>,
+    ) -> Result<PlaybackPlan, ClientError> {
+        let mut q = query(&[("client", client.to_string())]);
+        if let Some(c) = caps {
+            q.push(if q.is_empty() { '?' } else { '&' });
+            q.push_str(&format!("caps={}", encode(&c.join(","))));
+        }
+        self.call(Method::GET, &format!("/api/items/{}/playback{q}", encode(item_id)), Body::None).await
     }
 
     /// The URL an external player opens: Range-capable, authenticated
@@ -581,6 +596,102 @@ impl Client {
             .raw(Method::GET, &format!("/api/items/{}/thumbnail", encode(item_id)), Body::None, true)
             .await?
             .to_vec())
+    }
+
+    /// What the player's quality menu offers.
+    pub async fn playback_options(&self) -> Result<PlaybackOptions, ClientError> {
+        self.call(Method::GET, "/api/playback/options", Body::None).await
+    }
+
+    /// Starts (or joins) a transcode session; ready or not, the answer
+    /// is its status (poll [`Client::transcode_status`] until `ready`).
+    pub async fn start_transcode(
+        &self,
+        item_id: &str,
+        sel: TranscodeSelection,
+    ) -> Result<TranscodeStatus, ClientError> {
+        self.call(Method::POST, &format!("/api/items/{}/transcode", encode(item_id)), json_body(&sel)).await
+    }
+
+    pub async fn transcode_status(&self, item_id: &str, session: &str) -> Result<TranscodeStatus, ClientError> {
+        let path = format!("/api/items/{}/transcode/status{}", encode(item_id), query(&[("session", session.into())]));
+        self.call(Method::GET, &path, Body::None).await
+    }
+
+    /// Stops a session this account started.
+    pub async fn cancel_transcode(&self, item_id: &str, session: &str) -> Result<TranscodeStatus, ClientError> {
+        let path = format!("/api/items/{}/transcode{}", encode(item_id), query(&[("session", session.into())]));
+        self.call(Method::DELETE, &path, Body::None).await
+    }
+
+    fn media_url(&self, path: &str, pairs: &[(&str, String)]) -> Result<String, ClientError> {
+        let t = self.token().ok_or(ClientError::Unauthorized)?;
+        let mut p: Vec<(&str, String)> = pairs.to_vec();
+        p.push(("token", t));
+        Ok(format!("{}{path}{}", self.inner.server, query(&p)))
+    }
+
+    /// The progressive MP4 of a ready session, for a media element
+    /// (carries the token).
+    pub fn transcode_url(&self, item_id: &str, session: &str) -> Result<String, ClientError> {
+        self.media_url(&format!("/api/items/{}/transcode", encode(item_id)), &[("session", session.into())])
+    }
+
+    /// The HLS playlist of a session; its media URIs come back signed
+    /// with the same token (carries the token).
+    pub fn hls_url(&self, item_id: &str, session: &str) -> Result<String, ClientError> {
+        self.media_url(
+            &format!("/api/items/{}/transcode/hls/index.m3u8", encode(item_id)),
+            &[("session", session.into())],
+        )
+    }
+
+    /// WebVTT of embedded subtitle stream `stream` (an index from the
+    /// plan's `streams`), extracted on demand (carries the token).
+    pub fn subtitles_url(&self, item_id: &str, stream: i64) -> Result<String, ClientError> {
+        self.media_url(&format!("/api/items/{}/subtitles", encode(item_id)), &[("stream", stream.to_string())])
+    }
+
+    /// WebVTT of embedded stream `stream`, as text.
+    pub async fn subtitles(&self, item_id: &str, stream: i64) -> Result<String, ClientError> {
+        let path = format!("/api/items/{}/subtitles{}", encode(item_id), query(&[("stream", stream.to_string())]));
+        let b = self.raw(Method::GET, &path, Body::None, true).await?;
+        Ok(String::from_utf8_lossy(&b).into_owned())
+    }
+
+    /// Every tracked transcode session (admin).
+    pub async fn admin_transcodes(&self) -> Result<AdminTranscodes, ClientError> {
+        self.call(Method::GET, "/api/admin/transcodes", Body::None).await
+    }
+
+    /// Stops any session (admin).
+    pub async fn admin_cancel_transcode(&self, session: &str) -> Result<TranscodeStatus, ClientError> {
+        self.call(Method::DELETE, &format!("/api/admin/transcodes/{}", encode(session)), Body::None).await
+    }
+
+    /// The transcode policy and the probed ffmpeg surface (admin).
+    pub async fn transcode_settings(&self) -> Result<TranscodeSettingsView, ClientError> {
+        self.call(Method::GET, "/api/admin/settings/transcode", Body::None).await
+    }
+
+    /// Replaces the transcode policy (admin); fields left at their zero
+    /// value take the server's defaults, `None` switches stay as saved.
+    pub async fn update_transcode_settings(&self, s: TranscodeSettings) -> Result<TranscodeSettingsView, ClientError> {
+        self.call(Method::PUT, "/api/admin/settings/transcode", json_body(&s)).await
+    }
+
+    /// Players that can open on the server's own screen (empty unless
+    /// this client runs on the server's machine).
+    pub async fn local_players(&self) -> Result<Vec<String>, ClientError> {
+        let p: LocalPlayers = self.call(Method::GET, "/api/localplay", Body::None).await?;
+        Ok(p.players.unwrap_or_default())
+    }
+
+    /// Opens the item (and the rest of its series) in mpv or VLC on the
+    /// server's machine; an empty `player` picks the first.
+    pub async fn play_local(&self, item_id: &str, player: &str) -> Result<PlayLocalReply, ClientError> {
+        let body = PlayLocalRequest { player: player.to_string() };
+        self.call(Method::POST, &format!("/api/items/{}/play-local", encode(item_id)), json_body(&body)).await
     }
 }
 
