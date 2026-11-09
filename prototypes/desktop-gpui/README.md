@@ -58,11 +58,11 @@ GPUI 0.2.2 does not honor a requested origin on a secondary monitor:
 - `WindowOptions.window_bounds` and `display_id` are checked against the
   display with mixed DPI scale factors. On this machine the check failed, so
   GPUI fell back to the default bounds on the primary monitor.
-- With `show: false`, the first `ShowWindow` re-applies that placement.
+- A plain `SW_SHOWNOACTIVATE` re-applies that placement. `SW_SHOWNA` keeps the current position.
 
 What the prototype does:
 1. Creates the window hidden.
-2. Subclasses it and moves it with `SetWindowPos`.
+2. Moves it with `SetWindowPos`, and again after ~100 ms once the DPI change has settled.
 3. Shows it with `SW_SHOWNA`.
 4. A short-lived `WM_WINDOWPOSCHANGING` pin was tried and then removed. The
    two late moves it blocked came from the owner's tiling window manager,
