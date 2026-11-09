@@ -1,0 +1,9 @@
+{"data": {"MediaListCollection": {"lists": [
+  {"name": "Reading", "isCustomList": false, "entries": [
+    {"mediaId": 30013, "status": "PLANNING", "progress": 0, "progressVolumes": 7, "score": 0, "repeat": 0, "notes": "peak",
+     "startedAt": {"year": 2025, "month": 9, "day": 1}, "completedAt": {"year": null, "month": null, "day": null},
+     "media": {"id": 30013, "type": "MANGA", "format": "MANGA", "episodes": null, "chapters": null,
+       "title": {"romaji": "One Piece", "english": "One Piece", "native": null},
+       "coverImage": {"extraLarge": "", "large": "https://img.example/op.jpg"}}}
+  ]}
+]}}}

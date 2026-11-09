@@ -5,9 +5,10 @@
 #   conformance/run.sh            # Go and Rust
 #   conformance/run.sh go|rust    # one server
 #
-# Go:   fresh (v1), then scan (v1) on a fresh data dir, then watch (v1)
+# Go:   fresh (v1), then scan (v1) on a fresh data dir, lists and social
+#       (v1) on fresh data dirs, then watch (v1)
 #       on a scanned library of test clips
-# Rust: fresh (v1+v2), scan (v1+v2) on a fresh data dir, then private
+# Rust: fresh (v1+v2), scan (v1+v2), lists and social on fresh data dirs, then private
 #       (private libraries) on a data dir with a `media` root and the
 #       fixture catalog (conformance/fixtures/catalog.json,
 #       `lain-rs import --in`), then read (comic pages) with `media` at
@@ -66,6 +67,10 @@ export LAIN_METADATA_KITSU_URL="$upstream/kitsu"
 export LAIN_METADATA_ANILIST_URL="$upstream/anilist"
 export LAIN_METADATA_JIKAN_URL="$upstream/jikan"
 export LAIN_METADATA_TVMAZE_URL="$upstream/tvmaze"
+export LAIN_LISTLINK_ANILIST_GRAPHQL_URL="$upstream/anilist-list/graphql"
+export LAIN_LISTLINK_ANILIST_OAUTH_URL="$upstream/anilist-list/oauth"
+# No scheduled list import races the lists cases.
+export LAIN_LIST_SYNC=0
 
 # Fixture media: fictional names only.
 mkdir -p "$tmp/media/Frieren" "$tmp/media2" "$tmp/rootmedia/Frieren"
@@ -126,6 +131,14 @@ run_go() {
 	note "Go   scan v1: $(echo "$out" | tail -1)"
 	stop "$pid"
 
+	for suite in lists social; do
+		pid=$(LAIN_AUTO_ENRICH=0 start "go-$suite" "$url" "$tmp/lain" serve --data-dir "$tmp/go-$suite" --port "$go_port")
+		out=$(LAIN_URL=$url "$runner" --tier v1 --var upstream="$upstream" "conformance/cases/$suite") || { echo "$out"; exit 1; }
+		echo "$out"
+		note "Go   $suite v1: $(echo "$out" | tail -1)"
+		stop "$pid"
+	done
+
 	if [ "$clips" = 1 ]; then
 		pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start go-watch "$url" "$tmp/lain" serve --data-dir "$tmp/go-watch" --port "$go_port")
 		out=$(LAIN_URL=$url "$runner" --tier v1 --var clips=1 --var scan_dir="$tmp/watch/Clips" conformance/cases/watch) || { echo "$out"; exit 1; }
@@ -151,6 +164,14 @@ run_rust() {
 	echo "$out"
 	note "Rust scan v1+v2: $(echo "$out" | tail -1)"
 	stop "$pid"
+
+	for suite in lists social; do
+		pid=$(start "rs-$suite" "$url" "$lain_rs" serve --data-dir "$tmp/rs-$suite" --port "$rs_port")
+		out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var upstream="$upstream" "conformance/cases/$suite") || { echo "$out"; exit 1; }
+		echo "$out"
+		note "Rust $suite v1+v2: $(echo "$out" | tail -1)"
+		stop "$pid"
+	done
 
 	mkdir -p "$tmp/rs-private"
 	printf '{"format":"lain.roots@1","roots":{"media":"%s"}}\n' "$tmp/rootmedia" >"$tmp/rs-private/roots.json"

@@ -1,0 +1,62 @@
+{
+  "tier": "v2",
+  "description": "Private libraries in the social module (D-156): rows whose work names an item of a private library (activity from progress, ratings, comments, collection items, favorites, work shares and their events) reach only sessions that unlocked the library, the owner's other sessions included, and a work named by such an item reads as unknown. Runs after 10-private: the library is private and locked everywhere; bob becomes a member again and unlocks it in session b1 and not in b2; eve is a stranger.",
+  "cases": [
+    {"name": "bob and eve are friends who share everything", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "a2", "body": {"members": ["user-bob"]}}, "expect": {"status": 200}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "b1", "body": {"password": "bobpassword"}}, "expect": {"status": 200}},
+      {"req": {"method": "POST", "path": "/api/social/friends/user-bob", "auth": "e1"}, "expect": {"status": 200, "body": {"relation": "outgoing", "$open": true}}},
+      {"req": {"method": "POST", "path": "/api/social/friends/user-eve", "auth": "b1"}, "expect": {"status": 200, "body": {"relation": "friend", "$open": true}}},
+      {"req": {"method": "PATCH", "path": "/api/social/me/settings", "auth": "b1", "body": {"activity": "public", "ratings": "public"}}, "expect": {"status": 200}},
+      {"sse_open": {"path": "/api/events", "auth": "query:e1", "as": "eve_social"}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "eve_social", "event": "ready"}}
+    ]},
+    {"name": "an unlocked session names the private item", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "PUT", "path": "/api/social/work/rating", "auth": "b1", "body": {"work": {"item_id": "{{item1}}"}, "score": 8}},
+       "expect": {"status": 200, "body": {"work": {"kind": "episode", "title": "Frieren", "item_id": "{{item1}}", "library_id": "{{lib_id}}"}, "score": 8, "$open": true}}},
+      {"req": {"method": "POST", "path": "/api/social/work/comments", "auth": "b1", "body": {"work": {"item_id": "{{item1}}"}, "body": "the quiet one"}}, "expect": {"status": 201}},
+      {"req": {"method": "PATCH", "path": "/api/social/me/settings", "auth": "b1", "body": {"favorites": [{"item_id": "{{item1}}"}, {"kind": "manga", "title": "Saga"}]}},
+       "expect": {"status": 200, "body": {"favorites": [{"kind": "episode", "title": "Frieren", "item_id": "{{item1}}", "library_id": "{{lib_id}}"}, {"kind": "manga", "title": "Saga"}], "$open": true}}},
+      {"req": {"method": "POST", "path": "/api/social/collections", "auth": "b1", "body": {"name": "Mixed", "visibility": "public"}}, "expect": {"status": 201}, "save": {"mixed": "/collection/id"}},
+      {"req": {"method": "POST", "path": "/api/social/collections/{{mixed}}/items", "auth": "b1", "body": {"work": {"item_id": "{{item1}}"}}}, "expect": {"status": 200}},
+      {"req": {"method": "POST", "path": "/api/social/collections/{{mixed}}/items", "auth": "b1", "body": {"work": {"kind": "manga", "title": "Saga"}}},
+       "expect": {"status": 200, "body": {"collection": {"items": {"$len": 2}, "$open": true}, "$open": true}}},
+      {"req": {"method": "POST", "path": "/api/social/share", "auth": "b1", "body": {"to": ["user-eve"], "work": {"item_id": "{{item1}}"}}}, "expect": {"status": 200, "body": {"sent": ["user-eve"]}}},
+      {"req": {"method": "POST", "path": "/api/social/collections/{{mixed}}/share", "auth": "b1", "body": {"to": ["user-eve"]}}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "eve_social", "event": "social-notification", "strict": true, "data": {"id": "$string", "type": "collection_shared", "from_user_id": "user-bob"}}}
+    ]},
+    {"name": "a stranger to the library sees none of it", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "GET", "path": "/api/social/feed", "auth": "e1"}, "expect": {"status": 200, "body": {"items": [], "users": {}}}},
+      {"req": {"method": "GET", "path": "/api/social/users/user-bob/activity", "auth": "e1"}, "expect": {"status": 200, "body": {"items": [], "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/users/user-bob/ratings", "auth": "e1"}, "expect": {"status": 200, "body": {"ratings": []}}},
+      {"req": {"method": "GET", "path": "/api/social/work?kind=episode&title=Frieren", "auth": "e1"},
+       "expect": {"status": 200, "body": {"ratings": [], "average": 0, "scored": 0, "comments": [], "mine": null, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/work?item={{item1}}", "auth": "e1"}, "expect": {"status": 404, "body": {"error": "unknown item", "code": "not-found"}}},
+      {"req": {"method": "PUT", "path": "/api/social/work/rating", "auth": "e1", "body": {"work": {"item_id": "{{item1}}"}, "score": 2}}, "expect": {"status": 404, "body": {"error": "unknown item", "code": "not-found"}}},
+      {"req": {"method": "GET", "path": "/api/social/users/user-bob", "auth": "e1"}, "expect": {"status": 200, "body": {"favorites": [{"kind": "manga", "title": "Saga"}], "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/collections/{{mixed}}", "auth": "e1"},
+       "expect": {"status": 200, "body": {"collection": {"items": [{"work": {"kind": "manga", "title": "Saga"}, "added_at": "$int"}], "$open": true}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/collections", "auth": "e1"},
+       "expect": {"status": 200, "body": {"collections": [{"id": "{{mixed}}", "items": {"$len": 1}, "$open": true}], "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/notifications", "auth": "e1"},
+       "expect": {"status": 200, "body": {"items": [{"type": "collection_shared", "$open": true}, {"type": "friend_accepted", "$open": true}], "unread": 2, "$open": true}}}
+    ]},
+    {"name": "the owner's locked session sees none of it either", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "GET", "path": "/api/social/users/user-bob/activity", "auth": "b2"}, "expect": {"status": 200, "body": {"items": [], "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/users/user-bob/ratings", "auth": "b2"}, "expect": {"status": 200, "body": {"ratings": []}}},
+      {"req": {"method": "GET", "path": "/api/social/work?kind=episode&title=Frieren", "auth": "b2"},
+       "expect": {"status": 200, "body": {"mine": null, "ratings": [], "scored": 0, "comments": [], "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/me/settings", "auth": "b2"}, "expect": {"status": 200, "body": {"favorites": [{"kind": "manga", "title": "Saga"}], "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/collections/{{mixed}}", "auth": "b2"}, "expect": {"status": 200, "body": {"collection": {"items": {"$len": 1}, "$open": true}, "$open": true}}}
+    ]},
+    {"name": "unlocked sessions see it", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "GET", "path": "/api/social/users/user-bob/activity", "auth": "b1"},
+       "expect": {"status": 200, "body": {"items": {"$contains": [{"type": "rated", "work": {"item_id": "{{item1}}", "$open": true}, "$open": true}, {"type": "completed", "$open": true}]}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/work?item={{item1}}", "auth": "b1"},
+       "expect": {"status": 200, "body": {"mine": {"score": 8, "$open": true}, "scored": 1, "comments": {"$len": 1}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/collections/{{mixed}}", "auth": "b1"}, "expect": {"status": 200, "body": {"collection": {"items": {"$len": 2}, "$open": true}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/social/users/user-bob/ratings", "auth": "b1"}, "expect": {"status": 200, "body": {"ratings": [{"score": 8, "$open": true}]}}},
+      {"req": {"method": "GET", "path": "/api/social/me/settings", "auth": "b1"}, "expect": {"status": 200, "body": {"favorites": {"$len": 2}, "$open": true}}}
+    ]}
+  ]
+}
