@@ -66,6 +66,14 @@ documents both stacks until those are ported.
     service mode, catalog `export`/`import` (`lain.catalog-export@3`);
     binary `lain-rs` on the canonical data dir (`lain`) and port 9360
     (D-178).
+  - `lain-api` — the HTTP API's JSON types (serde only), re-exported by
+    the server crates and decoded by `lain-client` (D-179).
+  - `lain-client` — the client core every native client shares
+    (DESIGN-v2 §8.1, D-179): the typed API, sessions (`TokenStore`),
+    discovery (`Discovery`), the offline store (D-094's limits and LRU
+    eviction, on redb), progress sync with an offline queue and conflict
+    rules (`sync.rs`), and the event stream. No GUI code; the public
+    surface stays UniFFI-friendly (owned types, object-safe traits).
   - `conformance/runner` — the conformance runner (`lain-conformance`).
 - Dependencies: the D-172 baseline plus D-173 (argon2 per D-177), versions pinned with `=`
   in the workspace `Cargo.toml`, `Cargo.lock` committed. A crate outside
@@ -75,8 +83,12 @@ documents both stacks until those are ported.
     transport of the component host (D-174); only the `rt-multi-thread`,
     `net`, `time`, `sync`, `macros`, `signal` and `io-util` features.
   - `axum` / `hyper` — HTTP routing, default features off (`http1`,
-    `json`, `query`, `tokio`). `hyper` is used directly only for its
-    `Body` trait, which the SSE stream implements.
+    `json`, `query`, `tokio`). The server uses `hyper` directly only for
+    its `Body` trait, which the SSE stream implements; `lain-client`
+    adds hyper's `client` feature (its HTTP/1 client connection; it
+    brings hyper's internal `want` and `try-lock`), with `hyper-util`
+    (`TokioIo` only) and `http-body-util`, both already in the tree under
+    axum (D-179).
   - `serde` / `serde_json` — the JSON contracts.
   - `redb` — the embedded store, pure Rust, the bbolt equivalent.
   - `argon2` (D-177, RustCrypto, pure Rust) — passwords and library
@@ -93,6 +105,8 @@ documents both stacks until those are ported.
     signature and its constant-time check.
   - `getrandom` (D-173) — OS randomness for the token secret and the
     token `jti`.
+  - `libc` (D-179, already in the tree on Unix) — `statvfs` for the
+    client offline store's free-space floor, Unix only.
   - In-tree instead of a crate: URL-safe base64 for the JWT segments
     (`lain-auth/src/crypto.rs`; no approved crate exposes one) and the
     runner's HTTP client.

@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Client core `lain-client`, milestone P2a** (D-179). A Rust crate in
+  the workspace for every native client: the typed API for the
+  conformance and desktop-parity routes (a route lain-rs does not serve
+  yet is a typed `NotPorted` error), login with sessions in an
+  owner-only file, manual server discovery, offline copies with D-094's
+  limits and LRU eviction, progress sync that queues offline and
+  resolves conflicts by explicit rules, and a self-reconnecting
+  `/api/events` stream. The JSON types now live in `lain-api`, shared
+  with the server.
 - **Rust server, milestone P1a** (D-171). A Cargo workspace in `crates/`
   (`lain-core`, `lain-store`, `lain-auth`, `lain-component`,
   `lain-server`) builds `lain-rs`, which serves the core routes the

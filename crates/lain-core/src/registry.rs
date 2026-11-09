@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 
-use serde::Serialize;
 use serde_json::Value;
 
 use crate::composition::{BindingMode, Composition};
@@ -21,33 +20,7 @@ pub trait Provider: Send + Sync {
     fn invoke(&self, cap: &str, op: &str, input: Value) -> Result<Value, Error>;
 }
 
-/// A composition change or recovery action, kept for diagnostics
-/// (`events` on `GET /api/plugins`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Event {
-    pub at: i64,
-    pub kind: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub capability: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub provider: String,
-    #[serde(skip_serializing_if = "is_zero")]
-    pub generation: u64,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub detail: String,
-}
-
-fn is_zero(v: &u64) -> bool {
-    *v == 0
-}
-
-/// One registered provider for operator surfaces.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ProviderInfo {
-    pub id: String,
-    pub capabilities: Vec<String>,
-    pub healthy: bool,
-}
+pub use lain_api::{ProviderInfo, RegistryEvent as Event};
 
 /// One provider's failure inside a merge-many call.
 #[derive(Debug, Clone)]

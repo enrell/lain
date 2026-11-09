@@ -60,14 +60,7 @@ pub struct Composition {
     pub bindings: BTreeMap<String, Binding>,
 }
 
-/// A stable sorted view of one binding for inspection endpoints.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct BindingView {
-    pub capability: String,
-    pub mode: String,
-    pub providers: Vec<String>,
-    pub generation: u64,
-}
+pub use lain_api::BindingView;
 
 impl Composition {
     /// Validates against registered provider ids: every binding names
