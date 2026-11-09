@@ -151,6 +151,8 @@ pub enum Poke {
     Scan(Box<lain_client::types::ScanStateEvent>),
     Modules,
     Plugins,
+    /// `transcode-changed` (D-193): a session ended or was cancelled.
+    Transcodes,
 }
 
 /// Forwards server events to the UI and feeds the sync engine.
@@ -176,6 +178,7 @@ pub async fn watch_events(b: Arc<Backend>, tx: tokio::sync::mpsc::UnboundedSende
                     E::LibraryChanged(_) => Poke::Library,
                     E::ModuleState(_) => Poke::Modules,
                     E::PluginChanged(_) => Poke::Plugins,
+                    E::TranscodeChanged(_) => Poke::Transcodes,
                     E::ScanState(s) => Poke::Scan(Box::new(s)),
                     E::Other { event, .. } if event == "item-deleted" => Poke::Library,
                     E::Other { .. } => continue,

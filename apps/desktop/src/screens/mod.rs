@@ -9,3 +9,4 @@ pub mod player;
 pub mod reader;
 pub mod search;
 pub mod settings;
+pub mod transcode;

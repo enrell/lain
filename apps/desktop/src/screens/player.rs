@@ -213,14 +213,21 @@ impl LainApp {
             match c.playback_plan(&want, "desktop").await {
                 Ok(plan) if !plan.available => Err(if plan.reason.is_empty() { format!("not playable ({})", plan.mode) } else { plan.reason }),
                 Ok(plan) => {
-                    let session = plan.extra.get("session").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let (url, note) = match plan.mode.as_str() {
-                        "transcode" if !session.is_empty() => (
-                            c.media_url(&format!("/api/items/{}/transcode/hls/index.m3u8", lain_client::http::encode(&want)), &[("session", session)]),
-                            "transcode · HLS".to_string(),
-                        ),
-                        "transcode" => (c.media_url(&format!("/api/items/{}/transcode", lain_client::http::encode(&want)), &[]), "transcode".to_string()),
-                        _ => (c.stream_url(&want), "direct play".to_string()),
+                    let (url, note) = if plan.mode == "transcode" {
+                        // mpv decodes nearly everything, so this is rare: the
+                        // server (or this account's policy) asked for it.
+                        let session = if plan.session.is_empty() {
+                            match c.start_transcode(&want, Default::default()).await {
+                                Ok(st) => st.session,
+                                Err(e) => return Err(backend::reason(&e)),
+                            }
+                        } else {
+                            plan.session.clone()
+                        };
+                        let profile = if plan.profile.is_empty() { String::new() } else { format!(" · {}", plan.profile) };
+                        (c.hls_url(&want, &session), format!("transcode · HLS{profile}"))
+                    } else {
+                        (c.stream_url(&want), "direct play".to_string())
                     };
                     url.map(|u| Resolved { url: u, note, start, subs }).map_err(|e| backend::reason(&e))
                 }

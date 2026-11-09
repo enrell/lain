@@ -235,6 +235,10 @@ pub enum Act {
     SaveIntegrations,
     ConfirmYes,
     ConfirmNo,
+    SaveTranscode,
+    DiscardTranscode,
+    ToggleTranscode(&'static str),
+    CancelTranscode(String),
 }
 
 pub struct FocusItem {
@@ -343,6 +347,7 @@ pub struct LainApp {
     pub settings: settings::SettingsState,
     pub reader: Option<reader::ReaderState>,
     pub dl: crate::screens::downloads::DlState,
+    pub tc: crate::screens::transcode::TranscodeState,
     pub player: Option<player::PlayerSession>,
     pub orphans: Vec<player::PlayerSession>,
     pub next_session: u64,
@@ -455,6 +460,7 @@ impl LainApp {
             settings: settings::SettingsState::default(),
             reader: None,
             dl: Default::default(),
+            tc: Default::default(),
             player: None,
             orphans: Vec::new(),
             next_session: 1,
@@ -795,6 +801,11 @@ impl LainApp {
                 }
                 Poke::Modules => mods = true,
                 Poke::Plugins => plugins = true,
+                Poke::Transcodes => {
+                    if matches!(self.screen, Screen::Settings(Section::Server)) && self.is_admin() {
+                        self.load_transcode(cx);
+                    }
+                }
             }
         }
         if prog {
@@ -996,6 +1007,16 @@ impl LainApp {
                 }
             }
             Act::ConfirmNo => self.confirm = None,
+            Act::SaveTranscode => self.save_transcode(cx),
+            Act::DiscardTranscode => self.load_transcode(cx),
+            Act::ToggleTranscode(k) => {
+                if k == "tone" {
+                    self.tc.tone_mapping = !self.tc.tone_mapping;
+                } else {
+                    self.tc.throttle = !self.tc.throttle;
+                }
+            }
+            Act::CancelTranscode(s) => self.cancel_session(s, cx),
             other => self.run_settings(other, window, cx),
         }
         cx.notify();
@@ -1263,6 +1284,10 @@ impl LainApp {
             }
             ("f5", _, _) | ("r", true, _) if self.phase == Phase::Main => {
                 self.run(Act::Refresh, window, cx);
+                return;
+            }
+            ("s", true, _) if matches!(self.screen, Screen::Settings(Section::Server)) => {
+                self.run(Act::SaveTranscode, window, cx);
                 return;
             }
             (",", true, _) if self.phase == Phase::Main => {
