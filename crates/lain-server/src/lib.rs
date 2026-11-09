@@ -27,6 +27,7 @@ pub mod roots;
 pub mod serve;
 pub mod service;
 pub mod social;
+pub mod translate;
 pub mod watch;
 
 use std::net::SocketAddr;

@@ -109,6 +109,15 @@ documents both stacks until those are ported.
     (`lain.indexer@1`), grabs on the engine, import, seeding, Phase 2
     automation and Phase 3 subtitles; outbound calls through
     `lain-http` (D-208).
+  - `lain-bridge` — the bridges to the owner's standalone apps served
+    as components (P4, D-225..D-231): `lain-release-model` (lain-parser,
+    `lain.release.parse@1`), `lain-subtitle-animesubs`
+    (`lain.subtitle.translate@1`) and `lain-acquire-anything`
+    (`lain.acquire.extract@1`), their discovery of each app's
+    `server.json` and token, and a std-only HTTP/1.1 client for loopback
+    services; `lain-rs component install|run|list|uninstall`. No crate
+    added. `tools/parser-v5` (outside the workspace) is the V-5 parser
+    benchmark.
   - `lain-api` — the HTTP API's JSON types (serde only), re-exported by
     the server crates and decoded by `lain-client` (D-179).
   - `lain-client` — the client core every native client shares
