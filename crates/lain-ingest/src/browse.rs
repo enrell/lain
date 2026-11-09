@@ -42,8 +42,14 @@ pub fn clean(p: &Path) -> PathBuf {
     if out.as_os_str().is_empty() { PathBuf::from(".") } else { out }
 }
 
-fn detect() -> Option<&'static str> {
-    CANDIDATES.iter().copied().find(|c| Path::new(c).is_dir())
+/// The first candidate that is a directory. On Windows `/` is not
+/// absolute, so the system drive's root stands in for the list.
+fn detect() -> Option<String> {
+    if cfg!(windows) {
+        let drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".into());
+        return Some(format!("{drive}\\")).filter(|d| Path::new(d).is_dir());
+    }
+    CANDIDATES.iter().find(|c| Path::new(c).is_dir()).map(|c| c.to_string())
 }
 
 /// Lists `path`'s subdirectories; an empty path auto-detects the media
@@ -51,8 +57,8 @@ fn detect() -> Option<&'static str> {
 pub fn browse(path: &str) -> Result<BrowseResult, &'static str> {
     let raw = path.trim();
     let (raw, detected) =
-        if raw.is_empty() { (detect().ok_or("no browsable directory found")?, true) } else { (raw, false) };
-    let dir = clean(Path::new(raw));
+        if raw.is_empty() { (detect().ok_or("no browsable directory found")?, true) } else { (raw.to_string(), false) };
+    let dir = clean(Path::new(&raw));
     if !dir.is_absolute() {
         return Err("path must be absolute");
     }
