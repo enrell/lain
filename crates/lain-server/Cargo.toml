@@ -39,6 +39,9 @@ lain-probe.workspace = true
 lain-watch.workspace = true
 lain-lists.workspace = true
 lain-social.workspace = true
+lain-acquire.workspace = true
+lain-downloads.workspace = true
+lain-torrent.workspace = true
 getrandom.workspace = true
 
 [dev-dependencies]

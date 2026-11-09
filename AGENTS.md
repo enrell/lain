@@ -97,6 +97,18 @@ documents both stacks until those are ported.
     one shared client with rustls, timeouts, retries with backoff,
     per-host pacing, size caps and JSON helpers; no server types, so
     `lain-client` can reuse it.
+  - `lain-torrent` — the in-house BitTorrent engine (D-205): bencode,
+    metainfo and magnets, the peer wire with `ut_metadata`, HTTP/UDP
+    trackers, piece checks, rate limits and resume; a synchronous API
+    over its own tokio runtime, and `trackertest` for swarm tests.
+  - `lain-downloads` — the server download manager (`/api/downloads`,
+    D-207): the resumable fetcher, the shared disk budget, safe names,
+    the job queue, and the streaming `Http` seam with its `http://`
+    client.
+  - `lain-acquire` — the acquire module (D-206): Torznab indexers
+    (`lain.indexer@1`), grabs on the engine, import, seeding, Phase 2
+    automation and Phase 3 subtitles; outbound calls through
+    `lain-http` (D-208).
   - `lain-api` — the HTTP API's JSON types (serde only), re-exported by
     the server crates and decoded by `lain-client` (D-179).
   - `lain-client` — the client core every native client shares
@@ -146,6 +158,8 @@ documents both stacks until those are ported.
   - `sha2` + `hmac` (D-173, RustCrypto, pure Rust) — the HS256 token
     signature and its constant-time check; `sha2` also derives catalog
     item ids (D-186).
+  - `sha1` (D-205, RustCrypto, pure Rust, the `sha2` family) — BitTorrent
+    info hashes and piece checks; BEP 3 fixes the hash.
   - `getrandom` (D-173) — OS randomness for the token secret and the
     token `jti`.
   - `libc` (D-179, already in the tree on Unix) — `statvfs` for the

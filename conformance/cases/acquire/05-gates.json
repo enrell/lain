@@ -1,0 +1,1279 @@
+{
+ "tier": "v1",
+ "description": "Every acquire and downloads route is admin-only (A-9): 401 without a token, 403 for a user.",
+ "cases": [
+  {
+   "name": "admin only",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/settings"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PATCH",
+      "path": "/api/acquire/indexers/x",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/indexers/x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/x/test",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/search?q=x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/parse?name=x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/grabs"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/x/pause",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/grabs/x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/profiles"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/profiles/x",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/profiles/x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/monitored/x",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/monitored/x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/x/wanted"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored/x/search",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/x/subtitles"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored/x/subtitles",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/wanted"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/rss",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/automation"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/blocklist"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/blocklist/x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/replaced"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/replaced/purge",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/subtitle-providers"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/subtitle-providers",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/subtitle-providers/x",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/subtitle-providers/x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/subtitles"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/subtitle-refusals"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/subtitle-refusals"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/subtitle-refusals/p/f"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads/settings"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/downloads/settings",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/cleanup",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads/x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/downloads/x"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/x/pause",
+      "body": {}
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/settings",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PATCH",
+      "path": "/api/acquire/indexers/x",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/indexers/x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/x/test",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/search?q=x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/parse?name=x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/grabs",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/x/pause",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/grabs/x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/profiles",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/profiles/x",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/profiles/x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/monitored/x",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/monitored/x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/x/wanted",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored/x/search",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/x/subtitles",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored/x/subtitles",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/wanted",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/rss",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/automation",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/blocklist",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/blocklist/x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/replaced",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/replaced/purge",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/subtitle-providers",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/subtitle-providers",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/subtitle-providers/x",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/subtitle-providers/x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/subtitles",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/subtitle-refusals",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/subtitle-refusals",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/subtitle-refusals/p/f",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads/settings",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/downloads/settings",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/cleanup",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads/x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/downloads/x",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/x/pause",
+      "auth": "bob",
+      "body": {}
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

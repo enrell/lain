@@ -85,6 +85,11 @@ pub fn default_composition() -> Composition {
         lain_subtitle::CAP_SUBTITLE.into(),
         Binding::new(BindingMode::OrderedMany, &[lain_subtitle::OPENSUBTITLES_ID]),
     );
+    // The acquire module's Torznab/Newznab indexer client.
+    bindings.insert(
+        lain_api::acquire::CAP_INDEXER.into(),
+        Binding::new(BindingMode::OrderedMany, &[lain_acquire::TORZNAB_ID]),
+    );
     Composition { version: COMPOSITION_VERSION, bindings }
 }
 
@@ -119,6 +124,11 @@ pub struct Config {
     /// leaves manual syncs only).
     pub list_sync: bool,
     pub list_sync_interval: Duration,
+    /// The torrent engine's inbound port; `None` reads
+    /// `LAIN_ACQUIRE_LISTEN_PORT`, then the saved settings (51413).
+    pub acquire_listen_port: Option<u16>,
+    /// The acquisition monitor period.
+    pub acquire_tick: Duration,
 }
 
 impl Config {
@@ -137,6 +147,8 @@ impl Config {
             anilist_endpoints: lain_lists::anilist::Endpoints::default(),
             list_sync: true,
             list_sync_interval: lain_lists::links::SYNC_INTERVAL,
+            acquire_listen_port: None,
+            acquire_tick: Duration::from_secs(2),
         }
     }
 }
@@ -184,6 +196,14 @@ pub struct App {
     /// The watch module: transcoder, thumbnails, local playback and the
     /// transcode settings (D-190).
     pub media: lain_watch::Watch,
+    /// The acquire module's view of `http` (indexers, `.torrent` links,
+    /// subtitle files).
+    pub acquire_http: Arc<dyn lain_downloads::Http>,
+    /// The server download manager (`/api/downloads`).
+    pub downloads: Arc<lain_downloads::Manager>,
+    /// The acquire module; unset when its engine could not start (the
+    /// routes answer 503).
+    pub acquire: std::sync::OnceLock<Arc<lain_acquire::Manager>>,
     provisioner: Mutex<Option<Provisioner>>,
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
     stopping: Arc<AtomicBool>,
@@ -258,6 +278,18 @@ impl App {
         }
         let media = lain_watch::Watch::open(dir, store.clone());
         media.register(&registry);
+        // Acquire: bounded fetches through the shared client; downloads
+        // stream plain http in-tree and https through it (D-209).
+        let acquire_http: Arc<dyn lain_downloads::Http> =
+            Arc::new(lain_acquire::net::LainHttp { client: http.clone(), max_body: 16 << 20 });
+        registry.register(Arc::new(lain_acquire::Torznab::new(acquire_http.clone())));
+        let fetch = Arc::new(lain_acquire::net::Routed {
+            plain: lain_downloads::PlainHttp::new(),
+            tls: lain_acquire::net::LainHttp { client: http.clone(), max_body: lain_acquire::net::HTTPS_DOWNLOAD_CAP },
+            offline: cfg.offline,
+        });
+        let downloads = lain_downloads::Manager::open(store.clone(), lain_downloads::default_settings(dir), fetch)
+            .map_err(|e| format!("downloads: {e}"))?;
 
         let mut known: BTreeSet<String> = registry.providers().into_iter().collect();
         known.extend(COMPONENT_SERVED.iter().map(|s| s.to_string()));
@@ -288,6 +320,9 @@ impl App {
             watch: cfg.watch,
             watch_provider,
             media,
+            acquire_http,
+            downloads,
+            acquire: std::sync::OnceLock::new(),
             provisioner: Mutex::new(None),
             watcher: Mutex::new(None),
             stopping: Arc::new(AtomicBool::new(false)),
@@ -304,6 +339,11 @@ impl App {
         }));
         app.hook_watch_events();
         app.hook_social_events();
+        app.hook_downloads();
+        let port = cfg
+            .acquire_listen_port
+            .or_else(|| std::env::var("LAIN_ACQUIRE_LISTEN_PORT").ok().and_then(|p| p.trim().parse().ok()));
+        app.start_acquire(port, cfg.acquire_tick);
         Ok(app)
     }
 
@@ -591,6 +631,10 @@ impl App {
         if self.watch {
             self.scanner.start_watching();
         }
+        self.downloads.start();
+        if let Some(m) = self.acquire.get() {
+            m.start();
+        }
         // First boot probes ffmpeg for a hardware backend: never on the
         // boot path (D-192).
         // The probe holds only the transcoder, never the App (and its
@@ -738,6 +782,10 @@ impl App {
         self.watch_provider.close();
         self.events.close_all();
         self.media.close();
+        self.downloads.close();
+        if let Some(m) = self.acquire.get() {
+            m.close();
+        }
         self.watcher.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(p) = self.provisioner.lock().unwrap_or_else(|e| e.into_inner()).take() {
             p.close();

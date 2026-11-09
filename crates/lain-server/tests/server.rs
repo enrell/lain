@@ -33,6 +33,8 @@ impl Server {
         // No test reaches the network: a test that wants the network
         // providers points them at the upstream fixture server.
         cfg.offline = true;
+        // The torrent engine binds a free port.
+        cfg.acquire_listen_port = Some(0);
         tune(&mut cfg);
         // Never the host's own Omarchy colors.
         cfg.theme_path = Some(dir.join("no-colors.toml"));

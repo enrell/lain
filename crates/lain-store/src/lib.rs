@@ -21,6 +21,18 @@
 //! | `enrichments`      | item id                  | metadata overlay JSON     |
 //! | `metadata_cache`   | `q\0kind\0query`, `r\0provider\0id` | `{at, data}` (TTL) |
 //! | `meta`             | `integrations`           | integration settings JSON |
+//! | `downloads`        | `settings`, `job/<id>`   | download settings / job   |
+//! | `acq_indexers`     | indexer id               | indexer JSON (with key)   |
+//! | `acq_grabs`        | grab id                  | grab JSON                 |
+//! | `acq_settings`     | `settings`               | acquire settings JSON     |
+//! | `acq_torrents`     | info hash (hex)          | engine resume record      |
+//! | `acq_monitored`    | monitored id             | monitored title JSON      |
+//! | `acq_profiles`     | profile id               | quality profile JSON      |
+//! | `acq_blocklist`    | entry id                 | blocked release JSON      |
+//! | `acq_quality`      | library file path        | resolution (JSON string)  |
+//! | `acq_subproviders` | account id               | subtitle account JSON     |
+//! | `acq_subtitles`    | sidecar path             | sidecar ledger record     |
+//! | `acq_subblock`     | `provider\0file`         | refusal JSON              |
 //!
 //! Library JSON carries `private`, `owner`, `members` (D-156), `root`
 //! and `root_path` (D-157); a rooted item stores `root` + `rel_path`
@@ -80,10 +92,27 @@ pub enum Bucket {
     SocialCommentsByWork,
     /// Collections, by id.
     SocialCollections,
+    /// Server download jobs (`job/<id>`) and their settings (`settings`).
+    Downloads,
+    /// Acquire module: indexers, grabs, settings, engine resume state,
+    /// monitored titles, quality profiles, the blocklist, the import
+    /// quality ledger, subtitle provider accounts, the sidecar ledger
+    /// and refused subtitle files.
+    AcqIndexers,
+    AcqGrabs,
+    AcqSettings,
+    AcqTorrents,
+    AcqMonitored,
+    AcqProfiles,
+    AcqBlocklist,
+    AcqQuality,
+    AcqSubProviders,
+    AcqSubtitles,
+    AcqSubBlock,
 }
 
 impl Bucket {
-    pub const ALL: [Bucket; 22] = [
+    pub const ALL: [Bucket; 34] = [
         Bucket::Users,
         Bucket::UsersByName,
         Bucket::Libraries,
@@ -106,6 +135,18 @@ impl Bucket {
         Bucket::SocialComments,
         Bucket::SocialCommentsByWork,
         Bucket::SocialCollections,
+        Bucket::Downloads,
+        Bucket::AcqIndexers,
+        Bucket::AcqGrabs,
+        Bucket::AcqSettings,
+        Bucket::AcqTorrents,
+        Bucket::AcqMonitored,
+        Bucket::AcqProfiles,
+        Bucket::AcqBlocklist,
+        Bucket::AcqQuality,
+        Bucket::AcqSubProviders,
+        Bucket::AcqSubtitles,
+        Bucket::AcqSubBlock,
     ];
 
     /// The table name.
@@ -133,6 +174,18 @@ impl Bucket {
             Bucket::SocialComments => "social_comments",
             Bucket::SocialCommentsByWork => "social_comments_by_work",
             Bucket::SocialCollections => "social_collections",
+            Bucket::Downloads => "downloads",
+            Bucket::AcqIndexers => "acq_indexers",
+            Bucket::AcqGrabs => "acq_grabs",
+            Bucket::AcqSettings => "acq_settings",
+            Bucket::AcqTorrents => "acq_torrents",
+            Bucket::AcqMonitored => "acq_monitored",
+            Bucket::AcqProfiles => "acq_profiles",
+            Bucket::AcqBlocklist => "acq_blocklist",
+            Bucket::AcqQuality => "acq_quality",
+            Bucket::AcqSubProviders => "acq_subproviders",
+            Bucket::AcqSubtitles => "acq_subtitles",
+            Bucket::AcqSubBlock => "acq_subblock",
         }
     }
 

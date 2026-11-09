@@ -5,10 +5,11 @@
 #   conformance/run.sh            # Go and Rust
 #   conformance/run.sh go|rust    # one server
 #
-# Go:   fresh (v1), then scan (v1) on a fresh data dir, lists and social
-#       (v1) on fresh data dirs, then watch (v1)
+# Go:   fresh (v1), then scan (v1) on a fresh data dir, lists, social
+#       and acquire (v1) on fresh data dirs, then watch (v1)
 #       on a scanned library of test clips
-# Rust: fresh (v1+v2), scan (v1+v2), lists and social on fresh data dirs, then private
+# Rust: fresh (v1+v2), scan (v1+v2), lists, social and acquire (v1+v2)
+#       on fresh data dirs, then private
 #       (private libraries) on a data dir with a `media` root and the
 #       fixture catalog (conformance/fixtures/catalog.json,
 #       `lain-rs import --in`), then read (comic pages) with `media` at
@@ -47,6 +48,9 @@ trap cleanup EXIT INT TERM
 # The theme cases must not read the host's own Omarchy colors.
 LAIN_OMARCHY_COLORS="$tmp/no-colors.toml"
 export LAIN_OMARCHY_COLORS
+# The torrent engine binds a free port, never the default 51413.
+LAIN_ACQUIRE_LISTEN_PORT=0
+export LAIN_ACQUIRE_LISTEN_PORT
 
 cd "$root"
 cargo build -q -p lain-conformance -p lain-server
@@ -138,6 +142,12 @@ run_go() {
 		note "Go   $suite v1: $(echo "$out" | tail -1)"
 		stop "$pid"
 	done
+	mkdir -p "$tmp/go-acqmedia"
+	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start go-acquire "$url" "$tmp/lain" serve --data-dir "$tmp/go-acquire" --port "$go_port")
+	out=$(LAIN_URL=$url "$runner" --tier v1 --var acq_media="$tmp/go-acqmedia" conformance/cases/acquire) || { echo "$out"; exit 1; }
+	echo "$out"
+	note "Go   acquire v1: $(echo "$out" | tail -1)"
+	stop "$pid"
 
 	if [ "$clips" = 1 ]; then
 		pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start go-watch "$url" "$tmp/lain" serve --data-dir "$tmp/go-watch" --port "$go_port")
@@ -172,6 +182,12 @@ run_rust() {
 		note "Rust $suite v1+v2: $(echo "$out" | tail -1)"
 		stop "$pid"
 	done
+	mkdir -p "$tmp/rs-acqmedia"
+	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-acquire "$url" "$lain_rs" serve --data-dir "$tmp/rs-acquire" --port "$rs_port")
+	out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var acq_media="$tmp/rs-acqmedia" conformance/cases/acquire) || { echo "$out"; exit 1; }
+	echo "$out"
+	note "Rust acquire v1+v2: $(echo "$out" | tail -1)"
+	stop "$pid"
 
 	mkdir -p "$tmp/rs-private"
 	printf '{"format":"lain.roots@1","roots":{"media":"%s"}}\n' "$tmp/rootmedia" >"$tmp/rs-private/roots.json"
