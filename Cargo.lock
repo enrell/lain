@@ -557,6 +557,7 @@ dependencies = [
  "lain-api",
  "lain-core",
  "lain-probe",
+ "lain-read",
  "lain-store",
  "libc",
  "serde",
