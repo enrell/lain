@@ -485,6 +485,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lain-probe"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lain-read"
 version = "0.1.0"
 dependencies = [
@@ -536,6 +545,21 @@ name = "lain-subtitle"
 version = "0.1.0"
 dependencies = [
  "lain-api",
+]
+
+[[package]]
+name = "lain-watch"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
+ "lain-core",
+ "lain-probe",
+ "lain-store",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tracing",
 ]
 
 [[package]]

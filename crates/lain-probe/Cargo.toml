@@ -1,0 +1,13 @@
+[package]
+name = "lain-probe"
+description = "Lain's media probe (D-190): ffprobe as an external process, its JSON parsed into bounded stream facts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lain-api.workspace = true
+serde.workspace = true
+serde_json.workspace = true

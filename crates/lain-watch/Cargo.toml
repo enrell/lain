@@ -1,0 +1,22 @@
+[package]
+name = "lain-watch"
+description = "Lain's watch module (D-190): playback plans, transcode sessions over external ffmpeg, thumbnails and local playback"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lain-api.workspace = true
+lain-core.workspace = true
+lain-probe.workspace = true
+lain-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tracing.workspace = true
+
+# SIGSTOP/SIGCONT for transcode throttling (already in the tree on Unix).
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
