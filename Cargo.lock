@@ -510,6 +510,7 @@ name = "lain-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "getrandom",
  "hyper",
  "lain-admin",
  "lain-api",
@@ -520,9 +521,11 @@ dependencies = [
  "lain-identify",
  "lain-ingest",
  "lain-metadata",
+ "lain-probe",
  "lain-read",
  "lain-store",
  "lain-subtitle",
+ "lain-watch",
  "notify",
  "serde",
  "serde_json",
