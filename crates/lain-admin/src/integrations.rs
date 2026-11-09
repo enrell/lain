@@ -2,9 +2,8 @@
 //! AniList OAuth client the lists module will use to link accounts.
 //! They live in the store's `meta` table under `integrations`; the
 //! secret is never returned to a client, only whether one is stored.
-//! The capability `lain.settings.integrations@1` is bound when the
-//! lists module that consumes it is ported, so the module's state keeps
-//! saying what it serves.
+//! The lists module serves this document as
+//! `lain.settings.integrations@1` (`lain-settings-integrations`, D-215).
 
 use serde::{Deserialize, Serialize};
 

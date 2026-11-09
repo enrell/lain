@@ -15,7 +15,11 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+mod lists;
+mod social;
 mod watch;
+pub use lists::*;
+pub use social::*;
 pub use watch::*;
 
 fn is_false(v: &bool) -> bool {

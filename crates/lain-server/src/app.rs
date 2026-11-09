@@ -77,6 +77,10 @@ pub fn default_composition() -> Composition {
     for (cap, b) in lain_watch::Watch::bindings() {
         bindings.insert(cap.into(), b);
     }
+    // The lists and social modules' in-process providers.
+    for (cap, b) in lain_lists::bindings().into_iter().chain(lain_social::bindings()) {
+        bindings.insert(cap.into(), b);
+    }
     bindings.insert(
         lain_subtitle::CAP_SUBTITLE.into(),
         Binding::new(BindingMode::OrderedMany, &[lain_subtitle::OPENSUBTITLES_ID]),
@@ -108,6 +112,13 @@ pub struct Config {
     pub metadata_endpoints: lain_metadata::Endpoints,
     /// No outbound HTTP at all: remote providers fail at once (tests).
     pub offline: bool,
+    /// The AniList connector's API roots (`LAIN_LISTLINK_ANILIST_*_URL`
+    /// in `lain-rs serve`).
+    pub anilist_endpoints: lain_lists::anilist::Endpoints,
+    /// The scheduled list import (`--list-sync=0` / `LAIN_LIST_SYNC=0`
+    /// leaves manual syncs only).
+    pub list_sync: bool,
+    pub list_sync_interval: Duration,
 }
 
 impl Config {
@@ -123,6 +134,9 @@ impl Config {
             theme_path: None,
             metadata_endpoints: lain_metadata::Endpoints::public(),
             offline: false,
+            anilist_endpoints: lain_lists::anilist::Endpoints::default(),
+            list_sync: true,
+            list_sync_interval: lain_lists::links::SYNC_INTERVAL,
         }
     }
 }
@@ -151,6 +165,10 @@ pub struct App {
     pub store: Arc<Store>,
     /// The outbound HTTP client every network provider shares (D-200).
     pub http: lain_http::Client,
+    /// Linked list accounts, imports and scrobbles (lists module).
+    pub links: Arc<lain_lists::Links>,
+    social: Arc<lain_social::Social>,
+    list_sync: Option<Duration>,
     secret: Vec<u8>,
     pub registry: Arc<Registry>,
     pub libraries: Libraries,
@@ -225,6 +243,10 @@ impl App {
             registry.register(p);
         }
         registry.register(Arc::new(lain_subtitle::OpenSubtitles::new(http.clone())));
+        lain_lists::register(&registry, store.clone(), cfg.anilist_endpoints.clone(), http.clone());
+        let links = Arc::new(lain_lists::Links::open(&store, registry.clone())?);
+        let social = Arc::new(lain_social::Social::new(store.clone()));
+        registry.register(social.clone());
         registry.register(Arc::new(lain_metadata::Enricher::new(&registry, store.clone())));
         registry.register(Arc::new(theme_mod::Theme));
         registry.register(Arc::new(backup_mod::Bundle));
@@ -255,6 +277,9 @@ impl App {
             unlocks: Unlocks::default(),
             store,
             http,
+            links,
+            social,
+            list_sync: cfg.list_sync.then_some(cfg.list_sync_interval),
             secret,
             registry,
             modules: RwLock::new(ModuleSet::new(modules::builtin())),
@@ -278,6 +303,7 @@ impl App {
             }
         }));
         app.hook_watch_events();
+        app.hook_social_events();
         Ok(app)
     }
 
@@ -559,6 +585,9 @@ impl App {
         }
         *self.provisioner.lock().unwrap_or_else(|e| e.into_inner()) = Some(prov);
         self.watch_modules();
+        if let Some(every) = self.list_sync {
+            self.links.start(every);
+        }
         if self.watch {
             self.scanner.start_watching();
         }
@@ -614,6 +643,23 @@ impl App {
                 app.publish_progress(user, item, json!({"item_id": item, "progress": out}));
             }
         });
+    }
+
+    /// `list-changed` to the account's streams; `social-notification`
+    /// to the recipient's (see `social::publish_notification`).
+    fn hook_social_events(self: &Arc<Self>) {
+        let weak = Arc::downgrade(self);
+        self.links.on_change(Arc::new(move |user: &str, data: Value| {
+            if let Some(app) = weak.upgrade() {
+                app.events.publish(Scope::User(user.to_string()), "list-changed", data);
+            }
+        }));
+        let weak = Arc::downgrade(self);
+        self.social.on_notify(Arc::new(move |n: &lain_api::Notification| {
+            if let Some(app) = weak.upgrade() {
+                crate::social::publish_notification(&app, n);
+            }
+        }));
     }
 
     fn watch_modules(self: &Arc<Self>) {
@@ -688,6 +734,7 @@ impl App {
     pub fn shutdown(&self) {
         self.stopping.store(true, Ordering::SeqCst);
         self.scanner.stop();
+        self.links.stop();
         self.watch_provider.close();
         self.events.close_all();
         self.media.close();

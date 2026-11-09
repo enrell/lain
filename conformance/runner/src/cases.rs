@@ -6,6 +6,8 @@
 //!
 //! - `{"req": {method, path, auth?, body?, raw_body?, raw_body_hex?, headers?},
 //!    "expect": {status?, status_not?, body?, body_hex?, headers?}, "save": {var: "/pointer"}}`
+//!   (`"/pointer?name"` saves the query parameter `name` of the URL
+//!   string there, as sent)
 //!   `raw_body_hex` sends bytes (images); `body_hex` compares the
 //!   response bytes exactly.
 //!   `auth` is `"<token var>"` (Bearer), `"query:<token var>"`
@@ -229,8 +231,23 @@ impl Runner {
         if let Some(m) = save.as_object() {
             for (var, ptr) in m {
                 let ptr = ptr.as_str().ok_or("save pointer must be a string")?;
-                let v = body.pointer(ptr).ok_or_else(|| format!("save {var}: {ptr} not in response"))?;
-                self.vars.insert(var.clone(), v.clone());
+                // `/pointer?name` saves one query parameter (as sent) of
+                // the URL string at the pointer.
+                let (path, param) = match ptr.split_once('?') {
+                    Some((p, q)) => (p, Some(q)),
+                    None => (ptr, None),
+                };
+                let v = body.pointer(path).ok_or_else(|| format!("save {var}: {path} not in response"))?;
+                let v = match param {
+                    None => v.clone(),
+                    Some(name) => {
+                        let url = v.as_str().ok_or_else(|| format!("save {var}: {path} is not a string"))?;
+                        let query = url.split_once('?').map(|(_, q)| q).unwrap_or("");
+                        let found = query.split('&').find_map(|kv| kv.strip_prefix(name)?.strip_prefix('='));
+                        Value::String(found.ok_or_else(|| format!("save {var}: no {name} in {url}"))?.to_string())
+                    }
+                };
+                self.vars.insert(var.clone(), v);
             }
         }
         Ok(())

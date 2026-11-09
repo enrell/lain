@@ -1,0 +1,19 @@
+[package]
+name = "lain-lists"
+description = "Lain's lists module (D-078..D-083): tracking lists, linked accounts, the AniList connector and scrobbling"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lain-api.workspace = true
+lain-admin.workspace = true
+lain-auth.workspace = true
+lain-core.workspace = true
+lain-http.workspace = true
+lain-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

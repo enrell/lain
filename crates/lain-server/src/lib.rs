@@ -3,6 +3,8 @@
 //! /api/events` (D-169), service mode (D-164), private libraries (D-156)
 //! and portable roots (D-157), plus the ported modules: core
 //! administration (theme, backup, integrations, avatars; `lain-admin`),
+//! lists (`lists.rs` over `lain-lists`), social (`social.rs` over
+//! `lain-social`),
 //! read (`lain-read`) and watch (D-190: `watch.rs`, byte serving in
 //! `serve.rs`). It starts from an empty data dir; nothing is imported
 //! from the Go server (D-177). The binary is `lain-rs`.
@@ -15,12 +17,14 @@ pub mod events;
 pub mod files;
 pub mod gateway;
 pub mod libraries;
+pub mod lists;
 pub mod logging;
 pub mod population;
 pub mod privacy;
 pub mod roots;
 pub mod serve;
 pub mod service;
+pub mod social;
 pub mod watch;
 
 use std::net::SocketAddr;

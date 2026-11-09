@@ -1019,3 +1019,129 @@ async fn watch_routes() {
     drop(server);
     std::fs::remove_dir_all(root).ok();
 }
+
+/// The lists and social modules through the typed client: a pin link
+/// against the recorded AniList answers, the list, sync, scrobble
+/// preference and unlink; friends, a rating of a catalog item, the work
+/// view, a shared collection and notifications, with `list-changed` and
+/// `social-notification` on the stream.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn lists_and_social() {
+    use lain_client::types::{
+        CollectionItemInput, CollectionShareInput, MarkRead, NewCollection, RatingInput, ShareInput,
+        SocialSettingsPatch, WorkRef,
+    };
+    let root = temp("lists-social");
+    let upstream = lain_conformance::upstream::Upstream::start(&lain_conformance::upstream::dir(), 0).unwrap();
+    let base = upstream.url.clone();
+    let server = Server::start_with(&root.join("data"), move |c| {
+        c.offline = false;
+        c.list_sync = false;
+        c.anilist_endpoints = lain_lists::anilist::Endpoints {
+            graphql: format!("{base}/anilist-list/graphql"),
+            oauth: format!("{base}/anilist-list/oauth"),
+        };
+    })
+    .await;
+    let (admin, bob) = admin_and_bob(&server.url).await;
+    let stream = EventStream::new(bob.clone(), StreamConfig::default());
+    next_matching(&stream, "ready", |i| matches!(i, StreamItem::Connected(_))).await;
+
+    // Lists.
+    assert!(bob.links().await.unwrap().is_empty());
+    assert!(bob.link_pin_url("anilist").await.unwrap().contains("client_id=52227"));
+    let err = bob.link_authorize_url("anilist").await.unwrap_err();
+    assert!(matches!(err, ClientError::Api { status: 503, ref code, .. } if code == "not-configured"), "{err:?}");
+    let err = bob.link_with_code("anilist", "bad-code").await.unwrap_err();
+    assert!(matches!(err, ClientError::Api { status: 400, ref code, .. } if code == "invalid-grant"), "{err:?}");
+    let link = bob.link_with_code("anilist", "good-code").await.unwrap();
+    assert_eq!((link.platform.as_str(), link.remote_username.as_str()), ("anilist", "watcher"));
+    let ev = next_matching(
+        &stream,
+        "list-changed synced",
+        |i| matches!(i, StreamItem::Event(ServerEvent::ListChanged(e)) if e.action == "synced"),
+    )
+    .await;
+    let StreamItem::Event(ServerEvent::ListChanged(ev)) = ev else { unreachable!() };
+    assert_eq!((ev.platform.as_str(), ev.upserted, ev.removed), ("anilist", 2, 0));
+    assert_eq!(bob.links().await.unwrap()[0].entry_count, 2);
+    let manga = bob.list("manga", "").await.unwrap();
+    assert_eq!((manga.len(), manga[0].title.as_str(), manga[0].progress_volumes), (1, "One Piece", 7));
+    assert_eq!(bob.list("", "").await.unwrap().len(), 2);
+    let stats = bob.sync_link("anilist").await.unwrap();
+    assert_eq!((stats.upserted, stats.removed), (2, 0));
+    assert!(bob.set_link_scrobble("anilist", true).await.unwrap().scrobble);
+    assert_eq!(bob.unlink("anilist").await.unwrap(), 2);
+    assert!(matches!(bob.unlink("anilist").await.unwrap_err(), ClientError::NotFound { .. }));
+    assert!(bob.list("", "").await.unwrap().is_empty());
+
+    // Social.
+    let st = bob
+        .update_social_settings(SocialSettingsPatch { ratings: Some("public".into()), ..Default::default() })
+        .await
+        .unwrap();
+    assert_eq!(st.ratings, "public");
+    assert_eq!(admin.find_users("bo").await.unwrap()[0].user.username, "bob");
+    assert_eq!(admin.befriend("user-bob").await.unwrap().relation, "outgoing");
+    let ev = next_matching(&stream, "social-notification", |i| {
+        matches!(i, StreamItem::Event(ServerEvent::SocialNotification(_)))
+    })
+    .await;
+    let StreamItem::Event(ServerEvent::SocialNotification(n)) = ev else { unreachable!() };
+    assert_eq!((n.kind.as_str(), n.from_user_id.as_str()), ("friend_request", "user-admin"));
+    assert_eq!(bob.befriend("user-admin").await.unwrap().relation, "friend");
+    assert_eq!(bob.friends().await.unwrap().friends[0].user.id, "user-admin");
+    let frieren = WorkRef { kind: "manga".into(), title: "Frieren".into(), ..Default::default() };
+    let r =
+        bob.rate(RatingInput { work: frieren.clone(), score: 9, review: "kind".into(), spoiler: false }).await.unwrap();
+    assert_eq!(r.score, 9);
+    let view = admin.work(&frieren).await.unwrap();
+    assert_eq!((view.mine, view.ratings.len(), view.average, view.scored), (None, 1, 9.0, 1));
+    assert!(view.users.contains_key("user-bob"));
+    let c = admin
+        .comment(lain_client::types::CommentInput {
+            work: frieren.clone(),
+            body: "agreed".into(),
+            reply_to: String::new(),
+        })
+        .await
+        .unwrap();
+    admin.delete_comment(&c.id).await.unwrap();
+    assert_eq!(admin.feed(0, 0).await.unwrap().items[0].kind, "rated");
+    assert_eq!(admin.user_ratings("user-bob").await.unwrap().len(), 1);
+    assert_eq!(admin.user_activity("user-bob", 0, 10).await.unwrap().items.len(), 1);
+    assert_eq!(admin.social_profile("user-bob").await.unwrap().relation, "friend");
+    let col =
+        bob.create_collection(NewCollection { name: "Rainy".into(), ..Default::default() }).await.unwrap().collection;
+    bob.add_to_collection(&col.id, CollectionItemInput { work: frieren.clone(), note: "start".into() }).await.unwrap();
+    assert_eq!(
+        bob.share_collection(&col.id, CollectionShareInput { to: vec!["user-admin".into()], message: String::new() })
+            .await
+            .unwrap(),
+        ["user-admin"]
+    );
+    assert_eq!(admin.collection(&col.id).await.unwrap().collection.items.len(), 1);
+    assert_eq!(admin.collections().await.unwrap().collections.len(), 1);
+    assert_eq!(
+        bob.share_work(ShareInput { to: vec!["user-admin".into()], work: frieren.clone(), message: "read".into() })
+            .await
+            .unwrap(),
+        ["user-admin"]
+    );
+    let inbox = admin.notifications(0).await.unwrap();
+    assert!(inbox.unread >= 2 && inbox.users.contains_key("user-bob"), "{inbox:?}");
+    assert!(admin.mark_notifications_read(MarkRead { all: true, ..Default::default() }).await.unwrap() >= 2);
+    assert!(bob.remove_from_collection(&col.id, &frieren).await.unwrap().collection.items.is_empty());
+    bob.unshare_collection(&col.id, "user-admin").await.unwrap();
+    bob.delete_collection(&col.id).await.unwrap();
+    assert!(bob.delete_rating(&frieren).await.unwrap());
+    assert_eq!(bob.block("user-admin").await.unwrap().relation, "blocking");
+    assert!(matches!(admin.social_profile("user-bob").await.unwrap_err(), ClientError::NotFound { .. }));
+    assert_eq!(bob.unblock("user-admin").await.unwrap().relation, "none");
+    assert_eq!(admin.befriend("user-bob").await.unwrap().relation, "outgoing");
+    assert_eq!(bob.decline_friend("user-admin").await.unwrap().relation, "none");
+    assert_eq!(bob.unfriend("user-admin").await.unwrap().relation, "none");
+    drop(stream);
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}

@@ -13,6 +13,13 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 
 use lain_api::{
+    ActivityPage, Changed, CollectionItemInput, CollectionPatch, CollectionReply, CollectionShareInput, Collections,
+    Comment, CommentInput, Friends, Link, LinkPatch, LinkReply, LinkSyncReply, LinkUrl, Links, ListEntries, ListEntry,
+    ListSyncStats, MarkRead, NewCollection, Notifications, Rating, RatingInput, Ratings, RelateReply, Removed,
+    ShareInput, ShareReply, SocialProfile, SocialSettings, SocialSettingsPatch, UnlinkReply, UserSearch,
+    UserWithRelation, WorkRef, WorkView,
+};
+use lain_api::{
     AdminTranscodes, BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health,
     IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryPatch, LocalPlayers, LoginReply, Mascots,
     ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions, PlaybackPlan,
@@ -692,6 +699,224 @@ impl Client {
     pub async fn play_local(&self, item_id: &str, player: &str) -> Result<PlayLocalReply, ClientError> {
         let body = PlayLocalRequest { player: player.to_string() };
         self.call(Method::POST, &format!("/api/items/{}/play-local", encode(item_id)), json_body(&body)).await
+    }
+
+    // ---- lists (D-078..D-083) -----------------------------------------
+
+    /// The tracking list, optionally narrowed by media type and status.
+    pub async fn list(&self, media_type: &str, status: &str) -> Result<Vec<ListEntry>, ClientError> {
+        let path = format!("/api/list{}", query(&[("type", media_type.into()), ("status", status.into())]));
+        let e: ListEntries = self.call(Method::GET, &path, Body::None).await?;
+        Ok(e.entries)
+    }
+
+    /// The linked external accounts (never their tokens).
+    pub async fn links(&self) -> Result<Vec<Link>, ClientError> {
+        let l: Links = self.call(Method::GET, "/api/me/links", Body::None).await?;
+        Ok(l.links)
+    }
+
+    /// The URL that starts an OAuth link under the operator's client.
+    pub async fn link_authorize_url(&self, platform: &str) -> Result<String, ClientError> {
+        let u: LinkUrl =
+            self.call(Method::GET, &format!("/api/me/links/{}/authorize", encode(platform)), Body::None).await?;
+        Ok(u.url)
+    }
+
+    /// The URL of the zero-setup pin flow (D-083).
+    pub async fn link_pin_url(&self, platform: &str) -> Result<String, ClientError> {
+        let u: LinkUrl = self.call(Method::GET, &format!("/api/me/links/{}/pin", encode(platform)), Body::None).await?;
+        Ok(u.url)
+    }
+
+    /// Links with the code (or the whole pin URL) the pin page showed.
+    pub async fn link_with_code(&self, platform: &str, code: &str) -> Result<Link, ClientError> {
+        let r: LinkReply = self
+            .call(Method::POST, &format!("/api/me/links/{}/code", encode(platform)), json_body(&json!({"code": code})))
+            .await?;
+        Ok(r.link)
+    }
+
+    /// Turns scrobbling to the platform on or off.
+    pub async fn set_link_scrobble(&self, platform: &str, scrobble: bool) -> Result<Link, ClientError> {
+        let body = LinkPatch { scrobble: Some(scrobble) };
+        self.call(Method::PATCH, &format!("/api/me/links/{}", encode(platform)), json_body(&body)).await
+    }
+
+    /// Re-imports the platform's list now.
+    pub async fn sync_link(&self, platform: &str) -> Result<ListSyncStats, ClientError> {
+        let r: LinkSyncReply =
+            self.call(Method::POST, &format!("/api/me/links/{}/sync", encode(platform)), Body::None).await?;
+        Ok(r.stats)
+    }
+
+    /// Unlinks; returns how many imported entries went with it.
+    pub async fn unlink(&self, platform: &str) -> Result<i64, ClientError> {
+        let r: UnlinkReply =
+            self.call(Method::DELETE, &format!("/api/me/links/{}", encode(platform)), Body::None).await?;
+        Ok(r.removed)
+    }
+
+    // ---- social ---------------------------------------------------------
+
+    pub async fn social_settings(&self) -> Result<SocialSettings, ClientError> {
+        self.call(Method::GET, "/api/social/me/settings", Body::None).await
+    }
+
+    pub async fn update_social_settings(&self, patch: SocialSettingsPatch) -> Result<SocialSettings, ClientError> {
+        self.call(Method::PATCH, "/api/social/me/settings", json_body(&patch)).await
+    }
+
+    /// Accounts by username or display name (at most 50).
+    pub async fn find_users(&self, q: &str) -> Result<Vec<UserWithRelation>, ClientError> {
+        let s: UserSearch =
+            self.call(Method::GET, &format!("/api/social/users{}", query(&[("q", q.into())])), Body::None).await?;
+        Ok(s.users)
+    }
+
+    pub async fn social_profile(&self, user_id: &str) -> Result<SocialProfile, ClientError> {
+        self.call(Method::GET, &format!("/api/social/users/{}", encode(user_id)), Body::None).await
+    }
+
+    /// One account's activity; `before` (unix seconds) pages back.
+    pub async fn user_activity(&self, user_id: &str, before: i64, limit: i64) -> Result<ActivityPage, ClientError> {
+        let q = query(&[("before", num(before)), ("limit", num(limit))]);
+        self.call(Method::GET, &format!("/api/social/users/{}/activity{q}", encode(user_id)), Body::None).await
+    }
+
+    pub async fn user_ratings(&self, user_id: &str) -> Result<Vec<Rating>, ClientError> {
+        let r: Ratings =
+            self.call(Method::GET, &format!("/api/social/users/{}/ratings", encode(user_id)), Body::None).await?;
+        Ok(r.ratings)
+    }
+
+    pub async fn user_collections(&self, user_id: &str) -> Result<Collections, ClientError> {
+        self.call(Method::GET, &format!("/api/social/users/{}/collections", encode(user_id)), Body::None).await
+    }
+
+    pub async fn friends(&self) -> Result<Friends, ClientError> {
+        self.call(Method::GET, "/api/social/friends", Body::None).await
+    }
+
+    /// Sends a friend request, or accepts theirs.
+    pub async fn befriend(&self, user_id: &str) -> Result<RelateReply, ClientError> {
+        self.call(Method::POST, &format!("/api/social/friends/{}", encode(user_id)), Body::None).await
+    }
+
+    pub async fn decline_friend(&self, user_id: &str) -> Result<RelateReply, ClientError> {
+        self.call(Method::POST, &format!("/api/social/friends/{}/decline", encode(user_id)), Body::None).await
+    }
+
+    /// Unfriends, or cancels an outgoing request.
+    pub async fn unfriend(&self, user_id: &str) -> Result<RelateReply, ClientError> {
+        self.call(Method::DELETE, &format!("/api/social/friends/{}", encode(user_id)), Body::None).await
+    }
+
+    pub async fn block(&self, user_id: &str) -> Result<RelateReply, ClientError> {
+        self.call(Method::POST, &format!("/api/social/blocks/{}", encode(user_id)), Body::None).await
+    }
+
+    pub async fn unblock(&self, user_id: &str) -> Result<RelateReply, ClientError> {
+        self.call(Method::DELETE, &format!("/api/social/blocks/{}", encode(user_id)), Body::None).await
+    }
+
+    /// The friends feed, newest first; `before` pages back.
+    pub async fn feed(&self, before: i64, limit: i64) -> Result<ActivityPage, ClientError> {
+        let q = query(&[("before", num(before)), ("limit", num(limit))]);
+        self.call(Method::GET, &format!("/api/social/feed{q}"), Body::None).await
+    }
+
+    pub async fn notifications(&self, limit: i64) -> Result<Notifications, ClientError> {
+        self.call(Method::GET, &format!("/api/social/notifications{}", query(&[("limit", num(limit))])), Body::None)
+            .await
+    }
+
+    /// Marks the listed notifications (or all) read.
+    pub async fn mark_notifications_read(&self, mark: MarkRead) -> Result<i64, ClientError> {
+        let c: Changed = self.call(Method::POST, "/api/social/notifications/read", json_body(&mark)).await?;
+        Ok(c.changed)
+    }
+
+    fn work_query(w: &WorkRef) -> String {
+        query(&[("item", w.item_id.clone()), ("kind", w.kind.clone()), ("title", w.title.clone())])
+    }
+
+    /// A work's ratings, average and comments as this account may see
+    /// them (named by catalog item, or by kind and title).
+    pub async fn work(&self, work: &WorkRef) -> Result<WorkView, ClientError> {
+        self.call(Method::GET, &format!("/api/social/work{}", Self::work_query(work)), Body::None).await
+    }
+
+    pub async fn rate(&self, rating: RatingInput) -> Result<Rating, ClientError> {
+        self.call(Method::PUT, "/api/social/work/rating", json_body(&rating)).await
+    }
+
+    pub async fn delete_rating(&self, work: &WorkRef) -> Result<bool, ClientError> {
+        let r: Removed = self
+            .call(Method::DELETE, &format!("/api/social/work/rating{}", Self::work_query(work)), Body::None)
+            .await?;
+        Ok(r.removed)
+    }
+
+    pub async fn comment(&self, comment: CommentInput) -> Result<Comment, ClientError> {
+        self.call(Method::POST, "/api/social/work/comments", json_body(&comment)).await
+    }
+
+    pub async fn delete_comment(&self, id: &str) -> Result<(), ClientError> {
+        let _: Removed = self.call(Method::DELETE, &format!("/api/social/comments/{}", encode(id)), Body::None).await?;
+        Ok(())
+    }
+
+    /// Recommends a work to friends; returns who received it.
+    pub async fn share_work(&self, share: ShareInput) -> Result<Vec<String>, ClientError> {
+        let r: ShareReply = self.call(Method::POST, "/api/social/share", json_body(&share)).await?;
+        Ok(r.sent)
+    }
+
+    /// This account's collections plus those shared with it.
+    pub async fn collections(&self) -> Result<Collections, ClientError> {
+        self.call(Method::GET, "/api/social/collections", Body::None).await
+    }
+
+    pub async fn create_collection(&self, c: NewCollection) -> Result<CollectionReply, ClientError> {
+        self.call(Method::POST, "/api/social/collections", json_body(&c)).await
+    }
+
+    pub async fn collection(&self, id: &str) -> Result<CollectionReply, ClientError> {
+        self.call(Method::GET, &format!("/api/social/collections/{}", encode(id)), Body::None).await
+    }
+
+    pub async fn update_collection(&self, id: &str, patch: CollectionPatch) -> Result<CollectionReply, ClientError> {
+        self.call(Method::PATCH, &format!("/api/social/collections/{}", encode(id)), json_body(&patch)).await
+    }
+
+    pub async fn delete_collection(&self, id: &str) -> Result<(), ClientError> {
+        let _: Removed =
+            self.call(Method::DELETE, &format!("/api/social/collections/{}", encode(id)), Body::None).await?;
+        Ok(())
+    }
+
+    /// Adds a work (or updates its note).
+    pub async fn add_to_collection(&self, id: &str, item: CollectionItemInput) -> Result<CollectionReply, ClientError> {
+        self.call(Method::POST, &format!("/api/social/collections/{}/items", encode(id)), json_body(&item)).await
+    }
+
+    pub async fn remove_from_collection(&self, id: &str, work: &WorkRef) -> Result<CollectionReply, ClientError> {
+        let path = format!("/api/social/collections/{}/items{}", encode(id), Self::work_query(work));
+        self.call(Method::DELETE, &path, Body::None).await
+    }
+
+    /// Gives friends read access; returns who received it.
+    pub async fn share_collection(&self, id: &str, share: CollectionShareInput) -> Result<Vec<String>, ClientError> {
+        let r: ShareReply = self
+            .call(Method::POST, &format!("/api/social/collections/{}/share", encode(id)), json_body(&share))
+            .await?;
+        Ok(r.sent)
+    }
+
+    pub async fn unshare_collection(&self, id: &str, user_id: &str) -> Result<CollectionReply, ClientError> {
+        let path = format!("/api/social/collections/{}/share/{}", encode(id), encode(user_id));
+        self.call(Method::DELETE, &path, Body::None).await
     }
 }
 

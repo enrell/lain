@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -87,4 +89,14 @@ func parseRetryAfter(h string) time.Duration {
 		return 0
 	}
 	return time.Duration(secs) * time.Second
+}
+
+// baseURL is an API root: the environment variable when set (the
+// conformance suite points it at recorded fixtures, so no case reaches
+// the network), else the public service.
+func baseURL(env, public string) string {
+	if v := strings.TrimSpace(os.Getenv(env)); v != "" {
+		return strings.TrimSuffix(v, "/")
+	}
+	return public
 }
