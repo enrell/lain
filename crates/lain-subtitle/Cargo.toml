@@ -1,6 +1,6 @@
 [package]
 name = "lain-subtitle"
-description = "Sidecar subtitle discovery and SRT/WebVTT/ASS parsing to WebVTT (shared by the catalog and subtitles modules)"
+description = "Subtitle files (sidecar discovery and naming, SRT/WebVTT/ASS to WebVTT, moviehash) and the lain.subtitle@1 OpenSubtitles provider"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,3 +9,10 @@ publish.workspace = true
 
 [dependencies]
 lain-api.workspace = true
+lain-core.workspace = true
+lain-http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+lain-conformance = { path = "../../conformance/runner" }

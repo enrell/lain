@@ -184,6 +184,53 @@ pub fn discover(media: &Path) -> Vec<Found> {
     out
 }
 
+/// The language tag Lain writes in a sidecar name (A-35): the region
+/// form when the provider gave one (`pt-BR`), else ISO 639-1 when it
+/// exists, else the ISO 639-2 code.
+pub fn tag(lang: &str, region: &str) -> String {
+    if !region.is_empty() {
+        return region.to_string();
+    }
+    ISO1.iter().find(|(_, three)| *three == lang).map(|(two, _)| two.to_string()).unwrap_or_else(|| lang.to_string())
+}
+
+/// Where Lain writes a subtitle for `media` (A-35):
+/// `<stem>.<tag>[.forced][.sdh].<format>`, next to it.
+pub fn sidecar_path(media: &Path, lang: &str, region: &str, forced: bool, hi: bool, format: &str) -> PathBuf {
+    let mut parts = vec![stem(media), tag(lang, region)];
+    if forced {
+        parts.push("forced".into());
+    }
+    if hi {
+        parts.push("sdh".into());
+    }
+    let name = format!("{}.{format}", parts.join("."));
+    media.parent().map(|d| d.join(&name)).unwrap_or_else(|| PathBuf::from(name))
+}
+
+/// The OpenSubtitles file hash (A-31, D-138): the file size plus the
+/// little-endian 64-bit words of the first and last 64 KiB, as 16 hex
+/// digits. Files under 64 KiB cannot be hashed.
+pub fn movie_hash(path: &Path) -> std::io::Result<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const CHUNK: u64 = 65536;
+    let mut f = std::fs::File::open(path)?;
+    let size = f.metadata()?.len();
+    if size < CHUNK {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "subtitle: file too small to hash"));
+    }
+    let mut h = size;
+    let mut buf = vec![0u8; CHUNK as usize];
+    for off in [0, size - CHUNK] {
+        f.seek(SeekFrom::Start(off))?;
+        f.read_exact(&mut buf)?;
+        for w in buf.as_chunks::<8>().0 {
+            h = h.wrapping_add(u64::from_le_bytes(*w));
+        }
+    }
+    Ok(format!("{h:016x}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,6 +278,60 @@ mod tests {
         assert_eq!((got[2].language.as_str(), got[2].tag.as_str()), ("und", ""));
         assert_eq!((got[3].language.as_str(), got[3].tag.as_str()), ("und", "zz"));
         assert!(discover(&dir.join("nope/x.mkv")).is_empty());
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn sidecar_names_round_trip() {
+        let media = Path::new("/l/Show - S01E01.mkv");
+        for (lang, region, forced, hi, format, want) in [
+            ("eng", "", false, false, "srt", "/l/Show - S01E01.en.srt"),
+            ("por", "pt-BR", true, false, "ass", "/l/Show - S01E01.pt-BR.forced.ass"),
+            ("jpn", "", false, true, "srt", "/l/Show - S01E01.ja.sdh.srt"),
+            ("fil", "", false, false, "vtt", "/l/Show - S01E01.fil.vtt"),
+        ] {
+            assert_eq!(sidecar_path(media, lang, region, forced, hi, format), Path::new(want));
+        }
+        let dir = std::env::temp_dir().join(format!("lain-sidecar-rt-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let media = dir.join("Film (2001).mkv");
+        std::fs::write(sidecar_path(&media, "por", "pt-BR", true, false, "srt"), b"x").unwrap();
+        let s = discover(&media);
+        assert_eq!(s.len(), 1);
+        assert_eq!((s[0].view.language.as_str(), s[0].view.forced, s[0].view.tag.as_str()), ("por", true, "pt-BR"));
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// The published algorithm written the slow, obvious way.
+    fn ref_hash(b: &[u8]) -> String {
+        let mut h = b.len() as u64;
+        let n = b.len().min(65536);
+        for chunk in [&b[..n], &b[b.len() - n..]] {
+            for w in chunk.as_chunks::<8>().0 {
+                h = h.wrapping_add(u64::from_le_bytes(*w));
+            }
+        }
+        format!("{h:016x}")
+    }
+
+    #[test]
+    fn movie_hash_reads_head_and_tail() {
+        let dir = std::env::temp_dir().join(format!("lain-moviehash-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("a.mkv");
+        let mut data: Vec<u8> = (0..300_000u32).map(|i| (i.wrapping_mul(131) + 7) as u8).collect();
+        std::fs::write(&p, &data).unwrap();
+        let got = movie_hash(&p).unwrap();
+        assert_eq!((got.len(), got.clone()), (16, ref_hash(&data)));
+        data[150_000] ^= 0xff;
+        std::fs::write(&p, &data).unwrap();
+        assert_eq!(movie_hash(&p).unwrap(), got, "the middle does not count");
+        data[10] ^= 0xff;
+        std::fs::write(&p, &data).unwrap();
+        assert_ne!(movie_hash(&p).unwrap(), got, "the head does");
+        let small = dir.join("small.mkv");
+        std::fs::write(&small, vec![0u8; 1000]).unwrap();
+        assert!(movie_hash(&small).is_err());
         std::fs::remove_dir_all(dir).ok();
     }
 }

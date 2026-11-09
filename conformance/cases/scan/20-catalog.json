@@ -12,7 +12,10 @@
      "req": {
       "method": "GET",
       "path": "/api/catalog",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "total": 4,
        "limit": 50,
@@ -76,14 +79,11 @@
          "season": 1,
          "episode": 2,
          "year": 0,
-         "confidence": 0.78,
+         "confidence": 0.7799999999999999,
          "origin": "lain-identify-anime"
         }
        ]
       }
-     },
-     "expect": {
-      "status": 200
      },
      "save": {
       "akira": "/items/0/id",
@@ -96,7 +96,10 @@
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{f1}}",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "id": "{{f1}}",
        "library_id": "{{lib}}",
@@ -107,16 +110,16 @@
        "title": "Frieren",
        "episode": 1
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/catalog?library_id={{lib}}&limit=1&offset=3",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "total": 4,
        "limit": 1,
@@ -132,9 +135,6 @@
         }
        ]
       }
-     },
-     "expect": {
-      "status": 200
      }
     }
    ]
@@ -149,7 +149,10 @@
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{f2}}/episodes",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "items": [
         {
@@ -170,16 +173,16 @@
         }
        ]
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{akira}}/episodes",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "items": [
         {
@@ -192,9 +195,6 @@
         }
        ]
       }
-     },
-     "expect": {
-      "status": 200
      }
     }
    ]
@@ -209,7 +209,10 @@
      "req": {
       "method": "GET",
       "path": "/api/search?q=frie",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "total": 2,
        "limit": 50,
@@ -233,16 +236,16 @@
         }
        ]
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/search?kind=video",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "total": 1,
        "$open": true,
@@ -257,16 +260,16 @@
         }
        ]
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/search?q=show&kind=EPISODE&limit=1",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "total": 1,
        "limit": 1,
@@ -282,37 +285,34 @@
         }
        ]
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/search?q=nothing",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "total": 0,
        "limit": 50,
        "offset": 0,
        "items": []
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
-      "path": "/api/search?q=frie",
+      "path": "/api/search?q=frie"
+     },
+     "expect": {
+      "status": 401,
       "body": {
        "error": "unauthorized"
       }
-     },
-     "expect": {
-      "status": 401
      }
     }
    ]
@@ -327,7 +327,10 @@
      "req": {
       "method": "GET",
       "path": "/api/items/{{f1}}/sidecars",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "sidecars": [
         {
@@ -354,47 +357,44 @@
         }
        ]
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/items/{{f2}}/sidecars",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "sidecars": []
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/items/no-such-item/sidecars",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 404,
       "body": {
        "error": "unknown item"
       }
-     },
-     "expect": {
-      "status": 404
      }
     },
     {
      "req": {
       "method": "GET",
-      "path": "/api/items/{{f1}}/sidecars",
+      "path": "/api/items/{{f1}}/sidecars"
+     },
+     "expect": {
+      "status": 401,
       "body": {
        "error": "unauthorized"
       }
-     },
-     "expect": {
-      "status": 401
      }
     }
    ]
@@ -409,91 +409,91 @@
      "req": {
       "method": "GET",
       "path": "/api/items/{{f1}}/sidecars/0",
-      "auth": "bob",
-      "body": "WEBVTT\n\n00:00:01.000 --> 00:00:02.500\nHello\n\n"
+      "auth": "bob"
      },
      "expect": {
       "status": 200,
       "headers": {
        "content-type": "text/vtt; charset=utf-8",
        "cache-control": "private, no-cache"
-      }
+      },
+      "body": "WEBVTT\n\n00:00:01.000 --> 00:00:02.500\nHello\n\n"
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/items/{{f1}}/sidecars/2",
-      "auth": "query:bob",
-      "body": "WEBVTT\n\n00:00:03.000 --> 00:00:04.000\nOla\n\n"
+      "auth": "query:bob"
      },
      "expect": {
-      "status": 200
+      "status": 200,
+      "body": "WEBVTT\n\n00:00:03.000 --> 00:00:04.000\nOla\n\n"
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/items/{{f1}}/sidecars/1",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 422,
       "body": {
        "error": "this subtitle file cannot be read",
        "code": "unsupported-media"
       }
-     },
-     "expect": {
-      "status": 422
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/items/{{f1}}/sidecars/9",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 404,
       "body": {
        "error": "no such sidecar"
       }
-     },
-     "expect": {
-      "status": 404
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/items/{{f1}}/sidecars/-1",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 404,
       "body": {
        "error": "no such sidecar"
       }
-     },
-     "expect": {
-      "status": 404
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/items/{{f1}}/sidecars/x",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 404,
       "body": {
        "error": "no such sidecar"
       }
-     },
-     "expect": {
-      "status": 404
      }
     },
     {
      "req": {
       "method": "GET",
-      "path": "/api/items/{{f1}}/sidecars/0",
+      "path": "/api/items/{{f1}}/sidecars/0"
+     },
+     "expect": {
+      "status": 401,
       "body": {
        "error": "unauthorized"
       }
-     },
-     "expect": {
-      "status": 401
      }
     }
    ]

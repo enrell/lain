@@ -564,6 +564,144 @@ pub struct Sidecars {
     pub sidecars: Vec<Sidecar>,
 }
 
+// ---- subtitle providers (lain.subtitle@1, D-137) ----------------------------
+
+/// The OpenSubtitles.com provider kind.
+pub const SUBTITLE_OPENSUBTITLES: &str = "opensubtitles";
+
+/// One configured subtitle provider account. `api_key` and `password`
+/// are credentials: stored server-side, carried in contract input,
+/// never logged (`Debug` redacts them) and cleared by [`Self::public`].
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtitleProvider {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub kind: String,
+    /// Empty means the provider's public API.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub base_url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub api_key: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub username: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub password: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub priority: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub last_check_at: i64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub last_error: String,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
+impl SubtitleProvider {
+    /// The client-safe view: credentials cleared.
+    pub fn public(&self) -> SubtitleProvider {
+        SubtitleProvider { api_key: String::new(), password: String::new(), ..self.clone() }
+    }
+}
+
+impl std::fmt::Debug for SubtitleProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let redact = |s: &str| if s.is_empty() { "" } else { "<redacted>" };
+        f.debug_struct("SubtitleProvider")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("kind", &self.kind)
+            .field("base_url", &self.base_url)
+            .field("api_key", &redact(&self.api_key))
+            .field("username", &self.username)
+            .field("password", &redact(&self.password))
+            .field("enabled", &self.enabled)
+            .field("priority", &self.priority)
+            .finish_non_exhaustive()
+    }
+}
+
+/// One search (op `search`): by file hash and/or by title. Languages
+/// are ISO 639-2/T codes (D-071's form).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtitleSearchInput {
+    #[serde(default)]
+    pub provider: SubtitleProvider,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub hash: String,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub size: i64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub query: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub movie: bool,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub year: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub season: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub episode: i64,
+    #[serde(default)]
+    pub languages: Vec<String>,
+}
+
+/// One subtitle a provider offers.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtitleCandidate {
+    pub provider_id: String,
+    pub file_id: String,
+    /// ISO 639-2/T.
+    pub language: String,
+    /// The provider's tag when it carries a region (`pt-BR`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub region: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub release: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub file_name: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hash_match: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hi: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub forced: bool,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub downloads: i64,
+    /// The provider's own numbering, when given.
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub season: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub episode: i64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtitleSearchOutput {
+    pub candidates: Vec<SubtitleCandidate>,
+}
+
+/// A download link request (op `download`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtitleDownloadInput {
+    #[serde(default)]
+    pub provider: SubtitleProvider,
+    #[serde(default)]
+    pub file_id: String,
+}
+
+/// A short-lived link the core fetches (D-150: at most 5 MiB).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubtitleDownloadOutput {
+    pub link: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub file_name: String,
+    /// Downloads left today; -1 = unknown.
+    pub remaining: i64,
+}
+
 /// A parsed release name (`lain.release.parse@1`). Zero numbers mean
 /// "not stated"; `episodes` lists every episode a pack covers and
 /// `absolute` marks absolute numbering (anime with no season marker).

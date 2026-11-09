@@ -19,7 +19,7 @@ type Jikan struct {
 }
 
 func NewJikan() *Jikan {
-	return &Jikan{BaseURL: "https://api.jikan.moe", http: newPoliteClient(400 * time.Millisecond)}
+	return &Jikan{BaseURL: baseURL("LAIN_METADATA_JIKAN_URL", "https://api.jikan.moe"), http: newPoliteClient(400 * time.Millisecond)}
 }
 
 func (j *Jikan) ID() string { return "lain-metadata-jikan" }

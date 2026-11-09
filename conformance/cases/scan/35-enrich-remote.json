@@ -1,0 +1,215 @@
+{
+ "tier": "v1",
+ "description": "Metadata from the network providers (Kitsu, AniList, Jikan, TVMaze) merged after the NFO provider, against recorded upstream answers: run.sh serves conformance/fixtures/upstream and points LAIN_METADATA_<NAME>_URL of both servers at it, so no case reaches the network. Needs the `upstream` variable (the fixture server's URL).",
+ "cases": [
+  {
+   "name": "the search binding names every provider again",
+   "requires": [
+    "scan_media",
+    "upstream"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/plugins/swap",
+      "auth": "admin",
+      "body": {
+       "capability": "lain.metadata.search@1",
+       "providers": [
+        "lain-metadata-nfo",
+        "lain-metadata-kitsu",
+        "lain-metadata-anilist",
+        "lain-metadata-jikan",
+        "lain-metadata-tvmaze"
+       ],
+       "generation": 0
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "generation": "$int",
+       "composition": "$array"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "one named provider without a hit",
+   "requires": [
+    "scan_media",
+    "upstream"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/catalog/{{show}}/enrich?provider=lain-metadata-kitsu",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "not-found: no metadata found"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "merge-many: a failing provider and an unrelated hit are skipped, the exact title wins",
+   "requires": [
+    "scan_media",
+    "upstream"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/catalog/{{show}}/enrich",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "item_id": "{{show}}",
+       "provider": "lain-metadata-tvmaze",
+       "remote_id": "9001",
+       "title": "Show Name",
+       "year": 2021,
+       "genres": [
+        "Drama",
+        "Mystery"
+       ],
+       "synopsis": "A keeper returns to the lighthouse.",
+       "poster": "https://static.example.invalid/o/9001.jpg",
+       "cover": "$absent",
+       "fetched_at": "$int"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{show}}/enrich",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "item_id": "{{show}}",
+       "provider": "lain-metadata-tvmaze",
+       "remote_id": "9001",
+       "title": "Show Name",
+       "year": 2021,
+       "genres": [
+        "Drama",
+        "Mystery"
+       ],
+       "synopsis": "A keeper returns to the lighthouse.",
+       "poster": "https://static.example.invalid/o/9001.jpg",
+       "cover": "$absent",
+       "fetched_at": "$int"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/enrichments?ids={{show}}",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "items": [
+        {
+         "item_id": "{{show}}",
+         "provider": "lain-metadata-tvmaze",
+         "remote_id": "9001",
+         "title": "Show Name",
+         "year": 2021,
+         "genres": [
+          "Drama",
+          "Mystery"
+         ],
+         "synopsis": "A keeper returns to the lighthouse.",
+         "poster": "https://static.example.invalid/o/9001.jpg",
+         "cover": "$absent",
+         "fetched_at": "$int"
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "movies stay offline-only",
+   "requires": [
+    "scan_media",
+    "upstream"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/catalog/{{akira}}/enrich",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "not-found: no metadata found"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "back to the NFO provider for the cases after this file",
+   "requires": [
+    "scan_media",
+    "upstream"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/catalog/{{show}}/enrich",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "status": "ok"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/plugins/swap",
+      "auth": "admin",
+      "body": {
+       "capability": "lain.metadata.search@1",
+       "providers": [
+        "lain-metadata-nfo"
+       ],
+       "generation": 0
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "generation": "$int",
+       "composition": "$array"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

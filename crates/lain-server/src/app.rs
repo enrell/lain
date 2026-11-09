@@ -38,24 +38,19 @@ pub const COMPOSITION_VERSION: u32 = 8;
 /// Built-in Go providers that `lain plugin-run` serves as components:
 /// a binding may name them before their manifest is installed (they
 /// answer `dependency-unavailable` until then). This is the strangler
-/// path: Go providers keep working under the Rust core. The network
-/// metadata providers stay here until the Rust server speaks HTTPS.
+/// path: Go providers keep working under the Rust core.
 pub const COMPONENT_SERVED: &[&str] = &[
     "lain-release-model",
     "lain-probe-ffprobe",
     "lain-playback-default",
     "lain-thumbnail-ffmpeg",
     "lain-transcode-ffmpeg",
-    "lain-metadata-kitsu",
-    "lain-metadata-anilist",
-    "lain-metadata-jikan",
-    "lain-metadata-tvmaze",
 ];
 
 /// The default composition: everything the Rust server serves
 /// in-process (catalog, userstate, catalog population, identification,
-/// metadata, theme, backup, comic pages); the network metadata
-/// providers are components.
+/// metadata with its network providers, subtitle providers, theme,
+/// backup, comic pages).
 pub fn default_composition() -> Composition {
     use lain_identify::{ANIME_ID, CAP_MEDIA_IDENTIFY, CAP_RELEASE_PARSE, COMIC_ID, GENERIC_ID, TOKENIZER_ID};
     use lain_metadata::{CAP_METADATA_ENRICH, CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, DEFAULT_PROVIDERS, ENRICH_ID};
@@ -82,6 +77,10 @@ pub fn default_composition() -> Composition {
     for (cap, b) in lain_watch::Watch::bindings() {
         bindings.insert(cap.into(), b);
     }
+    bindings.insert(
+        lain_subtitle::CAP_SUBTITLE.into(),
+        Binding::new(BindingMode::OrderedMany, &[lain_subtitle::OPENSUBTITLES_ID]),
+    );
     Composition { version: COMPOSITION_VERSION, bindings }
 }
 
@@ -104,6 +103,11 @@ pub struct Config {
     /// The Omarchy `colors.toml` the theme reads; `None` resolves
     /// `LAIN_OMARCHY_COLORS`, then the host's default location.
     pub theme_path: Option<PathBuf>,
+    /// Where the network metadata providers live (`LAIN_METADATA_*_URL`
+    /// in `lain-rs serve`).
+    pub metadata_endpoints: lain_metadata::Endpoints,
+    /// No outbound HTTP at all: remote providers fail at once (tests).
+    pub offline: bool,
 }
 
 impl Config {
@@ -117,6 +121,8 @@ impl Config {
             watch: true,
             watch_debounce: lain_ingest::DEFAULT_DEBOUNCE,
             theme_path: None,
+            metadata_endpoints: lain_metadata::Endpoints::public(),
+            offline: false,
         }
     }
 }
@@ -143,6 +149,8 @@ pub struct App {
     reload_debounce: Duration,
     pub theme_path: Option<PathBuf>,
     pub store: Arc<Store>,
+    /// The outbound HTTP client every network provider shares (D-200).
+    pub http: lain_http::Client,
     secret: Vec<u8>,
     pub registry: Arc<Registry>,
     pub libraries: Libraries,
@@ -207,6 +215,16 @@ impl App {
         });
         registry.register(Arc::new(lain_ingest::Runner::new(&registry, Some(progress))));
         registry.register(Arc::new(lain_metadata::Nfo));
+        let http = lain_http::Client::new(lain_http::Config {
+            user_agent: format!("lain/{}", cfg.version),
+            offline: cfg.offline,
+            ..lain_http::Config::default()
+        })
+        .map_err(|e| e.to_string())?;
+        for p in lain_metadata::Remote::new(http.clone(), cfg.metadata_endpoints.clone()).providers() {
+            registry.register(p);
+        }
+        registry.register(Arc::new(lain_subtitle::OpenSubtitles::new(http.clone())));
         registry.register(Arc::new(lain_metadata::Enricher::new(&registry, store.clone())));
         registry.register(Arc::new(theme_mod::Theme));
         registry.register(Arc::new(backup_mod::Bundle));
@@ -236,6 +254,7 @@ impl App {
             roots,
             unlocks: Unlocks::default(),
             store,
+            http,
             secret,
             registry,
             modules: RwLock::new(ModuleSet::new(modules::builtin())),

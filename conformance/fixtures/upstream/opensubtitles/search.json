@@ -1,0 +1,61 @@
+{
+ "total_pages": 1,
+ "total_count": 3,
+ "per_page": 60,
+ "page": 1,
+ "data": [
+  {
+   "id": "1",
+   "type": "subtitle",
+   "attributes": {
+    "language": "en",
+    "download_count": 900,
+    "hearing_impaired": false,
+    "foreign_parts_only": false,
+    "release": "[Fansub-A] Show - 05 [1080p]",
+    "moviehash_match": true,
+    "feature_details": {
+     "title": "Show",
+     "season_number": 1,
+     "episode_number": 5
+    },
+    "files": [
+     {
+      "file_id": 111,
+      "file_name": "Show.05.en.srt"
+     }
+    ]
+   }
+  },
+  {
+   "id": "2",
+   "type": "subtitle",
+   "attributes": {
+    "language": "pt-BR",
+    "download_count": 40,
+    "hearing_impaired": true,
+    "foreign_parts_only": false,
+    "release": "Show S01E05 WEB",
+    "feature_details": {
+     "title": "Show",
+     "season_number": 1,
+     "episode_number": 5
+    },
+    "files": [
+     {
+      "file_id": 222,
+      "file_name": "Show.S01E05.pt-BR.srt"
+     }
+    ]
+   }
+  },
+  {
+   "id": "3",
+   "type": "subtitle",
+   "attributes": {
+    "language": "xx",
+    "files": []
+   }
+  }
+ ]
+}

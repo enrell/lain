@@ -41,20 +41,23 @@
      "req": {
       "method": "POST",
       "path": "/api/catalog/{{f1}}/enrich",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
       "body": {
        "error": "admin required"
       }
-     },
-     "expect": {
-      "status": 403
      }
     },
     {
      "req": {
       "method": "POST",
       "path": "/api/catalog/{{f1}}/enrich",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "item_id": "{{f1}}",
        "provider": "lain-metadata-nfo",
@@ -70,16 +73,16 @@
        "cover": "https://example.invalid/fanart.jpg",
        "fetched_at": "$int"
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{f1}}/enrich",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "item_id": "{{f1}}",
        "provider": "lain-metadata-nfo",
@@ -95,22 +98,19 @@
        "cover": "https://example.invalid/fanart.jpg",
        "fetched_at": "$int"
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "POST",
       "path": "/api/catalog/no-such-item/enrich",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
       "body": {
        "error": "unknown item"
       }
-     },
-     "expect": {
-      "status": 404
      }
     }
    ]
@@ -125,26 +125,26 @@
      "req": {
       "method": "POST",
       "path": "/api/catalog/{{akira}}/enrich",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
       "body": {
        "error": "not-found: no metadata found"
       }
-     },
-     "expect": {
-      "status": 404
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{akira}}/enrich",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 404,
       "body": {
        "error": "not-found: not enriched"
       }
-     },
-     "expect": {
-      "status": 404
      }
     }
    ]
@@ -159,7 +159,10 @@
      "req": {
       "method": "GET",
       "path": "/api/enrichments?ids={{f1}},%20{{akira}},,no-such-item",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "items": [
         {
@@ -179,60 +182,57 @@
         }
        ]
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/enrichments?ids=no-such-item",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "items": []
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/enrichments",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 400,
       "body": {
        "error": "ids required"
       }
-     },
-     "expect": {
-      "status": 400
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/enrichments?ids=%20",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 400,
       "body": {
        "error": "ids required"
       }
-     },
-     "expect": {
-      "status": 400
      }
     },
     {
      "req": {
       "method": "GET",
-      "path": "/api/enrichments?ids={{f1}}",
+      "path": "/api/enrichments?ids={{f1}}"
+     },
+     "expect": {
+      "status": 401,
       "body": {
        "error": "unauthorized"
       }
-     },
-     "expect": {
-      "status": 401
      }
     }
    ]
@@ -247,52 +247,52 @@
      "req": {
       "method": "DELETE",
       "path": "/api/catalog/{{f1}}/enrich",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
       "body": {
        "error": "admin required"
       }
-     },
-     "expect": {
-      "status": 403
      }
     },
     {
      "req": {
       "method": "DELETE",
       "path": "/api/catalog/{{f1}}/enrich",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "status": "ok"
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{f1}}/enrich",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 404,
       "body": {
        "error": "not-found: not enriched"
       }
-     },
-     "expect": {
-      "status": 404
      }
     },
     {
      "req": {
       "method": "DELETE",
       "path": "/api/catalog/{{f1}}/enrich",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "status": "ok"
       }
-     },
-     "expect": {
-      "status": 200
      }
     }
    ]
