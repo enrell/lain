@@ -1,0 +1,57 @@
+{
+  "tier": "v1",
+  "description": "GET /api/items/{id}/playback (direct vs transcode from the probe and the client), GET /api/playback/options, per-user limits on the plan.",
+  "cases": [
+    {"name": "a web-safe MP4 plays directly in a browser, with its streams and length", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/playback?client=web", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"mode": "direct", "asset": "asset:{{w_alpha}}", "available": true, "duration_sec": "$number",
+         "streams": {"$contains": [{"index": 0, "type": "video", "codec": "h264", "pixel_format": "yuv420p", "width": 320, "height": 240, "$open": true},
+                                   {"index": 1, "type": "audio", "codec": "aac", "$open": true}]}}}}
+    ]},
+    {"name": "mpv and desktop clients never probe", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/playback?client=mpv", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"mode": "direct", "asset": "asset:{{w_beta}}", "available": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/playback?client=lain-desktop", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"mode": "direct", "asset": "asset:{{w_beta}}", "available": true}}}
+    ]},
+    {"name": "Matroska needs a transcode session, named but not started", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/playback?client=web", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"mode": "transcode", "asset": "asset:{{w_beta}}", "available": true, "state": "idle",
+         "session": "$nonempty", "profile": "$prefix:web-mp4-v3-", "duration_sec": "$number",
+         "streams": {"$contains": [{"index": 2, "type": "subtitle", "codec": "subrip", "convertible": true, "$open": true}]}}}}
+    ]},
+    {"name": "a client that claims Matroska plays it directly", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/playback?client=web&caps=mkv,mkv/h264&caps=mkv/aac", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"mode": "direct", "available": true, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/playback?client=web&caps=", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"mode": "transcode", "$open": true}}}
+    ]},
+    {"name": "a bitrate cap turns direct play into a transcode", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "PATCH", "path": "/api/users/{{w_bob_id}}", "auth": "w_admin", "body": {"playback": {"max_bitrate_kbps": 50}}}, "expect": {"status": 200}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/playback?client=web", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"mode": "transcode", "available": true, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/transcode?token={{w_bob}}"},
+       "expect": {"status": 403, "body": {"error": "this account must use the session API for transcoding"}}}
+    ]},
+    {"name": "an account without transcoding gets an honest refusal", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "PATCH", "path": "/api/users/{{w_bob_id}}", "auth": "w_admin", "body": {"playback": {"allow_video_transcode": false, "allow_remux": false}}}, "expect": {"status": 200}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/playback?client=web", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"mode": "transcode-required", "available": false, "reason": "transcoding is disabled for this user", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode?token={{w_bob}}"},
+       "expect": {"status": 403, "body": {"error": "transcoding is disabled for this user"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"delivery": "progressive"}},
+       "expect": {"status": 403, "body": {"error": "remuxing is disabled for this user", "code": "forbidden"}}},
+      {"req": {"method": "PATCH", "path": "/api/users/{{w_bob_id}}", "auth": "w_admin", "body": {"playback": {}}}, "expect": {"status": 200}}
+    ]},
+    {"name": "unknown items and missing auth", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/no-such-item/playback", "auth": "w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/playback"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]},
+    {"name": "the player's quality menu", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "GET", "path": "/api/playback/options", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"default_delivery": "hls", "deliveries": ["hls", "progressive"],
+         "qualities": {"$contains": [{"name": "1080p", "max_width": 1920, "max_height": 1080, "bitrate_kbps": 8000}], "$len": 5}}}},
+      {"req": {"method": "GET", "path": "/api/playback/options"}, "expect": {"status": 401}}
+    ]}
+  ]
+}

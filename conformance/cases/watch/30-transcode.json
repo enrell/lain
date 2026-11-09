@@ -1,0 +1,79 @@
+{
+  "tier": "v1",
+  "description": "Transcode sessions: progressive MP4 with Range, HLS with signed segment URIs, cancel, the synchronous v1 path, the operator's session list.",
+  "cases": [
+    {"name": "a progressive session remuxes and serves a ranged MP4", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"delivery": "progressive"}},
+       "expect": {"status_not": 400, "body": {"session": "$nonempty", "delivery": "progressive", "profile": "$prefix:web-mp4-v3-", "$open": true}}, "save": {"prog": "/session"}},
+      {"wait_for": {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status?session={{prog}}", "auth": "w_bob"},
+        "expect": {"status": 200, "body": {"state": "ready", "playable": true, "method": "remux", "video_direct": true, "audio_direct": true,
+          "path": "$absent", "playlist_path": "$absent", "$open": true}}}, "timeout_ms": 30000},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode?session={{prog}}", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "video/mp4", "accept-ranges": "bytes"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode?session={{prog}}", "auth": "query:w_bob", "headers": {"Range": "bytes=0-7"}},
+       "expect": {"status": 206, "headers": {"content-length": "8"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"delivery": "progressive"}},
+       "expect": {"status": 200, "body": {"session": "{{prog}}", "state": "ready", "cached": true, "$open": true}}}
+    ]},
+    {"name": "session questions need a session", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status", "auth": "w_bob"},
+       "expect": {"status": 400, "body": {"error": "session required", "code": "invalid-message"}}},
+      {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob"},
+       "expect": {"status": 400, "body": {"error": "session required", "code": "invalid-message"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status?session=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "auth": "w_bob"},
+       "expect": {"status": 404, "body": {"error": "unknown transcode session", "code": "not-found"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"quality": "999p"}},
+       "expect": {"status": 400, "body": {"error": "unknown quality \"999p\"", "code": "invalid-message"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"video_codec": "hevc"}},
+       "expect": {"status": 400, "body": {"error": "HEVC encoding is not allowed by server settings", "code": "invalid-message"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"audio_stream": 2}},
+       "expect": {"status": 400, "body": {"error": "audio_stream is not an audio track", "code": "invalid-message"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "body": {}}, "expect": {"status": 401}}
+    ]},
+    {"name": "cancelling drops the session", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode?session={{prog}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"session": "{{prog}}", "state": "idle", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status?session={{prog}}", "auth": "w_bob"},
+       "expect": {"status": 404, "body": {"code": "not-found", "$open": true}}}
+    ]},
+    {"name": "an HLS session signs every media URI of its playlist", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"delivery": "hls"}},
+       "expect": {"status_not": 400, "body": {"session": "$nonempty", "delivery": "hls", "$open": true}}, "save": {"hls": "/session"}},
+      {"wait_for": {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status?session={{hls}}", "auth": "w_bob"},
+        "expect": {"status": 200, "body": {"state": "ready", "playable": true, "delivery": "hls", "$open": true}}}, "timeout_ms": 30000},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/hls/index.m3u8?session={{hls}}", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "application/vnd.apple.mpegurl", "cache-control": "no-store"},
+         "body": "$substr:init.mp4?session={{hls}}&token="}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/hls/index.m3u8?session={{hls}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": "$substr:seg00000.m4s?session={{hls}}&token={{w_bob}}"}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/hls/init.mp4?session={{hls}}", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "video/mp4", "cache-control": "private, max-age=3600"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/hls/seg00000.m4s?session={{hls}}", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "video/iso.segment"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/hls/init.mp4?session={{hls}}"},
+       "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/hls/raw.m3u8?session={{hls}}", "auth": "query:w_bob"},
+       "expect": {"status": 404, "body": {"error": "unknown hls file"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/hls/seg99999.m4s?session={{hls}}", "auth": "query:w_bob"},
+       "expect": {"status": 404, "body": {"error": "unknown hls file"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/hls/index.m3u8", "auth": "query:w_bob"},
+       "expect": {"status": 400, "body": {"error": "session required", "code": "invalid-message"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode?session={{hls}}", "auth": "query:w_bob"},
+       "expect": {"status": 409, "body": {"error": "session uses HLS delivery", "code": "invalid-message"}}}
+    ]},
+    {"name": "the operator sees and stops sessions", "requires": ["hls"], "steps": [
+      {"req": {"method": "GET", "path": "/api/admin/transcodes", "auth": "w_admin"},
+       "expect": {"status": 200, "body": {"sessions": {"$contains": [{"session": "{{hls}}", "state": "ready", "user_id": "{{w_bob_id}}", "$open": true}]}}}},
+      {"req": {"method": "GET", "path": "/api/admin/transcodes", "auth": "w_bob"}, "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "DELETE", "path": "/api/admin/transcodes/{{hls}}", "auth": "w_admin"},
+       "expect": {"status": 200, "body": {"session": "{{hls}}", "state": "idle", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/hls/index.m3u8?session={{hls}}", "auth": "query:w_bob"},
+       "expect": {"status": 404, "body": {"code": "not-found", "$open": true}}}
+    ]},
+    {"name": "without a session the v1 path prepares a whole MP4", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "video/mp4", "accept-ranges": "bytes"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]}
+  ]
+}
