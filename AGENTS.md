@@ -93,6 +93,16 @@ documents both stacks until those are ported.
     eviction, on redb), progress sync with an offline queue and conflict
     rules (`sync.rs`), and the event stream. No GUI code; the public
     surface stays UniFFI-friendly (owned types, object-safe traits).
+  - `lain-probe` — ffprobe as an external process (D-190): one
+    `-show_format -show_streams` run parsed into bounded stream facts
+    (`RawReport`, the wire's `MediaInfo`), plus the deadline-bounded
+    tool runner and PATH lookup the watch module shares. Small on
+    purpose: other modules (subtitles, catalog) read tracks through it.
+  - `lain-watch` — the watch module (D-190..D-194): playback planner,
+    transcoder (v1 + v3 sessions, HLS, throttle, idle stop, LRU cache)
+    over external ffmpeg on its own threads, thumbnails, local playback
+    (mpv/VLC) and the transcode settings, each also an in-process
+    provider under its Go id.
   - `conformance/runner` — the conformance runner (`lain-conformance`).
 - Dependencies: the D-172 baseline plus D-173 (argon2 per D-177), versions pinned with `=`
   in the workspace `Cargo.toml`, `Cargo.lock` committed. A crate outside
@@ -127,7 +137,12 @@ documents both stacks until those are ported.
   - `getrandom` (D-173) — OS randomness for the token secret and the
     token `jti`.
   - `libc` (D-179, already in the tree on Unix) — `statvfs` for the
-    client offline store's free-space floor, Unix only.
+    client offline store's free-space floor, and (D-190) `kill(2)`
+    with SIGSTOP/SIGCONT for transcode throttling in `lain-watch`;
+    Unix only (elsewhere ffmpeg simply never pauses, like Go).
+  - `sha2` and `getrandom` are also used by `lain-watch` (session and
+    cache keys) and `lain-server` (multipart range boundaries); no
+    crate was added for the watch module (D-190).
   - `miniz_oxide` (D-195, pure Rust, brings only `adler2`) — raw
     DEFLATE for CBZ pages; `default-features = false`, `with-alloc`.
     The ZIP container, CRC-32, image headers, `ComicInfo.xml` and the
@@ -217,6 +232,12 @@ per refactor/migration: differential oracle runs
   `exec.LookPath("ffmpeg")`. Builds are
   pure Go: `.mise.toml` sets `CGO_ENABLED=0`, and only the race
   detector re-enables cgo (`just test-race`, CI).
+- **Real-ffmpeg tests in Rust** — `lain-watch` unit tests use injected
+  probe/capability/run hooks and need no ffmpeg; the server's
+  `tests/watch.rs` and the conformance watch suite run the real
+  ffmpeg/ffprobe on clips made with lavfi (`conformance/make-clips.sh`;
+  nothing is committed). They skip without ffmpeg unless
+  `LAIN_REQUIRE_FFMPEG=1`, which CI sets on all three OSes.
 - **Contract tests** — `internal/testutil/contract` runs one shared
   harness against every `core.Provider`: non-empty ID/capabilities,
   `Health` never panics, unknown capabilities and wrong input types
