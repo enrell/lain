@@ -9,7 +9,7 @@
     ]},
     {"name": "a rooted library over the fixture catalog", "requires": ["media_root"], "steps": [
       {"req": {"method": "POST", "path": "/api/libraries", "auth": "a0", "body": {"name": "Anime", "root": "media", "path": "Frieren"}},
-       "expect": {"status": 201, "body": {"id": "lib-4afef930", "root": "media", "root_path": "Frieren", "$open": true}}, "save": {"lib_id": "/id"}},
+       "expect": {"status": 201, "body": {"id": "lib-e8bb66fd", "root": "media", "root_path": "Frieren", "$open": true}}, "save": {"lib_id": "/id"}},
       {"req": {"method": "GET", "path": "/api/catalog", "auth": "a0"}, "expect": {"status": 200, "body": {"total": 2, "$open": true}},
        "save": {"item1": "/items/0/id", "item2": "/items/1/id"}},
       {"req": {"method": "GET", "path": "/api/catalog/{{item1}}", "auth": "a0"},

@@ -122,16 +122,9 @@ pub struct App {
 }
 
 impl App {
-    /// Opens the data dir and builds the server state. A Go data dir is
-    /// refused, so lain-rs never mixes its files into one (D-171).
+    /// Opens the data dir and builds the server state.
     pub fn open(cfg: Config) -> Result<Arc<App>, String> {
         let dir = &cfg.data_dir;
-        if dir.join("lain.db").exists() {
-            return Err(format!(
-                "{} holds a Go server store (lain.db); lain-rs uses its own data dir (default lain-rs)",
-                dir.display()
-            ));
-        }
         let store = Arc::new(Store::open(dir).map_err(|e| e.to_string())?);
         let secret = lain_auth::load_or_create_secret(&store).map_err(|e| e.to_string())?;
 

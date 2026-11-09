@@ -361,14 +361,14 @@ components and clients are already mostly Rust: animesubs, animedb, zantetsu and
 and the server gets fine-grained control of memory and resources without a GC.
 Go is already memory-safe; the gain is mainly the shared ecosystem and the
 resource control. The cost is a rewrite of ~79k lines, so the migration is
-incremental and the Go server is never switched off before its replacement is
-proven.
+incremental. No Go server runs anywhere (D-178), so there is nothing to keep
+alive or protect while it happens.
 
 - **Strangler migration.**
   - A Cargo workspace (`crates/`) lives in this repo next to the Go code until
-    cutover, so the decision log, contracts and docs stay in one place.
-  - The Go server stays the production server until the Rust one passes the
-    conformance suite and the owner has used it daily.
+    Go is removed, so the decision log, contracts and docs stay in one place.
+  - The Go code is the reference implementation the conformance suite checks
+    the API against, and the source of the modules still to port.
 - **Contracts are the spec.**
   - Before porting, freeze today's behavior into a **language-neutral
     conformance suite**: HTTP-level tests for every `/api/*` route that clients
@@ -376,9 +376,9 @@ proven.
     `lain.catalog-export` documents.
   - Both servers run the same suite, and a route moves only when the Rust side
     passes it.
-- **Components first.** The component protocol is language-neutral, so new
-  providers are written in Rust as components and run under the Go server today.
-  They move in-process when the Rust core lands, with no rewrite.
+- **Components first.** The component protocol is language-neutral, so Go
+  providers (`lain plugin-run`) run as components under the Rust host until
+  they are ported, and Rust components move in-process with no rewrite.
 - **Order:**
   1. conformance suite;
   2. Rust core (registry and composition, the component host, gateway and auth,
@@ -386,12 +386,12 @@ proven.
   3. the P1 features, built directly in Rust and not first in Go;
   4. modules one by one: watch, read, acquire (including the in-house
      BitTorrent engine, kept in-house), subtitles, lists, social;
-  5. cutover;
-  6. Go removed.
-- **Data (D-177):** no migration. Nobody runs lain yet, so the Rust server
-  starts from an empty data dir of its own (`lain-rs`, port 9361 until cutover);
-  there is no importer of the Go store, Go tokens or Go password hashes. The
-  catalog moves between lain-rs data dirs as `lain.catalog-export@3`.
+  5. Go removed (no cutover step: lain-rs already uses the canonical data dir
+     and port, D-178).
+- **Data (D-177, D-178):** no migration. Nobody runs lain yet, so the Rust
+  server starts from an empty canonical data dir (`lain`, port 9360); there is
+  no importer of the Go store, Go tokens or Go password hashes. The catalog
+  moves between data dirs as `lain.catalog-export@3`.
 - **Web SPA:** unchanged; the Rust server embeds and serves the same build.
 - **Dependency policy for Rust** (replaces D-001/D-002 for the Rust code, and
   needs the owner's approval of the list, **[owner]**):
@@ -414,8 +414,8 @@ proven.
 - **Rules that carry over unchanged:** plugin boundaries, "media bytes never
   enter a plugin call", catalog/userstate separation, keyboard-first UI rules,
   English prose.
-- **`AGENTS.md`'s stack section is rewritten when the Rust core lands.** Until
-  cutover it documents both stacks.
+- **`AGENTS.md`'s stack section is rewritten when Go is removed.** Until then
+  it documents both stacks.
 
 ## 12. Open questions for the owner
 
