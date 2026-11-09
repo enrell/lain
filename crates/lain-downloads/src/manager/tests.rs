@@ -317,7 +317,7 @@ fn settings_persist() {
     let m = open(&data, default_settings(&data));
     assert_eq!(m.settings().limits.max_bytes, DEFAULT_MAX_BYTES);
     let want = DownloadSettings {
-        dir: "/srv/dl".into(),
+        dir: data.join("srv-dl").to_string_lossy().into(),
         limits: Limits { max_bytes: 1 << 40, min_free_bytes: 1 << 30 },
         concurrency: 3,
         keep_finished_days: 7,
@@ -331,6 +331,7 @@ fn settings_persist() {
 #[test]
 fn old_settings_gain_retry_default() {
     let data = dir("old");
+    let srv = data.join("srv-dl").to_string_lossy().into_owned();
     {
         let store = Store::open(&data).unwrap();
         store
@@ -338,14 +339,16 @@ fn old_settings_gain_retry_default() {
                 tx.put(
                     Bucket::Downloads,
                     KEY_SETTINGS,
-                    br#"{"dir":"/srv/dl","max_bytes":1,"min_free_bytes":0,"concurrency":1,"keep_finished_days":0}"#,
+                    serde_json::json!({"dir": srv, "max_bytes": 1, "min_free_bytes": 0, "concurrency": 1, "keep_finished_days": 0})
+                        .to_string()
+                        .as_bytes(),
                 )
             })
             .unwrap();
     }
     let m = open(&data, default_settings(&data));
     let s = m.settings();
-    assert_eq!((s.max_retries, s.dir.as_str(), s.limits.max_bytes), (DEFAULT_MAX_RETRIES, "/srv/dl", 1));
+    assert_eq!((s.max_retries, s.dir.as_str(), s.limits.max_bytes), (DEFAULT_MAX_RETRIES, srv.as_str(), 1));
 }
 
 #[test]

@@ -248,9 +248,11 @@ fn subtitles_follow_a_monitored_import() {
     let rep = m.search_monitored(&mo.id).unwrap();
     assert_eq!(rep.grabbed.len(), 1);
     wait_grab(&m, &rep.grabbed[0], &[GRAB_DONE]);
-    let want = Path::new(&w.lib.path).join("SHOW/[Fansub-A] SHOW - 01.en.srt");
+    // Both episodes' sidecars, from the pass that follows the import.
+    let show = Path::new(&w.lib.path).join("SHOW");
+    let want = [show.join("[Fansub-A] SHOW - 01.en.srt"), show.join("[Fansub-A] SHOW - 02.en.srt")];
     let deadline = Instant::now() + Duration::from_secs(15);
-    while !want.exists() {
+    while !want.iter().all(|p| p.exists()) || m.subtitle_ledger().len() < 2 {
         assert!(Instant::now() < deadline, "the subtitle never arrived");
         std::thread::sleep(Duration::from_millis(50));
     }
