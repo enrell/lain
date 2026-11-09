@@ -79,11 +79,15 @@ impl ExtMpv {
         // `--` so a URL can never be read as an option.
         cmd.arg("--").arg(&o.url).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         let child = cmd.spawn().map_err(|e| format!("could not start mpv ({e}); install mpv or set LAIN_MPV"))?;
+        Self::attach(child, socket)
+    }
+
+    /// Connects to the IPC socket of a started player process (waits up
+    /// to 5 s for it to appear) and starts observing its properties.
+    pub fn attach(child: Child, socket: PathBuf) -> Result<ExtMpv, String> {
         let state = Arc::new(Mutex::new(PlayerState { volume: 100., ..Default::default() }));
         let me =
             ExtMpv { state: state.clone(), writer: Mutex::new(None), child: Mutex::new(child), socket: socket.clone() };
-
-        // The socket appears once mpv is up.
         let deadline = Instant::now() + Duration::from_secs(5);
         let stream = loop {
             match UnixStream::connect(&socket) {
@@ -224,6 +228,55 @@ impl Drop for ExtMpv {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A stand-in for mpv's IPC server: it records the commands it gets
+    /// and answers with property changes, then closes like mpv on quit.
+    #[test]
+    fn session_follows_ipc_events_and_sends_commands() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::os::unix::net::UnixListener;
+        let sock = std::env::temp_dir().join(format!("lain-ipc-test-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&sock);
+        let listener = UnixListener::bind(&sock).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let server = std::thread::spawn(move || {
+            let (s, _) = listener.accept().unwrap();
+            let mut w = s.try_clone().unwrap();
+            let events = [
+                r#"{"event":"property-change","id":2,"name":"duration","data":1440.5}"#,
+                r#"{"event":"property-change","id":1,"name":"time-pos","data":61.25}"#,
+                r#"{"event":"property-change","id":3,"name":"pause","data":true}"#,
+                r#"{"event":"file-loaded"}"#,
+            ];
+            for e in events {
+                writeln!(w, "{e}").unwrap();
+            }
+            for line in BufReader::new(s).lines() {
+                let line = line.unwrap();
+                let quit = line.contains("\"quit\"");
+                tx.send(line).unwrap();
+                if quit {
+                    writeln!(w, r#"{{"event":"shutdown"}}"#).unwrap();
+                    break;
+                }
+            }
+        });
+        let child = Command::new("sleep").arg("30").spawn().unwrap();
+        let m = ExtMpv::attach(child, sock.clone()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while m.snapshot().time == 0. && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let st = m.snapshot();
+        assert_eq!((st.time, st.duration, st.paused, st.loaded), (61.25, 1440.5, true, true));
+        m.command(&["seek", "5", "relative"]);
+        drop(m); // sends quit, kills the stand-in process
+        server.join().unwrap();
+        let got: Vec<String> = rx.try_iter().collect();
+        assert!(got.iter().any(|l| l.contains(r#""observe_property",1,"time-pos""#)), "{got:?}");
+        assert!(got.iter().any(|l| l.contains(r#"["seek","5","relative"]"#)), "{got:?}");
+        assert!(!sock.exists());
+    }
 
     #[test]
     fn tracks_parse_from_ipc_json() {
