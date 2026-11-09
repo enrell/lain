@@ -1,5 +1,4 @@
-//! `lain-rs`: the Rust lain server during the strangler migration
-//! (D-171). The Go `lain` stays the production server.
+//! `lain-rs`: the lain server (D-171).
 
 use std::path::{Path, PathBuf};
 
@@ -9,7 +8,7 @@ use lain_server::datadir::{Os, default_data_dir};
 use lain_server::logging::{self, Sink};
 use lain_server::service::{self, Action, Host, Spec};
 
-const DEFAULT_PORT: &str = "9361";
+const DEFAULT_PORT: &str = "9360";
 
 fn usage() {
     eprintln!(
@@ -19,12 +18,12 @@ fn usage() {
   export    write the catalog as lain.catalog-export@3 (--data-dir, --out FILE; default stdout)
   import    replace the catalog with a lain.catalog-export@3 document (--data-dir, --in FILE)
   service   install|uninstall|start|stop|status|logs the background service
-            (--name lain-rs, --system, --linger, --port, --bind, --data-dir, --dry-run; logs: --follow, --lines N)
+            (--name lain, --system, --linger, --port, --bind, --data-dir, --dry-run; logs: --follow, --lines N)
   version   print version
 
 The data dir is --data-dir, else $LAIN_HOME, else the per-OS default
-(~/.local/share/lain-rs, ~/Library/Application Support/lain-rs,
-%LOCALAPPDATA%\\lain-rs)."
+(~/.local/share/lain, ~/Library/Application Support/lain,
+%LOCALAPPDATA%\\lain)."
     );
 }
 
@@ -151,7 +150,7 @@ fn cmd_service(args: &[String]) -> Result<(), String> {
         .ok_or_else(|| format!("unknown service action {action_name}"))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let spec = Spec {
-        name: flag(args, "name").unwrap_or_else(|| "lain-rs".into()),
+        name: flag(args, "name").unwrap_or_else(|| "lain".into()),
         exe: exe.canonicalize().unwrap_or(exe),
         data_dir: absolute(&data_dir(args)?),
         port: flag(args, "port").unwrap_or_else(|| DEFAULT_PORT.into()).parse().map_err(|_| "bad --port")?,

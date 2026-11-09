@@ -172,7 +172,7 @@ pub fn systemd_unit(spec: &Spec, host: &Host) -> String {
     let home = format!("LAIN_HOME={}", spec.data_dir.to_string_lossy());
     let mut s = String::new();
     s.push_str("[Unit]\n");
-    s.push_str("Description=Lain media server (lain-rs)\n");
+    s.push_str("Description=Lain media server\n");
     s.push_str("Documentation=https://github.com/enrell/lain\n");
     s.push_str("After=network-online.target\n");
     s.push_str("Wants=network-online.target\n\n");
@@ -282,7 +282,7 @@ pub fn task_xml(spec: &Spec, host: &Host) -> String {
     let mut s = String::new();
     s.push_str("<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n");
     s.push_str("<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\n");
-    s.push_str("  <RegistrationInfo>\n    <Description>Lain media server (lain-rs)</Description>\n    <URI>\\");
+    s.push_str("  <RegistrationInfo>\n    <Description>Lain media server</Description>\n    <URI>\\");
     s.push_str(&xml(&spec.name));
     s.push_str("</URI>\n  </RegistrationInfo>\n");
     s.push_str("  <Triggers>\n");
@@ -578,10 +578,10 @@ mod tests {
 
     fn spec(system: bool) -> Spec {
         Spec {
-            name: "lain-rs".into(),
+            name: "lain".into(),
             exe: PathBuf::from("/opt/lain/bin/lain-rs"),
-            data_dir: PathBuf::from("/home/u/.local/share/lain-rs"),
-            port: 9361,
+            data_dir: PathBuf::from("/home/u/.local/share/lain"),
+            port: 9360,
             bind: "127.0.0.1".into(),
             system,
             linger: false,
@@ -601,8 +601,8 @@ mod tests {
     #[test]
     fn systemd_user_unit() {
         let u = systemd_unit(&spec(false), &host());
-        assert!(u.contains("ExecStart=/opt/lain/bin/lain-rs serve --data-dir /home/u/.local/share/lain-rs --port 9361 --bind 127.0.0.1\n"), "{u}");
-        assert!(u.contains("Environment=LAIN_HOME=/home/u/.local/share/lain-rs\n"));
+        assert!(u.contains("ExecStart=/opt/lain/bin/lain-rs serve --data-dir /home/u/.local/share/lain --port 9360 --bind 127.0.0.1\n"), "{u}");
+        assert!(u.contains("Environment=LAIN_HOME=/home/u/.local/share/lain\n"));
         assert!(u.contains("Restart=on-failure\n"));
         assert!(u.contains("WantedBy=default.target\n"));
         assert!(!u.contains("User="));
@@ -619,9 +619,9 @@ mod tests {
     fn linux_plans() {
         let h = host();
         let p = plan(Os::Linux, &Action::Install, &spec(false), &h).unwrap();
-        assert_eq!(p.write[0].0, PathBuf::from("/home/u/.config/systemd/user/lain-rs.service"));
+        assert_eq!(p.write[0].0, PathBuf::from("/home/u/.config/systemd/user/lain.service"));
         let argv: Vec<String> = p.commands.iter().map(|c| c.argv.join(" ")).collect();
-        assert_eq!(argv, vec!["systemctl --user daemon-reload", "systemctl --user enable lain-rs.service"]);
+        assert_eq!(argv, vec!["systemctl --user daemon-reload", "systemctl --user enable lain.service"]);
         let mut linger = spec(false);
         linger.linger = true;
         assert!(
@@ -632,33 +632,30 @@ mod tests {
                 .any(|c| c.argv == ["loginctl", "enable-linger", "u"])
         );
         let p = plan(Os::Linux, &Action::Install, &spec(true), &h).unwrap();
-        assert_eq!(p.write[0].0, PathBuf::from("/etc/systemd/system/lain-rs.service"));
-        assert_eq!(p.commands[1].argv, ["systemctl", "enable", "lain-rs.service"]);
+        assert_eq!(p.write[0].0, PathBuf::from("/etc/systemd/system/lain.service"));
+        assert_eq!(p.commands[1].argv, ["systemctl", "enable", "lain.service"]);
         let p = plan(Os::Linux, &Action::Uninstall, &spec(false), &h).unwrap();
         assert!(
             p.commands[0].allow_fail
-                && p.commands[0].argv == ["systemctl", "--user", "disable", "--now", "lain-rs.service"]
+                && p.commands[0].argv == ["systemctl", "--user", "disable", "--now", "lain.service"]
         );
-        assert_eq!(p.remove, vec![PathBuf::from("/home/u/.config/systemd/user/lain-rs.service")]);
+        assert_eq!(p.remove, vec![PathBuf::from("/home/u/.config/systemd/user/lain.service")]);
         assert_eq!(p.post[0].argv, ["systemctl", "--user", "daemon-reload"], "reload after the unit is gone");
         let p = plan(Os::Linux, &Action::Logs { follow: true, lines: 50 }, &spec(false), &h).unwrap();
-        assert_eq!(
-            p.commands[0].argv,
-            ["journalctl", "--user", "-u", "lain-rs.service", "-n", "50", "--no-pager", "-f"]
-        );
+        assert_eq!(p.commands[0].argv, ["journalctl", "--user", "-u", "lain.service", "-n", "50", "--no-pager", "-f"]);
         let x = Host { xdg_config: Some(PathBuf::from("/cfg")), ..host() };
-        assert_eq!(unit_path(&spec(false), &x), PathBuf::from("/cfg/systemd/user/lain-rs.service"));
+        assert_eq!(unit_path(&spec(false), &x), PathBuf::from("/cfg/systemd/user/lain.service"));
         assert!(plan(Os::Linux, &Action::Start, &Spec { name: "a b".into(), ..spec(false) }, &h).is_err());
     }
 
     #[test]
     fn launchd_agent() {
         let p = launchd_plist(&spec(false));
-        assert!(p.contains("<key>Label</key>\n  <string>dev.lain.lain-rs</string>"));
+        assert!(p.contains("<key>Label</key>\n  <string>dev.lain.lain</string>"));
         assert!(p.contains(
             "    <string>/opt/lain/bin/lain-rs</string>\n    <string>serve</string>\n    <string>--data-dir</string>"
         ));
-        assert!(p.contains("<key>LAIN_HOME</key>\n    <string>/home/u/.local/share/lain-rs</string>"));
+        assert!(p.contains("<key>LAIN_HOME</key>\n    <string>/home/u/.local/share/lain</string>"));
         assert!(p.contains("<key>RunAtLoad</key>\n  <true/>"));
         assert!(p.contains("<key>SuccessfulExit</key>\n    <false/>"));
         assert!(p.contains(&format!("<string>{}</string>", spec(false).log_file().display())));
@@ -667,15 +664,15 @@ mod tests {
         assert!(launchd_plist(&amp).contains("/a&amp;b&lt;c&gt;"));
         let h = host();
         let pl = plan(Os::MacOs, &Action::Install, &spec(false), &h).unwrap();
-        assert_eq!(pl.write[0].0, PathBuf::from("/home/u/Library/LaunchAgents/dev.lain.lain-rs.plist"));
+        assert_eq!(pl.write[0].0, PathBuf::from("/home/u/Library/LaunchAgents/dev.lain.lain.plist"));
         let plist = plist_path(&spec(false), &h).to_string_lossy().into_owned();
         assert_eq!(pl.commands[1].argv, ["launchctl", "bootstrap", "gui/501", plist.as_str()]);
         assert_eq!(
             plan(Os::MacOs, &Action::Stop, &spec(false), &h).unwrap().commands[0].argv,
-            ["launchctl", "kill", "SIGTERM", "gui/501/dev.lain.lain-rs"]
+            ["launchctl", "kill", "SIGTERM", "gui/501/dev.lain.lain"]
         );
         let sys = plan(Os::MacOs, &Action::Install, &spec(true), &h).unwrap();
-        assert_eq!(sys.write[0].0, PathBuf::from("/Library/LaunchDaemons/dev.lain.lain-rs.plist"));
+        assert_eq!(sys.write[0].0, PathBuf::from("/Library/LaunchDaemons/dev.lain.lain.plist"));
         assert_eq!(sys.commands[1].argv[2], "system");
         assert!(plan(Os::MacOs, &Action::Logs { follow: false, lines: 10 }, &spec(false), &h).unwrap().tail.is_some());
     }
@@ -684,7 +681,7 @@ mod tests {
     fn windows_logon_task() {
         let mut s = spec(false);
         s.exe = PathBuf::from(r"C:\Users\u\bin\lain-rs.exe");
-        s.data_dir = PathBuf::from(r"C:\Users\u\AppData\Local\lain-rs");
+        s.data_dir = PathBuf::from(r"C:\Users\u\AppData\Local\lain");
         let x = task_xml(&s, &host());
         assert!(x.contains("<LogonTrigger>\n      <Enabled>true</Enabled>\n      <UserId>DESKTOP\\u</UserId>"), "{x}");
         assert!(x.contains("<LogonType>InteractiveToken</LogonType>\n      <RunLevel>LeastPrivilege</RunLevel>"));
@@ -693,7 +690,7 @@ mod tests {
         assert!(x.contains(r"<Command>C:\Users\u\bin\lain-rs.exe</Command>"));
         assert!(
             x.contains(
-                r"<Arguments>serve --data-dir C:\Users\u\AppData\Local\lain-rs --port 9361 --bind 127.0.0.1 --log-file "
+                r"<Arguments>serve --data-dir C:\Users\u\AppData\Local\lain --port 9360 --bind 127.0.0.1 --log-file "
             ),
             "{x}"
         );
@@ -705,13 +702,13 @@ mod tests {
         let bytes = utf16le_bom(&x);
         assert_eq!(&bytes[..4], &[0xFF, 0xFE, b'<', 0]);
         let p = plan(Os::Windows, &Action::Install, &s, &host()).unwrap();
-        assert_eq!(p.commands[0].argv[..4], ["schtasks", "/Create", "/TN", "lain-rs"]);
+        assert_eq!(p.commands[0].argv[..4], ["schtasks", "/Create", "/TN", "lain"]);
         assert_eq!(p.commands[0].argv[6], "/F");
         let u = plan(Os::Windows, &Action::Uninstall, &s, &host()).unwrap();
-        assert!(u.commands[0].allow_fail && u.commands[1].argv == ["schtasks", "/Delete", "/TN", "lain-rs", "/F"]);
+        assert!(u.commands[0].allow_fail && u.commands[1].argv == ["schtasks", "/Delete", "/TN", "lain", "/F"]);
         assert_eq!(
             plan(Os::Windows, &Action::Start, &s, &host()).unwrap().commands[0].argv,
-            ["schtasks", "/Run", "/TN", "lain-rs"]
+            ["schtasks", "/Run", "/TN", "lain"]
         );
         assert!(
             plan(Os::Windows, &Action::Install, &Spec { system: true, ..s }, &host()).unwrap().notes[0]

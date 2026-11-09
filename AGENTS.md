@@ -46,9 +46,10 @@ server. Design for them:
 ## Rust (migration in progress)
 
 The server is being rewritten in Rust by strangler migration (D-171,
-DESIGN-v2 §13). The Go stack above stays the production server until
-the Rust one passes the conformance suite and the owner has used it
-daily; until cutover this file documents both stacks.
+DESIGN-v2 §13). No Go server runs anywhere (D-178): the Go code stays
+in the repo as the reference the conformance suite checks the API
+against and as the source of modules not ported yet, so this file
+documents both stacks until those are ported.
 
 - Workspace: `Cargo.toml` at the root, crates in `crates/`:
   - `lain-core` — composition, provider registry (modes, health-gated
@@ -63,8 +64,8 @@ daily; until cutover this file documents both stacks.
     and the `<data-dir>/plugins/` watcher; the Go wire, byte for byte.
   - `lain-server` — the axum gateway, `/api/modules`, `/api/events`,
     service mode, catalog `export`/`import` (`lain.catalog-export@3`);
-    binary `lain-rs` (data dir `lain-rs`, port 9361) so it never
-    collides with the Go `lain`.
+    binary `lain-rs` on the canonical data dir (`lain`) and port 9360
+    (D-178).
   - `conformance/runner` — the conformance runner (`lain-conformance`).
 - Dependencies: the D-172 baseline plus D-173 (argon2 per D-177), versions pinned with `=`
   in the workspace `Cargo.toml`, `Cargo.lock` committed. A crate outside

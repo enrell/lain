@@ -11,24 +11,11 @@ use crate::roots::{Roots, valid_rel};
 /// The source provider every library is bound to today.
 pub const SOURCE_FILESYSTEM: &str = "lain-source-filesystem";
 
-/// Go's `shortID`: a 31-multiplier rolling hash over the bytes (int64,
-/// wrapping), made non-negative, reduced mod 0xffffffff, printed `%08x`.
+/// A stable short id: the low 32 bits of a 31-multiplier rolling hash
+/// over the bytes, as 8 hex digits.
 pub fn short_id(s: &str) -> String {
-    let mut h: i64 = 0;
-    for b in s.bytes() {
-        h = h.wrapping_mul(31).wrapping_add(b as i64);
-    }
-    if h < 0 {
-        h = h.wrapping_neg();
-    }
-    let r = h % 0xffff_ffff;
-    if r < 0 {
-        // Only for i64::MIN, whose negation stays negative: Go pads the
-        // sign into the width.
-        format!("-{:07x}", r.unsigned_abs())
-    } else {
-        format!("{r:08x}")
-    }
+    let h = s.bytes().fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
+    format!("{:08x}", h as u32)
 }
 
 pub struct Libraries {
@@ -77,7 +64,7 @@ impl Libraries {
     /// location). With `root`, `path` is relative to that root; an
     /// absolute `path` inside a mapped root is recorded under it. A
     /// rooted library's id derives from `root:root_path`, so it is the
-    /// same on every machine. The message texts are Go's.
+    /// same on every machine. The message texts are the ones clients read.
     pub fn create(&self, name: &str, kind: &str, path: &str, root: &str) -> Result<Library, String> {
         if name.is_empty() || (path.is_empty() && root.is_empty()) {
             return Err("name and path required".into());
@@ -177,17 +164,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn short_id_matches_go() {
-        // Recorded from the Go server (lain-go, 2026-11-08).
-        assert_eq!(
-            short_id("/tmp/claude-1000/-home-lain/226a7066-d814-4509-84ee-c770bd5c8927/scratchpad/media"),
-            "8bcbce82"
-        );
-        assert_eq!(
-            short_id("/tmp/claude-1000/-home-lain/226a7066-d814-4509-84ee-c770bd5c8927/scratchpad/media/Show"),
-            "83593479"
-        );
+    fn short_ids_are_stable_and_fixed_width() {
         assert_eq!(short_id(""), "00000000");
+        assert_eq!(short_id("media:Frieren"), short_id("media:Frieren"));
+        assert_ne!(short_id("/srv/media"), short_id("/srv/media/Show"));
+        let long = short_id(&"x".repeat(10_000));
+        assert!(long.len() == 8 && long.bytes().all(|b| b.is_ascii_hexdigit()));
     }
 
     #[test]

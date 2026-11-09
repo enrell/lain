@@ -927,7 +927,7 @@ async fn fallback(State(app): State<Arc<App>>, method: Method, uri: Uri) -> Resp
     if is_api(path) {
         return Reply::err(404, "not found").into_response();
     }
-    let mut r = Response::new(Body::from("lain-rs does not embed the web UI yet; use the Go server for it.\n"));
+    let mut r = Response::new(Body::from("lain-rs does not embed the web UI yet.\n"));
     *r.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
     r.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
     r

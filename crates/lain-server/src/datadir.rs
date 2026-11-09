@@ -2,18 +2,14 @@
 //!
 //! | OS      | default                                      |
 //! |---------|----------------------------------------------|
-//! | Linux   | `$XDG_DATA_HOME/lain-rs` or `~/.local/share/lain-rs` |
-//! | macOS   | `~/Library/Application Support/lain-rs`      |
-//! | Windows | `%LOCALAPPDATA%\lain-rs`                      |
-//!
-//! While the Go server is in production the directory is `lain-rs`,
-//! so the Rust server can never write into the Go server's data dir;
-//! at cutover [`APP_DIR`] becomes `lain`, the name D-164 gives.
+//! | Linux   | `$XDG_DATA_HOME/lain` or `~/.local/share/lain` |
+//! | macOS   | `~/Library/Application Support/lain`         |
+//! | Windows | `%LOCALAPPDATA%\lain`                         |
 
 use std::path::PathBuf;
 
 /// The data directory name.
-pub const APP_DIR: &str = "lain-rs";
+pub const APP_DIR: &str = "lain";
 
 /// The target OS family a path is resolved for (testable on any host).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,11 +73,11 @@ mod tests {
     #[test]
     fn per_os_defaults_and_override() {
         let e = env(&[("HOME", "/home/u"), ("LOCALAPPDATA", r"C:\Users\u\AppData\Local")]);
-        assert_eq!(resolve(Os::Linux, &e).unwrap(), PathBuf::from("/home/u/.local/share/lain-rs"));
-        assert_eq!(resolve(Os::MacOs, &e).unwrap(), PathBuf::from("/home/u/Library/Application Support/lain-rs"));
-        assert_eq!(resolve(Os::Windows, &e).unwrap(), PathBuf::from(r"C:\Users\u\AppData\Local").join("lain-rs"));
+        assert_eq!(resolve(Os::Linux, &e).unwrap(), PathBuf::from("/home/u/.local/share/lain"));
+        assert_eq!(resolve(Os::MacOs, &e).unwrap(), PathBuf::from("/home/u/Library/Application Support/lain"));
+        assert_eq!(resolve(Os::Windows, &e).unwrap(), PathBuf::from(r"C:\Users\u\AppData\Local").join("lain"));
         let x = env(&[("HOME", "/home/u"), ("XDG_DATA_HOME", "/data")]);
-        assert_eq!(resolve(Os::Linux, &x).unwrap(), PathBuf::from("/data/lain-rs"));
+        assert_eq!(resolve(Os::Linux, &x).unwrap(), PathBuf::from("/data/lain"));
         let o = env(&[("HOME", "/home/u"), ("LAIN_HOME", "/srv/lain")]);
         for os in [Os::Linux, Os::MacOs, Os::Windows] {
             assert_eq!(resolve(os, &o).unwrap(), PathBuf::from("/srv/lain"));
@@ -89,7 +85,7 @@ mod tests {
         assert!(resolve(Os::Windows, &env(&[])).is_err());
         assert_eq!(
             resolve(Os::Linux, &env(&[("HOME", "/h"), ("LAIN_HOME", "")])).unwrap(),
-            PathBuf::from("/h/.local/share/lain-rs")
+            PathBuf::from("/h/.local/share/lain")
         );
     }
 }

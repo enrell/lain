@@ -14,8 +14,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   components under its host, installs itself as a service
   (`lain-rs service`, D-164), and adds private libraries (D-156) and
   portable roots (D-157). It starts from an empty data dir: no Go data
-  is imported, and passwords and PINs are Argon2id (D-177). The Go
-  server is unchanged and stays the production server.
+  is imported, and passwords and PINs are Argon2id (D-177). It uses the
+  canonical data dir (`lain`) and port 9360 (D-178). The Go code is
+  unchanged.
 - **Conformance suite** (`conformance/`): language-neutral HTTP cases
   and component NDJSON fixtures that both servers run.
 - **Internationalization groundwork** (D-088, `docs/I18N.md`). The web UI
