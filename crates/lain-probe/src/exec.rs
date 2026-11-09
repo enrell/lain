@@ -49,7 +49,15 @@ const STDERR_CAP: usize = 64 << 10;
 /// Bytes kept of a tool's stdout (ffprobe JSON, encoder lists).
 const STDOUT_CAP: usize = 16 << 20;
 
-fn drain(mut r: impl Read + Send + 'static, cap: usize) -> std::thread::JoinHandle<Vec<u8>> {
+/// How long a finished tool's pipes may stay open: a grandchild that
+/// inherited them (a shell's `sleep`, a daemon) must not hold the
+/// caller hostage.
+const PIPE_GRACE: Duration = Duration::from_secs(2);
+
+/// Reads a pipe to its end on a thread; the result arrives on the
+/// channel, so the caller can stop waiting.
+pub fn drain(mut r: impl Read + Send + 'static, cap: usize) -> std::sync::mpsc::Receiver<Vec<u8>> {
+    let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let mut out = Vec::new();
         let mut buf = [0u8; 8192];
@@ -62,8 +70,14 @@ fn drain(mut r: impl Read + Send + 'static, cap: usize) -> std::thread::JoinHand
                 }
             }
         }
-        out
-    })
+        let _ = tx.send(out);
+    });
+    rx
+}
+
+/// What a drain read, waiting at most [`PIPE_GRACE`].
+pub fn collect(rx: Option<std::sync::mpsc::Receiver<Vec<u8>>>) -> Vec<u8> {
+    rx.and_then(|r| r.recv_timeout(PIPE_GRACE).ok()).unwrap_or_default()
 }
 
 /// Runs `cmd` to completion or until `timeout`, feeding `stdin` when
@@ -101,15 +115,16 @@ pub fn run(mut cmd: Command, stdin: Option<Box<dyn Read + Send>>, timeout: Durat
             }
         }
     };
-    let stdout = out.and_then(|h| h.join().ok()).unwrap_or_default();
-    let stderr = err.and_then(|h| h.join().ok()).unwrap_or_default();
-    if let Some(f) = feeder {
+    // A timed-out child is gone; nothing it left behind is waited on.
+    let Some(status) = status else { return Err(ExecError::Timeout) };
+    let stdout = collect(out);
+    let stderr = collect(err);
+    if let Some(f) = feeder
+        && f.is_finished()
+    {
         let _ = f.join();
     }
-    match status {
-        Some(status) => Ok(Output { status, stdout, stderr }),
-        None => Err(ExecError::Timeout),
-    }
+    Ok(Output { status, stdout, stderr })
 }
 
 /// Resolves a tool like the shell does: a name with a path separator is
@@ -171,7 +186,7 @@ mod tests {
     #[test]
     fn deadline_kills_the_child() {
         let mut c = Command::new("/bin/sh");
-        c.args(["-c", "echo started; sleep 30"]);
+        c.args(["-c", "echo started; sleep 30; true"]);
         let start = Instant::now();
         assert_eq!(run(c, None, Duration::from_millis(200)).unwrap_err(), ExecError::Timeout);
         assert!(start.elapsed() < Duration::from_secs(5));

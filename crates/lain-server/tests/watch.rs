@@ -207,6 +207,8 @@ fn watch_suite_passes() {
     if !require_ffmpeg() {
         return;
     }
+    // Server logs (ffmpeg's error text) show with a failure.
+    let _ = tracing_subscriber::fmt().with_test_writer().with_ansi(false).try_init();
     let root = lain_store::test_dir("rs-watch");
     let (data, media) = data_dir(&root);
     make_clips(&media.join("Clips"));
