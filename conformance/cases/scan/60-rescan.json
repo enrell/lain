@@ -1,0 +1,360 @@
+{
+ "tier": "v1",
+ "description": "Incremental rescans: a renamed file keeps its id with the old path as an alias (D-019), a returned file is restored (D-068), a library delete removes its items.",
+ "cases": [
+  {
+   "name": "a deleted file stays missing on rescan",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/scan",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 202
+     }
+    },
+    {
+     "wait_for": {
+      "req": {
+       "method": "GET",
+       "path": "/api/library/scan",
+       "auth": "admin"
+      },
+      "expect": {
+       "status": 200,
+       "body": {
+        "state": "done",
+        "started_at": "$int",
+        "finished_at": "$int",
+        "trigger": "manual",
+        "stats": {
+         "candidates": 3,
+         "identified": 3,
+         "missing": 0,
+         "restored": 0,
+         "migrated": 0,
+         "$open": true
+        }
+       }
+      }
+     },
+     "timeout_ms": 20000
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{show}}",
+      "auth": "bob",
+      "body": {
+       "id": "{{show}}",
+       "library_id": "{{lib}}",
+       "file_path": "$string",
+       "size": 1,
+       "updated_at": "$int",
+       "$open": true,
+       "missing": true
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  },
+  {
+   "name": "a rename keeps the id",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "remove_file": "{{scan_media}}/Movies/Akira (1988).mkv"
+    },
+    {
+     "write_file": {
+      "path": "{{scan_media}}/Movies/Akira (1988) [Remux].mkv",
+      "text": "x"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/scan",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 202
+     }
+    },
+    {
+     "wait_for": {
+      "req": {
+       "method": "GET",
+       "path": "/api/library/scan",
+       "auth": "admin"
+      },
+      "expect": {
+       "status": 200,
+       "body": {
+        "state": "done",
+        "started_at": "$int",
+        "finished_at": "$int",
+        "trigger": "manual",
+        "stats": {
+         "candidates": 3,
+         "identified": 3,
+         "migrated": 1,
+         "missing": 0,
+         "$open": true
+        }
+       }
+      }
+     },
+     "timeout_ms": 20000
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{akira}}",
+      "auth": "bob",
+      "body": {
+       "id": "{{akira}}",
+       "library_id": "{{lib}}",
+       "file_path": "$string",
+       "size": 1,
+       "updated_at": "$int",
+       "$open": true,
+       "title": "Akira",
+       "aliases": {
+        "$len": 1
+       },
+       "missing": "$absent"
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog",
+      "auth": "bob",
+      "body": {
+       "total": 4,
+       "$open": true
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  },
+  {
+   "name": "a file that comes back is restored",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "write_file": {
+      "path": "{{scan_media}}/Show/Show.Name.S01E02.1080p.WEB-DL.mkv",
+      "text": "x"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/scan",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 202
+     }
+    },
+    {
+     "wait_for": {
+      "req": {
+       "method": "GET",
+       "path": "/api/library/scan",
+       "auth": "admin"
+      },
+      "expect": {
+       "status": 200,
+       "body": {
+        "state": "done",
+        "started_at": "$int",
+        "finished_at": "$int",
+        "trigger": "manual",
+        "stats": {
+         "candidates": 4,
+         "restored": 1,
+         "missing": 0,
+         "migrated": 0,
+         "$open": true
+        }
+       }
+      }
+     },
+     "timeout_ms": 20000
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{show}}",
+      "auth": "bob",
+      "body": {
+       "id": "{{show}}",
+       "library_id": "{{lib}}",
+       "file_path": "$string",
+       "size": 1,
+       "updated_at": "$int",
+       "$open": true,
+       "missing": "$absent"
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{show}}/progress",
+      "auth": "bob",
+      "body": {
+       "item_id": "{{show}}",
+       "position_sec": 30,
+       "$open": true
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  },
+  {
+   "name": "a vanished file is marked missing, never deleted",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "remove_file": "{{scan_media}}/Frieren/[Fansub-A] Frieren - 02 [1080p].mkv"
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/scan",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 202
+     }
+    },
+    {
+     "wait_for": {
+      "req": {
+       "method": "GET",
+       "path": "/api/library/scan",
+       "auth": "admin"
+      },
+      "expect": {
+       "status": 200,
+       "body": {
+        "state": "done",
+        "started_at": "$int",
+        "finished_at": "$int",
+        "trigger": "manual",
+        "stats": {
+         "candidates": 3,
+         "missing": 1,
+         "$open": true
+        }
+       }
+      }
+     },
+     "timeout_ms": 20000
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{f2}}",
+      "auth": "bob",
+      "body": {
+       "id": "{{f2}}",
+       "library_id": "{{lib}}",
+       "file_path": "$string",
+       "size": 1,
+       "updated_at": "$int",
+       "$open": true,
+       "missing": true
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog",
+      "auth": "bob",
+      "body": {
+       "total": 4,
+       "$open": true
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  },
+  {
+   "name": "deleting the library removes its items",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/libraries/{{lib}}",
+      "auth": "admin",
+      "body": {
+       "status": "ok",
+       "items_removed": 4
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog",
+      "auth": "bob",
+      "body": {
+       "total": 0,
+       "items": [],
+       "limit": 50,
+       "offset": 0
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  }
+ ]
+}

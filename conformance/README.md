@@ -10,11 +10,17 @@ conformance/
                   /api/me (+ profile, password, preferences), users,
                   libraries, catalog, progress, plugins          (tier v1)
   cases/v2/       /api/modules and modules.json, /api/events (SSE)   (v2)
+  cases/scan/     catalog population from a fresh server: scan, identified
+                  catalog, grouping, search, sidecars (WebVTT), NFO metadata
+                  overlays, browse, item delete, incremental rescans (v1),
+                  scan events (v2); writes its own fixture media
   cases/private/  lain-rs over a populated catalog: catalog items, paging,
                   episodes, per-user progress, then private libraries:
                   nothing leaks to another user or a locked session (v2)
   fixtures/       catalog.json, the lain.catalog-export@3 document the
-                  private suite starts from
+                  private suite starts from; parse-parity.json, the Go
+                  parsers' answers the Rust parsers must give (written by
+                  internal/plugins/identify/parity_test.go)
   component/      NDJSON fixtures of the component protocol
   runner/         lain-conformance, one runner (Rust, std-only HTTP)
   run.sh          both servers end to end in throwaway data dirs
@@ -51,8 +57,15 @@ LAIN_URL=http://127.0.0.1:19461 $R --var media_dir=/tmp/m/a --var media_dir2=/tm
   --var data_dir=/tmp/rs-c conformance/cases/fresh conformance/cases/v2
 ```
 
-Private (Rust only; lain-rs has no scan yet, so the catalog comes from
-the fixture): write `<data dir>/roots.json` as
+Scan (both servers; watching and the post-scan metadata pass off so no
+scan races the cases and nothing reaches the network):
+
+```sh
+LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 go run ./cmd/lain serve --data-dir /tmp/go-s --port 19460 &
+LAIN_URL=http://127.0.0.1:19460 $R --tier v1 --var scan_media=/tmp/go-media conformance/cases/scan
+```
+
+Private (Rust only; the catalog comes from the fixture): write `<data dir>/roots.json` as
 `{"format":"lain.roots@1","roots":{"media":"<dir>"}}` with a `Frieren/`
 directory in `<dir>`, run `lain-rs import --in
 conformance/fixtures/catalog.json --data-dir <data dir>`, start
@@ -78,7 +91,7 @@ numbers, so Go's `1440` and Rust's `1440.0` are the same value.
 
 ## Not covered yet
 
-Search, scan, browse, theme, playback/stream/transcode/thumbnail,
+Theme, playback/stream/transcode/thumbnail,
 avatars, pages, lists, social, acquire, downloads, backup, plugin swap
 and withdraw writes, and the `lain.catalog-export` documents as files.
 These move with their modules (DESIGN-v2 §13 order).

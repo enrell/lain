@@ -14,7 +14,9 @@ use hyper::body::Incoming;
 use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 
-use lain_api::{LibraryChangedEvent, ModuleStateEvent, PluginChangedEvent, ProgressChangedEvent, ReadyEvent};
+use lain_api::{
+    LibraryChangedEvent, ModuleStateEvent, PluginChangedEvent, ProgressChangedEvent, ReadyEvent, ScanStateEvent,
+};
 
 use crate::api::Client;
 use crate::error::ClientError;
@@ -27,6 +29,8 @@ pub enum ServerEvent {
     LibraryChanged(LibraryChangedEvent),
     ProgressChanged(ProgressChangedEvent),
     PluginChanged(PluginChangedEvent),
+    /// A library scan started, finished a library or ended.
+    ScanState(ScanStateEvent),
     /// An event this build does not know, kept raw (forward compatible).
     Other {
         event: String,
@@ -138,6 +142,7 @@ fn decode(f: Frame) -> Option<StreamItem> {
         "library-changed" => parse(&f).map(ServerEvent::LibraryChanged),
         "progress-changed" => parse(&f).map(ServerEvent::ProgressChanged),
         "plugin-changed" => parse(&f).map(ServerEvent::PluginChanged),
+        "scan-state" => parse(&f).map(ServerEvent::ScanState),
         _ => None,
     };
     Some(StreamItem::Event(ev.unwrap_or(ServerEvent::Other { event: f.event, data: f.data })))

@@ -18,6 +18,8 @@
 //! | `progress`         | `user\0item`             | progress JSON             |
 //! | `user_pins`        | user id                  | `{"hash": Argon2id}`      |
 //! | `meta`             | `secret`, `schema`       | raw bytes                 |
+//! | `enrichments`      | item id                  | metadata overlay JSON     |
+//! | `metadata_cache`   | `q\0kind\0query`, `r\0provider\0id` | `{at, data}` (TTL) |
 //!
 //! Library JSON carries `private`, `owner`, `members` (D-156), `root`
 //! and `root_path` (D-157); a rooted item stores `root` + `rel_path`
@@ -49,10 +51,14 @@ pub enum Bucket {
     Meta,
     /// Per-user library PIN hashes (Argon2id), D-156.
     UserPins,
+    /// Metadata overlays, one per catalog item (metadata module).
+    Enrichments,
+    /// TTL memo of metadata searches and resolved records.
+    MetadataCache,
 }
 
 impl Bucket {
-    pub const ALL: [Bucket; 8] = [
+    pub const ALL: [Bucket; 10] = [
         Bucket::Users,
         Bucket::UsersByName,
         Bucket::Libraries,
@@ -61,6 +67,8 @@ impl Bucket {
         Bucket::Progress,
         Bucket::Meta,
         Bucket::UserPins,
+        Bucket::Enrichments,
+        Bucket::MetadataCache,
     ];
 
     /// The table name.
@@ -74,6 +82,8 @@ impl Bucket {
             Bucket::Progress => "progress",
             Bucket::Meta => "meta",
             Bucket::UserPins => "user_pins",
+            Bucket::Enrichments => "enrichments",
+            Bucket::MetadataCache => "metadata_cache",
         }
     }
 

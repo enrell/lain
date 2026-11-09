@@ -1,0 +1,268 @@
+{
+ "tier": "v1",
+ "description": "The folder picker (GET /api/browse, admin) and item deletion (DELETE /api/items/{id}, admin): the file goes, the row stays missing (D-068, D-073).",
+ "cases": [
+  {
+   "name": "browse lists visible subdirectories",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/browse?path={{scan_media}}",
+      "auth": "admin",
+      "body": {
+       "path": "{{scan_media}}",
+       "parent": "$string",
+       "detected": false,
+       "dirs": [
+        {
+         "name": "Frieren",
+         "path": "$string"
+        },
+        {
+         "name": "Movies",
+         "path": "$string"
+        },
+        {
+         "name": "Show",
+         "path": "$string"
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/browse?path=relative/path",
+      "auth": "admin",
+      "body": {
+       "error": "path must be absolute"
+      }
+     },
+     "expect": {
+      "status": 400
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/browse?path={{scan_media}}/no-such-dir",
+      "auth": "admin",
+      "body": {
+       "error": "path is not a readable directory"
+      }
+     },
+     "expect": {
+      "status": 400
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/browse",
+      "auth": "admin",
+      "body": {
+       "path": "$string",
+       "parent": "$string",
+       "detected": true,
+       "dirs": "$array"
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/browse?path={{scan_media}}",
+      "auth": "bob",
+      "body": {
+       "error": "admin required"
+      }
+     },
+     "expect": {
+      "status": 403
+     }
+    }
+   ]
+  },
+  {
+   "name": "deleting an item needs an admin",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/items/{{show}}",
+      "auth": "bob",
+      "body": {
+       "error": "admin required"
+      }
+     },
+     "expect": {
+      "status": 403
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/items/no-such-item",
+      "auth": "bob",
+      "body": {
+       "error": "admin required"
+      }
+     },
+     "expect": {
+      "status": 403
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/items/{{show}}",
+      "body": {
+       "error": "unauthorized"
+      }
+     },
+     "expect": {
+      "status": 401
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/items/no-such-item",
+      "auth": "admin",
+      "body": {
+       "error": "unknown item"
+      }
+     },
+     "expect": {
+      "status": 404
+     }
+    }
+   ]
+  },
+  {
+   "name": "the file goes, the row stays missing",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/items/{{show}}/progress",
+      "auth": "bob",
+      "body": {
+       "position_sec": 30,
+       "duration_sec": 1440
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/items/{{show}}",
+      "auth": "admin",
+      "body": {
+       "id": "{{show}}",
+       "library_id": "{{lib}}",
+       "file_path": "$string",
+       "size": 1,
+       "updated_at": "$int",
+       "$open": true,
+       "title": "Show Name",
+       "missing": true
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{show}}",
+      "auth": "bob",
+      "body": {
+       "id": "{{show}}",
+       "library_id": "{{lib}}",
+       "file_path": "$string",
+       "size": 1,
+       "updated_at": "$int",
+       "$open": true,
+       "missing": true
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{show}}/progress",
+      "auth": "bob",
+      "body": {
+       "item_id": "{{show}}",
+       "position_sec": 30,
+       "$open": true
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/items/{{show}}",
+      "auth": "admin",
+      "body": {
+       "id": "{{show}}",
+       "library_id": "{{lib}}",
+       "file_path": "$string",
+       "size": 1,
+       "updated_at": "$int",
+       "$open": true,
+       "missing": true
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/browse?path={{scan_media}}/Show",
+      "auth": "admin",
+      "body": {
+       "path": "$string",
+       "parent": "$string",
+       "detected": false,
+       "dirs": []
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  }
+ ]
+}

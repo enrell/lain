@@ -209,6 +209,19 @@ round-trip — never a permanent black frame. Measured end to end on this
 host: a direct-played Matroska seek lands in ~126 ms (one Range request)
 where a session rebuild costs ~2.6s.
 
+## Catalog population in lain-rs (D-185..D-189)
+
+`lain-rs` serves the scan pipeline in-process with the Go op names
+(`enumerate`, `identify`, `scan`, `commit_scan`, `poll`/`dirty`/`close`,
+`search`, `resolve`, `enrich`/`get`/`batch`/`delete`/`backfill`) and
+`parse` for `lain.release.parse@1`. Rust-only, additive fields: a
+`commit_scan` input carries the library's `root`, and each `ScanEntry`
+its `rel_path` inside that root (D-157). A rooted item's location is
+`rel_path`, an unrooted one's is `file_path`; the item id is the first
+16 hex digits of SHA-256(`library_id` NUL location) and `aliases` hold
+older locations (D-186). `GET /api/events` adds `scan-state` and the
+`library-changed` actions `scanned` and `item-deleted` (D-188).
+
 ## lain.search.query@1 (exactly-one)
 
 Input: `{q, kind, limit, offset, sort}` → `CatalogPage{items, total,
