@@ -1,16 +1,10 @@
-//! Token primitives. SHA-256 and HMAC come from RustCrypto (`sha2`,
-//! `hmac`) and randomness from `getrandom` (D-173). Base64 stays a
-//! small in-tree function: no approved crate exposes it (`bcrypt` uses
-//! the `base64` crate only internally), and the store needs Go's exact
-//! encodings (padded standard for `[]byte`, raw URL-safe for JWTs).
+//! Token primitives. HMAC-SHA256 comes from RustCrypto (`sha2`,
+//! `hmac`) and randomness from `getrandom` (D-173). The JWT segments'
+//! URL-safe unpadded base64 is a small in-tree function: no approved
+//! crate exposes one (D-177).
 
 use hmac::{Hmac, KeyInit, Mac};
-use sha2::{Digest, Sha256};
-
-/// SHA-256 of `data`.
-pub fn sha256(data: &[u8]) -> [u8; 32] {
-    Sha256::digest(data).into()
-}
+use sha2::Sha256;
 
 fn mac(key: &[u8], msg: &[u8]) -> Hmac<Sha256> {
     let mut m = <Hmac<Sha256> as KeyInit>::new_from_slice(key).expect("HMAC takes keys of any length");
@@ -28,48 +22,31 @@ pub fn hmac_sha256_verify(key: &[u8], msg: &[u8], tag: &[u8]) -> bool {
     mac(key, msg).verify_slice(tag).is_ok()
 }
 
-const STD: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const URL: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-fn encode(data: &[u8], alphabet: &[u8; 64], pad: bool) -> String {
+/// URL-safe base64 without padding (JWT segments).
+pub fn b64_url(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
         let n = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
         let chars = [(n >> 18) & 63, (n >> 12) & 63, (n >> 6) & 63, n & 63];
-        for (i, c) in chars.iter().enumerate() {
-            if i <= chunk.len() {
-                out.push(alphabet[*c as usize] as char);
-            } else if pad {
-                out.push('=');
-            }
+        for c in &chars[..=chunk.len()] {
+            out.push(URL[*c as usize] as char);
         }
     }
     out
 }
 
-fn decode(s: &str, alphabet: &[u8; 64], padded: bool) -> Option<Vec<u8>> {
-    let bytes = s.as_bytes();
-    let body = if padded {
-        if !bytes.len().is_multiple_of(4) {
-            return None;
-        }
-        let pads = bytes.iter().rev().take_while(|b| **b == b'=').count();
-        if pads > 2 {
-            return None;
-        }
-        &bytes[..bytes.len() - pads]
-    } else {
-        if bytes.contains(&b'=') {
-            return None;
-        }
-        bytes
-    };
+/// Strict decoding of [`b64_url`]: no padding, no other alphabet, and
+/// unused trailing bits must be zero.
+pub fn b64_url_decode(s: &str) -> Option<Vec<u8>> {
+    let body = s.as_bytes();
     if body.len() % 4 == 1 {
         return None;
     }
     let mut lookup = [255u8; 256];
-    for (i, c) in alphabet.iter().enumerate() {
+    for (i, c) in URL.iter().enumerate() {
         lookup[*c as usize] = i as u8;
     }
     let mut out = Vec::with_capacity(body.len() * 3 / 4);
@@ -84,31 +61,12 @@ fn decode(s: &str, alphabet: &[u8; 64], padded: bool) -> Option<Vec<u8>> {
         }
         let bytes = [(n >> 16) as u8, (n >> 8) as u8, n as u8];
         let take = chunk.len() - 1;
-        // Strict decoding (like Go's): unused trailing bits must be zero.
         if take < 3 && bytes[take..].iter().any(|b| *b != 0) {
             return None;
         }
         out.extend_from_slice(&bytes[..take]);
     }
     Some(out)
-}
-
-/// Standard padded base64 (Go's `[]byte` JSON encoding).
-pub fn b64_std(data: &[u8]) -> String {
-    encode(data, STD, true)
-}
-
-pub fn b64_std_decode(s: &str) -> Option<Vec<u8>> {
-    decode(s, STD, true)
-}
-
-/// URL-safe base64 without padding (JWT segments, the stored secret).
-pub fn b64_url(data: &[u8]) -> String {
-    encode(data, URL, false)
-}
-
-pub fn b64_url_decode(s: &str) -> Option<Vec<u8>> {
-    decode(s, URL, false)
 }
 
 /// Fills `buf` from the operating system's CSPRNG.
@@ -126,7 +84,6 @@ mod tests {
 
     #[test]
     fn primitives_match_published_vectors() {
-        assert_eq!(hex(&sha256(b"abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
         let tag = hmac_sha256(b"Jefe", b"what do ya want for nothing?");
         assert_eq!(hex(&tag), "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
         assert!(hmac_sha256_verify(b"Jefe", b"what do ya want for nothing?", &tag));
@@ -135,24 +92,21 @@ mod tests {
 
     #[test]
     fn base64_rfc4648() {
-        for (raw, std, url) in [
-            ("", "", ""),
-            ("f", "Zg==", "Zg"),
-            ("fo", "Zm8=", "Zm8"),
-            ("foo", "Zm9v", "Zm9v"),
-            ("foob", "Zm9vYg==", "Zm9vYg"),
-            ("fooba", "Zm9vYmE=", "Zm9vYmE"),
-            ("foobar", "Zm9vYmFy", "Zm9vYmFy"),
+        for (raw, url) in [
+            ("", ""),
+            ("f", "Zg"),
+            ("fo", "Zm8"),
+            ("foo", "Zm9v"),
+            ("foob", "Zm9vYg"),
+            ("fooba", "Zm9vYmE"),
+            ("foobar", "Zm9vYmFy"),
         ] {
-            assert_eq!(b64_std(raw.as_bytes()), std);
             assert_eq!(b64_url(raw.as_bytes()), url);
-            assert_eq!(b64_std_decode(std).unwrap(), raw.as_bytes());
             assert_eq!(b64_url_decode(url).unwrap(), raw.as_bytes());
         }
         assert_eq!(b64_url(&[0xfb, 0xff]), "-_8");
         assert!(b64_url_decode("Zg==").is_none());
         assert!(b64_url_decode("Zh").is_none(), "non-zero trailing bits are rejected");
-        assert!(b64_std_decode("Zg=").is_none());
         assert!(b64_url_decode("a").is_none());
         assert!(b64_url_decode("ab$d").is_none());
     }

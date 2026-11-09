@@ -11,10 +11,10 @@
 //! ```
 //!
 //! `path` is where the root lives on this machine; `aliases` are other
-//! spellings of the same directory (the Windows drive of a WSL mount,
-//! an old machine's path) that the one-shot migration recognizes.
-//! Paths are parsed by their own style, not the host's: a Linux server
-//! can migrate `V:\media\...` written by a Windows one.
+//! spellings of the same directory (the Windows drive of a WSL mount)
+//! that a library created by absolute path is recognized under. Paths
+//! are parsed by their own style, not the host's, so `V:\media\...`
+//! matches on a Linux server too.
 
 use std::collections::BTreeMap;
 use std::path::Path;

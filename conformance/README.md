@@ -9,12 +9,12 @@ conformance/
   cases/fresh/    HTTP cases from an empty server: health, setup, login,
                   /api/me (+ profile, password, preferences), users,
                   libraries, catalog, progress, plugins          (tier v1)
-  cases/seed/     seeds a Go server (accounts, a library, a scan, progress)
-  cases/seeded/   reads over seeded state: catalog items, paging, episodes,
-                  per-user progress, a token minted before the move (v1)
   cases/v2/       /api/modules and modules.json, /api/events (SSE)   (v2)
-  cases/seeded-v2/ private libraries over seeded state: nothing leaks to
-                  another user or a locked session                 (v2)
+  cases/private/  lain-rs over a populated catalog: catalog items, paging,
+                  episodes, per-user progress, then private libraries:
+                  nothing leaks to another user or a locked session (v2)
+  fixtures/       catalog.json, the lain.catalog-export@3 document the
+                  private suite starts from
   component/      NDJSON fixtures of the component protocol
   runner/         lain-conformance, one runner (Rust, std-only HTTP)
   run.sh          both servers end to end in throwaway data dirs
@@ -51,15 +51,19 @@ LAIN_URL=http://127.0.0.1:19461 $R --var media_dir=/tmp/m/a --var media_dir2=/tm
   --var data_dir=/tmp/rs-c conformance/cases/fresh conformance/cases/v2
 ```
 
-Seeded: run `cases/seed` against a fresh Go server with
-`--var media_dir=<dir with two "[Fansub-A] Frieren - 0N [1080p].mkv">
---save-vars seed.json`, stop it, `lain-rs import --from <its data dir>
---data-dir <new dir>`, start `lain-rs` there and run `cases/seeded` with
-`--vars seed.json` (and the same against the Go server).
+Private (Rust only; lain-rs has no scan yet, so the catalog comes from
+the fixture): write `<data dir>/roots.json` as
+`{"format":"lain.roots@1","roots":{"media":"<dir>"}}` with a `Frieren/`
+directory in `<dir>`, run `lain-rs import --in
+conformance/fixtures/catalog.json --data-dir <data dir>`, start
+`lain-rs` there and run `cases/private` with `--var media_root=<dir>
+--var data_dir=<data dir>`.
 
-`cargo test` also runs `fresh`, `v2`, `seeded` and `seeded-v2` (over the bbolt
-fixture in `crates/lain-store/testdata`) against an in-process
-`lain-rs`, and replays `component/` against the Rust host and the Rust
+There is no seeded or imported suite: nothing moves from a Go data dir
+to lain-rs (D-177).
+
+`cargo test` also runs `fresh`, `v2` and `private` against an
+in-process `lain-rs`, and replays `component/` against the Rust host and the Rust
 component side; `go test ./internal/component` replays it against the
 Go component side.
 

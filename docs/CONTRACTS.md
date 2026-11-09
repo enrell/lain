@@ -921,17 +921,18 @@ Served by the Rust server only (P1b); the Go server is unchanged.
   `library-changed` of a private library only admins and members.
   Admins see the record (to manage it) but not its items unless they
   are a member who unlocked it. Unlocks live in memory and end with the
-  token. Tokens minted by `lain-rs` carry a random `jti` so two logins
-  are two sessions; Go ignores the claim.
+  token. Every `lain-rs` token carries a random `jti` (its session), so
+  two logins are two sessions; a token without one is refused.
 - **Roots**: `<data-dir>/roots.json` (`lain.roots@1`) maps root names to
   this machine's directories, with `aliases` for other spellings
-  (`V:\media`, `/mnt/v/media`). Items store `root` + `/`-separated
-  `rel_path`; `file_path` is resolved from them on every read.
+  (`V:\media`, `/mnt/v/media`). A rooted item stores only `root` +
+  `/`-separated `rel_path`; responses fill `file_path` from them on
+  every read.
   `POST /api/libraries` accepts `{root, path}` with `path` relative to the
   root; an absolute path inside a root is recorded under it, and a
   rooted library's id derives from `root:root_path`. `GET /api/roots`
   (admin) lists the mapping with `available`.
 - **Export**: `lain-rs export` writes `lain.catalog-export@3` (`roots`
-  plus per-item `root`/`rel_path`); import reads @1, @2 and @3.
-  `lain-rs import --roots roots.json [--dry-run]` moves absolute paths
-  onto roots and reports matches and unmatched samples.
+  plus per-item `root`/`rel_path`) and `lain-rs import --in` reads it
+  back, replacing the catalog; @3 is the only version lain-rs reads
+  (D-177). Nothing is imported from a Go data dir.

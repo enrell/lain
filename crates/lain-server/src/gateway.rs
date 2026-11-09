@@ -1,7 +1,7 @@
 //! The HTTP boundary for the P1a routes (axum). Handlers are thin: they
 //! authenticate, decode, call auth or the registry, and answer the Go
 //! server's JSON (`{"error": msg}` on failure, a trailing newline like
-//! Go's encoder). Store and bcrypt work runs on the blocking pool.
+//! Go's encoder). Store and Argon2 work runs on the blocking pool.
 //!
 //! Routes a module owns answer `module-disabled` while it is off. Go
 //! routes not ported yet answer 501 `not-ported` rather than 404, so a

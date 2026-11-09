@@ -1,25 +1,24 @@
 //! Accounts and session tokens, the Rust port of `internal/auth`.
 //!
 //! First-run setup creates the admin; admins create users. Passwords
-//! are bcrypt (D-172; see `AGENTS.md` for why bcrypt over argon2):
-//! hashes imported from the Go store keep verifying unchanged. Tokens
-//! are HS256 JWTs signed with the store's secret and checked on every
-//! request against live state: signature, expiry, account liveness and
-//! password version. A password change bumps the version, so every
+//! and library PINs are Argon2id PHC strings (D-177). Tokens are HS256
+//! JWTs signed with the store's secret, each with a random `jti` (its
+//! session), and checked on every request against live state:
+//! signature, expiry, account liveness and password version. A password change bumps the version, so every
 //! earlier token dies on its next use; disabling an account locks it
 //! out within one request.
 
 pub mod crypto;
 
+use argon2::Argon2;
+use argon2::password_hash::phc::PasswordHash;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use serde::{Deserialize, Serialize};
 
 use lain_store::{Bucket, Store, StoreError};
 
 pub const ROLE_ADMIN: &str = "admin";
 pub const ROLE_USER: &str = "user";
-
-/// bcrypt cost; Go's `bcrypt.DefaultCost`.
-pub const BCRYPT_COST: u32 = 10;
 
 /// Token lifetime.
 pub const TOKEN_TTL_SECS: i64 = 24 * 3600;
@@ -73,8 +72,8 @@ pub struct Profile {
     pub avatar: Avatar,
 }
 
-/// A local account, stored as the same JSON the Go server writes. The
-/// hash is Go's `[]byte` encoding (standard base64); `null` when public.
+/// A local account. `pass_hash` is an Argon2id PHC string; `null` in
+/// every response.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
@@ -103,9 +102,8 @@ impl User {
         self
     }
 
-    fn hash_str(&self) -> Option<String> {
-        let raw = crypto::b64_std_decode(self.pass_hash.as_deref()?)?;
-        String::from_utf8(raw).ok()
+    fn password_ok(&self, password: &str) -> bool {
+        self.pass_hash.as_deref().is_some_and(|h| verify_password(password, h))
     }
 }
 
@@ -176,22 +174,19 @@ fn abort(m: &str) -> StoreError {
     StoreError::Abort(m.to_string())
 }
 
-/// Hashes a password the way Go's `bcrypt.GenerateFromPassword` does
-/// (`$2a$`, cost 10, refusing more than 72 bytes).
+/// Hashes a password or PIN: Argon2id with the crate's default
+/// parameters (19 MiB, 2 passes, 1 lane) and a random 16-byte salt, as
+/// a PHC string (`$argon2id$v=19$...`).
 pub fn hash_password(password: &str) -> Result<String, AuthError> {
-    if password.len() > 72 {
-        return Err(msg("bcrypt: password length exceeds 72 bytes"));
-    }
-    let parts = bcrypt::hash_with_result(password, BCRYPT_COST).map_err(|e| AuthError::Msg(e.to_string()))?;
-    Ok(parts.format_for_version(bcrypt::Version::TwoA))
+    let hash: PasswordHash =
+        Argon2::default().hash_password(password.as_bytes()).map_err(|e| AuthError::Msg(format!("hash: {e}")))?;
+    Ok(hash.to_string())
 }
 
-/// Checks a password against a bcrypt hash (`$2a$`, `$2b$`, `$2y$`).
+/// Checks a password against a PHC string; the parameters come from
+/// the string, so hashes made with other parameters keep verifying.
 pub fn verify_password(password: &str, hash: &str) -> bool {
-    if password.len() > 72 {
-        return false;
-    }
-    bcrypt::verify(password, hash).unwrap_or(false)
+    Argon2::default().verify_password(password.as_bytes(), hash).is_ok()
 }
 
 #[derive(Serialize, Deserialize)]
@@ -201,10 +196,9 @@ struct Claims {
     pwdv: u64,
     iat: i64,
     exp: i64,
-    /// A random id per login, so two logins in the same second are two
-    /// sessions (private-library unlocks are per session, D-156). Go
-    /// tokens have none and Go ignores it.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
+    /// A random id per login: the session. Two logins in the same
+    /// second are two sessions (private-library unlocks are per
+    /// session, D-156).
     jti: String,
 }
 
@@ -233,24 +227,25 @@ pub struct Auth<'s> {
     secret: Vec<u8>,
 }
 
-/// Loads the token secret, generating it once (`meta/secret`, raw
-/// URL-safe base64 of 32 random bytes, as in Go).
+/// The token secret length in bytes.
+const SECRET_LEN: usize = 32;
+
+/// Loads the token secret (`meta/secret`, 32 random bytes), generating
+/// it once.
 pub fn load_or_create_secret(store: &Store) -> Result<Vec<u8>, AuthError> {
-    let encoded = store.write(|tx| {
+    let secret = store.write(|tx| {
         if let Some(raw) = tx.get(Bucket::Meta, b"secret")? {
             return Ok(raw);
         }
-        let mut fresh = [0u8; 32];
+        let mut fresh = vec![0u8; SECRET_LEN];
         crypto::random_bytes(&mut fresh).map_err(|e| StoreError::Abort(format!("secret: {e}")))?;
-        let enc = crypto::b64_url(&fresh).into_bytes();
-        tx.put(Bucket::Meta, b"secret", &enc)?;
-        Ok(enc)
+        tx.put(Bucket::Meta, b"secret", &fresh)?;
+        Ok(fresh)
     })?;
-    let text = String::from_utf8(encoded).map_err(|_| msg("auth: corrupt secret"))?;
-    match crypto::b64_url_decode(&text) {
-        Some(raw) if raw.len() >= 32 => Ok(raw),
-        _ => Err(msg("auth: corrupt secret")),
+    if secret.len() != SECRET_LEN {
+        return Err(msg("auth: corrupt secret"));
     }
+    Ok(secret)
 }
 
 impl<'s> Auth<'s> {
@@ -311,7 +306,7 @@ impl<'s> Auth<'s> {
         Ok(User {
             id,
             username: username.to_string(),
-            pass_hash: Some(crypto::b64_std(hash.as_bytes())),
+            pass_hash: Some(hash),
             role: role.to_string(),
             pwd_ver: 1,
             created_at: lain_core::now_unix(),
@@ -431,7 +426,7 @@ impl<'s> Auth<'s> {
     /// password version.
     pub fn change_password(&self, id: &str, old: &str, new: &str) -> Result<(), AuthError> {
         let u = self.get(id)?.ok_or(AuthError::UnknownUser)?;
-        if !u.hash_str().is_some_and(|h| verify_password(old, &h)) {
+        if !u.password_ok(old) {
             return Err(msg("invalid credentials"));
         }
         self.set_password(u, new)
@@ -447,7 +442,7 @@ impl<'s> Auth<'s> {
         if new.len() < 8 {
             return Err(msg("password >= 8 chars"));
         }
-        u.pass_hash = Some(crypto::b64_std(hash_password(new)?.as_bytes()));
+        u.pass_hash = Some(hash_password(new)?);
         u.pwd_ver += 1;
         self.put(&u)
     }
@@ -479,11 +474,11 @@ impl<'s> Auth<'s> {
     /// Checks a user's password (re-authentication for PIN changes and
     /// library unlocks).
     pub fn check_password(&self, id: &str, password: &str) -> bool {
-        self.get(id).ok().flatten().and_then(|u| u.hash_str()).is_some_and(|h| verify_password(password, &h))
+        self.get(id).ok().flatten().is_some_and(|u| u.password_ok(password))
     }
 
     /// Sets the user's library PIN (4 to 12 digits) after checking the
-    /// password. The PIN is bcrypt-hashed in `user_pins` (D-156).
+    /// password. The PIN is Argon2id-hashed in `user_pins` (D-156).
     pub fn set_pin(&self, id: &str, pin: &str, password: &str) -> Result<(), AuthError> {
         if !self.check_password(id, password) {
             return Err(msg("invalid credentials"));
@@ -530,20 +525,18 @@ impl<'s> Auth<'s> {
         if u.disabled {
             return Err(msg("account disabled"));
         }
-        if !u.hash_str().is_some_and(|h| verify_password(password, &h)) {
+        if !u.password_ok(password) {
             return Err(invalid());
         }
-        Ok(self.mint(&u, lain_core::now_unix()))
+        self.mint(&u, lain_core::now_unix())
     }
 
-    /// Signs a token for `u` issued at `now`.
-    pub fn mint(&self, u: &User, now: i64) -> String {
+    /// Signs a token for `u` issued at `now`, with a fresh session id.
+    pub fn mint(&self, u: &User, now: i64) -> Result<String, AuthError> {
         let head = crypto::b64_url(br#"{"alg":"HS256","typ":"JWT"}"#);
         let mut id = [0u8; 12];
-        let jti = match crypto::random_bytes(&mut id) {
-            Ok(()) => crypto::b64_url(&id),
-            Err(_) => String::new(),
-        };
+        crypto::random_bytes(&mut id).map_err(|e| AuthError::Msg(format!("token: {e}")))?;
+        let jti = crypto::b64_url(&id);
         let claims = Claims {
             sub: u.id.clone(),
             role: u.role.clone(),
@@ -555,7 +548,7 @@ impl<'s> Auth<'s> {
         let body = crypto::b64_url(&serde_json::to_vec(&claims).expect("claims serialize"));
         let signing = format!("{head}.{body}");
         let sig = crypto::b64_url(&crypto::hmac_sha256(&self.secret, signing.as_bytes()));
-        format!("{signing}.{sig}")
+        Ok(format!("{signing}.{sig}"))
     }
 
     /// Checks signature, expiry, liveness and password version against
@@ -581,13 +574,10 @@ impl<'s> Auth<'s> {
         if u.pwd_ver != c.pwdv {
             return Err(msg("password rotated"));
         }
-        let session = if c.jti.is_empty() {
-            let digest = crypto::sha256(token.as_bytes());
-            digest[..12].iter().map(|b| format!("{b:02x}")).collect()
-        } else {
-            c.jti.clone()
-        };
-        Ok(Verified { user_id: u.id, role: u.role, session, expires_at: c.exp })
+        if c.jti.is_empty() {
+            return Err(msg("bad token"));
+        }
+        Ok(Verified { user_id: u.id, role: u.role, session: c.jti, expires_at: c.exp })
     }
 }
 
@@ -697,7 +687,7 @@ mod tests {
         let u = a.setup("admin", "password123").unwrap();
         let stored = a.get(&u.id).unwrap().unwrap();
         let now = lain_core::now_unix();
-        let (t1, t2) = (a.mint(&stored, now), a.mint(&stored, now));
+        let (t1, t2) = (a.mint(&stored, now).unwrap(), a.mint(&stored, now).unwrap());
         assert_ne!(a.verify(&t1).unwrap().session, a.verify(&t2).unwrap().session);
         assert_eq!(a.verify(&t1).unwrap().session, a.verify(&t1).unwrap().session);
     }
@@ -708,7 +698,7 @@ mod tests {
         let a = f.auth();
         let u = a.setup("admin", "password123").unwrap();
         let stored = a.get(&u.id).unwrap().unwrap();
-        let tok = a.mint(&stored, lain_core::now_unix() - TOKEN_TTL_SECS - 5);
+        let tok = a.mint(&stored, lain_core::now_unix() - TOKEN_TTL_SECS - 5).unwrap();
         assert_eq!(a.verify(&tok).unwrap_err().to_string(), "token expired");
     }
 
@@ -764,30 +754,36 @@ mod tests {
     }
 
     #[test]
-    fn go_records_and_hashes_verify() {
-        // A user record exactly as the Go server stores it (bcrypt
-        // `$2a$10$`, Go []byte as base64), for password "password123".
+    fn hashes_are_argon2id_phc_strings() {
+        let h = hash_password("password123").unwrap();
+        assert!(h.starts_with("$argon2id$v=19$m=19456,t=2,p=1$"), "{h}");
+        assert_ne!(h, hash_password("password123").unwrap(), "every hash has its own salt");
+        assert!(verify_password("password123", &h));
+        assert!(!verify_password("password124", &h));
+        assert!(!verify_password("password123", "not a phc string"));
+        // No length cap: long passphrases hash and verify whole.
+        let long = "x".repeat(200);
+        let lh = hash_password(&long).unwrap();
+        assert!(verify_password(&long, &lh) && !verify_password(&long[..72], &lh));
+        // The stored record holds the PHC string as is.
         let f = Fixture::new();
-        let real = hash_password("password123").unwrap();
-        assert!(real.starts_with("$2a$10$"));
-        let raw = format!(
-            r#"{{"id":"user-admin","username":"admin","pass_hash":"{}","role":"admin","disabled":false,"pwd_ver":3,"created_at":1,"playback":{{}},"profile":{{"avatar":{{}}}}}}"#,
-            crypto::b64_std(real.as_bytes())
-        );
-        f.store
-            .as_ref()
-            .unwrap()
-            .write(|tx| {
-                tx.put(Bucket::Users, b"user-admin", raw.as_bytes())?;
-                tx.put(Bucket::UsersByName, b"admin", b"user-admin")
-            })
-            .unwrap();
         let a = f.auth();
-        let tok = a.login("admin", "password123").unwrap();
-        assert_eq!(a.verify(&tok).unwrap().user_id, "user-admin");
-        // $2b$ (other implementations) verifies too.
-        assert!(verify_password("password123", &real.replacen("$2a$", "$2b$", 1)));
-        assert!(!verify_password(&"x".repeat(73), &real));
-        assert!(hash_password(&"x".repeat(73)).is_err());
+        a.setup("admin", "password123").unwrap();
+        assert!(a.get("user-admin").unwrap().unwrap().pass_hash.unwrap().starts_with("$argon2id$"));
+    }
+
+    #[test]
+    fn tokens_without_a_session_id_are_refused() {
+        let f = Fixture::new();
+        let a = f.auth();
+        a.setup("admin", "password123").unwrap();
+        let now = lain_core::now_unix();
+        let head = crypto::b64_url(br#"{"alg":"HS256","typ":"JWT"}"#);
+        let body = crypto::b64_url(
+            format!(r#"{{"sub":"user-admin","role":"admin","pwdv":1,"iat":{now},"exp":{}}}"#, now + 60).as_bytes(),
+        );
+        let signing = format!("{head}.{body}");
+        let tok = format!("{signing}.{}", crypto::b64_url(&crypto::hmac_sha256(&f.secret, signing.as_bytes())));
+        assert_eq!(a.verify(&tok).unwrap_err().to_string(), "bad token");
     }
 }

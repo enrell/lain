@@ -1,7 +1,7 @@
-//! The JSON shapes of `internal/contracts` the P1a routes serve. Field
-//! names, `omitempty` behavior and number types follow the Go structs;
-//! unknown fields of stored records are kept (`extra`) so an import
-//! and P1b's additive fields round-trip.
+//! The JSON shapes the P1 routes serve. Field names, `omitempty`
+//! behavior and number types follow `internal/contracts`, because the
+//! web client and lain-desktop read them; unknown fields of stored
+//! records are kept (`extra`) so additive fields round-trip.
 
 use std::collections::BTreeMap;
 
@@ -56,6 +56,7 @@ pub struct CatalogItem {
     pub season: i64,
     pub episode: i64,
     pub year: i64,
+    #[serde(default)]
     pub file_path: String,
     pub size: i64,
     pub confidence: f64,
@@ -66,8 +67,9 @@ pub struct CatalogItem {
     pub updated_at: i64,
     #[serde(default, skip_serializing_if = "is_false")]
     pub missing: bool,
-    /// D-157: `root` + `/`-separated `rel_path`; `file_path` is then
-    /// this machine's resolution of them.
+    /// D-157: `root` + `/`-separated `rel_path`. A rooted item stores no
+    /// `file_path`: responses and exports fill it with this machine's
+    /// resolution of the root.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub root: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -134,10 +136,9 @@ pub struct Progress {
     pub updated_at: i64,
 }
 
-/// `lain.catalog-export`: the portable catalog document. Version 1 has
-/// no aliases; version 2 adds them (identity v2); version 3 (D-175)
-/// adds roots: items carry `root` + `rel_path` and `roots` names the
-/// roots they use. All three import.
+/// `lain.catalog-export@3` (D-175, D-177): the portable catalog
+/// document. Items carry aliases and `root` + `rel_path`; `roots` names
+/// the roots they use. It is the only version lain-rs reads or writes.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ExportDoc {
     pub format: String,
@@ -150,12 +151,16 @@ pub struct ExportDoc {
 
 pub const EXPORT_FORMAT: &str = "lain.catalog-export";
 
+/// The one export version (numbered after Go's @1 and @2, so the two
+/// servers never write different documents under one number).
+pub const EXPORT_VERSION: i64 = 3;
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn go_item_round_trips() {
+    fn item_round_trips() {
         let raw = r#"{"id":"e4622164393ba829","library_id":"lib-1","kind":"episode","title":"Frieren","season":0,"episode":1,"year":0,"file_path":"/m/a.mkv","size":0,"confidence":0.8799999999999999,"origin":"lain-identify-anime","provenance":"identify:lain-identify-anime","updated_at":1794173709}"#;
         let it: CatalogItem = serde_json::from_str(raw).unwrap();
         let back = serde_json::to_value(&it).unwrap();

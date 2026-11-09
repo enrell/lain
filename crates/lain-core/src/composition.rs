@@ -108,20 +108,6 @@ impl Composition {
         added
     }
 
-    /// Rewrites retired provider ids in place, reporting what moved.
-    pub fn migrate_provider_ids(&mut self, retired: &[(&str, &str)]) -> Vec<String> {
-        let mut moved = Vec::new();
-        for b in self.bindings.values_mut() {
-            for id in b.providers.iter_mut() {
-                if let Some((_, next)) = retired.iter().find(|(old, _)| old == id) {
-                    moved.push(format!("{id}->{next}"));
-                    *id = next.to_string();
-                }
-            }
-        }
-        moved
-    }
-
     /// Bindings sorted by capability name.
     pub fn view(&self) -> Vec<BindingView> {
         self.bindings
@@ -175,12 +161,9 @@ mod tests {
     }
 
     #[test]
-    fn document_shape_matches_go() {
-        let raw = r#"{"version":8,"bindings":{"lain.catalog.read@1":{"mode":"exactly-one","providers":["lain-catalog-bolt"],"generation":1}}}"#;
-        let mut c: Composition = serde_json::from_str(raw).unwrap();
-        let moved = c.migrate_provider_ids(&[("lain-catalog-bolt", "lain-catalog-redb")]);
-        assert_eq!(moved, vec!["lain-catalog-bolt->lain-catalog-redb".to_string()]);
-        let back = serde_json::to_value(&c).unwrap();
-        assert_eq!(back["bindings"]["lain.catalog.read@1"]["mode"], "exactly-one");
+    fn document_round_trips() {
+        let raw = r#"{"version":8,"bindings":{"lain.catalog.read@1":{"mode":"exactly-one","providers":["lain-catalog-redb"],"generation":1}}}"#;
+        let c: Composition = serde_json::from_str(raw).unwrap();
+        assert_eq!(serde_json::to_value(&c).unwrap(), serde_json::from_str::<serde_json::Value>(raw).unwrap());
     }
 }

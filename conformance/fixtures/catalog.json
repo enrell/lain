@@ -1,0 +1,19 @@
+{
+  "format": "lain.catalog-export",
+  "version": 3,
+  "roots": ["media"],
+  "items": {
+    "item-frieren-01": {
+      "id": "item-frieren-01", "library_id": "lib-4afef930", "kind": "episode", "title": "Frieren",
+      "season": 0, "episode": 1, "year": 0, "size": 0, "confidence": 0.88,
+      "origin": "lain-identify-anime", "provenance": "identify:lain-identify-anime", "updated_at": 1794173709,
+      "root": "media", "rel_path": "Frieren/[Fansub-A] Frieren - 01 [1080p].mkv"
+    },
+    "item-frieren-02": {
+      "id": "item-frieren-02", "library_id": "lib-4afef930", "kind": "episode", "title": "Frieren",
+      "season": 0, "episode": 2, "year": 0, "size": 0, "confidence": 0.88,
+      "origin": "lain-identify-anime", "provenance": "identify:lain-identify-anime", "updated_at": 1794173710,
+      "root": "media", "rel_path": "Frieren/[Fansub-A] Frieren - 02 [1080p].mkv"
+    }
+  }
+}

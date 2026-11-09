@@ -1,34 +1,29 @@
 //! The embedded database: one redb file (`lain.redb`) with one table
-//! per Go bbolt bucket (`internal/kv`). Values are JSON documents keyed
-//! by stable ids; secondary access is through composite keys joined by
-//! NUL (`<library_id>\0<item_id>`, `<user_id>\0<item_id>`), so a prefix
-//! scan is an index walk exactly as in Go. One write transaction per
-//! mutation keeps every provider crash-consistent.
+//! per record kind. Values are JSON documents keyed by stable ids;
+//! secondary access is through composite keys joined by NUL
+//! (`<library_id>\0<item_id>`, `<user_id>\0<item_id>`), so a prefix
+//! scan is an index walk. One write transaction per mutation keeps
+//! every provider crash-consistent. A store starts empty: nothing is
+//! imported from the Go server (D-177).
 //!
 //! # Schema (`lain.store@1`)
 //!
 //! | table              | key                      | value                     |
 //! |--------------------|--------------------------|---------------------------|
-//! | `users`            | user id                  | user JSON (bcrypt hash)   |
+//! | `users`            | user id                  | user JSON (Argon2id hash) |
 //! | `users_by_name`    | username                 | user id                   |
 //! | `libraries`        | library id               | library JSON              |
 //! | `items`            | item id                  | catalog item JSON         |
 //! | `items_by_library` | `library\0item`          | empty                     |
 //! | `progress`         | `user\0item`             | progress JSON             |
-//! | `meta`             | `secret`, `schema`, ...  | raw bytes                 |
+//! | `user_pins`        | user id                  | `{"hash": Argon2id}`      |
+//! | `meta`             | `secret`, `schema`       | raw bytes                 |
 //!
-//! plus the not-yet-ported Go buckets of `internal/kv` (`enrichments`,
-//! `metadata_cache`, `list`, `list_accounts`, `downloads`) and `go_raw`
-//! (`<bucket>\0<key>`) for every other Go bucket (social, acquire), so
-//! an import keeps all of it until those modules are ported.
-//!
-//! Private libraries (D-156) and portable roots (D-157) are additive:
-//! library JSON carries `private`, `owner`, `members`, `root` and
-//! `root_path`; items carry `root` and `rel_path` next to `file_path`;
-//! `user_pins` holds each user's PIN hash (`user` → bcrypt). Unlocks are
-//! never stored: they live in memory per session.
-
-pub mod bbolt;
+//! Library JSON carries `private`, `owner`, `members` (D-156), `root`
+//! and `root_path` (D-157); a rooted item stores `root` + `rel_path`
+//! and no absolute path. Unlocks of private libraries are never stored:
+//! they live in memory per session. Tables of modules not ported yet
+//! arrive with their module.
 
 use std::path::{Path, PathBuf};
 
@@ -42,7 +37,7 @@ pub const SCHEMA: &str = "lain.store@1";
 /// The database file name inside the data dir.
 pub const FILE_NAME: &str = "lain.redb";
 
-/// One table, named like its Go bbolt bucket.
+/// One table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Bucket {
     Users,
@@ -52,20 +47,12 @@ pub enum Bucket {
     ItemsByLibrary,
     Progress,
     Meta,
-    Enrichments,
-    MetadataCache,
-    List,
-    ListAccounts,
-    Downloads,
-    /// Go buckets with no Rust table yet, kept verbatim by the import
-    /// under `<bucket>\0<key>` until their module is ported.
-    GoRaw,
-    /// Per-user library PIN hashes (bcrypt), D-156.
+    /// Per-user library PIN hashes (Argon2id), D-156.
     UserPins,
 }
 
 impl Bucket {
-    pub const ALL: [Bucket; 14] = [
+    pub const ALL: [Bucket; 8] = [
         Bucket::Users,
         Bucket::UsersByName,
         Bucket::Libraries,
@@ -73,16 +60,10 @@ impl Bucket {
         Bucket::ItemsByLibrary,
         Bucket::Progress,
         Bucket::Meta,
-        Bucket::Enrichments,
-        Bucket::MetadataCache,
-        Bucket::List,
-        Bucket::ListAccounts,
-        Bucket::Downloads,
-        Bucket::GoRaw,
         Bucket::UserPins,
     ];
 
-    /// The bucket name (identical to `internal/kv`).
+    /// The table name.
     pub fn name(self) -> &'static str {
         match self {
             Bucket::Users => "users",
@@ -92,18 +73,8 @@ impl Bucket {
             Bucket::ItemsByLibrary => "items_by_library",
             Bucket::Progress => "progress",
             Bucket::Meta => "meta",
-            Bucket::Enrichments => "enrichments",
-            Bucket::MetadataCache => "metadata_cache",
-            Bucket::List => "list",
-            Bucket::ListAccounts => "list_accounts",
-            Bucket::Downloads => "downloads",
-            Bucket::GoRaw => "go_raw",
             Bucket::UserPins => "user_pins",
         }
-    }
-
-    pub fn from_name(name: &str) -> Option<Bucket> {
-        Bucket::ALL.into_iter().find(|b| b.name() == name)
     }
 
     fn table(self) -> TableDefinition<'static, &'static [u8], &'static [u8]> {

@@ -26,18 +26,8 @@ use crate::libraries::Libraries;
 use crate::privacy::{self, Unlocks};
 use crate::roots::{self, Roots};
 
-/// The composition document version (the Go server's latest, so a
-/// saved document reads the same in either).
+/// The composition document version.
 pub const COMPOSITION_VERSION: u32 = 8;
-
-/// Retired provider ids and their Rust successors, applied when a
-/// saved composition is loaded.
-pub const RETIRED_PROVIDERS: &[(&str, &str)] = &[
-    ("lain-catalog-bolt", CATALOG_ID),
-    ("lain-userstate-bolt", USERSTATE_ID),
-    ("lain-catalog-file", CATALOG_ID),
-    ("lain-userstate-file", USERSTATE_ID),
-];
 
 /// Built-in Go providers that `lain plugin-run` serves as components:
 /// a binding may name them before their manifest is installed (they
@@ -133,13 +123,12 @@ pub struct App {
 
 impl App {
     /// Opens the data dir and builds the server state. A Go data dir is
-    /// refused: the Rust server never writes the Go store (D-171).
+    /// refused, so lain-rs never mixes its files into one (D-171).
     pub fn open(cfg: Config) -> Result<Arc<App>, String> {
         let dir = &cfg.data_dir;
         if dir.join("lain.db").exists() {
             return Err(format!(
-                "{} holds a Go server store (lain.db); lain-rs never writes it. Import it into a new data dir: lain-rs import --from {}",
-                dir.display(),
+                "{} holds a Go server store (lain.db); lain-rs uses its own data dir (default lain-rs)",
                 dir.display()
             ));
         }
@@ -153,10 +142,6 @@ impl App {
             let mut saved: Composition =
                 serde_json::from_slice(&raw).map_err(|e| format!("corrupt document composition.json: {e}"))?;
             if !saved.bindings.is_empty() {
-                let moved = saved.migrate_provider_ids(RETIRED_PROVIDERS);
-                if !moved.is_empty() {
-                    tracing::info!(moved = %moved.join(","), "migrated retired providers");
-                }
                 let added = saved.upgrade(&default_composition());
                 if !added.is_empty() {
                     tracing::info!(added = %added.join(","), "new capabilities from defaults");
