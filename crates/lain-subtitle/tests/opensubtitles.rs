@@ -139,7 +139,7 @@ fn errors_map_to_codes_and_never_leak_secrets() {
     let mut s = account(&u, "key-1");
     s.password = "pw".into();
     let dbg = format!("{s:?}");
-    assert!(!dbg.contains("key-1") && !dbg.contains("\"pw\""), "{dbg}");
+    assert!(!dbg.contains("key-1") && !dbg.contains("\"pw\""), "Debug must redact the api key and password");
     assert_eq!((s.public().api_key.as_str(), s.public().password.as_str()), ("", ""));
 }
 
