@@ -179,16 +179,20 @@ start/stop call `lain service`.
 ### 8.1 Shared client core: `lain-client` (Rust) — `V-12`
 
 A Rust crate used by every native client:
-- the typed API client and auth (token storage in the OS keychain);
-- server discovery (mDNS on the LAN, a manual URL, a QR pairing code from the
-  web UI);
+- the typed API client and auth (sessions behind a `TokenStore`: a file store
+  now, the OS keychain later);
+- server discovery behind a `Discovery` trait (a manual URL now; mDNS on the
+  LAN and a QR pairing code from the web UI later);
 - the offline store, mirroring D-094's CLI store with the same limits and LRU
   eviction;
 - progress sync with conflict rules, and the event stream.
 
 Android gets it through **UniFFI** (Kotlin bindings). Writing the logic once is
-what keeps two native apps affordable. It lives in a new repo (`lain-client`)
-because lain itself is Go and must keep its seconds-long build.
+what keeps two native apps affordable. It lives in this Cargo workspace as
+`crates/lain-client` (D-179): the separate repo existed only to keep the Go
+server's build fast, and the server is Rust now. The JSON shapes it shares with
+the server live in `crates/lain-api`. Built in P2a; the crates the keychain,
+mDNS and TLS need are Q-045.
 
 ### 8.2 Desktop app: framework selection — `V-13` **[owner]**
 
@@ -324,7 +328,7 @@ app. It builds its navigation from `/api/modules`, so it follows module state.
 |---|---|---|
 | **P0 — this doc** | Owner review; `V-*` become `D-154…D-170` | **Done 2026-11-08** |
 | **P1 — Rust core + server foundations** | The Rust server core (§13: registry, component host, gateway, auth, store) built with the P1 features in it from day one: module layer (`V-1`, `V-2`), `/api/modules`, `/api/events`, service mode (`V-11`), private libraries (`V-3`), portable roots (`V-4`). The Go server keeps running unchanged | The conformance suite passes for the core routes; `lain service` works on all three OSes; a private library is invisible to another user end to end |
-| **P2 — client core + desktop prototype** | `lain-client` crate; prototype in GPUI / Slint / iced (`V-13`) | Owner picks a framework from working builds |
+| **P2 — client core + desktop prototype** | P2a: `lain-client` crate (D-179). P2b: prototype in GPUI / Slint / iced (`V-13`), on the owner's new PC (Dec 2026) | Owner picks a framework from working builds |
 | **P3 — desktop app v1** | Parity checklist (§8.4) with the chosen framework; themes (tier 1) | Owner uses it daily instead of lain-desktop |
 | **P4 — components** | lain-parser manifest, parser benchmark (`V-5`), animesubs translate (`V-6`), Anything extract (`V-7`) | Each works as a component with health and declines |
 | **P5 — Android v1** | Compose + Media3 + `lain-client`; offline | Watch and read with resume, offline copies |
@@ -346,7 +350,7 @@ app. It builds its navigation from `/api/modules`, so it follows module state.
 | V-9 | Stream-while-downloading in acquire, then retire just-stream | — |
 | V-10 | `lab` module for opt-in experimental components (audio-enhancer) | — |
 | V-11 | `lain service` with a per-user logon task on Windows by default | — |
-| V-12 | `lain-client` Rust crate in its own repo; UniFFI for Android | new repo |
+| V-12 | `lain-client` Rust crate (in this workspace, D-179); UniFFI for Android | — |
 | V-13 | Choose the desktop framework by a 3-way prototype (GPUI, Slint, iced) | **framework choice** |
 | V-14 | Three modding tiers; WASM extensions with capability scopes | security model |
 | V-15 | Android: Compose + Media3 + `lain-client`; mpv-android fallback | — |
