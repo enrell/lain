@@ -81,6 +81,8 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'friendRequests', href: '/settings/privacy', anchor: 'privacy-requests', keywords: 'friend requests block social' },
 	{ id: 'favorites', href: '/settings/privacy', anchor: 'privacy-favorites', keywords: 'favorites favourite profile social' },
 	{ id: 'libraries', href: '/settings/libraries', anchor: 'libraries', keywords: 'folder path library add remove root', admin: true },
+	{ id: 'libraryPin', href: '/settings/libraries', anchor: 'pin', keywords: 'pin private unlock lock hidden library', admin: true },
+	{ id: 'roots', href: '/settings/libraries', anchor: 'roots', keywords: 'root roots mapping portable path drive move machine', admin: true },
 	{ id: 'scan', href: '/settings/libraries', anchor: 'scan', keywords: 'scan rescan index refresh', admin: true },
 	{ id: 'users', href: '/settings/users', anchor: 'users', keywords: 'accounts roles admin disable reset password', admin: true },
 	{ id: 'mode', href: '/settings/transcoding', anchor: 'mode', keywords: 'auto custom policy transcode', admin: true },

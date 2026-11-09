@@ -187,18 +187,23 @@ func (p *Provisioner) sync() {
 }
 
 func (p *Provisioner) reinstall(m matrix.Manifest) {
+	// Stop the running component first: the new process binds the same
+	// socket path, which fails while the old listener holds it (D-176).
+	p.mu.Lock()
+	old := p.procs[m.ID]
+	delete(p.procs, m.ID)
+	p.mu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
 	proc, err := Spawn(m, filepath.Join(p.dir, ".run"))
 	if err != nil {
 		p.log.Warn("plugin spawn failed", "id", m.ID, "err", err.Error())
 		return
 	}
 	p.mu.Lock()
-	old := p.procs[m.ID]
 	p.procs[m.ID] = proc
 	p.mu.Unlock()
-	if old != nil {
-		_ = old.Close()
-	}
 	// Register under the manifest id: a component naming an existing
 	// provider id replaces it — bindings keep working, now served by
 	// the component (D-074).

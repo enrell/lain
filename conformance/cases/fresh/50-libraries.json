@@ -1,0 +1,44 @@
+{
+  "tier": "v1",
+  "description": "Libraries: any user lists, admins create and delete. Ids are stable over the path.",
+  "cases": [
+    {"name": "no libraries on a fresh server", "requires": ["media_dir"], "steps": [
+      {"req": {"method": "GET", "path": "/api/libraries", "auth": "admin_token"}, "expect": {"status": 200, "body": []}}
+    ]},
+    {"name": "library creation validates input", "requires": ["media_dir"], "steps": [
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "admin_token", "body": {"name": "", "path": ""}},
+       "expect": {"status": 400, "body": {"error": "name and path required"}}},
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "admin_token", "body": {"name": "x", "path": "{{media_dir}}/no-such-dir"}},
+       "expect": {"status": 400, "body": {"error": "path is not a readable directory"}}},
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "admin_token", "raw_body": "?"},
+       "expect": {"status": 400, "body": {"error": "invalid json"}}}
+    ]},
+    {"name": "admin creates libraries", "requires": ["media_dir", "media_dir2"], "steps": [
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "admin_token", "body": {"name": "Anime", "path": "{{media_dir}}"}},
+       "expect": {"status": 201, "body": {"id": "$prefix:lib-", "name": "Anime", "type": "anime", "path": "{{media_dir}}",
+         "source": "lain-source-filesystem", "created_at": "$int"}}, "save": {"lib_id": "/id"}},
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "admin_token", "body": {"name": "Movies", "type": "movie", "path": "{{media_dir2}}"}},
+       "expect": {"status": 201, "body": {"type": "movie", "$open": true}}, "save": {"lib2_id": "/id"}}
+    ]},
+    {"name": "any user lists libraries by name", "requires": ["media_dir"], "steps": [
+      {"req": {"method": "GET", "path": "/api/libraries", "auth": "bob_token"},
+       "expect": {"status": 200, "body": [{"id": "{{lib_id}}", "name": "Anime", "$open": true}, {"id": "{{lib2_id}}", "name": "Movies", "$open": true}]}},
+      {"req": {"method": "GET", "path": "/api/libraries"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]},
+    {"name": "library writes need an admin", "requires": ["media_dir"], "steps": [
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "bob_token", "body": {"name": "x", "path": "{{media_dir}}"}},
+       "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "DELETE", "path": "/api/libraries/{{lib_id}}", "auth": "bob_token"}, "expect": {"status": 403, "body": {"error": "admin required"}}}
+    ]},
+    {"name": "the id is stable over the path", "requires": ["media_dir"], "steps": [
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "admin_token", "body": {"name": "Anime again", "path": "{{media_dir}}"}},
+       "expect": {"status": 201, "body": {"id": "{{lib_id}}", "name": "Anime again", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/libraries", "auth": "admin_token"}, "expect": {"status": 200, "body": {"$len": 2}}}
+    ]},
+    {"name": "delete removes the library and reports its items", "requires": ["media_dir"], "steps": [
+      {"req": {"method": "DELETE", "path": "/api/libraries/lib-nope", "auth": "admin_token"}, "expect": {"status": 404, "body": {"error": "unknown library"}}},
+      {"req": {"method": "DELETE", "path": "/api/libraries/{{lib2_id}}", "auth": "admin_token"}, "expect": {"status": 200, "body": {"status": "ok", "items_removed": 0}}},
+      {"req": {"method": "GET", "path": "/api/libraries", "auth": "admin_token"}, "expect": {"status": 200, "body": [{"id": "{{lib_id}}", "$open": true}]}}
+    ]}
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "tier": "v1",
+  "description": "The account's own profile and preferences.",
+  "cases": [
+    {"name": "profile patch normalizes text and picks a mascot", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/me/profile", "auth": "admin_token", "body": {"display_name": "  The   Admin ", "bio": "hi\nthere", "mascot": "moth"}},
+       "expect": {"status": 200, "body": {"id": "user-admin", "username": "admin", "pass_hash": null, "role": "admin", "disabled": false,
+         "pwd_ver": 1, "created_at": "$int", "playback": {},
+         "profile": {"display_name": "The Admin", "bio": "hi\nthere", "avatar": {"kind": "mascot", "mascot": "moth", "version": "$int"}}}}}
+    ]},
+    {"name": "profile patch applies only present fields", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/me/profile", "auth": "admin_token", "body": {"bio": "  short bio  "}},
+       "expect": {"status": 200, "body": {"profile": {"display_name": "The Admin", "bio": "short bio", "avatar": {"kind": "mascot", "mascot": "moth", "version": "$int"}}, "$open": true}}}
+    ]},
+    {"name": "profile patch rejects bad values", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/me/profile", "auth": "admin_token", "body": {"mascot": "nope"}}, "expect": {"status": 400, "body": {"error": "unknown mascot"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/profile", "auth": "admin_token", "body": {"display_name": "a\tb"}},
+       "expect": {"status": 400, "body": {"error": "display_name must not contain control characters"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/profile", "auth": "admin_token", "body": {"display_name": "12345678901234567890123456789012345678901"}},
+       "expect": {"status": 400, "body": {"error": "display_name is too long"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/profile", "auth": "admin_token", "raw_body": "[1"}, "expect": {"status": 400, "body": {"error": "invalid json"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/profile", "body": {"bio": "x"}}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]},
+    {"name": "an empty mascot clears the avatar", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/me/profile", "auth": "admin_token", "body": {"mascot": ""}},
+       "expect": {"status": 200, "body": {"profile": {"display_name": "The Admin", "bio": "short bio", "avatar": {"version": "$int"}}, "$open": true}}}
+    ]},
+    {"name": "preferences set, normalize and clear the language", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {}},
+       "expect": {"status": 400, "body": {"error": "preferred_language is required"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_language": " JPN "}},
+       "expect": {"status": 200, "body": {"id": "user-admin", "preferred_language": "jpn", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "admin_token"}, "expect": {"status": 200, "body": {"preferred_language": "jpn", "$open": true}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_language": "jp"}},
+       "expect": {"status": 400, "body": {"error": "preferred_language must be a three-letter ISO 639-2 code"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_language": "j1n"}},
+       "expect": {"status": 400, "body": {"error": "preferred_language must be a three-letter ISO 639-2 code"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_language": ""}},
+       "expect": {"status": 200, "body": {"preferred_language": "$absent", "$open": true}}}
+    ]}
+  ]
+}

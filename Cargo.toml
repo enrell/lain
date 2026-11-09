@@ -1,0 +1,60 @@
+# Rust server workspace (D-171, strangler migration). The Go server in
+# cmd/ and internal/ stays the production server until cutover.
+[workspace]
+resolver = "3"
+members = [
+    "crates/lain-core",
+    "crates/lain-store",
+    "crates/lain-auth",
+    "crates/lain-component",
+    "crates/lain-server",
+    "conformance/runner",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.90"
+publish = false
+
+# D-172 baseline plus D-173 (argon2 per D-177); versions are pinned exactly and Cargo.lock
+# is committed. A crate outside this list needs the owner's approval.
+[workspace.dependencies]
+tokio = { version = "=1.54.1", default-features = false, features = ["rt-multi-thread", "net", "time", "sync", "macros", "signal", "io-util"] }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
+hyper = { version = "=1.12.0", default-features = false }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+redb = "=4.5.0"
+# D-177: passwords and library PINs, Argon2id in PHC strings.
+argon2 = { version = "=0.6.0", default-features = false, features = ["alloc", "getrandom", "password-hash"] }
+# Default features: macOS needs `macos_fsevent` (the crate does not build
+# there without it); on Linux and Windows they add nothing.
+notify = "=8.2.2"
+tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
+# D-173 (Q-043): token hashing, OS randomness, log output.
+sha2 = { version = "=0.11.1", default-features = false }
+hmac = { version = "=0.13.0", default-features = false }
+getrandom = { version = "=0.4.3", features = ["std"] }
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "json", "std"] }
+
+lain-core = { path = "crates/lain-core" }
+lain-store = { path = "crates/lain-store" }
+lain-auth = { path = "crates/lain-auth" }
+lain-component = { path = "crates/lain-component" }
+
+[profile.dev]
+# Keep target/ small on a tight disk; line tables are enough for
+# backtraces.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+# Argon2 is unusable unoptimized (every login in the test suites hashes).
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

@@ -30,3 +30,6 @@ qa/.cache/
 qa/.browser/
 qa/.probe/
 __pycache__/
+
+# Rust workspace (crates/, conformance/runner)
+/target/

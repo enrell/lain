@@ -1,0 +1,22 @@
+{
+  "tier": "v1",
+  "description": "Liveness and the JSON answers for unknown API paths (the Go web UI handler's contract: /api/* never gets HTML).",
+  "cases": [
+    {"name": "GET /health", "steps": [
+      {"req": {"method": "GET", "path": "/health"},
+       "expect": {"status": 200, "headers": {"content-type": "$prefix:application/json"}, "body": {"status": "ok", "version": "$string"}}}
+    ]},
+    {"name": "GET /api/health", "steps": [
+      {"req": {"method": "GET", "path": "/api/health"},
+       "expect": {"status": 200, "body": {"status": "ok", "version": "$string"}}}
+    ]},
+    {"name": "unknown API path is a JSON 404", "steps": [
+      {"req": {"method": "GET", "path": "/api/no-such-route"},
+       "expect": {"status": 404, "headers": {"content-type": "$prefix:application/json"}, "body": {"error": "not found"}}}
+    ]},
+    {"name": "wrong method is a JSON 405", "steps": [
+      {"req": {"method": "POST", "path": "/api/health", "body": {}},
+       "expect": {"status": 405, "body": {"error": "method not allowed"}}}
+    ]}
+  ]
+}

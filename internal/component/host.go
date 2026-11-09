@@ -171,9 +171,10 @@ func (p *Process) Close() error {
 	p.cancel()
 	p.mu.Lock()
 	p.closed = true
+	// cmd is guarded by mu: the supervisor swaps it on every respawn.
+	p.killLocked()
 	p.mu.Unlock()
 	_ = p.lis.Close()
-	p.killLocked()
 	p.wg.Wait()
 	_ = os.Remove(p.sockPath)
 	return nil

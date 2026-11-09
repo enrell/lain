@@ -43,6 +43,75 @@ server. Design for them:
   liveness and password-version checks.
 - No cgo. The whole point is a seconds-long build; keep it that way.
 
+## Rust (migration in progress)
+
+The server is being rewritten in Rust by strangler migration (D-171,
+DESIGN-v2 §13). No Go server runs anywhere (D-178): the Go code stays
+in the repo as the reference the conformance suite checks the API
+against and as the source of modules not ported yet, so this file
+documents both stacks until those are ported.
+
+- Workspace: `Cargo.toml` at the root, crates in `crates/`:
+  - `lain-core` — composition, provider registry (modes, health-gated
+    swap, generation fencing, last-good fallback, withdraw, module
+    suspend/resume) and the module layer (`lain.modules@1`, D-154).
+  - `lain-store` — redb tables of JSON records with NUL-joined
+    composite keys. A data dir starts empty: nothing is imported from
+    the Go server (D-177).
+  - `lain-auth` — setup, Argon2id passwords and PINs, HS256 tokens with
+    a session `jti` and live checks.
+  - `lain-component` — the component host, `serve` for Rust components
+    and the `<data-dir>/plugins/` watcher; the Go wire, byte for byte.
+  - `lain-server` — the axum gateway, `/api/modules`, `/api/events`,
+    service mode, catalog `export`/`import` (`lain.catalog-export@3`);
+    binary `lain-rs` on the canonical data dir (`lain`) and port 9360
+    (D-178).
+  - `conformance/runner` — the conformance runner (`lain-conformance`).
+- Dependencies: the D-172 baseline plus D-173 (argon2 per D-177), versions pinned with `=`
+  in the workspace `Cargo.toml`, `Cargo.lock` committed. A crate outside
+  this list is asked of the owner first (DESIGN-v2 §13 policy: few,
+  maintained, pure Rust, no C-heavy dependency in the server).
+  - `tokio` — the async runtime under axum, and the Windows named-pipe
+    transport of the component host (D-174); only the `rt-multi-thread`,
+    `net`, `time`, `sync`, `macros`, `signal` and `io-util` features.
+  - `axum` / `hyper` — HTTP routing, default features off (`http1`,
+    `json`, `query`, `tokio`). `hyper` is used directly only for its
+    `Body` trait, which the SSE stream implements.
+  - `serde` / `serde_json` — the JSON contracts.
+  - `redb` — the embedded store, pure Rust, the bbolt equivalent.
+  - `argon2` (D-177, RustCrypto, pure Rust) — passwords and library
+    PINs as Argon2id PHC strings, default parameters; features `alloc`,
+    `password-hash`, `getrandom` (salts). Built with `opt-level = 3` in
+    the dev profile, since unoptimized hashing slows every login in the
+    test suites. No Go hash is ever verified, so there is no bcrypt.
+  - `notify` — file watching for `plugins/` and `modules.json`, default
+    features (macOS needs `macos_fsevent` to build).
+  - `tracing` — log events.
+  - `tracing-subscriber` (D-173) — JSON log output to stderr or a file
+    (`fmt` + `json` only, no env-filter/regex).
+  - `sha2` + `hmac` (D-173, RustCrypto, pure Rust) — the HS256 token
+    signature and its constant-time check.
+  - `getrandom` (D-173) — OS randomness for the token secret and the
+    token `jti`.
+  - In-tree instead of a crate: URL-safe base64 for the JWT segments
+    (`lain-auth/src/crypto.rs`; no approved crate exposes one) and the
+    runner's HTTP client.
+  - No test-only crates.
+- Rules that carry over unchanged: plugin boundaries, media bytes never
+  in a plugin call, catalog/userstate separation, typed errors with
+  stable codes and no panic on bad input, English prose.
+- Component transport: a Unix socket, or a named pipe on Windows
+  (D-174); the NDJSON frames are identical. Go components dial Unix
+  sockets only, so on Windows a Go component needs a pipe dialer first.
+
+```sh
+cargo build                        # the workspace (keep it incremental)
+cargo test                         # every crate, including the conformance
+                                   # suites against an in-process lain-rs
+conformance/run.sh                 # the suite against the Go and Rust servers
+cargo run -p lain-server --bin lain-rs -- serve --data-dir /tmp/lain-rs-dev
+```
+
 ## Workflow
 
 1. Read the relevant source + `docs/` before changing conventions.

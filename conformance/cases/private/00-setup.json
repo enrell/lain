@@ -1,0 +1,24 @@
+{
+  "tier": "v2",
+  "description": "State for the private-library cases, built through the API on a lain-rs whose data dir has a roots.json mapping `media` to the `media_root` directory (which has a Frieren/ directory) and the catalog of conformance/fixtures/catalog.json (`lain-rs import --in`): admin and bob, the rooted library the fixture items belong to, and progress for each user.",
+  "cases": [
+    {"name": "accounts", "requires": ["media_root"], "steps": [
+      {"req": {"method": "POST", "path": "/api/setup", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 201}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 200}, "save": {"a0": "/token"}},
+      {"req": {"method": "POST", "path": "/api/users", "auth": "a0", "body": {"username": "bob", "password": "bobpassword"}}, "expect": {"status": 201}}
+    ]},
+    {"name": "a rooted library over the fixture catalog", "requires": ["media_root"], "steps": [
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "a0", "body": {"name": "Anime", "root": "media", "path": "Frieren"}},
+       "expect": {"status": 201, "body": {"id": "lib-e8bb66fd", "root": "media", "root_path": "Frieren", "$open": true}}, "save": {"lib_id": "/id"}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "a0"}, "expect": {"status": 200, "body": {"total": 2, "$open": true}},
+       "save": {"item1": "/items/0/id", "item2": "/items/1/id"}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{item1}}", "auth": "a0"},
+       "expect": {"status": 200, "body": {"root": "media", "rel_path": "Frieren/[Fansub-A] Frieren - 01 [1080p].mkv", "file_path": "$nonempty", "$open": true}}}
+    ]},
+    {"name": "progress", "requires": ["media_root"], "steps": [
+      {"req": {"method": "PUT", "path": "/api/items/{{item1}}/progress", "auth": "a0", "body": {"position_sec": 30, "duration_sec": 1440}}, "expect": {"status": 200}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobpassword"}}, "expect": {"status": 200}, "save": {"b0": "/token"}},
+      {"req": {"method": "PUT", "path": "/api/items/{{item2}}/progress", "auth": "b0", "body": {"position_sec": 1440, "duration_sec": 1440, "completed": true}}, "expect": {"status": 200}}
+    ]}
+  ]
+}

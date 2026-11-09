@@ -1,0 +1,32 @@
+[package]
+name = "lain-server"
+description = "Lain Rust server (D-171): the gateway, modules, events and service mode"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "lain-rs"
+path = "src/main.rs"
+
+[dependencies]
+axum.workspace = true
+hyper.workspace = true
+notify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+lain-auth.workspace = true
+lain-component.workspace = true
+lain-core.workspace = true
+lain-store.workspace = true
+
+[dev-dependencies]
+lain-conformance = { path = "../../conformance/runner" }
