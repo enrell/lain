@@ -232,6 +232,7 @@ pub enum Act {
     Swap(String, Vec<String>, u64),
     Withdraw(String),
     Backup,
+    SaveIntegrations,
     ConfirmYes,
     ConfirmNo,
 }

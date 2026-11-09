@@ -27,6 +27,7 @@ pub struct SettingsState {
     pub browse: Option<Load<BrowseResult>>,
     pub mascots: Load<Vec<String>>,
     pub pin_set: Load<bool>,
+    pub integrations: Load<lain_client::types::IntegrationsView>,
     pub new_kind: String,
     pub scan_dirty: bool,
     pub plugins_dirty: bool,
@@ -45,6 +46,7 @@ impl Default for SettingsState {
             browse: None,
             mascots: Load::Idle,
             pin_set: Load::Idle,
+            integrations: Load::Idle,
             new_kind: "anime".into(),
             scan_dirty: false,
             plugins_dirty: false,
@@ -101,7 +103,18 @@ impl LainApp {
                 let c2 = b.client.clone();
                 self.spawn_ui(cx, async move { c2.modules().await }, |app, r, _| app.modules = Load::from(r));
             }
-            Section::Server | Section::Backup => {}
+            Section::Server => {
+                self.settings.integrations = Load::Loading;
+                self.spawn_ui(cx, async move { c.integrations().await }, |app, r, _| {
+                    if let Ok(v) = &r {
+                        let id = v.platforms.get("anilist").map(|p| p.client_id.clone()).unwrap_or_default();
+                        app.set_text("int.anilist.id", &id);
+                        app.set_text("int.anilist.secret", "");
+                    }
+                    app.settings.integrations = Load::from(r);
+                });
+            }
+            Section::Backup => {}
         }
     }
 
@@ -421,6 +434,19 @@ impl LainApp {
                     app.enter_settings(Section::Plugins, cx);
                 });
             }
+            Act::SaveIntegrations => {
+                let secret = self.text("int.anilist.secret");
+                let update = lain_client::types::IntegrationsUpdate {
+                    anilist_client_id: Some(self.text("int.anilist.id").trim().to_string()),
+                    anilist_client_secret: if secret.is_empty() { None } else { Some(secret) },
+                };
+                self.spawn_ui(cx, async move { c.set_integrations(update).await }, |app, r, _| {
+                    if app.report(&r, "Integrations saved") {
+                        app.set_text("int.anilist.secret", "");
+                        app.settings.integrations = Load::from(r);
+                    }
+                });
+            }
             Act::Backup => {
                 let dir = dirs_home();
                 let rx = cx.prompt_for_new_path(&dir, Some("lain-backup.zip"));
@@ -594,7 +620,7 @@ impl LainApp {
             Section::Libraries => self.set_libraries(cx),
             Section::Plugins => self.set_plugins(cx),
             Section::Modules => self.set_modules(),
-            Section::Server => self.set_server(),
+            Section::Server => self.set_server(cx),
             Section::Backup => self.set_backup(cx),
         };
         div().size_full().flex().pt(px(76.)).px(px(margin)).gap(px(th.sp(6))).child(rail).child(
@@ -1153,15 +1179,48 @@ impl LainApp {
         col
     }
 
-    fn set_server(&mut self) -> gpui::Div {
-        div()
-            .flex()
-            .flex_col()
-            .child(self.notice(
-                Notice::NotPorted,
-                "Transcode settings, integrations and the transcode list are not available on this server yet",
-                "Their routes (/api/admin/settings/*, /api/admin/transcodes) belong to modules still being moved to the new server. This section fills in when the server serves them.",
-            ))
+    fn set_server(&mut self, cx: &mut Context<Self>) -> gpui::Div {
+        let th = self.theme.clone();
+        let mut col = div().flex().flex_col();
+        // ---- transcode (watch module)
+        col = col.child(div().pt(px(th.sp(3))).child(self.label("transcode")));
+        col = col.child(self.notice(
+            Notice::NotPorted,
+            "Transcode settings and the transcode list are not available on this server yet",
+            "Their routes (/api/admin/settings/transcode, /api/admin/transcodes) come with the watch module's port. This part fills in when the server serves them.",
+        ));
+        // ---- integrations
+        col = col.child(div().pt(px(th.sp(5))).child(self.label("integrations")));
+        match self.settings.integrations.clone() {
+            Load::Ready(v) => {
+                let p = v.platforms.get("anilist").cloned().unwrap_or_default();
+                let id = self.field("int.anilist.id", "client id", false, Act::Focus("int.anilist.secret"), cx);
+                let secret = self.field(
+                    "int.anilist.secret",
+                    if p.secret_set { "secret stored (empty keeps it)" } else { "client secret" },
+                    true,
+                    Act::SaveIntegrations,
+                    cx,
+                );
+                let save = self.btn("int.save", "Save integrations", None, Tone::Primary, Act::SaveIntegrations, cx);
+                let hint = if p.callback_url.is_empty() {
+                    "OAuth app for list sync".to_string()
+                } else {
+                    format!("Register this redirect URL: {}", p.callback_url)
+                };
+                col = col
+                    .child(self.row("AniList client id", &hint, div().w(px(320.)).child(id)))
+                    .child(self.row(
+                        "AniList client secret",
+                        if p.secret_set { "A secret is stored; it is never shown" } else { "Not set" },
+                        div().w(px(320.)).child(secret),
+                    ))
+                    .child(self.row("", "", save));
+            }
+            Load::Failed(e) => col = col.child(self.error_notice("Integrations", &e)),
+            _ => col = col.child(self.notice(Notice::Loading, "Loading…", "")),
+        }
+        col
     }
 
     fn set_backup(&mut self, cx: &mut Context<Self>) -> gpui::Div {
