@@ -25,6 +25,7 @@ use crate::events::{EventBus, Scope, SubInfo};
 use crate::libraries::Libraries;
 use crate::privacy::{self, Unlocks};
 use crate::roots::{self, Roots};
+use lain_ingest::{ScanEvent, Scanner, SourceWatch};
 
 /// The composition document version.
 pub const COMPOSITION_VERSION: u32 = 8;
@@ -32,37 +33,42 @@ pub const COMPOSITION_VERSION: u32 = 8;
 /// Built-in Go providers that `lain plugin-run` serves as components:
 /// a binding may name them before their manifest is installed (they
 /// answer `dependency-unavailable` until then). This is the strangler
-/// path: Go providers keep working under the Rust core.
+/// path: Go providers keep working under the Rust core. The network
+/// metadata providers stay here until the Rust server speaks HTTPS.
 pub const COMPONENT_SERVED: &[&str] = &[
-    "lain-source-filesystem",
-    "lain-identify-comic",
-    "lain-identify-anime",
-    "lain-identify-generic",
+    "lain-release-model",
     "lain-probe-ffprobe",
     "lain-playback-default",
     "lain-thumbnail-ffmpeg",
     "lain-transcode-ffmpeg",
-    "lain-metadata-nfo",
     "lain-metadata-kitsu",
     "lain-metadata-anilist",
     "lain-metadata-jikan",
     "lain-metadata-tvmaze",
 ];
 
-/// The P1a default composition: the core bindings served in-process
-/// plus identification served by components.
+/// The default composition: everything the Rust server serves
+/// in-process (catalog, userstate, catalog population, identification,
+/// metadata); the network metadata providers are components.
 pub fn default_composition() -> Composition {
+    use lain_identify::{ANIME_ID, CAP_MEDIA_IDENTIFY, CAP_RELEASE_PARSE, COMIC_ID, GENERIC_ID, TOKENIZER_ID};
+    use lain_metadata::{CAP_METADATA_ENRICH, CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, DEFAULT_PROVIDERS, ENRICH_ID};
     let mut bindings = BTreeMap::new();
-    bindings.insert(CAP_CATALOG_READ.into(), Binding::new(BindingMode::ExactlyOne, &[CATALOG_ID]));
-    bindings.insert(CAP_CATALOG_WRITE.into(), Binding::new(BindingMode::ExactlyOne, &[CATALOG_ID]));
-    bindings.insert(CAP_USER_PROGRESS.into(), Binding::new(BindingMode::ExactlyOne, &[USERSTATE_ID]));
-    bindings.insert(
-        "lain.media.identify@1".into(),
-        Binding::new(
-            BindingMode::OrderedMany,
-            &["lain-identify-comic", "lain-identify-anime", "lain-identify-generic"],
-        ),
-    );
+    let one = |id: &str| Binding::new(BindingMode::ExactlyOne, &[id]);
+    bindings.insert(CAP_CATALOG_READ.into(), one(CATALOG_ID));
+    bindings.insert(CAP_CATALOG_WRITE.into(), one(CATALOG_ID));
+    bindings.insert(CAP_USER_PROGRESS.into(), one(USERSTATE_ID));
+    bindings.insert(lain_ingest::CAP_SOURCE_ENUMERATE.into(), one(lain_ingest::SOURCE_ID));
+    bindings.insert(lain_ingest::CAP_INGEST_SCAN.into(), one(lain_ingest::INGEST_ID));
+    bindings.insert(lain_ingest::CAP_SOURCE_WATCH.into(), one(lain_ingest::WATCH_ID));
+    bindings
+        .insert(CAP_MEDIA_IDENTIFY.into(), Binding::new(BindingMode::OrderedMany, &[COMIC_ID, ANIME_ID, GENERIC_ID]));
+    // The lain-parser model (P4) is bound before the tokenizer once it
+    // is installed as a component.
+    bindings.insert(CAP_RELEASE_PARSE.into(), Binding::new(BindingMode::OrderedMany, &[TOKENIZER_ID]));
+    bindings.insert(CAP_METADATA_SEARCH.into(), Binding::new(BindingMode::MergeMany, DEFAULT_PROVIDERS));
+    bindings.insert(CAP_METADATA_RESOLVE.into(), Binding::new(BindingMode::MergeMany, DEFAULT_PROVIDERS));
+    bindings.insert(CAP_METADATA_ENRICH.into(), one(ENRICH_ID));
     Composition { version: COMPOSITION_VERSION, bindings }
 }
 
@@ -75,6 +81,13 @@ pub struct Config {
     pub keep_alive: Duration,
     /// Debounce for the `modules.json` watch.
     pub reload_debounce: Duration,
+    /// Metadata backfill after every scan (`LAIN_AUTO_ENRICH=0` turns it
+    /// off).
+    pub auto_enrich: bool,
+    /// Library file watching (`--watch=0` / `LAIN_WATCH=0` turns it off).
+    pub watch: bool,
+    /// Quiet window before a changed library is rescanned.
+    pub watch_debounce: Duration,
 }
 
 impl Config {
@@ -84,6 +97,9 @@ impl Config {
             version: version.into(),
             keep_alive: Duration::from_secs(15),
             reload_debounce: Duration::from_millis(200),
+            auto_enrich: true,
+            watch: true,
+            watch_debounce: lain_ingest::DEFAULT_DEBOUNCE,
         }
     }
 }
@@ -116,6 +132,10 @@ pub struct App {
     pub unlocks: Unlocks,
     pub modules: RwLock<ModuleSet>,
     pub events: EventBus,
+    /// Library scans (`/api/library/scan`) and the watch loop.
+    pub scanner: Arc<Scanner>,
+    watch: bool,
+    watch_provider: Arc<SourceWatch>,
     provisioner: Mutex<Option<Provisioner>>,
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
     stopping: Arc<AtomicBool>,
@@ -146,6 +166,26 @@ impl App {
         let registry = Arc::new(Registry::new(comp.clone()));
         registry.register(Arc::new(Catalog::with_roots(store.clone(), roots.clone())));
         registry.register(Arc::new(Userstate::new(store.clone())));
+        for id in lain_identify::Identifier::ALL {
+            registry.register(Arc::new(id));
+        }
+        registry.register(Arc::new(lain_identify::Tokenizer));
+        registry.register(Arc::new(lain_ingest::Filesystem));
+        let watch_provider = Arc::new(SourceWatch::new(cfg.watch_debounce, true));
+        registry.register(watch_provider.clone());
+        let libs_store = (store.clone(), roots.clone());
+        let library_source: lain_ingest::scanner::LibrarySource =
+            Arc::new(move || Libraries::new(libs_store.0.clone(), libs_store.1.clone()).list().unwrap_or_default());
+        let scanner = Scanner::new(&registry, library_source, cfg.auto_enrich);
+        let weak_scanner = Arc::downgrade(&scanner);
+        let progress: lain_ingest::scan::Progress = Arc::new(move |done: &lain_ingest::LibraryDone| {
+            if let Some(s) = weak_scanner.upgrade() {
+                s.library_done(done);
+            }
+        });
+        registry.register(Arc::new(lain_ingest::Runner::new(&registry, Some(progress))));
+        registry.register(Arc::new(lain_metadata::Nfo));
+        registry.register(Arc::new(lain_metadata::Enricher::new(&registry, store.clone())));
 
         let mut known: BTreeSet<String> = registry.providers().into_iter().collect();
         known.extend(COMPONENT_SERVED.iter().map(|s| s.to_string()));
@@ -166,6 +206,9 @@ impl App {
             registry,
             modules: RwLock::new(ModuleSet::new(modules::builtin())),
             events: EventBus::new(),
+            scanner,
+            watch: cfg.watch,
+            watch_provider,
             provisioner: Mutex::new(None),
             watcher: Mutex::new(None),
             stopping: Arc::new(AtomicBool::new(false)),
@@ -174,6 +217,12 @@ impl App {
         // ignored); later edits that do not parse keep the last state.
         let doc = app.read_modules_doc()?;
         app.apply_modules(doc.as_ref());
+        let weak = Arc::downgrade(&app);
+        app.scanner.set_sink(Arc::new(move |ev| {
+            if let Some(app) = weak.upgrade() {
+                app.publish_scan(ev);
+            }
+        }));
         Ok(app)
     }
 
@@ -209,6 +258,11 @@ impl App {
         }
     }
 
+    /// Whether the catalog knows an item (any library).
+    pub fn item_exists(&self, item_id: &str) -> bool {
+        self.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": item_id})).is_ok()
+    }
+
     /// The private library an item belongs to, if any (event filters).
     fn private_library_of(&self, item_id: &str) -> Option<Library> {
         let (out, _) = self.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": item_id})).ok()?;
@@ -231,6 +285,52 @@ impl App {
             s.user_id == user_id
                 && lib.as_ref().is_none_or(|l| privacy::items_visible(l, &self.unlocks, &s.user_id, &s.session))
         });
+    }
+
+    /// Scan progress as `/api/events`: `scan-state` for everyone (the
+    /// unreadable roots of private libraries only to admins), and
+    /// `library-changed` `scanned` to who may see the library.
+    fn publish_scan(&self, ev: ScanEvent) {
+        let (state, trigger, libraries, libraries_done, status) = match ev {
+            ScanEvent::Started { trigger, libraries } => ("running".to_string(), trigger, libraries, 0, None),
+            ScanEvent::Library { done, libraries, libraries_done, trigger } => {
+                if let Some(lib) = self.libraries.get(&done.library_id) {
+                    let c = &done.commit;
+                    self.publish_library(
+                        &lib,
+                        json!({"library_id": lib.id, "action": "scanned", "items": done.identified,
+                               "missing": c.missing, "restored": c.restored, "migrated": c.migrated}),
+                    );
+                }
+                ("running".to_string(), trigger, libraries, libraries_done, None)
+            }
+            ScanEvent::Finished(st) => (st.state.clone(), st.trigger.clone(), 0, 0, Some(st)),
+        };
+        let mut data =
+            json!({"state": state, "trigger": trigger, "libraries": libraries, "libraries_done": libraries_done});
+        if let Some(st) = &status {
+            let n = st.stats.as_ref().map(|s| s.libraries).unwrap_or(0);
+            data["libraries"] = json!(n);
+            data["libraries_done"] = json!(n);
+            if !st.error.is_empty() {
+                data["error"] = json!(st.error);
+            }
+        }
+        let full = status.as_ref().and_then(|s| s.stats.clone());
+        let mut admin = data.clone();
+        if let Some(stats) = &full {
+            admin["stats"] = json!(stats);
+            data["stats"] = json!(self.public_stats(stats.clone()));
+        }
+        self.events.publish(Scope::Admins, "scan-state", admin);
+        self.events.publish_where("scan-state", data, &|s: &SubInfo| !s.admin);
+    }
+
+    /// Scan stats as a non-admin sees them: unreadable roots of private
+    /// libraries are left out (their names and paths are not theirs).
+    pub fn public_stats(&self, mut stats: lain_api::ScanStats) -> lain_api::ScanStats {
+        stats.unreadable.retain(|u| self.libraries.get(&u.library_id).is_none_or(|l| !l.private));
+        stats
     }
 
     /// Re-reads `roots.json`; a bad edit is logged and ignored.
@@ -404,6 +504,9 @@ impl App {
         }
         *self.provisioner.lock().unwrap_or_else(|e| e.into_inner()) = Some(prov);
         self.watch_modules();
+        if self.watch {
+            self.scanner.start_watching();
+        }
     }
 
     fn watch_modules(self: &Arc<Self>) {
@@ -477,6 +580,8 @@ impl App {
     /// Ends streams, stops watches and components.
     pub fn shutdown(&self) {
         self.stopping.store(true, Ordering::SeqCst);
+        self.scanner.stop();
+        self.watch_provider.close();
         self.events.close_all();
         self.watcher.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(p) = self.provisioner.lock().unwrap_or_else(|e| e.into_inner()).take() {

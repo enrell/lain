@@ -6,6 +6,9 @@
 //! | `ready`            | `{server, version}` on connect               | the stream  |
 //! | `module-state`     | `{module, enabled, state}`                   | everyone    |
 //! | `library-changed`  | `{library_id, action, items_removed?}`       | everyone    |
+//! | `library-changed` `scanned` | `{library_id, action, items, missing, restored, migrated}` | who sees the library |
+//! | `library-changed` `item-deleted` | `{library_id, action, item_id}` | who sees the library |
+//! | `scan-state`       | `{state, trigger, libraries, libraries_done, stats?, error?}` | everyone (private unreadable roots: admins) |
 //! | `progress-changed` | `{item_id, progress}`                        | that user   |
 //! | `library-changed` of a private library | (same)                   | admins and members |
 //! | `plugin-changed`   | `{provider, action}`                         | admins      |

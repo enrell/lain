@@ -11,6 +11,8 @@ use serde_json::{Value, json};
 use lain_core::{Error, Provider};
 use lain_store::{Bucket, Store, StoreError, join_key, key_prefix};
 
+use lain_ingest::{CommitScanInput, CommitScanOutput};
+
 use crate::contracts::{CatalogItem, CatalogPage, EXPORT_FORMAT, EXPORT_VERSION, ExportDoc, PageParams, Progress};
 use crate::roots::Roots;
 
@@ -186,6 +188,39 @@ impl Catalog {
             .map_err(store_err)
     }
 
+    /// Commits one library's scan in one write transaction (D-075): the
+    /// plan (`lain_ingest::plan`) reconciles moves (D-019) and marks
+    /// missing files (D-068) against the stored rows.
+    pub fn commit_scan(&self, input: &CommitScanInput) -> Result<CommitScanOutput, Error> {
+        if input.library_id.is_empty() {
+            return Err(Error::invalid("library_id required"));
+        }
+        let lib = input.library_id.as_str();
+        self.store
+            .write(|tx| {
+                let mut stored = Vec::new();
+                for (k, _) in tx.scan_prefix(Bucket::ItemsByLibrary, &key_prefix(lib))? {
+                    // A record that does not decode is skipped, as in reads.
+                    if let Ok(Some(it)) = tx.get_json::<CatalogItem>(Bucket::Items, &k[lib.len() + 1..]) {
+                        stored.push(it);
+                    }
+                }
+                let plan = lain_ingest::plan(input, stored, lain_core::now_unix());
+                for (id, missing) in &plan.flags {
+                    if let Some(mut it) = tx.get_json::<CatalogItem>(Bucket::Items, id.as_bytes())? {
+                        it.missing = *missing;
+                        tx.put_json(Bucket::Items, id.as_bytes(), &it)?;
+                    }
+                }
+                for it in &plan.upserts {
+                    tx.put_json(Bucket::Items, it.id.as_bytes(), it)?;
+                    tx.put(Bucket::ItemsByLibrary, &join_key(&it.library_id, &it.id), b"")?;
+                }
+                Ok(plan.out)
+            })
+            .map_err(store_err)
+    }
+
     pub fn set_missing(&self, id: &str, missing: bool) -> Result<bool, Error> {
         self.store
             .write(|tx| {
@@ -275,6 +310,9 @@ impl Provider for Catalog {
             (CAP_CATALOG_READ, "episodes") => {
                 let i: IdInput = input(v, "EpisodesInput")?;
                 json!(self.episodes(&i.id)?.ok_or_else(|| Error::not_found(format!("unknown item {}", i.id)))?)
+            }
+            (CAP_CATALOG_WRITE, "commit_scan") => {
+                json!(self.commit_scan(&input::<CommitScanInput>(v, "CommitScanInput")?)?)
             }
             (CAP_CATALOG_WRITE, "set_missing") => {
                 let i: SetMissingInput = input(v, "SetMissingInput")?;

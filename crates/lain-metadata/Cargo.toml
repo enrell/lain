@@ -1,0 +1,16 @@
+[package]
+name = "lain-metadata"
+description = "Metadata module: the enrich pipeline (lain.metadata.enrich@1), the NFO provider, the merge and the overlay and cache tables"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lain-api.workspace = true
+lain-core.workspace = true
+lain-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

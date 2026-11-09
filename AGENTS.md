@@ -66,6 +66,19 @@ documents both stacks until those are ported.
     service mode, catalog `export`/`import` (`lain.catalog-export@3`);
     binary `lain-rs` on the canonical data dir (`lain`) and port 9360
     (D-178).
+  - `lain-identify` — the in-tree parsers (D-185): the release-name
+    tokenizer (`lain.release.parse@1`) and the comic, anime and generic
+    identifiers (`lain.media.identify@1`), checked name for name
+    against the Go parsers (`conformance/fixtures/parse-parity.json`).
+  - `lain-ingest` — catalog population: the filesystem source, the scan
+    pipeline, the `commit_scan` plan (moves D-019, missing D-068,
+    locations D-157/D-186), the library watcher on `notify`, the scan
+    controller and the folder picker.
+  - `lain-metadata` — the metadata module: enrich, the NFO provider,
+    the merge and the overlay and cache tables (network providers stay
+    Go components until the server speaks HTTPS, D-187).
+  - `lain-subtitle` — sidecar discovery and SRT/WebVTT/ASS to WebVTT,
+    shared with the subtitles module.
   - `lain-api` — the HTTP API's JSON types (serde only), re-exported by
     the server crates and decoded by `lain-client` (D-179).
   - `lain-client` — the client core every native client shares
@@ -96,20 +109,23 @@ documents both stacks until those are ported.
     `password-hash`, `getrandom` (salts). Built with `opt-level = 3` in
     the dev profile, since unoptimized hashing slows every login in the
     test suites. No Go hash is ever verified, so there is no bcrypt.
-  - `notify` — file watching for `plugins/` and `modules.json`, default
-    features (macOS needs `macos_fsevent` to build).
+  - `notify` — file watching for `plugins/`, `modules.json` and the
+    library roots (recursive, D-185), default features (macOS needs
+    `macos_fsevent` to build).
   - `tracing` — log events.
   - `tracing-subscriber` (D-173) — JSON log output to stderr or a file
     (`fmt` + `json` only, no env-filter/regex).
   - `sha2` + `hmac` (D-173, RustCrypto, pure Rust) — the HS256 token
-    signature and its constant-time check.
+    signature and its constant-time check; `sha2` also derives catalog
+    item ids (D-186).
   - `getrandom` (D-173) — OS randomness for the token secret and the
     token `jti`.
   - `libc` (D-179, already in the tree on Unix) — `statvfs` for the
     client offline store's free-space floor, Unix only.
   - In-tree instead of a crate: URL-safe base64 for the JWT segments
-    (`lain-auth/src/crypto.rs`; no approved crate exposes one) and the
-    runner's HTTP client.
+    (`lain-auth/src/crypto.rs`; no approved crate exposes one), the
+    runner's HTTP client, the comic identifier's patterns (no regex
+    crate) and the `.nfo` reader (no XML crate).
   - No test-only crates.
 - Rules that carry over unchanged: plugin boundaries, media bytes never
   in a plugin call, catalog/userstate separation, typed errors with

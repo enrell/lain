@@ -379,8 +379,18 @@ pub struct BrowseResult {
     pub dirs: Vec<BrowseDir>,
 }
 
-/// The counts of a scan (`lain.ingest.scan@1`); `unreadable` and
-/// future fields stay in `extra`.
+/// One library root a scan could not read fully.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnreadableRoot {
+    pub library_id: String,
+    pub name: String,
+    pub path: String,
+    pub reason: String,
+}
+
+/// The counts of a scan (`lain.ingest.scan@1`). `missing` counts files
+/// that vanished (marked, never deleted, D-068), `restored` files that
+/// came back, `migrated` moves and renames that kept their id (D-019).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ScanStats {
     pub libraries: i64,
@@ -394,12 +404,22 @@ pub struct ScanStats {
     pub migrated: i64,
     pub enriched: i64,
     pub walk_errors: i64,
+    /// The roots behind `walk_errors` and any inaccessible root, in
+    /// library order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unreadable: Vec<UnreadableRoot>,
+    #[serde(default)]
+    pub dirs: i64,
+    #[serde(default)]
+    pub started_at: i64,
+    #[serde(default)]
+    pub finished_at: i64,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
 
 /// `GET /api/library/scan`: `state` is `idle`, `running`, `done` or
-/// `failed`; `trigger` is `manual` or `watch`.
+/// `error`; `trigger` is `manual` or `watch`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ScanStatus {
     pub state: String,
@@ -413,6 +433,99 @@ pub struct ScanStatus {
     pub error: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub trigger: String,
+}
+
+// ---- metadata and sidecars --------------------------------------------------
+
+/// The metadata overlay of one catalog item (`lain.metadata.enrich@1`).
+/// Identity stays in the catalog; this only decorates it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Enrichment {
+    pub item_id: String,
+    pub provider: String,
+    pub remote_id: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub year: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub genres: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub synopsis: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub poster: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cover: String,
+    pub fetched_at: i64,
+}
+
+/// `GET /api/enrichments?ids=`: the overlays that exist, in id order.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Enrichments {
+    pub items: Vec<Enrichment>,
+}
+
+/// One subtitle file next to an item's media file, addressed by
+/// `index` (never by path). `language` is ISO 639-2/T, `und` when the
+/// name carries none.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sidecar {
+    pub index: i64,
+    pub name: String,
+    pub language: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tag: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub forced: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hi: bool,
+    pub format: String,
+}
+
+/// `GET /api/items/{id}/sidecars`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sidecars {
+    pub sidecars: Vec<Sidecar>,
+}
+
+/// A parsed release name (`lain.release.parse@1`). Zero numbers mean
+/// "not stated"; `episodes` lists every episode a pack covers and
+/// `absolute` marks absolute numbering (anime with no season marker).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Release {
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub episode_title: String,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub year: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub season: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub episodes: Vec<i64>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub absolute: bool,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub volume: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub chapter: i64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub season_pack: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub group: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub resolution: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub codec: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub proper: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub repack: bool,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub version: i64,
+    /// The provider that produced the record.
+    #[serde(default)]
+    pub parser: String,
 }
 
 // ---- composition and modules ------------------------------------------------
@@ -571,13 +684,41 @@ pub struct ModuleStateEvent {
     pub state: String,
 }
 
-/// `library-changed`: `action` is `created`, `updated` or `deleted`.
+/// `library-changed`: `action` is `created`, `updated`, `deleted`,
+/// `scanned` (a scan committed the library: the counts say what
+/// changed) or `item-deleted` (`item_id`'s file was removed).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LibraryChangedEvent {
     pub library_id: String,
     pub action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub items_removed: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restored: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub migrated: Option<i64>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub item_id: String,
+}
+
+/// `scan-state` (everyone): a scan started, finished one library or
+/// ended. `libraries_done`/`libraries` count the walked roots; `stats`
+/// is present once the scan ended.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ScanStateEvent {
+    pub state: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub trigger: String,
+    pub libraries: i64,
+    pub libraries_done: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stats: Option<ScanStats>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub error: String,
 }
 
 /// `progress-changed`: only the user it belongs to receives it.

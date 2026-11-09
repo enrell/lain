@@ -14,7 +14,8 @@ fn usage() {
     eprintln!(
         "usage: lain-rs <command> [flags]
 
-  serve     run the server (--data-dir, --port {DEFAULT_PORT}, --bind 127.0.0.1, --log-level info, --log-file)
+  serve     run the server (--data-dir, --port {DEFAULT_PORT}, --bind 127.0.0.1, --log-level info, --log-file,
+            --watch=0 or LAIN_WATCH=0 stops library watching, LAIN_AUTO_ENRICH=0 the post-scan metadata pass)
   export    write the catalog as lain.catalog-export@3 (--data-dir, --out FILE; default stdout)
   import    replace the catalog with a lain.catalog-export@3 document (--data-dir, --in FILE)
   service   install|uninstall|start|stop|status|logs the background service
@@ -86,7 +87,11 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
         None => Sink::Stderr,
     };
     logging::init(level, sink);
-    let app = App::open(Config::new(&dir, VERSION))?;
+    let mut cfg = Config::new(&dir, VERSION);
+    let off = |v: Option<String>| v.is_some_and(|v| v == "0" || v == "false" || v == "FALSE");
+    cfg.auto_enrich = !off(std::env::var("LAIN_AUTO_ENRICH").ok());
+    cfg.watch = !off(flag(args, "watch").or_else(|| std::env::var("LAIN_WATCH").ok()));
+    let app = App::open(cfg)?;
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async move {
         app.start_background();

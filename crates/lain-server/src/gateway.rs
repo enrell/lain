@@ -32,15 +32,28 @@ use crate::events::{SseBody, SubInfo};
 use crate::libraries::LibraryPatch;
 use crate::privacy;
 
-/// A JSON answer.
+/// Raw bytes with their content type and extra headers.
+type RawBody = (&'static str, Vec<u8>, Vec<(&'static str, &'static str)>);
+
+/// A JSON answer, or raw bytes with their content type.
 pub struct Reply {
     status: u16,
     body: Value,
+    raw: Option<RawBody>,
 }
 
 impl Reply {
     pub fn json(status: u16, body: Value) -> Reply {
-        Reply { status, body }
+        Reply { status, body, raw: None }
+    }
+    /// Raw bytes (`content_type`, extra headers).
+    pub fn bytes(
+        status: u16,
+        content_type: &'static str,
+        body: Vec<u8>,
+        headers: Vec<(&'static str, &'static str)>,
+    ) -> Reply {
+        Reply { status, body: Value::Null, raw: Some((content_type, body, headers)) }
     }
     pub fn ok(body: Value) -> Reply {
         Reply::json(200, body)
@@ -52,6 +65,15 @@ impl Reply {
 
 impl IntoResponse for Reply {
     fn into_response(self) -> Response {
+        if let Some((ctype, body, headers)) = self.raw {
+            let mut r = Response::new(Body::from(body));
+            *r.status_mut() = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            r.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(ctype));
+            for (k, v) in headers {
+                r.headers_mut().insert(k, HeaderValue::from_static(v));
+            }
+            return r;
+        }
         let mut raw = serde_json::to_vec(&self.body).unwrap_or_else(|_| b"{}".to_vec());
         raw.push(b'\n');
         let mut r = Response::new(Body::from(raw));
@@ -74,7 +96,7 @@ impl Req {
         self.query.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str()).unwrap_or("")
     }
 
-    fn param(&self, key: &str) -> &str {
+    pub(crate) fn param(&self, key: &str) -> &str {
         self.params.get(key).map(String::as_str).unwrap_or("")
     }
 
@@ -89,7 +111,7 @@ impl Req {
 
     /// Decodes a JSON body like Go's `json.Decoder`: the first value,
     /// which must be an object (or `null`); `null` fields are no-ops.
-    fn decode<T: for<'de> Deserialize<'de>>(&self) -> Result<T, Reply> {
+    pub(crate) fn decode<T: for<'de> Deserialize<'de>>(&self) -> Result<T, Reply> {
         let invalid = || Reply::err(400, "invalid json");
         let mut it = serde_json::Deserializer::from_slice(&self.body).into_iter::<Value>();
         let v = match it.next() {
@@ -153,13 +175,13 @@ fn atoi(s: &str) -> i64 {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Gate {
+pub(crate) enum Gate {
     Public,
     User,
     Admin,
 }
 
-type Handler = fn(&App, &Req, &Verified) -> Reply;
+pub(crate) type Handler = fn(&App, &Req, &Verified) -> Reply;
 
 fn authorize(app: &App, req: &Req, gate: Gate) -> Result<Verified, Reply> {
     if gate == Gate::Public {
@@ -172,7 +194,7 @@ fn authorize(app: &App, req: &Req, gate: Gate) -> Result<Verified, Reply> {
     Ok(v)
 }
 
-fn route(filter: MethodFilter, gate: Gate, f: Handler) -> MethodRouter<Arc<App>> {
+pub(crate) fn route(filter: MethodFilter, gate: Gate, f: Handler) -> MethodRouter<Arc<App>> {
     on(
         filter,
         move |State(app): State<Arc<App>>,
@@ -196,11 +218,11 @@ fn route(filter: MethodFilter, gate: Gate, f: Handler) -> MethodRouter<Arc<App>>
     )
 }
 
-const GET: MethodFilter = MethodFilter::GET;
-const POST: MethodFilter = MethodFilter::POST;
+pub(crate) const GET: MethodFilter = MethodFilter::GET;
+pub(crate) const POST: MethodFilter = MethodFilter::POST;
 const PUT: MethodFilter = MethodFilter::PUT;
 const PATCH: MethodFilter = MethodFilter::PATCH;
-const DELETE: MethodFilter = MethodFilter::DELETE;
+pub(crate) const DELETE: MethodFilter = MethodFilter::DELETE;
 
 /// The router over an opened [`App`].
 pub fn router(app: Arc<App>) -> Router {
@@ -250,6 +272,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/plugins/withdraw", route(POST, Gate::Admin, plugins_withdraw))
         .route("/api/modules", route(GET, Gate::User, modules_list))
         .route("/api/events", axum::routing::get(events))
+        .merge(crate::population::routes())
         .fallback(fallback)
         .method_not_allowed_fallback(fallback)
         .layer(middleware::from_fn_with_state(app.clone(), privacy_gate))
@@ -856,7 +879,7 @@ async fn module_gate(State(app): State<Arc<App>>, req: Request, next: Next) -> R
 fn item_route(path: &str) -> Option<&str> {
     let segs: Vec<&str> = path.trim_matches('/').split('/').collect();
     match segs.as_slice() {
-        ["api", "items", id, "progress"] if !id.is_empty() => None,
+        ["api", "items", id, "progress"] | ["api", "items", id] if !id.is_empty() => None,
         ["api", "items", id, ..] | ["api", "catalog", id, ..] | ["api", "acquire", "items", id, ..]
             if !id.is_empty() =>
         {
@@ -870,6 +893,8 @@ fn item_route(path: &str) -> Option<&str> {
 /// thumbnails, sidecars, stream, pages, playback, ...) answers 404
 /// `unknown item` for an item this session may not see, exactly as for
 /// one that does not exist, whether or not the route is ported yet.
+/// `DELETE /api/items/{id}` checks visibility itself, after its admin
+/// gate, so a user deleting any item gets Go's 403.
 async fn privacy_gate(State(app): State<Arc<App>>, req: Request, next: Next) -> Response {
     let Some(id) = item_route(req.uri().path()).map(str::to_string) else { return next.run(req).await };
     let r = Req {
@@ -896,10 +921,6 @@ async fn privacy_gate(State(app): State<Arc<App>>, req: Request, next: Next) -> 
 /// from "no such route".
 const GO_ROUTES: &[&str] = &[
     "GET /api/theme",
-    "GET /api/browse",
-    "POST /api/library/scan",
-    "GET /api/library/scan",
-    "DELETE /api/items/{id}",
     "GET /api/admin/backup",
     "PUT /api/me/avatar",
     "DELETE /api/me/avatar",

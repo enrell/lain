@@ -1,0 +1,301 @@
+{
+ "tier": "v1",
+ "description": "Metadata overlays (lain.metadata.enrich@1) from the offline NFO provider: the search binding is swapped to it first so no case touches the network.",
+ "cases": [
+  {
+   "name": "metadata search uses the NFO provider only",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/plugins/swap",
+      "auth": "admin",
+      "body": {
+       "capability": "lain.metadata.search@1",
+       "providers": [
+        "lain-metadata-nfo"
+       ],
+       "generation": 0
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "generation": "$int",
+       "composition": "$array"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "admins enrich an item from its tvshow.nfo",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/catalog/{{f1}}/enrich",
+      "auth": "bob",
+      "body": {
+       "error": "admin required"
+      }
+     },
+     "expect": {
+      "status": 403
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/catalog/{{f1}}/enrich",
+      "auth": "admin",
+      "body": {
+       "item_id": "{{f1}}",
+       "provider": "lain-metadata-nfo",
+       "remote_id": "$string",
+       "title": "Sousou no Frieren",
+       "year": 2023,
+       "genres": [
+        "Fantasy",
+        "Adventure"
+       ],
+       "synopsis": "An elf mage looks back.",
+       "poster": "https://example.invalid/poster.jpg",
+       "cover": "https://example.invalid/fanart.jpg",
+       "fetched_at": "$int"
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{f1}}/enrich",
+      "auth": "bob",
+      "body": {
+       "item_id": "{{f1}}",
+       "provider": "lain-metadata-nfo",
+       "remote_id": "$string",
+       "title": "Sousou no Frieren",
+       "year": 2023,
+       "genres": [
+        "Fantasy",
+        "Adventure"
+       ],
+       "synopsis": "An elf mage looks back.",
+       "poster": "https://example.invalid/poster.jpg",
+       "cover": "https://example.invalid/fanart.jpg",
+       "fetched_at": "$int"
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/catalog/no-such-item/enrich",
+      "auth": "admin",
+      "body": {
+       "error": "unknown item"
+      }
+     },
+     "expect": {
+      "status": 404
+     }
+    }
+   ]
+  },
+  {
+   "name": "an item without metadata",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/catalog/{{akira}}/enrich",
+      "auth": "admin",
+      "body": {
+       "error": "not-found: no metadata found"
+      }
+     },
+     "expect": {
+      "status": 404
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{akira}}/enrich",
+      "auth": "bob",
+      "body": {
+       "error": "not-found: not enriched"
+      }
+     },
+     "expect": {
+      "status": 404
+     }
+    }
+   ]
+  },
+  {
+   "name": "overlays in one batch read",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/enrichments?ids={{f1}},%20{{akira}},,no-such-item",
+      "auth": "bob",
+      "body": {
+       "items": [
+        {
+         "item_id": "{{f1}}",
+         "provider": "lain-metadata-nfo",
+         "remote_id": "$string",
+         "title": "Sousou no Frieren",
+         "year": 2023,
+         "genres": [
+          "Fantasy",
+          "Adventure"
+         ],
+         "synopsis": "An elf mage looks back.",
+         "poster": "https://example.invalid/poster.jpg",
+         "cover": "https://example.invalid/fanart.jpg",
+         "fetched_at": "$int"
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/enrichments?ids=no-such-item",
+      "auth": "bob",
+      "body": {
+       "items": []
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/enrichments",
+      "auth": "bob",
+      "body": {
+       "error": "ids required"
+      }
+     },
+     "expect": {
+      "status": 400
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/enrichments?ids=%20",
+      "auth": "bob",
+      "body": {
+       "error": "ids required"
+      }
+     },
+     "expect": {
+      "status": 400
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/enrichments?ids={{f1}}",
+      "body": {
+       "error": "unauthorized"
+      }
+     },
+     "expect": {
+      "status": 401
+     }
+    }
+   ]
+  },
+  {
+   "name": "admins remove an overlay",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/catalog/{{f1}}/enrich",
+      "auth": "bob",
+      "body": {
+       "error": "admin required"
+      }
+     },
+     "expect": {
+      "status": 403
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/catalog/{{f1}}/enrich",
+      "auth": "admin",
+      "body": {
+       "status": "ok"
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{f1}}/enrich",
+      "auth": "bob",
+      "body": {
+       "error": "not-found: not enriched"
+      }
+     },
+     "expect": {
+      "status": 404
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/catalog/{{f1}}/enrich",
+      "auth": "admin",
+      "body": {
+       "status": "ok"
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  }
+ ]
+}
