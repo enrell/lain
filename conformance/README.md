@@ -27,6 +27,8 @@ conformance/
                   episodes, per-user progress, then private libraries:
                   nothing leaks to another user or a locked session, social
                   rows included (v2)
+  cases/acquire/  acquire and downloads from a fresh server (v1), their events
+                  (v2); nothing reaches the network (D-213)
   cases/read/     lain-rs over the read fixture: comic pages, page
                   bytes, ETags, direction, refusals, private libraries
                   and module disable (v2)
@@ -141,7 +143,7 @@ numbers, so Go's `1440` and Rust's `1440.0` are the same value.
 
 ## Not covered yet
 
-Acquire, downloads, plugin swap and withdraw writes,
+Plugin swap and withdraw writes,
 pages on the Go server (it has no fixture import), and the
 `lain.catalog-export` documents as files.
 These move with their modules (DESIGN-v2 §13 order).

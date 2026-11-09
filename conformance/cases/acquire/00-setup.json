@@ -1,0 +1,97 @@
+{
+ "tier": "v1",
+ "description": "A fresh server for the acquire suite: an admin, a user and an anime library in acq_media. LAIN_ACQUIRE_LISTEN_PORT=0 so the torrent engine binds a free port; nothing reaches the network (indexers point at a closed local port).",
+ "cases": [
+  {
+   "name": "accounts and a library",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/setup",
+      "body": {
+       "username": "admin",
+       "password": "password123"
+      }
+     },
+     "expect": {
+      "status": 201
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "body": {
+       "username": "admin",
+       "password": "password123"
+      }
+     },
+     "expect": {
+      "status": 200
+     },
+     "save": {
+      "admin": "/token"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/users",
+      "auth": "admin",
+      "body": {
+       "username": "bob",
+       "password": "bobpassword"
+      }
+     },
+     "expect": {
+      "status": 201
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "body": {
+       "username": "bob",
+       "password": "bobpassword"
+      }
+     },
+     "expect": {
+      "status": 200
+     },
+     "save": {
+      "bob": "/token"
+     }
+    },
+    {
+     "write_file": {
+      "path": "{{acq_media}}/Anime/.keep",
+      "text": ""
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/libraries",
+      "auth": "admin",
+      "body": {
+       "name": "Anime",
+       "type": "anime",
+       "path": "{{acq_media}}/Anime"
+      }
+     },
+     "expect": {
+      "status": 201
+     },
+     "save": {
+      "lib": "/id"
+     }
+    }
+   ]
+  }
+ ]
+}

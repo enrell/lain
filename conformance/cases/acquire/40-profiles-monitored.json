@@ -1,0 +1,874 @@
+{
+ "tier": "v1",
+ "description": "Quality profiles (the default always exists and cannot go; validation; in-use refusal), monitored titles (defaults by kind, the library type check, duplicates, unknown profiles) and what they want, with on-demand search, RSS and automation state when no indexer is enabled.",
+ "cases": [
+  {
+   "name": "profiles",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/profiles",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "profiles": [
+        {
+         "id": "default",
+         "name": "Default (720p+, upgrade to 1080p)",
+         "resolutions": [
+          "2160p",
+          "1080p",
+          "720p"
+         ],
+         "sources": [],
+         "cutoff": "1080p",
+         "preferred_groups": [],
+         "blocked_groups": [],
+         "blocked_words": [],
+         "min_seeders": 1,
+         "min_size_mb": 0,
+         "max_size_mb": 0,
+         "prefer_proper": true,
+         "subtitle_languages": "$any",
+         "subtitle_even_with_audio": false,
+         "subtitle_hi": "$string"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "auth": "admin",
+      "body": {
+       "name": " 4K  only ",
+       "resolutions": [
+        "2160P"
+       ],
+       "sources": [
+        "WEB",
+        "web"
+       ],
+       "preferred_groups": [
+        "Fansub-A",
+        " ",
+        "fansub-a"
+       ],
+       "blocked_words": [
+        "cam"
+       ],
+       "subtitle_languages": [
+        "en",
+        "pt-BR",
+        "eng"
+       ]
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "id": "$string",
+       "name": "4K only",
+       "resolutions": [
+        "2160p"
+       ],
+       "sources": [
+        "web"
+       ],
+       "cutoff": "2160p",
+       "preferred_groups": [
+        "Fansub-A"
+       ],
+       "blocked_groups": [],
+       "blocked_words": [
+        "cam"
+       ],
+       "min_seeders": 0,
+       "min_size_mb": 0,
+       "max_size_mb": 0,
+       "prefer_proper": false,
+       "subtitle_languages": [
+        "eng",
+        "por"
+       ],
+       "subtitle_even_with_audio": false,
+       "subtitle_hi": "include"
+      }
+     },
+     "save": {
+      "p4k": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "resolutions": [
+        "potato"
+       ]
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "unknown resolution \"potato\"",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "resolutions": []
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "allow at least one resolution",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "resolutions": [
+        "720p"
+       ],
+       "cutoff": "1080p"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "the cutoff must be one of the allowed resolutions",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "resolutions": [
+        "720p"
+       ],
+       "sources": [
+        "vhs"
+       ]
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "unknown source \"vhs\"",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "resolutions": [
+        "720p"
+       ],
+       "min_size_mb": 5,
+       "max_size_mb": 1
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "minimum size is above the maximum",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "resolutions": [
+        "720p"
+       ],
+       "subtitle_hi": "maybe"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "subtitle_hi must be include, prefer or exclude",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "resolutions": [
+        "720p"
+       ],
+       "subtitle_languages": [
+        "klingon"
+       ]
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "unknown subtitle language \"klingon\"",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/profiles",
+      "auth": "admin",
+      "body": {
+       "resolutions": [
+        "720p"
+       ]
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "profile name required",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/profiles/nope",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "resolutions": [
+        "720p"
+       ]
+      }
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown profile",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/profiles/default",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 409,
+      "body": {
+       "error": "the default profile cannot be deleted",
+       "code": "invalid-state"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "monitored titles",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "monitored": []
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "kind": "anime",
+       "title": "Frieren",
+       "aliases": [
+        "Sousou no Frieren",
+        "frieren"
+       ]
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "id": "$string",
+       "library_id": "{{lib}}",
+       "kind": "anime",
+       "title": "Frieren",
+       "aliases": [
+        "Sousou no Frieren"
+       ],
+       "profile_id": "default",
+       "numbering": "absolute",
+       "from": 1,
+       "enabled": true,
+       "created_at": "$int"
+      }
+     },
+     "save": {
+      "mon": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "kind": "anime",
+       "title": "FRIEREN!"
+      }
+     },
+     "expect": {
+      "status": 409,
+      "body": {
+       "error": "Frieren is already monitored in this library",
+       "code": "invalid-state"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "kind": "movie",
+       "title": "Film"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "Anime is a anime library, not movie",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored",
+      "auth": "admin",
+      "body": {
+       "library_id": "nope",
+       "kind": "anime",
+       "title": "X"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "choose the library to keep complete",
+       "code": "no-library"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "kind": "anime",
+       "title": "X",
+       "profile_id": "nope"
+      }
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown profile",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "kind": "anime",
+       "title": "X",
+       "numbering": "chapter"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "a anime cannot use chapter numbering",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "kind": "anime",
+       "title": "X",
+       "from": 5,
+       "to": 2
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "the range must run from a lower number to a higher one",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "kind": "lunar",
+       "title": "X"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "unknown kind \"lunar\"",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/{{mon}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "library_id": "{{lib}}",
+       "kind": "anime",
+       "title": "Frieren",
+       "aliases": [
+        "Sousou no Frieren"
+       ],
+       "profile_id": "default",
+       "numbering": "absolute",
+       "from": 1,
+       "enabled": true,
+       "created_at": "$int"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/nope",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown monitored title",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/{{mon}}/wanted",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "missing": [],
+       "open_from": {
+        "season": 0,
+        "number": 1
+       },
+       "upgrades": [],
+       "present": 0
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/monitored/{{mon}}",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "kind": "anime",
+       "title": "Frieren",
+       "profile_id": "{{p4k}}",
+       "from": 1,
+       "to": 3,
+       "enabled": true
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "library_id": "{{lib}}",
+       "kind": "anime",
+       "title": "Frieren",
+       "aliases": [],
+       "profile_id": "{{p4k}}",
+       "numbering": "absolute",
+       "from": 1,
+       "enabled": true,
+       "created_at": "$int",
+       "to": 3
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/{{mon}}/wanted",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "missing": [
+        {
+         "season": 0,
+         "number": 1
+        },
+        {
+         "season": 0,
+         "number": 2
+        },
+        {
+         "season": 0,
+         "number": 3
+        }
+       ],
+       "upgrades": [],
+       "present": 0
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/wanted",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "titles": [
+        {
+         "id": "$string",
+         "library_id": "{{lib}}",
+         "kind": "anime",
+         "title": "Frieren",
+         "aliases": [],
+         "profile_id": "{{p4k}}",
+         "numbering": "absolute",
+         "from": 1,
+         "enabled": true,
+         "created_at": "$int",
+         "to": 3,
+         "wanted": {
+          "missing": "$array",
+          "upgrades": [],
+          "present": 0
+         },
+         "missing_count": 3,
+         "upgrade_count": 0
+        }
+       ],
+       "automation": {
+        "enabled": false
+       }
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/profiles/{{p4k}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 409,
+      "body": {
+       "error": "Frieren uses this profile",
+       "code": "invalid-state"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored/{{mon}}/search",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "grabbed": [],
+       "considered": 0,
+       "rejected": 0
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/rss",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "grabbed": [],
+       "considered": 0,
+       "rejected": 0
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/automation",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "enabled": false,
+       "last_rss_at": "$int"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored/{{mon}}/subtitles",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "files": []
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/monitored/{{mon}}/subtitles",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "written": 0
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/monitored/{{mon}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "removed": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/monitored/{{mon}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown monitored title",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/profiles/{{p4k}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "removed": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/profiles",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "profiles": [
+        {
+         "id": "default",
+         "name": "Default (720p+, upgrade to 1080p)",
+         "resolutions": [
+          "2160p",
+          "1080p",
+          "720p"
+         ],
+         "sources": [],
+         "cutoff": "1080p",
+         "preferred_groups": [],
+         "blocked_groups": [],
+         "blocked_words": [],
+         "min_seeders": 1,
+         "min_size_mb": 0,
+         "max_size_mb": 0,
+         "prefer_proper": true,
+         "subtitle_languages": "$any",
+         "subtitle_even_with_audio": false,
+         "subtitle_hi": "$string"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/blocklist",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "blocklist": []
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/blocklist/nope",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown blocklist entry",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/replaced",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "files": []
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/replaced/purge",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "deleted": 0
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

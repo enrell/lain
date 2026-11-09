@@ -1,0 +1,379 @@
+{
+ "tier": "v1",
+ "description": "Subtitle provider accounts (secrets never returned), the ledger and refusals, and the item routes' 404 for an unknown item.",
+ "cases": [
+  {
+   "name": "provider accounts",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/subtitle-providers",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "providers": []
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/subtitle-providers",
+      "auth": "admin",
+      "body": {
+       "name": "os",
+       "kind": "opensubtitles",
+       "api_key": "k"
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "id": "$string",
+       "name": "os",
+       "kind": "opensubtitles",
+       "enabled": true,
+       "priority": 0,
+       "created_at": "$int",
+       "has_api_key": true,
+       "has_password": false
+      }
+     },
+     "save": {
+      "sp": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/subtitle-providers/{{sp}}",
+      "auth": "admin",
+      "body": {
+       "username": "me",
+       "password": "pw",
+       "base_url": "http://127.0.0.1:9/api/v1"
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "name": "os",
+       "kind": "opensubtitles",
+       "enabled": true,
+       "priority": 0,
+       "created_at": "$int",
+       "has_api_key": true,
+       "has_password": true,
+       "username": "me",
+       "base_url": "http://127.0.0.1:9/api/v1"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/subtitle-providers/{{sp}}",
+      "auth": "admin",
+      "body": {
+       "password": "-",
+       "base_url": ""
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "name": "os",
+       "kind": "opensubtitles",
+       "enabled": true,
+       "priority": 0,
+       "created_at": "$int",
+       "has_api_key": true,
+       "has_password": false,
+       "username": "me"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/subtitle-providers",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "providers": [
+        {
+         "id": "$string",
+         "name": "os",
+         "kind": "opensubtitles",
+         "enabled": true,
+         "priority": 0,
+         "created_at": "$int",
+         "has_api_key": true,
+         "has_password": false,
+         "username": "me"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/subtitle-providers",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "kind": "other",
+       "api_key": "k"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "kind must be opensubtitles",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/subtitle-providers",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "kind": "opensubtitles"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "an API key is required",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/subtitle-providers",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "kind": "opensubtitles",
+       "api_key": "k",
+       "base_url": "ftp://h"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "base_url must be http(s) without credentials",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/subtitle-providers",
+      "auth": "admin",
+      "body": {
+       "kind": "opensubtitles",
+       "api_key": "k"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "name required",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/subtitle-providers/nope",
+      "auth": "admin",
+      "body": {
+       "name": "x"
+      }
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown subtitle provider",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/subtitle-providers/{{sp}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "removed": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/subtitle-providers/{{sp}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown subtitle provider",
+       "code": "not-found"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "ledger and refusals",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/subtitles",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "subtitles": []
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/subtitle-refusals",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "refusals": []
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/subtitle-refusals",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "cleared": 0
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/subtitle-refusals/p/f",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown refused subtitle",
+       "code": "not-found"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "unknown items",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/items/nope/subtitles?languages=en",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown item",
+       "$open": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/items/nope/subtitles",
+      "auth": "admin",
+      "body": {
+       "file_id": "1"
+      }
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown item",
+       "$open": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/items/nope/subtitles/status",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown item",
+       "$open": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/items/nope/sidecars/x.srt",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown item",
+       "$open": true
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

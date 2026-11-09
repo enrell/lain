@@ -1,0 +1,293 @@
+{
+ "tier": "v1",
+ "description": "The release parser behind acquisition, and grab validation before anything is fetched: unknown library, nothing to grab, a magnet without a tracker (no DHT), non-http links, usenet, and actions on unknown grabs.",
+ "cases": [
+  {
+   "name": "parse",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/parse?name=%5BFansub-A%5D%20Show%20-%2005%20%5B1080p%5D&kind=anime",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "title": "Show",
+       "episodes": [
+        5
+       ],
+       "absolute": true,
+       "group": "Fansub-A",
+       "resolution": "1080p",
+       "parser": "$string",
+       "$open": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/parse?name=%20",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "name required (up to 1024 bytes)",
+       "code": "invalid-request"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "grab validation",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/grabs",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "grabs": [],
+       "usage": {
+        "used_bytes": 0,
+        "downloads_bytes": 0,
+        "max_bytes": 21474836480,
+        "min_free_bytes": 5368709120
+       }
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "admin",
+      "body": {
+       "magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "choose the library to import into",
+       "code": "no-library"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "a search result, a .torrent URL or a magnet is required",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "url": "file:///etc/passwd"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "the link must be http(s)",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "url": "http://127.0.0.1:9/x.torrent"
+      }
+     },
+     "expect": {
+      "status": 502,
+      "body": {
+       "error": "127.0.0.1:9 did not answer",
+       "code": "fetch-failed"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "magnet": "magnet:?xt=urn:btih:nothex"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "bad magnet link",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
+      }
+     },
+     "expect": {
+      "status": 422,
+      "body": {
+       "error": "this magnet has no tracker; Lain's engine has no DHT yet — use the .torrent link",
+       "code": "unsupported-protocol"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "result": {
+        "protocol": "usenet",
+        "title": "x",
+        "link": "http://h/x.nzb"
+       }
+      }
+     },
+     "expect": {
+      "status": 422,
+      "body": {
+       "error": "usenet releases need a usenet client, which Lain does not have yet",
+       "code": "unsupported-protocol"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/nope/pause",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown grab",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/nope/resume",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown grab",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/nope/import",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown grab",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/nope/frobnicate",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown action",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/grabs/nope",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown grab",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/grabs",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "grabs": [],
+       "usage": {
+        "used_bytes": 0,
+        "downloads_bytes": 0,
+        "max_bytes": 21474836480,
+        "min_free_bytes": 5368709120
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

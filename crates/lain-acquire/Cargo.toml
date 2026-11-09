@@ -1,0 +1,22 @@
+[package]
+name = "lain-acquire"
+description = "Lain's acquire module: indexers (torznab), grabs on the in-house torrent engine, import, automation, subtitles and the HTTP download manager"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lain-api.workspace = true
+lain-core.workspace = true
+lain-store.workspace = true
+lain-torrent.workspace = true
+lain-downloads.workspace = true
+lain-identify.workspace = true
+lain-subtitle.workspace = true
+lain-http.workspace = true
+getrandom.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
