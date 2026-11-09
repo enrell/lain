@@ -787,6 +787,7 @@ impl LainApp {
         let n = rail.cards.len();
         let first = (((off - geo.margin - d.w) / d.step).floor().max(0.)) as usize;
         let last = ((((off + vw) / d.step).ceil()) as usize + 1).min(n);
+        let first = first.min(last);
         let cards: Vec<Card> = rail.cards[first..last].to_vec();
         let mut row = div().w(px(vw)).h(px(d.row_h)).overflow_hidden();
         let mut animating = false;

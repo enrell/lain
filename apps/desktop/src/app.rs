@@ -1451,7 +1451,7 @@ impl LainApp {
                             .text_size(px(th.ts(-3)))
                             .text_color(pal.muted)
                             .font_family(self.fonts.mono.clone())
-                            .child(format!("^{}", i + 1)),
+                            .child(format!("{}", i + 1)),
                     )
                     .on_click(cx.listener(move |app, _: &ClickEvent, _, cx| {
                         app.navigate(s2.clone(), cx);
