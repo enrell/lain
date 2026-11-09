@@ -67,6 +67,15 @@ impl Drop for Server {
     }
 }
 
+/// A scratch dir short enough for the component sockets under
+/// `<data-dir>/plugins/.run/` (macOS's $TMPDIR is too deep for sun_path).
+fn short_dir(tag: &str) -> std::path::PathBuf {
+    let d = std::path::PathBuf::from(format!("/tmp/lp4-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
 fn lain_rs(args: &[&str]) -> std::process::Output {
     std::process::Command::new(EXE).args(args).output().unwrap()
 }
@@ -96,7 +105,7 @@ fn login(base: &Base, user: &str, pw: &str) -> String {
 
 #[test]
 fn component_cli_writes_runnable_manifests() {
-    let dir = lain_store::test_dir("p4-cli");
+    let dir = short_dir("cli");
     let out = lain_rs(&["component", "list"]);
     let list = String::from_utf8_lossy(&out.stdout);
     for id in ["lain-release-model", "lain-subtitle-animesubs", "lain-acquire-anything"] {
@@ -138,7 +147,7 @@ fn parser_daemon(up: Arc<AtomicBool>) -> Handler {
 
 #[test]
 fn the_model_answers_first_and_the_tokenizer_answers_its_declines() {
-    let dir = lain_store::test_dir("p4-parser");
+    let dir = short_dir("parser");
     // sun_path is short: keep the socket under /tmp.
     let sock = std::path::PathBuf::from(format!("/tmp/lain-p4-parser-{}.sock", std::process::id()));
     let up = Arc::new(AtomicBool::new(true));
@@ -196,7 +205,7 @@ fn animesubs() -> Handler {
 
 #[test]
 fn translation_routes_drive_the_translate_component() {
-    let dir = lain_store::test_dir("p4-translate");
+    let dir = short_dir("translate");
     let show = dir.join("media/Show");
     std::fs::create_dir_all(&show).unwrap();
     std::fs::write(show.join("Show - 01.mkv"), b"x").unwrap();

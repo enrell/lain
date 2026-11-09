@@ -11,6 +11,11 @@ use lain_bridge::anything::{Anything, CAP_ACQUIRE_EXTRACT};
 use lain_bridge::fake::{Fake, Handler, Seen};
 use lain_core::Provider;
 
+/// An absolute path on this OS (`/m/x` is relative on Windows).
+fn abs(p: &str) -> String {
+    if cfg!(windows) { format!("C:{p}") } else { p.to_string() }
+}
+
 const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 fn authed(r: &Seen) -> bool {
@@ -63,7 +68,7 @@ fn animesubs_bridge_drives_jobs() {
     let fake = Fake::tcp(animesubs_fake());
     let b = animesubs_bridge(&fake.url, TOKEN);
     assert!(b.health().is_ok());
-    let start = json!({"input": "/m/ep01.ass", "target_language": "pt-BR"});
+    let start = json!({"input": abs("/m/ep01.ass"), "target_language": "pt-BR"});
     let out = b.invoke(CAP_SUBTITLE_TRANSLATE, "start", start).unwrap();
     assert_eq!((out["job"].as_str(), out["state"].as_str()), (Some("job-1"), Some("queued")));
     assert_eq!(out["provider"], "lain-subtitle-animesubs");
@@ -80,8 +85,9 @@ fn animesubs_bridge_drives_jobs() {
     let e = b.invoke(CAP_SUBTITLE_TRANSLATE, "cancel", json!({"job": "job-2"})).unwrap_err();
     assert_eq!(e.code, "not-cancellable");
     assert_eq!(b.invoke(CAP_SUBTITLE_TRANSLATE, "status", json!({"job": "job-9"})).unwrap_err().code, "not-found");
-    let e =
-        b.invoke(CAP_SUBTITLE_TRANSLATE, "start", json!({"input": "/m/x.txt", "target_language": "pt"})).unwrap_err();
+    let e = b
+        .invoke(CAP_SUBTITLE_TRANSLATE, "start", json!({"input": abs("/m/x.txt"), "target_language": "pt"}))
+        .unwrap_err();
     assert_eq!(e.code, "unsupported-format", "declines so another translator can try");
     let e =
         b.invoke(CAP_SUBTITLE_TRANSLATE, "start", json!({"input": "rel.ass", "target_language": "pt"})).unwrap_err();
@@ -110,8 +116,9 @@ fn discovery_files_are_read_each_time() {
     std::fs::write(home.join("server-token"), format!("{TOKEN}\n")).unwrap();
     let b = AnimeSubs::new(AnimeSubs::locator(Some(home.clone()), None), None);
     assert!(b.health().is_ok());
-    let e =
-        b.invoke(CAP_SUBTITLE_TRANSLATE, "start", json!({"input": "/m/a.ass", "target_language": "pt"})).unwrap_err();
+    let e = b
+        .invoke(CAP_SUBTITLE_TRANSLATE, "start", json!({"input": abs("/m/a.ass"), "target_language": "pt"}))
+        .unwrap_err();
     assert_eq!(e.code, "invalid-message", "no model given and none configured");
     std::fs::write(home.join("server.json"), json!({"service": "anything", "url": fake.url}).to_string()).unwrap();
     let b = AnimeSubs::new(AnimeSubs::locator(Some(home.clone()), None), None);
@@ -167,12 +174,12 @@ fn anything_bridge_extracts_and_queues() {
         .invoke(
             CAP_ACQUIRE_EXTRACT,
             "enqueue",
-            json!({"url": "https://video.example/watch/1", "format": "1080p", "output_dir": "/lib/videos"}),
+            json!({"url": "https://video.example/watch/1", "format": "1080p", "output_dir": abs("/lib/videos")}),
         )
         .unwrap();
     assert_eq!((job["job"].as_str(), job["state"].as_str()), (Some("4"), Some("queued")));
     let sent = fake.seen().into_iter().find(|s| s.path == "/queue").unwrap().body.unwrap();
-    assert_eq!(sent["options"], json!({"format": "1080p", "output_dir": "/lib/videos"}));
+    assert_eq!(sent["options"], json!({"format": "1080p", "output_dir": abs("/lib/videos")}));
 
     let st = b.invoke(CAP_ACQUIRE_EXTRACT, "status", json!({"job": "4"})).unwrap();
     assert_eq!((st["state"].as_str(), st["total_bytes"].as_i64()), (Some("running"), Some(100)));

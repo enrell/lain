@@ -36,8 +36,8 @@ fn daemon(healthy: Arc<AtomicBool>) -> Handler {
 
 #[test]
 fn answers_declines_and_failures() {
-    let dir = lain_store::test_dir("bridge-parser");
-    let sock = dir.join("parser.sock");
+    // macOS's $TMPDIR is too deep for sun_path; /tmp is short everywhere.
+    let sock = std::path::PathBuf::from(format!("/tmp/lain-bridge-parser-{}.sock", std::process::id()));
     let healthy = Arc::new(AtomicBool::new(true));
     let fake = Fake::unix(&sock, daemon(healthy.clone()));
     let m = ReleaseModel::new(Endpoint::parse(&fake.url).unwrap());
@@ -72,7 +72,6 @@ fn answers_declines_and_failures() {
     drop(fake);
     let gone = ReleaseModel::new(Endpoint::Unix(sock));
     assert_eq!(gone.health().unwrap_err().msg, "parser socket not found");
-    std::fs::remove_dir_all(dir).ok();
 }
 
 /// Opt-in: a real lain-parser daemon (`LAIN_PARSER_LIVE=unix:///…/parser.sock`
