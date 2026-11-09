@@ -70,7 +70,24 @@ pub async fn run(this: WeakEntity<LainApp>, cx: &mut AsyncWindowContext) {
         eprintln!("demo: {step}");
         match cmd {
             "wait" => wait(cx, arg.parse().unwrap_or(500)).await,
-            "log" => eprintln!("demo log: {arg}"),
+            "log" => {
+                let info = this
+                    .read_with(cx, |app, _| {
+                        let rails: Vec<String> =
+                            app.home.rails.iter().map(|r| format!("{} ({})", r.title, r.cards.len())).collect();
+                        format!(
+                            "frames {} · screen {:?} · {} items, {} titles · rails: {} · focus {:?}",
+                            app.demo.frames,
+                            app.screen,
+                            app.catalog.len(),
+                            app.series.len(),
+                            rails.join(", "),
+                            app.focused
+                        )
+                    })
+                    .unwrap_or_default();
+                eprintln!("demo log: {arg}: {info}");
+            }
             "quit" => {
                 let _ = this.update(cx, |app, _| app.save_now());
                 let _ = cx.update(|_, cx| cx.quit());
@@ -119,7 +136,16 @@ pub async fn run(this: WeakEntity<LainApp>, cx: &mut AsyncWindowContext) {
                 let _ = this.update(cx, |_, cx| cx.notify());
                 wait(cx, 300).await;
                 match path {
-                    Some(p) => match crate::platform::capture(hwnd, &p) {
+                    // Off the UI thread: PrintWindow sends WM_PRINT to the
+                    // window, which the UI thread must be free to answer.
+                    Some(p) => match cx
+                        .background_executor()
+                        .spawn({
+                            let p = p.clone();
+                            async move { crate::platform::capture(hwnd, &p) }
+                        })
+                        .await
+                    {
                         Ok(()) => eprintln!("demo: wrote {}", p.display()),
                         Err(e) => eprintln!("demo: shot {}: {e}", p.display()),
                     },

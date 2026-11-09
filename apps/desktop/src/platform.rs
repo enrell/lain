@@ -102,11 +102,11 @@ pub fn capture(hwnd: isize, out: &std::path::Path) -> Result<(), String> {
         DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
     };
     use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
-    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
     let hwnd = HWND(hwnd as *mut std::ffi::c_void);
     unsafe {
         let mut rc = RECT::default();
-        GetClientRect(hwnd, &mut rc).map_err(|e| e.to_string())?;
+        GetWindowRect(hwnd, &mut rc).map_err(|e| e.to_string())?;
         let (w, h) = (rc.right - rc.left, rc.bottom - rc.top);
         if w <= 0 || h <= 0 {
             return Err("empty window".into());
@@ -115,8 +115,9 @@ pub fn capture(hwnd: isize, out: &std::path::Path) -> Result<(), String> {
         let mdc = CreateCompatibleDC(Some(wdc));
         let bmp = CreateCompatibleBitmap(wdc, w, h);
         let old = SelectObject(mdc, bmp.into());
-        // PW_CLIENTONLY | PW_RENDERFULLCONTENT
-        let ok = PrintWindow(hwnd, mdc, PRINT_WINDOW_FLAGS(1 | 2)).as_bool();
+        // PW_RENDERFULLCONTENT on the whole window. DirectComposition
+        // content comes back black while the window is occluded.
+        let ok = PrintWindow(hwnd, mdc, PRINT_WINDOW_FLAGS(2)).as_bool();
         let mut info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
