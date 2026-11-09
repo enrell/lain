@@ -2,7 +2,7 @@
 build/
 benchmarks/
 backups/
-*_test.go
+target/
 .DS_Store
 
 # not needed to build the binary
@@ -12,9 +12,10 @@ scripts/
 docs/
 
 # frontend: dependencies and local build output never enter the context;
-# the Docker web stage builds from source. The embedded dist tree is
+# the Docker web stage builds from source. The embedded web tree is
 # produced by the web stage, not copied from the host.
 web/node_modules/
 web/.svelte-kit/
 web/build/
-internal/webui/dist/
+crates/lain/webui/*
+!crates/lain/webui/.gitkeep

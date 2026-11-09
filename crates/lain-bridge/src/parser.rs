@@ -8,7 +8,7 @@
 //! TCP (`127.0.0.1:9377`). This provider is the Rust port of Go's
 //! `release.Model`: it asks the daemon and merges the model's labels
 //! with the in-tree tokenizer's technical tags. It runs as a component
-//! (`lain-rs component run lain-release-model`) bound before
+//! (`lain component run lain-release-model`) bound before
 //! `lain-release-tokenizer`, so the binding falls through to the
 //! tokenizer whenever the model declines:
 //!

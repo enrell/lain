@@ -4,9 +4,8 @@
 //! Go's encoder) or bytes (pages, avatars, backups). Store and Argon2
 //! work runs on the blocking pool.
 //!
-//! Routes a module owns answer `module-disabled` while it is off. Go
-//! routes not ported yet answer 501 `not-ported` rather than 404, so a
-//! client can tell "not here yet" from "does not exist".
+//! Routes a module owns answer `module-disabled` while it is off. What
+//! no route takes falls through to the web SPA (`webui.rs`).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -25,7 +24,6 @@ use serde_json::{Value, json};
 use lain_admin::{avatars, backup, theme};
 use lain_auth::{AVATAR_UPLOAD, AuthError, MASCOTS, PlaybackPolicy, ProfilePatch, ROLE_ADMIN, ROLE_USER, Verified};
 use lain_core::codes;
-use lain_core::modules::route_matches;
 
 use crate::app::App;
 use crate::catalog::{CAP_CATALOG_READ, CAP_CATALOG_WRITE, CAP_USER_PROGRESS};
@@ -1141,35 +1139,11 @@ async fn privacy_gate(State(app): State<Arc<App>>, req: Request, next: Next) -> 
     next.run(req).await
 }
 
-/// Every route of the Go gateway, for telling "not ported yet" apart
-/// from "no such route".
-const GO_ROUTES: &[&str] = &[];
-
-fn is_api(path: &str) -> bool {
-    path == "/api" || path.starts_with("/api/") || path == "/health" || path.starts_with("/health/")
-}
-
-async fn fallback(State(app): State<Arc<App>>, method: Method, uri: Uri) -> Response {
-    let path = uri.path();
-    let ported_elsewhere = GO_ROUTES.iter().any(|r| {
-        let (m, p) = r.split_once(' ').unwrap_or(("", r));
-        (m == method.as_str() || (method == Method::HEAD && m == "GET")) && route_matches(p, path)
-    });
-    if ported_elsewhere || (is_api(path) && app.route_owned(path)) {
-        return Reply::json(501, json!({"error": "not served by lain-rs yet", "code": "not-ported"})).into_response();
-    }
-    if method != Method::GET && method != Method::HEAD {
-        let mut r = Reply::err(405, "method not allowed").into_response();
-        r.headers_mut().insert(header::ALLOW, HeaderValue::from_static("GET, HEAD"));
-        return r;
-    }
-    if is_api(path) {
-        return Reply::err(404, "not found").into_response();
-    }
-    let mut r = Response::new(Body::from("lain-rs does not embed the web UI yet.\n"));
-    *r.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
-    r.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
-    r
+/// Everything the API router did not take: the web SPA, which also
+/// answers unknown `/api` and `/health` paths with a JSON 404 and other
+/// methods with a 405 (D-235).
+async fn fallback(State(app): State<Arc<App>>, method: Method, uri: Uri, headers: HeaderMap) -> Response {
+    app.web.respond(&method, uri.path(), &headers)
 }
 
 async fn access_log(req: Request, next: Next) -> Response {

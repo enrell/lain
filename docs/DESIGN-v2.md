@@ -368,10 +368,14 @@ resource control. The cost is a rewrite of ~79k lines, so the migration is
 incremental. No Go server runs anywhere (D-178), so there is nothing to keep
 alive or protect while it happens.
 
+**Status (2026-11-09): done.** Every route and module runs in Rust and the
+Go code is removed (D-235..D-243): one `lain` binary holds the server, the
+embedded web SPA and the command-line client.
+
 - **Strangler migration.**
-  - A Cargo workspace (`crates/`) lives in this repo next to the Go code until
-    Go is removed, so the decision log, contracts and docs stay in one place.
-  - The Go code is the reference implementation the conformance suite checks
+  - A Cargo workspace (`crates/`) lived in this repo next to the Go code until
+    Go was removed, so the decision log, contracts and docs stayed in one place.
+  - The Go code was the reference implementation the conformance suite checked
     the API against, and the source of the modules still to port.
 - **Contracts are the spec.**
   - Before porting, freeze today's behavior into a **language-neutral
@@ -390,13 +394,16 @@ alive or protect while it happens.
   3. the P1 features, built directly in Rust and not first in Go;
   4. modules one by one: watch, read, acquire (including the in-house
      BitTorrent engine, kept in-house), subtitles, lists, social;
-  5. Go removed (no cutover step: lain-rs already uses the canonical data dir
-     and port, D-178).
+  5. Go removed (no cutover step: lain-rs already used the canonical data dir
+     and port, D-178). **Done** (D-235..D-243): `cmd/`, `internal/` and the Go
+     CI, image and release builds are gone; the conformance suite runs against
+     the Rust server only.
 - **Data (D-177, D-178):** no migration. Nobody runs lain yet, so the Rust
   server starts from an empty canonical data dir (`lain`, port 9360); there is
   no importer of the Go store, Go tokens or Go password hashes. The catalog
   moves between data dirs as `lain.catalog-export@3`.
-- **Web SPA:** unchanged; the Rust server embeds and serves the same build.
+- **Web SPA:** unchanged; the Rust binary embeds and serves the same build
+  with Go's routing and caching rules (D-235).
 - **Dependency policy for Rust** (replaces D-001/D-002 for the Rust code, and
   needs the owner's approval of the list, **[owner]**):
   - few, maintained, pure-Rust crates, each justified in `AGENTS.md`;
@@ -418,8 +425,8 @@ alive or protect while it happens.
 - **Rules that carry over unchanged:** plugin boundaries, "media bytes never
   enter a plugin call", catalog/userstate separation, keyboard-first UI rules,
   English prose.
-- **`AGENTS.md`'s stack section is rewritten when Go is removed.** Until then
-  it documents both stacks.
+- **`AGENTS.md`'s stack section was rewritten when Go was removed** (D-235..D-243):
+  it documents the Rust stack only.
 
 ## 12. Open questions for the owner
 

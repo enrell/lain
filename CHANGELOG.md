@@ -5,6 +5,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Removed
+- **The Go server** (D-235..D-243, DESIGN-v2 §13 step 5). `cmd/`,
+  `internal/`, `go.mod` and the Go CI, image and release builds are gone;
+  the conformance suite runs against the Rust server only. Dropped on
+  purpose: `lain bench`, `lain plugin-run`, `doctor`'s matrix report,
+  `serve --transcode-cache-size` (a transcode setting now) and
+  `serve --anilist-client-id` (the env seed stays). Go data, config and
+  backups are not read (D-177).
+
+### Changed
+- **One `lain` binary** (D-237) replaces `lain-rs`: the server commands
+  (`serve`, `service`, `export`, `import`, `backup`, `restore`, `plugins`,
+  `doctor`, `component`) and the command-line client (`login`, `watch`, `download`,
+  `player`, `language`, `open-url`, `install-player-handler`) on
+  `lain-client`, whose progress sync now queues positions measured while
+  the server is unreachable. Backups are the `lain.backup@1` tar (D-238).
+- **The web UI is embedded again** (D-235): `just web` copies the build
+  into `crates/lain/webui/` and the binary serves it with Go's SPA
+  fallback, caching and `/api` rules.
+- **Releases** (D-241) ship `lain` for Linux (static, amd64/arm64), macOS
+  (amd64/arm64) and Windows (amd64) with the web UI embedded; the image
+  builds the Rust binary and no longer needs `ca-certificates`.
+
 ### Added
 - **Client core `lain-client`, milestone P2a** (D-179). A Rust crate in
   the workspace for every native client: the typed API for the

@@ -38,17 +38,10 @@ pub const COMPOSITION_VERSION: u32 = 8;
 /// Providers that only ever run as components, so a binding may name
 /// them before their manifest is installed (unregistered, they are
 /// skipped; a capability with none answers `dependency-unavailable`):
-/// the bridges of `lain-bridge` (`lain-rs component install`, P4) and
-/// the Go providers `lain plugin-run` serves (the strangler path).
-pub const COMPONENT_SERVED: &[&str] = &[
-    lain_bridge::parser::MODEL_ID,
-    lain_bridge::animesubs::ID,
-    lain_bridge::anything::ID,
-    "lain-probe-ffprobe",
-    "lain-playback-default",
-    "lain-thumbnail-ffmpeg",
-    "lain-transcode-ffmpeg",
-];
+/// the bridges of `lain-bridge` (`lain component install`, P4). Every
+/// built-in provider runs in-process (D-236).
+pub const COMPONENT_SERVED: &[&str] =
+    &[lain_bridge::parser::MODEL_ID, lain_bridge::animesubs::ID, lain_bridge::anything::ID];
 
 /// The default composition: everything the Rust server serves
 /// in-process (catalog, userstate, catalog population, identification,
@@ -129,12 +122,12 @@ pub struct Config {
     /// `LAIN_OMARCHY_COLORS`, then the host's default location.
     pub theme_path: Option<PathBuf>,
     /// Where the network metadata providers live (`LAIN_METADATA_*_URL`
-    /// in `lain-rs serve`).
+    /// in `lain serve`).
     pub metadata_endpoints: lain_metadata::Endpoints,
     /// No outbound HTTP at all: remote providers fail at once (tests).
     pub offline: bool,
     /// The AniList connector's API roots (`LAIN_LISTLINK_ANILIST_*_URL`
-    /// in `lain-rs serve`).
+    /// in `lain serve`).
     pub anilist_endpoints: lain_lists::anilist::Endpoints,
     /// The scheduled list import (`--list-sync=0` / `LAIN_LIST_SYNC=0`
     /// leaves manual syncs only).
@@ -145,6 +138,8 @@ pub struct Config {
     pub acquire_listen_port: Option<u16>,
     /// The acquisition monitor period.
     pub acquire_tick: Duration,
+    /// The web SPA the binary embeds (D-235); none in tests by default.
+    pub web: crate::webui::WebAssets,
 }
 
 impl Config {
@@ -165,6 +160,7 @@ impl Config {
             list_sync_interval: lain_lists::links::SYNC_INTERVAL,
             acquire_listen_port: None,
             acquire_tick: Duration::from_secs(2),
+            web: crate::webui::WebAssets::none(),
         }
     }
 }
@@ -186,6 +182,8 @@ pub fn save_doc(path: &Path, v: &impl serde::Serialize) -> Result<(), String> {
 
 pub struct App {
     pub data_dir: PathBuf,
+    /// The embedded web SPA.
+    pub web: crate::webui::WebAssets,
     pub version: String,
     pub keep_alive: Duration,
     reload_debounce: Duration,
@@ -315,6 +313,7 @@ impl App {
 
         let app = Arc::new(App {
             data_dir: dir.clone(),
+            web: cfg.web,
             version: cfg.version,
             keep_alive: cfg.keep_alive,
             reload_debounce: cfg.reload_debounce,
@@ -613,10 +612,6 @@ impl App {
     }
 
     /// Whether some module owns a route (enabled or not).
-    pub fn route_owned(&self, path: &str) -> bool {
-        self.modules.read().unwrap_or_else(|e| e.into_inner()).route_owner(path).is_some()
-    }
-
     pub fn save_composition(&self) -> Result<(), String> {
         save_doc(&self.data_dir.join("composition.json"), &self.registry.composition())
     }

@@ -1,4 +1,4 @@
-//! `lain-rs service install|uninstall|start|stop|status|logs` (D-164),
+//! `lain service install|uninstall|start|stop|status|logs` (D-164),
 //! wrapping each platform's own manager with nothing but its CLI:
 //!
 //! - **Linux:** a systemd *user* unit in `~/.config/systemd/user/`
@@ -372,8 +372,7 @@ pub fn plan(os: Os, action: &Action, spec: &Spec, host: &Host) -> Result<Plan, S
                     if spec.linger && !spec.system {
                         p.commands.push(cmd(&["loginctl", "enable-linger", &host.user]));
                     }
-                    p.notes
-                        .push(format!("installed {unit}; start it with `lain-rs service start --name {}`", spec.name));
+                    p.notes.push(format!("installed {unit}; start it with `lain service start --name {}`", spec.name));
                     if !spec.system && !spec.linger {
                         p.notes.push("a user unit runs while you are logged in; for a headless box add --linger (loginctl enable-linger)".into());
                     }
@@ -442,7 +441,7 @@ pub fn plan(os: Os, action: &Action, spec: &Spec, host: &Host) -> Result<Plan, S
                         );
                     } else {
                         p.notes.push(format!(
-                            "the task starts at your logon; start it now with `lain-rs service start --name {name}`"
+                            "the task starts at your logon; start it now with `lain service start --name {name}`"
                         ));
                     }
                 }
@@ -579,7 +578,7 @@ mod tests {
     fn spec(system: bool) -> Spec {
         Spec {
             name: "lain".into(),
-            exe: PathBuf::from("/opt/lain/bin/lain-rs"),
+            exe: PathBuf::from("/opt/lain/bin/lain"),
             data_dir: PathBuf::from("/home/u/.local/share/lain"),
             port: 9360,
             bind: "127.0.0.1".into(),
@@ -601,7 +600,12 @@ mod tests {
     #[test]
     fn systemd_user_unit() {
         let u = systemd_unit(&spec(false), &host());
-        assert!(u.contains("ExecStart=/opt/lain/bin/lain-rs serve --data-dir /home/u/.local/share/lain --port 9360 --bind 127.0.0.1\n"), "{u}");
+        assert!(
+            u.contains(
+                "ExecStart=/opt/lain/bin/lain serve --data-dir /home/u/.local/share/lain --port 9360 --bind 127.0.0.1\n"
+            ),
+            "{u}"
+        );
         assert!(u.contains("Environment=LAIN_HOME=/home/u/.local/share/lain\n"));
         assert!(u.contains("Restart=on-failure\n"));
         assert!(u.contains("WantedBy=default.target\n"));
@@ -653,7 +657,7 @@ mod tests {
         let p = launchd_plist(&spec(false));
         assert!(p.contains("<key>Label</key>\n  <string>dev.lain.lain</string>"));
         assert!(p.contains(
-            "    <string>/opt/lain/bin/lain-rs</string>\n    <string>serve</string>\n    <string>--data-dir</string>"
+            "    <string>/opt/lain/bin/lain</string>\n    <string>serve</string>\n    <string>--data-dir</string>"
         ));
         assert!(p.contains("<key>LAIN_HOME</key>\n    <string>/home/u/.local/share/lain</string>"));
         assert!(p.contains("<key>RunAtLoad</key>\n  <true/>"));
@@ -680,14 +684,14 @@ mod tests {
     #[test]
     fn windows_logon_task() {
         let mut s = spec(false);
-        s.exe = PathBuf::from(r"C:\Users\u\bin\lain-rs.exe");
+        s.exe = PathBuf::from(r"C:\Users\u\bin\lain.exe");
         s.data_dir = PathBuf::from(r"C:\Users\u\AppData\Local\lain");
         let x = task_xml(&s, &host());
         assert!(x.contains("<LogonTrigger>\n      <Enabled>true</Enabled>\n      <UserId>DESKTOP\\u</UserId>"), "{x}");
         assert!(x.contains("<LogonType>InteractiveToken</LogonType>\n      <RunLevel>LeastPrivilege</RunLevel>"));
         assert!(x.contains("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>"));
         assert!(x.contains("<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>"));
-        assert!(x.contains(r"<Command>C:\Users\u\bin\lain-rs.exe</Command>"));
+        assert!(x.contains(r"<Command>C:\Users\u\bin\lain.exe</Command>"));
         assert!(
             x.contains(
                 r"<Arguments>serve --data-dir C:\Users\u\AppData\Local\lain --port 9360 --bind 127.0.0.1 --log-file "

@@ -1,7 +1,6 @@
 # Lain — Agent Instructions
 
-Read this file before touching code. The project's discipline applies
-here, adapted to Go.
+Read this file before touching code.
 
 ## Audience (drives every UX decision)
 
@@ -27,41 +26,21 @@ server. Design for them:
 
 ## Stack (do not change without explicit user instruction)
 
-- Language: Go (stdlib-first). Dependencies, each justified:
-  - `golang.org/x/crypto` (bcrypt) — password hashing.
-  - `golang.org/x/term` (password prompt) — `lain login` only.
-  - `go.etcd.io/bbolt` (embedded KV, pure Go, no cgo) — lain.db.
-  - `github.com/fsnotify/fsnotify` (pure Go, no cgo) — library file
-    watcher that reconciles deletions in near real time (D-068).
-  New dependencies are permanent compile tax — discuss first, and
-  never accept cgo or C-transpiled giants: the build must stay seconds.
-- HTTP: stdlib `net/http` with method patterns. No framework.
-- Storage: bbolt buckets (`users`, `libraries`, `items`, `progress`,
-  `meta`) via `internal/kv`; JSON values, composite keys for scoping.
-  `internal/store` remains for operator config + legacy import only.
-- JWT: HS256 in `internal/auth` (stdlib hmac/sha256) with live role,
-  liveness and password-version checks.
-- No cgo. The whole point is a seconds-long build; keep it that way.
-
-## Rust (migration in progress)
-
-The server is being rewritten in Rust by strangler migration (D-171,
-DESIGN-v2 §13). No Go server runs anywhere (D-178): the Go code stays
-in the repo as the reference the conformance suite checks the API
-against and as the source of modules not ported yet, so this file
-documents both stacks until those are ported.
+Lain is one Rust workspace (D-171): the server, the client core and the
+`lain` binary. The Go server it replaced was removed (D-235..D-244); the
+conformance suite it was checked against stays as the API spec.
 
 - Workspace: `Cargo.toml` at the root, crates in `crates/`:
   - `lain-core` — composition, provider registry (modes, health-gated
     swap, generation fencing, last-good fallback, withdraw, module
     suspend/resume) and the module layer (`lain.modules@1`, D-154).
   - `lain-store` — redb tables of JSON records with NUL-joined
-    composite keys. A data dir starts empty: nothing is imported from
-    the Go server (D-177).
+    composite keys. A data dir starts empty (D-177).
   - `lain-auth` — setup, Argon2id passwords and PINs, HS256 tokens with
     a session `jti` and live checks.
   - `lain-component` — the component host, `serve` for Rust components
-    and the `<data-dir>/plugins/` watcher; the Go wire, byte for byte.
+    and the `<data-dir>/plugins/` watcher; the NDJSON wire frozen in
+    `conformance/component/`.
   - `lain-read` — the read module (D-195): comic and manga archives
     (`lain.comic.pages@1`), the in-tree ZIP reader, image headers and
     `ComicInfo.xml`.
@@ -69,13 +48,22 @@ documents both stacks until those are ported.
     (`lain.ui.theme@1`), backups (`lain.backup.create@1`, tar of a
     consistent store snapshot), integration settings and avatars.
   - `lain-server` — the axum gateway, `/api/modules`, `/api/events`,
-    service mode, catalog `export`/`import` (`lain.catalog-export@3`);
-    binary `lain-rs` on the canonical data dir (`lain`) and port 9360
-    (D-178).
+    service mode, catalog `export`/`import` (`lain.catalog-export@3`)
+    and the web SPA's static serving (`webui.rs`, D-235), on the
+    canonical data dir (`lain`) and port 9360 (D-178). A library: the
+    binary is `crates/lain`.
+  - `lain` — the binary (D-237): the server commands (`serve`,
+    `service`, `export`/`import`, `backup`/`restore`, `plugins`,
+    `doctor`, `component`) and the command-line client (`login`, `watch`,
+    `download`, `player`, `language`, `open-url`,
+    `install-player-handler`) on `lain-client`. Its `build.rs` embeds
+    `crates/lain/webui/` (the web build `just web` copies there; empty
+    in a fresh checkout) with `include_bytes!`, no crate (D-235).
   - `lain-identify` — the in-tree parsers (D-185): the release-name
     tokenizer (`lain.release.parse@1`) and the comic, anime and generic
     identifiers (`lain.media.identify@1`), checked name for name
-    against the Go parsers (`conformance/fixtures/parse-parity.json`).
+    against the recorded answers of the retired Go parsers
+    (`conformance/fixtures/parse-parity.json`, frozen).
   - `lain-ingest` — catalog population: the filesystem source, the scan
     pipeline, the `commit_scan` plan (moves D-019, missing D-068,
     locations D-157/D-186), the library watcher on `notify`, the scan
@@ -115,7 +103,7 @@ documents both stacks until those are ported.
     (`lain.subtitle.translate@1`) and `lain-acquire-anything`
     (`lain.acquire.extract@1`), their discovery of each app's
     `server.json` and token, and a std-only HTTP/1.1 client for loopback
-    services; `lain-rs component install|run|list|uninstall`. No crate
+    services; `lain component install|run|list|uninstall`. No crate
     added. `tools/parser-v5` (outside the workspace) is the V-5 parser
     benchmark.
   - `lain-api` — the HTTP API's JSON types (serde only), re-exported by
@@ -135,12 +123,14 @@ documents both stacks until those are ported.
     transcoder (v1 + v3 sessions, HLS, throttle, idle stop, LRU cache)
     over external ffmpeg on its own threads, thumbnails, local playback
     (mpv/VLC) and the transcode settings, each also an in-process
-    provider under its Go id.
+    provider under its historical id (`lain-transcode-ffmpeg`, ...).
   - `conformance/runner` — the conformance runner (`lain-conformance`).
 - Dependencies: the D-172 baseline plus D-173 (argon2 per D-177), versions pinned with `=`
   in the workspace `Cargo.toml`, `Cargo.lock` committed. A crate outside
   this list is asked of the owner first (DESIGN-v2 §13 policy: few,
-  maintained, pure Rust, no C-heavy dependency in the server).
+  maintained, pure Rust, no C-heavy dependency in the server; ffmpeg,
+  ffprobe, mpv and VLC stay external processes). New dependencies are
+  permanent compile tax.
   - `tokio` — the async runtime under axum, and the Windows named-pipe
     transport of the component host (D-174); only the `rt-multi-thread`,
     `net`, `time`, `sync`, `macros`, `signal` and `io-util` features.
@@ -172,9 +162,11 @@ documents both stacks until those are ported.
   - `getrandom` (D-173) — OS randomness for the token secret and the
     token `jti`.
   - `libc` (D-179, already in the tree on Unix) — `statvfs` for the
-    client offline store's free-space floor, and (D-190) `kill(2)`
-    with SIGSTOP/SIGCONT for transcode throttling in `lain-watch`;
-    Unix only (elsewhere ffmpeg simply never pauses, like Go).
+    client offline store's free-space floor, (D-190) `kill(2)` with
+    SIGSTOP/SIGCONT for transcode throttling in `lain-watch`, and
+    (D-237) termios for `lain login`'s password prompt; Unix only
+    (elsewhere ffmpeg never pauses, and the Windows prompt calls two
+    kernel32 functions directly).
   - `sha2` and `getrandom` are also used by `lain-watch` (session and
     cache keys) and `lain-server` (multipart range boundaries); no
     crate was added for the watch module (D-190).
@@ -190,27 +182,27 @@ documents both stacks until those are ported.
     `zeroize` and `ring`, whose build compiles its C and assembly
     (with `getrandom` 0.2, a second version next to 0.4); `ring` is the
     one C-backed crate, accepted for TLS by the coordinator's D-200.
-  - In-tree instead of a crate: URL-safe base64 for the JWT segments
+  - In-tree instead of a crate: the web build embedding
+    (`crates/lain/build.rs`, `include_bytes!`; no `rust-embed` or
+    `include_dir`), URL-safe base64 for the JWT segments
     (`lain-auth/src/crypto.rs`; no approved crate exposes one), the
     runner's HTTP client and upstream fixture server, the comic
     identifier's patterns (no regex crate), the `.nfo` reader (no XML
     crate), and `lain-http`'s URL parsing, escaping and keep-alive pool
     (no `url`, `reqwest` or `hyper-rustls`).
   - No test-only crates.
-- Rules that carry over unchanged: plugin boundaries, media bytes never
-  in a plugin call, catalog/userstate separation, typed errors with
-  stable codes and no panic on bad input, English prose.
+- Rules: provider boundaries, media bytes never in a provider call,
+  catalog/userstate separation, typed errors with stable codes and no
+  panic on bad input, English prose.
 - Component transport: a Unix socket, or a named pipe on Windows
-  (D-174); the NDJSON frames are identical. Go components dial Unix
-  sockets only, so on Windows a Go component needs a pipe dialer first.
-
-```sh
-cargo build                        # the workspace (keep it incremental)
-cargo test                         # every crate, including the conformance
-                                   # suites against an in-process lain-rs
-conformance/run.sh                 # the suite against the Go and Rust servers
-cargo run -p lain-server --bin lain-rs -- serve --data-dir /tmp/lain-rs-dev
-```
+  (D-174); the NDJSON frames are identical.
+- HTTP: axum with default features off; handlers are thin and the
+  domain logic lives in the module crates.
+- Storage: one redb file (`lain.redb`) of JSON records via
+  `lain-store`; JSON documents in the data dir for operator config
+  (`composition.json`, `modules.json`, `roots.json`).
+- Tokens: HS256 in `lain-auth` with live role, liveness,
+  password-version and session checks.
 
 ## Desktop app (`apps/desktop`, GPUI, D-180)
 
@@ -238,16 +230,17 @@ natively on Windows (`cargo build` in `apps/desktop`; output on C: per
 ## Workflow
 
 1. Read the relevant source + `docs/` before changing conventions.
-2. Test first for behavior changes (`go test ./...` must stay green).
-3. Typed errors with stable codes (`core.Error`); never panic on bad
-   input; never silent failures — log or propagate.
+2. Test first for behavior changes (`cargo test --workspace` must stay
+   green).
+3. Typed errors with stable codes (`lain_core::Error`); never panic on
+   bad input; never silent failures — log or propagate.
 4. Small slices. Do not implement transcode/metadata/matrix-daemon mode
    "while here"; contracts for those are reserved, not started.
 
 ## Boundaries (load-bearing)
 
-- Plugins implement `core.Provider` and never touch `net/http`,
-  process-global state, or another plugin's files.
+- Providers implement `lain_core::Provider` and never touch the HTTP
+  layer, process-global state, or another provider's files.
 - Media bytes never enter plugin calls; the gateway streams from disk.
 - Catalog owns identity; userstate owns progress; never merge them.
 - `merge-many`/`fan-out` modes exist for the metadata slice — do not
@@ -269,91 +262,47 @@ natively on Windows (`cargo build` in `apps/desktop`; output on C: per
 ## Commands
 
 ```sh
-go build ./...          # must be seconds, not minutes
-go vet ./...
-go test ./...           # full suite, fast
-go build -o lain ./cmd/lain
-./lain doctor            # environment report
-./lain bench scan --path ~/Videos --runs 3   # scan benchmark -> benchmarks/
-./lain login --server http://127.0.0.1:9360   # save API token
-./lain watch --next                           # resume in mpv
+just web                           # web build -> crates/lain/webui (embedded)
+cargo build -p lain                # the binary (keep builds incremental)
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace             # every crate, the conformance suites
+                                   # in-process, the CLI end to end
+conformance/run.sh                 # the suite against a throwaway `lain serve`
+cargo run -p lain -- serve --data-dir /tmp/lain-dev
+cargo run -p lain -- doctor        # environment report
+cargo run -p lain -- login --server http://127.0.0.1:9360
+cargo run -p lain -- watch --next  # resume in mpv
 ```
 
-## Testing layers (what to use, where, how fast)
+Use `CARGO_BUILD_JOBS=4` on shared machines.
 
-The suite is layered so the per-commit path stays seconds while the
-expensive engines run scoped or nightly:
+## Testing layers (what to use, where)
 
-```
-per commit (seconds):   build + vet → unit/integration → property → race (hot pkgs)
-per parser change:      fuzz corpus replay (always) + campaign (time-boxed)
-nightly / scheduled:    longer fuzz campaigns → more model seeds → stress -count=20
-per refactor/migration: differential oracle runs
-```
-
-- **Real-ffmpeg tests** — any test that runs the host `ffmpeg`/`ffprobe`
-  (gateway `TestE2E*` and fixture synthesis, transcode, thumbnail)
-  costs minutes in total, so it skips unless built with `-tags e2e`
-  (`just test-e2e`); CI always runs them. Gate new ones through the
-  package's helper (`requireRealFFmpeg`, `requireFFmpeg`,
-  `subsRequireFFmpeg`) or an `e2eEnabled` check — never a bare
-  `exec.LookPath("ffmpeg")`. Builds are
-  pure Go: `.mise.toml` sets `CGO_ENABLED=0`, and only the race
-  detector re-enables cgo (`just test-race`, CI).
-- **Real-ffmpeg tests in Rust** — `lain-watch` unit tests use injected
+- **Unit tests** next to the code (`#[cfg(test)]`), integration tests
+  in `crates/*/tests/`, the CLI end to end in `crates/lain/tests/cli.rs`
+  (the real binary against a throwaway server; no player, no network).
+- **Conformance** — `conformance/cases` is the HTTP API spec (D-169):
+  every `/api/*` route clients use, run in-process by
+  `crates/lain-server/tests` and against the binary by
+  `conformance/run.sh`. A behavior change to a route changes its case.
+- **Real-ffmpeg tests** — `lain-watch` unit tests use injected
   probe/capability/run hooks and need no ffmpeg; the server's
   `tests/watch.rs` and the conformance watch suite run the real
   ffmpeg/ffprobe on clips made with lavfi (`conformance/make-clips.sh`;
   nothing is committed). They skip without ffmpeg unless
   `LAIN_REQUIRE_FFMPEG=1`, which CI sets on all three OSes.
-- **Contract tests** — `internal/testutil/contract` runs one shared
-  harness against every `core.Provider`: non-empty ID/capabilities,
-  `Health` never panics, unknown capabilities and wrong input types
-  return typed `*core.Error`, declared capabilities accept valid
-  samples. Operational failures (closed db, missing ffmpeg) may
-  surface untyped — the typed contract covers protocol violations only.
-- **Native fuzzing** — `go test -fuzz` on untrusted input parsers:
-  `identify` (filenames), `probe` (ffprobe JSON), `gateway` theme CSS,
-  `transcode` HLS playlists. Fuzzing found real bugs (NaN durations,
-  control-char titles, negative geometry); failing inputs live as
-  regression corpus under `testdata/fuzz/` — keep them. Run one package
-  at a time (`-fuzz` rejects multiple packages):
-
-  ```sh
-  go test ./internal/plugins/identify -fuzz=FuzzIdentifyAnime -fuzztime=60s
-  go test ./internal/plugins/probe -fuzz=FuzzParse -fuzztime=60s
-  go test ./internal/plugins/transcode -fuzz=FuzzParseHLSPlaylist -fuzztime=60s
-  go test ./internal/gateway -fuzz=FuzzParseOmarchyTheme -fuzztime=60s
-  ```
-
-- **Property tests** — stdlib `testing/quick` (no PBT dependency):
-  kv key injectivity and JSON round-trips, `TitleKey` idempotence and
-  ASCII case-insensitivity (unicode case-folding is NOT guaranteed
-  symmetric — do not assert it), fingerprint determinism, HLS rewrite
-  idempotence and token-leak-freedom, contract JSON stability.
-- **Stateful models** — seeded random walks with a parallel model:
-  `ingest/model_test.go` mutates a real tree (create/delete/rename/
-  restore/broken walk) and asserts catalog=missing semantics plus a
-  fresh-scan differential oracle; `transcode/lifecycle_model_test.go`
-  drives job lifecycles through gated converts asserting legal
-  transitions, `done` closing exactly once, and admission bounds.
-  Seeds are subtests — a failure names its seed for replay.
-- **Deterministic timers** — `testing/synctest` for debounce/throttle
-  logic (see `gateway/watch_synctest_test.go`). Inside the bubble the
-  root goroutine's `time.Sleep` drives the fake clock and
-  `synctest.Wait()` settles goroutines — `Wait` alone does NOT advance
-  the clock. Keep real fd I/O (fsnotify, sockets) outside the bubble.
-- **Fault injection** — `fault_test.go` files assert degradation, not
-  crashes: closed DB (reads empty, writes error), unwritable/vanished
-  cache, missing source files, broken walks. A failed walk or an
-  identify failure must never read as deletions (D-068).
+- **Fault injection** — assert degradation, not crashes: closed or
+  locked stores, unwritable or vanished caches, missing source files,
+  broken walks. A failed walk or an identify failure must never read
+  as deletions (D-068).
 - **Shell stubs are POSIX sh** — tests that stub `ffmpeg`/`ffprobe`
   write a `#!/bin/sh` script; CI's `/bin/sh` is dash (Ubuntu), not
   bash, so a bashism passes locally and fails only in CI. Keep stub
   bodies POSIX: `for last; do :; done` for the final argument, never
   `${@: -1}`, `[[ ]]`, arrays or `$'...'`. Tests must also not assume
-  a host binary exists — control it (`t.Setenv("PATH", ...)`), and
-  reserve `t.Skip` for genuinely absent platforms.
+  a host binary exists: control `PATH`, and skip only on genuinely
+  absent platforms.
 
 ## Commit discipline
 

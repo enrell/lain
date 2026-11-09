@@ -2,27 +2,27 @@
 
 ## Shape
 
-A plugin is a Go type implementing `core.Provider`:
+An in-process plugin is a Rust type implementing `lain_core::Provider`:
 
-```go
-type Provider interface {
-    ID() string            // e.g. "community.anime-parser"
-    Capabilities() []string // e.g. []string{"lain.media.identify@1"}
-    Health() error         // cheap, side-effect free
-    Invoke(cap string, input any) (any, error)
+```rust
+pub trait Provider: Send + Sync {
+    fn id(&self) -> &str;                 // e.g. "community.anime-parser"
+    fn capabilities(&self) -> Vec<String>; // e.g. vec!["lain.media.identify@1".into()]
+    fn health(&self) -> Result<(), Error>; // cheap, side-effect free
+    fn invoke(&self, cap: &str, op: &str, input: Value) -> Result<Value, Error>;
 }
 ```
 
-Input/output Go types per capability are in `docs/CONTRACTS.md`.
-Return `&core.Error{Code: "invalid-message", ...}` for wrong shapes;
+Input/output JSON shapes per capability are in `docs/CONTRACTS.md`.
+Return `Error::invalid(...)` (`invalid-message`) for wrong shapes;
 codes `dependency-unavailable`, `stale-generation`, `outcome-unknown`
 have registry meaning — do not invent new ones without documenting them.
 
 ## Component mode
 
-Any provider can run out-of-process. `lain plugin-run --id <provider>
---sock <path>` serves a built-in provider over the component wire:
-NDJSON frames on a unix socket, a `hello` handshake that declares
+Any provider can run out-of-process as a component (Rust components use
+`lain_component::serve`): NDJSON frames on a Unix socket (a named pipe on
+Windows), a `hello` handshake that declares
 capabilities, `invoke`/`result`/`error` frames keyed by sequence id,
 and a transport-level `health`. See "Component mode" in
 `docs/CONTRACTS.md` for the protocol — third-party components can
@@ -43,8 +43,7 @@ A component manifest makes an executable provisionable:
 `{sock}` expands to the socket the host allocates. Drop the manifest
 into `<data-dir>/plugins/` and the provisioner spawns, handshakes,
 health-checks and registers it; delete the manifest to unregister and
-kill it; rewrite it to reload. `internal/matrix.ExportManifests` still
-writes manifests in Matrix component shape for tooling.
+kill it; rewrite it to reload.
 
 ## Install / swap / withdraw
 

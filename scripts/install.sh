@@ -3,7 +3,7 @@
 # lain installer
 #
 # Installs the lain media server and/or the lain-desktop client on Linux.
-#   server:  https://github.com/enrell/lain           (Go, image ghcr.io/enrell/lain)
+#   server:  https://github.com/enrell/lain           (Rust, image ghcr.io/enrell/lain)
 #   desktop: https://github.com/enrell/lain-desktop   (Qt6/QML + libmpv)
 #
 # Interactive menu by default; every choice is also available as a flag
@@ -595,9 +595,6 @@ write_compose_file() {
     for volume in "$@"; do
       printf '      - %s\n' "$(yaml_quote "$volume")"
     done
-    printf '    environment:\n'
-    printf '      GOMEMLIMIT: 256MiB\n'
-    printf '      GOGC: "100"\n'
     printf '    mem_limit: 384m\n'
     printf '    healthcheck:\n'
     printf '      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:%s/health"]\n' "$CONTAINER_PORT"

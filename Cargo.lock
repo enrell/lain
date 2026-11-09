@@ -388,6 +388,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "lain"
+version = "0.1.0"
+dependencies = [
+ "lain-admin",
+ "lain-api",
+ "lain-bridge",
+ "lain-client",
+ "lain-component",
+ "lain-conformance",
+ "lain-core",
+ "lain-downloads",
+ "lain-lists",
+ "lain-metadata",
+ "lain-probe",
+ "lain-server",
+ "lain-store",
+ "lain-watch",
+ "libc",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lain-acquire"
 version = "0.1.0"
 dependencies = [
