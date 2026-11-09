@@ -120,11 +120,11 @@ fn fetch_maps_entries_and_folds_custom_lists() {
     assert_eq!(out.entries.iter().find(|e| e.remote_id == "9").unwrap().status, "planning");
     let vars: Vec<_> = f.taken().iter().map(|r| r.json()["variables"].clone()).collect();
     assert_eq!(vars, vec![json!({"userId": 42, "type": "ANIME"}), json!({"userId": 42, "type": "MANGA"})]);
-    for (tok, uid) in [("", "42"), ("t", ""), ("t", "abc"), ("t", "0")] {
+    for (case, (tok, uid)) in [("", "42"), ("t", ""), ("t", "abc"), ("t", "0")].into_iter().enumerate() {
         let e = a
             .fetch(&FetchInput { platform: "anilist".into(), token: tok.into(), remote_user_id: uid.into() })
             .unwrap_err();
-        assert_eq!(e.code, "invalid-message", "{tok:?} {uid:?}");
+        assert_eq!(e.code, "invalid-message", "bad input case {case}");
     }
 }
 
