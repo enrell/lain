@@ -1,0 +1,36 @@
+[package]
+name = "lain-desktop-gpui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "lain desktop prototype on GPUI (P2b, V-13)"
+
+# Its own workspace: the main workspace and its Cargo.lock stay untouched.
+[workspace]
+
+[dependencies]
+gpui = "=0.2.2"
+lain-client = { path = "../../crates/lain-client" }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "time", "sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+raw-window-handle = "0.6"
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.release]
+debug = false
+strip = true
+lto = "thin"
+codegen-units = 16
