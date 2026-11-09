@@ -326,6 +326,8 @@ pub struct LainApp {
     pub focus_order: Vec<FocusItem>,
     pub focused: Option<SharedString>,
     pub row_of: HashMap<SharedString, usize>,
+    /// Where each focus stop was last painted (to scroll it into view).
+    pub stop_bounds: std::rc::Rc<std::cell::RefCell<HashMap<SharedString, gpui::Bounds<gpui::Pixels>>>>,
     pub cur_row: usize,
     pub fields: HashMap<&'static str, Field>,
     pub palette: Option<PaletteState>,
@@ -438,6 +440,7 @@ impl LainApp {
             focus_order: Vec::new(),
             focused: None,
             row_of: HashMap::new(),
+            stop_bounds: Default::default(),
             cur_row: 0,
             fields: HashMap::new(),
             palette: None,
@@ -614,7 +617,10 @@ impl LainApp {
         if !matches!(self.libraries, Load::Ready(_)) {
             self.libraries = Load::Loading;
         }
-        self.spawn_ui(cx, async move { c.libraries().await }, |app, r, _| app.libraries = Load::from(r));
+        self.spawn_ui(cx, async move { c.libraries().await }, |app, r, _| {
+            app.libraries = Load::from(r);
+            app.home.dirty = true;
+        });
     }
 
     pub fn reload_catalog(&mut self, cx: &mut Context<Self>) {
@@ -677,7 +683,8 @@ impl LainApp {
             }
         }
         self.series = series;
-        self.home.dirty = true;
+        // Rebuild now: rails hold indices into the old catalog.
+        self.build_home();
     }
 
     pub fn refresh_continues(&mut self, cx: &mut Context<Self>) {
@@ -1297,8 +1304,30 @@ impl LainApp {
         let id = self.focus_order[next].id.clone();
         if let Some(&row) = self.row_of.get(&id) {
             self.scroll.scroll_to_item(row);
+        } else {
+            self.reveal(&id);
         }
         self.focused = Some(id);
+    }
+
+    /// Scrolls the screen's scroll view so a focus stop is visible.
+    fn reveal(&self, id: &SharedString) {
+        let Some(b) = self.stop_bounds.borrow().get(id).copied() else { return };
+        let view = self.scroll.bounds();
+        if f32::from(view.size.height) <= 0. {
+            return;
+        }
+        let mut off = self.scroll.offset();
+        let pad = gpui::px(24.);
+        if b.bottom() + pad > view.bottom() {
+            off.y -= b.bottom() + pad - view.bottom();
+        } else if b.top() - pad < view.top() {
+            off.y += view.top() - (b.top() - pad);
+        } else {
+            return;
+        }
+        off.y = off.y.min(gpui::px(0.));
+        self.scroll.set_offset(off);
     }
 
     fn field_changed(&mut self, key: &'static str, cx: &mut Context<Self>) {

@@ -1,306 +1,178 @@
-# lain desktop prototype: GPUI (P2b)
+# lain desktop (GPUI)
 
-The two screens from `D:\lain-proto\BRIEF.md` (DESIGN-v2 §8.2, V-13) built
-on [GPUI](https://crates.io/crates/gpui):
-- **Home:** a quiet top bar, a title-first hero, and horizontal rails over the
-  whole 500-item catalog.
-- **Player:** libmpv rendering inside the window, with GPUI's own controls on
-  top.
+The desktop app v1 (DESIGN-v2 §10 P3, D-180): the parity checklist of §8.4
+on [GPUI](https://crates.io/crates/gpui), with themes tier 1 (§8.3,
+[`docs/THEMES.md`](../../docs/THEMES.md)). It grew from the P2b prototype
+(`proto/gpui`). Every server call goes through `lain-client`.
 
-Everything that talks to the server goes through `lain-client`.
+## Build
 
-![Home](shots/home.png)
-![Player, 10-bit with ASS and the subtitle menu](shots/player-10bit-subs.png)
+Its own cargo workspace (the server workspace and its `Cargo.lock` are not
+touched), with path dependencies on `crates/lain-client` and `crates/lain-api`.
 
-## Build and run
-
-Build natively on Windows with MSVC and Windows SDK 26100. Build output goes to
-`C:\lain-proto-target\gpui` (set in `.cargo/config.toml`).
+**Windows** (MSVC 14.44, Windows SDK 26100):
 
 ```sh
-cargo build --release          # or plain `cargo build`
+cargo build --release      # output in C:\lain-desktop-target (.cargo/config.toml)
 ```
 
-`build.rs` links `mpv.lib` from `D:\lain-proto\libmpv` (override it with
-`LAIN_MPV_DIR`) and copies `libmpv-2.dll` next to the exe.
+GPUI's build script finds `fxc.exe` in the Windows SDK by itself
+(`GPUI_FXC_PATH` overrides it). libmpv is **loaded at run time**
+(`libmpv-2.dll` next to the exe, D-182), so the build needs no mpv. For
+`cargo run`, `build.rs` copies the DLL next to the exe from `LAIN_MPV_DIR`
+or `vendor/libmpv/` when it is there (shinchiro's `mpv-dev` x86_64-v3 build
+was used; the folder is git-ignored, the DLL is 124 MB).
 
-GPUI's build script found `fxc.exe` in `Windows Kits\10\bin\10.0.26100.0\x64` on
-its own, so no environment variable is needed. `GPUI_FXC_PATH` overrides it.
+**Linux** (X11 or Wayland; tested to build on Arch in WSL):
 
-**Run:** `dist\lain-desktop-gpui.exe` (double-click). The defaults are:
-`--shared D:\lain-proto\shared`, `--media D:\lain-proto\media`,
-`--theme <shared>\theme.json`, `--account <shared>\conta-gpui.txt`, and the
-server taken from the account file.
+```sh
+CARGO_TARGET_DIR=target cargo build --release
+```
 
-Other flags:
-- `--theme <file>`: a theme file. It is reloaded live when the file changes.
-- `--mute`: mpv `ao=null` + `mute=yes`, set before `mpv_initialize`. The log
-  then shows `current-ao=null`. `--bench` implies it.
-- `--window-pos X,Y` / `--window-size WxH`: an exact window rect in physical
-  virtual-desktop pixels. GPUI gets those bounds and the display containing the
-  point, with `focus: false`. The window is created hidden, moved, then shown
-  with `SW_SHOWNA` (no activation). See "Window placement" below.
-- `--log <file>`: stderr to a file (the release exe has no console).
-- `--server <url>`
-- `--bench <out.json>`: unattended benchmark (see below).
-- `--demo rail|player-4k|player-subs|menu-subs`: puts the app in a state for
-  screenshots without any simulated input.
-- `tools\shot.ps1 <process> <out.png>`: captures one window with `PrintWindow`.
-  It does not focus the window or send any input.
+Needs the GPUI system libraries (Debian/Ubuntu names: `libxkbcommon-dev
+libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libxcb1-dev
+libfontconfig1-dev libfreetype-dev libvulkan-dev`) and `mpv` on `PATH` (or
+`LAIN_MPV=/path/to/mpv`) to play. `patches/xattr-0.2.3` fixes a transitive
+crate that does not build on Linux otherwise (`patches/README.md`).
 
-Test runs on the shared machine go only through
-`D:\lain-proto\tools\rodar-teste.ps1`. It adds `--mute` and the built-in
-panel's rect.
+CI (`desktop` job) runs fmt, clippy `-D warnings`, the build and the unit
+tests on Ubuntu and Windows. No GUI runs in CI.
 
-### Window placement on Windows (what was needed)
+## Run
 
-GPUI 0.2.2 does not honor a requested origin on a secondary monitor:
-- `WindowOptions.window_bounds` and `display_id` are checked against the
-  display with mixed DPI scale factors. On this machine the check failed, so
-  GPUI fell back to the default bounds on the primary monitor.
-- A plain `SW_SHOWNOACTIVATE` re-applies that placement. `SW_SHOWNA` keeps the current position.
+`lain-desktop-gpui.exe` (the name stays for now: the owner's window manager
+ignores it). First run asks for the server URL, then sets up the first admin
+on a fresh server or logs in. The session token is kept by `FileTokenStore`
+in the client dir, so the next start opens Home directly.
 
-What the prototype does:
-1. Creates the window hidden.
-2. Moves it with `SetWindowPos`, and again after ~100 ms once the DPI change has settled.
-3. Shows it with `SW_SHOWNA`.
-4. A short-lived `WM_WINDOWPOSCHANGING` pin was tried and then removed. The
-   two late moves it blocked came from the owner's tiling window manager,
-   which now ignores the prototype exes. Without the pin, the window stayed
-   on the panel for a full 10 s run.
-
-mpv's video window is a child window, so it always follows.
-
-`dist/` is git-ignored: the exe is a build artifact and the DLL is 124 MB.
-Rebuild with `cargo build --release`, then copy `lain-desktop-gpui.exe` and
-`libmpv-2.dll` from `C:\lain-proto-target\gpui\release`.
-
-### Controls
-
-**Home:**
-- ←/→ move along a rail. ↑/↓ move between rails and the hero's Play button.
-  Enter/Space open. Home/End jump to the ends. PgUp/PgDn scroll the page.
-- Mouse: hovering focuses a card. The vertical wheel over a rail's cards
-  scrolls that rail sideways; over the hero, the headers or the left margin it
-  scrolls the page. Shift+wheel and a touchpad's horizontal scroll also scroll
-  the rail. Dragging a rail scrolls it with a short fling. A click opens.
-
-**Player:**
-- Keys: Space/K play/pause, ←/→ ±5 s, ↑/↓ volume, M mute, F fullscreen, Esc
-  (closes the menu, then leaves fullscreen, then goes back to Home).
-- Mouse: click the video to pause, double-click for fullscreen. Drag the seek
-  bar to scrub (keyframe seeks while dragging, an exact seek on release).
-  Drag the volume bar. Audio and subtitle menus. The controls auto-hide after
-  `player.autohide_ms`.
-
-**Continue:**
-- The player saves progress every 5 s, on close and when the window closes.
-- Home's Continue row refetches when the event stream sends
-  `progress-changed`.
-- Opening an item resumes from the server's progress.
-- Even episodes play the 4K file; odd episodes play the 10-bit file.
-
-## mpv integration (the key result)
-
-**What works:** mpv uses `wid` to render into a child HWND that sits under
-GPUI's transparent DirectComposition surface.
-
-GPUI 0.2.2 on Windows renders with **Direct3D 11 into a DirectComposition
-swap chain**:
-- `CreateTargetForHwnd(hwnd, topmost = TRUE)`.
-- A premultiplied-alpha swap chain, cleared to transparent every frame.
-- The window has `WS_EX_NOREDIRECTIONBITMAP`.
-
-"Topmost" means DWM composites GPUI's visual *above the window's child
-windows*. So the prototype does this:
-1. Creates a child window covering the client area, at the bottom of the
-   z-order (`mpv::VideoHost`). It is `WS_DISABLED`, so hit testing skips it and
-   every mouse event over the video still reaches GPUI's window. mpv's own
-   window inside it is disabled too.
-2. Hands that window to mpv as `wid`, with `vo=gpu-next`, `gpu-api=d3d11`,
-   `hwdec=auto-safe`. mpv presents its own D3D11 flip-model swap chain there.
-3. Draws the Player view with **no background**. Wherever GPUI paints nothing,
-   the video shows through, and the controls (gradient scrims, seek bar, menus)
-   blend over it with real alpha.
-
-**Result:**
-- **Overlays are correct.** Translucent gradients and the menu panel sit over
-  moving video with no flicker.
-- **No tearing.** DWM composes both surfaces.
-- **No copies.** Video frames never pass through the UI thread or GPUI's
-  renderer. mpv runs at the video rate on its own; GPUI redraws only when the
-  controls change, and not at all while they are hidden.
-- **Screen captures work.** `PrintWindow(PW_RENDERFULLCONTENT)` captures video
-  and overlay together (see `shots/`).
-
-**Pitfalls hit, and how they were handled:**
-- **Deadlock.** `mpv_initialize` and `mpv_terminate_destroy` create and destroy
-  mpv's window on mpv's thread, and those calls send messages to our host
-  window. Running them on the UI thread deadlocks. Both run on GPUI's
-  background executor while the UI thread keeps pumping messages. The host
-  window is destroyed only after mpv is gone. A player closed while mpv is
-  still starting is parked and torn down when the start finishes.
-- **Desktop showing through.** The window has no redirection bitmap, so before
-  mpv's first frame the host shows the desktop. The Player paints black until
-  `vo-configured`.
-- **The test file's ASS track has no default flag.** The player sets `sid=1`
-  so subtitles show.
-- **Sizing:** the host follows the parent's client rect on every Player frame
-  and on a 33 ms tick (covers resize and fullscreen).
-
-**Considered and not used:**
-- **The render API into a GPUI texture.** GPUI exposes no texture or surface
-  hook (it would need a fork). libmpv's render API has only OpenGL and software
-  backends: no D3D11. That means a WGL/DX interop or ANGLE layer, plus a GPUI
-  patch, for no gain over the DWM path.
-- **A separate layered window for the controls.** It isn't needed, because
-  GPUI's own surface already composes over child windows with alpha.
-
-**Size:** `src/mpv.rs` is about 430 lines: the hand-written FFI for the 13
-libmpv calls used, the event thread and state, and the host window. About 150
-more lines in `src/player.rs` handle the start and shutdown lifecycle. The rest
-of `player.rs` is the controls UI.
-
-**Limitations:**
-- The cursor is not hidden when the controls hide. GPUI 0.2.2 has no
-  hidden-cursor style; a Win32 `SetCursor(NULL)` hack would be needed.
-- mpv draws subtitles at the bottom of the video, so they can sit under the
-  control bar while it is visible.
-- This approach is Windows-specific. Linux and macOS need their own variant:
-  X11 child windows or Wayland subsurfaces under GPUI, or a GPUI patch for an
-  external texture.
-
-## Theme coverage (`shared/theme.json`)
-
-| Key | Status | Notes |
-|---|---|---|
-| `name` | honored | logged on reload |
-| `colors.bg` / `surface` / `text` / `muted` / `accent` / `danger` / `scrim` | honored | `danger` only shows on errors; `scrim` is the top bar on scroll |
-| `fonts.ui` / `display` / `mono` | honored | Inter, Fraunces and JetBrains Mono are bundled (OFL, latin subsets). A missing family falls back to Segoe UI, Georgia or Cascadia Mono. DirectWrite lists the bundled Fraunces as "Fraunces NonWonky", so families resolve by prefix. |
-| `fonts.size_base` | honored | every text size derives from it |
-| `radius.card` / `radius.button` | honored | |
-| `spacing` | honored | margins, gaps and padding use the scale by index |
-| `rail.card_w` / `card_h` / `gap` | honored | landscape sizes switch the cards to backdrop art |
-| `rail.hover_scale` | honored, by layout | GPUI has no element transforms, so the card's layout box grows around its centre (animated). Text under the card does not scale. |
-| `hero.height` | honored | fraction of the window height |
-| `hero.gradient` | partial | GPUI's `linear_gradient` takes two stops. The first and last stops are used; middle stops are ignored. |
-| `hero.blur` | honored, at decode time | GPUI has no blur filter for elements, so the backdrop is blurred on the CPU (background thread, quarter resolution) when decoded. It cannot animate. |
-| `motion.fast_ms` / `normal_ms` | honored | fast: focus and hover, showing controls. normal: scrolling, fades, hiding controls. |
-| `motion.easing` | honored | `linear`, `ease-in-cubic`, `ease-in-out-cubic`, `ease-out-quad`, `ease-out-expo`, `ease-out-cubic` (also the default for unknown names), and `spring` (an underdamped curve) |
-| `player.controls_bg` / `seek_h` / `autohide_ms` | honored | |
-
-**Live reload works.** The app checks the theme file's modification time every
-0.5 s and re-renders (tested by swapping `theme.json` for `theme-alt.json` while
-running; see `shots/live-reload-after.png`). Fonts are re-resolved on reload.
-Images that depend on the theme (sizes, blur) are re-decoded under new cache
-keys.
-
-## Bench (`--bench out.json`)
-
-The run logs in and waits for the first Home frame with the hero and the
-visible posters drawn (`cold_start_ms` is measured from the process creation
-time, `GetProcessTimes`). Then it:
-1. Records the working set (`rss_mb_home`).
-2. Scrolls the 500-card rail end to end at 2400 px/s.
-3. Opens the 4K file, then the 10-bit file, for 20 s each, from 0 s with the
-   controls forced visible. `rss_mb_player_4k` is taken at 15 s.
-4. Writes the JSON and exits.
-
-How frame times are measured:
-- `scroll_frame_ms` and `ui_frame_ms_during_video` are the intervals between
-  successive GPUI frames (one root render per presented frame). The app keeps
-  requesting animation frames during measurement, so the interval is vsync-bound
-  and a slow frame shows up as a long gap.
-- `scroll_build_ms` is the CPU time of the root render (element tree build)
-  per frame.
-- The mpv numbers are read from mpv's properties at the end of each file.
-
-**Results:** in `bench-dev.json`, from one release run through the launcher
-on the built-in panel (75 Hz, 1880x1124), muted. These are not final numbers:
-the machine was busy.
-
-| Metric | Value |
+| Flag | |
 |---|---|
-| `cold_start_ms` | 300 |
-| `rss_mb_home` | 65.5 |
-| `rss_mb_player_4k` | 492.7 |
-| `scroll_frame_ms` p50 / p95 / p99 / max | 13.34 / 14.52 / 15.62 / 18.09 (8,999 frames, 500 cards at 2,400 px/s) |
-| `scroll_build_ms` p50 / p95 / max | 0.05 / 0.22 / 0.46 |
-| `ui_frame_ms_during_video` p50 / p95 | 13.31 / 16.14 (4K max 25.6, 10-bit max 18.9) |
-| mpv 4K | `gpu-next`, d3d11, `d3d11va`, 60.0 fps estimated, 150 frame drops, 0 decoder drops, 0 delayed frames |
-| mpv 10-bit | `gpu-next`, d3d11, `d3d11va`, 24.0 fps estimated, 0 drops |
+| `--server URL` | use this server (saved in `desktop.json`) |
+| `--client-dir DIR` | client state: `sessions.json`, `client.redb` (progress queue, offline index), `offline/`, `themes/`, `desktop.json`. Default `%LOCALAPPDATA%\lain-client` / `~/.local/share/lain-client` |
+| `--theme DIR` | use a theme folder directly (theme work) |
+| `--mute` | mpv `ao=null` + `mute=yes` before `mpv_initialize`; the log then shows `current-ao=null` |
+| `--window-pos X,Y` / `--window-size WxH` | exact window rect in physical virtual-desktop pixels; shown without activation |
+| `--log FILE` | stderr to a file (the release exe has no console) |
+| `--demo STEPS` / `--shot DIR` | in-app automation and window captures (below) |
 
-How to read them:
-- **Frame intervals** sit at the panel's 13.3 ms vsync. While scrolling the
-  500-card rail, no frame missed a vsync by a whole interval (max 18 ms).
-- **cold_start_ms** counts from process creation to the first Home frame with
-  the hero and all visible posters drawn. It is this low because the server is
-  local and the saved session is reused.
-- **The 4K drops** are mpv's display-sync drops: a 60 fps video on a 75 Hz
-  panel with `ao=null`. The decoder dropped nothing. They are worth re-checking
-  on a 60 Hz or 120 Hz display.
+### Test runs (the owner's rules)
 
-## Line counts
+GUI test runs go **only** through
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\lain-proto\tools\rodar-teste.ps1 -Exe <exe> -Args "..."`:
+it appends `--mute` and the built-in panel's rect, and kills the app if a
+window lands elsewhere. No simulated input: the app is driven by `--demo`, a
+`;`-separated script run inside the app (see `src/demo.rs`):
 
-`wc -l`. The total is 3,392 lines including `build.rs`; 3,133 of them are
-non-blank. There is no markup: the whole UI is Rust.
+```
+--demo "login;wait:1500;shot:home.png;item:0;shot:item.png;play:0;controls;wait:4000;shot:player.png;quit"
+```
 
-| File | Lines | What |
-|---|---|---|
-| `src/main.rs` | 680 | app, args, assets, theme reload, ticking, window placement |
-| `src/home.rs` | 834 | Home, layout, virtualized rails, input |
-| `src/player.rs` | 637 | Player controls and the mpv session lifecycle |
-| `src/mpv.rs` | 427 | libmpv FFI, event thread, the video host window |
-| `src/images.rs` | 87 | off-thread decode, resize and blur, cache |
-| `src/theme.rs` | 244 | theme file, colors, easing |
-| `src/backend.rs` | 151 | lain-client: login, catalog, continue, progress, events |
-| `src/bench.rs` | 307 | `--bench` and `--demo` |
-| `build.rs` | 25 | link libmpv, copy the DLL |
+`login` takes `LAIN_DEMO_USER`/`LAIN_DEMO_PASS` from the environment (and
+runs first-admin setup on a fresh server). `shot:<name>` writes a PNG of
+this window (PrintWindow, video included) into `--shot DIR`. Screenshots
+are in `shots/`.
 
-## Size and build time
+## Screens and keys
 
-- **Release exe:** 14.9 MB. It is stripped, with thin LTO, and the fonts and
-  icons are embedded. `libmpv-2.dll` (124 MB) ships next to it.
-- **Clean release build:** 253 s with `-j 6`, while two other prototypes were
-  compiling on the same machine. Incremental release rebuilds take about 60 s.
-  Most of the time goes to gpui and its dependencies.
+Keyboard-first (AGENTS.md): every screen works without a mouse, and keys are
+shown next to actions.
 
-## Dependencies (direct)
+- **Global:** `Ctrl+K` command palette (screens, libraries, settings, themes,
+  scan, titles), `Ctrl+1…6` destinations, `/` search, `Ctrl+,` settings,
+  `F5` refresh, `Tab`/`Shift+Tab` and arrows move focus, `Enter` activates,
+  `Esc` leaves a field, then goes back.
+- **Home:** hero + rails (Continue, Recently added, one per library). Arrows
+  move, `Enter` plays/opens, `I` details, `PgUp/PgDn`. Mouse wheel and drag
+  scroll rails with a fling.
+- **Library:** one tab per library of the group (Library = watch kinds, Read =
+  manga/comic), filter (`F`), sort by title/recent/year, pages sized to the
+  window (`PgUp/PgDn`). A locked private library shows its unlock form.
+- **Title page:** episodes or volumes with progress, `Enter` play/read, `W`
+  watched, `D` download; the selected file's details and subtitle sidecars.
+- **Search:** as you type, kind chips; an empty query browses every title.
+- **Player:** `Space`/`K` pause, `←/→` 5 s (`Shift` 30 s), `J/L` 10 s, `0–9`
+  jump, `↑/↓` volume, `M` mute, `A`/`S` cycle audio/subtitles, `N` next,
+  `F` fullscreen, `Esc` back. Next episode after a 5 s countdown.
+- **Reader:** one page fit to the window, arrows in the archive's direction
+  (`rtl` for manga), `Space`/`PgDn` forward, `Home/End`.
+- **Downloads:** offline copies with live progress; play, pause, resume, remove.
+- **Settings:** YOU (account, profile and avatar, private libraries and PIN,
+  appearance, playback & downloads) and, for admins, SERVER (users,
+  libraries with scan, plugins, modules, transcode & integrations, backup).
+
+## Playback (D-182)
+
+Source order: an offline copy; the server's plan
+(`/api/items/{id}/playback?client=desktop`: `direct` → the token-carrying
+stream URL, `transcode` → the session's HLS playlist or the progressive
+output); when the server cannot stream (501 not-ported, watch module off,
+offline) the item's file through **Settings → Playback → Shared storage**
+(`server path => local path`), if this device can reach it. Sidecars are
+added with `sub-add`. Progress goes through `ProgressSync` (queued offline)
+every 5 s, on close, at the end and on window close.
+
+**Windows:** libmpv renders into a disabled child window under GPUI's
+DirectComposition surface (`src/mpv.rs`): GPUI's controls blend over the
+video with real alpha, no frame passes through the UI thread
+(`vo=gpu-next`, `gpu-api=d3d11`, `hwdec=auto-safe`). Details of the
+technique, its pitfalls and numbers are in the P2b notes (D-180).
+
+**Linux:** an external `mpv` in its own window, driven over its JSON IPC
+socket (`src/mpv_ipc.rs`). Why not embedded: GPUI 0.2.2 has no surface or
+texture hook, libmpv's render API needs a GL context GPUI does not share,
+and Wayland has no cross-process subsurface. What works: resume, progress
+sync (`time-pos`/`duration`), tracks, sidecars, next episode, and the app's
+control bar as a remote; mpv's own keys and OSC in its window. When mpv
+exits the app returns to where it was.
+
+## Themes (D-183)
+
+`lain.ui.theme@1` folders in `<client dir>/themes/`; the spec is
+[`docs/THEMES.md`](../../docs/THEMES.md). Two ship: `lain-dark` (the owner's
+colors from the prototype) and `paper-light`. Settings → Appearance picks,
+installs a zip and opens the folder; edits to the active theme apply live.
+
+| Token | Desktop |
+|---|---|
+| colors (all 13), OKLCH and hex | honored |
+| `type.*` families, `base`, `scale` | honored (bundled Inter, Fraunces, JetBrains Mono; system fallback) |
+| `radius.*`, `spacing` | honored |
+| `blur.hero` | honored, at decode time (GPUI has no blur filter) |
+| `blur.panel` | no: GPUI has no backdrop filter; panels use `colors.raised` alpha |
+| `motion.*` incl. `cubic-bezier()` and `spring` | honored |
+| `rail.*` | honored; `hover_scale` by resizing the layout box (no transforms) |
+| `hero.height` | honored |
+| `hero.gradient` | partial: first and last stops (GPUI gradients take two) |
+| `player.*` | honored |
+| `wallpaper` | honored on the connect/login screens |
+| `icons/<name>.svg` | honored, live |
+
+## Dependencies (D-184)
 
 | Crate | Why |
 |---|---|
-| `gpui` =0.2.2 (crates.io) | the UI framework. The crates.io release builds as-is on Windows with Rust 1.99, so no zed git pin is needed. It is from Oct 2025, about a year behind zed's main. |
+| `gpui` =0.2.2 | the UI framework |
 | `lain-client` (path) | every server call |
-| `tokio` | `lain-client` is async on tokio. A two-thread runtime runs it, and GPUI's executors await its `JoinHandle`s and channels. |
-| `serde`, `serde_json` | theme file, `series.json`, bench output |
-| `image` (jpeg only) | art decode, resize and blur off the UI thread (GPUI already depends on it) |
-| `windows` 0.61 | the child host window, process times. Same version and features GPUI already compiles. |
-| `raw-window-handle` | getting the HWND from GPUI's `Window` |
+| `tokio` | `lain-client` is async on it; a two-thread runtime GPUI awaits |
+| `serde`, `serde_json` | theme and config files |
+| `image` (jpeg, png, webp) | art decode, resize and blur off the UI thread; PNG captures (GPUI already depends on it) |
+| `flate2` | deflate for theme zips (in-tree reader); already in the tree |
+| `raw-window-handle` | the native window handle |
+| `windows` 0.61 (Windows) | the video host window, placement, captures; the version GPUI compiles |
 
-gpui-component / gpui-kit is **not** used: plain `div`, `img`, `svg` and
-`canvas` were enough. libmpv has no bindings crate here; the FFI is
-hand-written.
+No gpui-component: plain `div`, `img`, `svg` and `canvas`. libmpv FFI is
+hand-written and loaded at run time.
 
-## What was hard / GPUI notes
+## Source map
 
-- **No transforms, no blur, two-stop gradients, no hidden cursor.**
-  - Card hover scale is done by resizing layout boxes.
-  - Blur happens at image decode time.
-  - Only the outer gradient stops are used.
-- **Images:** GPUI samples images without mipmaps. Drawing a 600x900 poster at
-  200x300 shimmers, so art is pre-resized to its drawn size times the display
-  scale in a custom cache instead of using `img(path)`.
-- **Rails:** a plain overflow-scroll div with 500 children would rebuild all
-  500 every frame (GPUI rebuilds the element tree per frame), so the rails are
-  virtualized by hand. Smooth motion (theme durations and easing) is the
-  prototype's own animation, not GPUI's scroll.
-- **Mouse handling:** hover-only mouse-move listeners mean drag and hit testing
-  were simpler to do at the root with the prototype's own layout model.
-- **Fonts:** DirectWrite groups the bundled static Fraunces under a "NonWonky"
-  family name. `all_font_names()` shows it, but a lookup by "Fraunces" alone
-  silently falls back.
-- **API churn:** the crates.io gpui (0.2.2) lags zed's main by a year.
-  gpui-component 0.9 depends on `gpui-pre`, a third-party republish of a newer
-  gpui, which is another reason it was not used.
-- **Framework bugs hit:** none that blocked the work. The only surprise was the
-  font family naming above.
+| File | What |
+|---|---|
+| `src/main.rs` | args, assets (icons with theme overrides, fonts), the window |
+| `src/app.rs` | state, actions (`Act`), key routing, focus, navigation from `/api/modules`, palette, toasts |
+| `src/ui.rs` | widgets: button, text field, label, kbd, settings row, notices |
+| `src/backend.rs` | `lain-client`, `ProgressSync`, `OfflineStore`, the event stream |
+| `src/theme.rs`, `src/zip.rs` | `lain.ui.theme@1`, OKLCH, hot reload, zip install |
+| `src/images.rs` | thumbnails, avatars, comic pages, wallpapers: off-thread decode and cache |
+| `src/engine.rs`, `src/mpv.rs`, `src/mpv_ipc.rs` | player engines (embedded / external) |
+| `src/screens/*` | one file per screen |
+| `src/demo.rs`, `src/platform.rs` | test automation; placement, captures |
