@@ -100,7 +100,6 @@ pub struct Dims {
     pub h: f32,
     /// Vertical room for the hover growth and the focus ring.
     pub pad: f32,
-    pub label_h: f32,
     pub step: f32,
     pub row_h: f32,
 }
@@ -176,7 +175,7 @@ impl LainApp {
         };
         let pad = h * (r.hover_scale.max(1.) - 1.) / 2. + 6.;
         let label_h = self.theme.ts(0) * 3.2;
-        Dims { w, h, pad, label_h, step: w + r.gap, row_h: pad * 2. + h + label_h }
+        Dims { w, h, pad, step: w + r.gap, row_h: pad * 2. + h + label_h }
     }
 
     pub fn geo(&self, vw: f32, vh: f32) -> Geo {

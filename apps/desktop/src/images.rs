@@ -63,7 +63,7 @@ fn decode(bytes: &[u8], w: u32, h: u32, blur: u32) -> Result<Arc<RenderImage>, S
         img = small.blur(blur as f32 / 4.).resize_exact(w, h, FilterType::Triangle);
     }
     let mut buf = img.to_rgba8();
-    for px in buf.chunks_exact_mut(4) {
+    for px in buf.as_chunks_mut::<4>().0 {
         px.swap(0, 2); // RGBA -> BGRA, what GPUI's sprite atlas expects
     }
     Ok(Arc::new(RenderImage::new(vec![image::Frame::new(buf)])))

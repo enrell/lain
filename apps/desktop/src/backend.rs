@@ -143,7 +143,7 @@ pub async fn save_progress(
 #[derive(Debug, Clone)]
 pub enum Poke {
     Connected,
-    Lost(String),
+    Lost,
     AuthRequired,
     Progress(String),
     Library,
@@ -163,7 +163,7 @@ pub async fn watch_events(b: Arc<Backend>, tx: tokio::sync::mpsc::UnboundedSende
                 }
                 Poke::Connected
             }
-            StreamItem::Reconnecting { reason, .. } => Poke::Lost(reason),
+            StreamItem::Reconnecting { .. } => Poke::Lost,
             StreamItem::AuthRequired => Poke::AuthRequired,
             StreamItem::Event(ev) => {
                 if let Some(s) = &b.sync {
