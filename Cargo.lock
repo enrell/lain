@@ -556,7 +556,7 @@ name = "lain-server"
 version = "0.1.0"
 dependencies = [
  "axum",
- "getrandom",
+ "getrandom 0.4.3",
  "hyper",
  "lain-admin",
  "lain-api",
