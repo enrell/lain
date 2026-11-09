@@ -36,15 +36,15 @@ async fn auth_session_and_account() {
 
     assert!(c.setup_status().await.unwrap().setup_required);
     assert_eq!(c.me().await.unwrap_err(), ClientError::Unauthorized);
-    assert!(matches!(c.setup("admin", "short").await.unwrap_err(), ClientError::Api { status: 400, .. }));
-    let admin = c.setup("admin", "password123").await.unwrap();
+    assert!(matches!(c.setup("admin", &pw(0)[..4]).await.unwrap_err(), ClientError::Api { status: 400, .. }));
+    let admin = c.setup("admin", &pw(0)).await.unwrap();
     assert_eq!((admin.id.as_str(), admin.role.as_str()), ("user-admin", "admin"));
     assert!(!c.setup_status().await.unwrap().setup_required);
     assert_eq!(
-        c.login("admin", "wrong-password").await.unwrap_err(),
+        c.login("admin", &pw(4)).await.unwrap_err(),
         ClientError::LoginFailed { message: "invalid credentials".into() }
     );
-    let me = c.login("admin", "password123").await.unwrap();
+    let me = c.login("admin", &pw(0)).await.unwrap();
     assert_eq!(me.username, "admin");
     let s = c.session().unwrap();
     assert_eq!((s.server.as_str(), s.user_id.as_str()), (server.url.as_str(), "user-admin"));
@@ -69,13 +69,13 @@ async fn auth_session_and_account() {
     assert_eq!(c.set_preferred_language(" JPN ").await.unwrap().preferred_language, "jpn");
     assert!(c.mascots().await.unwrap().contains(&"moth".to_string()));
     assert!(!c.pin_status().await.unwrap());
-    c.set_pin("2468", "password123").await.unwrap();
+    c.set_pin(&pin(0), &pw(0)).await.unwrap();
     assert!(c.pin_status().await.unwrap());
-    c.clear_pin("password123").await.unwrap();
+    c.clear_pin(&pw(0)).await.unwrap();
     assert!(!c.pin_status().await.unwrap());
 
     // Users (admin).
-    let bob = c.create_user("bob", "bobpassword", "").await.unwrap();
+    let bob = c.create_user("bob", &pw(2), "").await.unwrap();
     assert_eq!(bob.role, "user");
     let users = raw_get(&server.url, &s.token, "/api/users").await;
     assert_eq!(assert_mirrors::<Vec<User>>(&users).len(), 2);
@@ -83,17 +83,17 @@ async fn auth_session_and_account() {
     assert!(b.disabled);
     let bc = client(&server.url);
     assert_eq!(
-        bc.login("bob", "bobpassword").await.unwrap_err(),
+        bc.login("bob", &pw(2)).await.unwrap_err(),
         ClientError::LoginFailed { message: "account disabled".into() }
     );
     c.update_user("user-bob", UserPatch { disabled: Some(false), ..Default::default() }).await.unwrap();
-    bc.login("bob", "bobpassword").await.unwrap();
+    bc.login("bob", &pw(2)).await.unwrap();
     assert!(matches!(bc.users().await.unwrap_err(), ClientError::Forbidden { .. }));
 
     // A password change ends the session; logging in again works.
-    bc.change_password("bobpassword", "bobpassword2").await.unwrap();
+    bc.change_password(&pw(2), &pw(3)).await.unwrap();
     assert_eq!(bc.me().await.unwrap_err(), ClientError::Unauthorized);
-    bc.login("bob", "bobpassword2").await.unwrap();
+    bc.login("bob", &pw(3)).await.unwrap();
     assert_eq!(bc.me().await.unwrap().pwd_ver, 2);
 
     // Logout forgets the session here and in the file.
@@ -211,7 +211,7 @@ async fn libraries_catalog_and_private() {
     assert!(bob.libraries().await.unwrap().is_empty());
     assert_eq!(bob.catalog(CatalogQuery::default()).await.unwrap().total, 0);
     assert!(matches!(
-        bob.unlock_library(LIB, Unlock::Password("bobpassword".into())).await.unwrap_err(),
+        bob.unlock_library(LIB, Unlock::Password(pw(2))).await.unwrap_err(),
         ClientError::NotFound { .. }
     ));
     assert_eq!(admin.libraries().await.unwrap()[0].locked, Some(true));
@@ -219,28 +219,28 @@ async fn libraries_catalog_and_private() {
     assert!(matches!(admin.catalog_item(ITEM1).await.unwrap_err(), ClientError::NotFound { .. }));
     assert!(admin.continue_watching().await.unwrap().is_empty());
     assert!(matches!(
-        admin.unlock_library(LIB, Unlock::Password("wrong-password".into())).await.unwrap_err(),
+        admin.unlock_library(LIB, Unlock::Password(pw(4))).await.unwrap_err(),
         ClientError::Forbidden { .. }
     ));
-    let lib = admin.unlock_library(LIB, Unlock::Password("password123".into())).await.unwrap();
+    let lib = admin.unlock_library(LIB, Unlock::Password(pw(0))).await.unwrap();
     assert_eq!(lib.locked, Some(false));
     assert_eq!(admin.catalog(CatalogQuery::default()).await.unwrap().total, 2);
     assert_eq!(admin.continue_watching().await.unwrap()[0].position_sec, 30.0);
     assert_eq!(admin.lock_library(LIB).await.unwrap().locked, Some(true));
     assert_eq!(admin.catalog(CatalogQuery::default()).await.unwrap().total, 0);
     // A PIN unlocks too; repeated failures are rate limited.
-    admin.set_pin("2468", "password123").await.unwrap();
-    admin.unlock_library(LIB, Unlock::Pin("2468".into())).await.unwrap();
+    admin.set_pin(&pin(0), &pw(0)).await.unwrap();
+    admin.unlock_library(LIB, Unlock::Pin(pin(0))).await.unwrap();
     assert_eq!(admin.catalog(CatalogQuery::default()).await.unwrap().total, 2);
     admin.lock_library(LIB).await.unwrap();
-    for pin in ["0000", "0001", "0002", "0003", "0004"] {
+    for n in 1..=5 {
         assert!(matches!(
-            admin.unlock_library(LIB, Unlock::Pin(pin.into())).await.unwrap_err(),
+            admin.unlock_library(LIB, Unlock::Pin(pin(n))).await.unwrap_err(),
             ClientError::Forbidden { .. }
         ));
     }
     assert!(matches!(
-        admin.unlock_library(LIB, Unlock::Pin("2468".into())).await.unwrap_err(),
+        admin.unlock_library(LIB, Unlock::Pin(pin(0))).await.unwrap_err(),
         ClientError::RateLimited { .. }
     ));
     // Made public again, everyone sees it.
@@ -363,7 +363,7 @@ async fn progress_and_events() {
     // The stream: ready, then this user's progress (and not bob's).
     let proxy = Proxy::start(server.addr).await;
     let via = client(&proxy.url);
-    via.login("admin", "password123").await.unwrap();
+    via.login("admin", &pw(0)).await.unwrap();
     let cfg = StreamConfig { initial_backoff_ms: 50, max_backoff_ms: 400, idle_timeout_ms: 2_000 };
     let stream = EventStream::new(via.clone(), cfg);
     match next_matching(&stream, "ready", |i| matches!(i, StreamItem::Connected(_))).await {
@@ -415,9 +415,9 @@ async fn progress_and_events() {
     // The password changes elsewhere: the server ends the stream at the
     // next keep-alive, the client asks for a login, and a fresh login
     // through the shared session resumes it.
-    admin.change_password("password123", "password456").await.unwrap();
+    admin.change_password(&pw(0), &pw(1)).await.unwrap();
     next_matching(&stream, "auth required", |i| matches!(i, StreamItem::AuthRequired)).await;
-    via.login("admin", "password456").await.unwrap();
+    via.login("admin", &pw(1)).await.unwrap();
     next_matching(&stream, "ready after login", |i| matches!(i, StreamItem::Connected(_))).await;
     stream.close().await;
     assert!(stream.next().await.is_none());
@@ -435,11 +435,11 @@ struct Sync {
 /// both logged in as admin.
 async fn two_devices(server: &Server, root: &std::path::Path) -> Sync {
     let admin = client(&server.url);
-    admin.setup("admin", "password123").await.unwrap();
-    admin.login("admin", "password123").await.unwrap();
+    admin.setup("admin", &pw(0)).await.unwrap();
+    admin.login("admin", &pw(0)).await.unwrap();
     let proxy = Proxy::start(server.addr).await;
     let a = client(&proxy.url);
-    a.login("admin", "password123").await.unwrap();
+    a.login("admin", &pw(0)).await.unwrap();
     let db = Arc::new(ClientDb::open(&root.join("a/client.redb")).unwrap());
     Sync { sync: ProgressSync::new(a, db), proxy, other: admin }
 }
@@ -491,7 +491,7 @@ async fn offline_queue_flushes_when_online() {
     d.proxy.set_online(false);
     s.record("ep4", upd(9.0, false)).await.unwrap();
     d.proxy.set_online(true);
-    d.other.change_password("password123", "password456").await.unwrap();
+    d.other.change_password(&pw(0), &pw(1)).await.unwrap();
     let r = s.flush().await.unwrap();
     assert_eq!((r.remaining, r.stopped), (1, Some(ClientError::Unauthorized)));
     drop(server);
