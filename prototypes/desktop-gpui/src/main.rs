@@ -19,7 +19,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use gpui::prelude::*;
 use gpui::{
-    App, Application, AssetSource, Bounds, Context, Entity, FocusHandle, KeyDownEvent, SharedString, TitlebarOptions,
+    App, Application, AssetSource, Bounds, point, Context, Entity, FocusHandle, KeyDownEvent, SharedString, TitlebarOptions,
     Window, WindowBackgroundAppearance, WindowBounds, WindowOptions, div, px, size,
 };
 
@@ -70,7 +70,16 @@ pub struct Args {
     pub shared: PathBuf,
     pub media: PathBuf,
     pub server: Option<String>,
+    pub account: PathBuf,
     pub bench: Option<PathBuf>,
+    /// In-app automation for screenshots: `rail`, `player-4k`, `player-subs`, `menu-subs`.
+    pub demo: Option<String>,
+    /// Silent playback (`ao=null`): every automated run passes it.
+    pub mute: bool,
+    /// Exact window placement in virtual-desktop pixels; the window is
+    /// then shown without activation.
+    pub window_pos: Option<(i32, i32)>,
+    pub window_size: Option<(i32, i32)>,
 }
 
 fn parse_args() -> Args {
@@ -79,7 +88,12 @@ fn parse_args() -> Args {
         shared: PathBuf::from(r"D:\lain-proto\shared"),
         media: PathBuf::from(r"D:\lain-proto\media"),
         server: None,
+        account: PathBuf::new(),
         bench: None,
+        demo: None,
+        mute: false,
+        window_pos: None,
+        window_size: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -89,8 +103,34 @@ fn parse_args() -> Args {
             "--media" => a.media = it.next().map(PathBuf::from).unwrap_or(a.media),
             "--server" => a.server = it.next(),
             "--bench" => a.bench = it.next().map(PathBuf::from),
+            "--account" => a.account = it.next().map(PathBuf::from).unwrap_or_default(),
+            "--demo" => a.demo = it.next(),
+            "--mute" => a.mute = true,
+            "--log" => {
+                if let Some(path) = it.next() {
+                    redirect_stderr(&path);
+                }
+            }
+            "--window-pos" => {
+                a.window_pos = it.next().and_then(|v| {
+                    let (x, y) = v.split_once(',')?;
+                    Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+                })
+            }
+            "--window-size" => {
+                a.window_size = it.next().and_then(|v| {
+                    let (w, h) = v.split_once('x')?;
+                    Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+                })
+            }
             other => eprintln!("unknown argument {other}"),
         }
+    }
+    if a.bench.is_some() {
+        a.mute = true;
+    }
+    if a.account.as_os_str().is_empty() {
+        a.account = a.shared.join("conta-gpui.txt");
     }
     if a.theme.as_os_str().is_empty() {
         a.theme = a.shared.join("theme.json");
@@ -172,6 +212,8 @@ pub struct LainApp {
     pub next_session: u64,
     pub hwnd: isize,
     pub bench: bench::Bench,
+    /// Where the next player opens (demo mode); `None` resumes from the server.
+    pub start_override: Option<f64>,
 }
 
 fn resolve_fonts(th: &Theme, cx: &App) -> FontSet {
@@ -226,7 +268,7 @@ impl LainApp {
         for n in &fonts.notes {
             eprintln!("{n}");
         }
-        let account = backend::read_account(&args.shared.join("conta.txt"));
+        let account = backend::read_account(&args.account);
         let server = args
             .server
             .clone()
@@ -264,6 +306,7 @@ impl LainApp {
             next_session: 1,
             hwnd: 0,
             bench,
+            start_override: None,
             args,
         };
         if let Some(e) = theme_err {
@@ -322,7 +365,15 @@ impl LainApp {
 
         if app.bench.enabled() {
             cx.spawn_in(window, async move |this, cx| bench::run(this, cx).await).detach();
+        } else if let Some(demo) = app.args.demo.clone() {
+            cx.spawn_in(window, async move |this, cx| bench::demo(this, cx, demo).await).detach();
         }
+        // Save the playback position when the window closes mid-video.
+        let me = cx.entity().downgrade();
+        window.on_window_should_close(cx, move |_, cx| {
+            let _ = me.update(cx, |app, _| app.save_now());
+            true
+        });
         app
     }
 
@@ -361,6 +412,19 @@ impl LainApp {
     fn tick(&mut self, n: u64, cx: &mut Context<Self>) {
         if n % 15 == 0 {
             self.check_theme(cx);
+        }
+        if n == 3
+            && let Some((x, y)) = self.args.window_pos
+        {
+            let (w, h) = self.args.window_size.unwrap_or((1440, 860));
+            place_window(self.hwnd, x, y, w, h, true);
+        }
+        if n == 60 {
+            // Placement settled: let fullscreen and the user move it.
+            *PLACE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+        if matches!(n, 2 | 4 | 30) && self.args.window_pos.is_some() {
+            log_windows(&format!("t+{}ms", n * 33));
         }
         if self.player.is_some() {
             self.player_tick(cx);
@@ -409,6 +473,87 @@ impl LainApp {
     }
 }
 
+/// `--log <file>`: the release exe has no console, so stderr goes to a file.
+fn redirect_stderr(path: &str) {
+    use std::os::windows::io::IntoRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Console::{STD_ERROR_HANDLE, SetStdHandle};
+    if let Ok(f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let h = HANDLE(f.into_raw_handle());
+        unsafe {
+            let _ = SetStdHandle(STD_ERROR_HANDLE, h);
+        }
+    }
+}
+
+/// Moves the window to a virtual-desktop rect and shows it without
+/// activating it.
+static PLACE: std::sync::Mutex<Option<(i32, i32, i32, i32)>> = std::sync::Mutex::new(None);
+
+/// GPUI applies the rect Windows suggests in WM_DPICHANGED; when the window
+/// is first shown on the panel that rect is on the primary monitor. Keep
+/// the requested rect instead.
+unsafe extern "system" fn keep_place(
+    hwnd: windows::Win32::Foundation::HWND,
+    msg: u32,
+    wp: windows::Win32::Foundation::WPARAM,
+    lp: windows::Win32::Foundation::LPARAM,
+    _id: usize,
+    _data: usize,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::{SWP_NOMOVE, WINDOWPOS, WM_DPICHANGED, WM_WINDOWPOSCHANGING};
+    if msg == WM_WINDOWPOSCHANGING
+        && let Some((x, y, w, h)) = *PLACE.lock().unwrap_or_else(|e| e.into_inner())
+    {
+        let pos = unsafe { &mut *(lp.0 as *mut WINDOWPOS) };
+        if (pos.flags.0 & SWP_NOMOVE.0) == 0 && (pos.x != x || pos.y != y) {
+            eprintln!("pinned: a move to {},{} {}x{} (flags {:#x})", pos.x, pos.y, pos.cx, pos.cy, pos.flags.0);
+            pos.x = x;
+            pos.y = y;
+            pos.cx = w;
+            pos.cy = h;
+        }
+    }
+    if msg == WM_DPICHANGED
+        && let Some((x, y, w, h)) = *PLACE.lock().unwrap_or_else(|e| e.into_inner())
+    {
+        let rc = unsafe { &mut *(lp.0 as *mut RECT) };
+        eprintln!("WM_DPICHANGED dpi={} suggested={},{} {}x{} -> kept {x},{y} {w}x{h}", wp.0 & 0xffff, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+        *rc = RECT { left: x, top: y, right: x + w, bottom: y + h };
+    }
+    unsafe { windows::Win32::UI::Shell::DefSubclassProc(hwnd, msg, wp, lp) }
+}
+
+fn place_window(hwnd: isize, x: i32, y: i32, w: i32, h: i32, show: bool) {
+    if !show {
+        *PLACE.lock().unwrap_or_else(|e| e.into_inner()) = Some((x, y, w, h));
+        unsafe {
+            let _ = windows::Win32::UI::Shell::SetWindowSubclass(
+                windows::Win32::Foundation::HWND(hwnd as *mut std::ffi::c_void),
+                Some(keep_place),
+                1,
+                0,
+            );
+        }
+    }
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{SW_SHOWNA, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, ShowWindow};
+    let hwnd = HWND(hwnd as *mut std::ffi::c_void);
+    unsafe {
+        if let Err(e) = SetWindowPos(hwnd, None, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER) {
+            eprintln!("window placement: {e}");
+        }
+        if show {
+            // SW_SHOWNA: show in the current position. SW_SHOWNOACTIVATE
+            // would apply the CW_USEDEFAULT placement GPUI created it with,
+            // which lands on the primary monitor.
+            let _ = ShowWindow(hwnd, SW_SHOWNA);
+            let _ = SetWindowPos(hwnd, None, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
+        }
+    }
+}
+
 pub fn window_hwnd(window: &Window) -> Option<isize> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     match HasWindowHandle::window_handle(window).ok()?.as_raw() {
@@ -449,17 +594,87 @@ fn main() {
         if let Err(e) = cx.text_system().add_fonts(fonts) {
             eprintln!("bundled fonts: {e}");
         }
-        let bounds = Bounds::centered(None, size(px(1440.), px(860.)), cx);
+        let placed = args.window_pos.is_some();
+        let (bounds, display_id) = match args.window_pos {
+            // Test runs: exactly where asked, on the display that holds that
+            // point (the built-in panel, left of the primary), created hidden
+            // and then shown without activation.
+            Some((x, y)) => {
+                let (w, h) = args.window_size.unwrap_or((1440, 860));
+                let display = cx
+                    .displays()
+                    .into_iter()
+                    .find(|d| {
+                        let b = d.bounds();
+                        let (l, t) = (f32::from(b.origin.x), f32::from(b.origin.y));
+                        let (r, bt) = (l + f32::from(b.size.width), t + f32::from(b.size.height));
+                        (x as f32) >= l && (x as f32) < r && (y as f32) >= t && (y as f32) < bt
+                    })
+                    .map(|d| d.id());
+                (Bounds { origin: point(px(x as f32), px(y as f32)), size: size(px(w as f32), px(h as f32)) }, display)
+            }
+            None => (Bounds::centered(None, size(px(1440.), px(860.)), cx), None),
+        };
         let opts = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
+            display_id,
+            show: !placed,
+            focus: !placed,
             titlebar: Some(TitlebarOptions { title: Some("lain".into()), ..Default::default() }),
             window_background: WindowBackgroundAppearance::Opaque,
             window_min_size: Some(size(px(800.), px(500.))),
             ..Default::default()
         };
         let args = args.clone();
-        cx.open_window(opts, move |window, cx| cx.new(|cx| LainApp::new(args, window, cx))).expect("open window");
+        let place = args.window_pos.map(|p| (p, args.window_size.unwrap_or((1440, 860))));
+        cx.open_window(opts, move |window, cx| {
+            if let (Some(((x, y), (w, h))), Some(hwnd)) = (place, window_hwnd(window)) {
+                // Moving across monitors changes DPI, and GPUI answers the
+                // WM_DPICHANGED with a rect of its own: move it while still
+                // hidden, then again (and show it) once that has settled.
+                place_window(hwnd, x, y, w, h, false);
+            }
+            cx.new(|cx| LainApp::new(args, window, cx))
+        })
+        .expect("open window");
         cx.on_window_closed(|cx| cx.quit()).detach();
-        cx.activate(true);
+        if !placed {
+            cx.activate(true);
+        }
     });
+}
+
+/// Logs every top-level window of this process (placement diagnostics).
+pub fn log_windows(tag: &str) {
+    use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetClassNameW, GetWindowRect, GetWindowThreadProcessId, IsWindowVisible};
+    use windows::core::BOOL;
+    unsafe extern "system" fn each(h: HWND, l: LPARAM) -> BOOL {
+        unsafe {
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(h, Some(&mut pid));
+            if pid == std::process::id() {
+                let mut name = [0u16; 128];
+                let n = GetClassNameW(h, &mut name);
+                let mut rc = RECT::default();
+                let _ = GetWindowRect(h, &mut rc);
+                let tag = &*(l.0 as *const String);
+                eprintln!(
+                    "{tag}: window {:?} class={} visible={} rect={},{} {}x{}",
+                    h.0,
+                    String::from_utf16_lossy(&name[..n as usize]),
+                    IsWindowVisible(h).as_bool(),
+                    rc.left,
+                    rc.top,
+                    rc.right - rc.left,
+                    rc.bottom - rc.top
+                );
+            }
+        }
+        BOOL(1)
+    }
+    let tag = tag.to_string();
+    unsafe {
+        let _ = EnumWindows(Some(each), LPARAM(&tag as *const String as isize));
+    }
 }

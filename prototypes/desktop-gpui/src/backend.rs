@@ -87,7 +87,7 @@ impl Backend {
 /// libraries, the whole catalog (paged) and the Continue row.
 pub async fn load_all(client: Client, account: Account, series: HashMap<String, String>) -> Result<Loaded, String> {
     let me = match client.session() {
-        Some(_) => client.me().await.ok(),
+        Some(_) => client.me().await.ok().filter(|u| u.username == account.user),
         None => None,
     };
     let username = match me {

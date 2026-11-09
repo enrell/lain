@@ -264,3 +264,44 @@ pub async fn run(this: WeakEntity<LainApp>, cx: &mut AsyncWindowContext) {
     }
     let _ = cx.update(|_, cx| cx.quit());
 }
+
+/// `--demo <scenario>`: puts the app in a given state for screenshots,
+/// with no simulated input. The app stays open.
+pub async fn demo(this: WeakEntity<LainApp>, cx: &mut AsyncWindowContext, scenario: String) {
+    wait_for(&this, cx, 90, |a| a.home.art_ready).await;
+    sleep(cx, 600).await;
+    let pick = |app: &LainApp, even: bool| app.items.iter().position(|i| (i.episode % 2 == 0) == even);
+    match scenario.as_str() {
+        "rail" => {
+            let _ = this.update_in(cx, |app, window, cx| {
+                let r = app.home.rails.iter().position(|r| r.kind == RailKind::Posters).unwrap_or(0);
+                app.demo_focus(r, 3, window);
+                cx.notify();
+            });
+        }
+        "player-4k" | "player-subs" | "menu-subs" => {
+            let even = scenario == "player-4k";
+            let _ = this.update(cx, |app, cx| {
+                if let Some(i) = pick(app, even) {
+                    app.start_override = Some(if even { 8. } else { 13.5 });
+                    app.open_player(i, cx);
+                }
+            });
+            wait_for(&this, cx, 30, |a| a.player.as_ref().map(|p| p.st.has_video).unwrap_or(false)).await;
+            sleep(cx, 1500).await;
+            let _ = this.update(cx, |app, cx| {
+                if let Some(p) = app.player.as_mut() {
+                    p.force_controls = true;
+                    if scenario == "menu-subs" {
+                        p.menu = Some(crate::player::Menu::Subs);
+                    }
+                    if let Some(m) = &p.mpv {
+                        m.command_async(&["set", "pause", "yes"]);
+                    }
+                }
+                cx.notify();
+            });
+        }
+        _ => eprintln!("unknown demo {scenario:?}"),
+    }
+}

@@ -158,6 +158,8 @@ impl Mpv {
             ("cursor-autohide", "no"),
             ("terminal", "no"),
             ("background-color", "#000000"),
+            // The test file's ASS track has no default flag: show it anyway.
+            ("sid", "1"),
         ];
         for (k, v) in base.iter().chain(options.iter()) {
             let r = unsafe { mpv_set_option_string(h, cstr(k).as_ptr(), cstr(v).as_ptr()) };
