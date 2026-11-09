@@ -17,9 +17,16 @@ conformance/
                   the upstream fixtures (35, needs `upstream`), browse,
                   item delete, incremental rescans (v1), scan events (v2);
                   writes its own fixture media
+  cases/lists/    the lists module from a fresh server: tracking list,
+                  links, OAuth callback and pin flows against the upstream
+                  fixtures, sync, scrobble preference, unlink    (v1)
+  cases/social/   the social module from a fresh server: settings,
+                  friends, blocks, search, profiles, ratings, comments,
+                  feed, notifications, shares, collections        (v1)
   cases/private/  lain-rs over a populated catalog: catalog items, paging,
                   episodes, per-user progress, then private libraries:
-                  nothing leaks to another user or a locked session (v2)
+                  nothing leaks to another user or a locked session, social
+                  rows included (v2)
   cases/read/     lain-rs over the read fixture: comic pages, page
                   bytes, ETags, direction, refusals, private libraries
                   and module disable (v2)
@@ -134,7 +141,7 @@ numbers, so Go's `1440` and Rust's `1440.0` are the same value.
 
 ## Not covered yet
 
-Lists, social, acquire, downloads, plugin swap and withdraw writes,
+Acquire, downloads, plugin swap and withdraw writes,
 pages on the Go server (it has no fixture import), and the
 `lain.catalog-export` documents as files.
 These move with their modules (DESIGN-v2 §13 order).
