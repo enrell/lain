@@ -1463,6 +1463,7 @@ impl LainApp {
             if u.profile.display_name.is_empty() { u.username.clone() } else { u.profile.display_name.clone() }
         });
         let status = if self.online { pal.ok } else { pal.danger };
+        let avatar = self.avatar(28., cx);
         let palette_btn = div()
             .id("nav.palette")
             .flex()
@@ -1523,7 +1524,8 @@ impl LainApp {
                             .text_color(pal.muted)
                             .text_size(px(th.ts(-1)))
                             .child(user.unwrap_or_else(|| "offline".into())),
-                    ),
+                    )
+                    .when(self.me.is_some(), |d| d.child(avatar)),
             )
     }
 

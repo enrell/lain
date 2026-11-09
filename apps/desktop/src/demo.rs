@@ -12,6 +12,8 @@
 //!   chrome visible), `seek:<s>`, `sub:<id>`
 //! - `theme:<id>`, `focus:<widget id>`, `tab`, `key:<down|up|right|left>`
 //!   (in-app focus moves, not OS input)
+//! - `set:<field>=<text>`, `kind:<library kind>`, `run:<create-library|scan|refresh|set-pin|save-profile>`
+//!   (fill fields and run actions as a user would)
 //! - `shot:<name>`: a PNG of this window into the `--shot` directory
 //! - `log:<text>`, `quit`
 
@@ -202,6 +204,28 @@ fn step_now(app: &mut LainApp, cmd: &str, arg: &str, window: &mut gpui::Window, 
             }
         }
         "close" => app.close_player(cx),
+        "set" => {
+            // set:<field id>=<text> (fills an in-app field)
+            if let Some((k, v)) = arg.split_once('=') {
+                let key: &'static str = Box::leak(k.to_string().into_boxed_str());
+                app.set_text(key, v);
+            }
+        }
+        "kind" => app.settings.new_kind = arg.to_string(),
+        "run" => {
+            let act = match arg {
+                "create-library" => Some(Act::CreateLibrary),
+                "scan" => Some(Act::Scan),
+                "refresh" => Some(Act::Refresh),
+                "set-pin" => Some(Act::SetPin),
+                "save-profile" => Some(Act::SaveProfile),
+                _ => None,
+            };
+            match act {
+                Some(a) => app.run(a, window, cx),
+                None => eprintln!("demo: unknown action {arg}"),
+            }
+        }
         "theme" => app.run(Act::PickTheme(arg.to_string()), window, cx),
         "focus" => app.focused = Some(arg.to_string().into()),
         "tab" => app.move_focus(1),
