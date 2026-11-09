@@ -1,0 +1,84 @@
+{
+  "cold_start_ms": 1745.0,
+  "framework": "slint 1.18.1 (winit + femtovg/OpenGL, slint-interpreter)",
+  "gl": "Intel(R) Iris(R) Xe Graphics / 3.3.0 - Build 32.0.101.7092",
+  "mpv": {
+    "1080p_hevc10": {
+      "ao": "null",
+      "container-fps": 24.0,
+      "decoder-frame-drop-count": 0,
+      "display-fps": null,
+      "estimated-vf-fps": 24.0,
+      "file": "D:\\lain-proto\\media\\teste-1080p-hevc-10bit-legendas.mkv",
+      "frame-drop-count": 1,
+      "hwdec-current": "d3d11va-copy",
+      "video": "1920x1080 p010",
+      "vo": "libmpv",
+      "vo-delayed-frame-count": 0
+    },
+    "4k_hevc": {
+      "ao": "null",
+      "container-fps": 60.0,
+      "decoder-frame-drop-count": 0,
+      "display-fps": null,
+      "estimated-vf-fps": 60.0,
+      "file": "D:\\lain-proto\\media\\teste-4k-hevc-60fps.mkv",
+      "frame-drop-count": 9,
+      "hwdec-current": "d3d11va-copy",
+      "video": "3840x2160 nv12",
+      "vo": "libmpv",
+      "vo-delayed-frame-count": 0
+    }
+  },
+  "rss_mb_home": 260.2,
+  "rss_mb_player_4k": 787.8,
+  "scroll": {
+    "cards": 500,
+    "distance_px": 106200.0,
+    "px_per_s": 4000.0
+  },
+  "scroll_cpu_ms": {
+    "frames": 1623,
+    "max": 17.9,
+    "p50": 4.39,
+    "p95": 7.16,
+    "p99": 10.69
+  },
+  "scroll_frame_ms": {
+    "frames": 1623,
+    "max": 27.26,
+    "p50": 16.23,
+    "p95": 19.32,
+    "p99": 21.48
+  },
+  "total_s": 72.7,
+  "ui_compile_ms": 57.7,
+  "ui_cpu_ms_during_video": {
+    "frames": 2156,
+    "max": 10.43,
+    "p50": 2.14,
+    "p95": 5.12,
+    "p99": 6.14
+  },
+  "ui_frame_ms_during_video": {
+    "frames": 2156,
+    "max": 43.69,
+    "p50": 16.75,
+    "p95": 26.99,
+    "p99": 28.55
+  },
+  "ui_frame_ms_during_video_10bit": {
+    "frames": 959,
+    "max": 37.33,
+    "p50": 18.24,
+    "p95": 27.64,
+    "p99": 31.49
+  },
+  "ui_frame_ms_during_video_4k": {
+    "frames": 1197,
+    "max": 43.69,
+    "p50": 16.44,
+    "p95": 20.37,
+    "p99": 22.14
+  }
+}

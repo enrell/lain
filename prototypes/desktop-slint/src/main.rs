@@ -43,6 +43,8 @@ struct Args {
     window: Option<(i32, i32, u32, u32)>,
     /// no audio output (mpv ao=null)
     mute: bool,
+    /// open the hero's episode once Home has loaded (unattended checks)
+    play: bool,
     /// stderr goes to this file (the exe has no console)
     log: Option<PathBuf>,
 }
@@ -69,6 +71,7 @@ fn parse_args() -> Args {
         quit_after: None,
         window: None,
         mute: false,
+        play: false,
         log: None,
     };
     let mut it = std::env::args().skip(1);
@@ -84,6 +87,7 @@ fn parse_args() -> Args {
             "--mpv-log" => a.mpv_log = Some(v()),
             "--shots" => a.shots = Some(v()),
             "--mute" => a.mute = true,
+            "--play" => a.play = true,
             "--log" => a.log = Some(v()),
             "--window-pos" => {
                 let v: Vec<i32> = v().to_string_lossy().split(',').filter_map(|x| x.trim().parse().ok()).collect();
@@ -165,6 +169,7 @@ struct App {
     player_active: Rc<Cell<bool>>,
     playing: Option<String>,
     bench: bool,
+    autoplay: bool,
 }
 
 thread_local! {
@@ -575,9 +580,18 @@ fn spawn_mpv_events(m: Arc<Mpv>) {
             loop {
                 match m.wait_event(-1.0) {
                     Event::Shutdown => break,
+                    Event::PlaybackRestart => {
+                        eprintln!("mpv: playing, current-ao={}", m.get_str("current-ao").unwrap_or_else(|| "(none)".into()));
+                    }
                     Event::FileLoaded => {
-                        eprintln!("mpv: file loaded, current-ao={}", m.get_str("current-ao").unwrap_or_else(|| "(none)".into()));
                         send(MpvMsg::Loaded);
+                        // show subtitles by default: mpv only auto-selects
+                        // tracks flagged default/forced
+                        if m.get_str("sid").as_deref() == Some("no")
+                            && let Some(t) = tracks(&m).into_iter().find(|t| t.0 == "sub")
+                        {
+                            m.set("sid", &t.1.to_string());
+                        }
                         send(MpvMsg::Tracks(tracks(&m)));
                         send(MpvMsg::Info(info(&m)));
                     }
@@ -657,6 +671,12 @@ fn spawn_server(rt: &tokio::runtime::Runtime, server: String, conta: PathBuf, se
             a.build_rails();
             a.set_hero();
             a.on_art_check();
+            if a.autoplay
+                && let Ok(Value::String(id)) = a.inst.get_global_property("Home", "hero-item")
+            {
+                let id = id.to_string();
+                a.open(&id);
+            }
         });
 
         // events: refetch Continue on progress-changed and after reconnects
@@ -788,15 +808,11 @@ fn run() -> Result<(), String> {
     slint::BackendSelector::new()
         .with_winit_window_attributes_hook(move |attrs| {
             use slint::winit_030::winit::dpi::{PhysicalPosition, PhysicalSize};
-            eprintln!("winit attributes hook: rect {rect:?}");
             match rect {
                 Some((x, y, w, h)) => attrs
                     .with_position(PhysicalPosition::new(x, y))
                     .with_inner_size(PhysicalSize::new(w, h))
                     .with_active(false)
-                    // undecorated: the test machine's tiling window manager
-                    // leaves frameless windows alone
-                    .with_decorations(false)
                     // the GL window may be created before show(); keep it
                     // hidden until Slint maps it
                     .with_visible(false),
@@ -863,7 +879,6 @@ fn run() -> Result<(), String> {
         opts.push(("log-file", l.to_string_lossy().into_owned()));
     }
     let o: Vec<(&str, &str)> = opts.iter().map(|(k, v)| (*k, v.as_str())).collect();
-    eprintln!("creating mpv");
     let mpv = Arc::new(Mpv::new(&o)?);
     spawn_mpv_events(mpv.clone());
     eprintln!("mpv: ao={} mute={}", mpv.get_str("ao").unwrap_or_default(), mpv.get_str("mute").unwrap_or_default());
@@ -889,14 +904,11 @@ fn run() -> Result<(), String> {
             .set_rendering_notifier(move |state, _api| match state {
                 slint::RenderingState::RenderingSetup => {
                     // Slint renders the first frame before mapping the window:
-                    // put it on the requested rect now, before it is visible.
-                    if let (Some((x, y, w, h)), Some(i)) = (rect, weak.upgrade()) {
+                    // make the requested rect its normal placement, so the
+                    // first ShowWindow cannot put it anywhere else.
+                    if let (Some((x, y, _, _)), Some(i)) = (rect, weak.upgrade()) {
                         use slint::winit_030::WinitWindowAccessor;
-                        use slint::winit_030::winit::dpi::{PhysicalPosition, PhysicalSize};
                         i.window().with_winit_window(|win| {
-                            eprintln!("first frame: window at {:?}, moving to {x},{y}", win.outer_position());
-                            win.set_outer_position(PhysicalPosition::new(x, y));
-                            let _ = win.request_inner_size(PhysicalSize::new(w, h));
                             use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
                             if let Ok(hd) = win.window_handle()
                                 && let RawWindowHandle::Win32(wh) = hd.as_raw()
@@ -904,7 +916,6 @@ fn run() -> Result<(), String> {
                                 let o = win.outer_size();
                                 metrics::set_normal_rect(wh.hwnd.get(), x, y, o.width as i32, o.height as i32);
                             }
-                            eprintln!("first frame: now at {:?} {:?}", win.outer_position(), win.inner_size());
                         });
                     }
                     *gl_info.borrow_mut() = mpv::gl_info();
@@ -925,6 +936,7 @@ fn run() -> Result<(), String> {
                     if let (Some(c), Some(i)) = (&ctx, weak.upgrade()) {
                         c.update();
                         if active.get() {
+                            mpv::gl_reset_for_mpv();
                             let sz = i.window().size();
                             c.render(0, sz.width as i32, sz.height as i32);
                         }
@@ -981,6 +993,7 @@ fn run() -> Result<(), String> {
             player_active: player_active.clone(),
             playing: None,
             bench,
+            autoplay: args.play,
         })
     });
 
@@ -1076,7 +1089,6 @@ fn run() -> Result<(), String> {
     if let Some((x, y, w, h)) = args.window {
         let sf = metrics::monitor_scale_at(x + w as i32 / 2, y + h as i32 / 2);
         eprintln!("target monitor scale {sf}");
-        let _ = inst.set_property("frameless", Value::Bool(true));
         let _ = inst.set_property("want-width", n((w as f32 / sf) as f64));
         let _ = inst.set_property("want-height", n((h as f32 / sf) as f64));
         // before show(): an explicit size stops Slint from resizing the
@@ -1120,34 +1132,19 @@ fn run() -> Result<(), String> {
             }
         });
     }
-    let place_timer = slint::Timer::default();
-    if let Some((x, y, w, h)) = args.window {
+    let size_check = slint::Timer::default();
+    if args.window.is_some() {
         let weak = inst.as_weak();
-        let t0 = Instant::now();
-        let mut last = String::new();
-        place_timer.start(slint::TimerMode::Repeated, Duration::from_millis(5), move || {
-            let Some(i) = weak.upgrade() else { return };
-            use slint::winit_030::WinitWindowAccessor;
-            i.window().with_winit_window(|win| {
-                let now = format!("{:?} {:?} sf={}", win.outer_position(), win.inner_size(), win.scale_factor());
-                if now != last {
-                    eprintln!("placement +{:.0} ms: {now}", t0.elapsed().as_secs_f64() * 1000.0);
-                    last = now;
-                }
-                // keep it on the requested rect: a tiling window manager on
-                // the test machine re-tiles new windows onto the primary
-                // monitor (and sometimes minimizes them)
-                if win.fullscreen().is_none()
-                    && win.outer_position().map(|p| (p.x, p.y) != (x, y)).unwrap_or(false)
-                {
-                    use slint::winit_030::winit::dpi::{PhysicalPosition, PhysicalSize};
-                    if win.is_minimized() == Some(true) {
-                        win.set_minimized(false);
-                    }
-                    win.set_outer_position(PhysicalPosition::new(x, y));
-                    let _ = win.request_inner_size(PhysicalSize::new(w, h));
-                }
-            });
+        size_check.start(slint::TimerMode::SingleShot, Duration::from_secs(4), move || {
+            if let Some(i) = weak.upgrade() {
+                use slint::winit_030::WinitWindowAccessor;
+                i.window().with_winit_window(|w| {
+                    eprintln!(
+                        "size check: slint {:?} winit inner {:?} outer {:?} at {:?}",
+                        i.window().size(), w.inner_size(), w.outer_size(), w.outer_position()
+                    );
+                });
+            }
         });
     }
     let dbg_timer = slint::Timer::default();

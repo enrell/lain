@@ -199,75 +199,17 @@ pub fn set_normal_rect(hwnd: isize, x: i32, y: i32, w: i32, h: i32) {
     unsafe extern "system" {
         fn GetWindowPlacement(h: *mut c_void, p: *mut Placement) -> i32;
         fn SetWindowPlacement(h: *mut c_void, p: *const Placement) -> i32;
-        fn GetWindowLongPtrW(h: *mut c_void, i: i32) -> isize;
-        fn SetWindowLongPtrW(h: *mut c_void, i: i32, v: isize) -> isize;
     }
     let mut p = Placement { len: std::mem::size_of::<Placement>() as u32, flags: 0, show: 0, min: [0; 2], max: [0; 2], normal: [0; 4] };
     unsafe {
         let hw = hwnd as *mut c_void;
-        // a tool window: tiling window managers leave it where it is
-        let ex = GetWindowLongPtrW(hw, -20);
-        SetWindowLongPtrW(hw, -20, ex | 0x80);
         GetWindowPlacement(hw, &mut p);
-        eprintln!("placement before: show {} normal {:?}", p.show, p.normal);
         p.normal = [x, y, x + w, y + h];
         SetWindowPlacement(hw, &p);
     }
 }
 #[cfg(not(windows))]
 pub fn set_normal_rect(_: isize, _: i32, _: i32, _: i32, _: i32) {}
-
-/// Debug: every top-level window of this process (class, visible, rect).
-#[cfg(windows)]
-pub fn dump_windows() {
-    use std::ffi::c_void;
-    #[repr(C)]
-    #[derive(Default)]
-    struct Rect {
-        l: i32,
-        t: i32,
-        r: i32,
-        b: i32,
-    }
-    #[link(name = "user32")]
-    unsafe extern "system" {
-        fn EnumWindows(f: unsafe extern "system" fn(*mut c_void, isize) -> i32, l: isize) -> i32;
-        fn GetWindowThreadProcessId(h: *mut c_void, pid: *mut u32) -> u32;
-        fn GetClassNameW(h: *mut c_void, s: *mut u16, n: i32) -> i32;
-        fn IsWindowVisible(h: *mut c_void) -> i32;
-        fn GetWindowRect(h: *mut c_void, r: *mut Rect) -> i32;
-        fn GetWindow(h: *mut c_void, cmd: u32) -> *mut c_void;
-    }
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn GetCurrentProcessId() -> u32;
-    }
-    unsafe extern "system" fn each(h: *mut c_void, _: isize) -> i32 {
-        unsafe {
-            let mut pid = 0;
-            let tid = GetWindowThreadProcessId(h, &mut pid);
-            if pid != GetCurrentProcessId() {
-                return 1;
-            }
-            let mut buf = [0u16; 64];
-            let n = GetClassNameW(h, buf.as_mut_ptr(), 64);
-            let mut r = Rect::default();
-            GetWindowRect(h, &mut r);
-            eprintln!(
-                "  hwnd {:?} tid {tid} class {:?} visible {} rect {},{} {}x{} owner {:?}",
-                h,
-                String::from_utf16_lossy(&buf[..n.max(0) as usize]),
-                IsWindowVisible(h),
-                r.l, r.t, r.r - r.l, r.b - r.t,
-                GetWindow(h, 4)
-            );
-        }
-        1
-    }
-    unsafe { EnumWindows(each, 0) };
-}
-#[cfg(not(windows))]
-pub fn dump_windows() {}
 
 /// Points this process's stderr (eprintln!) at a file.
 #[cfg(windows)]

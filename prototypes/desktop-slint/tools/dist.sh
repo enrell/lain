@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")/.."
 /mnt/c/Users/enrell/.cargo/bin/cargo.exe build --release -j 6
 rm -rf dist && mkdir -p dist/fonts dist/skins
-cp target/release/lain-slint.exe dist/
+cp /mnt/c/lain-proto-target/slint/release/lain-slint.exe dist/
 cp /mnt/d/lain-proto/libmpv/libmpv-2.dll dist/
 cp fonts/*.ttf fonts/OFL-*.txt dist/fonts/
 cp skins/*.slint dist/skins/

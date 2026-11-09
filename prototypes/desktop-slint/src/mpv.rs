@@ -308,6 +308,19 @@ pub fn gl_info() -> String {
     }
 }
 
+/// Puts the GL state mpv expects back: femtovg can leave GL_SCISSOR_TEST
+/// enabled (mpv documents that it assumes the default, disabled), which
+/// clips mpv's draw and leaves stale pixels in the letterbox.
+pub fn gl_reset_for_mpv() {
+    type Disable = unsafe extern "system" fn(u32);
+    static DISABLE: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    let p = *DISABLE.get_or_init(|| unsafe { gl::get_proc_address(ptr::null_mut(), c"glDisable".as_ptr()) as usize });
+    if p != 0 {
+        let f: Disable = unsafe { std::mem::transmute(p) };
+        unsafe { f(0x0C11) }; // GL_SCISSOR_TEST
+    }
+}
+
 /// The render context: UI (GL) thread only.
 pub struct RenderCtx {
     ctx: *mut MpvRenderContext,

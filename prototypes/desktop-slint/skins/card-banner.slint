@@ -29,8 +29,8 @@ export component Card inherits Rectangle {
         background: Theme.surface;
         drop-shadow-blur: root.lit ? 36px : 0px;
         drop-shadow-offset-y: 18px;
-        drop-shadow-color: Theme.accent.transparentize(55%);
-        animate drop-shadow-blur { duration: Theme.normal; easing: Theme.easing; }
+        drop-shadow-color: root.lit ? Theme.accent.transparentize(55%) : transparent;
+        animate drop-shadow-blur, drop-shadow-color { duration: Theme.normal; easing: Theme.easing; }
         clip: true;
 
         Image {

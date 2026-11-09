@@ -308,7 +308,7 @@ component Rail inherits Rectangle {
     Text {
         x: root.width - root.pad - self.width;
         y: Theme.s3 + 3px;
-        text: root.n + " titles";
+        text: root.n + (root.n == 1 ? " title" : " titles");
         color: Theme.muted;
         font-family: Theme.font-mono;
         font-size: Theme.font-size * 0.75;
@@ -396,7 +396,7 @@ component TopNav inherits Rectangle {
             Text {
                 vertical-alignment: center;
                 text: Home.user != "" ? Home.user + " · " + Home.status : Home.status;
-                color: Theme.muted;
+                color: Theme.text.transparentize(40%);
                 font-family: Theme.font-mono;
                 font-size: Theme.font-size * 0.78;
             }
@@ -881,8 +881,6 @@ export component AppWindow inherits Window {
     in property <length> want-height: 900px;
     preferred-width: root.want-width;
     preferred-height: root.want-height;
-    in property <bool> frameless;
-    no-frame: root.frameless;
     min-width: 960px;
     min-height: 600px;
     // transparent while playing: mpv draws the picture underneath (underlay)
