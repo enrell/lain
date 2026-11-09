@@ -17,6 +17,7 @@
 //! traits (no lifetimes or generics in signatures), so Android can wrap
 //! it with UniFFI later (P5). Async methods run on tokio.
 
+pub mod acquire;
 pub mod api;
 pub mod db;
 pub mod discovery;

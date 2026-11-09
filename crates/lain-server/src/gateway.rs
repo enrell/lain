@@ -306,6 +306,7 @@ pub fn router(app: Arc<App>) -> Router {
         .merge(crate::watch::routes())
         .merge(crate::lists::routes())
         .merge(crate::social::routes())
+        .merge(crate::acquire::routes())
         .fallback(fallback)
         .method_not_allowed_fallback(fallback)
         .layer(middleware::from_fn_with_state(app.clone(), privacy_gate))

@@ -1,0 +1,562 @@
+{
+ "tier": "v1",
+ "description": "Indexers: credentials are stored but never returned (has_api_key), patch rules, validation, a failing test is a 200 result, and search without an enabled indexer.",
+ "cases": [
+  {
+   "name": "create, list, patch, test, delete",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "indexers": []
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "admin",
+      "body": {
+       "name": " tracker-exemplo ",
+       "protocol": "torznab",
+       "url": "http://127.0.0.1:9/api",
+       "api_key": "secret-key",
+       "categories": [
+        5070
+       ],
+       "min_interval_ms": 0
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "id": "$string",
+       "name": "tracker-exemplo",
+       "protocol": "torznab",
+       "url": "http://127.0.0.1:9/api",
+       "categories": [
+        5070
+       ],
+       "enabled": true,
+       "priority": 0,
+       "min_interval_ms": 0,
+       "created_at": "$int",
+       "has_api_key": true
+      }
+     },
+     "save": {
+      "ix": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "indexers": [
+        {
+         "id": "$string",
+         "name": "tracker-exemplo",
+         "protocol": "torznab",
+         "url": "http://127.0.0.1:9/api",
+         "categories": [
+          5070
+         ],
+         "enabled": true,
+         "priority": 0,
+         "min_interval_ms": 0,
+         "created_at": "$int",
+         "has_api_key": true
+        }
+       ]
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PATCH",
+      "path": "/api/acquire/indexers/{{ix}}",
+      "auth": "admin",
+      "body": {
+       "api_key": "",
+       "priority": 2
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "name": "tracker-exemplo",
+       "protocol": "torznab",
+       "url": "http://127.0.0.1:9/api",
+       "categories": [
+        5070
+       ],
+       "enabled": true,
+       "priority": 2,
+       "min_interval_ms": 0,
+       "created_at": "$int",
+       "has_api_key": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PATCH",
+      "path": "/api/acquire/indexers/{{ix}}",
+      "auth": "admin",
+      "body": {
+       "api_key": "-"
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "name": "tracker-exemplo",
+       "protocol": "torznab",
+       "url": "http://127.0.0.1:9/api",
+       "categories": [
+        5070
+       ],
+       "enabled": true,
+       "priority": 2,
+       "min_interval_ms": 0,
+       "created_at": "$int",
+       "has_api_key": false
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PATCH",
+      "path": "/api/acquire/indexers/{{ix}}",
+      "auth": "admin",
+      "body": {
+       "api_key": "k2",
+       "enabled": false
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "name": "tracker-exemplo",
+       "protocol": "torznab",
+       "url": "http://127.0.0.1:9/api",
+       "categories": [
+        5070
+       ],
+       "enabled": false,
+       "priority": 2,
+       "min_interval_ms": 0,
+       "created_at": "$int",
+       "has_api_key": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/{{ix}}/test",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "indexer": {
+        "id": "$string",
+        "name": "tracker-exemplo",
+        "protocol": "torznab",
+        "url": "http://127.0.0.1:9/api",
+        "categories": [
+         5070
+        ],
+        "enabled": false,
+        "priority": 2,
+        "min_interval_ms": 0,
+        "created_at": "$int",
+        "has_api_key": true,
+        "last_check_at": "$int",
+        "last_error": "$substr:127.0.0.1:9"
+       },
+       "ok": false,
+       "error": "$substr:127.0.0.1:9"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/search?q=Show",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "no enabled indexer; add one under Settings › Indexers",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PATCH",
+      "path": "/api/acquire/indexers/{{ix}}",
+      "auth": "admin",
+      "body": {
+       "enabled": true
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "name": "tracker-exemplo",
+       "protocol": "torznab",
+       "url": "http://127.0.0.1:9/api",
+       "categories": [
+        5070
+       ],
+       "enabled": true,
+       "priority": 2,
+       "min_interval_ms": 0,
+       "created_at": "$int",
+       "has_api_key": true,
+       "last_check_at": "$int",
+       "last_error": "$string"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/search?q=Show&kind=anime",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "candidates": [],
+       "failures": [
+        {
+         "indexer_id": "{{ix}}",
+         "name": "tracker-exemplo",
+         "error": "$substr:127.0.0.1:9"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/search?q=Show&indexers=nope",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "no enabled indexer; add one under Settings › Indexers",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/indexers/{{ix}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "removed": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/indexers/{{ix}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown indexer",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PATCH",
+      "path": "/api/acquire/indexers/nope",
+      "auth": "admin",
+      "body": {
+       "priority": 1
+      }
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown indexer",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/nope/test",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown indexer",
+       "code": "not-found"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "validation",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "admin",
+      "body": {
+       "protocol": "torznab",
+       "url": "http://h/"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "name required",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "protocol": "rss",
+       "url": "http://h/"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "protocol must be torznab or newznab",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "protocol": "torznab",
+       "url": "ftp://h/"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "url must be http(s) without credentials (use the API key field)",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "protocol": "torznab",
+       "url": "http://u:p@h/"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "url must be http(s) without credentials (use the API key field)",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "protocol": "torznab",
+       "url": "http://h/",
+       "min_interval_ms": 600001
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "min_interval_ms must be 0-600000",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "protocol": "torznab",
+       "url": "http://h/",
+       "categories": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50
+       ]
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "at most 50 categories",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "admin",
+      "body": {
+       "name": "a\u0001b",
+       "protocol": "torznab",
+       "url": "http://h/"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "name must not contain control characters",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "admin",
+      "raw_body": "[]"
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "invalid json"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/search",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "a query of 1-200 characters is required",
+       "code": "invalid-request"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

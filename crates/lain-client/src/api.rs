@@ -97,13 +97,13 @@ pub struct Client {
     inner: Arc<Inner>,
 }
 
-enum Body {
+pub(crate) enum Body {
     None,
     Json(Vec<u8>),
     Raw(Vec<u8>, String),
 }
 
-fn query(pairs: &[(&str, String)]) -> String {
+pub(crate) fn query(pairs: &[(&str, String)]) -> String {
     let parts: Vec<String> =
         pairs.iter().filter(|(_, v)| !v.is_empty()).map(|(k, v)| format!("{k}={}", encode(v))).collect();
     if parts.is_empty() { String::new() } else { format!("?{}", parts.join("&")) }
@@ -118,7 +118,7 @@ fn decode<T: DeserializeOwned>(raw: &[u8]) -> Result<T, ClientError> {
     serde_json::from_slice(raw).map_err(|e| ClientError::Decode { message: e.to_string() })
 }
 
-fn json_body(v: &impl Serialize) -> Body {
+pub(crate) fn json_body(v: &impl Serialize) -> Body {
     Body::Json(serde_json::to_vec(v).unwrap_or_else(|_| b"{}".to_vec()))
 }
 
@@ -176,7 +176,7 @@ impl Client {
         Ok(vec![("authorization", format!("Bearer {t}"))])
     }
 
-    async fn raw(&self, method: Method, path: &str, body: Body, auth: bool) -> Result<Bytes, ClientError> {
+    pub(crate) async fn raw(&self, method: Method, path: &str, body: Body, auth: bool) -> Result<Bytes, ClientError> {
         let mut headers = self.auth_headers(auth)?;
         headers.push(("accept", "application/json".into()));
         let (payload, ctype);
@@ -200,7 +200,12 @@ impl Client {
         Ok(r.body)
     }
 
-    async fn call<T: DeserializeOwned>(&self, method: Method, path: &str, body: Body) -> Result<T, ClientError> {
+    pub(crate) async fn call<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Body,
+    ) -> Result<T, ClientError> {
         decode(&self.raw(method, path, body, true).await?)
     }
 

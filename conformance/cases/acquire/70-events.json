@@ -1,0 +1,171 @@
+{
+ "tier": "v2",
+ "description": "Acquire and download changes on /api/events (D-210): grab-changed and download-changed, to admins.",
+ "cases": [
+  {
+   "name": "events",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "sse_open": {
+      "path": "/api/events",
+      "auth": "admin",
+      "as": "acq"
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "sse_expect": {
+      "stream": "acq",
+      "event": "ready"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=%5BFansub-A%5D%20Frieren%20-%2003%20%5B1080p%5D&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce"
+      }
+     },
+     "expect": {
+      "status": 201
+     },
+     "save": {
+      "grab2": "/id"
+     }
+    },
+    {
+     "sse_expect": {
+      "stream": "acq",
+      "event": "grab-changed",
+      "data": {
+       "id": "{{grab2}}",
+       "title": "[Fansub-A] Frieren - 03 [1080p]",
+       "source": "magnet",
+       "magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=%5BFansub-A%5D%20Frieren%20-%2003%20%5B1080p%5D&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce",
+       "info_hash": "0123456789abcdef0123456789abcdef01234567",
+       "release": {
+        "title": "Frieren",
+        "episodes": [
+         3
+        ],
+        "absolute": true,
+        "group": "Fansub-A",
+        "resolution": "1080p",
+        "parser": "$string",
+        "$open": true
+       },
+       "library_id": "{{lib}}",
+       "dir": "$string",
+       "kind": "anime",
+       "state": "metadata",
+       "size": 0,
+       "downloaded": "$int",
+       "uploaded": "$int",
+       "completed": 0,
+       "peers": "$int",
+       "down_rate": "$int",
+       "up_rate": "$int",
+       "created_by": "$string",
+       "created_at": "$int",
+       "updated_at": "$int"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/grabs/{{grab2}}?data=1",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "removed": true
+      }
+     }
+    },
+    {
+     "sse_expect": {
+      "stream": "acq",
+      "event": "grab-changed",
+      "data": {
+       "id": "{{grab2}}",
+       "removed": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads",
+      "auth": "admin",
+      "body": {
+       "url": "http://127.0.0.1:9/files/x.mkv"
+      }
+     },
+     "expect": {
+      "status": 201
+     },
+     "save": {
+      "job2": "/id"
+     }
+    },
+    {
+     "sse_expect": {
+      "stream": "acq",
+      "event": "download-changed",
+      "data": {
+       "id": "{{job2}}",
+       "state": "queued",
+       "$open": true
+      }
+     }
+    },
+    {
+     "sse_expect": {
+      "stream": "acq",
+      "event": "download-changed",
+      "data": {
+       "id": "{{job2}}",
+       "state": "failed",
+       "code": "http-error",
+       "$open": true
+      },
+      "within_ms": 10000
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/downloads/{{job2}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "status": "ok"
+      }
+     }
+    },
+    {
+     "sse_expect": {
+      "stream": "acq",
+      "event": "download-changed",
+      "data": {
+       "id": "{{job2}}",
+       "removed": true
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

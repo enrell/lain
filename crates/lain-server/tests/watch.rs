@@ -30,6 +30,7 @@ impl Server {
         cfg.reload_debounce = Duration::from_millis(100);
         // The fixture catalog is the library: no scan, no network.
         cfg.watch = false;
+        cfg.acquire_listen_port = Some(0);
         cfg.auto_enrich = false;
         cfg.offline = true;
         let app = App::open(cfg).unwrap();

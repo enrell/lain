@@ -38,6 +38,8 @@ impl Server {
         // No test reaches the network: one that wants the network
         // providers points them at the upstream fixture server.
         cfg.offline = true;
+        // The torrent engine binds a free port.
+        cfg.acquire_listen_port = Some(0);
         tune(&mut cfg);
         let app = App::open(cfg).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
