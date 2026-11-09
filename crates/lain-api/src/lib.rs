@@ -15,6 +15,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+mod watch;
+pub use watch::*;
+
 fn is_false(v: &bool) -> bool {
     !*v
 }
@@ -434,25 +437,6 @@ pub struct IntegrationsUpdate {
     pub anilist_client_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anilist_client_secret: Option<String>,
-}
-
-// ---- watch (parity routes, not served by lain-rs yet) ----------------------
-
-/// `GET /api/items/{id}/playback` (`lain.playback.plan@1`): how to
-/// play an item. Transcode session fields stay in `extra` until the
-/// route is ported and its shape is pinned here.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct PlaybackPlan {
-    pub mode: String,
-    #[serde(default)]
-    pub asset: String,
-    pub available: bool,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub reason: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub duration_sec: Option<f64>,
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
 }
 
 /// One subdirectory of `GET /api/browse`.
