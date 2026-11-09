@@ -64,11 +64,10 @@ What the prototype does:
 1. Creates the window hidden.
 2. Subclasses it and moves it with `SetWindowPos`.
 3. Shows it with `SW_SHOWNA`.
-4. For the first ~2 s, pins the position in `WM_WINDOWPOSCHANGING`. Two moves
-   to the primary monitor arrive right after showing (logged as `pinned: ...`).
-   The coordinator traced these to the owner's tiling window manager, which
-   adopts new windows. After the pin is released, normal moves and fullscreen
-   work.
+4. A short-lived `WM_WINDOWPOSCHANGING` pin was tried and then removed. The
+   two late moves it blocked came from the owner's tiling window manager,
+   which now ignores the prototype exes. Without the pin, the window stayed
+   on the panel for a full 10 s run.
 
 mpv's video window is a child window, so it always follows.
 
@@ -216,8 +215,30 @@ How frame times are measured:
   per frame.
 - The mpv numbers are read from mpv's properties at the end of each file.
 
-**Results:** pending. GUI runs were on hold (window-manager issue) when this
-was written; see the PR for the numbers once run.
+**Results:** in `bench-dev.json`, from one release run through the launcher
+on the built-in panel (75 Hz, 1880x1124), muted. These are not final numbers:
+the machine was busy.
+
+| Metric | Value |
+|---|---|
+| `cold_start_ms` | 300 |
+| `rss_mb_home` | 65.5 |
+| `rss_mb_player_4k` | 492.7 |
+| `scroll_frame_ms` p50 / p95 / p99 / max | 13.34 / 14.52 / 15.62 / 18.09 (8,999 frames, 500 cards at 2,400 px/s) |
+| `scroll_build_ms` p50 / p95 / max | 0.05 / 0.22 / 0.46 |
+| `ui_frame_ms_during_video` p50 / p95 | 13.31 / 16.14 (4K max 25.6, 10-bit max 18.9) |
+| mpv 4K | `gpu-next`, d3d11, `d3d11va`, 60.0 fps estimated, 150 frame drops, 0 decoder drops, 0 delayed frames |
+| mpv 10-bit | `gpu-next`, d3d11, `d3d11va`, 24.0 fps estimated, 0 drops |
+
+How to read them:
+- **Frame intervals** sit at the panel's 13.3 ms vsync. While scrolling the
+  500-card rail, no frame missed a vsync by a whole interval (max 18 ms).
+- **cold_start_ms** counts from process creation to the first Home frame with
+  the hero and all visible posters drawn. It is this low because the server is
+  local and the saved session is reused.
+- **The 4K drops** are mpv's display-sync drops: a 60 fps video on a 75 Hz
+  panel with `ao=null`. The decoder dropped nothing. They are worth re-checking
+  on a 60 Hz or 120 Hz display.
 
 ## Line counts
 
