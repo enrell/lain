@@ -3,22 +3,27 @@ name = "lain-desktop-gpui"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "lain desktop prototype on GPUI (P2b, V-13)"
+description = "lain desktop app v1 on GPUI (P3, D-180)"
+license = "Apache-2.0"
 
-# Its own workspace: the main workspace and its Cargo.lock stay untouched.
+# Its own workspace: the server workspace and its Cargo.lock stay untouched.
 [workspace]
 
 [dependencies]
 gpui = "=0.2.2"
 lain-client = { path = "../../crates/lain-client" }
-tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "time", "sync"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "time", "sync", "net", "io-util"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 raw-window-handle = "0.6"
+
+[target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Storage_Xps",
     "Win32_System_Console",
     "Win32_System_LibraryLoader",
     "Win32_System_SystemInformation",

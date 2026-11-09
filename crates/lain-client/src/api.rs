@@ -564,6 +564,22 @@ impl Client {
         Ok(self.raw(Method::GET, &format!("/api/users/{}/avatar", encode(user_id)), Body::None, true).await?.to_vec())
     }
 
+    /// A URL a player opens for one sidecar (served as WebVTT). It
+    /// carries the token, like [`Client::stream_url`].
+    pub fn sidecar_url(&self, item_id: &str, index: i64) -> Result<String, ClientError> {
+        self.media_url(&format!("/api/items/{}/sidecars/{index}", encode(item_id)), &[])
+    }
+
+    /// A media URL under this server for a player that cannot send
+    /// headers: `path` plus `query` pairs plus `?token=`. It carries the
+    /// token: never log or share it.
+    pub fn media_url(&self, path: &str, query_pairs: &[(&str, String)]) -> Result<String, ClientError> {
+        let t = self.token().ok_or(ClientError::Unauthorized)?;
+        let mut pairs: Vec<(&str, String)> = query_pairs.to_vec();
+        pairs.push(("token", t));
+        Ok(format!("{}{}{}", self.inner.server, path, query(&pairs)))
+    }
+
     /// The server's backup archive (admin): a `lain.backup@1` tar of a
     /// consistent store snapshot and the data dir's documents (D-197).
     pub async fn backup(&self) -> Result<Vec<u8>, ClientError> {

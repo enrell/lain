@@ -1,77 +1,76 @@
 //! Everything that talks to the server goes through `lain-client`, on a
-//! small tokio runtime of its own. GPUI's executors can await tokio
-//! `JoinHandle`s and tokio channels directly, so the UI never blocks.
+//! small tokio runtime of its own. GPUI's executors await tokio
+//! `JoinHandle`s and channels directly, so the UI thread never blocks.
+//!
+//! One [`Backend`] per server: the typed client, the progress sync
+//! engine (offline queue) and the offline store share one client
+//! database, opened once per process.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use lain_client::types::{CatalogItem, Progress, ProgressUpdate};
-use lain_client::{CatalogQuery, Client, ClientConfig, ClientError, EventStream, FileTokenStore, ServerEvent, StreamConfig, StreamItem};
+use lain_client::{
+    CatalogQuery, Client, ClientConfig, ClientDb, ClientError, EventStream, FileTokenStore, OfflineConfig,
+    OfflineStore, ProgressSync, StreamConfig, StreamItem,
+};
 
-pub struct Backend {
+pub struct Net {
     pub rt: tokio::runtime::Runtime,
-    pub client: Client,
+    pub db: Option<Arc<ClientDb>>,
+    pub db_error: Option<String>,
+    pub dir: PathBuf,
 }
 
-/// One playable card.
-#[derive(Debug, Clone)]
-pub struct Item {
-    pub id: String,
-    pub title: String,
-    pub season: i64,
-    pub episode: i64,
-    pub slug: String,
-}
-
-impl Item {
-    pub fn label(&self) -> String {
-        format!("S{} · E{:02}", self.season.max(1), self.episode)
-    }
-}
-
-pub struct Account {
-    pub user: String,
-    pub password: String,
-    pub server: String,
-}
-
-/// `shared/conta.txt`: `usuario:`, `senha:`, `servidor:` lines.
-pub fn read_account(path: &Path) -> Result<Account, String> {
-    let raw = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut a = Account { user: String::new(), password: String::new(), server: "http://127.0.0.1:9360".into() };
-    for line in raw.lines() {
-        if let Some((k, v)) = line.split_once(':') {
-            let v = v.trim().to_string();
-            match k.trim() {
-                "usuario" => a.user = v,
-                "senha" => a.password = v,
-                "servidor" => a.server = v,
-                _ => {}
-            }
-        }
-    }
-    Ok(a)
-}
-
-pub struct Loaded {
-    pub items: Vec<Item>,
-    pub continues: Vec<Progress>,
-    pub library: String,
-    pub username: String,
-}
-
-impl Backend {
-    pub fn new(server: &str, session_file: PathBuf) -> Result<Arc<Backend>, String> {
+impl Net {
+    pub fn new(dir: &Path) -> Result<Arc<Net>, String> {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("lain-net")
             .enable_all()
             .build()
             .map_err(|e| e.to_string())?;
-        let tokens = Arc::new(FileTokenStore::new(session_file));
-        let client = Client::new(ClientConfig::new(server), tokens).map_err(|e| e.to_string())?;
-        Ok(Arc::new(Backend { rt, client }))
+        let _ = std::fs::create_dir_all(dir);
+        let (db, db_error) = match ClientDb::open(&dir.join("client.redb")) {
+            Ok(d) => (Some(Arc::new(d)), None),
+            Err(e) => (None, Some(e.to_string())),
+        };
+        Ok(Arc::new(Net { rt, db, db_error, dir: dir.to_path_buf() }))
+    }
+}
+
+pub struct Backend {
+    pub net: Arc<Net>,
+    pub client: Client,
+    pub sync: Option<ProgressSync>,
+    pub offline: Option<Arc<OfflineStore>>,
+    pub offline_error: Option<String>,
+}
+
+impl Backend {
+    pub fn new(
+        net: Arc<Net>,
+        server: &str,
+        offline_dir: &Path,
+        offline_max_gib: u64,
+    ) -> Result<Arc<Backend>, ClientError> {
+        let tokens = Arc::new(FileTokenStore::new(net.dir.join("sessions.json")));
+        let client = Client::new(ClientConfig::new(server), tokens)?;
+        let sync = net.db.clone().map(|db| ProgressSync::new(client.clone(), db));
+        let (offline, offline_error) = match net.db.clone() {
+            Some(db) => {
+                let _ = std::fs::create_dir_all(offline_dir);
+                let dir = std::fs::canonicalize(offline_dir).unwrap_or_else(|_| offline_dir.to_path_buf());
+                let mut cfg = OfflineConfig::new(&dir.to_string_lossy());
+                cfg.max_bytes = offline_max_gib << 30;
+                match OfflineStore::open(cfg, db) {
+                    Ok(o) => (Some(Arc::new(o)), None),
+                    Err(e) => (None, Some(e.to_string())),
+                }
+            }
+            None => (None, net.db_error.clone()),
+        };
+        Ok(Arc::new(Backend { net, client, sync, offline, offline_error }))
     }
 
     pub fn spawn<F>(&self, f: F) -> tokio::task::JoinHandle<F::Output>
@@ -79,73 +78,124 @@ impl Backend {
         F: std::future::Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        self.rt.spawn(f)
+        self.net.rt.spawn(f)
+    }
+
+    pub fn block_on<F: std::future::Future>(&self, f: F) -> F::Output {
+        self.net.rt.block_on(f)
     }
 }
 
-/// Logs in (reusing a saved session when it still works), then reads the
-/// libraries, the whole catalog (paged) and the Continue row.
-pub async fn load_all(client: Client, account: Account, series: HashMap<String, String>) -> Result<Loaded, String> {
-    let me = match client.session() {
-        Some(_) => client.me().await.ok().filter(|u| u.username == account.user),
-        None => None,
-    };
-    let username = match me {
-        Some(u) => u.username,
-        None => client.login(&account.user, &account.password).await.map_err(|e| format!("login: {e}"))?.username,
-    };
-    let libraries = client.libraries().await.map_err(|e| format!("libraries: {e}"))?;
-    let library = libraries.first().map(|l| l.name.clone()).unwrap_or_default();
-
-    let mut raw: Vec<CatalogItem> = Vec::new();
+/// Every catalog item the user may see, paged.
+pub async fn all_items(client: Client) -> Result<Vec<CatalogItem>, ClientError> {
+    let mut out: Vec<CatalogItem> = Vec::new();
     loop {
-        let page = client
-            .catalog(CatalogQuery { limit: 500, offset: raw.len() as i64, ..Default::default() })
-            .await
-            .map_err(|e| format!("catalog: {e}"))?;
+        let page = client.catalog(CatalogQuery { limit: 500, offset: out.len() as i64, ..Default::default() }).await?;
         let n = page.items.len();
-        raw.extend(page.items);
-        if n == 0 || raw.len() as i64 >= page.total {
+        out.extend(page.items);
+        if n == 0 || out.len() as i64 >= page.total {
             break;
         }
     }
-    let mut items: Vec<Item> = raw
-        .into_iter()
-        .map(|c| Item {
-            slug: series.get(&c.title).cloned().unwrap_or_default(),
-            id: c.id,
-            title: c.title,
-            season: c.season,
-            episode: c.episode,
-        })
-        .collect();
-    items.sort_by(|a, b| (&a.slug, a.season, a.episode).cmp(&(&b.slug, b.season, b.episode)));
-    let continues = client.continue_watching().await.map_err(|e| format!("continue: {e}"))?;
-    Ok(Loaded { items, continues, library, username })
+    Ok(out)
 }
 
-pub async fn continues(client: Client) -> Result<Vec<Progress>, ClientError> {
-    client.continue_watching().await
+/// Progress for many items at once (small concurrency).
+pub async fn progress_many(sync: Option<ProgressSync>, client: Client, ids: Vec<String>) -> Vec<(String, Progress)> {
+    let mut out = Vec::new();
+    for chunk in ids.chunks(8) {
+        let mut handles = Vec::new();
+        for id in chunk {
+            let (sync, client, id) = (sync.clone(), client.clone(), id.clone());
+            handles.push(tokio::spawn(async move {
+                let p = match sync {
+                    Some(s) => s.fetch(&id).await,
+                    None => client.progress(&id).await,
+                };
+                (id, p)
+            }));
+        }
+        for h in handles {
+            if let Ok((id, Ok(p))) = h.await {
+                out.push((id, p));
+            }
+        }
+    }
+    out
 }
 
-pub async fn progress(client: Client, id: String) -> Option<Progress> {
-    client.progress(&id).await.ok()
-}
-
-pub async fn save_progress(client: Client, id: String, pos: f64, dur: f64) {
-    let completed = dur > 0. && pos / dur > 0.92;
-    if let Err(e) = client.put_progress(&id, ProgressUpdate { position_sec: pos, duration_sec: dur, completed }).await {
-        eprintln!("progress {id}: {e}");
+/// Records a position through the sync engine (queued when offline).
+pub async fn save_progress(
+    b: Arc<Backend>,
+    id: String,
+    pos: f64,
+    dur: f64,
+    completed: bool,
+) -> Result<(), ClientError> {
+    let update = ProgressUpdate { position_sec: pos.max(0.), duration_sec: dur.max(0.), completed };
+    match &b.sync {
+        Some(s) => s.record(&id, update).await.map(|_| ()),
+        None => b.client.put_progress(&id, update).await.map(|_| ()),
     }
 }
 
-/// Forwards `progress-changed` (and reconnects) to the UI.
-pub async fn watch_events(client: Client, tx: tokio::sync::mpsc::UnboundedSender<()>) {
-    let stream = EventStream::new(client, StreamConfig::default());
+/// What the event stream tells the UI.
+#[derive(Debug, Clone)]
+pub enum Poke {
+    Connected,
+    Lost(String),
+    AuthRequired,
+    Progress(String),
+    Library,
+    Modules,
+    Plugins,
+}
+
+/// Forwards server events to the UI and feeds the sync engine.
+pub async fn watch_events(b: Arc<Backend>, tx: tokio::sync::mpsc::UnboundedSender<Poke>) {
+    use lain_client::ServerEvent as E;
+    let stream = EventStream::new(b.client.clone(), StreamConfig::default());
     while let Some(item) = stream.next().await {
-        let poke = matches!(item, StreamItem::Connected(_) | StreamItem::Event(ServerEvent::ProgressChanged(_)));
-        if poke && tx.send(()).is_err() {
+        let poke = match item {
+            StreamItem::Connected(_) => {
+                if let Some(s) = &b.sync {
+                    let _ = s.flush().await;
+                }
+                Poke::Connected
+            }
+            StreamItem::Reconnecting { reason, .. } => Poke::Lost(reason),
+            StreamItem::AuthRequired => Poke::AuthRequired,
+            StreamItem::Event(ev) => {
+                if let Some(s) = &b.sync {
+                    let _ = s.observe(&ev);
+                }
+                match ev {
+                    E::ProgressChanged(p) => Poke::Progress(p.item_id),
+                    E::LibraryChanged(_) => Poke::Library,
+                    E::ModuleState(_) => Poke::Modules,
+                    E::PluginChanged(_) => Poke::Plugins,
+                    E::Other { event, .. } if event.starts_with("scan") => Poke::Library,
+                    E::Other { .. } => continue,
+                }
+            }
+        };
+        if tx.send(poke).is_err() {
             return;
         }
+    }
+}
+
+/// A short, human reason for a failed call, for inline error text.
+pub fn reason(e: &ClientError) -> String {
+    match e {
+        ClientError::NotPorted { .. } => "not available on this server yet".into(),
+        ClientError::ModuleDisabled { module } => format!("the {module} module is disabled on this server"),
+        ClientError::Offline { .. } | ClientError::Timeout => "the server is unreachable".into(),
+        ClientError::Unauthorized => "your session ended; log in again".into(),
+        ClientError::Forbidden { message } if message.is_empty() => "not allowed".into(),
+        ClientError::Forbidden { message } => message.clone(),
+        ClientError::Api { message, status, .. } if message.is_empty() => format!("server error {status}"),
+        ClientError::Api { message, .. } => message.clone(),
+        other => other.to_string(),
     }
 }
