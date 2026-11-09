@@ -79,10 +79,12 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
         shell: bash
+        # A hung network test fails the job instead of holding it.
+        timeout-minutes: 25
         run: |
           if [ "$RUNNER_OS" != Windows ]; then export LAIN_REQUIRE_GO=1; fi
           export LAIN_REQUIRE_FFMPEG=1
-          cargo test --workspace --locked
+          cargo test --workspace --locked --no-fail-fast
 
   conformance:
     name: conformance (Go and Rust servers)

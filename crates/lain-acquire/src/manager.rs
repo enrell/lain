@@ -838,8 +838,10 @@ impl Manager {
         }
         // A magnet whose completion arrives before its metadata event:
         // size it and check the budget here.
+        // The client is cloned out first: `reserve` takes the same lock.
+        let client = lock(&self.inner).client.clone();
         if g.size == 0
-            && let Some(size) = lock(&self.inner).client.clone().and_then(|c| c.status(ih)).map(|s| s.size)
+            && let Some(size) = client.and_then(|c| c.status(ih)).map(|s| s.size)
             && size > 0
         {
             g.size = size;

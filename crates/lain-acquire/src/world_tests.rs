@@ -45,7 +45,40 @@ fn engine() -> Config {
     Config { min_announce_interval: Duration::from_secs(1), ..Config::default() }
 }
 
+/// Turns a hang into a failure: aborts the test binary, naming the
+/// test, when a world outlives `LIMIT`.
+pub(crate) struct Watchdog(Arc<std::sync::atomic::AtomicBool>);
+
+impl Watchdog {
+    const LIMIT: Duration = Duration::from_secs(90);
+
+    pub fn new() -> Watchdog {
+        let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let d2 = done.clone();
+        let name = std::thread::current().name().unwrap_or("?").to_string();
+        std::thread::spawn(move || {
+            let start = Instant::now();
+            while start.elapsed() < Self::LIMIT {
+                if d2.load(std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            eprintln!("test {name} hung for {:?}; aborting", Self::LIMIT);
+            std::process::abort();
+        });
+        Watchdog(done)
+    }
+}
+
+impl Drop for Watchdog {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 pub(crate) struct World {
+    pub _watchdog: Watchdog,
     /// Kept alive for the swarm.
     pub _tracker: Tracker,
     pub seed: Option<Client>,
@@ -114,6 +147,7 @@ impl World {
             ..Default::default()
         };
         World {
+            _watchdog: Watchdog::new(),
             _tracker: tracker,
             seed: Some(seed),
             mi,
