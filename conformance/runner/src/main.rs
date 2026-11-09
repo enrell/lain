@@ -3,8 +3,7 @@
 //!
 //! ```text
 //! LAIN_URL=http://127.0.0.1:9360 lain-conformance [--tier v1,v2] \
-//!     [--var name=value ...] [--vars file.json] [--save-vars file.json] \
-//!     [--verbose] <suite dir>...
+//!     [--var name=value ...] [--verbose] <suite dir>...
 //! ```
 //!
 //! Exit status 0 when every non-skipped case passed.
@@ -20,21 +19,17 @@ fn main() {
     let mut tiers = vec!["v1".to_string(), "v2".to_string()];
     let mut suites = Vec::new();
     let mut vars = Vec::new();
-    let mut load = Vec::new();
-    let mut save = None;
     let mut verbose = false;
     let mut url = std::env::var("LAIN_URL").ok();
     while let Some(a) = args.next() {
         match a.as_str() {
             "--tier" => tiers = args.next().unwrap_or_default().split(',').map(str::to_string).collect(),
             "--var" => vars.push(args.next().unwrap_or_default()),
-            "--vars" => load.push(PathBuf::from(args.next().unwrap_or_default())),
-            "--save-vars" => save = args.next().map(PathBuf::from),
             "--url" => url = args.next(),
             "--verbose" | "-v" => verbose = true,
             "-h" | "--help" => {
                 eprintln!(
-                    "usage: LAIN_URL=http://host:port lain-conformance [--tier v1,v2] [--var k=v] [--vars f.json] [--save-vars f.json] [-v] <suite dir>..."
+                    "usage: LAIN_URL=http://host:port lain-conformance [--tier v1,v2] [--var k=v] [-v] <suite dir>..."
                 );
                 return;
             }
@@ -58,16 +53,6 @@ fn main() {
     }
     let mut runner = Runner::new(base);
     runner.verbose = verbose;
-    for f in load {
-        match std::fs::read(&f).ok().and_then(|raw| serde_json::from_slice::<serde_json::Map<String, Value>>(&raw).ok())
-        {
-            Some(m) => runner.vars.extend(m),
-            None => {
-                eprintln!("cannot read vars file {}", f.display());
-                std::process::exit(2);
-            }
-        }
-    }
     for v in vars {
         let (k, val) = v.split_once('=').unwrap_or((v.as_str(), ""));
         runner.vars.insert(k.to_string(), Value::String(val.to_string()));
@@ -88,12 +73,6 @@ fn main() {
                 eprintln!("{e}");
                 std::process::exit(2);
             }
-        }
-    }
-    if let Some(path) = save {
-        let m: serde_json::Map<String, Value> = runner.vars.clone().into_iter().collect();
-        if let Err(e) = std::fs::write(&path, serde_json::to_vec_pretty(&m).unwrap_or_default()) {
-            eprintln!("save vars: {e}");
         }
     }
     let total = pass + fail + skip;

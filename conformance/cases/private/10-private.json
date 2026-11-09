@@ -1,6 +1,6 @@
 {
   "tier": "v2",
-  "description": "Private libraries (D-156) over seeded state: a second user, and the same user before unlocking, can neither see nor infer private items: not in lists, totals, search, Continue, item routes, progress or events. Runs after the seeded suite; needs its variables and the server's data_dir (a public directory for a second library).",
+  "description": "Private libraries (D-156): a second user, and the same user before unlocking, can neither see nor infer private items: not in lists, totals, search, Continue, item routes, progress or events. Runs after 00-setup; needs its variables and the server's data_dir (a public directory for a second library).",
   "cases": [
     {"name": "making a library private", "requires": ["lib_id"], "steps": [
       {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 200}, "save": {"a1": "/token"}},

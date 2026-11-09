@@ -5,10 +5,10 @@
 #   conformance/run.sh            # Go and Rust
 #   conformance/run.sh go|rust    # one server
 #
-# Go:   fresh (v1) + seed + seeded
-# Rust: fresh (v1+v2) + seeded and seeded-v2 (private libraries) on a
-#       `lain-rs import` of the Go seed
-#       (Rust alone: the seed comes from crates/lain-store/testdata)
+# Go:   fresh (v1)
+# Rust: fresh (v1+v2), then private (private libraries) on a data dir
+#       with a `media` root and the fixture catalog
+#       (conformance/fixtures/catalog.json, `lain-rs import --in`)
 #
 # Env: GO_PORT (19460), RS_PORT (19461), KEEP=1 keeps the temp dir.
 set -eu
@@ -33,9 +33,9 @@ runner="$root/target/debug/lain-conformance"
 lain_rs="$root/target/debug/lain-rs"
 
 # Fixture media: fictional names only.
-mkdir -p "$tmp/media/Frieren" "$tmp/media2" "$tmp/seedmedia/Frieren"
-: >"$tmp/seedmedia/Frieren/[Fansub-A] Frieren - 01 [1080p].mkv"
-: >"$tmp/seedmedia/Frieren/[Fansub-A] Frieren - 02 [1080p].mkv"
+mkdir -p "$tmp/media/Frieren" "$tmp/media2" "$tmp/rootmedia/Frieren"
+: >"$tmp/rootmedia/Frieren/[Fansub-A] Frieren - 01 [1080p].mkv"
+: >"$tmp/rootmedia/Frieren/[Fansub-A] Frieren - 02 [1080p].mkv"
 
 wait_up() {
 	i=0
@@ -76,13 +76,6 @@ run_go() {
 	echo "$out"
 	note "Go   fresh v1: $(echo "$out" | tail -1)"
 	stop "$pid"
-
-	pid=$(LAIN_AUTO_ENRICH=0 start go-seed "$url" "$tmp/lain" serve --data-dir "$tmp/go-seed" --port "$go_port")
-	LAIN_URL=$url "$runner" --var media_dir="$tmp/seedmedia" --save-vars "$tmp/seed-vars.json" conformance/cases/seed
-	out=$(LAIN_URL=$url "$runner" --vars "$tmp/seed-vars.json" conformance/cases/seeded) || { echo "$out"; exit 1; }
-	echo "$out"
-	note "Go   seeded:   $(echo "$out" | tail -1)"
-	stop "$pid"
 }
 
 run_rust() {
@@ -93,23 +86,13 @@ run_rust() {
 	note "Rust fresh v1+v2: $(echo "$out" | tail -1)"
 	stop "$pid"
 
-	if [ -f "$tmp/go-seed/lain.db" ]; then
-		cp -a "$tmp/go-seed" "$tmp/go-seed-copy"
-		src="$tmp/go-seed-copy"
-		vars="$tmp/seed-vars.json"
-	else
-		echo "no Go seed (rust only): skipping the seeded suite; cargo test covers it with the bbolt fixture"
-		return 0
-	fi
-	before=$(cd "$src" && find . -type f -exec cksum {} + | sort)
-	"$lain_rs" import --from "$src" --data-dir "$tmp/rs-seed" >"$tmp/import.json"
-	after=$(cd "$src" && find . -type f -exec cksum {} + | sort)
-	[ "$before" = "$after" ] || { echo "import modified the Go data dir" >&2; exit 1; }
-	note "Import: the Go data dir is unchanged (cksum of every file); $(tr -d ' \n' <"$tmp/import.json" | sed -n 's/.*"counts":{\([^}]*\)}.*/\1/p')"
-	pid=$(start rs-seed "$url" "$lain_rs" serve --data-dir "$tmp/rs-seed" --port "$rs_port")
-	out=$(LAIN_URL=$url "$runner" --vars "$vars" --var data_dir="$tmp/rs-seed" conformance/cases/seeded conformance/cases/seeded-v2) || { echo "$out"; exit 1; }
+	mkdir -p "$tmp/rs-private"
+	printf '{"format":"lain.roots@1","roots":{"media":"%s"}}\n' "$tmp/rootmedia" >"$tmp/rs-private/roots.json"
+	"$lain_rs" import --in conformance/fixtures/catalog.json --data-dir "$tmp/rs-private"
+	pid=$(start rs-private "$url" "$lain_rs" serve --data-dir "$tmp/rs-private" --port "$rs_port")
+	out=$(LAIN_URL=$url "$runner" --var media_root="$tmp/rootmedia" --var data_dir="$tmp/rs-private" conformance/cases/private) || { echo "$out"; exit 1; }
 	echo "$out"
-	note "Rust seeded + private libraries (imported, Go token): $(echo "$out" | tail -1)"
+	note "Rust private libraries: $(echo "$out" | tail -1)"
 	stop "$pid"
 }
 

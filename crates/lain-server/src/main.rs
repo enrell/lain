@@ -3,11 +3,11 @@
 
 use std::path::{Path, PathBuf};
 
+use lain_server::VERSION;
 use lain_server::app::{App, Config};
 use lain_server::datadir::{Os, default_data_dir};
 use lain_server::logging::{self, Sink};
 use lain_server::service::{self, Action, Host, Spec};
-use lain_server::{VERSION, import};
 
 const DEFAULT_PORT: &str = "9361";
 
@@ -16,9 +16,8 @@ fn usage() {
         "usage: lain-rs <command> [flags]
 
   serve     run the server (--data-dir, --port {DEFAULT_PORT}, --bind 127.0.0.1, --log-level info, --log-file)
-  import    copy a Go data dir into a fresh Rust one, read-only (--from DIR [--data-dir DIR] [--catalog export.json]
-            [--roots roots.json] [--dry-run]: absolute paths move onto named roots; --dry-run only reports)
   export    write the catalog as lain.catalog-export@3 (--data-dir, --out FILE; default stdout)
+  import    replace the catalog with a lain.catalog-export@3 document (--data-dir, --in FILE)
   service   install|uninstall|start|stop|status|logs the background service
             (--name lain-rs, --system, --linger, --port, --bind, --data-dir, --dry-run; logs: --follow, --lines N)
   version   print version
@@ -123,18 +122,12 @@ async fn shutdown_signal() {
 }
 
 fn cmd_import(args: &[String]) -> Result<(), String> {
-    let from = flag(args, "from").ok_or("import needs --from <go data dir>")?;
-    let to = data_dir(args)?;
-    let opts = import::Options {
-        catalog: flag(args, "catalog").map(PathBuf::from),
-        roots: flag(args, "roots").map(PathBuf::from),
-        dry_run: has(args, "dry-run"),
-    };
-    let report = import::run_with(Path::new(&from), &to, &opts)?;
-    println!("{}", serde_json::to_string_pretty(&report.to_json()).unwrap_or_default());
-    if !opts.dry_run {
-        println!("imported into {}", to.display());
-    }
+    let file = flag(args, "in").ok_or("import needs --in <export.json>")?;
+    let dir = data_dir(args)?;
+    let raw = std::fs::read(&file).map_err(|e| format!("{file}: {e}"))?;
+    let doc = serde_json::from_slice(&raw).map_err(|e| format!("{file}: {e}"))?;
+    let n = lain_server::import(&dir, &doc)?;
+    println!("imported {n} items into {}", dir.display());
     Ok(())
 }
 

@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use lain_core::{Error, Provider};
 use lain_store::{Bucket, Store, StoreError, join_key, key_prefix};
 
-use crate::contracts::{CatalogItem, CatalogPage, EXPORT_FORMAT, ExportDoc, PageParams, Progress};
+use crate::contracts::{CatalogItem, CatalogPage, EXPORT_FORMAT, EXPORT_VERSION, ExportDoc, PageParams, Progress};
 use crate::roots::Roots;
 
 pub const CAP_CATALOG_READ: &str = "lain.catalog.read@1";
@@ -200,7 +200,7 @@ impl Catalog {
     /// The portable document, `lain.catalog-export@3` (D-175): aliases
     /// and roots; `file_path` is this machine's resolution.
     pub fn export(&self) -> Result<ExportDoc, Error> {
-        let mut doc = ExportDoc { format: EXPORT_FORMAT.into(), version: 3, ..ExportDoc::default() };
+        let mut doc = ExportDoc { format: EXPORT_FORMAT.into(), version: EXPORT_VERSION, ..ExportDoc::default() };
         for it in self.all()? {
             if !it.root.is_empty() && !doc.roots.contains(&it.root) {
                 doc.roots.push(it.root.clone());
@@ -212,10 +212,14 @@ impl Catalog {
     }
 
     /// Replaces the catalog with a document in one transaction, the
-    /// library index rebuilt with it. Versions 1, 2 and 3 are accepted.
+    /// library index rebuilt with it. Only @3 is accepted; a rooted
+    /// item keeps `root` + `rel_path` and drops the document's
+    /// `file_path` (another machine's resolution).
     pub fn import(&self, doc: &ExportDoc) -> Result<usize, Error> {
-        if doc.format != EXPORT_FORMAT || !(1..=3).contains(&doc.version) {
-            return Err(Error::invalid("unsupported export format/version"));
+        if doc.format != EXPORT_FORMAT || doc.version != EXPORT_VERSION {
+            return Err(Error::invalid(format!(
+                "unsupported export format/version (want {EXPORT_FORMAT}@{EXPORT_VERSION})"
+            )));
         }
         self.store
             .write(|tx| {
@@ -224,6 +228,9 @@ impl Catalog {
                 for (id, it) in &doc.items {
                     let mut it = it.clone();
                     it.id = id.clone();
+                    if !it.root.is_empty() {
+                        it.file_path.clear();
+                    }
                     tx.put_json(Bucket::Items, id.as_bytes(), &it)?;
                     tx.put(Bucket::ItemsByLibrary, &join_key(&it.library_id, id), b"")?;
                 }
@@ -401,7 +408,7 @@ mod tests {
         let dir = lain_store::test_dir("catalog");
         let store = Arc::new(Store::open(&dir).unwrap());
         let cat = Catalog::new(store.clone());
-        let mut doc = ExportDoc { format: EXPORT_FORMAT.into(), version: 1, ..ExportDoc::default() };
+        let mut doc = ExportDoc { format: EXPORT_FORMAT.into(), version: EXPORT_VERSION, ..ExportDoc::default() };
         for it in [
             item("c", "l1", "Frieren", 2, 5),
             item("a", "l1", "Frieren", 1, 9),
@@ -427,8 +434,12 @@ mod tests {
         assert!(cat.set_missing("a", true).unwrap());
         assert!(cat.get("a").unwrap().unwrap().missing);
         assert!(!cat.set_missing("zz", true).unwrap());
-        assert!(cat.import(&ExportDoc { format: "x".into(), version: 1, ..ExportDoc::default() }).is_err());
-        assert!(cat.import(&ExportDoc { format: EXPORT_FORMAT.into(), version: 4, ..ExportDoc::default() }).is_err());
+        assert!(cat.import(&ExportDoc { format: "x".into(), version: 3, ..ExportDoc::default() }).is_err());
+        for v in [1, 2, 4] {
+            assert!(
+                cat.import(&ExportDoc { format: EXPORT_FORMAT.into(), version: v, ..ExportDoc::default() }).is_err()
+            );
+        }
         let mut hidden = PageParams::normalize(0, 0, "");
         hidden.exclude_libraries = vec!["l1".into()];
         assert_eq!(cat.page(&hidden).unwrap().total, 0, "excluded before counting");
@@ -452,6 +463,8 @@ mod tests {
         let mut doc = ExportDoc { format: EXPORT_FORMAT.into(), version: 3, ..ExportDoc::default() };
         doc.items.insert("a".into(), it);
         cat.import(&doc).unwrap();
+        let stored: CatalogItem = store.read(|tx| tx.get_json(Bucket::Items, b"a")).unwrap().unwrap();
+        assert_eq!((stored.file_path.as_str(), stored.rel_path.as_str()), ("", "movies/Akira.mkv"));
         assert_eq!(cat.get("a").unwrap().unwrap().file_path, "/mnt/v/media/movies/Akira.mkv");
         // Another machine: only the mapping changes.
         *roots.write().unwrap() = Roots::parse(br#"{"format":"lain.roots@1","roots":{"media":"D:\\Media"}}"#).unwrap();

@@ -1,6 +1,6 @@
 [package]
 name = "lain-server"
-description = "Lain Rust server (D-171): the gateway, modules, events, service mode and Go data import"
+description = "Lain Rust server (D-171): the gateway, modules, events and service mode"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

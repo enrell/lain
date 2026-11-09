@@ -1,6 +1,6 @@
 [package]
 name = "lain-store"
-description = "Lain embedded store: redb with the bucket semantics of internal/kv, plus a read-only bbolt reader for import"
+description = "Lain embedded store: redb tables of JSON records with NUL-joined composite keys"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

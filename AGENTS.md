@@ -54,16 +54,19 @@ daily; until cutover this file documents both stacks.
   - `lain-core` — composition, provider registry (modes, health-gated
     swap, generation fencing, last-good fallback, withdraw, module
     suspend/resume) and the module layer (`lain.modules@1`, D-154).
-  - `lain-store` — redb with the bucket semantics of `internal/kv`, and
-    a read-only bbolt reader for import.
-  - `lain-auth` — setup, bcrypt, HS256 tokens with live checks.
+  - `lain-store` — redb tables of JSON records with NUL-joined
+    composite keys. A data dir starts empty: nothing is imported from
+    the Go server (D-177).
+  - `lain-auth` — setup, Argon2id passwords and PINs, HS256 tokens with
+    a session `jti` and live checks.
   - `lain-component` — the component host, `serve` for Rust components
     and the `<data-dir>/plugins/` watcher; the Go wire, byte for byte.
   - `lain-server` — the axum gateway, `/api/modules`, `/api/events`,
-    service mode, `import`; binary `lain-rs` (data dir `lain-rs`, port
-    9361) so it never collides with the Go `lain`.
+    service mode, catalog `export`/`import` (`lain.catalog-export@3`);
+    binary `lain-rs` (data dir `lain-rs`, port 9361) so it never
+    collides with the Go `lain`.
   - `conformance/runner` — the conformance runner (`lain-conformance`).
-- Dependencies: the D-172 baseline plus D-173, versions pinned with `=`
+- Dependencies: the D-172 baseline plus D-173 (argon2 per D-177), versions pinned with `=`
   in the workspace `Cargo.toml`, `Cargo.lock` committed. A crate outside
   this list is asked of the owner first (DESIGN-v2 §13 policy: few,
   maintained, pure Rust, no C-heavy dependency in the server).
@@ -75,10 +78,11 @@ daily; until cutover this file documents both stacks.
     `Body` trait, which the SSE stream implements.
   - `serde` / `serde_json` — the JSON contracts.
   - `redb` — the embedded store, pure Rust, the bbolt equivalent.
-  - `bcrypt` — passwords and PINs. Chosen over argon2 because every hash
-    in the Go store is bcrypt (`$2a$10$`) and must keep verifying after
-    import; one algorithm keeps one verifier. Moving to argon2 later is a
-    rehash-on-login change, not a migration.
+  - `argon2` (D-177, RustCrypto, pure Rust) — passwords and library
+    PINs as Argon2id PHC strings, default parameters; features `alloc`,
+    `password-hash`, `getrandom` (salts). Built with `opt-level = 3` in
+    the dev profile, since unoptimized hashing slows every login in the
+    test suites. No Go hash is ever verified, so there is no bcrypt.
   - `notify` — file watching for `plugins/` and `modules.json`, default
     features (macOS needs `macos_fsevent` to build).
   - `tracing` — log events.
@@ -86,11 +90,11 @@ daily; until cutover this file documents both stacks.
     (`fmt` + `json` only, no env-filter/regex).
   - `sha2` + `hmac` (D-173, RustCrypto, pure Rust) — the HS256 token
     signature and its constant-time check.
-  - `getrandom` (D-173) — OS randomness for the token secret; already in
-    the tree through `bcrypt`.
-  - In-tree instead of a crate: base64 (`lain-auth/src/crypto.rs`; no
-    approved crate exposes it and the store needs Go's two encodings),
-    the bbolt reader, and the runner's HTTP client.
+  - `getrandom` (D-173) — OS randomness for the token secret and the
+    token `jti`.
+  - In-tree instead of a crate: URL-safe base64 for the JWT segments
+    (`lain-auth/src/crypto.rs`; no approved crate exposes one) and the
+    runner's HTTP client.
   - No test-only crates.
 - Rules that carry over unchanged: plugin boundaries, media bytes never
   in a plugin call, catalog/userstate separation, typed errors with

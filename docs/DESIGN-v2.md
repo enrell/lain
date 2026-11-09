@@ -130,10 +130,10 @@ Today a library stores absolute paths. v2 stores **named roots**: a library
 declares a root (`biblioteca`, `anime-arquivo`…) and items store
 `root:relative/path`. Each machine maps root names to directories in its own
 config. Moving from Windows/WSL (`V:\media`, `/mnt/v/...`) to Linux (Omarchy)
-then becomes a mapping change, not a catalog rewrite. A one-shot
-migration converts existing absolute paths. This implements the "portable paths"
-rule from hq-app DESIGN "Dados dos apps". **[owner]**: it changes the catalog
-export document (`lain.catalog-export@3`, with import of @1 and @2; D-175).
+then becomes a mapping change, not a catalog rewrite. This implements the
+"portable paths" rule from hq-app DESIGN "Dados dos apps". **[owner]**: it
+changes the catalog export document (`lain.catalog-export@3`, the only version
+lain-rs reads; D-175, D-177).
 
 ## 6. The owner's other repos
 
@@ -338,7 +338,7 @@ app. It builds its navigation from `/api/modules`, so it follows module state.
 | V-1 | Modules as a bundle layer over composition; `modules.json` (`lain.modules@1`); disable = withdraw + unmount, data kept | public API |
 | V-2 | The module set in §5.2 | — |
 | V-3 | Private libraries enforced in the gateway; per-session unlock with PIN/password | auth surface |
-| V-4 | Named library roots; `lain.catalog-export@3` with @1/@2 import (D-175) | storage contract |
+| V-4 | Named library roots; `lain.catalog-export@3` (D-175, D-177) | storage contract |
 | V-5 | Benchmark lain-parser vs zantetsu on the same real names before keeping either as the default | — |
 | V-6 | `lain.subtitle.translate@1` served by an animesubs component | public contract |
 | V-7 | `lain.acquire.extract@1` served by an Anything component; Anything must add auth first | public contract |
@@ -388,11 +388,10 @@ proven.
      BitTorrent engine, kept in-house), subtitles, lists, social;
   5. cutover;
   6. Go removed.
-- **Data:**
-  - bbolt documents migrate through `lain.catalog-export@3` (`D-157`, `D-175`) plus a
-    userstate export, with a one-shot importer in the Rust server.
-  - The existing data dir is read, never written, until the owner confirms the
-    cutover.
+- **Data (D-177):** no migration. Nobody runs lain yet, so the Rust server
+  starts from an empty data dir of its own (`lain-rs`, port 9361 until cutover);
+  there is no importer of the Go store, Go tokens or Go password hashes. The
+  catalog moves between lain-rs data dirs as `lain.catalog-export@3`.
 - **Web SPA:** unchanged; the Rust server embeds and serves the same build.
 - **Dependency policy for Rust** (replaces D-001/D-002 for the Rust code, and
   needs the owner's approval of the list, **[owner]**):
@@ -409,7 +408,7 @@ proven.
     | `axum` / `hyper` | HTTP |
     | `serde` / `serde_json` | JSON |
     | `redb` | embedded KV, pure Rust, the bbolt equivalent |
-    | `argon2` or `bcrypt` | passwords |
+    | `argon2` | passwords (D-177: Argon2id; no bcrypt) |
     | `notify` | file watching (the fsnotify equivalent) |
     | `tracing` | logs |
 - **Rules that carry over unchanged:** plugin boundaries, "media bytes never
