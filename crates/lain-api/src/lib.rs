@@ -323,7 +323,44 @@ pub struct ProgressUpdate {
     pub completed: bool,
 }
 
-// ---- watch and read (parity routes, not served by lain-rs yet) --------------
+// ---- read ---------------------------------------------------------------
+
+/// The metadata an archive declares about itself (`ComicInfo.xml`).
+/// Every field is optional; it decorates and never changes identity.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComicInfo {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub series: String,
+    /// The issue or chapter, may be `12.5`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub number: String,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub volume: i64,
+    /// Issues in the series.
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub count: i64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub year: i64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub writer: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub artist: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub publisher: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub genres: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub language: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub age_rating: String,
+    /// `rtl` or `ltr` when the file declares it, else empty.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub direction: String,
+}
 
 /// One page of a comic or manga archive.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -340,10 +377,66 @@ pub struct ComicPage {
 pub struct ComicPages {
     pub kind: String,
     pub format: String,
-    /// `rtl` for manga, `ltr` for comics.
+    /// The archive's own declaration (`info.direction`), else `rtl`
+    /// for manga and `ltr` for comics.
     pub direction: String,
     pub pages: Vec<ComicPage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub info: Option<ComicInfo>,
 }
+
+// ---- server administration ------------------------------------------------
+
+/// `GET /api/theme`: the web UI palette (`lain.ui.theme@1`), already
+/// semantic `#rrggbb` roles. `source` is `default` or `omarchy`, `mode`
+/// `dark` or `light`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Palette {
+    pub source: String,
+    pub mode: String,
+    pub background: String,
+    pub surface: String,
+    pub surface_hover: String,
+    pub surface_active: String,
+    pub foreground: String,
+    pub muted: String,
+    pub line: String,
+    pub accent: String,
+    pub accent_hover: String,
+    pub accent_foreground: String,
+    pub danger: String,
+    pub danger_foreground: String,
+    pub success: String,
+    pub warning: String,
+}
+
+/// One platform of `GET /api/admin/settings/integrations`. The secret
+/// itself is never returned, only whether one is stored.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IntegrationPlatform {
+    pub client_id: String,
+    pub secret_set: bool,
+    /// The OAuth redirect URL to register with the platform.
+    pub callback_url: String,
+}
+
+/// `GET/PUT /api/admin/settings/integrations` (admin).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IntegrationsView {
+    pub platforms: BTreeMap<String, IntegrationPlatform>,
+}
+
+/// The `PUT /api/admin/settings/integrations` body: absent fields keep
+/// their value, and an empty secret keeps the stored one.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IntegrationsUpdate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anilist_client_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anilist_client_secret: Option<String>,
+}
+
+// ---- watch (parity routes, not served by lain-rs yet) ----------------------
 
 /// `GET /api/items/{id}/playback` (`lain.playback.plan@1`): how to
 /// play an item. Transcode session fields stay in `extra` until the

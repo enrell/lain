@@ -36,7 +36,10 @@ mediated services (gateway-owned writes, scoped secrets).
   the recent event log (`swap`, `swap-rejected`, `fallback`,
   `withdraw`, `withdraw-degraded`).
 - `lain doctor`: runtime + matrix environment report as JSON.
-- `GET /api/admin/backup`: consistent snapshot stream (admin only).
+- `GET /api/admin/backup`: consistent snapshot stream (admin only). On
+  lain-rs (D-197) it is a tar of a redb snapshot plus the data dir's
+  documents and avatars; restore by extracting it into an empty data
+  dir while the server is stopped.
 - `lain backup` / `lain restore`: validated snapshots; restore never
   overwrites a live database.
 - Data dir documents are atomic JSON; a corrupt file errors loudly at

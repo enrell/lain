@@ -1,0 +1,17 @@
+[package]
+name = "lain-admin"
+description = "Lain's core administration (D-196..D-199): theme, backup, integrations settings and avatars"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lain-api.workspace = true
+lain-core.workspace = true
+lain-read.workspace = true
+lain-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

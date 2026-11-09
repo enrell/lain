@@ -23,6 +23,9 @@ pub const ROLE_USER: &str = "user";
 /// Token lifetime.
 pub const TOKEN_TTL_SECS: i64 = 24 * 3600;
 
+/// The avatar kind of an uploaded picture.
+pub const AVATAR_UPLOAD: &str = "upload";
+
 /// The pre-made avatar set (D-086). The artwork lives in the clients.
 pub const MASCOTS: [&str; 8] = ["wired", "moth", "static", "orbit", "glyph", "shell", "neon", "void"];
 
@@ -416,6 +419,17 @@ impl<'s> Auth<'s> {
                     return Err(msg("unknown mascot"));
                 }
             }
+            Ok(())
+        })
+        .map(User::public)
+    }
+
+    /// Marks the account as using its uploaded picture (the caller has
+    /// already stored the file); the new version makes a new URL.
+    pub fn set_uploaded_avatar(&self, id: &str) -> Result<User, AuthError> {
+        self.update(id, |u| {
+            u.profile.avatar =
+                Avatar { kind: AVATAR_UPLOAD.into(), mascot: String::new(), version: lain_core::now_unix_millis() };
             Ok(())
         })
         .map(User::public)

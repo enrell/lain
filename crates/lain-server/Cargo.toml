@@ -16,6 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 lain-api.workspace = true
+lain-admin.workspace = true
+lain-read.workspace = true
 axum.workspace = true
 hyper.workspace = true
 notify.workspace = true

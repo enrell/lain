@@ -20,6 +20,7 @@
 //! | `meta`             | `secret`, `schema`       | raw bytes                 |
 //! | `enrichments`      | item id                  | metadata overlay JSON     |
 //! | `metadata_cache`   | `q\0kind\0query`, `r\0provider\0id` | `{at, data}` (TTL) |
+//! | `meta`             | `integrations`           | integration settings JSON |
 //!
 //! Library JSON carries `private`, `owner`, `members` (D-156), `root`
 //! and `root_path` (D-157); a rooted item stores `root` + `rel_path`
@@ -29,7 +30,7 @@
 
 use std::path::{Path, PathBuf};
 
-use redb::{Database, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, ReadableTableMetadata, TableDefinition, TableHandle};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -198,6 +199,41 @@ impl Store {
                 Err(e)
             }
         }
+    }
+}
+
+impl Store {
+    /// Writes a consistent copy of the whole database to `dest` (a new
+    /// redb file): every table is copied inside one read transaction,
+    /// so the copy is one point in time while the server keeps writing.
+    /// Tables are read from the file itself, so tables added by modules
+    /// are copied too. Returns the number of records copied.
+    pub fn snapshot(&self, dest: &Path) -> Result<u64, StoreError> {
+        if dest.exists() {
+            return Err(StoreError::Abort(format!("{} already exists", dest.display())));
+        }
+        let rx = self.db.begin_read().map_err(db_err)?;
+        let out = Database::create(dest).map_err(db_err)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o600));
+        }
+        let wx = out.begin_write().map_err(db_err)?;
+        let mut n = 0u64;
+        for handle in rx.list_tables().map_err(db_err)? {
+            let name = handle.name().to_string();
+            let def: TableDefinition<'_, &[u8], &[u8]> = TableDefinition::new(&name);
+            let src = rx.open_table(def).map_err(db_err)?;
+            let mut dst = wx.open_table(def).map_err(db_err)?;
+            for row in src.iter().map_err(db_err)? {
+                let (k, v) = row.map_err(db_err)?;
+                dst.insert(k.value(), v.value()).map_err(db_err)?;
+                n += 1;
+            }
+        }
+        wx.commit().map_err(db_err)?;
+        Ok(n)
     }
 }
 
@@ -422,6 +458,26 @@ mod tests {
         assert_eq!(store.read(|tx| tx.get(Bucket::Meta, b"secret")).unwrap().unwrap(), b"s");
         assert_eq!(store.read(|tx| tx.get(Bucket::Meta, b"schema")).unwrap().unwrap(), SCHEMA.as_bytes());
         drop(store);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn snapshot_is_a_complete_store() {
+        let dir = test_dir("snapshot");
+        let store = Store::open(&dir).unwrap();
+        store.write(|tx| tx.put_json(Bucket::Users, b"user-a", &serde_json::json!({"id": "user-a"}))).unwrap();
+        let out = dir.join("copy");
+        std::fs::create_dir_all(&out).unwrap();
+        let n = store.snapshot(&out.join(FILE_NAME)).unwrap();
+        assert_eq!(n, 2, "the user and the schema");
+        assert!(store.snapshot(&out.join(FILE_NAME)).is_err(), "never over an existing file");
+        // Writes after the snapshot do not reach it, and the copy opens
+        // as a store of its own.
+        store.write(|tx| tx.put(Bucket::Users, b"user-b", b"{}")).unwrap();
+        let copy = Store::open(&out).unwrap();
+        assert!(copy.read(|tx| tx.get(Bucket::Users, b"user-a")).unwrap().is_some());
+        assert!(copy.read(|tx| tx.get(Bucket::Users, b"user-b")).unwrap().is_none());
+        drop((store, copy));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
