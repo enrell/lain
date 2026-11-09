@@ -1,4 +1,5 @@
-//! libmpv, embedded with `wid` into a child HWND of the GPUI window.
+//! libmpv, embedded with `wid` into a child HWND of the GPUI window
+//! (Windows; Linux uses `mpv_ipc.rs`).
 //!
 //! GPUI's Windows renderer draws through DirectComposition with a visual
 //! tree that is *topmost* over the window's child windows
@@ -13,7 +14,7 @@
 //! windows, so mouse input over the video still reaches GPUI's window.
 
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
@@ -21,10 +22,9 @@ use windows::Win32::Graphics::Gdi::{BLACK_BRUSH, GetStockObject, HBRUSH};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, EnumChildWindows, GetClientRect,
-    HTTRANSPARENT, HWND_BOTTOM, RegisterClassW, SW_HIDE, SW_SHOWNA, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
-    ShowWindow, WM_NCHITTEST, WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_DISABLED,
-    WS_EX_NOACTIVATE,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, EnumChildWindows, GetClientRect, HTTRANSPARENT, HWND_BOTTOM,
+    RegisterClassW, SW_HIDE, SW_SHOWNA, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, ShowWindow, WM_NCHITTEST,
+    WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_DISABLED, WS_EX_NOACTIVATE,
 };
 use windows::core::{BOOL, PCWSTR, w};
 
@@ -68,49 +68,91 @@ const EV_FILE_LOADED: c_int = 8;
 const EV_VIDEO_RECONFIG: c_int = 17;
 const EV_PROPERTY_CHANGE: c_int = 22;
 
-#[link(name = "mpv")]
-unsafe extern "C" {
-    fn mpv_create() -> *mut MpvHandle;
-    fn mpv_initialize(ctx: *mut MpvHandle) -> c_int;
-    fn mpv_terminate_destroy(ctx: *mut MpvHandle);
-    fn mpv_set_option_string(ctx: *mut MpvHandle, name: *const c_char, data: *const c_char) -> c_int;
-    fn mpv_command(ctx: *mut MpvHandle, args: *mut *const c_char) -> c_int;
-    fn mpv_command_async(ctx: *mut MpvHandle, reply: u64, args: *mut *const c_char) -> c_int;
-    fn mpv_set_property_string(ctx: *mut MpvHandle, name: *const c_char, data: *const c_char) -> c_int;
-    fn mpv_get_property(ctx: *mut MpvHandle, name: *const c_char, format: c_int, data: *mut c_void) -> c_int;
-    fn mpv_get_property_string(ctx: *mut MpvHandle, name: *const c_char) -> *mut c_char;
-    fn mpv_observe_property(ctx: *mut MpvHandle, reply: u64, name: *const c_char, format: c_int) -> c_int;
-    fn mpv_wait_event(ctx: *mut MpvHandle, timeout: f64) -> *mut MpvEvent;
-    fn mpv_free(data: *mut c_void);
-    fn mpv_error_string(error: c_int) -> *const c_char;
+/// The libmpv entry points, loaded at run time from `libmpv-2.dll` (next
+/// to the exe, or on the DLL search path), so the build needs no import
+/// library and a missing DLL is a clear error instead of a failed start.
+#[allow(clippy::type_complexity)]
+struct Lib {
+    create: unsafe extern "C" fn() -> *mut MpvHandle,
+    initialize: unsafe extern "C" fn(*mut MpvHandle) -> c_int,
+    terminate_destroy: unsafe extern "C" fn(*mut MpvHandle),
+    set_option_string: unsafe extern "C" fn(*mut MpvHandle, *const c_char, *const c_char) -> c_int,
+    command: unsafe extern "C" fn(*mut MpvHandle, *mut *const c_char) -> c_int,
+    command_async: unsafe extern "C" fn(*mut MpvHandle, u64, *mut *const c_char) -> c_int,
+    set_property_string: unsafe extern "C" fn(*mut MpvHandle, *const c_char, *const c_char) -> c_int,
+    get_property: unsafe extern "C" fn(*mut MpvHandle, *const c_char, c_int, *mut c_void) -> c_int,
+    get_property_string: unsafe extern "C" fn(*mut MpvHandle, *const c_char) -> *mut c_char,
+    observe_property: unsafe extern "C" fn(*mut MpvHandle, u64, *const c_char, c_int) -> c_int,
+    wait_event: unsafe extern "C" fn(*mut MpvHandle, f64) -> *mut MpvEvent,
+    free: unsafe extern "C" fn(*mut c_void),
+    error_string: unsafe extern "C" fn(c_int) -> *const c_char,
+}
+
+fn lib() -> Result<&'static Lib, String> {
+    static LIB: OnceLock<Result<Lib, String>> = OnceLock::new();
+    LIB.get_or_init(|| unsafe {
+        use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+        let h =
+            LoadLibraryW(w!("libmpv-2.dll")).map_err(|e| format!("libmpv-2.dll not found next to the app ({e})"))?;
+        macro_rules! sym {
+            ($name:literal) => {{
+                let p = GetProcAddress(h, windows::core::PCSTR(concat!($name, "\0").as_ptr()))
+                    .ok_or_else(|| format!("libmpv-2.dll has no {}", $name))?;
+                std::mem::transmute::<unsafe extern "system" fn() -> isize, _>(p)
+            }};
+        }
+        Ok(Lib {
+            create: sym!("mpv_create"),
+            initialize: sym!("mpv_initialize"),
+            terminate_destroy: sym!("mpv_terminate_destroy"),
+            set_option_string: sym!("mpv_set_option_string"),
+            command: sym!("mpv_command"),
+            command_async: sym!("mpv_command_async"),
+            set_property_string: sym!("mpv_set_property_string"),
+            get_property: sym!("mpv_get_property"),
+            get_property_string: sym!("mpv_get_property_string"),
+            observe_property: sym!("mpv_observe_property"),
+            wait_event: sym!("mpv_wait_event"),
+            free: sym!("mpv_free"),
+            error_string: sym!("mpv_error_string"),
+        })
+    })
+    .as_ref()
+    .map_err(|e| e.clone())
+}
+
+unsafe fn mpv_create() -> *mut MpvHandle {
+    match lib() {
+        Ok(l) => unsafe { (l.create)() },
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+macro_rules! fwd {
+    ($name:ident, $field:ident, ($($a:ident: $t:ty),*) -> $r:ty) => {
+        unsafe fn $name($($a: $t),*) -> $r { unsafe { (lib().expect("libmpv loaded").$field)($($a),*) } }
+    };
+}
+fwd!(mpv_initialize, initialize, (ctx: *mut MpvHandle) -> c_int);
+fwd!(mpv_terminate_destroy, terminate_destroy, (ctx: *mut MpvHandle) -> ());
+fwd!(mpv_set_option_string, set_option_string, (ctx: *mut MpvHandle, n: *const c_char, d: *const c_char) -> c_int);
+fwd!(mpv_command, command, (ctx: *mut MpvHandle, a: *mut *const c_char) -> c_int);
+fwd!(mpv_command_async, command_async, (ctx: *mut MpvHandle, r: u64, a: *mut *const c_char) -> c_int);
+fwd!(mpv_set_property_string, set_property_string, (ctx: *mut MpvHandle, n: *const c_char, d: *const c_char) -> c_int);
+fwd!(mpv_get_property, get_property, (ctx: *mut MpvHandle, n: *const c_char, f: c_int, d: *mut c_void) -> c_int);
+fwd!(mpv_get_property_string, get_property_string, (ctx: *mut MpvHandle, n: *const c_char) -> *mut c_char);
+fwd!(mpv_observe_property, observe_property, (ctx: *mut MpvHandle, r: u64, n: *const c_char, f: c_int) -> c_int);
+fwd!(mpv_wait_event, wait_event, (ctx: *mut MpvHandle, t: f64) -> *mut MpvEvent);
+fwd!(mpv_free, free, (d: *mut c_void) -> ());
+fwd!(mpv_error_string, error_string, (e: c_int) -> *const c_char);
+
+/// Whether libmpv can be loaded (and why not).
+pub fn available() -> Result<(), String> {
+    lib().map(|_| ())
 }
 
 // ---- state shared with the UI ---------------------------------------------
 
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Track {
-    pub id: i64,
-    pub kind: String,
-    pub label: String,
-    pub selected: bool,
-}
-
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct PlayerState {
-    pub time: f64,
-    pub duration: f64,
-    pub paused: bool,
-    pub volume: f64,
-    pub muted: bool,
-    /// Seconds of demuxed data ahead of the start (`demuxer-cache-time`).
-    pub cache_end: f64,
-    pub tracks: Vec<Track>,
-    pub loaded: bool,
-    /// The VO is configured: the first frame is (about to be) on screen.
-    pub has_video: bool,
-    pub eof: bool,
-    pub error: Option<String>,
-}
+use crate::engine::{PlayerState, Track};
 
 pub struct Mpv {
     h: *mut MpvHandle,
@@ -137,6 +179,7 @@ impl Mpv {
     /// Creates a player rendering into `wid` (an HWND), with `options`
     /// applied before initialization.
     pub fn new(wid: isize, options: &[(&str, &str)]) -> Result<Mpv, String> {
+        lib()?;
         let h = unsafe { mpv_create() };
         if h.is_null() {
             return Err("mpv_create failed".into());
@@ -158,8 +201,6 @@ impl Mpv {
             ("cursor-autohide", "no"),
             ("terminal", "no"),
             ("background-color", "#000000"),
-            // The test file's ASS track has no default flag: show it anyway.
-            ("sid", "1"),
         ];
         for (k, v) in base.iter().chain(options.iter()) {
             let r = unsafe { mpv_set_option_string(h, cstr(k).as_ptr(), cstr(v).as_ptr()) };
@@ -267,17 +308,17 @@ fn read_tracks(h: *mut MpvHandle) -> Vec<Track> {
     (0..n)
         .map(|i| {
             let g = |k: &str| get_string(h, &format!("track-list/{i}/{k}")).unwrap_or_default();
-            let (title, lang, codec) = (g("title"), g("lang"), g("codec"));
-            let mut label = match (title.is_empty(), lang.is_empty()) {
-                (false, false) => format!("{title} ({lang})"),
-                (false, true) => title,
-                (true, false) => lang,
-                (true, true) => format!("Track {}", g("id")),
-            };
-            if !codec.is_empty() {
-                label = format!("{label} · {codec}");
+            let id: i64 = g("id").parse().unwrap_or(0);
+            let external = g("external") == "yes";
+            let lang = g("lang");
+            Track {
+                id,
+                kind: g("type"),
+                label: crate::engine::track_label(id, &g("title"), &lang, &g("codec"), external),
+                lang,
+                external,
+                selected: g("selected") == "yes",
             }
-            Track { id: g("id").parse().unwrap_or(0), kind: g("type"), label, selected: g("selected") == "yes" }
         })
         .collect()
 }
@@ -379,7 +420,17 @@ impl VideoHost {
                 None,
             )
             .map_err(|e| e.to_string())?;
-            let _ = SetWindowPos(hwnd, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOACTIVATE | windows::Win32::UI::WindowsAndMessaging::SWP_NOMOVE | windows::Win32::UI::WindowsAndMessaging::SWP_NOSIZE);
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_BOTTOM),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOACTIVATE
+                    | windows::Win32::UI::WindowsAndMessaging::SWP_NOMOVE
+                    | windows::Win32::UI::WindowsAndMessaging::SWP_NOSIZE,
+            );
             let _ = ShowWindow(hwnd, SW_SHOWNA);
             Ok(VideoHost { hwnd, parent, last: (rc.right, rc.bottom) })
         }
