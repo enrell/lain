@@ -86,6 +86,58 @@ jobs:
           export LAIN_REQUIRE_FFMPEG=1
           cargo test --workspace --locked --no-fail-fast
 
+  desktop:
+    # The GPUI desktop app (apps/desktop, its own cargo workspace and
+    # Cargo.lock). Build and unit tests only: no GUI runs in CI. libmpv
+    # is loaded at run time, so no mpv is needed to build.
+    name: desktop build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: "4"
+      CARGO_INCREMENTAL: "0"
+      # Overrides apps/desktop/.cargo/config.toml (a local C: path).
+      CARGO_TARGET_DIR: ${{ github.workspace }}/apps/desktop/target
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v7
+      - name: Linux libraries (GPUI on X11/Wayland)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libxcb1-dev \
+            libfontconfig1-dev libfreetype-dev libvulkan-dev
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt && rustc --version
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            apps/desktop/target
+          key: desktop-${{ runner.os }}-${{ hashFiles('apps/desktop/Cargo.lock') }}-${{ hashFiles('apps/desktop/src/**', 'crates/lain-client/src/**', 'crates/lain-api/src/**') }}
+          restore-keys: |
+            desktop-${{ runner.os }}-${{ hashFiles('apps/desktop/Cargo.lock') }}-
+            desktop-${{ runner.os }}-
+      - name: Format
+        if: runner.os == 'Linux'
+        run: cargo fmt -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Build
+        run: cargo build --locked
+      - name: Test
+        run: cargo test --locked
+
   conformance:
     name: conformance (Go and Rust servers)
     runs-on: ubuntu-24.04

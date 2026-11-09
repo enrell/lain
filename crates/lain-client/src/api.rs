@@ -564,6 +564,12 @@ impl Client {
         Ok(self.raw(Method::GET, &format!("/api/users/{}/avatar", encode(user_id)), Body::None, true).await?.to_vec())
     }
 
+    /// A URL a player opens for one sidecar (served as WebVTT). It
+    /// carries the token, like [`Client::stream_url`].
+    pub fn sidecar_url(&self, item_id: &str, index: i64) -> Result<String, ClientError> {
+        self.media_url(&format!("/api/items/{}/sidecars/{index}", encode(item_id)), &[])
+    }
+
     /// The server's backup archive (admin): a `lain.backup@1` tar of a
     /// consistent store snapshot and the data dir's documents (D-197).
     pub async fn backup(&self) -> Result<Vec<u8>, ClientError> {

@@ -1,0 +1,30 @@
+{
+  "format": "lain.ui.theme@1",
+  "name": "lain dark",
+  "author": "lain",
+  "scheme": "dark",
+  "colors": {
+    "bg": "oklch(0.118 0.024 295.6)",
+    "surface": "oklch(0.237 0.015 296.7)",
+    "raised": "oklch(0.19 0.02 296 / 0.94)",
+    "line": "oklch(0.95 0.044 118.3 / 0.10)",
+    "text": "oklch(0.950 0.044 118.3)",
+    "muted": "oklch(0.62 0.011 299.0)",
+    "accent": "oklch(0.596 0.108 284.5)",
+    "on_accent": "oklch(0.985 0.02 118.3)",
+    "danger": "oklch(0.697 0.115 20.4)",
+    "ok": "oklch(0.76 0.11 150)",
+    "warn": "oklch(0.82 0.12 85)",
+    "scrim": "oklch(0.118 0.024 295.6 / 0.80)",
+    "focus": "oklch(0.70 0.12 284.5)"
+  },
+  "type": { "ui": "Inter", "display": "Fraunces", "mono": "JetBrains Mono", "base": 15, "scale": 1.25 },
+  "radius": { "card": 14, "button": 10, "panel": 16 },
+  "spacing": [4, 8, 12, 16, 24, 32, 48],
+  "blur": { "hero": 0, "panel": 24 },
+  "motion": { "fast_ms": 120, "normal_ms": 220, "slow_ms": 420, "easing": "ease-out-cubic" },
+  "rail": { "card_w": 200, "card_h": 300, "gap": 16, "hover_scale": 1.06 },
+  "hero": { "height": 0.62, "gradient": ["oklch(0.118 0.024 295.6 / 0)", "oklch(0.118 0.024 295.6)"] },
+  "player": { "controls_bg": "oklch(0.118 0.024 295.6 / 0.6)", "seek_h": 4, "autohide_ms": 2500 },
+  "wallpaper": ""
+}
