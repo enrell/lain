@@ -1,14 +1,17 @@
 //! The lain Rust server (D-171), milestone P1a: the gateway for the
 //! core routes the clients use, `GET /api/modules` (D-154), `GET
 //! /api/events` (D-169), service mode (D-164), private libraries (D-156)
-//! and portable roots (D-157). It starts from an empty data dir; nothing
-//! is imported from the Go server (D-177). The binary is `lain-rs`.
+//! and portable roots (D-157), plus the ported modules: core
+//! administration (theme, backup, integrations, avatars; `lain-admin`)
+//! and read (`lain-read`). It starts from an empty data dir; nothing is
+//! imported from the Go server (D-177). The binary is `lain-rs`.
 
 pub mod app;
 pub mod catalog;
 pub mod contracts;
 pub mod datadir;
 pub mod events;
+pub mod files;
 pub mod gateway;
 pub mod libraries;
 pub mod logging;

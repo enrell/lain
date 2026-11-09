@@ -3,6 +3,12 @@
 version = 4
 
 [[package]]
+name = "adler2"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
+
+[[package]]
 name = "argon2"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -355,6 +361,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lain-admin"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
+ "lain-core",
+ "lain-read",
+ "lain-store",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "lain-api"
 version = "0.1.0"
 dependencies = [
@@ -384,8 +403,10 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "lain-admin",
  "lain-api",
  "lain-conformance",
+ "lain-read",
  "lain-server",
  "lain-store",
  "libc",
@@ -464,11 +485,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "lain-read"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
+ "lain-core",
+ "miniz_oxide",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "lain-server"
 version = "0.1.0"
 dependencies = [
  "axum",
  "hyper",
+ "lain-admin",
  "lain-api",
  "lain-auth",
  "lain-component",
@@ -477,6 +511,7 @@ dependencies = [
  "lain-identify",
  "lain-ingest",
  "lain-metadata",
+ "lain-read",
  "lain-store",
  "lain-subtitle",
  "notify",
@@ -538,6 +573,15 @@ name = "mime"
 version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5848f5a9e8117cf94f2f90faac24a87ff81600ff8628c1e3deaab572e76bfa1"
+
+[[package]]
+name = "miniz_oxide"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
+dependencies = [
+ "adler2",
+]
 
 [[package]]
 name = "mio"

@@ -27,9 +27,14 @@ pub struct Server {
 impl Server {
     /// Starts lain-rs on `data` (inside a tokio runtime).
     pub async fn start(data: &Path) -> Server {
+        Server::start_with(data, |_| {}).await
+    }
+
+    pub async fn start_with(data: &Path, tune: impl FnOnce(&mut Config)) -> Server {
         let mut cfg = Config::new(data, lain_server::VERSION);
         cfg.keep_alive = Duration::from_millis(300);
         cfg.reload_debounce = Duration::from_millis(100);
+        tune(&mut cfg);
         let app = App::open(cfg).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -54,6 +59,25 @@ impl Server {
             .unwrap();
         assert_eq!(lain_server::import(&data, &serde_json::from_slice(&raw).unwrap()).unwrap(), 2);
         Server::start(&data).await
+    }
+
+    /// A data dir over the read fixture (`conformance/fixtures/read`,
+    /// root `media`, library `lib-7186ff8c` of comics and manga).
+    pub async fn with_read_fixture(root: &Path) -> Server {
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/fixtures");
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        let media = fixtures.join("read");
+        let roots = serde_json::json!({"format": "lain.roots@1", "roots": {"media": media.to_string_lossy()}});
+        std::fs::write(data.join("roots.json"), serde_json::to_vec(&roots).unwrap()).unwrap();
+        let raw = std::fs::read(fixtures.join("read-catalog.json")).unwrap();
+        assert_eq!(lain_server::import(&data, &serde_json::from_slice(&raw).unwrap()).unwrap(), 5);
+        // The fixture catalog stays as imported: no watch, no scan.
+        Server::start_with(&data, |c| {
+            c.watch = false;
+            c.auto_enrich = false;
+        })
+        .await
     }
 }
 

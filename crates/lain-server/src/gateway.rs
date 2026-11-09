@@ -1,7 +1,8 @@
-//! The HTTP boundary for the P1a routes (axum). Handlers are thin: they
-//! authenticate, decode, call auth or the registry, and answer the Go
+//! The HTTP boundary (axum). Handlers are thin: they authenticate,
+//! decode, call auth, the registry or a module crate, and answer the Go
 //! server's JSON (`{"error": msg}` on failure, a trailing newline like
-//! Go's encoder). Store and Argon2 work runs on the blocking pool.
+//! Go's encoder) or bytes (pages, avatars, backups). Store and Argon2
+//! work runs on the blocking pool.
 //!
 //! Routes a module owns answer `module-disabled` while it is off. Go
 //! routes not ported yet answer 501 `not-ported` rather than 404, so a
@@ -13,15 +14,16 @@ use std::time::Instant;
 
 use axum::Router;
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, Request, State};
-use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
+use axum::extract::{DefaultBodyLimit, Path, Request, State};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{MethodFilter, MethodRouter, on};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use lain_auth::{AuthError, MASCOTS, PlaybackPolicy, ProfilePatch, ROLE_ADMIN, ROLE_USER, Verified};
+use lain_admin::{avatars, backup, integrations, theme};
+use lain_auth::{AVATAR_UPLOAD, AuthError, MASCOTS, PlaybackPolicy, ProfilePatch, ROLE_ADMIN, ROLE_USER, Verified};
 use lain_core::codes;
 use lain_core::modules::route_matches;
 
@@ -29,31 +31,40 @@ use crate::app::App;
 use crate::catalog::{CAP_CATALOG_READ, CAP_CATALOG_WRITE, CAP_USER_PROGRESS};
 use crate::contracts::{CatalogItem, Library, PageParams, Progress};
 use crate::events::{SseBody, SubInfo};
+use crate::files::FileBody;
 use crate::libraries::LibraryPatch;
 use crate::privacy;
 
-/// Raw bytes with their content type and extra headers.
-type RawBody = (&'static str, Vec<u8>, Vec<(&'static str, &'static str)>);
-
-/// A JSON answer, or raw bytes with their content type.
+/// A JSON answer, or a prepared response for bytes.
 pub struct Reply {
     status: u16,
     body: Value,
-    raw: Option<RawBody>,
+    headers: Vec<(HeaderName, HeaderValue)>,
+    raw: Option<Box<Response>>,
 }
 
 impl Reply {
     pub fn json(status: u16, body: Value) -> Reply {
-        Reply { status, body, raw: None }
+        Reply { status, body, headers: Vec::new(), raw: None }
     }
-    /// Raw bytes (`content_type`, extra headers).
-    pub fn bytes(
-        status: u16,
-        content_type: &'static str,
-        body: Vec<u8>,
-        headers: Vec<(&'static str, &'static str)>,
-    ) -> Reply {
-        Reply { status, body: Value::Null, raw: Some((content_type, body, headers)) }
+    /// Bytes with their content type.
+    pub fn bytes(status: u16, mime: &str, body: Vec<u8>) -> Reply {
+        let mut r = Response::new(Body::from(body));
+        *r.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        if let Ok(v) = HeaderValue::from_str(mime) {
+            r.headers_mut().insert(header::CONTENT_TYPE, v);
+        }
+        Reply::response(r)
+    }
+    pub fn response(r: Response) -> Reply {
+        Reply { status: r.status().as_u16(), body: Value::Null, headers: Vec::new(), raw: Some(Box::new(r)) }
+    }
+    /// Adds a response header (dropped if the value is not valid).
+    pub fn header(mut self, name: HeaderName, value: &str) -> Reply {
+        if let Ok(v) = HeaderValue::from_str(value) {
+            self.headers.push((name, v));
+        }
+        self
     }
     pub fn ok(body: Value) -> Reply {
         Reply::json(200, body)
@@ -65,20 +76,20 @@ impl Reply {
 
 impl IntoResponse for Reply {
     fn into_response(self) -> Response {
-        if let Some((ctype, body, headers)) = self.raw {
-            let mut r = Response::new(Body::from(body));
-            *r.status_mut() = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            r.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(ctype));
-            for (k, v) in headers {
-                r.headers_mut().insert(k, HeaderValue::from_static(v));
+        let mut r = match self.raw {
+            Some(r) => *r,
+            None => {
+                let mut raw = serde_json::to_vec(&self.body).unwrap_or_else(|_| b"{}".to_vec());
+                raw.push(b'\n');
+                let mut r = Response::new(Body::from(raw));
+                *r.status_mut() = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                r.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
+                r
             }
-            return r;
+        };
+        for (k, v) in self.headers {
+            r.headers_mut().insert(k, v);
         }
-        let mut raw = serde_json::to_vec(&self.body).unwrap_or_else(|_| b"{}".to_vec());
-        raw.push(b'\n');
-        let mut r = Response::new(Body::from(raw));
-        *r.status_mut() = StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        r.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
         r
     }
 }
@@ -89,9 +100,15 @@ pub struct Req {
     pub authorization: Option<String>,
     pub body: Bytes,
     pub params: BTreeMap<String, String>,
+    pub headers: HeaderMap,
 }
 
 impl Req {
+    /// A request header as text (`""` when absent or not text).
+    pub fn header(&self, name: HeaderName) -> &str {
+        self.headers.get(name).and_then(|v| v.to_str().ok()).unwrap_or("")
+    }
+
     pub fn query(&self, key: &str) -> &str {
         self.query.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str()).unwrap_or("")
     }
@@ -207,6 +224,7 @@ pub(crate) fn route(filter: MethodFilter, gate: Gate, f: Handler) -> MethodRoute
                 authorization: headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).map(str::to_string),
                 body,
                 params: params.map(|p| p.0).unwrap_or_default(),
+                headers,
             };
             let out = tokio::task::spawn_blocking(move || match authorize(&app, &req, gate) {
                 Ok(v) => f(&app, &req, &v),
@@ -236,6 +254,22 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/me/preferences", route(PATCH, Gate::User, me_preferences))
         .route("/api/me/password", route(PATCH, Gate::User, me_password))
         .route("/api/me/profile", route(PATCH, Gate::User, me_profile))
+        .route(
+            "/api/me/avatar",
+            route(PUT, Gate::User, avatar_put)
+                .merge(route(DELETE, Gate::User, avatar_delete))
+                // Go reads 2 MiB + 1 to answer its own 413.
+                .layer(DefaultBodyLimit::max(avatars::MAX_BYTES + 1)),
+        )
+        .route("/api/users/{id}/avatar", route(GET, Gate::User, avatar_get))
+        .route("/api/theme", route(GET, Gate::Public, theme_get))
+        .route(
+            "/api/admin/settings/integrations",
+            route(GET, Gate::Admin, integrations_get).merge(route(PUT, Gate::Admin, integrations_put)),
+        )
+        .route("/api/admin/backup", route(GET, Gate::Admin, backup_get))
+        .route("/api/items/{id}/pages", route(GET, Gate::User, pages_get))
+        .route("/api/items/{id}/pages/{n}", route(GET, Gate::User, page_get))
         .route("/api/me/continue", route(GET, Gate::User, me_continue))
         .route("/api/profile/mascots", route(GET, Gate::User, mascots))
         .route("/api/users", route(GET, Gate::Admin, users_list).merge(route(POST, Gate::Admin, users_create)))
@@ -374,8 +408,198 @@ fn me_profile(app: &App, req: &Req, v: &Verified) -> Reply {
         Err(r) => return r,
     };
     match app.auth().update_profile(&v.user_id, &p) {
+        Ok(u) => {
+            // Picking a mascot or clearing the avatar retires an upload.
+            if p.mascot.is_some() {
+                app.avatars.remove(&v.user_id);
+            }
+            Reply::ok(json!(u))
+        }
+        Err(e) => Reply::err(400, &e.to_string()),
+    }
+}
+
+// ---- avatars (D-086, D-199) -------------------------------------------------
+
+fn avatar_put(app: &App, req: &Req, v: &Verified) -> Reply {
+    if let Err(e) = app.avatars.save(&v.user_id, &req.body) {
+        return Reply::err(e.status, e.msg);
+    }
+    match app.auth().set_uploaded_avatar(&v.user_id) {
         Ok(u) => Reply::ok(json!(u)),
         Err(e) => Reply::err(400, &e.to_string()),
+    }
+}
+
+fn avatar_delete(app: &App, _: &Req, v: &Verified) -> Reply {
+    let clear = ProfilePatch { mascot: Some(String::new()), ..ProfilePatch::default() };
+    match app.auth().update_profile(&v.user_id, &clear) {
+        Ok(u) => {
+            app.avatars.remove(&v.user_id);
+            Reply::ok(json!(u))
+        }
+        Err(e) => Reply::err(400, &e.to_string()),
+    }
+}
+
+/// Any signed-in user may read an uploaded picture; `<img>` sends no
+/// headers, so `?token=` works as for streams.
+fn avatar_get(app: &App, req: &Req, _: &Verified) -> Reply {
+    let id = req.param("id");
+    let none = || Reply::err(404, "no avatar");
+    match app.auth().get_public(id) {
+        Some(u) if u.profile.avatar.kind == AVATAR_UPLOAD => {}
+        _ => return none(),
+    }
+    let Some((body, mime)) = app.avatars.read(id) else { return none() };
+    Reply::bytes(200, mime, body)
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        // The URL carries the avatar version: a new picture is a new URL.
+        .header(header::CACHE_CONTROL, "private, max-age=31536000, immutable")
+}
+
+// ---- theme, integrations, backup (core administration) ---------------------
+
+/// The web UI palette (`lain.ui.theme@1`), relayed as the provider
+/// derives it; the SPA keeps its compiled-in defaults on a 503.
+fn theme_get(app: &App, _: &Req, _: &Verified) -> Reply {
+    let path = app.theme_path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let out = match app.registry.call_one(theme::CAP_UI_THEME, "derive", json!({"colors_path": path})) {
+        Ok((out, _)) if serde_json::from_value::<theme::Palette>(out.clone()).is_ok() => Reply::ok(out),
+        Ok(_) => Reply::err(503, "theme provider returned a bad shape"),
+        Err(e) => Reply::err(503, &e.to_string()),
+    };
+    out.header(header::CACHE_CONTROL, "no-store")
+}
+
+/// `scheme://host` as the client reached this server (OAuth callbacks).
+fn base_url(req: &Req) -> String {
+    let scheme = match req.header(HeaderName::from_static("x-forwarded-proto")) {
+        p @ ("http" | "https") => p,
+        _ => "http",
+    };
+    format!("{scheme}://{}", req.header(header::HOST))
+}
+
+fn integrations_get(app: &App, req: &Req, _: &Verified) -> Reply {
+    Reply::ok(json!(integrations::view(&integrations::get(&app.store), &base_url(req))))
+}
+
+fn integrations_put(app: &App, req: &Req, _: &Verified) -> Reply {
+    let u: integrations::IntegrationsUpdate = match req.decode() {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    let cur = integrations::apply(integrations::get(&app.store), &u);
+    if let Err(e) = integrations::put(&app.store, &cur) {
+        return Reply::err(500, &e.to_string());
+    }
+    tracing::info!("integrations settings updated");
+    Reply::ok(json!(integrations::view(&cur, &base_url(req))))
+}
+
+/// A backup artifact: the core snapshots the live store and the data
+/// dir's documents into a scratch dir, `lain.backup.create@1` packages
+/// them, and the artifact streams from disk; the scratch dir goes with
+/// the response.
+fn backup_get(app: &App, _: &Req, _: &Verified) -> Reply {
+    let tmp = match backup::TempDir::new("backup") {
+        Ok(t) => t,
+        Err(e) => return Reply::err(500, &e.to_string()),
+    };
+    let comp = json!(app.registry.composition());
+    let input = match backup::prepare(&app.store, &app.data_dir, comp, &app.version, tmp.path()) {
+        Ok(i) => i,
+        Err(e) => return Reply::err(500, &e),
+    };
+    let out = match app.registry.call_one(backup::CAP_BACKUP_CREATE, "create", json!(input)) {
+        Ok((out, _)) => out,
+        Err(e) => return Reply::err(503, &e.to_string()),
+    };
+    let artifact = match serde_json::from_value::<backup::CreateOutput>(out) {
+        Ok(a) if !a.path.is_empty() => a,
+        _ => return Reply::err(500, "backup provider returned a bad shape"),
+    };
+    let body = match FileBody::open(std::path::Path::new(&artifact.path), Some(tmp)) {
+        Ok(b) => b,
+        Err(e) => return Reply::err(500, &e.to_string()),
+    };
+    let len = body.len();
+    tracing::info!(bytes = len, file = %artifact.filename, "backup served");
+    let filename: String = artifact.filename.chars().filter(|c| !matches!(c, '"' | '\\' | '\r' | '\n')).collect();
+    let r = Response::new(Body::new(body));
+    Reply::response(r)
+        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .header(header::CONTENT_DISPOSITION, &format!("attachment; filename=\"{filename}\""))
+        .header(header::CONTENT_LENGTH, &len.to_string())
+}
+
+// ---- read (D-085, D-195) ------------------------------------------------------
+
+/// Resolves an item to its page index, or the reply for why not.
+fn pages_for(app: &App, v: &Verified, id: &str) -> Result<(CatalogItem, lain_read::PageIndex), Reply> {
+    let it = app.visible_item(v, id).ok_or_else(|| Reply::err(404, "unknown item"))?;
+    if it.kind != lain_read::KIND_COMIC && it.kind != lain_read::KIND_MANGA {
+        return Err(Reply::err(400, "item is not readable"));
+    }
+    if it.missing {
+        return Err(Reply::err(404, "file unavailable"));
+    }
+    let out = match app.registry.call_one(lain_read::CAP_COMIC_PAGES, "pages", json!({"path": it.file_path})) {
+        Ok((out, _)) => out,
+        Err(e) => {
+            let status = match e.code.as_str() {
+                lain_read::archive::INVALID_ARCHIVE | lain_read::archive::UNSUPPORTED_FORMAT => 422,
+                _ => 503,
+            };
+            tracing::warn!(item = %it.id, err = %e, "comic pages failed");
+            return Err(Reply::err(status, &e.to_string()));
+        }
+    };
+    match serde_json::from_value(out) {
+        Ok(pages) => Ok((it, pages)),
+        Err(_) => Err(Reply::err(500, "bad pages result")),
+    }
+}
+
+fn pages_get(app: &App, req: &Req, v: &Verified) -> Reply {
+    match pages_for(app, v, req.param("id")) {
+        Ok((it, idx)) => Reply::ok(json!(lain_api::ComicPages {
+            direction: lain_read::default_direction(&it.kind, idx.info.as_ref()),
+            kind: it.kind,
+            format: idx.format,
+            pages: idx.pages.iter().map(lain_read::IndexedPage::public).collect(),
+            info: idx.info,
+        })),
+        Err(r) => r,
+    }
+}
+
+/// One page's bytes, by index (`<img>` sends `?token=`).
+fn page_get(app: &App, req: &Req, v: &Verified) -> Reply {
+    let n = match req.param("n").parse::<i64>() {
+        Ok(n) if n >= 0 => n as usize,
+        _ => return Reply::err(400, "bad page"),
+    };
+    let (it, idx) = match pages_for(app, v, req.param("id")) {
+        Ok(x) => x,
+        Err(r) => return r,
+    };
+    let Some(pg) = idx.pages.get(n) else { return Reply::err(404, "no such page") };
+    let etag = format!("\"{}-{}-{n}\"", it.size, pg.size);
+    if req.header(header::IF_NONE_MATCH) == etag {
+        let mut r = Response::new(Body::empty());
+        *r.status_mut() = StatusCode::NOT_MODIFIED;
+        return Reply::response(r).header(header::ETAG, &etag);
+    }
+    match lain_read::archive::open_page(std::path::Path::new(&it.file_path), &pg.name) {
+        Ok(b) => Reply::bytes(200, &pg.mime, b)
+            .header(header::CACHE_CONTROL, "private, max-age=86400")
+            .header(header::ETAG, &etag),
+        Err(e) => {
+            tracing::warn!(item = %it.id, page = n, err = %e, "page unavailable");
+            Reply::err(404, "page unavailable")
+        }
     }
 }
 
@@ -840,6 +1064,7 @@ async fn events(State(app): State<Arc<App>>, uri: Uri, headers: HeaderMap) -> Re
         authorization: headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).map(str::to_string),
         body: Bytes::new(),
         params: BTreeMap::new(),
+        headers: HeaderMap::new(),
     };
     let token = req.token().unwrap_or("").to_string();
     let app2 = app.clone();
@@ -902,6 +1127,7 @@ async fn privacy_gate(State(app): State<Arc<App>>, req: Request, next: Next) -> 
         authorization: req.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).map(str::to_string),
         body: Bytes::new(),
         params: BTreeMap::new(),
+        headers: HeaderMap::new(),
     };
     let app2 = app.clone();
     let blocked = tokio::task::spawn_blocking(move || match r.token().and_then(|t| app2.verify(t)) {
@@ -919,13 +1145,7 @@ async fn privacy_gate(State(app): State<Arc<App>>, req: Request, next: Next) -> 
 
 /// Every route of the Go gateway, for telling "not ported yet" apart
 /// from "no such route".
-const GO_ROUTES: &[&str] = &[
-    "GET /api/theme",
-    "GET /api/admin/backup",
-    "PUT /api/me/avatar",
-    "DELETE /api/me/avatar",
-    "GET /api/users/{id}/avatar",
-];
+const GO_ROUTES: &[&str] = &[];
 
 fn is_api(path: &str) -> bool {
     path == "/api" || path.starts_with("/api/") || path == "/health" || path.starts_with("/health/")

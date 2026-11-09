@@ -1,0 +1,77 @@
+{
+  "tier": "v2",
+  "description": "The read module (D-085, D-195) on a lain-rs whose data dir maps root `media` to `media_root` (conformance/fixtures/read, read only) and holds the catalog of conformance/fixtures/read-catalog.json: page indexes, page bytes with ETags, the reading direction, refusals, private libraries (D-156) and module disable.",
+  "cases": [
+    {"name": "accounts and the library", "requires": ["media_root"], "steps": [
+      {"req": {"method": "POST", "path": "/api/setup", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 201}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 200}, "save": {"a": "/token"}},
+      {"req": {"method": "POST", "path": "/api/users", "auth": "a", "body": {"username": "bob", "password": "bobpassword"}}, "expect": {"status": 201}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobpassword"}}, "expect": {"status": 200}, "save": {"b": "/token"}},
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "a", "body": {"name": "Read", "type": "manga", "root": "media", "path": "Read"}},
+       "expect": {"status": 201, "body": {"id": "lib-7186ff8c", "$open": true}}, "save": {"lib": "/id"}},
+      {"req": {"method": "GET", "path": "/api/modules", "auth": "a"},
+       "expect": {"status": 200, "body": {"modules": {"$contains": [{"id": "read", "state": "active", "$open": true}]}, "$open": true}}}
+    ]},
+    {"name": "a manga's page index", "requires": ["lib"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages", "auth": "b"},
+       "expect": {"status": 200, "body": {"kind": "manga", "format": "cbz", "direction": "rtl", "pages": [
+         {"index": 0, "mime": "image/png", "size": "$int", "width": 16, "height": 24},
+         {"index": 1, "mime": "image/png", "size": "$int", "width": 16, "height": 24},
+         {"index": 2, "mime": "image/png", "size": "$int", "width": 16, "height": 24}]}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]},
+    {"name": "page bytes, ETags and the query token", "requires": ["lib"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages/1", "auth": "b"},
+       "expect": {"status": 200, "headers": {"content-type": "image/png", "cache-control": "private, max-age=86400", "etag": "$prefix:\"595-"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages/0", "auth": "query:b"}, "expect": {"status": 200, "headers": {"content-type": "image/png"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages/0"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages/3", "auth": "b"}, "expect": {"status": 404, "body": {"error": "no such page"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages/-1", "auth": "b"}, "expect": {"status": 400, "body": {"error": "bad page"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages/x", "auth": "b"}, "expect": {"status": 400, "body": {"error": "bad page"}}}
+    ]},
+    {"name": "a matching If-None-Match is a 304", "requires": ["lib"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/item-read-comic/pages", "auth": "b"},
+       "expect": {"status": 200, "body": {"pages": [{"index": 0, "size": "$int", "$open": true}], "$open": true}}, "save": {"psize": "/pages/0/size"}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-comic/pages/0", "auth": "b", "headers": {"If-None-Match": "\"380-{{psize}}-0\""}},
+       "expect": {"status": 304, "headers": {"etag": "\"380-{{psize}}-0\""}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-comic/pages/0", "auth": "b", "headers": {"If-None-Match": "\"0-0-0\""}},
+       "expect": {"status": 200, "headers": {"etag": "\"380-{{psize}}-0\""}}}
+    ]},
+    {"name": "ComicInfo.xml declares the direction", "requires": ["lib"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/item-read-comic/pages", "auth": "b"},
+       "expect": {"status": 200, "body": {"kind": "comic", "format": "cbz", "direction": "rtl",
+         "pages": [{"index": 0, "mime": "image/png", "size": "$int", "width": 4, "height": 6}],
+         "info": {"series": "Tiny Blade", "number": "1.5", "direction": "rtl"}}}}
+    ]},
+    {"name": "what cannot be read", "requires": ["lib"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/item-read-video/pages", "auth": "b"}, "expect": {"status": 400, "body": {"error": "item is not readable"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-gone/pages", "auth": "b"}, "expect": {"status": 404, "body": {"error": "file unavailable"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-broken/pages", "auth": "b"}, "expect": {"status": 422, "body": {"error": "$prefix:invalid-archive: "}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-broken/pages/0", "auth": "b"}, "expect": {"status": 422, "body": {"error": "$prefix:invalid-archive: "}}},
+      {"req": {"method": "GET", "path": "/api/items/nope/pages", "auth": "b"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/nope/pages/0", "auth": "b"}, "expect": {"status": 404, "body": {"error": "unknown item"}}}
+    ]},
+    {"name": "a private library hides pages from everyone who has not unlocked it", "requires": ["lib"], "steps": [
+      {"req": {"method": "PUT", "path": "/api/me/pin", "auth": "a", "body": {"pin": "2468", "password": "password123"}}, "expect": {"status": 200}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib}}", "auth": "a", "body": {"private": true}}, "expect": {"status": 200, "body": {"locked": true, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages", "auth": "b"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages/0", "auth": "query:b"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages", "auth": "a"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages/0", "auth": "a"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "POST", "path": "/api/libraries/{{lib}}/unlock", "auth": "a", "body": {"pin": "2468"}}, "expect": {"status": 200, "body": {"locked": false, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages", "auth": "a"}, "expect": {"status": 200, "body": {"kind": "manga", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages/0", "auth": "a"}, "expect": {"status": 200, "headers": {"content-type": "image/png"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages", "auth": "b"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib}}", "auth": "a", "body": {"private": false}}, "expect": {"status": 200}}
+    ]},
+    {"name": "disabling the read module unmounts the routes", "requires": ["lib", "data_dir"], "steps": [
+      {"write_file": {"path": "{{data_dir}}/modules.json", "json": {"format": "lain.modules@1", "modules": [{"id": "read", "enabled": false}]}}},
+      {"wait_for": {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages", "auth": "b"},
+        "expect": {"status": 404, "body": {"error": "module read is disabled", "code": "module-disabled", "module": "read"}}}},
+      {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages/0", "auth": "b"},
+       "expect": {"status": 404, "body": {"code": "module-disabled", "$open": true}}},
+      {"remove_file": "{{data_dir}}/modules.json"},
+      {"wait_for": {"req": {"method": "GET", "path": "/api/items/item-read-manga/pages", "auth": "b"}, "expect": {"status": 200}}}
+    ]}
+  ]
+}
