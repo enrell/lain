@@ -112,8 +112,8 @@ shown next to actions.
 
 Source order: an offline copy; the server's plan
 (`/api/items/{id}/playback?client=desktop`: `direct` → the token-carrying
-stream URL, `transcode` → the session's HLS playlist or the progressive
-output); when the server cannot stream (501 not-ported, watch module off,
+stream URL, `transcode` → the HLS playlist of the plan's session, or of one the
+app starts); when the server cannot stream (501 not-ported, watch module off,
 offline) the item's file through **Settings → Playback → Shared storage**
 (`server path => local path`), if this device can reach it. Sidecars are
 added with `sub-add`. Progress goes through `ProgressSync` (queued offline)
