@@ -1,0 +1,37 @@
+{
+  "tier": "v1",
+  "description": "GET /api/items/{id}/stream: ?token= auth for media elements, content types, byte ranges, downloads.",
+  "cases": [
+    {"name": "the original bytes with their content type", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "video/mp4", "accept-ranges": "bytes", "last-modified": "$substr: GMT", "content-length": "$nonempty"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/stream", "auth": "w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "video/x-matroska", "accept-ranges": "bytes"}}}
+    ]},
+    {"name": "byte ranges", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream", "auth": "query:w_bob", "headers": {"Range": "bytes=0-7"}},
+       "expect": {"status": 206, "headers": {"content-range": "$prefix:bytes 0-7/", "content-length": "8", "content-type": "video/mp4"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream", "auth": "query:w_bob", "headers": {"Range": "bytes=-4"}},
+       "expect": {"status": 206, "headers": {"content-length": "4"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream", "auth": "query:w_bob", "headers": {"Range": "bytes=999999999-"}},
+       "expect": {"status": 416, "headers": {"content-range": "$prefix:bytes */"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream", "auth": "query:w_bob", "headers": {"Range": "bytes=0-1,4-5"}},
+       "expect": {"status": 206, "headers": {"content-type": "$prefix:multipart/byteranges; boundary="}}}
+    ]},
+    {"name": "download asks the browser to save the file", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream?download=1", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-disposition": "attachment; filename=Alpha.mp4"}}}
+    ]},
+    {"name": "no token, no bytes", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream?token=not-a-token"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "GET", "path": "/api/items/no-such-item/stream", "auth": "query:w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}}
+    ]},
+    {"name": "a still frame", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail?t=1&w=96", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "image/jpeg", "cache-control": "private, max-age=86400"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail?t=1&w=96", "auth": "w_bob"}, "expect": {"status": 200}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]}
+  ]
+}

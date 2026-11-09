@@ -1,0 +1,26 @@
+{
+  "tier": "v1",
+  "description": "State for the watch cases on a fresh server whose media directory holds the clips of conformance/make-clips.sh (Alpha.mp4: H.264/AAC 2 Mbit/s; Beta.mkv: H.264/AAC + one SRT track). The Go server scans `scan_dir`; lain-rs, which has no scan yet, reads the fixture catalog conformance/fixtures/watch-catalog.json over a `media` root whose Clips/ directory is `media_root`/Clips. Both end with w_admin, w_bob, w_bob_id and the two items w_alpha, w_beta (title order).",
+  "cases": [
+    {"name": "accounts", "requires": ["clips"], "steps": [
+      {"req": {"method": "POST", "path": "/api/setup", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 201}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 200}, "save": {"w_admin": "/token"}},
+      {"req": {"method": "POST", "path": "/api/users", "auth": "w_admin", "body": {"username": "bob", "password": "bobpassword"}}, "expect": {"status": 201}, "save": {"w_bob_id": "/id"}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobpassword"}}, "expect": {"status": 200}, "save": {"w_bob": "/token"}}
+    ]},
+    {"name": "a scanned library (Go)", "requires": ["clips", "scan_dir"], "steps": [
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "w_admin", "body": {"name": "Clips", "type": "movie", "path": "{{scan_dir}}"}}, "expect": {"status": 201}},
+      {"req": {"method": "POST", "path": "/api/library/scan", "auth": "w_admin"}, "expect": {"status": 202}},
+      {"wait_for": {"req": {"method": "GET", "path": "/api/catalog", "auth": "w_admin"}, "expect": {"status": 200, "body": {"total": 2, "$open": true}}, "save": {"w_alpha": "/items/0/id", "w_beta": "/items/1/id"}}, "timeout_ms": 20000}
+    ]},
+    {"name": "a rooted library over the fixture catalog (lain-rs)", "requires": ["clips", "media_root"], "steps": [
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "w_admin", "body": {"name": "Clips", "type": "movie", "root": "media", "path": "Clips"}},
+       "expect": {"status": 201, "body": {"id": "lib-be88dfed", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "w_admin"}, "expect": {"status": 200, "body": {"total": 2, "$open": true}}, "save": {"w_alpha": "/items/0/id", "w_beta": "/items/1/id"}}
+    ]},
+    {"name": "the clips are the expected ones", "requires": ["clips"], "steps": [
+      {"req": {"method": "GET", "path": "/api/catalog/{{w_alpha}}", "auth": "w_admin"}, "expect": {"status": 200, "body": {"title": "Alpha", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{w_beta}}", "auth": "w_admin"}, "expect": {"status": 200, "body": {"title": "Beta", "$open": true}}}
+    ]}
+  ]
+}

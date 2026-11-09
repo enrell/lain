@@ -1,0 +1,43 @@
+{
+  "tier": "v1",
+  "description": "GET/PUT /api/admin/settings/transcode (admin): the policy plus the probed ffmpeg surface; partial PUTs keep omitted fields. GET /api/localplay and the loopback rule of POST /api/items/{id}/play-local.",
+  "cases": [
+    {"name": "the settings and what this ffmpeg can do", "requires": ["w_admin"], "steps": [
+      {"req": {"method": "GET", "path": "/api/admin/settings/transcode", "auth": "w_admin"},
+       "expect": {"status": 200, "body": {
+         "settings": {"default_delivery": "hls", "hls_segment_seconds": 6, "hls_segment_container": "fmp4", "throttle": true, "crf": 23,
+           "queue_size": 8, "max_concurrent": 2, "subtitle_mode": "auto", "max_muxing_queue_size": 2048, "hardware_acceleration": "$string",
+           "qualities": {"$len": 5}, "$open": true},
+         "capabilities": {"ffmpeg": "$string", "encoders": {"$contains": ["libx264"]}, "tone_mapping": "$bool", "tone_mapping_bt2390": "$bool", "hardware": "$object"}}}},
+      {"req": {"method": "GET", "path": "/api/admin/settings/transcode", "auth": "w_bob"}, "expect": {"status": 403, "body": {"error": "admin required"}}}
+    ]},
+    {"name": "a partial update keeps every omitted field", "requires": ["w_admin"], "steps": [
+      {"req": {"method": "PUT", "path": "/api/admin/settings/transcode", "auth": "w_admin", "body": {"crf": 20, "remote_bitrate_limit_kbps": 9000}},
+       "expect": {"status": 200, "body": {"settings": {"crf": 20, "remote_bitrate_limit_kbps": 9000, "throttle": true, "downmix_audio": true, "tone_mapping": true, "$open": true}, "capabilities": "$object"}}},
+      {"req": {"method": "GET", "path": "/api/playback/options", "auth": "w_bob"}, "expect": {"status": 200, "body": {"default_delivery": "hls", "$open": true}}},
+      {"req": {"method": "PUT", "path": "/api/admin/settings/transcode", "auth": "w_admin", "body": {"crf": 23, "remote_bitrate_limit_kbps": 0}},
+       "expect": {"status": 200, "body": {"settings": {"crf": 23, "remote_bitrate_limit_kbps": 0, "$open": true}, "$open": true}}}
+    ]},
+    {"name": "invalid settings are refused with the rule", "requires": ["w_admin"], "steps": [
+      {"req": {"method": "PUT", "path": "/api/admin/settings/transcode", "auth": "w_admin", "body": {"hls_segment_seconds": 99}},
+       "expect": {"status": 400, "body": {"error": "invalid-message: hls_segment_seconds must be 1..30", "code": "invalid-message"}}},
+      {"req": {"method": "PUT", "path": "/api/admin/settings/transcode", "auth": "w_admin", "body": {"default_delivery": "dash"}},
+       "expect": {"status": 400, "body": {"error": "invalid-message: default_delivery must be progressive or hls", "code": "invalid-message"}}},
+      {"req": {"method": "PUT", "path": "/api/admin/settings/transcode", "auth": "w_admin", "raw_body": "not json"},
+       "expect": {"status": 400, "body": {"error": "invalid json"}}},
+      {"req": {"method": "PUT", "path": "/api/admin/settings/transcode", "auth": "w_admin", "body": {"crf": "high"}},
+       "expect": {"status": 400, "body": {"error": "invalid json"}}},
+      {"req": {"method": "GET", "path": "/api/admin/settings/transcode", "auth": "w_admin"},
+       "expect": {"status": 200, "body": {"settings": {"hls_segment_seconds": 6, "default_delivery": "hls", "$open": true}, "$open": true}}}
+    ]},
+    {"name": "local playback is for the server's own screen", "requires": ["w_alpha"], "steps": [
+      {"req": {"method": "GET", "path": "/api/localplay", "auth": "w_bob", "headers": {"X-Forwarded-For": "203.0.113.5"}},
+       "expect": {"status": 200, "body": {"players": null}}},
+      {"req": {"method": "GET", "path": "/api/localplay", "auth": "w_bob"}, "expect": {"status": 200, "body": {"players": "$any"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_alpha}}/play-local", "auth": "w_bob", "headers": {"X-Forwarded-For": "203.0.113.5"}, "body": {}},
+       "expect": {"status": 403, "body": {"error": "local playback requires the browser and server on the same machine"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_alpha}}/play-local", "body": {}}, "expect": {"status": 401}},
+      {"req": {"method": "GET", "path": "/api/localplay"}, "expect": {"status": 401}}
+    ]}
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "tier": "v2",
+  "description": "Private libraries (D-156) on every watch route: until a member unlocks the library in this session, its items answer exactly like items that do not exist, on every media path (plans, streams, thumbnails, transcodes, HLS, subtitles, local play). lain-rs only.",
+  "cases": [
+    {"name": "a private library hides its media everywhere", "requires": ["w_alpha", "media_root"], "steps": [
+      {"req": {"method": "PATCH", "path": "/api/libraries/lib-be88dfed", "auth": "w_admin", "body": {"private": true}}, "expect": {"status": 200, "body": {"private": true, "locked": true, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/playback?client=web", "auth": "w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/playback?client=web", "auth": "w_admin"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream", "auth": "query:w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream", "auth": "query:w_admin", "headers": {"Range": "bytes=0-7"}}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail", "auth": "query:w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {}}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode", "auth": "query:w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status?session=x", "auth": "w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/hls/index.m3u8?session=x", "auth": "query:w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode?session=x", "auth": "w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/subtitles?stream=2", "auth": "query:w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_alpha}}/play-local", "auth": "w_admin", "body": {}}, "expect": {"status": 404, "body": {"error": "unknown item"}}}
+    ]},
+    {"name": "the owner's unlocked session plays it", "requires": ["w_alpha", "media_root"], "steps": [
+      {"req": {"method": "POST", "path": "/api/libraries/lib-be88dfed/unlock", "auth": "w_admin", "body": {"password": "password123"}}, "expect": {"status": 200, "body": {"locked": false, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/playback?client=web", "auth": "w_admin"}, "expect": {"status": 200, "body": {"mode": "direct", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream", "auth": "query:w_admin", "headers": {"Range": "bytes=0-7"}}, "expect": {"status": 206}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream", "auth": "query:w_bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/lib-be88dfed", "auth": "w_admin", "body": {"private": false}}, "expect": {"status": 200}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/stream", "auth": "query:w_bob", "headers": {"Range": "bytes=0-7"}}, "expect": {"status": 206}}
+    ]}
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "tier": "v1",
+  "description": "GET /api/items/{id}/subtitles: an embedded text track as WebVTT on demand (?stream=N), or a session's sidecar (?session=).",
+  "cases": [
+    {"name": "an embedded SRT track extracts to WebVTT", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/subtitles?stream=2", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "text/vtt; charset=utf-8"}, "body": "$prefix:WEBVTT"}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/subtitles?stream=2", "auth": "w_bob"}, "expect": {"status": 200}}
+    ]},
+    {"name": "bad requests", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/subtitles?stream=-1", "auth": "w_bob"},
+       "expect": {"status": 400, "body": {"error": "stream must be a non-negative index", "code": "invalid-message"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/subtitles?stream=1", "auth": "w_bob"},
+       "expect": {"status": 400, "body": {"error": "subtitle_stream is not a subtitle track", "code": "invalid-message"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/subtitles", "auth": "w_bob"},
+       "expect": {"status": 400, "body": {"error": "session or stream required", "code": "invalid-message"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/subtitles?stream=2"}, "expect": {"status": 401}}
+    ]},
+    {"name": "a session with a selected track serves its sidecar", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"delivery": "progressive", "subtitle_stream": 2}},
+       "expect": {"status_not": 400, "body": {"session": "$nonempty", "$open": true}}, "save": {"subs": "/session"}},
+      {"wait_for": {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status?session={{subs}}", "auth": "w_bob"},
+        "expect": {"status": 200, "body": {"state": "ready", "has_subtitle": true, "$open": true}}}, "timeout_ms": 30000},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/subtitles?session={{subs}}", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "text/vtt; charset=utf-8"}, "body": "$prefix:WEBVTT"}},
+      {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode?session={{subs}}", "auth": "w_bob"}, "expect": {"status": 200}}
+    ]}
+  ]
+}
