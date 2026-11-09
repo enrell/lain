@@ -104,6 +104,7 @@ impl LainApp {
                 self.spawn_ui(cx, async move { c2.modules().await }, |app, r, _| app.modules = Load::from(r));
             }
             Section::Server => {
+                self.load_transcode(cx);
                 self.settings.integrations = Load::Loading;
                 self.spawn_ui(cx, async move { c.integrations().await }, |app, r, _| {
                     if let Ok(v) = &r {
@@ -1184,11 +1185,7 @@ impl LainApp {
         let mut col = div().flex().flex_col();
         // ---- transcode (watch module)
         col = col.child(div().pt(px(th.sp(3))).child(self.label("transcode")));
-        col = col.child(self.notice(
-            Notice::NotPorted,
-            "Transcode settings and the transcode list are not available on this server yet",
-            "Their routes (/api/admin/settings/transcode, /api/admin/transcodes) come with the watch module's port. This part fills in when the server serves them.",
-        ));
+        col = col.child(self.transcode_section(cx));
         // ---- integrations
         col = col.child(div().pt(px(th.sp(5))).child(self.label("integrations")));
         match self.settings.integrations.clone() {
