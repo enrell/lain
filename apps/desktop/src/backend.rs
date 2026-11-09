@@ -181,7 +181,8 @@ pub async fn watch_events(b: Arc<Backend>, tx: tokio::sync::mpsc::UnboundedSende
                     E::TranscodeChanged(_) => Poke::Transcodes,
                     E::ScanState(s) => Poke::Scan(Box::new(s)),
                     E::Other { event, .. } if event == "item-deleted" => Poke::Library,
-                    E::Other { .. } => continue,
+                    // Events this app does not show (and future ones).
+                    _ => continue,
                 }
             }
         };
