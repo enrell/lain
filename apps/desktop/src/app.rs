@@ -235,6 +235,7 @@ pub enum Act {
     SaveIntegrations,
     ConfirmYes,
     ConfirmNo,
+    LinkOp(String, &'static str),
     SaveTranscode,
     DiscardTranscode,
     ToggleTranscode(&'static str),
@@ -347,6 +348,7 @@ pub struct LainApp {
     pub settings: settings::SettingsState,
     pub reader: Option<reader::ReaderState>,
     pub dl: crate::screens::downloads::DlState,
+    pub links: Load<Vec<lain_client::types::Link>>,
     pub tc: crate::screens::transcode::TranscodeState,
     pub player: Option<player::PlayerSession>,
     pub orphans: Vec<player::PlayerSession>,
@@ -460,6 +462,7 @@ impl LainApp {
             settings: settings::SettingsState::default(),
             reader: None,
             dl: Default::default(),
+            links: Load::Idle,
             tc: Default::default(),
             player: None,
             orphans: Vec::new(),
@@ -1007,6 +1010,7 @@ impl LainApp {
                 }
             }
             Act::ConfirmNo => self.confirm = None,
+            Act::LinkOp(p, op) => self.link_op(p, op, cx),
             Act::SaveTranscode => self.save_transcode(cx),
             Act::DiscardTranscode => self.load_transcode(cx),
             Act::ToggleTranscode(k) => {
