@@ -1,0 +1,502 @@
+{
+ "tier": "v1",
+ "description": "What the scan put in the catalog: kinds, titles, seasons and episodes from the identifiers, title grouping, search, and sidecar subtitles served as WebVTT.",
+ "cases": [
+  {
+   "name": "identified items in title order",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog",
+      "auth": "bob",
+      "body": {
+       "total": 4,
+       "limit": 50,
+       "offset": 0,
+       "items": [
+        {
+         "id": "$string",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true,
+         "kind": "video",
+         "title": "Akira",
+         "season": 0,
+         "episode": 0,
+         "year": 0,
+         "confidence": 0.4,
+         "origin": "lain-identify-generic",
+         "provenance": "identify:lain-identify-generic"
+        },
+        {
+         "id": "$string",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true,
+         "kind": "episode",
+         "title": "Frieren",
+         "season": 0,
+         "episode": 1,
+         "year": 0,
+         "confidence": 0.8799999999999999,
+         "origin": "lain-identify-anime",
+         "provenance": "identify:lain-identify-anime"
+        },
+        {
+         "id": "$string",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true,
+         "kind": "episode",
+         "title": "Frieren",
+         "season": 0,
+         "episode": 2,
+         "year": 0,
+         "origin": "lain-identify-anime"
+        },
+        {
+         "id": "$string",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true,
+         "kind": "episode",
+         "title": "Show Name",
+         "season": 1,
+         "episode": 2,
+         "year": 0,
+         "confidence": 0.78,
+         "origin": "lain-identify-anime"
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 200
+     },
+     "save": {
+      "akira": "/items/0/id",
+      "f1": "/items/1/id",
+      "f2": "/items/2/id",
+      "show": "/items/3/id"
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{f1}}",
+      "auth": "bob",
+      "body": {
+       "id": "{{f1}}",
+       "library_id": "{{lib}}",
+       "file_path": "$string",
+       "size": 1,
+       "updated_at": "$int",
+       "$open": true,
+       "title": "Frieren",
+       "episode": 1
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog?library_id={{lib}}&limit=1&offset=3",
+      "auth": "bob",
+      "body": {
+       "total": 4,
+       "limit": 1,
+       "offset": 3,
+       "items": [
+        {
+         "id": "{{show}}",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  },
+  {
+   "name": "a title groups its episodes in watch order",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{f2}}/episodes",
+      "auth": "bob",
+      "body": {
+       "items": [
+        {
+         "id": "{{f1}}",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true
+        },
+        {
+         "id": "{{f2}}",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog/{{akira}}/episodes",
+      "auth": "bob",
+      "body": {
+       "items": [
+        {
+         "id": "{{akira}}",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  },
+  {
+   "name": "search by title and kind",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/search?q=frie",
+      "auth": "bob",
+      "body": {
+       "total": 2,
+       "limit": 50,
+       "offset": 0,
+       "items": [
+        {
+         "id": "{{f1}}",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true
+        },
+        {
+         "id": "{{f2}}",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/search?kind=video",
+      "auth": "bob",
+      "body": {
+       "total": 1,
+       "$open": true,
+       "items": [
+        {
+         "id": "{{akira}}",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/search?q=show&kind=EPISODE&limit=1",
+      "auth": "bob",
+      "body": {
+       "total": 1,
+       "limit": 1,
+       "offset": 0,
+       "items": [
+        {
+         "id": "{{show}}",
+         "library_id": "{{lib}}",
+         "file_path": "$string",
+         "size": 1,
+         "updated_at": "$int",
+         "$open": true
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/search?q=nothing",
+      "auth": "bob",
+      "body": {
+       "total": 0,
+       "limit": 50,
+       "offset": 0,
+       "items": []
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/search?q=frie",
+      "body": {
+       "error": "unauthorized"
+      }
+     },
+     "expect": {
+      "status": 401
+     }
+    }
+   ]
+  },
+  {
+   "name": "sidecars are listed by name and addressed by index",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{f1}}/sidecars",
+      "auth": "bob",
+      "body": {
+       "sidecars": [
+        {
+         "index": 0,
+         "name": "[Fansub-A] Frieren - 01 [1080p].en.srt",
+         "language": "eng",
+         "tag": "en",
+         "format": "srt"
+        },
+        {
+         "index": 1,
+         "name": "[Fansub-A] Frieren - 01 [1080p].ja.srt",
+         "language": "jpn",
+         "tag": "ja",
+         "format": "srt"
+        },
+        {
+         "index": 2,
+         "name": "[Fansub-A] Frieren - 01 [1080p].pt-BR.forced.ass",
+         "language": "por",
+         "tag": "pt-BR",
+         "forced": true,
+         "format": "ass"
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{f2}}/sidecars",
+      "auth": "bob",
+      "body": {
+       "sidecars": []
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/no-such-item/sidecars",
+      "auth": "bob",
+      "body": {
+       "error": "unknown item"
+      }
+     },
+     "expect": {
+      "status": 404
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{f1}}/sidecars",
+      "body": {
+       "error": "unauthorized"
+      }
+     },
+     "expect": {
+      "status": 401
+     }
+    }
+   ]
+  },
+  {
+   "name": "a sidecar is served as WebVTT",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{f1}}/sidecars/0",
+      "auth": "bob",
+      "body": "WEBVTT\n\n00:00:01.000 --> 00:00:02.500\nHello\n\n"
+     },
+     "expect": {
+      "status": 200,
+      "headers": {
+       "content-type": "text/vtt; charset=utf-8",
+       "cache-control": "private, no-cache"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{f1}}/sidecars/2",
+      "auth": "query:bob",
+      "body": "WEBVTT\n\n00:00:03.000 --> 00:00:04.000\nOla\n\n"
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{f1}}/sidecars/1",
+      "auth": "bob",
+      "body": {
+       "error": "this subtitle file cannot be read",
+       "code": "unsupported-media"
+      }
+     },
+     "expect": {
+      "status": 422
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{f1}}/sidecars/9",
+      "auth": "bob",
+      "body": {
+       "error": "no such sidecar"
+      }
+     },
+     "expect": {
+      "status": 404
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{f1}}/sidecars/-1",
+      "auth": "bob",
+      "body": {
+       "error": "no such sidecar"
+      }
+     },
+     "expect": {
+      "status": 404
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{f1}}/sidecars/x",
+      "auth": "bob",
+      "body": {
+       "error": "no such sidecar"
+      }
+     },
+     "expect": {
+      "status": 404
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/items/{{f1}}/sidecars/0",
+      "body": {
+       "error": "unauthorized"
+      }
+     },
+     "expect": {
+      "status": 401
+     }
+    }
+   ]
+  }
+ ]
+}

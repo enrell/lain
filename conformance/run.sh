@@ -5,10 +5,14 @@
 #   conformance/run.sh            # Go and Rust
 #   conformance/run.sh go|rust    # one server
 #
-# Go:   fresh (v1)
-# Rust: fresh (v1+v2), then private (private libraries) on a data dir
-#       with a `media` root and the fixture catalog
-#       (conformance/fixtures/catalog.json, `lain-rs import --in`)
+# Go:   fresh (v1), then scan (v1) on a fresh data dir
+# Rust: fresh (v1+v2), scan (v1+v2) on a fresh data dir, then private
+#       (private libraries) on a data dir with a `media` root and the
+#       fixture catalog (conformance/fixtures/catalog.json,
+#       `lain-rs import --in`)
+# The scan suite writes its own fixture media and runs with library
+# watching and the post-scan metadata pass off, so no scan races the
+# cases and nothing reaches the network.
 #
 # Env: GO_PORT (19460), RS_PORT (19461), KEEP=1 keeps the temp dir.
 set -eu
@@ -76,6 +80,13 @@ run_go() {
 	echo "$out"
 	note "Go   fresh v1: $(echo "$out" | tail -1)"
 	stop "$pid"
+
+	mkdir -p "$tmp/go-scanmedia"
+	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start go-scan "$url" "$tmp/lain" serve --data-dir "$tmp/go-scan" --port "$go_port")
+	out=$(LAIN_URL=$url "$runner" --tier v1 --var scan_media="$tmp/go-scanmedia" conformance/cases/scan) || { echo "$out"; exit 1; }
+	echo "$out"
+	note "Go   scan v1: $(echo "$out" | tail -1)"
+	stop "$pid"
 }
 
 run_rust() {
@@ -84,6 +95,13 @@ run_rust() {
 	out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var media_dir="$tmp/media" --var media_dir2="$tmp/media2" --var data_dir="$tmp/rs-fresh" conformance/cases/fresh conformance/cases/v2) || { echo "$out"; exit 1; }
 	echo "$out"
 	note "Rust fresh v1+v2: $(echo "$out" | tail -1)"
+	stop "$pid"
+
+	mkdir -p "$tmp/rs-scanmedia"
+	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-scan "$url" "$lain_rs" serve --data-dir "$tmp/rs-scan" --port "$rs_port")
+	out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var scan_media="$tmp/rs-scanmedia" conformance/cases/scan) || { echo "$out"; exit 1; }
+	echo "$out"
+	note "Rust scan v1+v2: $(echo "$out" | tail -1)"
 	stop "$pid"
 
 	mkdir -p "$tmp/rs-private"

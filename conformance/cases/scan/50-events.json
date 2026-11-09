@@ -1,0 +1,105 @@
+{
+ "tier": "v2",
+ "description": "Scan progress on /api/events: scan-state for everyone, library-changed scanned to who may see the library.",
+ "cases": [
+  {
+   "name": "a scan reports its progress",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "sse_open": {
+      "path": "/api/events",
+      "auth": "bob",
+      "as": "scan"
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "sse_expect": {
+      "stream": "scan",
+      "event": "ready"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/scan",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 202
+     }
+    },
+    {
+     "sse_expect": {
+      "stream": "scan",
+      "event": "scan-state",
+      "data": {
+       "state": "running",
+       "trigger": "manual",
+       "libraries": 1,
+       "libraries_done": 0
+      }
+     }
+    },
+    {
+     "sse_expect": {
+      "stream": "scan",
+      "event": "library-changed",
+      "data": {
+       "library_id": "{{lib}}",
+       "action": "scanned",
+       "items": 3,
+       "missing": 0,
+       "restored": 0,
+       "migrated": 0
+      }
+     }
+    },
+    {
+     "sse_expect": {
+      "stream": "scan",
+      "event": "scan-state",
+      "data": {
+       "state": "done",
+       "trigger": "manual",
+       "libraries": 1,
+       "libraries_done": 1,
+       "stats": {
+        "candidates": 3,
+        "$open": true
+       }
+      }
+     }
+    },
+    {
+     "wait_for": {
+      "req": {
+       "method": "GET",
+       "path": "/api/library/scan",
+       "auth": "admin"
+      },
+      "expect": {
+       "status": 200,
+       "body": {
+        "state": "done",
+        "started_at": "$int",
+        "finished_at": "$int",
+        "trigger": "manual",
+        "stats": {
+         "candidates": 3,
+         "$open": true
+        }
+       }
+      }
+     },
+     "timeout_ms": 20000
+    }
+   ]
+  }
+ ]
+}

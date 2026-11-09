@@ -1,0 +1,135 @@
+{
+ "tier": "v1",
+ "description": "A fresh server for the scan suite: an admin, a user and fixture media (fictional names) written into scan_media. Servers run with library watching and post-scan enrichment off (LAIN_WATCH=0, LAIN_AUTO_ENRICH=0).",
+ "cases": [
+  {
+   "name": "accounts",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/setup",
+      "body": {
+       "username": "admin",
+       "password": "password123"
+      }
+     },
+     "expect": {
+      "status": 201
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "body": {
+       "username": "admin",
+       "password": "password123"
+      }
+     },
+     "expect": {
+      "status": 200
+     },
+     "save": {
+      "admin": "/token"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/users",
+      "auth": "admin",
+      "body": {
+       "username": "bob",
+       "password": "bobpassword"
+      }
+     },
+     "expect": {
+      "status": 201
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "body": {
+       "username": "bob",
+       "password": "bobpassword"
+      }
+     },
+     "expect": {
+      "status": 200
+     },
+     "save": {
+      "bob": "/token"
+     }
+    }
+   ]
+  },
+  {
+   "name": "fixture media",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "write_file": {
+      "path": "{{scan_media}}/Frieren/[Fansub-A] Frieren - 01 [1080p].mkv",
+      "text": "x"
+     }
+    },
+    {
+     "write_file": {
+      "path": "{{scan_media}}/Frieren/[Fansub-A] Frieren - 02 [1080p].mkv",
+      "text": "x"
+     }
+    },
+    {
+     "write_file": {
+      "path": "{{scan_media}}/Frieren/[Fansub-A] Frieren - 01 [1080p].en.srt",
+      "text": "1\n00:00:01,000 --> 00:00:02,500\nHello\n"
+     }
+    },
+    {
+     "write_file": {
+      "path": "{{scan_media}}/Frieren/[Fansub-A] Frieren - 01 [1080p].pt-BR.forced.ass",
+      "text": "[Events]\nFormat: Layer, Start, End, Style, Text\nDialogue: 0,0:00:03.00,0:00:04.00,Default,{\\i1}Ola\n"
+     }
+    },
+    {
+     "write_file": {
+      "path": "{{scan_media}}/Frieren/[Fansub-A] Frieren - 01 [1080p].ja.srt",
+      "text": "not a subtitle"
+     }
+    },
+    {
+     "write_file": {
+      "path": "{{scan_media}}/Frieren/tvshow.nfo",
+      "text": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<tvshow>\n  <title>Sousou no Frieren</title>\n  <year>2023</year>\n  <plot>An elf mage looks back.</plot>\n  <genre>Fantasy</genre>\n  <genre>Adventure</genre>\n  <thumb aspect=\"poster\">https://example.invalid/poster.jpg</thumb>\n  <fanart><thumb>https://example.invalid/fanart.jpg</thumb></fanart>\n</tvshow>\n"
+     }
+    },
+    {
+     "write_file": {
+      "path": "{{scan_media}}/Movies/Akira (1988).mkv",
+      "text": "x"
+     }
+    },
+    {
+     "write_file": {
+      "path": "{{scan_media}}/Show/Show.Name.S01E02.1080p.WEB-DL.mkv",
+      "text": "x"
+     }
+    },
+    {
+     "write_file": {
+      "path": "{{scan_media}}/notes.txt",
+      "text": "not media"
+     }
+    }
+   ]
+  }
+ ]
+}

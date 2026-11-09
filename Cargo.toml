@@ -4,6 +4,10 @@
 resolver = "3"
 members = [
     "crates/lain-api",
+    "crates/lain-identify",
+    "crates/lain-ingest",
+    "crates/lain-metadata",
+    "crates/lain-subtitle",
     "crates/lain-core",
     "crates/lain-store",
     "crates/lain-auth",
@@ -54,6 +58,10 @@ lain-core = { path = "crates/lain-core" }
 lain-store = { path = "crates/lain-store" }
 lain-auth = { path = "crates/lain-auth" }
 lain-component = { path = "crates/lain-component" }
+lain-identify = { path = "crates/lain-identify" }
+lain-ingest = { path = "crates/lain-ingest" }
+lain-metadata = { path = "crates/lain-metadata" }
+lain-subtitle = { path = "crates/lain-subtitle" }
 
 [profile.dev]
 # Keep target/ small on a tight disk; line tables are enough for

@@ -1,0 +1,18 @@
+[package]
+name = "lain-ingest"
+description = "Library scans: the filesystem source, the scan pipeline, catalog commit planning, the library watcher and the folder picker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lain-api.workspace = true
+lain-core.workspace = true
+lain-identify.workspace = true
+notify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tracing.workspace = true

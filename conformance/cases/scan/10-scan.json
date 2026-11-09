@@ -1,0 +1,210 @@
+{
+ "tier": "v1",
+ "description": "POST/GET /api/library/scan: admins start a scan of every library, any user reads its state; the scan walks, identifies and commits the catalog.",
+ "cases": [
+  {
+   "name": "idle before the first scan",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/library/scan",
+      "auth": "bob",
+      "body": {
+       "state": "idle"
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/library/scan",
+      "body": {
+       "error": "unauthorized"
+      }
+     },
+     "expect": {
+      "status": 401
+     }
+    }
+   ]
+  },
+  {
+   "name": "only admins start scans",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/scan",
+      "auth": "bob",
+      "body": {
+       "error": "admin required"
+      }
+     },
+     "expect": {
+      "status": 403
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/scan",
+      "body": {
+       "error": "unauthorized"
+      }
+     },
+     "expect": {
+      "status": 401
+     }
+    }
+   ]
+  },
+  {
+   "name": "a scan of an empty server finishes",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/scan",
+      "auth": "admin",
+      "body": {
+       "state": "running"
+      }
+     },
+     "expect": {
+      "status": 202
+     }
+    },
+    {
+     "wait_for": {
+      "req": {
+       "method": "GET",
+       "path": "/api/library/scan",
+       "auth": "admin"
+      },
+      "expect": {
+       "status": 200,
+       "body": {
+        "state": "done",
+        "started_at": "$int",
+        "finished_at": "$int",
+        "trigger": "manual",
+        "stats": {
+         "libraries": 0,
+         "candidates": 0,
+         "$open": true
+        }
+       }
+      }
+     },
+     "timeout_ms": 20000
+    }
+   ]
+  },
+  {
+   "name": "the library is scanned and identified",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/libraries",
+      "auth": "admin",
+      "body": {
+       "name": "Media",
+       "type": "anime",
+       "path": "{{scan_media}}"
+      }
+     },
+     "expect": {
+      "status": 201
+     },
+     "save": {
+      "lib": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/scan",
+      "auth": "admin",
+      "body": {
+       "state": "running"
+      }
+     },
+     "expect": {
+      "status": 202
+     }
+    },
+    {
+     "wait_for": {
+      "req": {
+       "method": "GET",
+       "path": "/api/library/scan",
+       "auth": "admin"
+      },
+      "expect": {
+       "status": 200,
+       "body": {
+        "state": "done",
+        "started_at": "$int",
+        "finished_at": "$int",
+        "trigger": "manual",
+        "stats": {
+         "libraries": 1,
+         "candidates": 4,
+         "identified": 4,
+         "unidentified": 0,
+         "errors": 0,
+         "pruned": 0,
+         "missing": 0,
+         "restored": 0,
+         "migrated": 0,
+         "enriched": 0,
+         "walk_errors": 0,
+         "dirs": 4,
+         "$open": true
+        }
+       }
+      }
+     },
+     "timeout_ms": 20000
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/library/scan",
+      "auth": "bob",
+      "body": {
+       "state": "done",
+       "started_at": "$int",
+       "finished_at": "$int",
+       "trigger": "manual",
+       "stats": {
+        "candidates": 4,
+        "$open": true
+       }
+      }
+     },
+     "expect": {
+      "status": 200
+     }
+    }
+   ]
+  }
+ ]
+}
