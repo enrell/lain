@@ -22,7 +22,7 @@ use axum::routing::{MethodFilter, MethodRouter, on};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use lain_admin::{avatars, backup, integrations, theme};
+use lain_admin::{avatars, backup, theme};
 use lain_auth::{AVATAR_UPLOAD, AuthError, MASCOTS, PlaybackPolicy, ProfilePatch, ROLE_ADMIN, ROLE_USER, Verified};
 use lain_core::codes;
 use lain_core::modules::route_matches;
@@ -238,8 +238,8 @@ pub(crate) fn route(filter: MethodFilter, gate: Gate, f: Handler) -> MethodRoute
 
 pub(crate) const GET: MethodFilter = MethodFilter::GET;
 pub(crate) const POST: MethodFilter = MethodFilter::POST;
-const PUT: MethodFilter = MethodFilter::PUT;
-const PATCH: MethodFilter = MethodFilter::PATCH;
+pub(crate) const PUT: MethodFilter = MethodFilter::PUT;
+pub(crate) const PATCH: MethodFilter = MethodFilter::PATCH;
 pub(crate) const DELETE: MethodFilter = MethodFilter::DELETE;
 
 /// The router over an opened [`App`].
@@ -263,10 +263,6 @@ pub fn router(app: Arc<App>) -> Router {
         )
         .route("/api/users/{id}/avatar", route(GET, Gate::User, avatar_get))
         .route("/api/theme", route(GET, Gate::Public, theme_get))
-        .route(
-            "/api/admin/settings/integrations",
-            route(GET, Gate::Admin, integrations_get).merge(route(PUT, Gate::Admin, integrations_put)),
-        )
         .route("/api/admin/backup", route(GET, Gate::Admin, backup_get))
         .route("/api/items/{id}/pages", route(GET, Gate::User, pages_get))
         .route("/api/items/{id}/pages/{n}", route(GET, Gate::User, page_get))
@@ -308,6 +304,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/events", axum::routing::get(events))
         .merge(crate::population::routes())
         .merge(crate::watch::routes())
+        .merge(crate::lists::routes())
+        .merge(crate::social::routes())
         .fallback(fallback)
         .method_not_allowed_fallback(fallback)
         .layer(middleware::from_fn_with_state(app.clone(), privacy_gate))
@@ -474,29 +472,12 @@ fn theme_get(app: &App, _: &Req, _: &Verified) -> Reply {
 }
 
 /// `scheme://host` as the client reached this server (OAuth callbacks).
-fn base_url(req: &Req) -> String {
+pub(crate) fn base_url(req: &Req) -> String {
     let scheme = match req.header(HeaderName::from_static("x-forwarded-proto")) {
         p @ ("http" | "https") => p,
         _ => "http",
     };
     format!("{scheme}://{}", req.header(header::HOST))
-}
-
-fn integrations_get(app: &App, req: &Req, _: &Verified) -> Reply {
-    Reply::ok(json!(integrations::view(&integrations::get(&app.store), &base_url(req))))
-}
-
-fn integrations_put(app: &App, req: &Req, _: &Verified) -> Reply {
-    let u: integrations::IntegrationsUpdate = match req.decode() {
-        Ok(u) => u,
-        Err(r) => return r,
-    };
-    let cur = integrations::apply(integrations::get(&app.store), &u);
-    if let Err(e) = integrations::put(&app.store, &cur) {
-        return Reply::err(500, &e.to_string());
-    }
-    tracing::info!("integrations settings updated");
-    Reply::ok(json!(integrations::view(&cur, &base_url(req))))
 }
 
 /// A backup artifact: the core snapshots the live store and the data
@@ -978,9 +959,23 @@ fn progress_put(app: &App, req: &Req, v: &Verified) -> Reply {
         Err(r) => return r,
     };
     p.item_id = req.param("id").to_string();
+    // Scrobbles and social activity look at the transition: the
+    // reporter keeps re-sending the final position.
+    let prev: Progress = app
+        .registry
+        .call_one(CAP_USER_PROGRESS, "get", json!({"user_id": v.user_id, "item_id": p.item_id}))
+        .ok()
+        .and_then(|(v, _)| serde_json::from_value(v).ok())
+        .unwrap_or_default();
     match app.registry.call_one(CAP_USER_PROGRESS, "put", json!({"user_id": v.user_id, "progress": p})) {
         Ok((out, _)) => {
             app.publish_progress(&v.user_id, &p.item_id, json!({"item_id": p.item_id, "progress": out}));
+            if let Some(it) = crate::social::catalog_item(app, &p.item_id) {
+                if p.completed && !prev.completed {
+                    crate::lists::scrobble_after(app, &v.user_id, &it);
+                }
+                crate::social::record_progress(app, &v.user_id, &it, p.completed, prev.completed);
+            }
             Reply::ok(out)
         }
         Err(e) => Reply::err(503, &e.to_string()),
