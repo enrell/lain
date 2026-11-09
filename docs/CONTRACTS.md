@@ -575,7 +575,8 @@ The metadata pipeline's orchestration is itself a capability
 (`lain.metadata.enrich@1`, below); it fans out via
 `Registry.CallMergeReport`, dedups by normalized title, and scores
 exact matches first, then binding precedence
-(`nfo → kitsu → anilist → jikan → tvmaze`). TVMaze is keyless and
+(`nfo → kitsu → anilist → jikan → tvmaze`; in-process in both servers,
+API roots overridable by `LAIN_METADATA_<NAME>_URL`, D-201). TVMaze is keyless and
 TV-first: it answers series/episode/video/anime kinds and stays
 silent for movies. TMDB and IMDb are deliberately out of this slice
 (TMDB needs a user-supplied key, IMDb has no free official API;
@@ -838,7 +839,7 @@ are core code (`internal/torrent`, `internal/acquire`), not plugins
 |---|---|---|---|
 | `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain) |
 | `lain.indexer@1` | ordered-many; `unsupported-protocol` declines | `lain-indexer-torznab` (Torznab + Newznab) | `IndexerCapsInput` → `IndexerCaps`; `IndexerSearchInput` → `IndexerSearchOutput` |
-| `lain.subtitle@1` | ordered-many; `unsupported-provider` declines | `lain-subtitle-opensubtitles` (OpenSubtitles.com REST v1) | `SubtitleSearchInput` → `SubtitleSearchOutput`; `SubtitleDownloadInput` → `SubtitleDownloadOutput` (a link; the core fetches it, D-150) |
+| `lain.subtitle@1` | ordered-many; `unsupported-provider` declines | `lain-subtitle-opensubtitles` (OpenSubtitles.com REST v1) | `SubtitleSearchInput` → `SubtitleSearchOutput`; `SubtitleDownloadInput` → `SubtitleDownloadOutput` (a link; the core fetches it, D-150). In lain-rs the ops are `search` and `download` (D-202) |
 
 Indexer and subtitle-provider credentials travel inside the input and
 never appear in an error message (errors name the host only, D-114,

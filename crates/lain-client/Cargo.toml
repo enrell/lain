@@ -23,6 +23,7 @@ libc.workspace = true
 
 [dev-dependencies]
 lain-conformance = { path = "../../conformance/runner" }
+lain-metadata.workspace = true
 lain-server = { path = "../lain-server" }
 lain-admin.workspace = true
 lain-read.workspace = true

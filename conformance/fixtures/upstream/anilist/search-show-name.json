@@ -1,0 +1,30 @@
+{
+ "data": {
+  "Page": {
+   "media": [
+    {
+     "id": 777001,
+     "title": {
+      "romaji": "Showa Era Stories",
+      "english": null,
+      "native": null
+     },
+     "description": "Unrelated.",
+     "coverImage": {
+      "large": "https://static.example.invalid/a.jpg",
+      "extraLarge": null
+     },
+     "bannerImage": null,
+     "episodes": 12,
+     "startDate": {
+      "year": 2019
+     },
+     "genres": [
+      "Drama"
+     ],
+     "synonyms": []
+    }
+   ]
+  }
+ }
+}

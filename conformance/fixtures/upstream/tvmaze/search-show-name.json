@@ -1,0 +1,31 @@
+[
+ {
+  "score": 0.91,
+  "show": {
+   "id": 9001,
+   "name": "Show Name",
+   "type": "Scripted",
+   "genres": [
+    "Drama",
+    "Mystery"
+   ],
+   "premiered": "2021-04-02",
+   "summary": "<p>A keeper <b>returns</b> to the lighthouse.</p>",
+   "image": {
+    "medium": "https://static.example.invalid/m/9001.jpg",
+    "original": "https://static.example.invalid/o/9001.jpg"
+   }
+  }
+ },
+ {
+  "score": 0.4,
+  "show": {
+   "id": 9002,
+   "name": "  ",
+   "genres": [],
+   "premiered": null,
+   "summary": null,
+   "image": null
+  }
+ }
+]

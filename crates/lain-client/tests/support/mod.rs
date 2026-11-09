@@ -30,10 +30,14 @@ impl Server {
         Server::start_with(data, |_| {}).await
     }
 
+    /// Starts lain-rs with its configuration tuned by `tune`.
     pub async fn start_with(data: &Path, tune: impl FnOnce(&mut Config)) -> Server {
         let mut cfg = Config::new(data, lain_server::VERSION);
         cfg.keep_alive = Duration::from_millis(300);
         cfg.reload_debounce = Duration::from_millis(100);
+        // No test reaches the network: one that wants the network
+        // providers points them at the upstream fixture server.
+        cfg.offline = true;
         tune(&mut cfg);
         let app = App::open(cfg).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

@@ -16,14 +16,17 @@
 #       conformance/fixtures/watch-catalog.json
 # The scan suite writes its own fixture media and runs with library
 # watching and the post-scan metadata pass off, so no scan races the
-# cases and nothing reaches the network; so does read, whose fixture
-# catalog must stay as imported.
+# cases; so does read, whose fixture catalog must stay as imported.
+# Nothing reaches the network: `lain-conformance upstream` serves the
+# recorded answers of the remote APIs (conformance/fixtures/upstream)
+# and every server's LAIN_METADATA_<NAME>_URL points at it.
 #
 # The watch suite needs ffmpeg (conformance/make-clips.sh writes the
 # clips); without it the suite is skipped, unless LAIN_REQUIRE_FFMPEG=1
 # (CI) makes that a failure.
 #
-# Env: GO_PORT (19460), RS_PORT (19461), KEEP=1 keeps the temp dir.
+# Env: GO_PORT (19460), RS_PORT (19461), UPSTREAM_PORT (19462), KEEP=1
+# keeps the temp dir.
 set -eu
 
 which="${1:-both}"
@@ -31,6 +34,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/lain-conformance.XXXXXX")
 go_port="${GO_PORT:-19460}"
 rs_port="${RS_PORT:-19461}"
+upstream_port="${UPSTREAM_PORT:-19462}"
 cleanup() {
 	if [ -f "$tmp/pids" ]; then
 		while read -r p; do kill "$p" 2>/dev/null || true; done <"$tmp/pids"
@@ -47,6 +51,21 @@ cd "$root"
 cargo build -q -p lain-conformance -p lain-server
 runner="$root/target/debug/lain-conformance"
 lain_rs="$root/target/debug/lain-rs"
+
+# The upstream fixture server, for both servers' network providers.
+upstream="http://127.0.0.1:$upstream_port"
+"$runner" upstream --port "$upstream_port" >"$tmp/upstream.log" 2>&1 &
+echo "$!" >>"$tmp/pids"
+i=0
+until grep -q "^http://" "$tmp/upstream.log" 2>/dev/null; do
+	i=$((i + 1))
+	if [ "$i" -gt 100 ]; then echo "upstream fixture server did not start" >&2; cat "$tmp/upstream.log" >&2; exit 1; fi
+	sleep 0.1
+done
+export LAIN_METADATA_KITSU_URL="$upstream/kitsu"
+export LAIN_METADATA_ANILIST_URL="$upstream/anilist"
+export LAIN_METADATA_JIKAN_URL="$upstream/jikan"
+export LAIN_METADATA_TVMAZE_URL="$upstream/tvmaze"
 
 # Fixture media: fictional names only.
 mkdir -p "$tmp/media/Frieren" "$tmp/media2" "$tmp/rootmedia/Frieren"
@@ -102,7 +121,7 @@ run_go() {
 
 	mkdir -p "$tmp/go-scanmedia"
 	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start go-scan "$url" "$tmp/lain" serve --data-dir "$tmp/go-scan" --port "$go_port")
-	out=$(LAIN_URL=$url "$runner" --tier v1 --var scan_media="$tmp/go-scanmedia" conformance/cases/scan) || { echo "$out"; exit 1; }
+	out=$(LAIN_URL=$url "$runner" --tier v1 --var scan_media="$tmp/go-scanmedia" --var upstream="$upstream" conformance/cases/scan) || { echo "$out"; exit 1; }
 	echo "$out"
 	note "Go   scan v1: $(echo "$out" | tail -1)"
 	stop "$pid"
@@ -128,7 +147,7 @@ run_rust() {
 
 	mkdir -p "$tmp/rs-scanmedia"
 	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-scan "$url" "$lain_rs" serve --data-dir "$tmp/rs-scan" --port "$rs_port")
-	out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var scan_media="$tmp/rs-scanmedia" conformance/cases/scan) || { echo "$out"; exit 1; }
+	out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var scan_media="$tmp/rs-scanmedia" --var upstream="$upstream" conformance/cases/scan) || { echo "$out"; exit 1; }
 	echo "$out"
 	note "Rust scan v1+v2: $(echo "$out" | tail -1)"
 	stop "$pid"

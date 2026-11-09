@@ -149,6 +149,11 @@ impl Runner {
         let req = subst(req, &self.vars)?;
         let method = req["method"].as_str().unwrap_or("GET").to_string();
         let path = req["path"].as_str().ok_or("req.path required")?;
+        // An expected body written under `req` would be sent and never
+        // checked; these methods carry none, so it is a case error.
+        if matches!(method.as_str(), "GET" | "HEAD" | "DELETE") && req.get("body").is_some() {
+            return Err(format!("{method} {path}: req.body on a {method}; an expected body goes under expect.body"));
+        }
         let mut headers = Vec::new();
         if let Some(h) = req["headers"].as_object() {
             for (k, v) in h {

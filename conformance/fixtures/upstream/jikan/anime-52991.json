@@ -1,0 +1,40 @@
+{
+ "data": {
+  "mal_id": 52991,
+  "url": "https://myanimelist.net/anime/52991",
+  "images": {
+   "jpg": {
+    "image_url": "https://cdn.myanimelist.net/images/anime/1015/138006.jpg",
+    "small_image_url": "https://cdn.myanimelist.net/images/anime/1015/138006t.jpg",
+    "large_image_url": "https://cdn.myanimelist.net/images/anime/1015/138006l.jpg"
+   }
+  },
+  "title": "Sousou no Frieren",
+  "title_english": "Frieren: Beyond Journey's End",
+  "title_japanese": "葬送のフリーレン",
+  "type": "TV",
+  "episodes": 28,
+  "aired": {
+   "from": "2023-09-29T00:00:00+00:00",
+   "to": "2024-03-22T00:00:00+00:00"
+  },
+  "synopsis": "During their decade-long quest to defeat the Demon King, the members of the hero's party grew close.\n",
+  "genres": [
+   {
+    "mal_id": 2,
+    "type": "anime",
+    "name": "Adventure"
+   },
+   {
+    "mal_id": 8,
+    "type": "anime",
+    "name": "Drama"
+   },
+   {
+    "mal_id": 10,
+    "type": "anime",
+    "name": "Fantasy"
+   }
+  ]
+ }
+}

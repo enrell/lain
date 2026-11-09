@@ -23,7 +23,7 @@ type TVMaze struct {
 }
 
 func NewTVMaze() *TVMaze {
-	return &TVMaze{BaseURL: "https://api.tvmaze.com", http: newPoliteClient(1 * time.Second)}
+	return &TVMaze{BaseURL: baseURL("LAIN_METADATA_TVMAZE_URL", "https://api.tvmaze.com"), http: newPoliteClient(1 * time.Second)}
 }
 
 func (t *TVMaze) ID() string { return "lain-metadata-tvmaze" }

@@ -1,0 +1,209 @@
+{
+ "format": "lain.upstream-fixtures@1",
+ "about": "Recorded (trimmed) and fictional answers of the remote APIs the network providers call; served on loopback by `lain-conformance upstream` and the Rust tests, so nothing reaches the network. Base URLs: <server>/kitsu, /anilist, /jikan, /tvmaze, /opensubtitles/api/v1.",
+ "routes": [
+  {
+   "method": "GET",
+   "path": "/kitsu/api/edge/anime",
+   "query": {
+    "filter[text]": "Frieren"
+   },
+   "file": "kitsu/search-frieren.json"
+  },
+  {
+   "method": "GET",
+   "path": "/kitsu/api/edge/anime/46474",
+   "file": "kitsu/anime-46474.json"
+  },
+  {
+   "method": "GET",
+   "path": "/kitsu/api/edge/anime",
+   "query": {
+    "filter[text]": "Show Name"
+   },
+   "body": {
+    "data": [],
+    "meta": {
+     "count": 0
+    }
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/anilist",
+   "body_contains": [
+    "Page(",
+    "\"Frieren\""
+   ],
+   "file": "anilist/search-frieren.json"
+  },
+  {
+   "method": "POST",
+   "path": "/anilist",
+   "body_contains": [
+    "Media(id",
+    "154587"
+   ],
+   "file": "anilist/media-154587.json"
+  },
+  {
+   "method": "POST",
+   "path": "/anilist",
+   "body_contains": [
+    "Page(",
+    "\"Show Name\""
+   ],
+   "file": "anilist/search-show-name.json"
+  },
+  {
+   "method": "GET",
+   "path": "/jikan/v4/anime",
+   "query": {
+    "q": "Frieren"
+   },
+   "file": "jikan/search-frieren.json"
+  },
+  {
+   "method": "GET",
+   "path": "/jikan/v4/anime/52991",
+   "file": "jikan/anime-52991.json"
+  },
+  {
+   "method": "GET",
+   "path": "/jikan/v4/anime",
+   "query": {
+    "q": "Show Name"
+   },
+   "status": 503,
+   "body": {
+    "status": 503,
+    "type": "UpstreamException",
+    "message": "upstream unavailable"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/tvmaze/search/shows",
+   "query": {
+    "q": "Frieren"
+   },
+   "file": "tvmaze/search-frieren.json"
+  },
+  {
+   "method": "GET",
+   "path": "/tvmaze/search/shows",
+   "query": {
+    "q": "Show Name"
+   },
+   "file": "tvmaze/search-show-name.json"
+  },
+  {
+   "method": "GET",
+   "path": "/tvmaze/shows/9001",
+   "file": "tvmaze/show-9001.json"
+  },
+  {
+   "method": "GET",
+   "path": "/tvmaze/shows/69956",
+   "body": {
+    "id": 69956,
+    "name": "Frieren: Beyond Journey's End",
+    "genres": [
+     "Drama",
+     "Adventure",
+     "Fantasy"
+    ],
+    "premiered": "2023-09-29",
+    "summary": "<p>An elf <i>mage</i>.</p>",
+    "image": null
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/garbage/v4/anime",
+   "body": "not json"
+  },
+  {
+   "method": "POST",
+   "path": "/opensubtitles/api/v1/login",
+   "headers": {
+    "Api-Key": "key-1"
+   },
+   "body_contains": "\"secret-pass\"",
+   "body": {
+    "token": "jwt-1",
+    "status": 200
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/opensubtitles/api/v1/login",
+   "status": 401,
+   "body": {
+    "message": "bad credentials secret-pass"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/opensubtitles/api/v1/subtitles",
+   "headers": {
+    "Api-Key": "key-1"
+   },
+   "file": "opensubtitles/search.json"
+  },
+  {
+   "method": "GET",
+   "path": "/opensubtitles/api/v1/subtitles",
+   "status": 401,
+   "body": {
+    "message": "Invalid API key key-wrong"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/opensubtitles/api/v1/download",
+   "headers": {
+    "Api-Key": "key-1"
+   },
+   "body_contains": "\"file_id\":111",
+   "file": "opensubtitles/download-111.json"
+  },
+  {
+   "method": "POST",
+   "path": "/opensubtitles/api/v1/download",
+   "headers": {
+    "Api-Key": "key-1"
+   },
+   "body_contains": "\"file_id\":333",
+   "body": {
+    "message": "quota",
+    "remaining": 0
+   },
+   "status": 429
+  },
+  {
+   "method": "POST",
+   "path": "/opensubtitles/api/v1/download",
+   "headers": {
+    "Api-Key": "key-1"
+   },
+   "status": 404,
+   "body": {
+    "message": "not found"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/opensubtitles/api/v1/download",
+   "status": 401,
+   "body": {
+    "message": "Invalid API key"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/opensubtitles/files/111.srt",
+   "body": "1\n00:00:01,000 --> 00:00:02,000\nHello\n"
+  }
+ ]
+}

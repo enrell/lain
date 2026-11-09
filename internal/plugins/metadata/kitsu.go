@@ -19,7 +19,7 @@ type Kitsu struct {
 }
 
 func NewKitsu() *Kitsu {
-	return &Kitsu{BaseURL: "https://kitsu.io", http: newPoliteClient(1 * time.Second)}
+	return &Kitsu{BaseURL: baseURL("LAIN_METADATA_KITSU_URL", "https://kitsu.io"), http: newPoliteClient(1 * time.Second)}
 }
 
 func (k *Kitsu) ID() string { return "lain-metadata-kitsu" }
