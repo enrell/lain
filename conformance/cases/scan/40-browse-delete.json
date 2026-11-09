@@ -12,7 +12,10 @@
      "req": {
       "method": "GET",
       "path": "/api/browse?path={{scan_media}}",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "path": "{{scan_media}}",
        "parent": "$string",
@@ -32,64 +35,61 @@
         }
        ]
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/browse?path=relative/path",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 400,
       "body": {
        "error": "path must be absolute"
       }
-     },
-     "expect": {
-      "status": 400
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/browse?path={{scan_media}}/no-such-dir",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 400,
       "body": {
        "error": "path is not a readable directory"
       }
-     },
-     "expect": {
-      "status": 400
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/browse",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "path": "$string",
        "parent": "$string",
        "detected": true,
        "dirs": "$array"
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/browse?path={{scan_media}}",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
       "body": {
        "error": "admin required"
       }
-     },
-     "expect": {
-      "status": 403
      }
     }
    ]
@@ -104,51 +104,51 @@
      "req": {
       "method": "DELETE",
       "path": "/api/items/{{show}}",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
       "body": {
        "error": "admin required"
       }
-     },
-     "expect": {
-      "status": 403
      }
     },
     {
      "req": {
       "method": "DELETE",
       "path": "/api/items/no-such-item",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
       "body": {
        "error": "admin required"
       }
-     },
-     "expect": {
-      "status": 403
      }
     },
     {
      "req": {
       "method": "DELETE",
-      "path": "/api/items/{{show}}",
+      "path": "/api/items/{{show}}"
+     },
+     "expect": {
+      "status": 401,
       "body": {
        "error": "unauthorized"
       }
-     },
-     "expect": {
-      "status": 401
      }
     },
     {
      "req": {
       "method": "DELETE",
       "path": "/api/items/no-such-item",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
       "body": {
        "error": "unknown item"
       }
-     },
-     "expect": {
-      "status": 404
      }
     }
    ]
@@ -177,7 +177,10 @@
      "req": {
       "method": "DELETE",
       "path": "/api/items/{{show}}",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "id": "{{show}}",
        "library_id": "{{lib}}",
@@ -188,16 +191,16 @@
        "title": "Show Name",
        "missing": true
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/catalog/{{show}}",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "id": "{{show}}",
        "library_id": "{{lib}}",
@@ -207,31 +210,31 @@
        "$open": true,
        "missing": true
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/items/{{show}}/progress",
-      "auth": "bob",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "item_id": "{{show}}",
        "position_sec": 30,
        "$open": true
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "DELETE",
       "path": "/api/items/{{show}}",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "id": "{{show}}",
        "library_id": "{{lib}}",
@@ -241,25 +244,22 @@
        "$open": true,
        "missing": true
       }
-     },
-     "expect": {
-      "status": 200
      }
     },
     {
      "req": {
       "method": "GET",
       "path": "/api/browse?path={{scan_media}}/Show",
-      "auth": "admin",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
       "body": {
        "path": "$string",
        "parent": "$string",
        "detected": false,
        "dirs": []
       }
-     },
-     "expect": {
-      "status": 200
      }
     }
    ]

@@ -29,6 +29,7 @@ tracing-subscriber.workspace = true
 lain-auth.workspace = true
 lain-component.workspace = true
 lain-core.workspace = true
+lain-http.workspace = true
 lain-store.workspace = true
 lain-identify.workspace = true
 lain-ingest.workspace = true

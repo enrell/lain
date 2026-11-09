@@ -91,6 +91,7 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
     let off = |v: Option<String>| v.is_some_and(|v| v == "0" || v == "false" || v == "FALSE");
     cfg.auto_enrich = !off(std::env::var("LAIN_AUTO_ENRICH").ok());
     cfg.watch = !off(flag(args, "watch").or_else(|| std::env::var("LAIN_WATCH").ok()));
+    cfg.metadata_endpoints = lain_metadata::Endpoints::from_env();
     let app = App::open(cfg)?;
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async move {

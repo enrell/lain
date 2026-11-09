@@ -1,0 +1,102 @@
+{
+ "data": [
+  {
+   "id": "46474",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sousou no Frieren",
+    "titles": {
+     "en": "Frieren: Beyond Journey’s End",
+     "en_jp": "Sousou no Frieren",
+     "it_it": "Frieren: Oltre la Fine del Viaggio",
+     "ja_jp": "葬送のフリーレン",
+     "ko_kr": "장송의 프리렌",
+     "pt_br": "Frieren e a Jornada para o Além",
+     "th_th": "คำอธิษฐานในวันที่จากลา Frieren",
+     "zh_cn": "葬送的芙莉蓮"
+    },
+    "synopsis": "After the party of heroes defeated the Demon King, they restored peace to the land and returned to lives of solitude. Generations pass, and the elven mage Frieren comes face to face with humanity’s mortality. She takes on a new apprentice and promises to fulfill old friends’ dying wishes. Can an elv",
+    "startDate": "2023-09-29",
+    "episodeCount": 28,
+    "posterImage": {
+     "tiny": "https://media.kitsu.app/anime/46474/poster_image/tiny-f77201d59d7f322510e3d28bc1930e29.jpeg",
+     "large": "https://media.kitsu.app/anime/46474/poster_image/large-ec9b98dd5fbf8f92532d1edb45f9e882.jpeg",
+     "small": "https://media.kitsu.app/anime/46474/poster_image/small-2dc1165f5acd773939c7befb0949d258.jpeg",
+     "original": "https://media.kitsu.app/anime/46474/poster_image/99d7df09d8cb9360b1e02825372ce612.jpg",
+     "meta": {
+      "dimensions": {
+       "tiny": {
+        "width": 110,
+        "height": 156
+       }
+      }
+     }
+    },
+    "coverImage": {
+     "tiny": "https://media.kitsu.app/anime/46474/cover_image/tiny-dccb49f6ea01f1fc1f93b10b6bc2608c.jpeg",
+     "large": "https://media.kitsu.app/anime/46474/cover_image/large-167edf3e01fac59ce6aacfeb47df5634.jpeg",
+     "small": "https://media.kitsu.app/anime/46474/cover_image/small-2467fb0c4f1283988febe4abd715a9b8.jpeg",
+     "original": "https://media.kitsu.app/anime/46474/cover_image/883c308356a4db76a9c0af900ada96ed.jpg",
+     "meta": {
+      "dimensions": {
+       "tiny": {
+        "width": 110,
+        "height": 156
+       }
+      }
+     }
+    },
+    "subtype": "TV",
+    "slug": "sousou-no-frieren"
+   }
+  },
+  {
+   "id": "49240",
+   "type": "anime",
+   "attributes": {
+    "canonicalTitle": "Sousou no Frieren 2nd Season",
+    "titles": {
+     "en": "Frieren: Beyond Journey's End Season 2",
+     "en_jp": "Sousou no Frieren 2nd Season",
+     "ja_jp": "葬送のフリーレン 第２期"
+    },
+    "synopsis": "The second season of Sousou no Frieren.\n\nOn the road to Ende, Frieren confronts past bonds and rising threats with her newfound party.\n\n(Source: Anime News Network)",
+    "startDate": "2026-01-16",
+    "episodeCount": 10,
+    "posterImage": {
+     "tiny": "https://media.kitsu.app/anime/49240/poster_image/tiny-d582a7d749477be01b03196f9f3dfffd.jpeg",
+     "large": "https://media.kitsu.app/anime/49240/poster_image/large-5f1824cd76b6e829012dc75a2f51ec44.jpeg",
+     "small": "https://media.kitsu.app/anime/49240/poster_image/small-b61dd0c91bf0152cb8275e9dc481cd2e.jpeg",
+     "original": "https://media.kitsu.app/anime/49240/poster_image/127830b1fbf80dd13a604998ef10d12c.jpg",
+     "meta": {
+      "dimensions": {
+       "tiny": {
+        "width": 110,
+        "height": 156
+       }
+      }
+     }
+    },
+    "coverImage": {
+     "tiny": "https://media.kitsu.app/anime/49240/cover_image/tiny-be18b34b7b503ca5a9df332544a066f0.jpeg",
+     "large": "https://media.kitsu.app/anime/49240/cover_image/large-11304d969375d3e40cddbcb495725826.jpeg",
+     "small": "https://media.kitsu.app/anime/49240/cover_image/small-17e5a4a0627fe0cccdd309f6fb515ceb.jpeg",
+     "original": "https://media.kitsu.app/anime/49240/cover_image/b3d01e59bb588122c6c8691880aa3b1b.jpg",
+     "meta": {
+      "dimensions": {
+       "tiny": {
+        "width": 110,
+        "height": 156
+       }
+      }
+     }
+    },
+    "subtype": "TV",
+    "slug": "sousou-no-frieren-season-2"
+   }
+  }
+ ],
+ "meta": {
+  "count": 6
+ }
+}

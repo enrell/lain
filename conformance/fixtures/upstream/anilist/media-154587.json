@@ -1,0 +1,44 @@
+{
+ "data": {
+  "Media": {
+   "id": 154587,
+   "title": {
+    "romaji": "Sousou no Frieren",
+    "english": "Frieren: Beyond Journey’s End",
+    "native": "葬送のフリーレン"
+   },
+   "description": "The adventure is over but life goes on for an elf mage just beginning to learn what living is all about. Elf mage Frieren and her courageous fellow adventurers have defeated the Demon King and brought peace to the land. But Frieren will long outlive the rest of her former party. How will she come to",
+   "coverImage": {
+    "large": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx154587-qQTzQnEJJ3oB.jpg",
+    "extraLarge": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-qQTzQnEJJ3oB.jpg"
+   },
+   "bannerImage": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/154587-ivXNJ23SM1xB.jpg",
+   "episodes": 28,
+   "startDate": {
+    "year": 2023
+   },
+   "genres": [
+    "Adventure",
+    "Drama",
+    "Fantasy"
+   ],
+   "synonyms": [
+    "Frieren at the Funeral",
+    "장송의 프리렌",
+    "Frieren - Oltre la Fine del Viaggio",
+    "คำอธิษฐานในวันที่จากลา Frieren",
+    "Frieren e a Jornada para o Além",
+    "Frieren – Nach dem Ende der Reise",
+    "葬送的芙莉蓮",
+    "Frieren: Más allá del final del viaje",
+    "Frieren en el funeral",
+    "Sōsō no Furīren",
+    "Frieren. U kresu drogi",
+    "Frieren - Pháp sư tiễn táng",
+    "Фрирен, провожающая в последний путь",
+    "فريرن: ما وراء نهاية الرحلة",
+    "Frieren: Tras finalizar el viaje"
+   ]
+  }
+ }
+}
