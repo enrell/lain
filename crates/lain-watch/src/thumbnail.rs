@@ -36,11 +36,10 @@ pub struct Thumbnail {
     pub cached: bool,
 }
 
-/// Comic archives have no frame for ffmpeg; their covers come with the
-/// read module (D-190).
+/// A comic archive: its cover is the read module's first page, scaled
+/// by ffmpeg (Go's `extractCover`).
 fn comic(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    [".cbz", ".zip", ".cbr", ".rar", ".cb7", ".7z"].iter().any(|x| lower.ends_with(x))
+    !lain_read::archive::format(Path::new(path)).is_empty()
 }
 
 pub struct Generator {
@@ -78,11 +77,6 @@ impl Generator {
         let width = if req.width <= 0 { 480 } else { req.width };
         let at = if req.time_sec.is_finite() && req.time_sec > 0.0 { req.time_sec } else { 0.0 };
         let meta = std::fs::metadata(&req.file_path).map_err(|_| Error::unavailable("source file unavailable"))?;
-        if comic(&req.file_path) {
-            return Err(Error::unavailable(
-                "comic covers are served by the read module, which lain-rs does not serve yet",
-            ));
-        }
         let mtime = meta
             .modified()
             .ok()
@@ -130,14 +124,22 @@ impl Drop for Slot<'_> {
     }
 }
 
-/// Seeks before `-i` (keyframe-fast) and writes one JPEG atomically.
+/// Seeks before `-i` (keyframe-fast) and writes one JPEG atomically; a
+/// comic archive's cover page is piped in instead.
 fn extract(path: &str, at: f64, width: i64, out: &Path) -> Result<(), String> {
     let tmp = out.with_extension("jpg.tmp");
     let _ = std::fs::remove_file(&tmp);
     let mut cmd = Command::new("ffmpeg");
-    cmd.args(["-hide_banner", "-loglevel", "error", "-nostdin", "-ss", &format!("{at:.3}"), "-i", path]);
+    let stdin: Option<Box<dyn std::io::Read + Send>> = if comic(path) {
+        let page = lain_read::archive::first_page(Path::new(path)).map_err(|e| e.to_string())?;
+        cmd.args(["-hide_banner", "-loglevel", "error", "-i", "pipe:0"]);
+        Some(Box::new(std::io::Cursor::new(page)))
+    } else {
+        cmd.args(["-hide_banner", "-loglevel", "error", "-nostdin", "-ss", &format!("{at:.3}"), "-i", path]);
+        None
+    };
     cmd.args(["-frames:v", "1", "-vf", &format!("scale={width}:-2"), "-q:v", "4", "-f", "image2", "-y"]).arg(&tmp);
-    let o = exec::run(cmd, None, TIMEOUT).map_err(|e| e.to_string())?;
+    let o = exec::run(cmd, stdin, TIMEOUT).map_err(|e| e.to_string())?;
     if !o.status.success() {
         let _ = std::fs::remove_file(&tmp);
         return Err(o.describe());
@@ -162,7 +164,33 @@ mod tests {
         assert_eq!(g.generate(&missing).unwrap_err().msg, "source file unavailable");
         std::fs::write(dir.join("a.cbz"), b"zip").unwrap();
         let c = Request { file_path: dir.join("a.cbz").to_string_lossy().into_owned(), ..Default::default() };
-        assert!(g.generate(&c).unwrap_err().msg.contains("read module"));
+        assert_eq!(g.generate(&c).unwrap_err().code, "dependency-unavailable", "a broken archive is no cover");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn comic_cover_is_the_first_page() {
+        if lain_probe::exec::look_path("ffmpeg").is_none() {
+            assert!(std::env::var("LAIN_REQUIRE_FFMPEG").is_err(), "LAIN_REQUIRE_FFMPEG is set but ffmpeg is missing");
+            return;
+        }
+        let dir = lain_store::test_dir("thumb-comic");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut w = lain_read::zip::Writer::new();
+        w.add("01.png", &lain_read::image::test_png(40, 60), false);
+        let cbz = dir.join("Vol 01.cbz");
+        std::fs::write(&cbz, w.finish()).unwrap();
+        let g = Generator::new(&dir.join("cache"));
+        let t = g
+            .generate(&Request { file_path: cbz.to_string_lossy().into_owned(), width: 32, ..Default::default() })
+            .unwrap();
+        let jpg = std::fs::read(&t.path).unwrap();
+        assert_eq!(&jpg[..2], &[0xFF, 0xD8], "a JPEG");
+        assert!(
+            g.generate(&Request { file_path: cbz.to_string_lossy().into_owned(), width: 32, ..Default::default() })
+                .unwrap()
+                .cached
+        );
         std::fs::remove_dir_all(dir).ok();
     }
 }
