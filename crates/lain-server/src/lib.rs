@@ -12,6 +12,7 @@ pub mod events;
 pub mod gateway;
 pub mod libraries;
 pub mod logging;
+pub mod population;
 pub mod privacy;
 pub mod roots;
 pub mod service;

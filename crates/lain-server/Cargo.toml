@@ -28,6 +28,10 @@ lain-auth.workspace = true
 lain-component.workspace = true
 lain-core.workspace = true
 lain-store.workspace = true
+lain-identify.workspace = true
+lain-ingest.workspace = true
+lain-metadata.workspace = true
+lain-subtitle.workspace = true
 
 [dev-dependencies]
 lain-conformance = { path = "../../conformance/runner" }

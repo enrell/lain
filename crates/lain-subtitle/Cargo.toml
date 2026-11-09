@@ -1,0 +1,11 @@
+[package]
+name = "lain-subtitle"
+description = "Sidecar subtitle discovery and SRT/WebVTT/ASS parsing to WebVTT (shared by the catalog and subtitles modules)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lain-api.workspace = true

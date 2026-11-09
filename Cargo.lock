@@ -428,6 +428,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "lain-identify"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
+ "lain-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lain-ingest"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
+ "lain-core",
+ "lain-identify",
+ "notify",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tracing",
+]
+
+[[package]]
+name = "lain-metadata"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
+ "lain-core",
+ "lain-store",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "lain-server"
 version = "0.1.0"
 dependencies = [
@@ -438,7 +474,11 @@ dependencies = [
  "lain-component",
  "lain-conformance",
  "lain-core",
+ "lain-identify",
+ "lain-ingest",
+ "lain-metadata",
  "lain-store",
+ "lain-subtitle",
  "notify",
  "serde",
  "serde_json",
@@ -454,6 +494,13 @@ dependencies = [
  "redb",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lain-subtitle"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
 ]
 
 [[package]]

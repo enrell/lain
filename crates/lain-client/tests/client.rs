@@ -276,10 +276,7 @@ async fn not_ported_and_module_disabled() {
     np(admin.set_avatar(vec![1, 2, 3], "image/png").await.unwrap_err());
     np(admin.clear_avatar().await.unwrap_err());
     np(admin.avatar("user-admin").await.unwrap_err());
-    assert_eq!(np(admin.start_scan().await.unwrap_err()), "POST /api/library/scan");
     np(admin.backup().await.unwrap_err());
-    np(admin.scan_status().await.unwrap_err());
-    np(admin.browse("").await.unwrap_err());
     let url = admin.stream_url(ITEM1).unwrap();
     assert!(url.starts_with(&format!("{}/api/items/{ITEM1}/stream?token=", server.url)));
 
@@ -324,6 +321,84 @@ async fn not_ported_and_module_disabled() {
         admin.playback_plan(ITEM1, "mpv").await.unwrap_err(),
         ClientError::ModuleDisabled { module: "watch".into() }
     );
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// Scan, identified catalog, sidecars, overlays and item delete through
+/// the typed client, with the scan's events on the stream.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn catalog_population() {
+    let root = temp("population");
+    let media = root.join("media/Frieren");
+    std::fs::create_dir_all(&media).unwrap();
+    let ep = media.join("[Fansub-A] Frieren - 01 [1080p].mkv");
+    std::fs::write(&ep, b"x").unwrap();
+    std::fs::write(media.join("[Fansub-A] Frieren - 01 [1080p].en.srt"), b"1\n00:00:01,000 --> 00:00:02,000\nHi\n")
+        .unwrap();
+    std::fs::write(media.join("tvshow.nfo"), b"<tvshow><title>Sousou no Frieren</title><year>2023</year></tvshow>")
+        .unwrap();
+    let server = Server::start(&root.join("data")).await;
+    let (admin, bob) = admin_and_bob(&server.url).await;
+    let lib = admin
+        .create_library(NewLibrary {
+            name: "Anime".into(),
+            path: root.join("media").to_string_lossy().into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let stream = EventStream::new(bob.clone(), StreamConfig::default());
+    next_matching(&stream, "ready", |i| matches!(i, StreamItem::Connected(_))).await;
+
+    assert_eq!(bob.scan_status().await.unwrap().state, "idle");
+    assert!(matches!(bob.start_scan().await.unwrap_err(), ClientError::Forbidden { .. }));
+    admin.start_scan().await.unwrap();
+    match next_matching(
+        &stream,
+        "scan-state done",
+        |i| matches!(i, StreamItem::Event(ServerEvent::ScanState(s)) if s.state == "done"),
+    )
+    .await
+    {
+        StreamItem::Event(ServerEvent::ScanState(s)) => {
+            assert_eq!(s.stats.as_ref().map(|s| s.identified), Some(1));
+        }
+        _ => unreachable!(),
+    }
+    let st = bob.scan_status().await.unwrap();
+    assert_eq!((st.state.as_str(), st.trigger.as_str()), ("done", "manual"));
+    let stats = st.stats.unwrap();
+    assert_eq!((stats.candidates, stats.identified, stats.dirs), (1, 1, 2));
+    let token = admin.session().unwrap().token;
+    assert_mirrors::<lain_client::types::ScanStatus>(&raw_get(&server.url, &token, "/api/library/scan").await);
+
+    let page = bob.catalog(CatalogQuery::default()).await.unwrap();
+    let item = page.items[0].clone();
+    assert_eq!(
+        (item.title.as_str(), item.kind.as_str(), item.episode, item.library_id.as_str()),
+        ("Frieren", "episode", 1, lib.id.as_str())
+    );
+    let sc = bob.sidecars(&item.id).await.unwrap();
+    assert_eq!((sc.len(), sc[0].language.as_str(), sc[0].index), (1, "eng", 0));
+    assert_eq!(bob.sidecar_vtt(&item.id, 0).await.unwrap(), "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHi\n\n");
+    assert!(matches!(bob.sidecar_vtt(&item.id, 3).await.unwrap_err(), ClientError::NotFound { .. }));
+
+    // The default composition reaches only the offline NFO provider.
+    let e = admin.enrich(&item.id, "").await.unwrap();
+    assert_eq!((e.title.as_str(), e.year, e.provider.as_str()), ("Sousou no Frieren", 2023, "lain-metadata-nfo"));
+    assert_eq!(bob.enrichment(&item.id).await.unwrap(), e);
+    assert_eq!(bob.enrichments(&[item.id.clone(), "nope".into()]).await.unwrap(), vec![e.clone()]);
+    assert!(matches!(bob.enrich(&item.id, "").await.unwrap_err(), ClientError::Forbidden { .. }));
+    admin.delete_enrichment(&item.id).await.unwrap();
+    assert!(matches!(bob.enrichment(&item.id).await.unwrap_err(), ClientError::NotFound { .. }));
+
+    let dirs = admin.browse(&root.join("media").to_string_lossy()).await.unwrap();
+    assert_eq!(dirs.dirs.iter().map(|d| d.name.as_str()).collect::<Vec<_>>(), vec!["Frieren"]);
+    let gone = admin.delete_item(&item.id).await.unwrap();
+    assert!(gone.missing && !ep.exists());
+    assert!(bob.catalog_item(&item.id).await.unwrap().missing);
+    drop(stream);
     drop(server);
     std::fs::remove_dir_all(root).ok();
 }

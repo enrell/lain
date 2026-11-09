@@ -14,7 +14,8 @@
 //! - `{"sse_expect": {stream, event, data?, within_ms?, strict?}}`: the
 //!   next matching event on that stream (others are skipped; with
 //!   `strict`, the next event of that name must match).
-//! - `{"write_file": {path, json? | text?}}`, `{"remove_file": path}`,
+//! - `{"write_file": {path, json? | text?}}` (parent directories are
+//!   created), `{"remove_file": path}`,
 //!   `{"sleep_ms": n}`.
 //!
 //! `{{var}}` in strings is replaced from the variable map; a string
@@ -280,6 +281,9 @@ impl Runner {
                 (None, Some(t)) => t.as_bytes().to_vec(),
                 _ => return Err("write_file needs json or text".into()),
             };
+            if let Some(parent) = std::path::Path::new(path).parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+            }
             let tmp = format!("{path}.tmp-conformance");
             std::fs::write(&tmp, content).map_err(|e| format!("write {path}: {e}"))?;
             return std::fs::rename(&tmp, path).map_err(|e| format!("rename {path}: {e}"));

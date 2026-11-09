@@ -13,10 +13,10 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 
 use lain_api::{
-    BrowseResult, CatalogItem, CatalogPage, ComicPages, Episodes, Health, Library, LibraryDeleted, LibraryPatch,
-    LoginReply, Mascots, ModulesView, NewLibrary, PinState, PlaybackPlan, PluginsView, ProfilePatch, Progress,
-    ProgressUpdate, RootsView, ScanStatus, SetupStatus, StatusReply, SwapReply, SwapRequest, User, UserPatch,
-    WithdrawReply,
+    BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health, Library,
+    LibraryDeleted, LibraryPatch, LoginReply, Mascots, ModulesView, NewLibrary, PinState, PlaybackPlan, PluginsView,
+    ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar, Sidecars, StatusReply,
+    SwapReply, SwapRequest, User, UserPatch, WithdrawReply,
 };
 
 use crate::error::ClientError;
@@ -443,6 +443,69 @@ impl Client {
         self.call(Method::POST, "/api/plugins/withdraw", json_body(&json!({"provider": provider}))).await
     }
 
+    // ---- catalog population -----------------------------------------
+
+    /// Starts a scan of every library (admin); answers when it starts.
+    /// A scan already running is `Api { status: 409, .. }`.
+    pub async fn start_scan(&self) -> Result<(), ClientError> {
+        self.raw(Method::POST, "/api/library/scan", Body::None, true).await.map(|_| ())
+    }
+
+    /// The last or running scan.
+    pub async fn scan_status(&self) -> Result<ScanStatus, ClientError> {
+        self.call(Method::GET, "/api/library/scan", Body::None).await
+    }
+
+    /// Server directories for the library folder picker (admin); an
+    /// empty `path` auto-detects the media root.
+    pub async fn browse(&self, path: &str) -> Result<BrowseResult, ClientError> {
+        self.call(Method::GET, &format!("/api/browse{}", query(&[("path", path.to_string())])), Body::None).await
+    }
+
+    /// Deletes an item's file (admin); the item stays, `missing`.
+    pub async fn delete_item(&self, item_id: &str) -> Result<CatalogItem, ClientError> {
+        self.call(Method::DELETE, &format!("/api/items/{}", encode(item_id)), Body::None).await
+    }
+
+    /// Fetches an item's metadata overlay (admin); `provider` restricts
+    /// the search to one provider, empty means all bound ones.
+    pub async fn enrich(&self, item_id: &str, provider: &str) -> Result<Enrichment, ClientError> {
+        let path = format!("/api/catalog/{}/enrich{}", encode(item_id), query(&[("provider", provider.to_string())]));
+        self.call(Method::POST, &path, Body::None).await
+    }
+
+    /// An item's overlay; one that does not exist is `NotFound`.
+    pub async fn enrichment(&self, item_id: &str) -> Result<Enrichment, ClientError> {
+        self.call(Method::GET, &format!("/api/catalog/{}/enrich", encode(item_id)), Body::None).await
+    }
+
+    /// Removes an item's overlay (admin).
+    pub async fn delete_enrichment(&self, item_id: &str) -> Result<(), ClientError> {
+        self.call::<StatusReply>(Method::DELETE, &format!("/api/catalog/{}/enrich", encode(item_id)), Body::None)
+            .await
+            .map(|_| ())
+    }
+
+    /// The overlays that exist for up to 200 items, in one request.
+    pub async fn enrichments(&self, item_ids: &[String]) -> Result<Vec<Enrichment>, ClientError> {
+        let path = format!("/api/enrichments{}", query(&[("ids", item_ids.join(","))]));
+        Ok(self.call::<Enrichments>(Method::GET, &path, Body::None).await?.items)
+    }
+
+    /// The subtitle files next to an item's media file.
+    pub async fn sidecars(&self, item_id: &str) -> Result<Vec<Sidecar>, ClientError> {
+        Ok(self
+            .call::<Sidecars>(Method::GET, &format!("/api/items/{}/sidecars", encode(item_id)), Body::None)
+            .await?
+            .sidecars)
+    }
+
+    /// One sidecar as WebVTT text, by its `index`.
+    pub async fn sidecar_vtt(&self, item_id: &str, index: i64) -> Result<String, ClientError> {
+        let path = format!("/api/items/{}/sidecars/{index}", encode(item_id));
+        Ok(String::from_utf8_lossy(&self.raw(Method::GET, &path, Body::None, true).await?).into_owned())
+    }
+
     // ---- desktop parity routes (§8.4) not served by lain-rs yet ------
     //
     // lain-rs answers these 501 `not-ported` ([`ClientError::NotPorted`])
@@ -493,22 +556,6 @@ impl Client {
     /// A user's avatar image bytes.
     pub async fn avatar(&self, user_id: &str) -> Result<Vec<u8>, ClientError> {
         Ok(self.raw(Method::GET, &format!("/api/users/{}/avatar", encode(user_id)), Body::None, true).await?.to_vec())
-    }
-
-    /// Starts a scan of every library (admin); answers when it starts.
-    pub async fn start_scan(&self) -> Result<(), ClientError> {
-        self.raw(Method::POST, "/api/library/scan", Body::None, true).await.map(|_| ())
-    }
-
-    /// The last or running scan.
-    pub async fn scan_status(&self) -> Result<ScanStatus, ClientError> {
-        self.call(Method::GET, "/api/library/scan", Body::None).await
-    }
-
-    /// Server directories for the library folder picker (admin); an
-    /// empty `path` auto-detects the media root.
-    pub async fn browse(&self, path: &str) -> Result<BrowseResult, ClientError> {
-        self.call(Method::GET, &format!("/api/browse{}", query(&[("path", path.to_string())])), Body::None).await
     }
 
     /// The server's backup archive bytes (admin).
