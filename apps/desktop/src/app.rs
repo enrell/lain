@@ -650,6 +650,10 @@ impl LainApp {
         let mut groups: HashMap<String, usize> = HashMap::new();
         let mut series: Vec<Series> = Vec::new();
         for (i, it) in self.catalog.iter().enumerate() {
+            // A missing item's file is gone (D-068): keep it off the shelves.
+            if it.missing {
+                continue;
+            }
             let key = format!("{}\u{0}{}", it.library_id, it.title.to_lowercase());
             let idx = *groups.entry(key).or_insert_with(|| {
                 series.push(Series {
