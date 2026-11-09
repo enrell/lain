@@ -846,7 +846,7 @@ are core code (`internal/torrent`, `internal/acquire`), not plugins
 | Capability | Mode | Built-ins | Input → output |
 |---|---|---|---|
 | `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain) |
-| `lain.indexer@1` | ordered-many; `unsupported-protocol` declines | `lain-indexer-torznab` (Torznab + Newznab) | `IndexerCapsInput` → `IndexerCaps`; `IndexerSearchInput` → `IndexerSearchOutput` |
+| `lain.indexer@1` | ordered-many; `unsupported-protocol` declines | `lain-indexer-torznab` (Torznab + Newznab) | `IndexerCapsInput` → `IndexerCaps`; `IndexerSearchInput` → `IndexerSearchOutput`. In lain-rs the ops are `caps` and `search` (D-206) |
 | `lain.subtitle@1` | ordered-many; `unsupported-provider` declines | `lain-subtitle-opensubtitles` (OpenSubtitles.com REST v1) | `SubtitleSearchInput` → `SubtitleSearchOutput`; `SubtitleDownloadInput` → `SubtitleDownloadOutput` (a link; the core fetches it, D-150). In lain-rs the ops are `search` and `download` (D-202) |
 
 Indexer and subtitle-provider credentials travel inside the input and
@@ -855,6 +855,12 @@ D-137). Typed codes: `invalid-message`,
 `unsupported-protocol`, `auth-failed`, `rate-limited`, `indexer-error`,
 `dependency-unavailable`; the subtitle provider adds
 `unsupported-provider` and `not-found`.
+
+In lain-rs (D-205..D-214) the engine, manager and download queue are
+the crates `lain-torrent`, `lain-acquire` and `lain-downloads`; every
+`/api/acquire/*` and `/api/downloads*` route keeps Go's shapes and
+texts. `GET /api/events` adds `grab-changed` and `download-changed`
+(admins; `{id, removed: true}` on delete, D-210).
 
 ## Component mode (wire protocol)
 

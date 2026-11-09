@@ -6,9 +6,11 @@
 //! lists (`lists.rs` over `lain-lists`), social (`social.rs` over
 //! `lain-social`),
 //! read (`lain-read`) and watch (D-190: `watch.rs`, byte serving in
-//! `serve.rs`). It starts from an empty data dir; nothing is imported
+//! `serve.rs`) and acquire (D-205..D-214: `acquire.rs`, the crates
+//! `lain-acquire`, `lain-torrent` and `lain-downloads`). It starts from an empty data dir; nothing is imported
 //! from the Go server (D-177). The binary is `lain-rs`.
 
+pub mod acquire;
 pub mod app;
 pub mod catalog;
 pub mod contracts;

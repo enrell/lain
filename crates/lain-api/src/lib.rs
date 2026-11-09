@@ -21,6 +21,8 @@ mod watch;
 pub use lists::*;
 pub use social::*;
 pub use watch::*;
+pub mod acquire;
+pub mod downloads;
 
 fn is_false(v: &bool) -> bool {
     !*v

@@ -1,0 +1,291 @@
+{
+ "tier": "v1",
+ "description": "A magnet grab whose tracker never answers: stored with its parsed release, listed, paused, queued again on resume, refused a retry-import and removed with its data. No peer is ever reached.",
+ "cases": [
+  {
+   "name": "magnet lifecycle",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=%5BFansub-A%5D%20Frieren%20-%2003%20%5B1080p%5D&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce"
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "id": "$string",
+       "title": "[Fansub-A] Frieren - 03 [1080p]",
+       "source": "magnet",
+       "magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=%5BFansub-A%5D%20Frieren%20-%2003%20%5B1080p%5D&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce",
+       "info_hash": "0123456789abcdef0123456789abcdef01234567",
+       "release": {
+        "title": "Frieren",
+        "episodes": [
+         3
+        ],
+        "absolute": true,
+        "group": "Fansub-A",
+        "resolution": "1080p",
+        "parser": "$string",
+        "$open": true
+       },
+       "library_id": "{{lib}}",
+       "dir": "$string",
+       "kind": "anime",
+       "state": "metadata",
+       "size": 0,
+       "downloaded": "$int",
+       "uploaded": "$int",
+       "completed": 0,
+       "peers": "$int",
+       "down_rate": "$int",
+       "up_rate": "$int",
+       "created_by": "$string",
+       "created_at": "$int",
+       "updated_at": "$int"
+      }
+     },
+     "save": {
+      "grab": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs",
+      "auth": "admin",
+      "body": {
+       "library_id": "{{lib}}",
+       "magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=%5BFansub-A%5D%20Frieren%20-%2003%20%5B1080p%5D&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce"
+      }
+     },
+     "expect": {
+      "status": 409,
+      "body": {
+       "error": "this torrent is already in the queue",
+       "code": "invalid-state"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/grabs",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "grabs": [
+        {
+         "id": "$string",
+         "title": "[Fansub-A] Frieren - 03 [1080p]",
+         "source": "magnet",
+         "magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=%5BFansub-A%5D%20Frieren%20-%2003%20%5B1080p%5D&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce",
+         "info_hash": "0123456789abcdef0123456789abcdef01234567",
+         "release": {
+          "title": "Frieren",
+          "episodes": [
+           3
+          ],
+          "absolute": true,
+          "group": "Fansub-A",
+          "resolution": "1080p",
+          "parser": "$string",
+          "$open": true
+         },
+         "library_id": "{{lib}}",
+         "dir": "$string",
+         "kind": "anime",
+         "state": "metadata",
+         "size": 0,
+         "downloaded": "$int",
+         "uploaded": "$int",
+         "completed": 0,
+         "peers": "$int",
+         "down_rate": "$int",
+         "up_rate": "$int",
+         "created_by": "$string",
+         "created_at": "$int",
+         "updated_at": "$int"
+        }
+       ],
+       "usage": {
+        "used_bytes": 0,
+        "downloads_bytes": 0,
+        "max_bytes": 21474836480,
+        "min_free_bytes": 5368709120
+       }
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/{{grab}}/resume",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 409,
+      "body": {
+       "error": "only a paused grab can be resumed",
+       "code": "invalid-state"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/{{grab}}/import",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 409,
+      "body": {
+       "error": "only a finished download whose import failed can be retried",
+       "code": "invalid-state"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/{{grab}}/pause",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "title": "[Fansub-A] Frieren - 03 [1080p]",
+       "source": "magnet",
+       "magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=%5BFansub-A%5D%20Frieren%20-%2003%20%5B1080p%5D&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce",
+       "info_hash": "0123456789abcdef0123456789abcdef01234567",
+       "release": {
+        "title": "Frieren",
+        "episodes": [
+         3
+        ],
+        "absolute": true,
+        "group": "Fansub-A",
+        "resolution": "1080p",
+        "parser": "$string",
+        "$open": true
+       },
+       "library_id": "{{lib}}",
+       "dir": "$string",
+       "kind": "anime",
+       "state": "paused",
+       "size": 0,
+       "downloaded": "$int",
+       "uploaded": "$int",
+       "completed": 0,
+       "peers": "$int",
+       "down_rate": "$int",
+       "up_rate": "$int",
+       "created_by": "$string",
+       "created_at": "$int",
+       "updated_at": "$int"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/{{grab}}/pause",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 409,
+      "body": {
+       "error": "a paused grab cannot be paused",
+       "code": "invalid-state"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/grabs/{{grab}}/resume",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "title": "[Fansub-A] Frieren - 03 [1080p]",
+       "source": "magnet",
+       "magnet": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=%5BFansub-A%5D%20Frieren%20-%2003%20%5B1080p%5D&tr=http%3A%2F%2F127.0.0.1%3A9%2Fannounce",
+       "info_hash": "0123456789abcdef0123456789abcdef01234567",
+       "release": {
+        "title": "Frieren",
+        "episodes": [
+         3
+        ],
+        "absolute": true,
+        "group": "Fansub-A",
+        "resolution": "1080p",
+        "parser": "$string",
+        "$open": true
+       },
+       "library_id": "{{lib}}",
+       "dir": "$string",
+       "kind": "anime",
+       "state": "queued",
+       "size": 0,
+       "downloaded": "$int",
+       "uploaded": "$int",
+       "completed": 0,
+       "peers": "$int",
+       "down_rate": "$int",
+       "up_rate": "$int",
+       "created_by": "$string",
+       "created_at": "$int",
+       "updated_at": "$int"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/grabs/{{grab}}?data=1",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "removed": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/grabs",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "grabs": [],
+       "usage": {
+        "used_bytes": 0,
+        "downloads_bytes": 0,
+        "max_bytes": 21474836480,
+        "min_free_bytes": 5368709120
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

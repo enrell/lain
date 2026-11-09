@@ -1145,3 +1145,144 @@ async fn lists_and_social() {
     drop(server);
     std::fs::remove_dir_all(root).ok();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn acquire_and_downloads() {
+    use lain_client::acquire::ReleaseSearch;
+    use lain_client::types::acquire::{
+        AcquireView, GrabInput, GrabList, IndexerInput, Monitored, Profile, SubtitleProviderInput, Wanted,
+        WantedOverview,
+    };
+    use lain_client::types::downloads::{DownloadAdd, DownloadsView};
+
+    let root = temp("acquire");
+    let media = root.join("media/Anime");
+    std::fs::create_dir_all(&media).unwrap();
+    let server = Server::start(&root.join("data")).await;
+    let (admin, bob) = admin_and_bob(&server.url).await;
+    let token = admin.session().unwrap().token;
+    let lib = admin
+        .create_library(NewLibrary {
+            name: "Anime".into(),
+            kind: "anime".into(),
+            path: media.to_string_lossy().into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Admin only.
+    assert!(matches!(bob.acquire_settings().await.unwrap_err(), ClientError::Forbidden { .. }));
+    let view = admin.acquire_settings().await.unwrap();
+    assert_eq!(view, assert_mirrors::<AcquireView>(&raw_get(&server.url, &token, "/api/acquire/settings").await));
+    let view = admin.update_acquire_settings(serde_json::json!({"seed_ratio": 0.5})).await.unwrap();
+    assert_eq!((view.settings.seed_ratio, view.settings.max_active), (0.5, 3));
+
+    // Indexers keep their key to themselves.
+    let ix = admin
+        .create_indexer(IndexerInput {
+            name: Some("tracker-exemplo".into()),
+            protocol: Some("torznab".into()),
+            url: Some("http://127.0.0.1:9/api".into()),
+            api_key: Some("secret".into()),
+            min_interval_ms: Some(0),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(ix.has_api_key && ix.indexer.api_key.is_empty());
+    let test = admin.test_indexer(&ix.indexer.id).await.unwrap();
+    assert!(!test.ok && !test.error.is_empty());
+    let res = admin
+        .search_releases(ReleaseSearch { query: "Frieren".into(), kind: "anime".into(), ..Default::default() })
+        .await
+        .unwrap();
+    assert!(res.candidates.is_empty() && res.failures.len() == 1);
+    assert_eq!(admin.indexers().await.unwrap().len(), 1);
+    admin.delete_indexer(&ix.indexer.id).await.unwrap();
+    let r = admin.parse_release("[Fansub-A] Frieren - 05 [1080p]", "anime").await.unwrap();
+    assert_eq!((r.title.as_str(), r.episodes.as_slice()), ("Frieren", &[5][..]));
+
+    // A magnet whose tracker never answers: stored, paused, removed.
+    let magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Frieren%20-%2003&tr=http%3A%2F%2F127.0.0.1%3A9%2Fa";
+    let g = admin
+        .grab(GrabInput { magnet: magnet.into(), library_id: lib.id.clone(), ..Default::default() })
+        .await
+        .unwrap();
+    assert_eq!(g.state, "metadata");
+    let list = admin.grabs().await.unwrap();
+    assert_eq!(list, assert_mirrors::<GrabList>(&raw_get(&server.url, &token, "/api/acquire/grabs").await));
+    assert_eq!(admin.grab_action(&g.id, "pause").await.unwrap().state, "paused");
+    admin.remove_grab(&g.id, true).await.unwrap();
+    assert!(admin.grabs().await.unwrap().grabs.is_empty());
+
+    // Profiles and monitored titles.
+    let p = admin
+        .create_quality_profile(Profile { name: "4K".into(), resolutions: vec!["2160p".into()], ..Default::default() })
+        .await
+        .unwrap();
+    assert_eq!(admin.quality_profiles().await.unwrap().len(), 2);
+    let m = admin
+        .create_monitored(Monitored {
+            library_id: lib.id.clone(),
+            kind: "anime".into(),
+            title: "Frieren".into(),
+            profile_id: p.id.clone(),
+            to: 2,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let w = admin.wanted_for(&m.id).await.unwrap();
+    assert_eq!(w.missing.len(), 2);
+    assert_eq!(
+        w,
+        assert_mirrors::<Wanted>(
+            &raw_get(&server.url, &token, &format!("/api/acquire/monitored/{}/wanted", m.id)).await
+        )
+    );
+    let all = admin.wanted().await.unwrap();
+    assert_eq!(all, assert_mirrors::<WantedOverview>(&raw_get(&server.url, &token, "/api/acquire/wanted").await));
+    assert!(admin.search_monitored(&m.id).await.unwrap().grabbed.is_empty());
+    assert!(!admin.automation().await.unwrap().enabled);
+    assert!(matches!(admin.delete_quality_profile(&p.id).await.unwrap_err(), ClientError::Api { status: 409, .. }));
+    admin.delete_monitored(&m.id).await.unwrap();
+    admin.delete_quality_profile(&p.id).await.unwrap();
+    assert!(admin.blocklist().await.unwrap().is_empty());
+    assert_eq!(admin.purge_replaced().await.unwrap(), 0);
+
+    // Subtitle accounts and records.
+    let sp = admin
+        .create_subtitle_provider(SubtitleProviderInput {
+            name: Some("os".into()),
+            kind: Some("opensubtitles".into()),
+            api_key: Some("k".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(sp.has_api_key && !sp.has_password && sp.provider.api_key.is_empty());
+    admin.delete_subtitle_provider(&sp.provider.id).await.unwrap();
+    assert!(admin.subtitle_ledger().await.unwrap().is_empty());
+    assert_eq!(admin.clear_subtitle_refusals().await.unwrap(), 0);
+
+    // Downloads (the server is offline: a job fails, and is removable).
+    let job =
+        admin.add_download(DownloadAdd { url: "http://127.0.0.1:9/x.mkv".into(), ..Default::default() }).await.unwrap();
+    assert_eq!(job.name, "x.mkv");
+    let view = admin.downloads().await.unwrap();
+    let raw = raw_get(&server.url, &token, "/api/downloads").await;
+    assert_eq!(view.settings, assert_mirrors::<DownloadsView>(&raw).settings);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while admin.download(&job.id).await.unwrap().state != "failed" {
+        assert!(std::time::Instant::now() < deadline, "never failed");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(admin.download_action(&job.id, "cancel").await.unwrap().state, "canceled");
+    admin.remove_download(&job.id).await.unwrap();
+    let s = admin.download_settings().await.unwrap();
+    assert_eq!(admin.update_download_settings(s.clone()).await.unwrap(), s);
+    assert_eq!(admin.cleanup_downloads().await.unwrap().records, 0);
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}

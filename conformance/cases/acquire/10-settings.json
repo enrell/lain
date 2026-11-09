@@ -1,0 +1,409 @@
+{
+ "tier": "v1",
+ "description": "Acquisition settings: defaults, validation with Go's messages, a merge over the current policy, and the library-overlap guard.",
+ "cases": [
+  {
+   "name": "defaults",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/settings",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "settings": {
+        "dir": "$string",
+        "listen_port": 0,
+        "max_active": 3,
+        "max_peers": 40,
+        "upload_kbps": 0,
+        "download_kbps": 0,
+        "seed_ratio": 1,
+        "seed_minutes": 1440,
+        "remove_after_seeding": true,
+        "import_mode": "hardlink",
+        "automation": false,
+        "rss_minutes": 30,
+        "search_hours": 12,
+        "stall_hours": 6,
+        "subtitle_hours": 24
+       },
+       "usage": {
+        "used_bytes": 0,
+        "downloads_bytes": 0,
+        "max_bytes": 21474836480,
+        "min_free_bytes": 5368709120
+       },
+       "port": "$int",
+       "parser": false
+      }
+     },
+     "save": {
+      "acq_dir": "/settings/dir"
+     }
+    }
+   ]
+  },
+  {
+   "name": "validation",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "max_active": 0
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "max_active must be 1-20",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "listen_port": 70000
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "listen_port must be 0-65535",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "max_peers": 201
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "max_peers must be 1-200",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "upload_kbps": -1
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "rates cannot be negative",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "seed_ratio": 101
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "seed limits out of range",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "rss_minutes": 5
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "rss_minutes must be 10-1440",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "search_hours": 169
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "search_hours must be 0-168",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "stall_hours": -1
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "stall_hours must be 0-168",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "subtitle_hours": 721
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "subtitle_hours must be 0-720",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "import_mode": "symlink"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "import_mode must be hardlink, copy or move",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "dir": "relative/dir"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "dir must be an absolute path",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "dir": "{{acq_media}}/Anime/downloads"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "the download folder must not be, contain or lie inside a library (Anime)",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "raw_body": "{"
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "invalid json"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/settings",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "settings": {
+        "dir": "$string",
+        "listen_port": 0,
+        "max_active": 3,
+        "max_peers": 40,
+        "upload_kbps": 0,
+        "download_kbps": 0,
+        "seed_ratio": 1,
+        "seed_minutes": 1440,
+        "remove_after_seeding": true,
+        "import_mode": "hardlink",
+        "automation": false,
+        "rss_minutes": 30,
+        "search_hours": 12,
+        "stall_hours": 6,
+        "subtitle_hours": 24
+       },
+       "usage": {
+        "used_bytes": 0,
+        "downloads_bytes": 0,
+        "max_bytes": 21474836480,
+        "min_free_bytes": 5368709120
+       },
+       "port": "$int",
+       "parser": false
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "a partial body changes only its fields",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "seed_ratio": 0.5,
+       "upload_kbps": 64,
+       "rss_minutes": 0,
+       "import_mode": ""
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "settings": {
+        "dir": "$string",
+        "listen_port": 0,
+        "max_active": 3,
+        "max_peers": 40,
+        "upload_kbps": 64,
+        "download_kbps": 0,
+        "seed_ratio": 0.5,
+        "seed_minutes": 1440,
+        "remove_after_seeding": true,
+        "import_mode": "hardlink",
+        "automation": false,
+        "rss_minutes": 30,
+        "search_hours": 12,
+        "stall_hours": 6,
+        "subtitle_hours": 24
+       },
+       "usage": {
+        "used_bytes": 0,
+        "downloads_bytes": 0,
+        "max_bytes": 21474836480,
+        "min_free_bytes": 5368709120
+       },
+       "port": "$int",
+       "parser": false
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/acquire/settings",
+      "auth": "admin",
+      "body": {
+       "seed_ratio": 1,
+       "upload_kbps": 0
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "settings": {
+        "dir": "$string",
+        "listen_port": 0,
+        "max_active": 3,
+        "max_peers": 40,
+        "upload_kbps": 0,
+        "download_kbps": 0,
+        "seed_ratio": 1,
+        "seed_minutes": 1440,
+        "remove_after_seeding": true,
+        "import_mode": "hardlink",
+        "automation": false,
+        "rss_minutes": 30,
+        "search_hours": 12,
+        "stall_hours": 6,
+        "subtitle_hours": 24
+       },
+       "usage": {
+        "used_bytes": 0,
+        "downloads_bytes": 0,
+        "max_bytes": 21474836480,
+        "min_free_bytes": 5368709120
+       },
+       "port": "$int",
+       "parser": false
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -388,6 +388,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "lain-acquire"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "lain-api",
+ "lain-core",
+ "lain-downloads",
+ "lain-http",
+ "lain-identify",
+ "lain-store",
+ "lain-subtitle",
+ "lain-torrent",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "lain-admin"
 version = "0.1.0"
 dependencies = [
@@ -472,6 +490,19 @@ name = "lain-core"
 version = "0.1.0"
 dependencies = [
  "lain-api",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "lain-downloads"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "lain-api",
+ "lain-store",
+ "libc",
  "serde",
  "serde_json",
  "tracing",
@@ -574,12 +605,14 @@ dependencies = [
  "axum",
  "getrandom 0.4.3",
  "hyper",
+ "lain-acquire",
  "lain-admin",
  "lain-api",
  "lain-auth",
  "lain-component",
  "lain-conformance",
  "lain-core",
+ "lain-downloads",
  "lain-http",
  "lain-identify",
  "lain-ingest",
@@ -590,6 +623,7 @@ dependencies = [
  "lain-social",
  "lain-store",
  "lain-subtitle",
+ "lain-torrent",
  "lain-watch",
  "notify",
  "serde",
@@ -631,6 +665,16 @@ dependencies = [
  "lain-http",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lain-torrent"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "sha1",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -952,6 +996,17 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "sha1"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aacc4cc499359472b4abe1bf11d0b12e688af9a805fa5e3016f9a386dc2d0214"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
 ]
 
 [[package]]

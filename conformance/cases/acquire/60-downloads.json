@@ -1,0 +1,531 @@
+{
+ "tier": "v1",
+ "description": "The server download manager: settings (defaults, validation, missing fields fail like Go's zero values), queueing with the name from the URL, typed errors and state rules, removal, and cleanup.",
+ "cases": [
+  {
+   "name": "settings",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads/settings",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "dir": "$string",
+       "max_bytes": 21474836480,
+       "min_free_bytes": 5368709120,
+       "concurrency": 2,
+       "keep_finished_days": 30,
+       "max_retries": 5
+      }
+     },
+     "save": {
+      "dl_dir": "/dir"
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "jobs": [],
+       "usage": {
+        "used_bytes": 0,
+        "max_bytes": 21474836480,
+        "free_bytes": "$int",
+        "min_free_bytes": 5368709120
+       },
+       "settings": {
+        "dir": "$string",
+        "max_bytes": 21474836480,
+        "min_free_bytes": 5368709120,
+        "concurrency": 2,
+        "keep_finished_days": 30,
+        "max_retries": 5
+       }
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/downloads/settings",
+      "auth": "admin",
+      "body": {
+       "dir": "relative"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "dir must be an absolute path",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/downloads/settings",
+      "auth": "admin",
+      "body": {
+       "dir": "{{dl_dir}}"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "concurrency must be 1-8",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/downloads/settings",
+      "auth": "admin",
+      "body": {
+       "dir": "{{dl_dir}}",
+       "concurrency": 2,
+       "max_retries": 21
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "max_retries must be 0-20",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/downloads/settings",
+      "auth": "admin",
+      "body": {
+       "dir": "{{dl_dir}}",
+       "concurrency": 2,
+       "max_bytes": -1
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "limits cannot be negative",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/downloads/settings",
+      "auth": "admin",
+      "raw_body": "nope"
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "invalid json"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/downloads/settings",
+      "auth": "admin",
+      "body": {
+       "dir": "{{dl_dir}}/",
+       "concurrency": 1,
+       "max_bytes": 21474836480,
+       "min_free_bytes": 5368709120,
+       "keep_finished_days": 7,
+       "max_retries": 0
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "dir": "$string",
+       "max_bytes": 21474836480,
+       "min_free_bytes": 5368709120,
+       "concurrency": 1,
+       "keep_finished_days": 7,
+       "max_retries": 0
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads/settings",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "dir": "$string",
+       "max_bytes": 21474836480,
+       "min_free_bytes": 5368709120,
+       "concurrency": 1,
+       "keep_finished_days": 7,
+       "max_retries": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "jobs",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads",
+      "auth": "admin",
+      "body": {
+       "url": "ftp://h/x"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "url must be an absolute http or https URL",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads",
+      "auth": "admin",
+      "body": {
+       "url": "http://h/x",
+       "library_id": "nope"
+      }
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown library",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads",
+      "auth": "admin",
+      "raw_body": "{"
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "invalid json"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads",
+      "auth": "admin",
+      "body": {
+       "url": "http://127.0.0.1:9/files/Frieren%20-%2001.mkv",
+       "library_id": "{{lib}}"
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "id": "$string",
+       "url": "http://127.0.0.1:9/files/Frieren%20-%2001.mkv",
+       "dir": "$string",
+       "name": "Frieren - 01.mkv",
+       "name_auto": true,
+       "state": "$string",
+       "bytes": 0,
+       "total": "$int",
+       "created_by": "$string",
+       "seq": 1,
+       "created_at": "$int",
+       "updated_at": "$int",
+       "$open": true,
+       "library_id": "{{lib}}"
+      }
+     },
+     "save": {
+      "job": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads/{{job}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "url": "http://127.0.0.1:9/files/Frieren%20-%2001.mkv",
+       "dir": "$string",
+       "name": "Frieren - 01.mkv",
+       "name_auto": true,
+       "state": "$string",
+       "bytes": 0,
+       "total": "$int",
+       "created_by": "$string",
+       "seq": 1,
+       "created_at": "$int",
+       "updated_at": "$int",
+       "$open": true,
+       "library_id": "{{lib}}"
+      }
+     }
+    },
+    {
+     "wait_for": {
+      "req": {
+       "method": "GET",
+       "path": "/api/downloads/{{job}}",
+       "auth": "admin"
+      },
+      "expect": {
+       "status": 200,
+       "body": {
+        "id": "$string",
+        "url": "http://127.0.0.1:9/files/Frieren%20-%2001.mkv",
+        "dir": "$string",
+        "name": "Frieren - 01.mkv",
+        "name_auto": true,
+        "state": "failed",
+        "bytes": 0,
+        "total": "$int",
+        "created_by": "$string",
+        "seq": 1,
+        "created_at": "$int",
+        "updated_at": "$int",
+        "$open": true,
+        "library_id": "{{lib}}",
+        "code": "http-error",
+        "error": "$string"
+       }
+      }
+     },
+     "timeout_ms": 10000
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/{{job}}/pause",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 409,
+      "body": {
+       "error": "cannot pause a failed download",
+       "code": "invalid-state"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/{{job}}/frobnicate",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown action"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/{{job}}/cancel",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "url": "http://127.0.0.1:9/files/Frieren%20-%2001.mkv",
+       "dir": "$string",
+       "name": "Frieren - 01.mkv",
+       "name_auto": true,
+       "state": "canceled",
+       "bytes": 0,
+       "total": "$int",
+       "created_by": "$string",
+       "seq": 1,
+       "created_at": "$int",
+       "updated_at": "$int",
+       "$open": true,
+       "library_id": "{{lib}}",
+       "code": "$absent",
+       "error": "$absent"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/{{job}}/cancel",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "id": "$string",
+       "url": "http://127.0.0.1:9/files/Frieren%20-%2001.mkv",
+       "dir": "$string",
+       "name": "Frieren - 01.mkv",
+       "name_auto": true,
+       "state": "canceled",
+       "bytes": 0,
+       "total": "$int",
+       "created_by": "$string",
+       "seq": 1,
+       "created_at": "$int",
+       "updated_at": "$int",
+       "$open": true,
+       "library_id": "{{lib}}"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/{{job}}/resume",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 409,
+      "body": {
+       "error": "cannot resume a canceled download",
+       "code": "invalid-state"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/cleanup",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "parts": 0,
+       "records": 0,
+       "freed_bytes": 0
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/downloads/{{job}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "status": "ok"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/downloads/{{job}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown download",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads/{{job}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown download",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/downloads/nope/pause",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "unknown download",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "jobs": [],
+       "usage": {
+        "used_bytes": 0,
+        "max_bytes": 21474836480,
+        "free_bytes": "$int",
+        "min_free_bytes": 5368709120
+       },
+       "settings": {
+        "dir": "$string",
+        "max_bytes": 21474836480,
+        "min_free_bytes": 5368709120,
+        "concurrency": 1,
+        "keep_finished_days": 7,
+        "max_retries": 0
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
+}
