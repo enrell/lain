@@ -1,0 +1,538 @@
+//! The typed API client. One method per route a client uses: the
+//! conformance cases (`conformance/cases/`) plus the desktop parity
+//! routes (DESIGN-v2 §8.4). Answers decode into the `lain-api` types
+//! the server itself serializes (D-179).
+
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+
+use hyper::Method;
+use hyper::body::Bytes;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde_json::json;
+
+use lain_api::{
+    BrowseResult, CatalogItem, CatalogPage, ComicPages, Episodes, Health, Library, LibraryDeleted, LibraryPatch,
+    LoginReply, Mascots, ModulesView, NewLibrary, PinState, PlaybackPlan, PluginsView, ProfilePatch, Progress,
+    ProgressUpdate, RootsView, ScanStatus, SetupStatus, StatusReply, SwapReply, SwapRequest, User, UserPatch,
+    WithdrawReply,
+};
+
+use crate::error::ClientError;
+use crate::http::{self, ServerUrl, Streaming, encode};
+use crate::token::{Session, TokenStore};
+
+/// How a client talks to one server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClientConfig {
+    /// The server URL (see [`ServerUrl::parse`]).
+    pub server: String,
+    /// The limit for one whole request (connect, send, read).
+    pub timeout_ms: u64,
+}
+
+impl ClientConfig {
+    pub fn new(server: &str) -> Self {
+        ClientConfig { server: server.to_string(), timeout_ms: 30_000 }
+    }
+}
+
+/// Paging of `GET /api/catalog`. Zero values are left to the server
+/// (limit 50, cap 500; sort `title`, or `recent`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CatalogQuery {
+    pub limit: i64,
+    pub offset: i64,
+    pub sort: String,
+    pub library_id: String,
+}
+
+/// `GET /api/search`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SearchQuery {
+    pub q: String,
+    pub kind: String,
+    pub limit: i64,
+    pub offset: i64,
+    pub sort: String,
+}
+
+/// How to unlock a private library for this session (D-156).
+#[derive(Clone, PartialEq, Eq)]
+pub enum Unlock {
+    Pin(String),
+    Password(String),
+}
+
+impl std::fmt::Debug for Unlock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Unlock::Pin(_) => "Unlock::Pin(<redacted>)",
+            Unlock::Password(_) => "Unlock::Password(<redacted>)",
+        })
+    }
+}
+
+struct Inner {
+    url: ServerUrl,
+    server: String,
+    tokens: Arc<dyn TokenStore>,
+    session: RwLock<Option<Session>>,
+    timeout: Duration,
+}
+
+/// A client of one server. Cheap to clone; clones share the session.
+#[derive(Clone)]
+pub struct Client {
+    inner: Arc<Inner>,
+}
+
+enum Body {
+    None,
+    Json(Vec<u8>),
+    Raw(Vec<u8>, String),
+}
+
+fn query(pairs: &[(&str, String)]) -> String {
+    let parts: Vec<String> =
+        pairs.iter().filter(|(_, v)| !v.is_empty()).map(|(k, v)| format!("{k}={}", encode(v))).collect();
+    if parts.is_empty() { String::new() } else { format!("?{}", parts.join("&")) }
+}
+
+/// A number for [`query`]: zero means "the server's default".
+fn num(n: i64) -> String {
+    if n == 0 { String::new() } else { n.to_string() }
+}
+
+fn decode<T: DeserializeOwned>(raw: &[u8]) -> Result<T, ClientError> {
+    serde_json::from_slice(raw).map_err(|e| ClientError::Decode { message: e.to_string() })
+}
+
+fn json_body(v: &impl Serialize) -> Body {
+    Body::Json(serde_json::to_vec(v).unwrap_or_else(|_| b"{}".to_vec()))
+}
+
+impl Client {
+    /// A client of `config.server`, with the session `tokens` holds for
+    /// it, if any.
+    pub fn new(config: ClientConfig, tokens: Arc<dyn TokenStore>) -> Result<Client, ClientError> {
+        let url = ServerUrl::parse(&config.server)?;
+        let server = url.canonical();
+        let session = tokens.load(&server)?;
+        Ok(Client {
+            inner: Arc::new(Inner {
+                url,
+                server,
+                tokens,
+                session: RwLock::new(session),
+                timeout: Duration::from_millis(config.timeout_ms.max(1)),
+            }),
+        })
+    }
+
+    /// The canonical server URL; it keys every local record.
+    pub fn server(&self) -> String {
+        self.inner.server.clone()
+    }
+
+    /// The current login, if any.
+    pub fn session(&self) -> Option<Session> {
+        self.inner.session.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    fn token(&self) -> Option<String> {
+        self.inner.session.read().unwrap_or_else(|e| e.into_inner()).as_ref().map(|s| s.token.clone())
+    }
+
+    /// Re-reads the session from the token store (another part of the
+    /// app logged in again). Returns whether the token changed.
+    pub fn reload_session(&self) -> Result<bool, ClientError> {
+        let fresh = self.inner.tokens.load(&self.inner.server)?;
+        let mut cur = self.inner.session.write().unwrap_or_else(|e| e.into_inner());
+        let changed = cur.as_ref().map(|s| &s.token) != fresh.as_ref().map(|s| &s.token);
+        *cur = fresh;
+        Ok(changed)
+    }
+
+    pub(crate) fn timeout(&self) -> Duration {
+        self.inner.timeout
+    }
+
+    fn auth_headers(&self, auth: bool) -> Result<Vec<(&'static str, String)>, ClientError> {
+        if !auth {
+            return Ok(Vec::new());
+        }
+        let t = self.token().ok_or(ClientError::Unauthorized)?;
+        Ok(vec![("authorization", format!("Bearer {t}"))])
+    }
+
+    async fn raw(&self, method: Method, path: &str, body: Body, auth: bool) -> Result<Bytes, ClientError> {
+        let mut headers = self.auth_headers(auth)?;
+        headers.push(("accept", "application/json".into()));
+        let (payload, ctype);
+        let body = match body {
+            Body::None => None,
+            Body::Json(b) => {
+                payload = Bytes::from(b);
+                Some((payload, "application/json"))
+            }
+            Body::Raw(b, t) => {
+                payload = Bytes::from(b);
+                ctype = t;
+                Some((payload, ctype.as_str()))
+            }
+        };
+        let route = format!("{method} {}", path.split('?').next().unwrap_or(path));
+        let r = http::send(&self.inner.url, method, path, &headers, body, self.inner.timeout).await?;
+        if !(200..300).contains(&r.status) {
+            return Err(ClientError::from_response(r.status, &route, &r.body));
+        }
+        Ok(r.body)
+    }
+
+    async fn call<T: DeserializeOwned>(&self, method: Method, path: &str, body: Body) -> Result<T, ClientError> {
+        decode(&self.raw(method, path, body, true).await?)
+    }
+
+    /// Opens an authenticated request whose body the caller streams.
+    pub(crate) async fn open(&self, path: &str, extra: &[(&'static str, String)]) -> Result<Streaming, ClientError> {
+        let mut headers = self.auth_headers(true)?;
+        headers.extend(extra.iter().cloned());
+        http::open(&self.inner.url, Method::GET, path, &headers, None).await
+    }
+
+    // ---- liveness, setup and login ------------------------------------
+
+    /// `GET /health` (public): probes a discovered server.
+    pub async fn health(&self) -> Result<Health, ClientError> {
+        decode(&self.raw(Method::GET, "/health", Body::None, false).await?)
+    }
+
+    pub async fn setup_status(&self) -> Result<SetupStatus, ClientError> {
+        decode(&self.raw(Method::GET, "/api/setup/status", Body::None, false).await?)
+    }
+
+    /// Creates the first admin on a fresh server. It does not log in.
+    pub async fn setup(&self, username: &str, password: &str) -> Result<User, ClientError> {
+        let body = json_body(&json!({"username": username, "password": password}));
+        decode(&self.raw(Method::POST, "/api/setup", body, false).await?)
+    }
+
+    /// Logs in and keeps the session in the token store. Returns the
+    /// account.
+    pub async fn login(&self, username: &str, password: &str) -> Result<User, ClientError> {
+        let payload = serde_json::to_vec(&json!({"username": username, "password": password})).unwrap_or_default();
+        // Not through `raw`: a 401 here is a refused login with a reason,
+        // not a lost session.
+        let r = http::send(
+            &self.inner.url,
+            Method::POST,
+            "/api/auth/login",
+            &[],
+            Some((Bytes::from(payload), "application/json")),
+            self.inner.timeout,
+        )
+        .await?;
+        if r.status == 401 {
+            let e: lain_api::ApiError = serde_json::from_slice(&r.body).unwrap_or_default();
+            return Err(ClientError::LoginFailed { message: e.error });
+        }
+        if r.status != 200 {
+            return Err(ClientError::from_response(r.status, "POST /api/auth/login", &r.body));
+        }
+        let reply: LoginReply = decode(&r.body)?;
+        let headers = [("authorization", format!("Bearer {}", reply.token))];
+        let r = http::send(&self.inner.url, Method::GET, "/api/me", &headers, None, self.inner.timeout).await?;
+        if r.status != 200 {
+            return Err(ClientError::from_response(r.status, "GET /api/me", &r.body));
+        }
+        let me: User = decode(&r.body)?;
+        let session = Session {
+            server: self.inner.server.clone(),
+            token: reply.token,
+            user_id: me.id.clone(),
+            username: me.username.clone(),
+        };
+        self.inner.tokens.save(&session)?;
+        *self.inner.session.write().unwrap_or_else(|e| e.into_inner()) = Some(session);
+        Ok(me)
+    }
+
+    /// Forgets the session here. Tokens are stateless on the server, so
+    /// nothing is sent; the token expires on its own (24 h), and a
+    /// password change ends every session at once.
+    pub fn logout(&self) -> Result<(), ClientError> {
+        self.inner.tokens.clear(&self.inner.server)?;
+        *self.inner.session.write().unwrap_or_else(|e| e.into_inner()) = None;
+        Ok(())
+    }
+
+    // ---- the account --------------------------------------------------
+
+    pub async fn me(&self) -> Result<User, ClientError> {
+        self.call(Method::GET, "/api/me", Body::None).await
+    }
+
+    /// A three-letter ISO 639-2 code, or `""` to clear it.
+    pub async fn set_preferred_language(&self, language: &str) -> Result<User, ClientError> {
+        self.call(Method::PATCH, "/api/me/preferences", json_body(&json!({"preferred_language": language}))).await
+    }
+
+    /// Changes the password; every session of the account, this one
+    /// included, stops verifying, so log in again afterwards.
+    pub async fn change_password(&self, old: &str, new: &str) -> Result<(), ClientError> {
+        let _: StatusReply =
+            self.call(Method::PATCH, "/api/me/password", json_body(&json!({"old": old, "new": new}))).await?;
+        Ok(())
+    }
+
+    pub async fn update_profile(&self, patch: ProfilePatch) -> Result<User, ClientError> {
+        self.call(Method::PATCH, "/api/me/profile", json_body(&patch)).await
+    }
+
+    /// The Continue rail: this user's progress records.
+    pub async fn continue_watching(&self) -> Result<Vec<Progress>, ClientError> {
+        self.call(Method::GET, "/api/me/continue", Body::None).await
+    }
+
+    pub async fn mascots(&self) -> Result<Vec<String>, ClientError> {
+        let m: Mascots = self.call(Method::GET, "/api/profile/mascots", Body::None).await?;
+        Ok(m.mascots)
+    }
+
+    /// Whether this account has a library PIN.
+    pub async fn pin_status(&self) -> Result<bool, ClientError> {
+        let p: PinState = self.call(Method::GET, "/api/me/pin", Body::None).await?;
+        Ok(p.set)
+    }
+
+    pub async fn set_pin(&self, pin: &str, password: &str) -> Result<(), ClientError> {
+        let _: PinState =
+            self.call(Method::PUT, "/api/me/pin", json_body(&json!({"pin": pin, "password": password}))).await?;
+        Ok(())
+    }
+
+    pub async fn clear_pin(&self, password: &str) -> Result<(), ClientError> {
+        let _: PinState = self.call(Method::DELETE, "/api/me/pin", json_body(&json!({"password": password}))).await?;
+        Ok(())
+    }
+
+    // ---- users (admin) ------------------------------------------------
+
+    pub async fn users(&self) -> Result<Vec<User>, ClientError> {
+        self.call(Method::GET, "/api/users", Body::None).await
+    }
+
+    /// `role` is `user` or `admin`; empty means `user`.
+    pub async fn create_user(&self, username: &str, password: &str, role: &str) -> Result<User, ClientError> {
+        let body = json_body(&json!({"username": username, "password": password, "role": role}));
+        self.call(Method::POST, "/api/users", body).await
+    }
+
+    pub async fn update_user(&self, id: &str, patch: UserPatch) -> Result<User, ClientError> {
+        self.call(Method::PATCH, &format!("/api/users/{}", encode(id)), json_body(&patch)).await
+    }
+
+    // ---- libraries ----------------------------------------------------
+
+    /// The libraries this user may see; a private one carries `locked`.
+    pub async fn libraries(&self) -> Result<Vec<Library>, ClientError> {
+        self.call(Method::GET, "/api/libraries", Body::None).await
+    }
+
+    pub async fn create_library(&self, library: NewLibrary) -> Result<Library, ClientError> {
+        self.call(Method::POST, "/api/libraries", json_body(&library)).await
+    }
+
+    pub async fn update_library(&self, id: &str, patch: LibraryPatch) -> Result<Library, ClientError> {
+        self.call(Method::PATCH, &format!("/api/libraries/{}", encode(id)), json_body(&patch)).await
+    }
+
+    /// Removes the library and its catalog entries (never files).
+    pub async fn delete_library(&self, id: &str) -> Result<LibraryDeleted, ClientError> {
+        self.call(Method::DELETE, &format!("/api/libraries/{}", encode(id)), Body::None).await
+    }
+
+    /// Unlocks a private library for this session (D-156). Repeated
+    /// failures answer [`ClientError::RateLimited`].
+    pub async fn unlock_library(&self, id: &str, how: Unlock) -> Result<Library, ClientError> {
+        let body = match how {
+            Unlock::Pin(p) => json!({"pin": p}),
+            Unlock::Password(p) => json!({"password": p}),
+        };
+        self.call(Method::POST, &format!("/api/libraries/{}/unlock", encode(id)), json_body(&body)).await
+    }
+
+    pub async fn lock_library(&self, id: &str) -> Result<Library, ClientError> {
+        self.call(Method::POST, &format!("/api/libraries/{}/lock", encode(id)), Body::None).await
+    }
+
+    /// The named roots this server maps (admin, D-157).
+    pub async fn roots(&self) -> Result<RootsView, ClientError> {
+        self.call(Method::GET, "/api/roots", Body::None).await
+    }
+
+    // ---- catalog and progress -----------------------------------------
+
+    pub async fn catalog(&self, q: CatalogQuery) -> Result<CatalogPage, ClientError> {
+        let path = format!(
+            "/api/catalog{}",
+            query(&[
+                ("limit", num(q.limit)),
+                ("offset", num(q.offset)),
+                ("sort", q.sort),
+                ("library_id", q.library_id)
+            ])
+        );
+        self.call(Method::GET, &path, Body::None).await
+    }
+
+    pub async fn catalog_item(&self, id: &str) -> Result<CatalogItem, ClientError> {
+        self.call(Method::GET, &format!("/api/catalog/{}", encode(id)), Body::None).await
+    }
+
+    /// Every file of the item's title, in episode order.
+    pub async fn episodes(&self, id: &str) -> Result<Vec<CatalogItem>, ClientError> {
+        let e: Episodes = self.call(Method::GET, &format!("/api/catalog/{}/episodes", encode(id)), Body::None).await?;
+        Ok(e.items)
+    }
+
+    pub async fn search(&self, q: SearchQuery) -> Result<CatalogPage, ClientError> {
+        let path = format!(
+            "/api/search{}",
+            query(&[
+                ("q", q.q),
+                ("kind", q.kind),
+                ("limit", num(q.limit)),
+                ("offset", num(q.offset)),
+                ("sort", q.sort)
+            ])
+        );
+        self.call(Method::GET, &path, Body::None).await
+    }
+
+    /// This user's progress on an item; the zero record when none.
+    pub async fn progress(&self, item_id: &str) -> Result<Progress, ClientError> {
+        self.call(Method::GET, &format!("/api/items/{}/progress", encode(item_id)), Body::None).await
+    }
+
+    /// Writes progress directly (last writer wins on the server). Use
+    /// [`crate::ProgressSync::record`] to get the offline queue.
+    pub async fn put_progress(&self, item_id: &str, update: ProgressUpdate) -> Result<Progress, ClientError> {
+        self.call(Method::PUT, &format!("/api/items/{}/progress", encode(item_id)), json_body(&update)).await
+    }
+
+    // ---- composition and modules --------------------------------------
+
+    pub async fn modules(&self) -> Result<ModulesView, ClientError> {
+        self.call(Method::GET, "/api/modules", Body::None).await
+    }
+
+    pub async fn plugins(&self) -> Result<PluginsView, ClientError> {
+        self.call(Method::GET, "/api/plugins", Body::None).await
+    }
+
+    /// Rebinds a capability; a stale `generation` answers 409
+    /// `stale-generation`.
+    pub async fn swap_providers(&self, swap: SwapRequest) -> Result<SwapReply, ClientError> {
+        self.call(Method::POST, "/api/plugins/swap", json_body(&swap)).await
+    }
+
+    pub async fn withdraw_provider(&self, provider: &str) -> Result<WithdrawReply, ClientError> {
+        self.call(Method::POST, "/api/plugins/withdraw", json_body(&json!({"provider": provider}))).await
+    }
+
+    // ---- desktop parity routes (§8.4) not served by lain-rs yet ------
+    //
+    // lain-rs answers these 501 `not-ported` ([`ClientError::NotPorted`])
+    // until their module is ported.
+
+    /// How to play an item; `client` is `mpv`, `desktop` or `browser`.
+    pub async fn playback_plan(&self, item_id: &str, client: &str) -> Result<PlaybackPlan, ClientError> {
+        let path = format!("/api/items/{}/playback{}", encode(item_id), query(&[("client", client.to_string())]));
+        self.call(Method::GET, &path, Body::None).await
+    }
+
+    /// The URL an external player opens: Range-capable, authenticated
+    /// by `?token=` because players cannot send headers. It carries the
+    /// token: never log or share it.
+    pub fn stream_url(&self, item_id: &str) -> Result<String, ClientError> {
+        let t = self.token().ok_or(ClientError::Unauthorized)?;
+        Ok(format!("{}{}?token={}", self.inner.server, stream_path(item_id), encode(&t)))
+    }
+
+    /// The item's cover or frame, as image bytes.
+    pub async fn thumbnail(&self, item_id: &str) -> Result<Vec<u8>, ClientError> {
+        Ok(self
+            .raw(Method::GET, &format!("/api/items/{}/thumbnail", encode(item_id)), Body::None, true)
+            .await?
+            .to_vec())
+    }
+
+    /// The page index of a comic or manga item.
+    pub async fn comic_pages(&self, item_id: &str) -> Result<ComicPages, ClientError> {
+        self.call(Method::GET, &format!("/api/items/{}/pages", encode(item_id)), Body::None).await
+    }
+
+    /// One page's image bytes; `index` is the page's `index`.
+    pub async fn comic_page(&self, item_id: &str, index: i64) -> Result<Vec<u8>, ClientError> {
+        let path = format!("/api/items/{}/pages/{index}", encode(item_id));
+        Ok(self.raw(Method::GET, &path, Body::None, true).await?.to_vec())
+    }
+
+    /// Uploads an avatar image (`content_type` such as `image/png`).
+    pub async fn set_avatar(&self, image: Vec<u8>, content_type: &str) -> Result<User, ClientError> {
+        self.call(Method::PUT, "/api/me/avatar", Body::Raw(image, content_type.to_string())).await
+    }
+
+    pub async fn clear_avatar(&self) -> Result<User, ClientError> {
+        self.call(Method::DELETE, "/api/me/avatar", Body::None).await
+    }
+
+    /// A user's avatar image bytes.
+    pub async fn avatar(&self, user_id: &str) -> Result<Vec<u8>, ClientError> {
+        Ok(self.raw(Method::GET, &format!("/api/users/{}/avatar", encode(user_id)), Body::None, true).await?.to_vec())
+    }
+
+    /// Starts a scan of every library (admin); answers when it starts.
+    pub async fn start_scan(&self) -> Result<(), ClientError> {
+        self.raw(Method::POST, "/api/library/scan", Body::None, true).await.map(|_| ())
+    }
+
+    /// The last or running scan.
+    pub async fn scan_status(&self) -> Result<ScanStatus, ClientError> {
+        self.call(Method::GET, "/api/library/scan", Body::None).await
+    }
+
+    /// Server directories for the library folder picker (admin); an
+    /// empty `path` auto-detects the media root.
+    pub async fn browse(&self, path: &str) -> Result<BrowseResult, ClientError> {
+        self.call(Method::GET, &format!("/api/browse{}", query(&[("path", path.to_string())])), Body::None).await
+    }
+
+    /// The server's backup archive bytes (admin).
+    pub async fn backup(&self) -> Result<Vec<u8>, ClientError> {
+        Ok(self.raw(Method::GET, "/api/admin/backup", Body::None, true).await?.to_vec())
+    }
+}
+
+pub(crate) fn stream_path(item_id: &str) -> String {
+    format!("/api/items/{}/stream", encode(item_id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_query_values_are_left_out() {
+        assert_eq!(query(&[("limit", num(0)), ("sort", "".into())]), "");
+        assert_eq!(query(&[("limit", "5".into()), ("q", "a b".into())]), "?limit=5&q=a%20b");
+    }
+
+    #[test]
+    fn secrets_stay_out_of_debug() {
+        assert!(!format!("{:?}", Unlock::Pin("2468".into())).contains("2468"));
+    }
+}

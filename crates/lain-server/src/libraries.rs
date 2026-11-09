@@ -24,13 +24,7 @@ pub struct Libraries {
 }
 
 /// An admin change to a library (`PATCH /api/libraries/{id}`).
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-pub struct LibraryPatch {
-    pub name: Option<String>,
-    pub private: Option<bool>,
-    pub owner: Option<String>,
-    pub members: Option<Vec<String>>,
-}
+pub use lain_api::LibraryPatch;
 
 impl Libraries {
     pub fn new(store: Arc<Store>, roots: Arc<RwLock<Roots>>) -> Self {
