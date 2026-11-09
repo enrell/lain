@@ -68,9 +68,17 @@ window lands elsewhere. No simulated input: the app is driven by `--demo`, a
 ```
 
 `login` takes `LAIN_DEMO_USER`/`LAIN_DEMO_PASS` from the environment (and
-runs first-admin setup on a fresh server). `shot:<name>` writes a PNG of
-this window (PrintWindow, video included) into `--shot DIR`. Screenshots
-are in `shots/`.
+runs first-admin setup on a fresh server); `log:<tag>` prints the screen,
+catalog, rails and focus state, which is how test runs are checked.
+`shot:<name>` writes a PNG of this window (PrintWindow with
+`PW_RENDERFULLCONTENT`, video included) into `--shot DIR`.
+
+Use the **release** build for GUI runs: a debug build is a console
+program, and its console window opens on the primary monitor (the
+launcher kills the run). While another window covers the app on the
+panel, PrintWindow returns the title bar over black: GPUI's
+DirectComposition content is not captured for an occluded window (the P2b
+prototype behaves the same), so screenshots need the panel free.
 
 ## Screens and keys
 
