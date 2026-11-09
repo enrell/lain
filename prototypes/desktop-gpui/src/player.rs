@@ -36,7 +36,7 @@ pub struct PlayerSession {
     last_move: Instant,
     visible: bool,
     fade: Anim,
-    menu: Option<Menu>,
+    pub menu: Option<Menu>,
     seek_drag: Option<f32>,
     last_scrub: Instant,
     vol_drag: bool,
@@ -84,6 +84,9 @@ impl LainApp {
         let file = self.media_for(&self.items[item]);
         let file_s = file.to_string_lossy().into_owned();
         let force = self.bench.enabled();
+        let mute = self.args.mute;
+        // Bench runs always start at 0 so every run plays the same frames.
+        let start_at = if force { Some(0.) } else { self.start_override.take() };
         self.player = Some(PlayerSession {
             id,
             item,
@@ -110,14 +113,22 @@ impl LainApp {
         let ptask = self.backend.spawn(backend::progress(self.backend.client.clone(), self.items[item].id.clone()));
         cx.spawn(async move |this, cx| {
             let p = ptask.await.ok().flatten();
-            let start = p.filter(|p| !p.completed && p.position_sec > 3.).map(|p| p.position_sec).unwrap_or(0.);
+            let start = match start_at {
+                Some(t) => t,
+                None => p.filter(|p| !p.completed && p.position_sec > 3.).map(|p| p.position_sec).unwrap_or(0.),
+            };
             // mpv_initialize creates mpv's window, which talks to our host
             // window: never block the UI thread on it.
             let init = cx
                 .background_executor()
                 .spawn(async move {
                     let start_s = format!("{start:.3}");
-                    let m = Mpv::new(wid, &[("start", start_s.as_str())])?;
+                    let mut opts = vec![("start", start_s.as_str())];
+                    if mute {
+                        opts.push(("ao", "null"));
+                        opts.push(("mute", "yes"));
+                    }
+                    let m = Mpv::new(wid, &opts)?;
                     m.command(&["loadfile", &file_s])?;
                     Ok::<_, String>(Arc::new(m))
                 })
@@ -129,7 +140,9 @@ impl LainApp {
     }
 
     fn player_started(&mut self, id: u64, init: Result<Arc<Mpv>, String>, start: f64, cx: &mut Context<Self>) {
-        eprintln!("player: session {id} started at {start:.1}s: {:?}", init.as_ref().map(|_| ()));
+        if let Err(e) = &init {
+            eprintln!("player: session {id}: {e}");
+        }
         match self.player.as_mut() {
             Some(p) if p.id == id => {
                 p.pending = false;
@@ -169,7 +182,6 @@ impl LainApp {
 
     pub fn close_player(&mut self, cx: &mut Context<Self>) {
         let Some(s) = self.player.take() else { return };
-        eprintln!("player: close session {}", s.id);
         if let Some(m) = &s.mpv {
             let st = m.snapshot();
             if st.duration > 0. {
@@ -221,6 +233,10 @@ impl LainApp {
         }
         let Some(m) = p.mpv.clone() else { return };
         let st = m.snapshot();
+        if st.has_video && !p.st.has_video {
+            eprintln!("mpv: current-ao={} current-vo={} hwdec={}", m.get_string("current-ao").unwrap_or_else(|| "none".into()),
+                m.get_string("current-vo").unwrap_or_default(), m.get_string("hwdec-current").unwrap_or_default());
+        }
         let structural = st.has_video != p.st.has_video
             || st.paused != p.st.paused
             || st.error != p.st.error
@@ -251,7 +267,6 @@ impl LainApp {
     pub fn player_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let Some(p) = self.player.as_mut() else { return };
         p.last_move = Instant::now();
-        eprintln!("player: key {:?}", ev.keystroke.key);
         match ev.keystroke.key.as_str() {
             "space" | "k" => p.mpv(&["cycle", "pause"]),
             "left" => p.mpv(&["seek", "-5", "relative"]),

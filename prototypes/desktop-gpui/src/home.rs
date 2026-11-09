@@ -112,7 +112,7 @@ impl HomeState {
             });
         }
         self.featured = continues.first().map(|c| c.0).or(if items.is_empty() { None } else { Some(0) });
-        self.focus = if self.rails.is_empty() { Focus::Hero } else { Focus::Card(0, 0) };
+        self.focus = Focus::Hero;
     }
 
     pub fn rebuild_continue(&mut self, continues: &[(usize, lain_client::types::Progress)]) {
@@ -541,6 +541,8 @@ impl LainApp {
                     .absolute()
                     .left(px(geo.margin))
                     .bottom(px(text_bottom))
+                    // fade out before the title slides under the top bar
+                    .opacity((1. - page / (geo.hero_h * 0.45)).clamp(0., 1.))
                     .w(px((vw * 0.55).max(420.)))
                     .flex()
                     .flex_col()
@@ -817,4 +819,16 @@ impl LainApp {
 pub fn fmt_time(s: f64) -> String {
     let s = s.max(0.) as u64;
     if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
+}
+
+impl LainApp {
+    /// Demo automation: focus a card as if reached by keyboard.
+    pub fn demo_focus(&mut self, r: usize, i: usize, window: &mut Window) {
+        let vs = window.viewport_size();
+        let geo = self.geo(f32::from(vs.width), f32::from(vs.height));
+        if r < self.home.rails.len() && i < self.home.rails[r].cards.len() {
+            self.home.set_focus(Focus::Card(r, i));
+            self.ensure_visible(&geo, Focus::Card(r, i));
+        }
+    }
 }
