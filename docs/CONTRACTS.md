@@ -845,8 +845,8 @@ are core code (`internal/torrent`, `internal/acquire`), not plugins
 
 | Capability | Mode | Built-ins | Input → output |
 |---|---|---|---|
-| `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain) |
-| `lain.indexer@1` | ordered-many; `unsupported-protocol` declines | `lain-indexer-torznab` (Torznab + Newznab) | `IndexerCapsInput` → `IndexerCaps`; `IndexerSearchInput` → `IndexerSearchOutput`. In lain-rs the ops are `caps` and `search` (D-206) |
+| `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides; in lain-rs a component, see "P4 components"), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain) |
+| `lain.indexer@1` | ordered-many; `unsupported-protocol` declines | `lain-indexer-torznab` (Torznab + Newznab) | `IndexerCapsInput` → `IndexerCaps`; `IndexerSearchInput` → `IndexerSearchOutput` |
 | `lain.subtitle@1` | ordered-many; `unsupported-provider` declines | `lain-subtitle-opensubtitles` (OpenSubtitles.com REST v1) | `SubtitleSearchInput` → `SubtitleSearchOutput`; `SubtitleDownloadInput` → `SubtitleDownloadOutput` (a link; the core fetches it, D-150). In lain-rs the ops are `search` and `download` (D-202) |
 
 Indexer and subtitle-provider credentials travel inside the input and
@@ -861,6 +861,135 @@ the crates `lain-torrent`, `lain-acquire` and `lain-downloads`; every
 `/api/acquire/*` and `/api/downloads*` route keeps Go's shapes and
 texts. `GET /api/events` adds `grab-changed` and `download-changed`
 (admins; `{id, removed: true}` on delete, D-210).
+
+## P4 components: bridges to standalone apps (lain-rs, D-225..D-231)
+
+The owner's standalone apps plug in as components (DESIGN-v2 §6). Each
+bridge in `crates/lain-bridge` is a provider that talks to one app over
+the app's own local API; `lain-rs component run <id> --sock {sock}`
+serves it, and `lain-rs component install <id> [--data-dir D] [--k v…]`
+writes `<data-dir>/plugins/<id>.json` (entrypoint: this `lain-rs`), which
+the running server's provisioner picks up (`uninstall` removes it,
+`list` names them). The apps keep their own lifecycles: nothing in lain
+starts them. Credentials never go into a manifest: tokens come from the
+app's token file or its own environment variable.
+
+| Bridge | Capability | App and how it is found | Options |
+|---|---|---|---|
+| `lain-release-model` | `lain.release.parse@1` | lain-parser daemon: `--parser`, else `LAIN_PARSER_URL`, `LAIN_PARSER_SOCKET`, `<data-dir>/parser.sock`, `http://127.0.0.1:9377` | `parser` |
+| `lain-subtitle-animesubs` | `lain.subtitle.translate@1` | AnimeSubs server: `<home>/server.json` + `server-token`; home `--home`, else `$ANIMESUBS_HOME`, else `<config dir>/com.enrell.animesubs`; `ANIMESUBS_TOKEN` | `home`, `url`, `model-kind`, `model`, `base-url` |
+| `lain-acquire-anything` | `lain.acquire.extract@1` | Anything daemon: `~/.config/Anything/server.json` + `server-token` (`--home`, `ANYTHING_CONFIG_DIR`, `ANYTHING_TOKEN`) | `home`, `url` |
+
+All three are bound by default (they are in `COMPONENT_SERVED`), so
+installing the manifest is the only step.
+
+**Health and declines.** A bridge's `health` is a round trip to its app
+(`GET /health` or `/v1/health`, which must name the service), cached for
+2 s because the registry asks before every call. The registry skips an
+unhealthy provider, so:
+
+- app not installed, stopped, still loading, or its discovery file stale:
+  `health` fails with `dependency-unavailable` (`parser socket not
+  found`, `animesubs is not running (no server.json)`, `anything not
+  answering at 127.0.0.1:9642`…) and the next provider answers;
+- the app answered but declines the input: the contract's decline (a zero
+  `Release`; `unsupported-format`; `unsupported-url`), and the next
+  provider answers;
+- the app failed at call time: `dependency-unavailable`, or
+  `outcome-unknown` on a timeout; a rejected token is `auth-failed`
+  (never echoing the token).
+
+### lain.release.parse@1 from the model (D-225)
+
+`lain-release-model` posts `{filename}` to the daemon's `/parse`. A null
+`record` (the model's gated abstention, or a name over its 254-character
+window) answers the zero `Release`. Otherwise the model is trusted for
+title, episode_title, year, season, episodes (absolute when it states no
+season), release group and resolution, and the tokenizer for every other
+tag (Go's `merge`); `parser` is `lain-release-model`. Default binding:
+`[lain-release-model, lain-release-tokenizer]` (V-5,
+`docs/benchmarks/parser-v5.md`, D-226).
+
+### lain.subtitle.translate@1 (ordered-many; `unsupported-format` declines; D-228)
+
+| Op | Input | Output |
+|---|---|---|
+| `start` | `TranslateStartInput{input, output?, target_language, model?, overwrite?}` | `TranslateJob` |
+| `status` | `JobRef{job}` | `TranslateJob` |
+| `cancel` | `JobRef{job}` | `TranslateJob` (`cancelled`) |
+
+- `input`/`output` are absolute paths on the host both run on; the
+  component reads and writes the files (no subtitle bytes in the call).
+  An empty `output` is the app's default, `<stem>.<lang>.<ext>` next to
+  the input. `target_language` is BCP 47.
+- `model` (`TranslateModel{kind, model?, base_url?, api_key?}`, `Debug`
+  redacts the key) picks the translation backend; absent, the bridge's
+  configured default (`--model-kind/--model/--base-url`, never a key; the
+  app then reads the key from its own environment).
+- `TranslateJob{job, provider, state, phase, done, total, input, output,
+  target_language, created_at_ms, finished_at_ms?, error?{code, msg}}`;
+  `state` is `queued`, `running`, `succeeded`, `failed` or `cancelled`;
+  `phase` is the app's finer step (clients accept unknown ones);
+  `done`/`total` count cues, `total` 0 = unknown. `status` and `cancel`
+  go to the `provider` that started the job.
+- Codes: `invalid-message`, `not-found`, `not-cancellable` (already
+  finished), `already-exists` (output exists, no `overwrite`),
+  `unsupported-format`, `provider-error` (the model backend failed),
+  `auth-failed`, `dependency-unavailable`, `outcome-unknown`.
+- AnimeSubs: `start` is `POST /v1/jobs` (`translate_subtitle`), `status`
+  `GET /v1/jobs/{id}`, `cancel` `POST /v1/jobs/{id}/cancel`
+  (animesubs#8). Its jobs persist across its restarts; one found
+  unfinished after a restart reads `failed` with code `interrupted`.
+
+**Routes (subtitles module, admin):**
+
+- `POST /api/items/{id}/sidecars/{n}/translate` `{target_language, model?,
+  overwrite?}` → `202 TranslateJob`. The sidecar is named by its index in
+  `GET /api/items/{id}/sidecars` (never by path); the item must be
+  visible to the session (D-156). 400 without `target_language`, 404
+  `unknown item` / `no such sidecar`, 503 `dependency-unavailable` when no
+  translator is installed or healthy, other component errors by code
+  (`unsupported-format` 422, `already-exists` 409, `provider-error` 502).
+- `GET /api/subtitle-translations/{provider}/{job}` → `200 TranslateJob`;
+  `DELETE` the same path cancels (`200`, or `409 not-cancellable`); 404
+  for an unknown provider or job.
+- Clients poll the job; when it succeeds the new file is one more sidecar
+  of the item. No `/api/events` event yet.
+
+### lain.acquire.extract@1 (ordered-many; `unsupported-url` declines; D-230)
+
+| Op | Input | Output |
+|---|---|---|
+| `extract` | `ExtractInput{url}` | `ExtractOutput{url, title, site, duration_s, thumbnail, content_class, candidates[], subtitles[], provider}` |
+| `enqueue` | `ExtractEnqueueInput{url, format?, output_dir?}` | `ExtractJob` |
+| `status` | `JobRef{job}` | `ExtractJob` |
+| `cancel` | `JobRef{job}` | `ExtractJob` (`cancelled`) |
+
+- `ExtractCandidate{id, kind: video|video-only|audio, quality, width,
+  height, codec, mime_type, filesize}`. Stream URLs (often signed) never
+  leave the component: lain chooses with `format` (the app's selection,
+  e.g. `best` or `1080p`) and the app downloads.
+- `output_dir` (absolute) sends the download into a library folder;
+  empty leaves it to the app's own routing.
+- `ExtractJob{job, provider, state, url, title, output_path,
+  downloaded_bytes, total_bytes, error?}`; `state` is `queued`,
+  `running`, `paused`, `succeeded`, `failed` or `cancelled`.
+- Codes: `unsupported-url`, `extract-failed`, `invalid-message`,
+  `not-found`, `not-cancellable`, `auth-failed`, `dependency-unavailable`,
+  `outcome-unknown` (an extraction can take a minute; the bridge waits
+  75 s).
+- Anything: `extract` is `POST /extract`, `enqueue` `POST /queue`
+  (`options.format`, `options.output_dir`), `status` `GET /queue/{id}`
+  (`pending`→`queued`, `completed`→`succeeded`), `cancel`
+  `DELETE /queue/{id}`. It needs Anything's token auth (Anything#1).
+- **For the acquire module** (it owns the capability; no route is added
+  here): a URL a user pastes goes to
+  `registry.call_first(CAP, "extract", {url}, |o| !o["candidates"].is_empty())`;
+  the chosen candidate becomes
+  `invoke_provider(CAP, out.provider, "enqueue", {url, format, output_dir})`
+  with `output_dir` the target library's folder; the downloads view polls
+  `status` with the job's `provider` and `job`; a finished job's
+  `output_path` is picked up by the library scan or watcher like any file.
 
 ## Component mode (wire protocol)
 

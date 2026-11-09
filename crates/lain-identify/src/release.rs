@@ -24,7 +24,11 @@ pub const TOKENIZER_ID: &str = "lain-release-tokenizer";
 
 const MEDIA_EXTS: &[&str] = &["mkv", "mp4", "avi", "m4v", "webm", "mov", "ts", "cbz", "cbr", "cb7", "torrent", "nzb"];
 
-fn resolution(l: &str) -> Option<&'static str> {
+/// The canonical resolution for a lower-case tag (`4k` → `2160p`,
+/// `1080i` → `1080p`), or `None` when the tag is not one. The model
+/// bridge (`lain-bridge`) maps the model's label through it, as Go's
+/// `merge` does.
+pub fn resolution(l: &str) -> Option<&'static str> {
     Some(match l {
         "2160p" | "4k" | "uhd" => "2160p",
         "1080p" | "1080i" => "1080p",

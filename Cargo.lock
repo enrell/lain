@@ -442,6 +442,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lain-bridge"
+version = "0.1.0"
+dependencies = [
+ "lain-api",
+ "lain-component",
+ "lain-core",
+ "lain-identify",
+ "lain-store",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "lain-client"
 version = "0.1.0"
 dependencies = [
@@ -609,6 +623,7 @@ dependencies = [
  "lain-admin",
  "lain-api",
  "lain-auth",
+ "lain-bridge",
  "lain-component",
  "lain-conformance",
  "lain-core",

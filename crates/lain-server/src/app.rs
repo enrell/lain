@@ -35,12 +35,15 @@ use lain_ingest::{ScanEvent, Scanner, SourceWatch};
 /// The composition document version.
 pub const COMPOSITION_VERSION: u32 = 8;
 
-/// Built-in Go providers that `lain plugin-run` serves as components:
-/// a binding may name them before their manifest is installed (they
-/// answer `dependency-unavailable` until then). This is the strangler
-/// path: Go providers keep working under the Rust core.
+/// Providers that only ever run as components, so a binding may name
+/// them before their manifest is installed (unregistered, they are
+/// skipped; a capability with none answers `dependency-unavailable`):
+/// the bridges of `lain-bridge` (`lain-rs component install`, P4) and
+/// the Go providers `lain plugin-run` serves (the strangler path).
 pub const COMPONENT_SERVED: &[&str] = &[
-    "lain-release-model",
+    lain_bridge::parser::MODEL_ID,
+    lain_bridge::animesubs::ID,
+    lain_bridge::anything::ID,
     "lain-probe-ffprobe",
     "lain-playback-default",
     "lain-thumbnail-ffmpeg",
@@ -64,9 +67,12 @@ pub fn default_composition() -> Composition {
     bindings.insert(lain_ingest::CAP_SOURCE_WATCH.into(), one(lain_ingest::WATCH_ID));
     bindings
         .insert(CAP_MEDIA_IDENTIFY.into(), Binding::new(BindingMode::OrderedMany, &[COMIC_ID, ANIME_ID, GENERIC_ID]));
-    // The lain-parser model (P4) is bound before the tokenizer once it
-    // is installed as a component.
-    bindings.insert(CAP_RELEASE_PARSE.into(), Binding::new(BindingMode::OrderedMany, &[TOKENIZER_ID]));
+    // The lain-parser model (D-225) answers first when its component is
+    // installed and healthy; the tokenizer answers whenever it declines.
+    bindings.insert(
+        CAP_RELEASE_PARSE.into(),
+        Binding::new(BindingMode::OrderedMany, &[lain_bridge::parser::MODEL_ID, TOKENIZER_ID]),
+    );
     bindings.insert(CAP_METADATA_SEARCH.into(), Binding::new(BindingMode::MergeMany, DEFAULT_PROVIDERS));
     bindings.insert(CAP_METADATA_RESOLVE.into(), Binding::new(BindingMode::MergeMany, DEFAULT_PROVIDERS));
     bindings.insert(CAP_METADATA_ENRICH.into(), one(ENRICH_ID));
@@ -89,6 +95,16 @@ pub fn default_composition() -> Composition {
     bindings.insert(
         lain_api::acquire::CAP_INDEXER.into(),
         Binding::new(BindingMode::OrderedMany, &[lain_acquire::TORZNAB_ID]),
+    );
+    // P4 components (D-228, D-230): bound before they are installed, so
+    // installing the manifest is all it takes.
+    bindings.insert(
+        lain_bridge::animesubs::CAP_SUBTITLE_TRANSLATE.into(),
+        Binding::new(BindingMode::OrderedMany, &[lain_bridge::animesubs::ID]),
+    );
+    bindings.insert(
+        lain_bridge::anything::CAP_ACQUIRE_EXTRACT.into(),
+        Binding::new(BindingMode::OrderedMany, &[lain_bridge::anything::ID]),
     );
     Composition { version: COMPOSITION_VERSION, bindings }
 }
