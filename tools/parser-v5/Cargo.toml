@@ -1,0 +1,18 @@
+# The V-5 parser benchmark's prediction runner (docs/benchmarks/parser-v5.md).
+# A standalone package, not a workspace member: it pulls zantetsu (and its
+# candle/tokenizers tree), which the server never depends on.
+[package]
+name = "parser-v5"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+lain-identify = { path = "../../crates/lain-identify" }
+lain-bridge = { path = "../../crates/lain-bridge" }
+lain-core = { path = "../../crates/lain-core" }
+serde_json = "1"
+# zantetsu's main as of 2026-11-09 (its heuristic parser, the one its README scores).
+zantetsu-core = { git = "https://github.com/enrell/zantetsu", rev = "2bbe08d" }

@@ -195,7 +195,7 @@ pub fn builtin() -> Vec<ModuleDef> {
             "acquire",
             "Acquire",
             true,
-            &["lain.indexer@1"],
+            &["lain.indexer@1", "lain.acquire.extract@1"],
             &["/api/acquire/*", "/api/downloads", "/api/downloads/*"],
             &[],
             vec![dest("acquire", "Acquire", "/acquire")],
@@ -220,6 +220,7 @@ pub fn builtin() -> Vec<ModuleDef> {
                 "/api/items/{id}/subtitles",
                 "/api/items/{id}/sidecars",
                 "/api/items/{id}/sidecars/*",
+                "/api/subtitle-translations/*",
             ],
             &[],
             vec![],
@@ -487,6 +488,8 @@ mod tests {
         assert_eq!(set.route_owner("/api/acquire/subtitles").unwrap().id, "subtitles");
         assert_eq!(set.route_owner("/api/acquire/items/x/subtitles/status").unwrap().id, "subtitles");
         assert_eq!(set.route_owner("/api/acquire/parse").unwrap().id, "identify");
+        assert_eq!(set.route_owner("/api/subtitle-translations/p/job-1").unwrap().id, "subtitles");
+        assert_eq!(set.route_owner("/api/items/x/sidecars/0/translate").unwrap().id, "subtitles");
         assert_eq!(set.route_owner("/api/items/x/playback").unwrap().id, "watch");
         assert_eq!(set.route_owner("/api/items/x/pages/3").unwrap().id, "read");
         assert!(set.route_owner("/api/items/x/progress").is_none());

@@ -2,6 +2,8 @@
 # cmd/ and internal/ stays the production server until cutover.
 [workspace]
 resolver = "3"
+# Standalone benchmark tools with their own dependency trees.
+exclude = ["tools/parser-v5"]
 members = [
     "crates/lain-api",
     "crates/lain-http",
@@ -25,6 +27,7 @@ members = [
     
     "crates/lain-lists",
     "crates/lain-social",
+    "crates/lain-bridge",
     "conformance/runner",
 ]
 
@@ -95,6 +98,7 @@ lain-social = { path = "crates/lain-social" }
 lain-torrent = { path = "crates/lain-torrent" }
 lain-downloads = { path = "crates/lain-downloads" }
 lain-acquire = { path = "crates/lain-acquire" }
+lain-bridge = { path = "crates/lain-bridge" }
 
 [profile.dev]
 # Keep target/ small on a tight disk; line tables are enough for

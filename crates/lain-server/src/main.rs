@@ -21,6 +21,9 @@ fn usage() {
   import    replace the catalog with a lain.catalog-export@3 document (--data-dir, --in FILE)
   service   install|uninstall|start|stop|status|logs the background service
             (--name lain, --system, --linger, --port, --bind, --data-dir, --dry-run; logs: --follow, --lines N)
+  component list | run <id> --sock S [--k v...] | install <id> [--data-dir] [--k v...] | uninstall <id>
+            the bridges to standalone apps (lain-parser, AnimeSubs, Anything) as components; install writes
+            <data-dir>/plugins/<id>.json, which the running server picks up
   version   print version
 
 The data dir is --data-dir, else $LAIN_HOME, else the per-OS default
@@ -152,6 +155,65 @@ fn cmd_export(args: &[String]) -> Result<(), String> {
     }
 }
 
+/// `--k v` pairs after the bridge id (`--sock` and `--data-dir` of
+/// install excluded by the caller).
+fn bridge_options(args: &[String], skip: &[&str]) -> Result<lain_bridge::Options, String> {
+    let mut opts = lain_bridge::Options::new();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        let Some(k) = a.strip_prefix("--") else { return Err(format!("unexpected argument {a}")) };
+        let (k, v) = match k.split_once('=') {
+            Some((k, v)) => (k.to_string(), v.to_string()),
+            None => (k.to_string(), it.next().cloned().ok_or_else(|| format!("--{k} needs a value"))?),
+        };
+        if !skip.contains(&k.as_str()) {
+            opts.insert(k, v);
+        }
+    }
+    Ok(opts)
+}
+
+fn cmd_component(args: &[String]) -> Result<(), String> {
+    let sub = args.first().map(String::as_str).ok_or("component needs list|run|install|uninstall")?;
+    if sub == "list" {
+        for (id, caps, what) in lain_bridge::catalog() {
+            println!("{id}\t{}\t{what}", caps.join(","));
+        }
+        return Ok(());
+    }
+    let id = args.get(1).ok_or_else(|| format!("component {sub} needs a bridge id"))?;
+    let rest = &args[2..];
+    match sub {
+        "run" => {
+            let sock = flag(rest, "sock").ok_or("component run needs --sock")?;
+            logging::init(logging::parse_level("info")?, Sink::Stderr);
+            lain_bridge::run(id, &sock, &bridge_options(rest, &["sock"])?)
+        }
+        "install" => {
+            let dir = absolute(&data_dir(rest)?);
+            let mut opts = bridge_options(rest, &["data-dir"])?;
+            opts.insert("data-dir".into(), dir.to_string_lossy().into_owned());
+            // Fail now, not in the server's log, when the options are wrong.
+            lain_bridge::build(id, &opts)?;
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            let m = lain_bridge::manifest(id, &exe.canonicalize().unwrap_or(exe), VERSION, &opts)?;
+            let plugins = dir.join("plugins");
+            std::fs::create_dir_all(&plugins).map_err(|e| format!("{}: {e}", plugins.display()))?;
+            let path = plugins.join(format!("{id}.json"));
+            lain_server::app::save_doc(&path, &m)?;
+            println!("installed {id} -> {}", path.display());
+            Ok(())
+        }
+        "uninstall" => {
+            let path = absolute(&data_dir(rest)?).join("plugins").join(format!("{id}.json"));
+            std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            println!("removed {}", path.display());
+            Ok(())
+        }
+        other => Err(format!("unknown component action {other}")),
+    }
+}
+
 fn cmd_service(args: &[String]) -> Result<(), String> {
     let action_name = args.first().ok_or("service needs install|uninstall|start|stop|status|logs")?;
     let lines = flag(args, "lines").map(|n| n.parse().unwrap_or(200)).unwrap_or(200);
@@ -194,6 +256,7 @@ fn main() {
         "import" => cmd_import(rest),
         "export" => cmd_export(rest),
         "service" => cmd_service(rest),
+        "component" => cmd_component(rest),
         "version" | "--version" | "-V" => {
             println!("lain-rs {VERSION}");
             Ok(())
