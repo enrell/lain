@@ -1,0 +1,106 @@
+// Default card skin ("poster"): art on top, title and episode label below.
+//
+// Skin contract (any file passed with --skin must export these two):
+//   global CardMetrics { out property <length> footer; }  // space the rail
+//                                                          // reserves under the art
+//   component Card {
+//     in property <image> art;          in property <length> art-w, art-h;
+//     in property <string> title, label;
+//     in property <float> progress;     // 0..1 on Continue cards, < 0 otherwise
+//     in property <bool> focused;       // keyboard focus
+//     callback clicked();
+//   }
+// Skins may import the Theme global from "theme.slint".
+import { Theme } from "theme.slint";
+
+export global CardMetrics {
+    out property <length> footer: 52px;
+}
+
+export component Card inherits Rectangle {
+    in property <image> art;
+    in property <length> art-w: Theme.card-w;
+    in property <length> art-h: Theme.card-h;
+    in property <string> title;
+    in property <string> label;
+    in property <float> progress: -1;
+    in property <bool> focused;
+    callback clicked();
+
+    property <bool> lit: ta.has-hover || root.focused;
+
+    frame := Rectangle {
+        width: root.art-w;
+        height: root.art-h;
+        y: 0;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-scale: root.lit ? Theme.hover-scale : 1.0;
+        animate transform-scale { duration: Theme.fast; easing: Theme.easing; }
+        border-radius: Theme.radius-card;
+        background: Theme.surface;
+        drop-shadow-blur: root.lit ? 28px : 10px;
+        drop-shadow-offset-y: root.lit ? 14px : 4px;
+        drop-shadow-color: #00000088;
+        animate drop-shadow-blur, drop-shadow-offset-y { duration: Theme.normal; easing: Theme.easing; }
+
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            border-radius: Theme.radius-card;
+            clip: true;
+            Image {
+                source: root.art;
+                width: 100%;
+                height: 100%;
+                image-fit: cover;
+            }
+            if root.progress >= 0: Rectangle {
+                y: parent.height - 4px;
+                height: 4px;
+                background: #00000080;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * clamp(root.progress, 0, 1);
+                    background: Theme.accent;
+                }
+            }
+        }
+        // focus ring, drawn outside the art
+        Rectangle {
+            x: -3px;
+            y: -3px;
+            width: parent.width + 6px;
+            height: parent.height + 6px;
+            border-radius: Theme.radius-card + 3px;
+            border-width: root.focused ? 2px : 0px;
+            border-color: Theme.accent;
+        }
+    }
+
+    Text {
+        x: 2px;
+        y: root.art-h + 12px;
+        width: root.art-w - 4px;
+        text: root.title;
+        color: root.lit ? Theme.text : Theme.text.transparentize(15%);
+        font-size: Theme.font-size * 0.93;
+        font-weight: 600;
+        overflow: elide;
+    }
+    Text {
+        x: 2px;
+        y: root.art-h + 32px;
+        width: root.art-w - 4px;
+        text: root.label;
+        color: Theme.muted;
+        font-size: Theme.font-size * 0.8;
+        overflow: elide;
+    }
+
+    ta := TouchArea {
+        width: root.art-w;
+        height: root.art-h + CardMetrics.footer;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

@@ -1,0 +1,899 @@
+// lain desktop prototype (P2b) in Slint: Home + Player.
+// Compiled at run time by slint-interpreter (src/ui.rs), so the card skin
+// ("card.slint") can be swapped for a user file with --skin.
+import { AboutSlint } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Card, CardMetrics } from "card.slint";
+
+export { Theme }
+
+export struct CardData {
+    item: string,
+    title: string,
+    label: string,
+    series: int,
+    progress: float,
+}
+
+export struct RailData {
+    heading: string,
+    // 0 = poster rail, 1 = Continue (landscape)
+    kind: int,
+    cards: [CardData],
+}
+
+export struct Track {
+    id: int,
+    label: string,
+    selected: bool,
+}
+
+export global Home {
+    in property <[RailData]> rails;
+    // decoded art by series index: card-sized posters, landscape thumbs
+    in property <[image]> posters;
+    in property <[image]> thumbs;
+    in property <image> hero-art;
+    in property <string> hero-kicker;
+    in property <string> hero-title;
+    in property <string> hero-meta;
+    in property <string> hero-action: "Play";
+    in property <string> hero-item;
+    in property <string> user;
+    in property <string> status: "connecting";
+    in property <bool> online;
+    in property <string> message;
+    in property <string> skin: "poster";
+    in-out property <int> focus-row: 0;
+    in-out property <bool> keyboard;
+    // bench mode: drives the content-x of rail `bench-rail` directly
+    in property <bool> bench;
+    in property <int> bench-rail: -1;
+    in property <length> bench-x;
+    callback open(string);
+}
+
+export global Player {
+    in property <bool> active;
+    in property <string> title;
+    in property <string> subtitle;
+    in property <float> pos;
+    in property <float> dur;
+    in property <float> cache;
+    in property <bool> paused;
+    in property <float> volume: 100;
+    in property <bool> muted;
+    in property <[Track]> audio;
+    in property <[Track]> subs;
+    in property <bool> fullscreen;
+    in property <string> info;
+    in property <string> message;
+    in property <bool> bench;
+    callback toggle-pause();
+    callback seek-to(float);
+    callback seek-by(float);
+    callback set-volume(float);
+    callback toggle-mute();
+    callback select-audio(int);
+    callback select-sub(int);
+    callback toggle-fullscreen();
+    callback close();
+}
+
+// ---- small pieces -------------------------------------------------------
+
+component Icon inherits Path {
+    in property <color> tint: Theme.text;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    width: 22px;
+    height: 22px;
+    stroke: tint;
+    stroke-width: 2px;
+    stroke-line-cap: round;
+    stroke-line-join: round;
+    fill: transparent;
+}
+
+component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <bool> filled;
+    in property <bool> on;
+    callback clicked();
+    width: 40px;
+    height: 40px;
+    border-radius: Theme.radius-button;
+    background: ta.has-hover || root.on ? Theme.text.transparentize(86%) : transparent;
+    animate background { duration: Theme.fast; }
+    Icon {
+        commands: root.icon;
+        fill: root.filled ? Theme.text : transparent;
+        stroke-width: root.filled ? 0px : 2px;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component PlayButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> focused;
+    callback clicked();
+    height: 52px;
+    width: row.preferred-width + 2 * Theme.s4;
+    border-radius: Theme.radius-button;
+    background: ta.pressed ? Theme.accent.darker(20%) : ta.has-hover || root.focused ? Theme.accent.brighter(12%) : Theme.accent;
+    animate background { duration: Theme.fast; easing: Theme.easing; }
+    drop-shadow-blur: ta.has-hover || root.focused ? 30px : 12px;
+    drop-shadow-color: Theme.accent.transparentize(50%);
+    animate drop-shadow-blur { duration: Theme.normal; easing: Theme.easing; }
+    Rectangle {
+        x: -4px;
+        y: -4px;
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        border-radius: Theme.radius-button + 4px;
+        border-width: root.focused ? 2px : 0px;
+        border-color: Theme.text;
+    }
+    row := HorizontalLayout {
+        padding-left: Theme.s4;
+        padding-right: Theme.s4;
+        spacing: Theme.s2;
+        alignment: center;
+        Icon {
+            y: (parent.height - self.height) / 2;
+            commands: "M 7 4.5 L 19 12 L 7 19.5 Z";
+            fill: Theme.bg;
+            stroke-width: 0px;
+            width: 18px;
+            height: 18px;
+        }
+        Text {
+            vertical-alignment: center;
+            text: root.label;
+            color: Theme.bg;
+            font-size: Theme.font-size * 1.05;
+            font-weight: 700;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// ---- Home ---------------------------------------------------------------
+
+component Hero inherits Rectangle {
+    in property <bool> active;
+    property <bool> want: root.active && !Player.active;
+    changed want => { if want { fs.focus(); } }
+    init => { if root.want { fs.focus(); } }
+    clip: true;
+    background: Theme.surface;
+
+    Image {
+        source: Home.hero-art;
+        width: 100%;
+        height: 100%;
+        image-fit: cover;
+        opacity: Home.hero-art.width > 0 ? 1 : 0;
+        animate opacity { duration: Theme.normal * 2; easing: Theme.easing; }
+    }
+    // the theme's scrim: a vertical gradient into the page background
+    Rectangle {
+        y: parent.height * 0.3;
+        height: parent.height * 0.7 + 1px;
+        background: @linear-gradient(180deg, Theme.hero-top 0%, Theme.hero-bottom 100%);
+    }
+    // a side scrim for title legibility over bright art
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width * 0.7;
+        height: parent.height;
+        background: @linear-gradient(90deg, Theme.scrim 0%, Theme.scrim.transparentize(100%) 100%);
+    }
+
+    VerticalLayout {
+        x: Theme.s6;
+        width: min(parent.width * 0.62, 980px);
+        padding-bottom: Theme.s6;
+        alignment: end;
+        spacing: Theme.s3;
+        Text {
+            text: Home.hero-kicker;
+            color: Theme.accent;
+            font-size: Theme.font-size * 0.8;
+            font-weight: 700;
+            letter-spacing: 3px;
+        }
+        Text {
+            text: Home.hero-title;
+            color: Theme.text;
+            font-family: Theme.font-display;
+            font-size: clamp(root.height * 0.15, 48px, 112px);
+            font-weight: 600;
+            wrap: word-wrap;
+            letter-spacing: -1px;
+        }
+        Text {
+            text: Home.hero-meta;
+            color: Theme.text.transparentize(30%);
+            font-size: Theme.font-size * 1.05;
+        }
+        HorizontalLayout {
+            padding-top: Theme.s2;
+            alignment: start;
+            if Home.hero-item != "": PlayButton {
+                label: Home.hero-action;
+                focused: fs.has-focus && Home.keyboard;
+                clicked => { Home.open(Home.hero-item); }
+            }
+        }
+    }
+
+    fs := FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(e) => {
+            Home.keyboard = true;
+            if e.text == Key.DownArrow && Home.rails.length > 0 {
+                Home.focus-row = 1;
+                return accept;
+            }
+            if (e.text == Key.Return || e.text == " ") && Home.hero-item != "" {
+                Home.open(Home.hero-item);
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
+
+component Rail inherits Rectangle {
+    in property <RailData> data;
+    in property <int> rail-row;
+    callback reveal(length, length);
+
+    property <bool> wide: root.data.kind == 1 || Theme.wide-cards;
+
+    property <length> art-h: root.data.kind == 1 ? min(Theme.card-w, Theme.card-h) * 0.9 : Theme.card-h;
+    property <length> art-w: root.data.kind == 1 ? self.art-h * 16 / 9 : Theme.card-w;
+    property <length> step: self.art-w + Theme.gap;
+    property <length> pad: Theme.s6;
+    property <length> head: Theme.font-size * 3;
+    property <length> grow: self.art-h * max(0, Theme.hover-scale - 1) / 2 + 14px;
+    property <int> n: root.data.cards.length;
+    in-out property <int> cur: 0;
+
+    // Virtualization: only the cards in view (plus a margin) exist; the
+    // repeater's instances are rebound to new indices as the rail scrolls.
+    property <int> first: max(0, floor((-flick.content-x - root.pad) / root.step) - 1);
+    property <int> count: max(0, min(root.n - root.first, ceil(root.width / root.step) + 3));
+
+    property <bool> active: Home.focus-row == root.rail-row && !Player.active;
+    changed active => {
+        if active {
+            fs.focus();
+            root.cur = clamp(ceil((-flick.content-x) / root.step), 0, max(0, root.n - 1));
+            root.reveal(root.y, root.height);
+        }
+    }
+    changed cur => { root.show-col(); }
+
+    function show-col() {
+        if root.pad + root.cur * root.step < -flick.content-x + root.pad {
+            flick.content-x = -(root.cur * root.step);
+        } else if root.pad + root.cur * root.step + root.art-w + root.pad > -flick.content-x + flick.width {
+            flick.content-x = -(root.pad + root.cur * root.step + root.art-w + root.pad - flick.width);
+        }
+    }
+
+    property <length> bench-x: Home.bench-rail == root.rail-row ? Home.bench-x : -1px;
+    changed bench-x => { if root.bench-x >= 0 { flick.content-x = -root.bench-x; } }
+
+    height: self.head + self.art-h + CardMetrics.footer + 2 * self.grow;
+
+    Text {
+        x: root.pad;
+        y: Theme.s3;
+        text: root.data.heading;
+        color: Theme.text;
+        font-size: Theme.font-size * 1.2;
+        font-weight: 650;
+    }
+    Text {
+        x: root.width - root.pad - self.width;
+        y: Theme.s3 + 3px;
+        text: root.n + " titles";
+        color: Theme.muted;
+        font-family: Theme.font-mono;
+        font-size: Theme.font-size * 0.75;
+    }
+
+    flick := Flickable {
+        y: root.head;
+        height: root.height - root.head;
+        content-width: root.pad * 2 + root.n * root.step - Theme.gap;
+        animate content-x { duration: Home.bench ? 0ms : Theme.normal; easing: Theme.easing; }
+
+        for k in root.count: Card {
+            property <int> idx: root.first + k;
+            property <CardData> c: root.data.cards[self.idx];
+            x: root.pad + self.idx * root.step;
+            y: root.grow;
+            width: root.art-w;
+            height: root.art-h + CardMetrics.footer;
+            art-w: root.art-w;
+            art-h: root.art-h;
+            art: root.wide ? Home.thumbs[self.c.series] : Home.posters[self.c.series];
+            title: self.c.title;
+            label: self.c.label;
+            progress: self.c.progress;
+            focused: fs.has-focus && Home.keyboard && root.cur == self.idx;
+            clicked => { Home.open(self.c.item); }
+        }
+    }
+
+    fs := FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(e) => {
+            Home.keyboard = true;
+            if e.text == Key.RightArrow { root.cur = min(root.n - 1, root.cur + 1); return accept; }
+            if e.text == Key.LeftArrow { root.cur = max(0, root.cur - 1); return accept; }
+            if e.text == Key.Home { root.cur = 0; return accept; }
+            if e.text == Key.End { root.cur = root.n - 1; return accept; }
+            if e.text == Key.UpArrow { Home.focus-row = max(0, Home.focus-row - 1); return accept; }
+            if e.text == Key.DownArrow { Home.focus-row = min(Home.rails.length, Home.focus-row + 1); return accept; }
+            if e.text == Key.Return || e.text == " " {
+                Home.open(root.data.cards[root.cur].item);
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
+
+component TopNav inherits Rectangle {
+    in property <float> solid;
+    callback about();
+    height: 72px;
+    background: @linear-gradient(180deg, Theme.bg.transparentize(1 - (0.55 + 0.4 * root.solid)) 0%, Theme.bg.transparentize(100%) 100%);
+    HorizontalLayout {
+        padding-left: Theme.s6;
+        padding-right: Theme.s6;
+        spacing: Theme.s4;
+        Text {
+            vertical-alignment: center;
+            text: "lain";
+            color: Theme.text;
+            font-family: Theme.font-display;
+            font-size: 30px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+        Text {
+            vertical-alignment: center;
+            text: "Home";
+            color: Theme.text.transparentize(25%);
+            font-size: Theme.font-size * 0.95;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        HorizontalLayout {
+            spacing: Theme.s1;
+            alignment: end;
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: Home.online ? #6fcf8f : Theme.danger;
+            }
+            Text {
+                vertical-alignment: center;
+                text: Home.user != "" ? Home.user + " · " + Home.status : Home.status;
+                color: Theme.muted;
+                font-family: Theme.font-mono;
+                font-size: Theme.font-size * 0.78;
+            }
+        }
+        Rectangle {
+            width: about-text.preferred-width + 20px;
+            border-radius: Theme.radius-button;
+            background: about-ta.has-hover ? Theme.text.transparentize(88%) : transparent;
+            about-text := Text {
+                text: "About";
+                color: Theme.text.transparentize(25%);
+                font-size: Theme.font-size * 0.9;
+            }
+            about-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.about(); }
+            }
+        }
+    }
+}
+
+component HomePage inherits Rectangle {
+    background: Theme.bg;
+    property <length> nav-h: 72px;
+    property <bool> about-open;
+
+    page := Flickable {
+        // explicit bounds: otherwise the layout's size feeds back into the
+        // window's constraints (binding loop through the hero's height)
+        min-height: 0;
+        preferred-height: 0;
+        max-height: 100000px;
+        content-height: content.preferred-height;
+        animate content-y { duration: Home.bench ? 0ms : Theme.normal; easing: Theme.easing; }
+        content := VerticalLayout {
+            width: page.width;
+            Hero {
+                height: root.height * Theme.hero-height;
+                active: Home.focus-row == 0;
+            }
+            if Home.message != "": Text {
+                x: Theme.s6;
+                height: 80px;
+                vertical-alignment: center;
+                text: Home.message;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            for rail[i] in Home.rails: Rail {
+                data: rail;
+                rail-row: i + 1;
+                reveal(y, h) => {
+                    if y + page.content-y < root.nav-h {
+                        page.content-y = -(y - root.nav-h);
+                    } else if y + h + page.content-y > page.height {
+                        page.content-y = -(y + h - page.height);
+                    }
+                }
+            }
+            Rectangle {
+                height: Theme.s6 * 2;
+                Text {
+                    text: "lain · Slint " + "prototype · theme " + Theme.name + " · skin " + Home.skin;
+                    color: Theme.muted.transparentize(40%);
+                    font-family: Theme.font-mono;
+                    font-size: 11px;
+                }
+            }
+        }
+    }
+    changed focus-row => { if focus-row == 0 { page.content-y = 0; } }
+    property <int> focus-row: Home.focus-row;
+
+    TopNav {
+        y: 0;
+        width: root.width;
+        solid: clamp(-page.content-y / 300px, 0, 1);
+        about => { root.about-open = true; }
+    }
+
+    if root.about-open: Rectangle {
+        background: Theme.bg.transparentize(25%);
+        TouchArea { clicked => { root.about-open = false; } }
+        Rectangle {
+            width: 520px;
+            height: 420px;
+            border-radius: Theme.radius-card;
+            background: Theme.surface;
+            drop-shadow-blur: 40px;
+            drop-shadow-color: #00000099;
+            TouchArea { }
+            VerticalLayout {
+                padding: Theme.s5;
+                spacing: Theme.s3;
+                Text {
+                    text: "lain desktop, Slint prototype";
+                    color: Theme.text;
+                    font-family: Theme.font-display;
+                    font-size: 26px;
+                    font-weight: 600;
+                }
+                Text {
+                    text: "P2b comparative prototype. Built with Slint 1.18.1, used under the Slint Royalty-free License 2.0 for this evaluation.";
+                    color: Theme.muted;
+                    wrap: word-wrap;
+                }
+                AboutSlint { }
+            }
+        }
+    }
+}
+
+// ---- Player -------------------------------------------------------------
+
+component SeekBar inherits Rectangle {
+    height: 28px;
+    property <float> frac: Player.dur > 0 ? clamp(Player.pos / Player.dur, 0, 1) : 0;
+    property <float> buffered: Player.dur > 0 ? clamp(Player.cache / Player.dur, 0, 1) : 0;
+    property <float> hover-frac: clamp(ta.mouse-x / root.width, 0, 1);
+    property <float> shown: ta.pressed ? root.hover-frac : root.frac;
+    property <length> h: ta.has-hover || ta.pressed ? Theme.seek-h * 1.75 : Theme.seek-h;
+    animate h { duration: Theme.fast; easing: Theme.easing; }
+
+    Rectangle {
+        y: (root.height - root.h) / 2;
+        height: root.h;
+        border-radius: root.h / 2;
+        background: Theme.text.transparentize(80%);
+        Rectangle {
+            x: 0;
+            width: parent.width * root.buffered;
+            border-radius: parent.border-radius;
+            background: Theme.text.transparentize(62%);
+        }
+        Rectangle {
+            x: 0;
+            width: parent.width * root.shown;
+            border-radius: parent.border-radius;
+            background: Theme.accent;
+        }
+    }
+    Rectangle {
+        x: root.width * root.shown - self.width / 2;
+        y: (root.height - self.height) / 2;
+        width: ta.has-hover || ta.pressed ? 14px : 0px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.text;
+        animate width { duration: Theme.fast; easing: Theme.easing; }
+    }
+    if ta.has-hover: Rectangle {
+        x: clamp(ta.mouse-x - self.width / 2, 0, root.width - self.width);
+        y: -30px;
+        width: tip.preferred-width + 14px;
+        height: 24px;
+        border-radius: 6px;
+        background: Theme.bg.transparentize(15%);
+        tip := Text {
+            text: PlayerPage.fmt(root.hover-frac * Player.dur);
+            color: Theme.text;
+            font-family: Theme.font-mono;
+            font-size: 12px;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.up && e.button == PointerEventButton.left {
+                Player.seek-to(root.hover-frac * Player.dur);
+            }
+        }
+    }
+}
+
+component VolumeSlider inherits Rectangle {
+    width: 96px;
+    height: 28px;
+    property <float> v: Player.muted ? 0 : clamp(Player.volume / 100, 0, 1);
+    Rectangle {
+        y: (root.height - self.height) / 2;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.text.transparentize(80%);
+        Rectangle {
+            x: 0;
+            width: parent.width * root.v;
+            border-radius: 2px;
+            background: Theme.text;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if e.kind == PointerEventKind.down || (e.kind == PointerEventKind.move && self.pressed) {
+                Player.set-volume(clamp(self.mouse-x / root.width, 0, 1) * 100);
+            }
+        }
+        moved => { if self.pressed { Player.set-volume(clamp(self.mouse-x / root.width, 0, 1) * 100); } }
+    }
+}
+
+component MenuRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+    height: 36px;
+    border-radius: Theme.radius-button;
+    background: ta.has-hover ? Theme.text.transparentize(88%) : transparent;
+    HorizontalLayout {
+        padding-left: Theme.s2;
+        padding-right: Theme.s2;
+        spacing: Theme.s2;
+        Rectangle {
+            width: 8px;
+            Rectangle {
+                width: 6px;
+                height: 6px;
+                border-radius: 3px;
+                background: root.selected ? Theme.accent : transparent;
+            }
+        }
+        Text {
+            vertical-alignment: center;
+            text: root.label;
+            color: root.selected ? Theme.text : Theme.text.transparentize(25%);
+            font-weight: root.selected ? 650 : 400;
+            overflow: elide;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component TrackMenu inherits Rectangle {
+    in property <string> heading;
+    in property <[Track]> tracks;
+    callback pick(int);
+    width: 300px;
+    height: list.preferred-height;
+    border-radius: Theme.radius-card;
+    background: Theme.bg.transparentize(8%);
+    border-width: 1px;
+    border-color: Theme.text.transparentize(88%);
+    drop-shadow-blur: 30px;
+    drop-shadow-color: #000000aa;
+    TouchArea { }
+    list := VerticalLayout {
+        padding: Theme.s1;
+        Text {
+            height: 32px;
+            vertical-alignment: center;
+            x: Theme.s2;
+            text: root.heading;
+            color: Theme.muted;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+        for t in root.tracks: MenuRow {
+            label: t.label;
+            selected: t.selected;
+            clicked => { root.pick(t.id); }
+        }
+    }
+}
+
+export global PlayerPage {
+    public pure function pad2(v: int) -> string {
+        return v < 10 ? "0" + v : "" + v;
+    }
+    public pure function fmt(t: float) -> string {
+        return t >= 3600
+            ? floor(t / 3600) + ":" + pad2(mod(floor(t / 60), 60)) + ":" + pad2(mod(floor(t), 60))
+            : floor(t / 60) + ":" + pad2(mod(floor(t), 60));
+    }
+}
+
+component PlayerView inherits Rectangle {
+    background: transparent;
+    property <int> menu: 0;
+    property <bool> awake: true;
+    property <bool> pinned: Player.paused || root.menu != 0 || bar-ta.has-hover || top-ta.has-hover || Player.bench;
+    property <bool> shown: root.awake || root.pinned;
+    property <bool> on: Player.active;
+    changed on => {
+        if on {
+            fs.focus();
+            root.wake();
+        } else {
+            root.menu = 0;
+        }
+    }
+
+    function wake() {
+        root.awake = true;
+        hide.restart();
+    }
+
+    hide := Timer {
+        interval: Theme.autohide;
+        running: root.awake && !root.pinned && root.on;
+        triggered => { root.awake = false; }
+    }
+
+    // the whole picture: wakes the chrome, double click = fullscreen
+    TouchArea {
+        mouse-cursor: root.shown ? MouseCursor.default : MouseCursor.none;
+        moved => { root.wake(); }
+        clicked => {
+            if root.menu != 0 { root.menu = 0; }
+            root.wake();
+        }
+        double-clicked => { Player.toggle-fullscreen(); }
+    }
+
+    if Player.message != "": Rectangle {
+        width: msg.preferred-width + 48px;
+        height: 56px;
+        border-radius: Theme.radius-card;
+        background: Theme.bg.transparentize(20%);
+        msg := Text {
+            text: Player.message;
+            color: Theme.text;
+        }
+    }
+
+    // top: back, title, decoder info
+    Rectangle {
+        y: 0;
+        height: 132px;
+        opacity: root.shown ? 1 : 0;
+        visible: self.opacity > 0.01;
+        animate opacity { duration: Theme.normal; easing: Theme.easing; }
+        background: @linear-gradient(180deg, Theme.controls-bg 0%, Theme.controls-bg.transparentize(100%) 100%);
+        top-ta := TouchArea { }
+        HorizontalLayout {
+            padding-left: Theme.s5;
+            padding-right: Theme.s5;
+            padding-top: Theme.s4;
+            padding-bottom: Theme.s6;
+            spacing: Theme.s3;
+            IconButton {
+                y: 4px;
+                icon: "M 15 5 L 8 12 L 15 19";
+                clicked => { Player.close(); }
+            }
+            VerticalLayout {
+                spacing: 2px;
+                Text {
+                    text: Player.title;
+                    color: Theme.text;
+                    font-family: Theme.font-display;
+                    font-size: 28px;
+                    font-weight: 600;
+                }
+                Text {
+                    text: Player.subtitle;
+                    color: Theme.text.transparentize(35%);
+                    font-size: Theme.font-size * 0.95;
+                }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Text {
+                vertical-alignment: top;
+                y: 10px;
+                text: Player.info;
+                color: Theme.text.transparentize(45%);
+                font-family: Theme.font-mono;
+                font-size: 12px;
+            }
+        }
+    }
+
+    // bottom: seek bar and transport
+    bar := Rectangle {
+        y: root.height - self.height;
+        height: 150px;
+        opacity: root.shown ? 1 : 0;
+        visible: self.opacity > 0.01;
+        animate opacity { duration: Theme.normal; easing: Theme.easing; }
+        background: @linear-gradient(180deg, Theme.controls-bg.transparentize(100%) 0%, Theme.controls-bg 70%);
+        bar-ta := TouchArea { }
+        VerticalLayout {
+            padding-left: Theme.s5;
+            padding-right: Theme.s5;
+            padding-bottom: Theme.s3;
+            alignment: end;
+            spacing: Theme.s1;
+            SeekBar { }
+            HorizontalLayout {
+                spacing: Theme.s1;
+                IconButton {
+                    icon: Player.paused ? "M 7 4.5 L 19 12 L 7 19.5 Z" : "M 6.5 5 H 10 V 19 H 6.5 Z M 14 5 H 17.5 V 19 H 14 Z";
+                    filled: true;
+                    clicked => { Player.toggle-pause(); root.wake(); }
+                }
+                IconButton {
+                    icon: "M 11 7 L 6 12 L 11 17 M 18 7 L 13 12 L 18 17";
+                    clicked => { Player.seek-by(-5); }
+                }
+                IconButton {
+                    icon: "M 6 7 L 11 12 L 6 17 M 13 7 L 18 12 L 13 17";
+                    clicked => { Player.seek-by(5); }
+                }
+                Text {
+                    vertical-alignment: center;
+                    text: PlayerPage.fmt(Player.pos) + "  /  " + PlayerPage.fmt(Player.dur);
+                    color: Theme.text.transparentize(15%);
+                    font-family: Theme.font-mono;
+                    font-size: 13px;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                IconButton {
+                    icon: Player.muted || Player.volume == 0 ? "M 4 9.5 H 8 L 13 5 V 19 L 8 14.5 H 4 Z M 16.5 9.5 L 21 14.5 M 21 9.5 L 16.5 14.5" : "M 4 9.5 H 8 L 13 5 V 19 L 8 14.5 H 4 Z M 16.5 8.5 Q 19 12 16.5 15.5 M 19 6 Q 23 12 19 18";
+                    clicked => { Player.toggle-mute(); }
+                }
+                VolumeSlider { y: 6px; }
+                Rectangle { width: Theme.s2; }
+                IconButton {
+                    icon: "M 4 5 H 20 V 16 H 11 L 7 20 V 16 H 4 Z";
+                    on: root.menu == 1;
+                    clicked => { root.menu = root.menu == 1 ? 0 : 1; }
+                }
+                IconButton {
+                    icon: "M 3 6 H 21 V 18 H 3 Z M 6.5 13.5 H 11 M 13.5 13.5 H 17.5";
+                    on: root.menu == 2;
+                    clicked => { root.menu = root.menu == 2 ? 0 : 2; }
+                }
+                IconButton {
+                    icon: Player.fullscreen ? "M 9 4 V 9 H 4 M 15 4 V 9 H 20 M 20 15 H 15 V 20 M 4 15 H 9 V 20" : "M 4 9 V 4 H 9 M 15 4 H 20 V 9 M 20 15 V 20 H 15 M 9 20 H 4 V 15";
+                    clicked => { Player.toggle-fullscreen(); }
+                }
+            }
+        }
+    }
+
+    if root.menu == 1: TrackMenu {
+        x: root.width - self.width - Theme.s5;
+        y: root.height - self.height - 100px;
+        heading: "AUDIO";
+        tracks: Player.audio;
+        pick(id) => { Player.select-audio(id); root.menu = 0; }
+    }
+    if root.menu == 2: TrackMenu {
+        x: root.width - self.width - Theme.s5;
+        y: root.height - self.height - 100px;
+        heading: "SUBTITLES";
+        tracks: Player.subs;
+        pick(id) => { Player.select-sub(id); root.menu = 0; }
+    }
+
+    fs := FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(e) => {
+            root.wake();
+            if e.text == " " || e.text == "k" { Player.toggle-pause(); return accept; }
+            if e.text == Key.LeftArrow { Player.seek-by(-5); return accept; }
+            if e.text == Key.RightArrow { Player.seek-by(5); return accept; }
+            if e.text == Key.UpArrow { Player.set-volume(min(130, Player.volume + 5)); return accept; }
+            if e.text == Key.DownArrow { Player.set-volume(max(0, Player.volume - 5)); return accept; }
+            if e.text == "f" { Player.toggle-fullscreen(); return accept; }
+            if e.text == "m" { Player.toggle-mute(); return accept; }
+            if e.text == Key.Escape {
+                if root.menu != 0 { root.menu = 0; }
+                else if Player.fullscreen { Player.toggle-fullscreen(); }
+                else { Player.close(); }
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "lain · Slint prototype";
+    // set from Rust for --window-size, so Slint's own resize-to-preferred
+    // (it runs again when the window changes monitor/DPI) lands on that size
+    in property <length> want-width: 1600px;
+    in property <length> want-height: 900px;
+    preferred-width: root.want-width;
+    preferred-height: root.want-height;
+    in property <bool> frameless;
+    no-frame: root.frameless;
+    min-width: 960px;
+    min-height: 600px;
+    // transparent while playing: mpv draws the picture underneath (underlay)
+    background: Player.active ? #000000 : Theme.bg;
+    default-font-family: Theme.font-ui;
+    default-font-size: Theme.font-size;
+
+    HomePage {
+        visible: !Player.active;
+    }
+    PlayerView {
+        visible: Player.active;
+    }
+}

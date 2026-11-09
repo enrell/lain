@@ -1,0 +1,53 @@
+// The theme tokens. Rust sets every property from theme.json at startup and
+// on live reload (src/theme.rs); the values below are only the fallback
+// when a key is missing. Skins import this global too.
+export global Theme {
+    in-out property <string> name: "built-in";
+    // colors
+    in-out property <color> bg: #06040d;
+    in-out property <color> surface: #1f1d25;
+    in-out property <color> text: #ebf3d2;
+    in-out property <color> muted: #69676e;
+    in-out property <color> accent: #7875bd;
+    in-out property <color> danger: #dc7f7f;
+    in-out property <color> scrim: #06040dcc;
+    // fonts
+    in-out property <string> font-ui: "Inter";
+    in-out property <string> font-display: "Fraunces";
+    in-out property <string> font-mono: "JetBrains Mono";
+    in-out property <length> font-size: 15px;
+    // radius
+    in-out property <length> radius-card: 14px;
+    in-out property <length> radius-button: 10px;
+    // spacing scale (theme.json "spacing", index 0..6)
+    in-out property <length> s0: 4px;
+    in-out property <length> s1: 8px;
+    in-out property <length> s2: 12px;
+    in-out property <length> s3: 16px;
+    in-out property <length> s4: 24px;
+    in-out property <length> s5: 32px;
+    in-out property <length> s6: 48px;
+    // rail
+    in-out property <length> card-w: 200px;
+    in-out property <length> card-h: 300px;
+    in-out property <length> gap: 16px;
+    in-out property <float> hover-scale: 1.06;
+    // hero (blur is applied to the art on the CPU when it is decoded)
+    in-out property <float> hero-height: 0.62;
+    in-out property <color> hero-top: #06040d00;
+    in-out property <color> hero-bottom: #06040dff;
+    // motion. `easing` properties cannot cross the public API yet, so Rust
+    // sets `curve` (an index) and the loader replaces the marker below with
+    // a selector over every curve a theme may name (src/ui.rs CURVES).
+    in-out property <duration> fast: 120ms;
+    in-out property <duration> normal: 220ms;
+    in-out property <int> curve: 0;
+    out property <easing> easing: /*@curves*/ ease-out;
+    // player
+    in-out property <color> controls-bg: #06040d99;
+    in-out property <length> seek-h: 4px;
+    in-out property <duration> autohide: 2500ms;
+
+    // derived
+    out property <bool> wide-cards: card-w > card-h;
+}

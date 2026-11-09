@@ -1,0 +1,30 @@
+[package]
+name = "lain-slint"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+# Own workspace: the main workspace and its Cargo.lock stay untouched.
+[workspace]
+
+[dependencies]
+lain-client = { path = "../../crates/lain-client" }
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "accessibility", "unstable-winit-030"] }
+slint-interpreter = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "time", "sync", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 16
+debug = false
+strip = true
+
+# image decoding and the Slint interpreter are unusably slow unoptimized
+[profile.dev.package."*"]
+opt-level = 3
+debug = false

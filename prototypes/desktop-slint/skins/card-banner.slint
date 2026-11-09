@@ -1,0 +1,111 @@
+// Alternative card skin ("banner"): the title, label and progress sit on
+// the art itself, over a scrim; the episode label is a chip; focus lifts
+// the card and draws an accent bar under it instead of a ring. No footer,
+// so rails get shorter. Load with: lain-slint --skin skins/card-banner.slint
+import { Theme } from "theme.slint";
+
+export global CardMetrics {
+    out property <length> footer: 10px;
+}
+
+export component Card inherits Rectangle {
+    in property <image> art;
+    in property <length> art-w: Theme.card-w;
+    in property <length> art-h: Theme.card-h;
+    in property <string> title;
+    in property <string> label;
+    in property <float> progress: -1;
+    in property <bool> focused;
+    callback clicked();
+
+    property <bool> lit: ta.has-hover || root.focused;
+
+    frame := Rectangle {
+        width: root.art-w;
+        height: root.art-h;
+        y: root.lit ? -8px : 0px;
+        animate y { duration: Theme.normal; easing: Theme.easing; }
+        border-radius: Theme.radius-card * 1.6;
+        background: Theme.surface;
+        drop-shadow-blur: root.lit ? 36px : 0px;
+        drop-shadow-offset-y: 18px;
+        drop-shadow-color: Theme.accent.transparentize(55%);
+        animate drop-shadow-blur { duration: Theme.normal; easing: Theme.easing; }
+        clip: true;
+
+        Image {
+            source: root.art;
+            width: 100%;
+            height: 100%;
+            image-fit: cover;
+            opacity: root.lit ? 1.0 : 0.82;
+            animate opacity { duration: Theme.fast; }
+        }
+        Rectangle {
+            y: parent.height * 0.45;
+            height: parent.height * 0.55;
+            background: @linear-gradient(180deg, Theme.bg.transparentize(100%) 0%, Theme.bg.transparentize(10%) 100%);
+        }
+        // episode chip
+        Rectangle {
+            x: 10px;
+            y: 10px;
+            width: chip.preferred-width + 14px;
+            height: 22px;
+            border-radius: 11px;
+            background: Theme.accent;
+            chip := Text {
+                text: root.label;
+                color: Theme.bg;
+                font-family: Theme.font-mono;
+                font-size: 11px;
+                font-weight: 700;
+            }
+        }
+        Text {
+            x: 14px;
+            y: parent.height - self.height - (root.progress >= 0 ? 20px : 14px);
+            width: parent.width - 28px;
+            text: root.title;
+            color: Theme.text;
+            font-family: Theme.font-display;
+            font-size: Theme.font-size * 1.35;
+            font-weight: 600;
+            wrap: word-wrap;
+            max-lines: 2;
+            overflow: elide;
+        }
+        if root.progress >= 0: Rectangle {
+            x: 14px;
+            y: parent.height - 12px;
+            width: parent.width - 28px;
+            height: 3px;
+            border-radius: 1.5px;
+            background: Theme.text.transparentize(70%);
+            Rectangle {
+                x: 0;
+                width: parent.width * clamp(root.progress, 0, 1);
+                border-radius: 1.5px;
+                background: Theme.accent;
+            }
+        }
+    }
+    // focus bar
+    Rectangle {
+        x: root.art-w * 0.2;
+        y: root.art-h + 2px;
+        width: root.art-w * 0.6;
+        height: 3px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+        opacity: root.focused ? 1 : 0;
+        animate opacity { duration: Theme.fast; }
+    }
+
+    ta := TouchArea {
+        width: root.art-w;
+        height: root.art-h;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
