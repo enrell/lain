@@ -15,7 +15,8 @@ fn usage() {
         "usage: lain-rs <command> [flags]
 
   serve     run the server (--data-dir, --port {DEFAULT_PORT}, --bind 127.0.0.1, --log-level info, --log-file,
-            --watch=0 or LAIN_WATCH=0 stops library watching, LAIN_AUTO_ENRICH=0 the post-scan metadata pass)
+            --watch=0 or LAIN_WATCH=0 stops library watching, --list-sync=0 or LAIN_LIST_SYNC=0 the
+            scheduled list import, LAIN_AUTO_ENRICH=0 the post-scan metadata pass)
   export    write the catalog as lain.catalog-export@3 (--data-dir, --out FILE; default stdout)
   import    replace the catalog with a lain.catalog-export@3 document (--data-dir, --in FILE)
   service   install|uninstall|start|stop|status|logs the background service
@@ -92,6 +93,8 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
     cfg.auto_enrich = !off(std::env::var("LAIN_AUTO_ENRICH").ok());
     cfg.watch = !off(flag(args, "watch").or_else(|| std::env::var("LAIN_WATCH").ok()));
     cfg.metadata_endpoints = lain_metadata::Endpoints::from_env();
+    cfg.anilist_endpoints = lain_lists::anilist::Endpoints::from_env();
+    cfg.list_sync = !off(flag(args, "list-sync").or_else(|| std::env::var("LAIN_LIST_SYNC").ok()));
     let app = App::open(cfg)?;
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async move {

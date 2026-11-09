@@ -37,6 +37,8 @@ lain-metadata.workspace = true
 lain-subtitle.workspace = true
 lain-probe.workspace = true
 lain-watch.workspace = true
+lain-lists.workspace = true
+lain-social.workspace = true
 getrandom.workspace = true
 
 [dev-dependencies]

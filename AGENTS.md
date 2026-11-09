@@ -86,6 +86,13 @@ documents both stacks until those are ported.
   - `lain-subtitle` — sidecar discovery, naming and the moviehash,
     SRT/WebVTT/ASS to WebVTT, and the subtitles module's
     `lain-subtitle-opensubtitles` (`lain.subtitle@1`, D-202).
+  - `lain-lists` — the lists module (D-215): the list store, linked
+    accounts, the integrations settings provider, the AniList connector
+    on `lain-http`, the link state, imports and scrobbles.
+  - `lain-social` — the social module (D-216, D-217): privacy settings,
+    relationships, activity, notifications, ratings, comments and
+    collections, one provider over its own tables, with the D-156 row
+    filter.
   - `lain-http` — outbound HTTP(S) for every network provider (D-200):
     one shared client with rustls, timeouts, retries with backoff,
     per-host pacing, size caps and JSON helpers; no server types, so

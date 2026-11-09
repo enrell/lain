@@ -1,6 +1,6 @@
 {
  "format": "lain.upstream-fixtures@1",
- "about": "Recorded (trimmed) and fictional answers of the remote APIs the network providers call; served on loopback by `lain-conformance upstream` and the Rust tests, so nothing reaches the network. Base URLs: <server>/kitsu, /anilist, /jikan, /tvmaze, /opensubtitles/api/v1.",
+ "about": "Recorded (trimmed) and fictional answers of the remote APIs the network providers call; served on loopback by `lain-conformance upstream` and the Rust tests, so nothing reaches the network. Base URLs: <server>/kitsu, /anilist, /jikan, /tvmaze, /opensubtitles/api/v1, and the list connector's /anilist-list/graphql and /anilist-list/oauth.",
  "routes": [
   {
    "method": "GET",
@@ -204,6 +204,88 @@
    "method": "GET",
    "path": "/opensubtitles/files/111.srt",
    "body": "1\n00:00:01,000 --> 00:00:02,000\nHello\n"
+  },
+  {
+   "method": "POST",
+   "path": "/anilist-list/oauth/token",
+   "body_contains": [
+    "\"code\":\"good-code\""
+   ],
+   "file": "anilist-list/token.json"
+  },
+  {
+   "method": "POST",
+   "path": "/anilist-list/oauth/token",
+   "status": 400,
+   "body": {
+    "error": "invalid_grant",
+    "error_description": "The authorization code is invalid"
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/anilist-list/graphql",
+   "headers": {
+    "Authorization": "Bearer eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9.c2ln"
+   },
+   "body_contains": [
+    "Viewer"
+   ],
+   "file": "anilist-list/viewer.json"
+  },
+  {
+   "method": "POST",
+   "path": "/anilist-list/graphql",
+   "headers": {
+    "Authorization": "Bearer eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9.c2ln"
+   },
+   "body_contains": [
+    "MediaListCollection",
+    "\"ANIME\""
+   ],
+   "file": "anilist-list/anime.json"
+  },
+  {
+   "method": "POST",
+   "path": "/anilist-list/graphql",
+   "headers": {
+    "Authorization": "Bearer eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9.c2ln"
+   },
+   "body_contains": [
+    "MediaListCollection",
+    "\"MANGA\""
+   ],
+   "file": "anilist-list/manga.json"
+  },
+  {
+   "method": "POST",
+   "path": "/anilist-list/graphql",
+   "headers": {
+    "Authorization": "Bearer eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9.c2ln"
+   },
+   "body_contains": [
+    "SaveMediaListEntry"
+   ],
+   "body": {
+    "data": {
+     "SaveMediaListEntry": {
+      "progress": 13,
+      "status": "CURRENT"
+     }
+    }
+   }
+  },
+  {
+   "method": "POST",
+   "path": "/anilist-list/graphql",
+   "status": 401,
+   "body": {
+    "errors": [
+     {
+      "message": "Invalid token"
+     }
+    ]
+   }
   }
  ]
 }

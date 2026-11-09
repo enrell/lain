@@ -829,6 +829,14 @@ Typed codes: `invalid-message` (400), `not-found` (404 — also how a
 block placed on the viewer reads), `forbidden` (403). Routes live under
 `/api/social/*`; the full list is in the slice plan.
 
+In lain-rs (D-216, D-217) the provider is `lain-social-redb` with op
+names per capability, and a `WorkRef` named by a catalog item also
+carries the item's `library_id` (set by the server): rows naming an
+item of a private library this session has not unlocked are left out
+of every social answer (D-156). New notifications are announced as
+`social-notification` and link changes as `list-changed` on
+`/api/events` (D-219).
+
 ## Acquisition (docs/slices/acquisition.md)
 
 Three capabilities; the engine, queue, import and subtitle placement
