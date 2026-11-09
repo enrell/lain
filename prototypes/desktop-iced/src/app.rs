@@ -856,6 +856,15 @@ impl App {
         let Screen::Player(p) = &mut self.screen else { return Task::none() };
         // Belt and braces: drain mpv events even if a wakeup got lost.
         p.pump();
+        // The audio output opens after the first decoded audio, not at load.
+        if !p.ao_logged && p.loaded && p.position > 1.0 {
+            p.ao_logged = true;
+            if let Some(e) = p.engine() {
+                let ao = e.get_property::<String>("current-ao").unwrap_or_else(|_| "none".into());
+                let mute = e.get_property::<bool>("mute").unwrap_or(false);
+                crate::placement::log(&format!("mpv playing {}: current-ao={ao} mute={mute}", p.media.display()));
+            }
+        }
         let idle = now.duration_since(p.last_activity) > autohide;
         if idle && !p.paused && p.menu.is_none() && !p.pinned && p.chrome.value() {
             p.chrome.go_mut(false, now);
@@ -968,6 +977,20 @@ impl App {
     fn bench_step(&mut self, at: Instant) -> Option<Task<Message>> {
         self.bench.as_mut()?.frame(at);
         let phase = self.bench.as_ref()?.phase;
+        // Progress line every 2 s, so a stuck unattended run is diagnosable.
+        let due = self.bench.as_ref()?.last_log.is_none_or(|t| at.duration_since(t) > Duration::from_secs(2));
+        if due {
+            let want = self.wanted_art();
+            let have = want.iter().filter(|k| self.art.contains_key(*k)).count();
+            crate::placement::log(&format!(
+                "bench: phase={phase:?} home_ready={} art={have}/{} pending={} rails={}",
+                self.home_ready,
+                want.len(),
+                self.art_pending.len(),
+                self.rails.len()
+            ));
+            self.bench.as_mut()?.last_log = Some(at);
+        }
         match phase {
             Phase::Home if self.home_ready => {
                 self.bench.as_mut()?.phase = Phase::Settle(at);

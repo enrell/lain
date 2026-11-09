@@ -35,6 +35,7 @@ pub struct Bench {
     pub last_frame: Option<Instant>,
     pub notes: Vec<String>,
     pub px_per_s: f32,
+    pub last_log: Option<Instant>,
 }
 
 impl Bench {
@@ -51,6 +52,7 @@ impl Bench {
             last_frame: None,
             notes: Vec::new(),
             px_per_s: 4000.0,
+            last_log: None,
         }
     }
 

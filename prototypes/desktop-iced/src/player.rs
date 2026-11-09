@@ -54,6 +54,8 @@ pub struct Player {
     pub loaded: bool,
     /// Bench: controls stay visible.
     pub pinned: bool,
+    /// `current-ao` logged once playback is under way.
+    pub ao_logged: bool,
 }
 
 impl Player {
@@ -78,6 +80,7 @@ impl Player {
             codec: String::new(),
             loaded: false,
             pinned: false,
+            ao_logged: false,
         }
     }
 

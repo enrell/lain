@@ -40,9 +40,13 @@ account.
   click) is a borderless window on an explicit monitor (the one under
   `--window-pos`, else the window's), not iced's "current monitor" mode.
   winit's always-`WS_VISIBLE` "Thread Event Target" helper window is hidden
-  at startup. **Open issue:** a tiling WM on the owner's machine (vertigo)
-  re-adopts new windows onto the primary monitor, which no app-side code
-  can prevent; the coordinator is handling that.
+  at startup. Verified through `D:\lain-proto\tools\rodar-teste.ps1`
+  (after the owner's tiling WM, vertigo, was told to ignore the prototype
+  exes): the window stays at (-1900,0)-(-20,1124) on DISPLAY1 for 10 s and
+  never becomes the foreground window.
+- `--mute` verified: `lain-iced.log` shows `current-ao=null mute=true`
+  once playback runs, for both files (at load time `current-ao` still
+  reads `none`; the audio output opens with the first audio frame).
 - `--bench <out.json>`: unattended run (below). `--shots <dir>`: in-app
   screenshots (`window::screenshot`, the app's own frame) of Home, a
   focused card, the 10-bit file with subtitles, the 4K file, and Home again
@@ -139,8 +143,20 @@ chrome pinned, then exits. Frame times are the intervals between iced's
 own `window::frames()` instants (real redraws; this panel runs at 75 Hz, so
 13.3 ms is a perfect frame). mpv stats are read at the end of each file.
 
-My runs are **not final** (three agents compiling at once, and they predate
-the `--mute`/placement rules): 
+**Run via the launcher** (muted, on DISPLAY1, a 60 Hz panel so 16.7 ms is a
+perfect frame; current 60 s 10-bit file; other agents may have been busy).
+JSON in `shots/bench-launcher-run.json`:
+
+- cold start 2206 ms; RSS Home 207 MB, RSS 4K 538 MB;
+- scroll (1613 frames): p50 16.70 / p95 18.40 / p99 20.43 / max 36.98 ms;
+- UI during video: p50 16.67 / p95 17.40 ms;
+- 4K: nvdec, zero-copy import, 2 dropped, 0 delayed, 1187 frames shown in
+  20 s, estimated-vf-fps 60.0;
+- 10-bit (`teste-1080p-hevc-10bit-legendas.mkv`): nvdec, 0 dropped, 0
+  delayed, 479 frames shown, 24.0 fps.
+
+Earlier runs (not comparable: 75 Hz primary monitor, unmuted, three agents
+compiling, older 10-bit encode):
 
 - Run A (heavy CPU contention): cold 1639 ms, RSS home 235 MB, RSS 4K
   565 MB; scroll p50 13.33 / p95 14.27 / p99 15.30 / max 148.7 ms; UI during
@@ -188,8 +204,6 @@ the `--mute`/placement rules):
 - Mouse wheel, drag/fling, keyboard nav and fullscreen were exercised only
   through the in-app automation (focus/keyboard reveal in `--shots`); no
   synthetic input is allowed on the shared desktop.
-- The placement rules could not be proven end to end yet (vertigo WM, see
-  above); GUI runs are on hold per the coordinator.
 - macOS/Linux: the D3D12 import is Windows-only; elsewhere the CPU fallback
   path would be used (mpv-engine has dmabuf/IOSurface exports for later).
 

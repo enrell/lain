@@ -1,0 +1,52 @@
+{
+  "cold_start_ms": 2206.3109,
+  "framework": "iced 0.14 (wgpu 27, DX12)",
+  "mpv": [
+    {
+      "container-fps": 60.000003814697266,
+      "error": null,
+      "estimated-vf-fps": 60.00000239999994,
+      "file": "teste-4k-hevc-60fps.mkv",
+      "frame-drop-count": 2,
+      "frames_shown_by_ui": 1187,
+      "hwdec-current": "nvdec",
+      "import": "zero-copy (D3D11 shared handle → D3D12)",
+      "import_error": null,
+      "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+      "vo": "libmpv",
+      "vo-delayed-frame-count": 0
+    },
+    {
+      "container-fps": 24.0,
+      "error": null,
+      "estimated-vf-fps": 24.00000038400005,
+      "file": "teste-1080p-hevc-10bit-legendas.mkv",
+      "frame-drop-count": 0,
+      "frames_shown_by_ui": 479,
+      "hwdec-current": "nvdec",
+      "import": "zero-copy (D3D11 shared handle → D3D12)",
+      "import_error": null,
+      "video-codec": "H.265 / HEVC (High Efficiency Video Coding)",
+      "vo": "libmpv",
+      "vo-delayed-frame-count": 0
+    }
+  ],
+  "notes": [
+    "scroll: 106216 px at 4000 px/s, 500 cards",
+    "theme: lain-dark"
+  ],
+  "rss_mb_home": 207.15234375,
+  "rss_mb_player_4k": 537.84375,
+  "scroll_frame_ms": {
+    "frames": 1613,
+    "max": 36.98,
+    "p50": 16.7,
+    "p95": 18.4,
+    "p99": 20.43
+  },
+  "ui_frame_ms_during_video": {
+    "frames": 2282,
+    "p50": 16.67,
+    "p95": 17.4
+  }
+}
