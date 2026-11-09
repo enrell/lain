@@ -1,0 +1,8 @@
+# Build output lives on C: (D: is tight). Only sources stay on D:.
+[build]
+target-dir = "C:\\lain-proto-target\\iced"
+
+# Where rsmpv-sys finds mpv.lib (the MSVC import lib of the shared libmpv).
+# build.rs copies libmpv-2.dll from the same folder next to the exe.
+[env]
+MPV_LIBRARY_DIR = "D:\\lain-proto\\libmpv"
