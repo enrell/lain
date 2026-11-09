@@ -31,6 +31,8 @@ pub struct SettingsState {
     pub scan_dirty: bool,
     pub plugins_dirty: bool,
     pub scan_poll_at: Instant,
+    /// Libraries done / total of the running scan (`scan-state`).
+    pub scan_live: Option<(i64, i64)>,
     pub busy: bool,
 }
 
@@ -47,6 +49,7 @@ impl Default for SettingsState {
             scan_dirty: false,
             plugins_dirty: false,
             scan_poll_at: Instant::now(),
+            scan_live: None,
             busy: false,
         }
     }
@@ -910,17 +913,25 @@ impl LainApp {
         };
         let scan =
             self.btn("libs.scan", if running { "Scanning…" } else { "Scan all" }, None, Tone::Primary, Act::Scan, cx);
+        let live = if running { self.settings.scan_live } else { None };
+        let scan_hint = match live {
+            Some((d, t)) if t > 0 => format!("{scan_hint} · library {d} of {t}"),
+            _ => scan_hint,
+        };
         let mut col = div().flex().flex_col().child(self.row("Scan", &scan_hint, scan));
         if running {
+            // Determinate from scan-state events (D-188), else a pulse.
+            let frac = match live {
+                Some((d, t)) if t > 0 => (d as f32 / t as f32).clamp(0.04, 1.),
+                _ => 0.35 + 0.3 * ((self.settings.scan_poll_at.elapsed().as_secs_f32() * 2.).sin().abs()),
+            };
             col = col.child(
-                div().h(px(3.)).w_full().rounded_full().bg(pal.accent.opacity(0.25)).child(
-                    div()
-                        .h_full()
-                        .w(gpui::relative(
-                            0.35 + 0.3 * ((self.settings.scan_poll_at.elapsed().as_secs_f32() * 2.).sin().abs()),
-                        ))
-                        .bg(pal.accent),
-                ),
+                div()
+                    .h(px(3.))
+                    .w_full()
+                    .rounded_full()
+                    .bg(pal.accent.opacity(0.25))
+                    .child(div().h_full().w(gpui::relative(frac)).bg(pal.accent)),
             );
         }
         // existing libraries

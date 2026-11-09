@@ -25,6 +25,8 @@ pub struct ItemState {
     pub sidecars_for: String,
     pub offline: HashMap<String, OfflineEntry>,
     pub dirty: bool,
+    /// The metadata overlay, when the server has one (D-185..D-189).
+    pub meta: Option<lain_client::types::Enrichment>,
 }
 
 impl Default for ItemState {
@@ -37,6 +39,7 @@ impl Default for ItemState {
             sidecars_for: String::new(),
             offline: HashMap::new(),
             dirty: false,
+            meta: None,
         }
     }
 }
@@ -56,6 +59,8 @@ impl LainApp {
         if self.item.id != id {
             self.item = ItemState { id: id.to_string(), episodes: Load::Loading, ..Default::default() };
         }
+        let (c2, want2) = (b.client.clone(), id.to_string());
+        self.spawn_ui(cx, async move { c2.enrichment(&want2).await }, |app, r, _| app.item.meta = r.ok());
         let c = b.client.clone();
         let want = id.to_string();
         self.spawn_ui(cx, async move { c.episodes(&want).await }, |app, r, cx| {
@@ -303,6 +308,16 @@ impl LainApp {
                 eps.len(),
                 if reading { "read" } else { "watched" }
             )))
+            .when_some(self.item.meta.clone(), |d, m| {
+                let mut synopsis: String = m.synopsis.chars().take(420).collect();
+                if m.synopsis.chars().count() > 420 {
+                    synopsis.push('…');
+                }
+                d.when(!m.genres.is_empty(), |d| d.child(self.label(m.genres.join(" · "))))
+                    .when(!synopsis.is_empty(), |d| {
+                        d.child(div().max_w(px(760.)).text_color(pal.text.opacity(0.8)).child(synopsis))
+                    })
+            })
             .child(div().pt(px(th.sp(2))).child(actions));
 
         // ---- episodes list

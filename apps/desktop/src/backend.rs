@@ -147,6 +147,8 @@ pub enum Poke {
     AuthRequired,
     Progress(String),
     Library,
+    /// `scan-state` (D-188): live scan progress.
+    Scan(Box<lain_client::types::ScanStateEvent>),
     Modules,
     Plugins,
 }
@@ -174,7 +176,8 @@ pub async fn watch_events(b: Arc<Backend>, tx: tokio::sync::mpsc::UnboundedSende
                     E::LibraryChanged(_) => Poke::Library,
                     E::ModuleState(_) => Poke::Modules,
                     E::PluginChanged(_) => Poke::Plugins,
-                    E::Other { event, .. } if event.starts_with("scan") => Poke::Library,
+                    E::ScanState(s) => Poke::Scan(Box::new(s)),
+                    E::Other { event, .. } if event == "item-deleted" => Poke::Library,
                     E::Other { .. } => continue,
                 }
             }

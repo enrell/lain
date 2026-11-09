@@ -765,6 +765,29 @@ impl LainApp {
                     }
                 }
                 Poke::Library => lib = true,
+                Poke::Scan(s) => {
+                    let done = s.state != "running";
+                    let was_running = matches!(&self.settings.scan, Load::Ready(x) if x.state == "running");
+                    self.settings.scan_live = Some((s.libraries_done, s.libraries));
+                    self.settings.scan = Load::Ready(lain_client::types::ScanStatus {
+                        state: s.state.clone(),
+                        stats: s.stats.clone(),
+                        error: s.error.clone(),
+                        trigger: s.trigger.clone(),
+                        ..Default::default()
+                    });
+                    if done && was_running {
+                        self.toast(
+                            if s.error.is_empty() {
+                                "Scan finished".to_string()
+                            } else {
+                                format!("Scan failed: {}", s.error)
+                            },
+                            !s.error.is_empty(),
+                        );
+                        lib = true;
+                    }
+                }
                 Poke::Modules => mods = true,
                 Poke::Plugins => plugins = true,
             }
