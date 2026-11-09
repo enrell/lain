@@ -46,5 +46,4 @@ lain-torrent.workspace = true
 getrandom.workspace = true
 
 [dev-dependencies]
-lain-store.workspace = true
 lain-conformance = { path = "../../conformance/runner" }
