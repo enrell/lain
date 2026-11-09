@@ -12,6 +12,8 @@ members = [
     "crates/lain-store",
     "crates/lain-auth",
     "crates/lain-component",
+    "crates/lain-read",
+    "crates/lain-admin",
     "crates/lain-server",
     "crates/lain-client",
     "conformance/runner",
@@ -51,6 +53,9 @@ getrandom = { version = "=0.4.3", features = ["std"] }
 # lain-client: the free-space probe of the offline store (statvfs);
 # already in the tree on Unix under tokio.
 libc = "=0.2.191"
+# D-195: raw DEFLATE for comic archives (CBZ), pure Rust; the ZIP
+# container itself is read in-tree (crates/lain-read/src/zip.rs).
+miniz_oxide = { version = "=0.8.9", default-features = false, features = ["with-alloc"] }
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "json", "std"] }
 
 lain-api = { path = "crates/lain-api" }
@@ -62,6 +67,8 @@ lain-identify = { path = "crates/lain-identify" }
 lain-ingest = { path = "crates/lain-ingest" }
 lain-metadata = { path = "crates/lain-metadata" }
 lain-subtitle = { path = "crates/lain-subtitle" }
+lain-read = { path = "crates/lain-read" }
+lain-admin = { path = "crates/lain-admin" }
 
 [profile.dev]
 # Keep target/ small on a tight disk; line tables are enough for
@@ -76,4 +83,8 @@ debug = false
 opt-level = 3
 
 [profile.dev.package.blake2]
+opt-level = 3
+
+# Inflating comic pages unoptimized is slow enough to show in tests.
+[profile.dev.package.miniz_oxide]
 opt-level = 3

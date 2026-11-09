@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use lain_client::types::{
-    CatalogPage, Library, LibraryPatch, ModulesView, NewLibrary, PluginsView, ProfilePatch, Progress, ProgressUpdate,
-    RootsView, User, UserPatch,
+    CatalogPage, ComicPages, IntegrationsUpdate, IntegrationsView, Library, LibraryPatch, ModulesView, NewLibrary,
+    Palette, PluginsView, ProfilePatch, Progress, ProgressUpdate, RootsView, User, UserPatch,
 };
 use lain_client::{
     CatalogQuery, Client, ClientConfig, ClientDb, ClientError, ConflictRule, DiskSpace, EventStream, FetchObserver,
@@ -271,12 +271,6 @@ async fn not_ported_and_module_disabled() {
     };
     assert_eq!(np(admin.playback_plan(ITEM1, "mpv").await.unwrap_err()), format!("GET /api/items/{ITEM1}/playback"));
     np(admin.thumbnail(ITEM1).await.unwrap_err());
-    np(admin.comic_pages(ITEM1).await.unwrap_err());
-    np(admin.comic_page(ITEM1, 1).await.unwrap_err());
-    np(admin.set_avatar(vec![1, 2, 3], "image/png").await.unwrap_err());
-    np(admin.clear_avatar().await.unwrap_err());
-    np(admin.avatar("user-admin").await.unwrap_err());
-    np(admin.backup().await.unwrap_err());
     let url = admin.stream_url(ITEM1).unwrap();
     assert!(url.starts_with(&format!("{}/api/items/{ITEM1}/stream?token=", server.url)));
 
@@ -849,4 +843,75 @@ async fn offline_fetch_resumes() {
     assert_eq!((e.state, e.size), (OfflineState::Done, 1000));
     assert_eq!(std::fs::read(store.local_path(&c.server(), "r").unwrap().unwrap()).unwrap(), full);
     std::fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn core_admin_and_read() {
+    let root = temp("admin-read");
+    let server = Server::with_read_fixture(&root).await;
+    let (admin, bob) = admin_and_bob(&server.url).await;
+    let token = admin.session().unwrap().token;
+
+    // The theme needs no session.
+    let anon = client(&server.url);
+    let palette = anon.theme().await.unwrap();
+    assert!(palette.background.starts_with('#') && !palette.source.is_empty());
+    assert_eq!(palette, assert_mirrors::<Palette>(&raw_get(&server.url, &token, "/api/theme").await));
+
+    // Integrations: the secret is stored, never returned.
+    let v = admin
+        .set_integrations(IntegrationsUpdate {
+            anilist_client_id: Some("4242".into()),
+            anilist_client_secret: Some("s3cret".into()),
+        })
+        .await
+        .unwrap();
+    let a = &v.platforms["anilist"];
+    assert_eq!((a.client_id.as_str(), a.secret_set), ("4242", true));
+    assert!(a.callback_url.ends_with("/api/auth/anilist/callback"));
+    let v = admin
+        .set_integrations(IntegrationsUpdate { anilist_client_secret: Some(String::new()), ..Default::default() })
+        .await
+        .unwrap();
+    assert!(v.platforms["anilist"].secret_set, "an empty secret keeps the stored one");
+    assert_eq!(
+        v,
+        assert_mirrors::<IntegrationsView>(&raw_get(&server.url, &token, "/api/admin/settings/integrations").await)
+    );
+    assert!(matches!(bob.integrations().await.unwrap_err(), ClientError::Forbidden { .. }));
+
+    // Avatars.
+    let png = lain_read::image::test_png(16, 16);
+    let me = admin.set_avatar(png.clone(), "image/png").await.unwrap();
+    assert_eq!(me.profile.avatar.kind, "upload");
+    assert_eq!(bob.avatar("user-admin").await.unwrap(), png);
+    assert!(matches!(
+        admin.set_avatar(b"<svg/>".to_vec(), "image/svg+xml").await.unwrap_err(),
+        ClientError::Api { status: 415, .. }
+    ));
+    assert_eq!(admin.clear_avatar().await.unwrap().profile.avatar.kind, "");
+    assert!(matches!(bob.avatar("user-admin").await.unwrap_err(), ClientError::NotFound { .. }));
+
+    // Read: the page index and page bytes.
+    let pages = bob.comic_pages("item-read-manga").await.unwrap();
+    assert_eq!((pages.kind.as_str(), pages.direction.as_str(), pages.pages.len()), ("manga", "rtl", 3));
+    assert_eq!((pages.pages[0].width, pages.pages[0].height), (16, 24));
+    assert_eq!(
+        pages,
+        assert_mirrors::<ComicPages>(&raw_get(&server.url, &token, "/api/items/item-read-manga/pages").await)
+    );
+    let comic = bob.comic_pages("item-read-comic").await.unwrap();
+    assert_eq!((comic.direction.as_str(), comic.info.unwrap().series.as_str()), ("rtl", "Tiny Blade"));
+    let page = bob.comic_page("item-read-manga", 2).await.unwrap();
+    assert_eq!(lain_read::image::decode_config(&page), Some(("png", 16, 24)));
+    assert!(matches!(bob.comic_page("item-read-manga", 3).await.unwrap_err(), ClientError::NotFound { .. }));
+    assert!(matches!(bob.comic_pages("item-read-video").await.unwrap_err(), ClientError::Api { status: 400, .. }));
+
+    // A backup is a tar the admin can read back.
+    let tar = admin.backup().await.unwrap();
+    let names: Vec<String> = lain_admin::backup::read_tar(&tar).unwrap().into_iter().map(|(n, _)| n).collect();
+    assert!(names.contains(&"lain.redb".to_string()) && names.contains(&"manifest.json".to_string()), "{names:?}");
+    assert!(matches!(bob.backup().await.unwrap_err(), ClientError::Forbidden { .. }));
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
 }

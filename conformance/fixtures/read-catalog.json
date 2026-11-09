@@ -1,0 +1,37 @@
+{
+  "format": "lain.catalog-export",
+  "version": 3,
+  "roots": ["media"],
+  "items": {
+    "item-read-manga": {
+      "id": "item-read-manga", "library_id": "lib-7186ff8c", "kind": "manga", "title": "Tiny Blade",
+      "season": 1, "episode": 0, "year": 0, "size": 595, "confidence": 0.9,
+      "origin": "lain-identify-comic", "provenance": "identify:lain-identify-comic", "updated_at": 1794173709,
+      "root": "media", "rel_path": "Read/Tiny Blade v01.cbz"
+    },
+    "item-read-comic": {
+      "id": "item-read-comic", "library_id": "lib-7186ff8c", "kind": "comic", "title": "Tiny Blade Extra",
+      "season": 0, "episode": 1, "year": 0, "size": 380, "confidence": 0.9,
+      "origin": "lain-identify-comic", "provenance": "identify:lain-identify-comic", "updated_at": 1794173710,
+      "root": "media", "rel_path": "Read/Tiny Blade Extra.cbz"
+    },
+    "item-read-broken": {
+      "id": "item-read-broken", "library_id": "lib-7186ff8c", "kind": "comic", "title": "Broken",
+      "season": 0, "episode": 1, "year": 0, "size": 18, "confidence": 0.9,
+      "origin": "lain-identify-comic", "provenance": "identify:lain-identify-comic", "updated_at": 1794173711,
+      "root": "media", "rel_path": "Read/broken.cbz"
+    },
+    "item-read-gone": {
+      "id": "item-read-gone", "library_id": "lib-7186ff8c", "kind": "manga", "title": "Gone",
+      "season": 2, "episode": 0, "year": 0, "size": 10, "confidence": 0.9, "missing": true,
+      "origin": "lain-identify-comic", "provenance": "identify:lain-identify-comic", "updated_at": 1794173712,
+      "root": "media", "rel_path": "Read/Gone v02.cbz"
+    },
+    "item-read-video": {
+      "id": "item-read-video", "library_id": "lib-7186ff8c", "kind": "episode", "title": "Tiny Blade",
+      "season": 0, "episode": 1, "year": 0, "size": 0, "confidence": 0.9,
+      "origin": "lain-identify-anime", "provenance": "identify:lain-identify-anime", "updated_at": 1794173713,
+      "root": "media", "rel_path": "Read/Tiny Blade - 01.mkv"
+    }
+  }
+}

@@ -1,6 +1,7 @@
-//! The Rust server end to end: the conformance suites (fresh, v2 and
-//! private) run in-process against `lain-rs`, plus the event stream's
-//! live token check and the catalog export round trip.
+//! The Rust server end to end: the conformance suites (fresh, v2,
+//! private and read) run in-process against `lain-rs`, plus the event
+//! stream's live token check, the catalog export round trip, avatar
+//! size limits and the backup archive.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -30,6 +31,8 @@ impl Server {
         cfg.keep_alive = Duration::from_millis(300);
         cfg.reload_debounce = Duration::from_millis(100);
         tune(&mut cfg);
+        // Never the host's own Omarchy colors.
+        cfg.theme_path = Some(dir.join("no-colors.toml"));
         let app = App::open(cfg).unwrap();
         let listener = rt.block_on(tokio::net::TcpListener::bind("127.0.0.1:0")).unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
@@ -394,4 +397,76 @@ fn watched_libraries_rescan_on_file_events() {
     wait(&|p| p["items"][0]["missing"] == true);
     drop(server);
     std::fs::remove_dir_all(dir).ok();
+}
+
+fn fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/fixtures")
+}
+
+/// The read suite: root `media` at the committed fixture archives and
+/// the read fixture catalog, as `conformance/run.sh` prepares it.
+#[test]
+fn read_suite_passes() {
+    let root = lain_store::test_dir("rs-read");
+    let media = fixtures().join("read");
+    let data = root.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let roots = json!({"format": "lain.roots@1", "roots": {"media": media.to_string_lossy()}});
+    std::fs::write(data.join("roots.json"), serde_json::to_vec(&roots).unwrap()).unwrap();
+    let raw = std::fs::read(fixtures().join("read-catalog.json")).unwrap();
+    assert_eq!(lain_server::import(&data, &serde_json::from_slice(&raw).unwrap()).unwrap(), 5);
+    // The fixture catalog stays as imported: no watch, no scan.
+    let server = Server::start_with(&data, |c| {
+        c.watch = false;
+        c.auto_enrich = false;
+    });
+    let mut runner = Runner::new(Base::parse(&server.url).unwrap());
+    runner.vars.insert("media_root".into(), json!(media.to_string_lossy()));
+    runner.vars.insert("data_dir".into(), json!(data.to_string_lossy()));
+    run(&mut runner, "read");
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// What the case files cannot carry: a 2 MiB + 1 upload, and the
+/// backup archive's contents.
+#[test]
+fn avatar_limit_and_backup_archive() {
+    let root = lain_store::test_dir("rs-admin");
+    let data = root.join("data");
+    let server = Server::start(&data);
+    let base = Base::parse(&server.url).unwrap();
+    let setup = serde_json::to_vec(&json!({"username": "admin", "password": "password123"})).unwrap();
+    assert_eq!(http::request(&base, "POST", "/api/setup", &[], Some(&setup)).unwrap().status, 201);
+    let auth = vec![("Authorization".to_string(), format!("Bearer {}", login(&base, "admin", "password123")))];
+
+    let big = vec![0u8; lain_admin::avatars::MAX_BYTES + 1];
+    let r = http::request(&base, "PUT", "/api/me/avatar", &auth, Some(&big)).unwrap();
+    assert_eq!(r.status, 413, "{}", String::from_utf8_lossy(&r.body));
+    assert!(String::from_utf8_lossy(&r.body).contains("the image must be 2 MB or smaller"));
+    let png = lain_read::image::test_png(32, 32);
+    assert_eq!(http::request(&base, "PUT", "/api/me/avatar", &auth, Some(&png)).unwrap().status, 200);
+
+    let r = http::request(&base, "GET", "/api/admin/backup", &auth, None).unwrap();
+    assert_eq!(r.status, 200);
+    let disposition = r.header("content-disposition").unwrap().to_string();
+    assert!(disposition.starts_with("attachment; filename=\"lain-backup-") && disposition.ends_with(".tar\""));
+    assert_eq!(r.header("content-length").unwrap(), r.body.len().to_string());
+    let entries = lain_admin::backup::read_tar(&r.body).unwrap();
+    let names: Vec<&str> = entries.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["manifest.json", "lain.redb", "composition.json", "avatars/user-admin"]);
+    let manifest: serde_json::Value = serde_json::from_slice(&entries[0].1).unwrap();
+    assert_eq!(manifest["format"], "lain.backup@1");
+    let comp: serde_json::Value = serde_json::from_slice(&entries[2].1).unwrap();
+    assert_eq!(comp["bindings"]["lain.comic.pages@1"]["providers"][0], "lain-comic-archive");
+    assert_eq!(entries[3].1, png);
+    // The snapshot is a store that opens on its own.
+    let restored = root.join("restored");
+    std::fs::create_dir_all(&restored).unwrap();
+    std::fs::write(restored.join("lain.redb"), &entries[1].1).unwrap();
+    let store = lain_store::Store::open(&restored).unwrap();
+    assert!(store.read(|tx| tx.get(lain_store::Bucket::Users, b"user-admin")).unwrap().is_some());
+    drop(store);
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
 }

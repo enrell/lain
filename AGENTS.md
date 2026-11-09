@@ -62,6 +62,12 @@ documents both stacks until those are ported.
     a session `jti` and live checks.
   - `lain-component` — the component host, `serve` for Rust components
     and the `<data-dir>/plugins/` watcher; the Go wire, byte for byte.
+  - `lain-read` — the read module (D-195): comic and manga archives
+    (`lain.comic.pages@1`), the in-tree ZIP reader, image headers and
+    `ComicInfo.xml`.
+  - `lain-admin` — core administration (D-196..D-199): the theme
+    (`lain.ui.theme@1`), backups (`lain.backup.create@1`, tar of a
+    consistent store snapshot), integration settings and avatars.
   - `lain-server` — the axum gateway, `/api/modules`, `/api/events`,
     service mode, catalog `export`/`import` (`lain.catalog-export@3`);
     binary `lain-rs` on the canonical data dir (`lain`) and port 9360
@@ -122,6 +128,10 @@ documents both stacks until those are ported.
     token `jti`.
   - `libc` (D-179, already in the tree on Unix) — `statvfs` for the
     client offline store's free-space floor, Unix only.
+  - `miniz_oxide` (D-195, pure Rust, brings only `adler2`) — raw
+    DEFLATE for CBZ pages; `default-features = false`, `with-alloc`.
+    The ZIP container, CRC-32, image headers, `ComicInfo.xml` and the
+    backup tar are in-tree.
   - In-tree instead of a crate: URL-safe base64 for the JWT segments
     (`lain-auth/src/crypto.rs`; no approved crate exposes one), the
     runner's HTTP client, the comic identifier's patterns (no regex

@@ -24,4 +24,6 @@ libc.workspace = true
 [dev-dependencies]
 lain-conformance = { path = "../../conformance/runner" }
 lain-server = { path = "../lain-server" }
+lain-admin.workspace = true
+lain-read.workspace = true
 lain-store.workspace = true

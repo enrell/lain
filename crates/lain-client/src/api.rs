@@ -13,10 +13,10 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 
 use lain_api::{
-    BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health, Library,
-    LibraryDeleted, LibraryPatch, LoginReply, Mascots, ModulesView, NewLibrary, PinState, PlaybackPlan, PluginsView,
-    ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar, Sidecars, StatusReply,
-    SwapReply, SwapRequest, User, UserPatch, WithdrawReply,
+    BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health, IntegrationsUpdate,
+    IntegrationsView, Library, LibraryDeleted, LibraryPatch, LoginReply, Mascots, ModulesView, NewLibrary, Palette,
+    PinState, PlaybackPlan, PluginsView, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus,
+    Sidecar, Sidecars, StatusReply, SwapReply, SwapRequest, User, UserPatch, WithdrawReply,
 };
 
 use crate::error::ClientError;
@@ -506,31 +506,23 @@ impl Client {
         Ok(String::from_utf8_lossy(&self.raw(Method::GET, &path, Body::None, true).await?).into_owned())
     }
 
-    // ---- desktop parity routes (§8.4) not served by lain-rs yet ------
-    //
-    // lain-rs answers these 501 `not-ported` ([`ClientError::NotPorted`])
-    // until their module is ported.
+    // ---- core administration and read ------------------------------
 
-    /// How to play an item; `client` is `mpv`, `desktop` or `browser`.
-    pub async fn playback_plan(&self, item_id: &str, client: &str) -> Result<PlaybackPlan, ClientError> {
-        let path = format!("/api/items/{}/playback{}", encode(item_id), query(&[("client", client.to_string())]));
-        self.call(Method::GET, &path, Body::None).await
+    /// The server's web UI palette (no session needed).
+    pub async fn theme(&self) -> Result<Palette, ClientError> {
+        decode(&self.raw(Method::GET, "/api/theme", Body::None, false).await?)
     }
 
-    /// The URL an external player opens: Range-capable, authenticated
-    /// by `?token=` because players cannot send headers. It carries the
-    /// token: never log or share it.
-    pub fn stream_url(&self, item_id: &str) -> Result<String, ClientError> {
-        let t = self.token().ok_or(ClientError::Unauthorized)?;
-        Ok(format!("{}{}?token={}", self.inner.server, stream_path(item_id), encode(&t)))
+    /// The operator's integration settings (admin); secrets are never
+    /// returned, only `secret_set`.
+    pub async fn integrations(&self) -> Result<IntegrationsView, ClientError> {
+        self.call(Method::GET, "/api/admin/settings/integrations", Body::None).await
     }
 
-    /// The item's cover or frame, as image bytes.
-    pub async fn thumbnail(&self, item_id: &str) -> Result<Vec<u8>, ClientError> {
-        Ok(self
-            .raw(Method::GET, &format!("/api/items/{}/thumbnail", encode(item_id)), Body::None, true)
-            .await?
-            .to_vec())
+    /// Saves integration settings (admin): absent fields keep their
+    /// value and an empty secret keeps the stored one.
+    pub async fn set_integrations(&self, update: IntegrationsUpdate) -> Result<IntegrationsView, ClientError> {
+        self.call(Method::PUT, "/api/admin/settings/integrations", json_body(&update)).await
     }
 
     /// The page index of a comic or manga item.
@@ -558,9 +550,37 @@ impl Client {
         Ok(self.raw(Method::GET, &format!("/api/users/{}/avatar", encode(user_id)), Body::None, true).await?.to_vec())
     }
 
-    /// The server's backup archive bytes (admin).
+    /// The server's backup archive (admin): a `lain.backup@1` tar of a
+    /// consistent store snapshot and the data dir's documents (D-197).
     pub async fn backup(&self) -> Result<Vec<u8>, ClientError> {
         Ok(self.raw(Method::GET, "/api/admin/backup", Body::None, true).await?.to_vec())
+    }
+
+    // ---- desktop parity routes (§8.4) not served by lain-rs yet ------
+    //
+    // lain-rs answers these 501 `not-ported` ([`ClientError::NotPorted`])
+    // until their module is ported.
+
+    /// How to play an item; `client` is `mpv`, `desktop` or `browser`.
+    pub async fn playback_plan(&self, item_id: &str, client: &str) -> Result<PlaybackPlan, ClientError> {
+        let path = format!("/api/items/{}/playback{}", encode(item_id), query(&[("client", client.to_string())]));
+        self.call(Method::GET, &path, Body::None).await
+    }
+
+    /// The URL an external player opens: Range-capable, authenticated
+    /// by `?token=` because players cannot send headers. It carries the
+    /// token: never log or share it.
+    pub fn stream_url(&self, item_id: &str) -> Result<String, ClientError> {
+        let t = self.token().ok_or(ClientError::Unauthorized)?;
+        Ok(format!("{}{}?token={}", self.inner.server, stream_path(item_id), encode(&t)))
+    }
+
+    /// The item's cover or frame, as image bytes.
+    pub async fn thumbnail(&self, item_id: &str) -> Result<Vec<u8>, ClientError> {
+        Ok(self
+            .raw(Method::GET, &format!("/api/items/{}/thumbnail", encode(item_id)), Body::None, true)
+            .await?
+            .to_vec())
     }
 }
 

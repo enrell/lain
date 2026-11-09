@@ -1,0 +1,16 @@
+[package]
+name = "lain-read"
+description = "Lain's read module (D-195): comic and manga archives, page indexes and image headers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lain-api.workspace = true
+lain-core.workspace = true
+miniz_oxide.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
