@@ -36,6 +36,58 @@ jobs:
           shellcheck scripts/install.sh
           python3 scripts/install_test.py
 
+  rust:
+    name: rust test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: "4"
+    steps:
+      - uses: actions/checkout@v7
+      # The Go server builds the component the Rust host runs in the
+      # interop test (crates/lain-component/tests/go_interop.rs).
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Placeholder web UI for embed (dist is gitignored)
+        shell: bash
+        run: mkdir -p internal/webui/dist && touch internal/webui/dist/.gitkeep
+      - name: Toolchain
+        shell: bash
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt && rustc --version
+      - name: Format
+        if: runner.os == 'Linux'
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        if: runner.os == 'Linux'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" != Windows ]; then export LAIN_REQUIRE_GO=1; fi
+          cargo test --workspace --locked
+
+  conformance:
+    name: conformance (Go and Rust servers)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal && rustc --version
+      - name: Lint the runner script
+        run: sh -n conformance/run.sh && shellcheck conformance/run.sh
+      - name: Run the suite against both servers
+        run: conformance/run.sh
+
   web:
     name: web check, test, build
     runs-on: ubuntu-24.04

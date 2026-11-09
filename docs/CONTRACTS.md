@@ -829,19 +829,27 @@ D-137). Typed codes: `invalid-message`,
 ## Component mode (wire protocol)
 
 Any provider can run as a supervised process (D-074). The host
-(`internal/component`) speaks NDJSON frames over a unix socket:
+(`internal/component`, and `lain-component` in the Rust workspace)
+listens on a unix socket it allocates; the component dials it and both
+sides speak NDJSON frames:
 
-- **Handshake**: the child reads a `hello` frame (`{type:"hello"}`)
-  and answers `{type:"hello", id, version, capabilities[]}`.
-- **Invoke**: `{type:"invoke", seq, cap, op, input}` →
-  `{type:"result", seq, output}` or `{type:"error", seq, code, msg}`.
+- **Handshake**: the component's first frame is
+  `{op:"hello", provider, protocol:1, capabilities[]}`. The host checks
+  the id and protocol against the manifest and that every declared
+  capability is served.
+- **Invoke**: `{seq, cap, op, input}` →
+  `{seq, output}` or `{seq, error:{code, msg}}`.
   `op` selects the operation inside a capability (the `(capability,
   op) → input type` table lives in `internal/component/ops.go`); an
   empty op resolves when the capability has exactly one input shape.
-- **Health**: `{type:"health", seq}` → `{type:"health", seq, healthy}`
-  — transport-level, never routed through a capability.
+- **Health**: `{seq, op:"health", input:null}` → `{seq, output:{ok:true}}`
+  or `{seq, error}` — transport-level, never routed through a
+  capability.
 
-Frames are bounded (1 MiB). Sequence ids correlate requests and
+Recorded sessions live in `conformance/component/*.ndjson`; the Go
+component side and the Rust host and component sides replay them.
+
+Frames are bounded (8 MiB). Sequence ids correlate requests and
 responses. A provider panic answers `internal` — it never kills the
 socket. Timeouts and mid-call deaths are `outcome-unknown`; an
 unreachable or unspawnable component is `dependency-unavailable`.
@@ -884,3 +892,47 @@ the registration for a later swap-back).
 Operator surfaces can list registered providers with their
 capabilities and live health (`provider_info` on `GET /api/plugins`) so
 a swap UI only ever offers candidates that can serve the capability.
+
+## Private libraries and portable roots (lain-rs, D-156, D-157, D-175)
+
+Served by the Rust server only (P1b); the Go server is unchanged.
+
+- **Library fields** (additive, omitted when unset): `private`, `owner`,
+  `members`, `root`, `root_path`, and in responses `locked` for a
+  private library (whether this session has unlocked it).
+- `PATCH /api/libraries/{id}` (admin): `{name?, private?, owner?,
+  members?}`. Making a library private makes the caller its owner unless
+  `owner` is given; making it public clears owner and members.
+- `POST /api/libraries/{id}/unlock` `{pin}` or `{password}` and
+  `POST /api/libraries/{id}/lock`: per session (per token). Only the
+  owner and members can unlock (403 `not a member of this library` for an
+  admin who is not one); a user who cannot see the record gets 404
+  `unknown library`; a wrong secret is 403 `wrong pin or password`; five
+  failures in five minutes answer 429 until the window passes.
+- `GET|PUT|DELETE /api/me/pin`: `{set}`; `PUT {pin, password}` (4–12
+  digits), `DELETE {password}`.
+- **Visibility** (one check in the gateway): items of a library this
+  session has not unlocked are absent from `GET /api/catalog` (and its
+  `total`), `GET /api/search`, `GET /api/me/continue` and episode lists;
+  every item route (`/api/catalog/{id}…`, `/api/items/{id}/…` except
+  progress, `/api/acquire/items/{id}/…`) answers 404 `unknown item`,
+  exactly like a missing item; progress reads answer the zero value;
+  events about them reach only sessions that unlocked them, and
+  `library-changed` of a private library only admins and members.
+  Admins see the record (to manage it) but not its items unless they
+  are a member who unlocked it. Unlocks live in memory and end with the
+  token. Every `lain-rs` token carries a random `jti` (its session), so
+  two logins are two sessions; a token without one is refused.
+- **Roots**: `<data-dir>/roots.json` (`lain.roots@1`) maps root names to
+  this machine's directories, with `aliases` for other spellings
+  (`V:\media`, `/mnt/v/media`). A rooted item stores only `root` +
+  `/`-separated `rel_path`; responses fill `file_path` from them on
+  every read.
+  `POST /api/libraries` accepts `{root, path}` with `path` relative to the
+  root; an absolute path inside a root is recorded under it, and a
+  rooted library's id derives from `root:root_path`. `GET /api/roots`
+  (admin) lists the mapping with `available`.
+- **Export**: `lain-rs export` writes `lain.catalog-export@3` (`roots`
+  plus per-item `root`/`rel_path`) and `lain-rs import --in` reads it
+  back, replacing the catalog; @3 is the only version lain-rs reads
+  (D-177). Nothing is imported from a Go data dir.

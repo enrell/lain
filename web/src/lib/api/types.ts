@@ -44,6 +44,23 @@ export interface Library {
 	path: string;
 	source: string;
 	created_at: number;
+	/** lain-rs (D-156): hidden until unlocked in this session. */
+	private?: boolean;
+	owner?: string;
+	members?: string[];
+	/** Present on private libraries: whether this session has not unlocked it. */
+	locked?: boolean;
+	/** lain-rs (D-157): the named root and the path inside it. */
+	root?: string;
+	root_path?: string;
+}
+
+/** GET /api/roots (lain-rs): this machine's root mapping. */
+export interface LibraryRoot {
+	name: string;
+	path: string;
+	aliases: string[];
+	available: boolean;
 }
 
 /** GET /api/browse: server-side folder picker payload. */

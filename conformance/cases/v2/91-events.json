@@ -1,0 +1,30 @@
+{
+  "tier": "v2",
+  "description": "GET /api/events (D-169): server-sent events for library changes, per-user progress and module state. Runs after the fresh suite (needs its tokens and media dirs).",
+  "cases": [
+    {"name": "the stream needs a token", "steps": [
+      {"req": {"method": "GET", "path": "/api/events"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "GET", "path": "/api/events", "auth": "header:Bearer nope"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]},
+    {"name": "library changes reach every user", "requires": ["media_dir2"], "steps": [
+      {"sse_open": {"path": "/api/events", "auth": "admin_token", "as": "admin"}, "expect": {"status": 200, "headers": {"content-type": "$prefix:text/event-stream", "cache-control": "no-cache"}}},
+      {"sse_expect": {"stream": "admin", "event": "ready"}},
+      {"sse_open": {"path": "/api/events", "auth": "query:bob_token", "as": "bob"}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "bob", "event": "ready"}},
+      {"req": {"method": "POST", "path": "/api/libraries", "auth": "admin_token", "body": {"name": "Events", "path": "{{media_dir2}}"}},
+       "expect": {"status": 201}, "save": {"ev_lib": "/id"}},
+      {"sse_expect": {"stream": "admin", "event": "library-changed", "data": {"library_id": "{{ev_lib}}", "action": "created"}, "strict": true}},
+      {"sse_expect": {"stream": "bob", "event": "library-changed", "data": {"library_id": "{{ev_lib}}", "action": "created"}, "strict": true}},
+      {"req": {"method": "DELETE", "path": "/api/libraries/{{ev_lib}}", "auth": "admin_token"}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "bob", "event": "library-changed", "data": {"library_id": "{{ev_lib}}", "action": "deleted", "items_removed": 0}, "strict": true}}
+    ]},
+    {"name": "progress events reach only their user", "steps": [
+      {"req": {"method": "PUT", "path": "/api/items/item-admin/progress", "auth": "admin_token", "body": {"position_sec": 5}}, "expect": {"status": 200}},
+      {"req": {"method": "PUT", "path": "/api/items/item-bob/progress", "auth": "bob_token", "body": {"position_sec": 7}}, "expect": {"status": 200}},
+      {"sse_expect": {"stream": "bob", "event": "progress-changed", "strict": true,
+        "data": {"item_id": "item-bob", "progress": {"item_id": "item-bob", "user_id": "user-bob", "position_sec": 7, "$open": true}}}},
+      {"sse_expect": {"stream": "admin", "event": "progress-changed", "strict": true,
+        "data": {"item_id": "item-admin", "progress": {"user_id": "user-admin", "position_sec": 5, "$open": true}}}}
+    ]}
+  ]
+}

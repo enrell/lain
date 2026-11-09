@@ -1,0 +1,22 @@
+[package]
+name = "lain-component"
+description = "Lain component host: supervised out-of-process providers over the NDJSON component protocol, plus the plugins/ manifest watcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+lain-core.workspace = true
+notify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+tokio.workspace = true
+
+[dev-dependencies]
+lain-conformance = { path = "../../conformance/runner" }
+lain-store.workspace = true

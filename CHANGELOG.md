@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Rust server, milestone P1a** (D-171). A Cargo workspace in `crates/`
+  (`lain-core`, `lain-store`, `lain-auth`, `lain-component`,
+  `lain-server`) builds `lain-rs`, which serves the core routes the
+  clients use plus `GET /api/modules` (D-154) and `GET /api/events`
+  (SSE, D-169), loads `modules.json` (`lain.modules@1`), runs Go
+  components under its host, installs itself as a service
+  (`lain-rs service`, D-164), and adds private libraries (D-156) and
+  portable roots (D-157). It starts from an empty data dir: no Go data
+  is imported, and passwords and PINs are Argon2id (D-177). It uses the
+  canonical data dir (`lain`) and port 9360 (D-178). The Go code is
+  unchanged.
+- **Conformance suite** (`conformance/`): language-neutral HTTP cases
+  and component NDJSON fixtures that both servers run.
 - **Internationalization groundwork** (D-088, `docs/I18N.md`). The web UI
   routes text through a typed `t()` with plurals and `Intl` formatting,
   picks the language from Settings → Profile or the browser, and keeps

@@ -1,0 +1,33 @@
+{
+  "tier": "v1",
+  "description": "First-run setup: one admin, then setup is closed.",
+  "cases": [
+    {"name": "setup is required on a fresh server", "steps": [
+      {"req": {"method": "GET", "path": "/api/setup/status"}, "expect": {"status": 200, "body": {"setup_required": true}}}
+    ]},
+    {"name": "authenticated routes refuse before setup", "steps": [
+      {"req": {"method": "GET", "path": "/api/me"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "password123"}},
+       "expect": {"status": 401, "body": {"error": "invalid credentials"}}}
+    ]},
+    {"name": "setup rejects bad input", "steps": [
+      {"req": {"method": "POST", "path": "/api/setup", "raw_body": "not json"}, "expect": {"status": 400, "body": {"error": "invalid json"}}},
+      {"req": {"method": "POST", "path": "/api/setup", "body": {"username": "admin", "password": "short"}},
+       "expect": {"status": 400, "body": {"error": "username required, password >= 8 chars"}}},
+      {"req": {"method": "POST", "path": "/api/setup", "body": {"username": "", "password": "password123"}},
+       "expect": {"status": 400, "body": {"error": "username required, password >= 8 chars"}}},
+      {"req": {"method": "GET", "path": "/api/setup/status"}, "expect": {"status": 200, "body": {"setup_required": true}}}
+    ]},
+    {"name": "setup creates the admin", "steps": [
+      {"req": {"method": "POST", "path": "/api/setup", "body": {"username": "admin", "password": "password123"}},
+       "expect": {"status": 201, "headers": {"content-type": "$prefix:application/json"}, "body": {
+         "id": "user-admin", "username": "admin", "pass_hash": null, "role": "admin", "disabled": false,
+         "pwd_ver": 1, "created_at": "$int", "playback": {}, "profile": {"avatar": {}}}}}
+    ]},
+    {"name": "setup closes after the first admin", "steps": [
+      {"req": {"method": "POST", "path": "/api/setup", "body": {"username": "other", "password": "password123"}},
+       "expect": {"status": 400, "body": {"error": "setup already completed"}}},
+      {"req": {"method": "GET", "path": "/api/setup/status"}, "expect": {"status": 200, "body": {"setup_required": false}}}
+    ]}
+  ]
+}

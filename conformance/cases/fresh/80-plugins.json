@@ -1,0 +1,22 @@
+{
+  "tier": "v1",
+  "description": "The composition inspection surface (admin). Provider sets differ by server; the shape and the core bindings do not.",
+  "cases": [
+    {"name": "admin reads the composition", "steps": [
+      {"req": {"method": "GET", "path": "/api/plugins", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {
+         "composition": {"$min_len": 1, "$each": {"capability": "$string", "mode": "$string", "providers": "$array", "generation": "$int"},
+           "$contains": [
+             {"capability": "lain.catalog.read@1", "mode": "exactly-one", "providers": {"$len": 1}, "generation": "$int"},
+             {"capability": "lain.catalog.write@1", "mode": "exactly-one", "providers": {"$len": 1}, "generation": "$int"},
+             {"capability": "lain.userstate.progress@1", "mode": "exactly-one", "providers": {"$len": 1}, "generation": "$int"}]},
+         "providers": {"$min_len": 1, "$each": "$string"},
+         "provider_info": {"$min_len": 1, "$each": {"id": "$string", "capabilities": {"$each": "$string"}, "healthy": "$bool"}},
+         "events": {"$each": {"at": "$int", "kind": "$string", "$open": true}}}}}
+    ]},
+    {"name": "plugins need an admin", "steps": [
+      {"req": {"method": "GET", "path": "/api/plugins", "auth": "bob_token"}, "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "GET", "path": "/api/plugins"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]}
+  ]
+}

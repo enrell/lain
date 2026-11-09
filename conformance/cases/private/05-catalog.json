@@ -1,0 +1,38 @@
+{
+  "tier": "v1",
+  "description": "Catalog and progress reads over the populated catalog that 00-setup prepared (the JSON shapes the web client and lain-desktop read), before any library is private.",
+  "cases": [
+    {"name": "the catalog lists in title order", "requires": ["lib_id", "media_root"], "steps": [
+      {"req": {"method": "GET", "path": "/api/catalog", "auth": "a0"},
+       "expect": {"status": 200, "body": {"total": 2, "limit": 50, "offset": 0, "items": [
+         {"id": "{{item1}}", "library_id": "{{lib_id}}", "kind": "episode", "title": "Frieren", "season": 0, "episode": 1, "year": 0,
+          "file_path": "$prefix:{{media_root}}", "size": 0, "confidence": "$number", "origin": "lain-identify-anime",
+          "provenance": "identify:lain-identify-anime", "updated_at": "$int", "root": "media", "rel_path": "Frieren/[Fansub-A] Frieren - 01 [1080p].mkv"},
+         {"id": "{{item2}}", "library_id": "{{lib_id}}", "kind": "episode", "title": "Frieren", "season": 0, "episode": 2, "year": 0,
+          "file_path": "$prefix:{{media_root}}", "size": 0, "confidence": "$number", "origin": "lain-identify-anime",
+          "provenance": "identify:lain-identify-anime", "updated_at": "$int", "root": "media", "rel_path": "Frieren/[Fansub-A] Frieren - 02 [1080p].mkv"}]}}}
+    ]},
+    {"name": "catalog paging and filters", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "GET", "path": "/api/catalog?limit=1&offset=1", "auth": "a0"},
+       "expect": {"status": 200, "body": {"total": 2, "limit": 1, "offset": 1, "items": [{"id": "{{item2}}", "$open": true}]}}},
+      {"req": {"method": "GET", "path": "/api/catalog?offset=5", "auth": "a0"}, "expect": {"status": 200, "body": {"total": 2, "limit": 50, "offset": 5, "items": []}}},
+      {"req": {"method": "GET", "path": "/api/catalog?library_id={{lib_id}}", "auth": "a0"}, "expect": {"status": 200, "body": {"total": 2, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog?library_id=lib-other", "auth": "a0"}, "expect": {"status": 200, "body": {"total": 0, "items": [], "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog?sort=recent", "auth": "a0"}, "expect": {"status": 200, "body": {"total": 2, "items": [{"id": "{{item2}}", "$open": true}, {"id": "{{item1}}", "$open": true}], "$open": true}}}
+    ]},
+    {"name": "one item and its title's episodes", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "GET", "path": "/api/catalog/{{item2}}", "auth": "b0"},
+       "expect": {"status": 200, "body": {"id": "{{item2}}", "episode": 2, "title": "Frieren", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{item2}}/episodes", "auth": "b0"},
+       "expect": {"status": 200, "body": {"items": [{"id": "{{item1}}", "episode": 1, "$open": true}, {"id": "{{item2}}", "episode": 2, "$open": true}]}}}
+    ]},
+    {"name": "progress is per user", "requires": ["lib_id"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{item1}}/progress", "auth": "a0"},
+       "expect": {"status": 200, "body": {"item_id": "{{item1}}", "user_id": "user-admin", "position_sec": 30, "duration_sec": 1440, "completed": false, "updated_at": "$int"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{item2}}/progress", "auth": "b0"},
+       "expect": {"status": 200, "body": {"item_id": "{{item2}}", "user_id": "user-bob", "position_sec": 1440, "duration_sec": 1440, "completed": true, "updated_at": "$int"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{item1}}/progress", "auth": "b0"}, "expect": {"status": 200, "body": {"item_id": "", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/me/continue", "auth": "a0"}, "expect": {"status": 200, "body": [{"item_id": "{{item1}}", "$open": true}]}}
+    ]}
+  ]
+}

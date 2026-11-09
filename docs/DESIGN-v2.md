@@ -130,10 +130,10 @@ Today a library stores absolute paths. v2 stores **named roots**: a library
 declares a root (`biblioteca`, `anime-arquivo`…) and items store
 `root:relative/path`. Each machine maps root names to directories in its own
 config. Moving from Windows/WSL (`V:\media`, `/mnt/v/...`) to Linux (Omarchy)
-then becomes a mapping change, not a catalog rewrite. A one-shot
-migration converts existing absolute paths. This implements the "portable paths"
-rule from hq-app DESIGN "Dados dos apps". **[owner]**: it changes the catalog
-export document (`lain.catalog-export@2`, with import of @1).
+then becomes a mapping change, not a catalog rewrite. This implements the
+"portable paths" rule from hq-app DESIGN "Dados dos apps". **[owner]**: it
+changes the catalog export document (`lain.catalog-export@3`, the only version
+lain-rs reads; D-175, D-177).
 
 ## 6. The owner's other repos
 
@@ -338,7 +338,7 @@ app. It builds its navigation from `/api/modules`, so it follows module state.
 | V-1 | Modules as a bundle layer over composition; `modules.json` (`lain.modules@1`); disable = withdraw + unmount, data kept | public API |
 | V-2 | The module set in §5.2 | — |
 | V-3 | Private libraries enforced in the gateway; per-session unlock with PIN/password | auth surface |
-| V-4 | Named library roots; `lain.catalog-export@2` with @1 import | storage contract |
+| V-4 | Named library roots; `lain.catalog-export@3` (D-175, D-177) | storage contract |
 | V-5 | Benchmark lain-parser vs zantetsu on the same real names before keeping either as the default | — |
 | V-6 | `lain.subtitle.translate@1` served by an animesubs component | public contract |
 | V-7 | `lain.acquire.extract@1` served by an Anything component; Anything must add auth first | public contract |
@@ -361,14 +361,14 @@ components and clients are already mostly Rust: animesubs, animedb, zantetsu and
 and the server gets fine-grained control of memory and resources without a GC.
 Go is already memory-safe; the gain is mainly the shared ecosystem and the
 resource control. The cost is a rewrite of ~79k lines, so the migration is
-incremental and the Go server is never switched off before its replacement is
-proven.
+incremental. No Go server runs anywhere (D-178), so there is nothing to keep
+alive or protect while it happens.
 
 - **Strangler migration.**
   - A Cargo workspace (`crates/`) lives in this repo next to the Go code until
-    cutover, so the decision log, contracts and docs stay in one place.
-  - The Go server stays the production server until the Rust one passes the
-    conformance suite and the owner has used it daily.
+    Go is removed, so the decision log, contracts and docs stay in one place.
+  - The Go code is the reference implementation the conformance suite checks
+    the API against, and the source of the modules still to port.
 - **Contracts are the spec.**
   - Before porting, freeze today's behavior into a **language-neutral
     conformance suite**: HTTP-level tests for every `/api/*` route that clients
@@ -376,9 +376,9 @@ proven.
     `lain.catalog-export` documents.
   - Both servers run the same suite, and a route moves only when the Rust side
     passes it.
-- **Components first.** The component protocol is language-neutral, so new
-  providers are written in Rust as components and run under the Go server today.
-  They move in-process when the Rust core lands, with no rewrite.
+- **Components first.** The component protocol is language-neutral, so Go
+  providers (`lain plugin-run`) run as components under the Rust host until
+  they are ported, and Rust components move in-process with no rewrite.
 - **Order:**
   1. conformance suite;
   2. Rust core (registry and composition, the component host, gateway and auth,
@@ -386,13 +386,12 @@ proven.
   3. the P1 features, built directly in Rust and not first in Go;
   4. modules one by one: watch, read, acquire (including the in-house
      BitTorrent engine, kept in-house), subtitles, lists, social;
-  5. cutover;
-  6. Go removed.
-- **Data:**
-  - bbolt documents migrate through `lain.catalog-export@2` (`D-157`) plus a
-    userstate export, with a one-shot importer in the Rust server.
-  - The existing data dir is read, never written, until the owner confirms the
-    cutover.
+  5. Go removed (no cutover step: lain-rs already uses the canonical data dir
+     and port, D-178).
+- **Data (D-177, D-178):** no migration. Nobody runs lain yet, so the Rust
+  server starts from an empty canonical data dir (`lain`, port 9360); there is
+  no importer of the Go store, Go tokens or Go password hashes. The catalog
+  moves between data dirs as `lain.catalog-export@3`.
 - **Web SPA:** unchanged; the Rust server embeds and serves the same build.
 - **Dependency policy for Rust** (replaces D-001/D-002 for the Rust code, and
   needs the owner's approval of the list, **[owner]**):
@@ -409,14 +408,14 @@ proven.
     | `axum` / `hyper` | HTTP |
     | `serde` / `serde_json` | JSON |
     | `redb` | embedded KV, pure Rust, the bbolt equivalent |
-    | `argon2` or `bcrypt` | passwords |
+    | `argon2` | passwords (D-177: Argon2id; no bcrypt) |
     | `notify` | file watching (the fsnotify equivalent) |
     | `tracing` | logs |
 - **Rules that carry over unchanged:** plugin boundaries, "media bytes never
   enter a plugin call", catalog/userstate separation, keyboard-first UI rules,
   English prose.
-- **`AGENTS.md`'s stack section is rewritten when the Rust core lands.** Until
-  cutover it documents both stacks.
+- **`AGENTS.md`'s stack section is rewritten when Go is removed.** Until then
+  it documents both stacks.
 
 ## 12. Open questions for the owner
 
