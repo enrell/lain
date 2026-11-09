@@ -888,3 +888,67 @@ fn metadata_before_the_grab_is_stored_still_checks_the_budget() {
     assert_eq!(got.code, CODE_QUOTA, "a 1 GiB magnet must fail the 1000-byte budget: {got:?}");
     m.close();
 }
+
+/// Reports completion before metadata (the order Windows runners saw):
+/// the grab is sized and budget-checked at completion.
+struct LateMetadataClient {
+    m: std::sync::Weak<Manager>,
+}
+
+impl DownloadClient for LateMetadataClient {
+    fn name(&self) -> &str {
+        "late"
+    }
+    fn add(&self, _: AddRequest) -> Result<(String, i64)> {
+        let m = self.m.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            if let Some(m) = m.upgrade() {
+                m.on_complete_for_tests(EARLY_HASH);
+                m.on_metadata(EARLY_HASH, 1 << 30);
+            }
+        });
+        Ok((EARLY_HASH.into(), 0))
+    }
+    fn status(&self, _: &str) -> Option<ClientStatus> {
+        Some(ClientStatus { state: "seeding".into(), size: 1 << 30, ..Default::default() })
+    }
+    fn files(&self, _: &str) -> Vec<File> {
+        Vec::new()
+    }
+    fn pause(&self, _: &str) -> Result<()> {
+        Ok(())
+    }
+    fn resume(&self, _: &str) -> Result<()> {
+        Ok(())
+    }
+    fn remove(&self, _: &str, _: bool) -> Result<()> {
+        Ok(())
+    }
+    fn set_rates(&self, _: i64, _: i64) {}
+    fn checkpoint(&self) {}
+    fn port(&self) -> u16 {
+        0
+    }
+    fn close(&self) {}
+}
+
+#[test]
+fn completion_before_metadata_still_checks_the_budget() {
+    let w = World::new();
+    w.limits.lock().unwrap().max_bytes = 1000;
+    let m = w.manager(&tmp("acq-r2"), settings(0.0));
+    m.set_client(Arc::new(LateMetadataClient { m: Arc::downgrade(&m) }));
+    let req = GrabRequest {
+        input: GrabInput {
+            magnet: format!("magnet:?xt=urn:btih:{EARLY_HASH}&tr=http://127.0.0.1:1/announce"),
+            library_id: w.lib.id.clone(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let g = m.grab(req).unwrap();
+    let got = wait_failed(&m, &g.id);
+    assert!(got.code == CODE_QUOTA && got.size == 1 << 30, "{got:?}");
+    m.close();
+}

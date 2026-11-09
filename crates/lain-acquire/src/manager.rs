@@ -830,6 +830,11 @@ impl Manager {
         self.save(&mut g);
     }
 
+    #[cfg(test)]
+    pub(crate) fn on_complete_for_tests(&self, ih: &str) {
+        self.on_complete(ih)
+    }
+
     fn on_complete(&self, ih: &str) {
         let _l = lock(&self.grab_mu);
         let Some(mut g) = self.by_info_hash(ih) else { return };
