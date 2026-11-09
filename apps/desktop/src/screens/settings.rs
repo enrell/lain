@@ -65,6 +65,9 @@ impl LainApp {
         let c = b.client.clone();
         match sec {
             Section::Account => {
+                if self.module_on("lists") {
+                    self.load_links(cx);
+                }
                 let lang = self.me.as_ref().map(|u| u.preferred_language.clone()).unwrap_or_default();
                 self.set_text("acct.lang", &lang);
             }
@@ -648,6 +651,7 @@ impl LainApp {
         let change = self.btn("acct.pw", "Change password", None, Tone::Ghost, Act::ChangePassword, cx);
         let switch = self.btn("acct.server", "Other server", None, Tone::Ghost, Act::ChangeServer, cx);
         let logout = self.btn("acct.logout", "Log out", None, Tone::Danger, Act::Logout, cx);
+        let links = self.links_rows(cx);
         div()
             .flex()
             .flex_col()
@@ -664,6 +668,7 @@ impl LainApp {
                 div().flex().flex_col().gap(px(th.sp(1))).w(px(280.)).child(old).child(new).child(again).child(change),
             ))
             .child(self.row("Session", "Forget the saved token on this device", logout))
+            .when(self.module_on("lists"), |d| d.child(links))
     }
 
     fn set_profile(&mut self, cx: &mut Context<Self>) -> gpui::Div {

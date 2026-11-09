@@ -5,6 +5,7 @@ pub mod downloads;
 pub mod home;
 pub mod item;
 pub mod library;
+pub mod links;
 pub mod player;
 pub mod reader;
 pub mod search;
