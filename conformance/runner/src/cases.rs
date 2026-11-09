@@ -4,8 +4,10 @@
 //! shared variable map. A file is `{"tier", "description", "cases"}`;
 //! a case is `{"name", "requires"?, "steps"}`. Steps:
 //!
-//! - `{"req": {method, path, auth?, body?, raw_body?, headers?},
-//!    "expect": {status?, status_not?, body?, headers?}, "save": {var: "/pointer"}}`
+//! - `{"req": {method, path, auth?, body?, raw_body?, raw_body_hex?, headers?},
+//!    "expect": {status?, status_not?, body?, body_hex?, headers?}, "save": {var: "/pointer"}}`
+//!   `raw_body_hex` sends bytes (images); `body_hex` compares the
+//!   response bytes exactly.
 //!   `auth` is `"<token var>"` (Bearer), `"query:<token var>"`
 //!   (`?token=`) or `"header:<raw Authorization value>"`.
 //! - `{"wait_for": <req step>, "timeout_ms"}`: repeats the request until
@@ -106,6 +108,17 @@ fn percent_encode(s: &str) -> String {
         .collect()
 }
 
+fn from_hex(s: &str) -> Result<Vec<u8>, String> {
+    let s: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    if !s.len().is_multiple_of(2) {
+        return Err("raw_body_hex has an odd length".into());
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| format!("raw_body_hex: {e}")))
+        .collect()
+}
+
 impl Runner {
     pub fn new(base: Base) -> Self {
         Runner { base, vars: BTreeMap::new(), streams: BTreeMap::new(), verbose: false }
@@ -143,7 +156,9 @@ impl Runner {
             }
         }
         let path = self.auth(req["auth"].as_str(), path, &mut headers)?;
-        let body: Option<Vec<u8>> = if let Some(raw) = req["raw_body"].as_str() {
+        let body: Option<Vec<u8>> = if let Some(hex) = req["raw_body_hex"].as_str() {
+            Some(from_hex(hex)?)
+        } else if let Some(raw) = req["raw_body"].as_str() {
             Some(raw.as_bytes().to_vec())
         } else if !req["body"].is_null() || req.get("body").is_some() {
             headers.push(("Content-Type".into(), "application/json".into()));
@@ -186,6 +201,17 @@ impl Runner {
                     continue;
                 }
                 matcher::matches(want, &got).map_err(|e| format!("header {k}: {e}"))?;
+            }
+        }
+        if let Some(want) = expect["body_hex"].as_str() {
+            let got: String = resp.body.iter().map(|b| format!("{b:02x}")).collect();
+            if got != want.to_ascii_lowercase() {
+                return Err(format!(
+                    "body bytes: want {} bytes, got {} ({}...)",
+                    want.len() / 2,
+                    resp.body.len(),
+                    &got[..got.len().min(32)]
+                ));
             }
         }
         if let Some(want) = expect.get("body") {
@@ -379,5 +405,7 @@ mod tests {
         assert!(subst(&json!("{{missing}}"), &vars).is_err());
         assert_eq!(percent_encode("a.b-c_d~"), "a.b-c_d~");
         assert_eq!(percent_encode("a b/"), "a%20b%2F");
+        assert_eq!(from_hex("00ff 10").unwrap(), vec![0, 255, 16]);
+        assert!(from_hex("abc").is_err() && from_hex("zz").is_err());
     }
 }

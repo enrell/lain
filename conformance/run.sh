@@ -9,10 +9,12 @@
 # Rust: fresh (v1+v2), scan (v1+v2) on a fresh data dir, then private
 #       (private libraries) on a data dir with a `media` root and the
 #       fixture catalog (conformance/fixtures/catalog.json,
-#       `lain-rs import --in`)
+#       `lain-rs import --in`), then read (comic pages) with `media` at
+#       conformance/fixtures/read and conformance/fixtures/read-catalog.json
 # The scan suite writes its own fixture media and runs with library
 # watching and the post-scan metadata pass off, so no scan races the
-# cases and nothing reaches the network.
+# cases and nothing reaches the network; so does read, whose fixture
+# catalog must stay as imported.
 #
 # Env: GO_PORT (19460), RS_PORT (19461), KEEP=1 keeps the temp dir.
 set -eu
@@ -30,6 +32,9 @@ cleanup() {
 	if [ "${KEEP:-0}" = 1 ]; then echo "kept $tmp"; else rm -rf "$tmp"; fi
 }
 trap cleanup EXIT INT TERM
+# The theme cases must not read the host's own Omarchy colors.
+LAIN_OMARCHY_COLORS="$tmp/no-colors.toml"
+export LAIN_OMARCHY_COLORS
 
 cd "$root"
 cargo build -q -p lain-conformance -p lain-server
@@ -111,6 +116,15 @@ run_rust() {
 	out=$(LAIN_URL=$url "$runner" --var media_root="$tmp/rootmedia" --var data_dir="$tmp/rs-private" conformance/cases/private) || { echo "$out"; exit 1; }
 	echo "$out"
 	note "Rust private libraries: $(echo "$out" | tail -1)"
+	stop "$pid"
+
+	mkdir -p "$tmp/rs-read"
+	printf '{"format":"lain.roots@1","roots":{"media":"%s"}}\n' "$root/conformance/fixtures/read" >"$tmp/rs-read/roots.json"
+	"$lain_rs" import --in conformance/fixtures/read-catalog.json --data-dir "$tmp/rs-read"
+	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-read "$url" "$lain_rs" serve --data-dir "$tmp/rs-read" --port "$rs_port")
+	out=$(LAIN_URL=$url "$runner" --var media_root="$root/conformance/fixtures/read" --var data_dir="$tmp/rs-read" conformance/cases/read) || { echo "$out"; exit 1; }
+	echo "$out"
+	note "Rust read: $(echo "$out" | tail -1)"
 	stop "$pid"
 }
 

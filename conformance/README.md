@@ -9,6 +9,7 @@ conformance/
   cases/fresh/    HTTP cases from an empty server: health, setup, login,
                   /api/me (+ profile, password, preferences), users,
                   libraries, catalog, progress, plugins          (tier v1)
+  cases/fresh/45  avatars; 85: theme, integrations, backup           (v1)
   cases/v2/       /api/modules and modules.json, /api/events (SSE)   (v2)
   cases/scan/     catalog population from a fresh server: scan, identified
                   catalog, grouping, search, sidecars (WebVTT), NFO metadata
@@ -17,10 +18,14 @@ conformance/
   cases/private/  lain-rs over a populated catalog: catalog items, paging,
                   episodes, per-user progress, then private libraries:
                   nothing leaks to another user or a locked session (v2)
+  cases/read/     lain-rs over the read fixture: comic pages, page
+                  bytes, ETags, direction, refusals, private libraries
+                  and module disable (v2)
   fixtures/       catalog.json, the lain.catalog-export@3 document the
                   private suite starts from; parse-parity.json, the Go
                   parsers' answers the Rust parsers must give (written by
-                  internal/plugins/identify/parity_test.go)
+                  internal/plugins/identify/parity_test.go); read-catalog.json
+                  and read/ (small CBZ archives) for the read suite
   component/      NDJSON fixtures of the component protocol
   runner/         lain-conformance, one runner (Rust, std-only HTTP)
   run.sh          both servers end to end in throwaway data dirs
@@ -72,6 +77,17 @@ conformance/fixtures/catalog.json --data-dir <data dir>`, start
 `lain-rs` there and run `cases/private` with `--var media_root=<dir>
 --var data_dir=<data dir>`.
 
+Read (Rust only, for the same reason): write `roots.json` mapping
+`media` to `conformance/fixtures/read`, `lain-rs import --in
+conformance/fixtures/read-catalog.json`, start `lain-rs` and run
+`cases/read` with `--var media_root=<that dir> --var data_dir=<data
+dir>`. The archives were written once with Python's `zipfile` (fixed
+timestamps); the catalog's `size` fields are their byte sizes, which the
+page ETags carry.
+
+`run.sh` points `LAIN_OMARCHY_COLORS` at a missing file, so the theme
+case never reads the host's own colors.
+
 There is no seeded or imported suite: nothing moves from a Go data dir
 to lain-rs (D-177).
 
@@ -91,7 +107,7 @@ numbers, so Go's `1440` and Rust's `1440.0` are the same value.
 
 ## Not covered yet
 
-Theme, playback/stream/transcode/thumbnail,
-avatars, pages, lists, social, acquire, downloads, backup, plugin swap
-and withdraw writes, and the `lain.catalog-export` documents as files.
+Playback/stream/transcode/thumbnail, lists, social, acquire, downloads,
+plugin swap and withdraw writes, pages on the Go server (it has no
+fixture import), and the `lain.catalog-export` documents as files.
 These move with their modules (DESIGN-v2 §13 order).

@@ -644,6 +644,14 @@ docs}` — the trusted core snapshots the live database to a temp file
 snapshot through unchanged; a replacement can package, encrypt or ship
 it elsewhere.
 
+lain-rs (D-197): the input adds `files` (archive name → path: the data
+dir's `modules.json`, `roots.json` and `avatars/<user id>`), the docs are
+`manifest.json` and `composition.json`, and the snapshot is a redb file
+copied in one read transaction. Its `lain-backup-bundle` writes one
+uncompressed tar, `lain-backup-<UTC stamp>.tar` (`lain.backup@1`):
+`manifest.json`, `lain.redb`, `composition.json`, then the files.
+Restore: stop the server and extract into an empty data dir.
+
 ## lain.source.watch@1 (exactly-one)
 
 Filesystem watching and debounce as a provider (D-068/D-076). Ops:

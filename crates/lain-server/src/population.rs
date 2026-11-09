@@ -190,12 +190,8 @@ fn sidecar(app: &App, req: &Req, v: &Verified) -> Reply {
         return Reply::err(500, "could not read the sidecar");
     }
     match lain_subtitle::parse(&raw) {
-        Ok(cues) => Reply::bytes(
-            200,
-            "text/vtt; charset=utf-8",
-            lain_subtitle::webvtt(&cues),
-            vec![("cache-control", "private, no-cache")],
-        ),
+        Ok(cues) => Reply::bytes(200, "text/vtt; charset=utf-8", lain_subtitle::webvtt(&cues))
+            .header(axum::http::header::CACHE_CONTROL, "private, no-cache"),
         Err(_) => Reply::json(422, json!({"error": "this subtitle file cannot be read", "code": "unsupported-media"})),
     }
 }

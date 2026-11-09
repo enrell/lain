@@ -1,0 +1,40 @@
+{
+  "tier": "v1",
+  "description": "Core administration: the web UI theme (public, never cached), the operator's integration settings (admin; the secret is never returned) and the backup download (admin).",
+  "cases": [
+    {"name": "the theme is public and never cached", "steps": [
+      {"req": {"method": "GET", "path": "/api/theme"},
+       "expect": {"status": 200, "headers": {"cache-control": "no-store", "content-type": "$prefix:application/json"}, "body": {
+         "source": "$string", "mode": "$string", "background": "$prefix:#", "surface": "$prefix:#", "surface_hover": "$prefix:#",
+         "surface_active": "$prefix:#", "foreground": "$prefix:#", "muted": "$prefix:#", "line": "$prefix:#", "accent": "$prefix:#",
+         "accent_hover": "$prefix:#", "accent_foreground": "$prefix:#", "danger": "$prefix:#", "danger_foreground": "$prefix:#",
+         "success": "$prefix:#", "warning": "$prefix:#"}}}
+    ]},
+    {"name": "integrations start unconfigured", "steps": [
+      {"req": {"method": "GET", "path": "/api/admin/settings/integrations", "auth": "admin_token", "headers": {"X-Forwarded-Proto": "https"}},
+       "expect": {"status": 200, "body": {"platforms": {"anilist": {"client_id": "", "secret_set": false, "callback_url": "$prefix:https://"}}}}}
+    ]},
+    {"name": "integrations save and keep the secret", "steps": [
+      {"req": {"method": "PUT", "path": "/api/admin/settings/integrations", "auth": "admin_token", "body": {"anilist_client_id": " 4242 ", "anilist_client_secret": "s3cret-value"}},
+       "expect": {"status": 200, "body": {"platforms": {"anilist": {"client_id": "4242", "secret_set": true, "callback_url": "$prefix:http://"}}}}},
+      {"req": {"method": "PUT", "path": "/api/admin/settings/integrations", "auth": "admin_token", "body": {"anilist_client_secret": ""}},
+       "expect": {"status": 200, "body": {"platforms": {"anilist": {"client_id": "4242", "secret_set": true, "callback_url": "$string"}}}}},
+      {"req": {"method": "PUT", "path": "/api/admin/settings/integrations", "auth": "admin_token", "body": {"anilist_client_id": ""}},
+       "expect": {"status": 200, "body": {"platforms": {"anilist": {"client_id": "", "secret_set": true, "callback_url": "$string"}}}}},
+      {"req": {"method": "GET", "path": "/api/admin/settings/integrations", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"platforms": {"anilist": {"client_id": "", "secret_set": true, "callback_url": "$string"}}}}},
+      {"req": {"method": "PUT", "path": "/api/admin/settings/integrations", "auth": "admin_token", "raw_body": "[1"}, "expect": {"status": 400, "body": {"error": "invalid json"}}}
+    ]},
+    {"name": "integrations need an admin", "steps": [
+      {"req": {"method": "GET", "path": "/api/admin/settings/integrations", "auth": "bob_token"}, "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "PUT", "path": "/api/admin/settings/integrations", "auth": "bob_token", "body": {}}, "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "GET", "path": "/api/admin/settings/integrations"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]},
+    {"name": "backup downloads an artifact", "steps": [
+      {"req": {"method": "GET", "path": "/api/admin/backup", "auth": "admin_token"},
+       "expect": {"status": 200, "headers": {"content-type": "application/octet-stream", "content-disposition": "$prefix:attachment; filename=\"lain"}}},
+      {"req": {"method": "GET", "path": "/api/admin/backup", "auth": "bob_token"}, "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "GET", "path": "/api/admin/backup"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
+    ]}
+  ]
+}

@@ -17,6 +17,11 @@ use lain_core::modules::{self, ModuleSet};
 use lain_core::{Binding, BindingMode, Composition, Registry};
 use lain_store::Store;
 
+use lain_admin::avatars::Avatars;
+use lain_admin::backup::{self as backup_mod, CAP_BACKUP_CREATE};
+use lain_admin::theme::{self as theme_mod, CAP_UI_THEME};
+use lain_read::{CAP_COMIC_PAGES, ComicArchive};
+
 use crate::catalog::{
     CAP_CATALOG_READ, CAP_CATALOG_WRITE, CAP_USER_PROGRESS, CATALOG_ID, Catalog, USERSTATE_ID, Userstate,
 };
@@ -49,7 +54,8 @@ pub const COMPONENT_SERVED: &[&str] = &[
 
 /// The default composition: everything the Rust server serves
 /// in-process (catalog, userstate, catalog population, identification,
-/// metadata); the network metadata providers are components.
+/// metadata, theme, backup, comic pages); the network metadata
+/// providers are components.
 pub fn default_composition() -> Composition {
     use lain_identify::{ANIME_ID, CAP_MEDIA_IDENTIFY, CAP_RELEASE_PARSE, COMIC_ID, GENERIC_ID, TOKENIZER_ID};
     use lain_metadata::{CAP_METADATA_ENRICH, CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, DEFAULT_PROVIDERS, ENRICH_ID};
@@ -69,6 +75,9 @@ pub fn default_composition() -> Composition {
     bindings.insert(CAP_METADATA_SEARCH.into(), Binding::new(BindingMode::MergeMany, DEFAULT_PROVIDERS));
     bindings.insert(CAP_METADATA_RESOLVE.into(), Binding::new(BindingMode::MergeMany, DEFAULT_PROVIDERS));
     bindings.insert(CAP_METADATA_ENRICH.into(), one(ENRICH_ID));
+    bindings.insert(CAP_UI_THEME.into(), one(theme_mod::PROVIDER_ID));
+    bindings.insert(CAP_BACKUP_CREATE.into(), one(backup_mod::PROVIDER_ID));
+    bindings.insert(CAP_COMIC_PAGES.into(), one(lain_read::PROVIDER_ID));
     Composition { version: COMPOSITION_VERSION, bindings }
 }
 
@@ -88,6 +97,9 @@ pub struct Config {
     pub watch: bool,
     /// Quiet window before a changed library is rescanned.
     pub watch_debounce: Duration,
+    /// The Omarchy `colors.toml` the theme reads; `None` resolves
+    /// `LAIN_OMARCHY_COLORS`, then the host's default location.
+    pub theme_path: Option<PathBuf>,
 }
 
 impl Config {
@@ -100,6 +112,7 @@ impl Config {
             auto_enrich: true,
             watch: true,
             watch_debounce: lain_ingest::DEFAULT_DEBOUNCE,
+            theme_path: None,
         }
     }
 }
@@ -124,6 +137,7 @@ pub struct App {
     pub version: String,
     pub keep_alive: Duration,
     reload_debounce: Duration,
+    pub theme_path: Option<PathBuf>,
     pub store: Arc<Store>,
     secret: Vec<u8>,
     pub registry: Arc<Registry>,
@@ -136,6 +150,7 @@ pub struct App {
     pub scanner: Arc<Scanner>,
     watch: bool,
     watch_provider: Arc<SourceWatch>,
+    pub avatars: Avatars,
     provisioner: Mutex<Option<Provisioner>>,
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
     stopping: Arc<AtomicBool>,
@@ -186,6 +201,14 @@ impl App {
         registry.register(Arc::new(lain_ingest::Runner::new(&registry, Some(progress))));
         registry.register(Arc::new(lain_metadata::Nfo));
         registry.register(Arc::new(lain_metadata::Enricher::new(&registry, store.clone())));
+        registry.register(Arc::new(theme_mod::Theme));
+        registry.register(Arc::new(backup_mod::Bundle));
+        registry.register(Arc::new(ComicArchive::new()));
+        // First boot adopts integration credentials from the environment;
+        // an operator's save is never overwritten.
+        if let Some(seed) = lain_admin::integrations::from_env() {
+            lain_admin::integrations::ensure(&store, &seed).map_err(|e| e.to_string())?;
+        }
 
         let mut known: BTreeSet<String> = registry.providers().into_iter().collect();
         known.extend(COMPONENT_SERVED.iter().map(|s| s.to_string()));
@@ -198,6 +221,8 @@ impl App {
             version: cfg.version,
             keep_alive: cfg.keep_alive,
             reload_debounce: cfg.reload_debounce,
+            theme_path: cfg.theme_path,
+            avatars: Avatars::new(dir),
             libraries: Libraries::new(store.clone(), roots.clone()),
             roots,
             unlocks: Unlocks::default(),
