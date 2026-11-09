@@ -434,6 +434,39 @@ impl LainApp {
         }
     }
 
+    /// The account's avatar: the uploaded image, else the mascot's or
+    /// the username's initials.
+    pub fn avatar(&mut self, size: f32, cx: &mut Context<Self>) -> gpui::Div {
+        let u = self.me.clone().unwrap_or_default();
+        let key = ImgKey {
+            src: Source::Avatar(u.id.clone(), u.profile.avatar.version),
+            w: (size * 2.) as u32,
+            h: (size * 2.) as u32,
+            blur: 0,
+        };
+        let art =
+            if u.profile.avatar.kind == "upload" { self.images.update(cx, |s, cx| s.get(&key, cx)) } else { None };
+        let avatar = div()
+            .size(px(size))
+            .flex_none()
+            .rounded_full()
+            .overflow_hidden()
+            .bg(self.pal.accent.opacity(0.3))
+            .flex()
+            .items_center()
+            .justify_center();
+        match art {
+            Some((a, _)) => avatar.child(img(ImageSource::Render(a)).size_full().object_fit(ObjectFit::Cover)),
+            None => avatar.child(div().font_family(self.fonts.display.clone()).text_size(px(size * 0.42)).child(
+                if u.profile.avatar.mascot.is_empty() {
+                    u.username.chars().next().unwrap_or('?').to_uppercase().to_string()
+                } else {
+                    u.profile.avatar.mascot.chars().take(2).collect()
+                },
+            )),
+        }
+    }
+
     fn user_patch(&mut self, id: String, patch: UserPatch, ok: &'static str, cx: &mut Context<Self>) {
         let Some(b) = self.backend.clone() else { return };
         let c = b.client.clone();
@@ -615,22 +648,7 @@ impl LainApp {
         let save = self.btn("profile.save", "Save profile", None, Tone::Primary, Act::SaveProfile, cx);
         let upload = self.btn("profile.upload", "Upload image…", None, Tone::Ghost, Act::UploadAvatar, cx);
         let clear = self.btn("profile.clear", "Clear", None, Tone::Quiet, Act::ClearAvatar, cx);
-        let src = Source::Avatar(u.id.clone(), u.profile.avatar.version);
-        let key = ImgKey { src, w: 128, h: 128, blur: 0 };
-        let art =
-            if u.profile.avatar.kind == "upload" { self.images.update(cx, |s, cx| s.get(&key, cx)) } else { None };
-        let mut avatar =
-            div().size(px(64.)).rounded_full().overflow_hidden().bg(pal.surface).flex().items_center().justify_center();
-        avatar = match art {
-            Some((a, _)) => avatar.child(img(ImageSource::Render(a)).size_full().object_fit(ObjectFit::Cover)),
-            None => avatar.child(div().font_family(self.fonts.display.clone()).text_size(px(th.ts(2))).child(
-                if u.profile.avatar.mascot.is_empty() {
-                    u.username.chars().next().unwrap_or('?').to_uppercase().to_string()
-                } else {
-                    u.profile.avatar.mascot.chars().take(2).collect()
-                },
-            )),
-        };
+        let avatar = self.avatar(64., cx);
         let mut mascots = div().flex().flex_wrap().gap(px(th.sp(1)));
         match self.settings.mascots.clone() {
             Load::Ready(list) => {
