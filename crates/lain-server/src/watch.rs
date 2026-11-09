@@ -218,8 +218,8 @@ pub fn routes() -> Router<Arc<App>> {
 
 // ---- shared -------------------------------------------------------------
 
-fn item(app: &App, w: &WReq, v: &Verified) -> Result<CatalogItem, Out> {
-    app.visible_item(v, w.req.param("id")).ok_or_else(|| Reply::err(404, "unknown item").into())
+fn item(app: &App, w: &WReq, v: &Verified) -> Result<CatalogItem, Box<Out>> {
+    app.visible_item(v, w.req.param("id")).ok_or_else(|| Box::new(Reply::err(404, "unknown item").into()))
 }
 
 /// The effective transcode settings: defaults when the provider fails.
@@ -305,7 +305,7 @@ fn content_type(path: &str) -> &'static str {
 fn playback(app: &App, w: &WReq, v: &Verified) -> Out {
     let it = match item(app, w, v) {
         Ok(it) => it,
-        Err(o) => return o,
+        Err(o) => return *o,
     };
     // A row can outlive its file between reconciliations (D-068).
     if std::fs::metadata(&it.file_path).is_err() {
@@ -401,7 +401,7 @@ fn playback(app: &App, w: &WReq, v: &Verified) -> Out {
 fn stream(app: &App, w: &WReq, v: &Verified) -> Out {
     let it = match item(app, w, v) {
         Ok(it) => it,
-        Err(o) => return o,
+        Err(o) => return *o,
     };
     let mut headers = Vec::new();
     // ?download=1 saves the original (an offline copy).
@@ -415,7 +415,7 @@ fn stream(app: &App, w: &WReq, v: &Verified) -> Out {
 fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
     let it = match item(app, w, v) {
         Ok(it) => it,
-        Err(o) => return o,
+        Err(o) => return *o,
     };
     let at = w.req.query("t").trim().parse::<f64>().ok().filter(|t| *t >= 0.0 && t.is_finite()).unwrap_or(10.0);
     let width = w.req.query("w").trim().parse::<i64>().ok().filter(|n| *n > 0).unwrap_or(480).clamp(32, 1280);
@@ -476,7 +476,7 @@ fn transcode_request(app: &App, v: &Verified, path: &str, sel: &TranscodeSelecti
 fn transcode_start(app: &App, w: &WReq, v: &Verified) -> Out {
     let it = match item(app, w, v) {
         Ok(it) => it,
-        Err(o) => return o,
+        Err(o) => return *o,
     };
     let sel: TranscodeSelection = if w.req.body.is_empty() {
         TranscodeSelection::default()
@@ -504,7 +504,7 @@ fn transcode_start(app: &App, w: &WReq, v: &Verified) -> Out {
 fn transcode_status(app: &App, w: &WReq, v: &Verified) -> Out {
     let it = match item(app, w, v) {
         Ok(it) => it,
-        Err(o) => return o,
+        Err(o) => return *o,
     };
     let session = w.req.query("session");
     if session.is_empty() {
@@ -561,7 +561,7 @@ fn resolve(app: &App, path: &str, session: &str) -> Result<V3Status, Error> {
 fn transcode_get(app: &App, w: &WReq, v: &Verified) -> Out {
     let it = match item(app, w, v) {
         Ok(it) => it,
-        Err(o) => return o,
+        Err(o) => return *o,
     };
     let mp4 = |p: &str| file(p, "video/mp4", vec![("accept-ranges", "bytes".into())], "file unavailable");
     let session = w.req.query("session");
@@ -671,7 +671,7 @@ fn sign_map(line: &str, session: &str, token: &str) -> String {
 fn transcode_hls(app: &App, w: &WReq, v: &Verified) -> Out {
     let it = match item(app, w, v) {
         Ok(it) => it,
-        Err(o) => return o,
+        Err(o) => return *o,
     };
     let session = w.req.query("session");
     if session.is_empty() {
@@ -719,7 +719,7 @@ fn transcode_hls(app: &App, w: &WReq, v: &Verified) -> Out {
 fn subtitles(app: &App, w: &WReq, v: &Verified) -> Out {
     let it = match item(app, w, v) {
         Ok(it) => it,
-        Err(o) => return o,
+        Err(o) => return *o,
     };
     let vtt = |p: &str| file(p, "text/vtt; charset=utf-8", vec![("accept-ranges", "bytes".into())], "file unavailable");
     let raw = w.req.query("stream");
@@ -870,7 +870,7 @@ fn play_local(app: &App, w: &WReq, v: &Verified) -> Out {
     };
     let it = match item(app, w, v) {
         Ok(it) => it,
-        Err(o) => return o,
+        Err(o) => return *o,
     };
     let language = app.auth().get_public(&v.user_id).map(|u| u.preferred_language).unwrap_or_default();
     let play = localplay::PlayInput {
