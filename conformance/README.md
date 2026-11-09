@@ -21,11 +21,18 @@ conformance/
   cases/read/     lain-rs over the read fixture: comic pages, page
                   bytes, ETags, direction, refusals, private libraries
                   and module disable (v2)
+  cases/watch/    the watch module over two real clips: playback plans,
+                  streams and ranges, thumbnails, transcode sessions
+                  (progressive, HLS with signed URIs, v1), subtitles,
+                  settings, local play (v1, both servers), and every
+                  watch route of a private library (v2, lain-rs)
   fixtures/       catalog.json, the lain.catalog-export@3 document the
                   private suite starts from; parse-parity.json, the Go
                   parsers' answers the Rust parsers must give (written by
                   internal/plugins/identify/parity_test.go); read-catalog.json
-                  and read/ (small CBZ archives) for the read suite
+                  and read/ (small CBZ archives) for the read suite;
+                  watch-catalog.json, the watch suite's catalog on lain-rs
+  make-clips.sh   writes the watch clips with ffmpeg's lavfi sources
   component/      NDJSON fixtures of the component protocol
   runner/         lain-conformance, one runner (Rust, std-only HTTP)
   run.sh          both servers end to end in throwaway data dirs
@@ -88,6 +95,14 @@ page ETags carry.
 `run.sh` points `LAIN_OMARCHY_COLORS` at a missing file, so the theme
 case never reads the host's own colors.
 
+Watch (needs ffmpeg; D-194): `conformance/make-clips.sh <dir>/Clips`
+writes `Alpha.mp4` and `Beta.mkv`. Go: a fresh server, `--var clips=1
+--var scan_dir=<dir>/Clips` (the suite creates the library and scans
+it). lain-rs: `roots.json` mapping `media` to `<dir>`, `lain-rs import
+--in conformance/fixtures/watch-catalog.json`, then `--var clips=1 --var
+media_root=<dir>`. `run.sh` does both, and skips the suite without
+ffmpeg unless `LAIN_REQUIRE_FFMPEG=1`.
+
 There is no seeded or imported suite: nothing moves from a Go data dir
 to lain-rs (D-177).
 
@@ -101,13 +116,13 @@ Go component side.
 See the module docs of `runner/src/cases.rs` (steps: `req`, `wait_for`,
 `sse_open`, `sse_expect`, `write_file`, `remove_file`, `sleep_ms`) and
 `runner/src/matcher.rs` (`$string`, `$int`, `$prefix:`, `$absent`,
-`$open`, `$each`, `$contains`, ...). `{{var}}` substitutes variables
+`$open`, `$each`, `$contains`, `$substr:`, ...). `{{var}}` substitutes variables
 saved by earlier steps or passed with `--var`. Numbers compare as
 numbers, so Go's `1440` and Rust's `1440.0` are the same value.
 
 ## Not covered yet
 
-Playback/stream/transcode/thumbnail, lists, social, acquire, downloads,
-plugin swap and withdraw writes, pages on the Go server (it has no
-fixture import), and the `lain.catalog-export` documents as files.
+Lists, social, acquire, downloads, plugin swap and withdraw writes,
+pages on the Go server (it has no fixture import), and the
+`lain.catalog-export` documents as files.
 These move with their modules (DESIGN-v2 §13 order).

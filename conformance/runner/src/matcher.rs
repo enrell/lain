@@ -3,7 +3,8 @@
 //! - Plain values must be equal (numbers compare as f64).
 //! - `"$any"`, `"$string"`, `"$nonempty"`, `"$number"`, `"$int"`,
 //!   `"$bool"`, `"$null"`, `"$array"`, `"$object"` match by type.
-//! - `"$prefix:<p>"` matches a string starting with `<p>`.
+//! - `"$prefix:<p>"` matches a string starting with `<p>`;
+//!   `"$substr:<s>"` one containing `<s>`.
 //! - Objects match key by key and must have the same key set, unless
 //!   the expectation has `"$open": true`. An expected value of
 //!   `"$absent"` requires the key to be missing.
@@ -47,7 +48,10 @@ fn at(path: &str, want: &Value, got: &Value) -> Result<(), String> {
             "$null" => Some(got.is_null()),
             "$array" => Some(got.is_array()),
             "$object" => Some(got.is_object()),
-            _ => s.strip_prefix("$prefix:").map(|p| got.as_str().is_some_and(|g| g.starts_with(p))),
+            _ => s
+                .strip_prefix("$prefix:")
+                .map(|p| got.as_str().is_some_and(|g| g.starts_with(p)))
+                .or_else(|| s.strip_prefix("$substr:").map(|p| got.as_str().is_some_and(|g| g.contains(p)))),
         };
         if let Some(ok) = ok {
             return if ok { Ok(()) } else { fail(format!("want {s}, got {}", short(got))) };
@@ -137,6 +141,8 @@ mod tests {
     fn matchers() {
         assert!(matches(&json!({"a": "$string", "b": "$absent"}), &json!({"a": "x"})).is_ok());
         assert!(matches(&json!({"a": "$string"}), &json!({"a": "x", "c": 1})).is_err());
+        assert!(matches(&json!("$substr:ses=1&t"), &json!("seg.m4s?ses=1&t=x")).is_ok());
+        assert!(matches(&json!("$substr:nope"), &json!("seg.m4s")).is_err());
         assert!(matches(&json!({"a": "$string", "$open": true}), &json!({"a": "x", "c": 1})).is_ok());
         assert!(
             matches(&json!({"$each": {"id": "$prefix:lib-"}, "$len": 2}), &json!([{"id": "lib-1"}, {"id": "lib-2"}]))

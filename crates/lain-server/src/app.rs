@@ -78,6 +78,10 @@ pub fn default_composition() -> Composition {
     bindings.insert(CAP_UI_THEME.into(), one(theme_mod::PROVIDER_ID));
     bindings.insert(CAP_BACKUP_CREATE.into(), one(backup_mod::PROVIDER_ID));
     bindings.insert(CAP_COMIC_PAGES.into(), one(lain_read::PROVIDER_ID));
+    // The watch module's in-process providers (D-190).
+    for (cap, b) in lain_watch::Watch::bindings() {
+        bindings.insert(cap.into(), b);
+    }
     Composition { version: COMPOSITION_VERSION, bindings }
 }
 
@@ -151,6 +155,9 @@ pub struct App {
     watch: bool,
     watch_provider: Arc<SourceWatch>,
     pub avatars: Avatars,
+    /// The watch module: transcoder, thumbnails, local playback and the
+    /// transcode settings (D-190).
+    pub media: lain_watch::Watch,
     provisioner: Mutex<Option<Provisioner>>,
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
     stopping: Arc<AtomicBool>,
@@ -209,6 +216,8 @@ impl App {
         if let Some(seed) = lain_admin::integrations::from_env() {
             lain_admin::integrations::ensure(&store, &seed).map_err(|e| e.to_string())?;
         }
+        let media = lain_watch::Watch::open(dir, store.clone());
+        media.register(&registry);
 
         let mut known: BTreeSet<String> = registry.providers().into_iter().collect();
         known.extend(COMPONENT_SERVED.iter().map(|s| s.to_string()));
@@ -234,6 +243,7 @@ impl App {
             scanner,
             watch: cfg.watch,
             watch_provider,
+            media,
             provisioner: Mutex::new(None),
             watcher: Mutex::new(None),
             stopping: Arc::new(AtomicBool::new(false)),
@@ -248,6 +258,7 @@ impl App {
                 app.publish_scan(ev);
             }
         }));
+        app.hook_watch_events();
         Ok(app)
     }
 
@@ -289,7 +300,7 @@ impl App {
     }
 
     /// The private library an item belongs to, if any (event filters).
-    fn private_library_of(&self, item_id: &str) -> Option<Library> {
+    pub(crate) fn private_library_of(&self, item_id: &str) -> Option<Library> {
         let (out, _) = self.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": item_id})).ok()?;
         let lib_id = out["library_id"].as_str()?.to_string();
         self.libraries.get(&lib_id).filter(|l| l.private)
@@ -532,6 +543,58 @@ impl App {
         if self.watch {
             self.scanner.start_watching();
         }
+        // First boot probes ffmpeg for a hardware backend: never on the
+        // boot path (D-192).
+        // The probe holds only the transcoder, never the App (and its
+        // store), so a server that stops meanwhile closes at once.
+        let weak = Arc::downgrade(self);
+        std::thread::Builder::new()
+            .name("transcode-first-boot".into())
+            .spawn(move || {
+                let Some(transcoder) = weak
+                    .upgrade()
+                    .filter(|a| !a.media.settings.has().unwrap_or(true))
+                    .map(|a| a.media.transcoder.clone())
+                else {
+                    return;
+                };
+                let base = lain_watch::settings::defaults();
+                let hw = transcoder.probe(&base).hardware;
+                let chosen = lain_watch::settings::with_automatic_hardware(&base, &hw);
+                if let Some(app) = weak.upgrade() {
+                    match app.media.settings.ensure(&chosen) {
+                        Ok(false) => {
+                            tracing::info!(hardware = %chosen.hardware_acceleration, "transcode settings initialized")
+                        }
+                        Ok(true) => {}
+                        Err(e) => tracing::warn!(err = %e, "transcode settings not initialized"),
+                    }
+                }
+            })
+            .ok();
+    }
+
+    /// `transcode-changed` to the session's owner and admins, and
+    /// `progress-changed` for positions local playback measured; items
+    /// of a private library reach only sessions that unlocked it.
+    fn hook_watch_events(self: &Arc<Self>) {
+        let weak = Arc::downgrade(self);
+        self.media.transcoder.on_change(move |s| {
+            let Some(app) = weak.upgrade() else { return };
+            let lib = if s.item_id.is_empty() { None } else { app.private_library_of(&s.item_id) };
+            let data = json!({"session": s.session, "state": s.state, "item_id": s.item_id});
+            let owner = s.user_id.clone();
+            app.events.publish_where("transcode-changed", data, &|sub: &SubInfo| {
+                (sub.admin || (!owner.is_empty() && sub.user_id == owner))
+                    && lib.as_ref().is_none_or(|l| privacy::items_visible(l, &app.unlocks, &sub.user_id, &sub.session))
+            });
+        });
+        let weak = Arc::downgrade(self);
+        self.media.local.on_progress(move |user, item, out| {
+            if let Some(app) = weak.upgrade() {
+                app.publish_progress(user, item, json!({"item_id": item, "progress": out}));
+            }
+        });
     }
 
     fn watch_modules(self: &Arc<Self>) {
@@ -608,6 +671,7 @@ impl App {
         self.scanner.stop();
         self.watch_provider.close();
         self.events.close_all();
+        self.media.close();
         self.watcher.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(p) = self.provisioner.lock().unwrap_or_else(|e| e.into_inner()).take() {
             p.close();

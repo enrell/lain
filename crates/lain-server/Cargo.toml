@@ -34,6 +34,9 @@ lain-identify.workspace = true
 lain-ingest.workspace = true
 lain-metadata.workspace = true
 lain-subtitle.workspace = true
+lain-probe.workspace = true
+lain-watch.workspace = true
+getrandom.workspace = true
 
 [dev-dependencies]
 lain-conformance = { path = "../../conformance/runner" }

@@ -118,7 +118,7 @@ impl Req {
     }
 
     /// Bearer header first, else `?token=` (the media-element fallback).
-    fn token(&self) -> Option<&str> {
+    pub(crate) fn token(&self) -> Option<&str> {
         match self.authorization.as_deref().and_then(|h| h.strip_prefix("Bearer ")) {
             Some(t) => Some(t),
             None => Some(self.query("token")),
@@ -200,7 +200,7 @@ pub(crate) enum Gate {
 
 pub(crate) type Handler = fn(&App, &Req, &Verified) -> Reply;
 
-fn authorize(app: &App, req: &Req, gate: Gate) -> Result<Verified, Reply> {
+pub(crate) fn authorize(app: &App, req: &Req, gate: Gate) -> Result<Verified, Reply> {
     if gate == Gate::Public {
         return Ok(Verified { user_id: String::new(), role: String::new(), session: String::new(), expires_at: 0 });
     }
@@ -307,6 +307,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/modules", route(GET, Gate::User, modules_list))
         .route("/api/events", axum::routing::get(events))
         .merge(crate::population::routes())
+        .merge(crate::watch::routes())
         .fallback(fallback)
         .method_not_allowed_fallback(fallback)
         .layer(middleware::from_fn_with_state(app.clone(), privacy_gate))

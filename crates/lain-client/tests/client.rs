@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use lain_client::types::{
     CatalogPage, ComicPages, IntegrationsUpdate, IntegrationsView, Library, LibraryPatch, ModulesView, NewLibrary,
-    Palette, PluginsView, ProfilePatch, Progress, ProgressUpdate, RootsView, User, UserPatch,
+    Palette, PluginsView, ProfilePatch, Progress, ProgressUpdate, RootsView, TranscodeSelection, User, UserPatch,
 };
 use lain_client::{
     CatalogQuery, Client, ClientConfig, ClientDb, ClientError, ConflictRule, DiskSpace, EventStream, FetchObserver,
@@ -265,23 +265,8 @@ async fn not_ported_and_module_disabled() {
         })
         .await
         .unwrap();
-    let np = |e: ClientError| match e {
-        ClientError::NotPorted { route } => route,
-        other => panic!("expected NotPorted, got {other:?}"),
-    };
-    assert_eq!(np(admin.playback_plan(ITEM1, "mpv").await.unwrap_err()), format!("GET /api/items/{ITEM1}/playback"));
-    np(admin.thumbnail(ITEM1).await.unwrap_err());
     let url = admin.stream_url(ITEM1).unwrap();
     assert!(url.starts_with(&format!("{}/api/items/{ITEM1}/stream?token=", server.url)));
-
-    // An offline copy of a route not served yet fails with a stable code.
-    let db = Arc::new(ClientDb::open(&root.join("client/client.redb")).unwrap());
-    let store = OfflineStore::open(OfflineConfig::new(&root.join("offline").to_string_lossy()), db).unwrap();
-    let item = admin.catalog_item(ITEM1).await.unwrap();
-    store.add(&admin.server(), &item).unwrap();
-    np(store.fetch(&admin, ITEM1, None).await.unwrap_err());
-    let e = store.get(&admin.server(), ITEM1).unwrap().unwrap();
-    assert_eq!((e.state, e.code.as_str()), (OfflineState::Failed, "not-ported"));
 
     // The registry views mirror the wire.
     let token = admin.session().unwrap().token;
@@ -912,6 +897,73 @@ async fn core_admin_and_read() {
     let names: Vec<String> = lain_admin::backup::read_tar(&tar).unwrap().into_iter().map(|(n, _)| n).collect();
     assert!(names.contains(&"lain.redb".to_string()) && names.contains(&"manifest.json".to_string()), "{names:?}");
     assert!(matches!(bob.backup().await.unwrap_err(), ClientError::Forbidden { .. }));
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// The watch module's typed routes (D-190) against lain-rs, without
+/// ffmpeg: plans, options, settings, sessions, local play, and an
+/// offline copy through the Range-capable stream.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn watch_routes() {
+    let root = temp("watch");
+    let server = Server::with_fixture(&root).await;
+    let bytes: Vec<u8> = (0..5000u32).map(|i| (i % 253) as u8).collect();
+    let media = root.join("media/Frieren");
+    std::fs::write(media.join("[Fansub-A] Frieren - 01 [1080p].mkv"), &bytes).unwrap();
+    let (admin, bob) = admin_and_bob(&server.url).await;
+    admin
+        .create_library(NewLibrary {
+            name: "Anime".into(),
+            root: "media".into(),
+            path: "Frieren".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let plan = bob.playback_plan(ITEM1, "mpv").await.unwrap();
+    assert_eq!((plan.mode.as_str(), plan.available, plan.asset.as_str()), ("direct", true, "asset:item-frieren-01"));
+    let gone = bob.playback_plan(ITEM2, "web").await.unwrap();
+    assert_eq!((gone.mode.as_str(), gone.reason.as_str()), ("unavailable", "the file is no longer on disk"));
+    assert!(bob.playback_plan_for(ITEM1, "web", Some(vec!["mkv".into(), "mkv/h264".into()])).await.is_ok());
+    let opts = bob.playback_options().await.unwrap();
+    assert_eq!((opts.default_delivery.as_str(), opts.qualities.len()), ("hls", 5));
+
+    // Settings round trip (admin only).
+    let mut view = admin.transcode_settings().await.unwrap();
+    assert_eq!(view.settings.crf, 23);
+    view.settings.crf = 21;
+    assert_eq!(admin.update_transcode_settings(view.settings.clone()).await.unwrap().settings.crf, 21);
+    view.settings.hls_segment_seconds = 99;
+    let e = admin.update_transcode_settings(view.settings).await.unwrap_err();
+    assert!(matches!(e, ClientError::Api { status: 400, ref code, .. } if code == "invalid-message"), "{e:?}");
+    assert!(matches!(bob.transcode_settings().await.unwrap_err(), ClientError::Forbidden { .. }));
+
+    // Sessions: a file ffprobe cannot read is an honest 503; unknown
+    // sessions are 404.
+    let e = bob.start_transcode(ITEM1, TranscodeSelection::default()).await.unwrap_err();
+    assert!(matches!(e, ClientError::Api { status: 503, ref code, .. } if code == "dependency-unavailable"), "{e:?}");
+    let e = bob.transcode_status(ITEM1, &"f".repeat(64)).await.unwrap_err();
+    assert!(matches!(e, ClientError::NotFound { ref message } if message == "unknown transcode session"), "{e:?}");
+    assert_eq!(bob.cancel_transcode(ITEM1, &"f".repeat(64)).await.unwrap().state, "idle");
+    assert!(admin.admin_transcodes().await.unwrap().sessions.is_empty());
+    assert!(matches!(bob.admin_transcodes().await.unwrap_err(), ClientError::Forbidden { .. }));
+    let hls = bob.hls_url(ITEM1, "s1").unwrap();
+    assert!(hls.starts_with(&format!("{}/api/items/{ITEM1}/transcode/hls/index.m3u8?session=s1&token=", server.url)));
+    assert!(bob.subtitles_url(ITEM1, 2).unwrap().contains("/subtitles?stream=2&token="));
+    assert!(bob.transcode_url(ITEM1, "s1").unwrap().contains("/transcode?session=s1&token="));
+    // Local play answers (players depend on the host; never launched here).
+    bob.local_players().await.unwrap();
+
+    // An offline copy now comes from the real stream route.
+    let db = Arc::new(ClientDb::open(&root.join("client/client.redb")).unwrap());
+    let store = OfflineStore::open(OfflineConfig::new(&root.join("offline").to_string_lossy()), db).unwrap();
+    let item = bob.catalog_item(ITEM1).await.unwrap();
+    store.add(&bob.server(), &item).unwrap();
+    let e = store.fetch(&bob, ITEM1, None).await.unwrap();
+    assert_eq!((e.state, e.size), (OfflineState::Done, 5000));
+    assert!(e.validator.ends_with(" GMT"), "Last-Modified is the resume validator: {}", e.validator);
+    assert_eq!(std::fs::read(store.local_path(&bob.server(), ITEM1).unwrap().unwrap()).unwrap(), bytes);
     drop(server);
     std::fs::remove_dir_all(root).ok();
 }
