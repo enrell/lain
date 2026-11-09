@@ -814,6 +814,11 @@ impl Manager {
     pub(crate) fn on_metadata(&self, ih: &str, size: i64) {
         let _l = lock(&self.grab_mu);
         let Some(mut g) = self.by_info_hash(ih) else { return };
+        // The engine may report completion first; that path sized and
+        // checked the grab already.
+        if !matches!(g.state.as_str(), GRAB_METADATA | GRAB_DOWNLOADING | GRAB_QUEUED | GRAB_PAUSED) {
+            return;
+        }
         g.size = size;
         if let Err(e) = self.reserve(&g.id, size) {
             self.fail(g, e);
@@ -828,8 +833,20 @@ impl Manager {
     fn on_complete(&self, ih: &str) {
         let _l = lock(&self.grab_mu);
         let Some(mut g) = self.by_info_hash(ih) else { return };
-        if g.state == GRAB_SEEDING || g.state == GRAB_DONE {
+        if g.state == GRAB_SEEDING || g.state == GRAB_DONE || g.state == GRAB_FAILED {
             return;
+        }
+        // A magnet whose completion arrives before its metadata event:
+        // size it and check the budget here.
+        if g.size == 0
+            && let Some(size) = lock(&self.inner).client.clone().and_then(|c| c.status(ih)).map(|s| s.size)
+            && size > 0
+        {
+            g.size = size;
+            if let Err(e) = self.reserve(&g.id, size) {
+                self.fail(g, e);
+                return;
+            }
         }
         g.state = GRAB_IMPORTING.into();
         g.finished_at = now();
@@ -873,6 +890,9 @@ impl Manager {
     /// Places the files, rescans, then applies the seeding policy.
     fn run_import(&self, id: &str) {
         let Ok(mut g) = self.st.grab(id) else { return };
+        if g.state != GRAB_IMPORTING {
+            return;
+        }
         let Some(lib) = (self.d.library)(&g.library_id) else {
             self.import_failed(g, errf!(CODE_NO_LIBRARY, "the target library no longer exists"));
             return;
@@ -1361,7 +1381,8 @@ mod unit_tests {
 
     #[test]
     fn settings_validate() {
-        validate_settings(default_settings(Path::new("/data"))).unwrap();
+        let data = std::env::temp_dir().join("data");
+        validate_settings(default_settings(&data)).unwrap();
         let bads: Vec<fn(&mut AcquireSettings)> = vec![
             |s| s.dir = "relative".into(),
             |s| s.listen_port = 70000,
@@ -1373,11 +1394,11 @@ mod unit_tests {
             |s| s.subtitle_hours = 721,
         ];
         for bad in bads {
-            let mut s = default_settings(Path::new("/data"));
+            let mut s = default_settings(&data);
             bad(&mut s);
             assert_eq!(validate_settings(s.clone()).unwrap_err().code, CODE_INVALID, "accepted {s:?}");
         }
-        let mut s = default_settings(Path::new("/data"));
+        let mut s = default_settings(&data);
         s.rss_minutes = 0;
         s.import_mode = String::new();
         let s = validate_settings(s).unwrap();
