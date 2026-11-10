@@ -46,6 +46,7 @@ android {
 
     sourceSets.getByName("main") {
         java.srcDir("generated/uniffi")
+        kotlin.srcDir("generated/uniffi")
         jniLibs.srcDir("build/rustJniLibs")
     }
 
@@ -84,3 +85,11 @@ dependencies {
     testImplementation(libs.jna)
 }
 
+// AGP 9's built-in Kotlin compiles the variant's kotlin sources; register
+// the generated bindings there too, so they are compiled with the app.
+androidComponents {
+    onVariants { variant ->
+        val dir = layout.projectDirectory.dir("generated/uniffi").asFile.absolutePath
+        variant.sources.kotlin?.addStaticSourceDirectory(dir)
+    }
+}
