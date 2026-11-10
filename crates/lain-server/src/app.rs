@@ -39,27 +39,28 @@ pub const COMPOSITION_VERSION: u32 = 9;
 /// keeps the provider list of the ones it has (an operator's override).
 /// A provider the defaults gained for an existing capability is placed
 /// here, once, when the document is older than the version that
-/// introduced it: version 9 added the download-sidecar providers
-/// (D-265, D-270). An operator who removes one afterwards keeps it
-/// removed, since the document is then saved at the new version.
+/// introduced it: version 9 bound the library import component
+/// (D-265). An operator who removes it afterwards keeps it removed,
+/// since the document is then saved at the new version.
 fn adopt_new_providers(saved: &mut Composition, from: u32) {
+    use lain_bridge::library::ID;
     use lain_identify::CAP_MEDIA_IDENTIFY;
-    use lain_metadata::{CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, NFO_ID, SIDECAR_ID, SIDECAR_IDENTIFY_ID};
+    use lain_metadata::{CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, NFO_ID};
     if from >= 9 {
         return;
     }
-    let mut place = |cap: &str, id: &str, after: Option<&str>| {
+    let mut place = |cap: &str, after: Option<&str>| {
         let Some(b) = saved.bindings.get_mut(cap) else { return };
-        if b.providers.iter().any(|p| p == id) {
+        if b.providers.iter().any(|p| p == ID) {
             return;
         }
         let at = after.and_then(|a| b.providers.iter().position(|p| p == a)).map(|i| i + 1).unwrap_or(0);
-        b.providers.insert(at, id.to_string());
-        tracing::info!(capability = cap, provider = id, "new default provider adopted");
+        b.providers.insert(at, ID.to_string());
+        tracing::info!(capability = cap, provider = ID, "new default provider adopted");
     };
-    place(CAP_MEDIA_IDENTIFY, SIDECAR_IDENTIFY_ID, None);
-    place(CAP_METADATA_SEARCH, SIDECAR_ID, Some(NFO_ID));
-    place(CAP_METADATA_RESOLVE, SIDECAR_ID, Some(NFO_ID));
+    place(CAP_MEDIA_IDENTIFY, None);
+    place(CAP_METADATA_SEARCH, Some(NFO_ID));
+    place(CAP_METADATA_RESOLVE, Some(NFO_ID));
 }
 
 /// Providers that only ever run as components, so a binding may name
@@ -68,7 +69,7 @@ fn adopt_new_providers(saved: &mut Composition, from: u32) {
 /// the bridges of `lain-bridge` (`lain component install`, P4). Every
 /// built-in provider runs in-process (D-236).
 pub const COMPONENT_SERVED: &[&str] =
-    &[lain_bridge::parser::MODEL_ID, lain_bridge::animesubs::ID, lain_bridge::anything::ID];
+    &[lain_bridge::parser::MODEL_ID, lain_bridge::animesubs::ID, lain_bridge::anything::ID, lain_bridge::library::ID];
 
 /// The default composition: everything the Rust server serves
 /// in-process (catalog, userstate, catalog population, identification,
@@ -87,7 +88,7 @@ pub fn default_composition() -> Composition {
     bindings.insert(lain_ingest::CAP_SOURCE_WATCH.into(), one(lain_ingest::WATCH_ID));
     bindings.insert(
         CAP_MEDIA_IDENTIFY.into(),
-        Binding::new(BindingMode::OrderedMany, &[lain_metadata::SIDECAR_IDENTIFY_ID, COMIC_ID, ANIME_ID, GENERIC_ID]),
+        Binding::new(BindingMode::OrderedMany, &[lain_bridge::library::ID, COMIC_ID, ANIME_ID, GENERIC_ID]),
     );
     // The lain-parser model (D-225) answers first when its component is
     // installed and healthy; the tokenizer answers whenever it declines.
@@ -298,8 +299,6 @@ impl App {
         });
         registry.register(Arc::new(lain_ingest::Runner::new(&registry, Some(progress))));
         registry.register(Arc::new(lain_metadata::Nfo));
-        registry.register(Arc::new(lain_metadata::Sidecar));
-        registry.register(Arc::new(lain_metadata::SidecarIdentifier));
         let http = lain_http::Client::new(lain_http::Config {
             user_agent: format!("lain/{}", cfg.version),
             offline: cfg.offline,
@@ -847,4 +846,17 @@ fn manifest_ids(dir: &Path) -> Vec<String> {
         .map(|m| m.id)
         .filter(|id| !id.is_empty())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `lain-metadata` treats the library import as a local provider by
+    /// its id, and cannot name the bridge crate's constant.
+    #[test]
+    fn the_library_import_has_one_id() {
+        assert_eq!(lain_metadata::LIBRARY_ID, lain_bridge::library::ID);
+        assert!(COMPONENT_SERVED.contains(&lain_bridge::library::ID));
+    }
 }

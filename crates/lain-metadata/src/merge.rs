@@ -24,7 +24,7 @@ fn plausible_match(want: &str, have: &str) -> bool {
 }
 
 /// An exact title, or a title or synonym that prefixes the other
-/// (season and edition variants). Local hits (NFO, download sidecar) are
+/// (season and edition variants). Local hits (NFO, the library import) are
 /// curated: they always pass.
 fn plausible(want: &str, c: &MetadataCandidate) -> bool {
     if want.is_empty() || LOCAL_PROVIDERS.contains(&c.provider.as_str()) {

@@ -9,6 +9,7 @@
 //! | [`parser::MODEL_ID`] | `lain.release.parse@1` | lain-parser (filename-parser) |
 //! | [`animesubs::ID`] | `lain.subtitle.translate@1` | AnimeSubs' local server |
 //! | [`anything::ID`] | `lain.acquire.extract@1` | the Anything daemon |
+//! | [`library::ID`] | `lain.media.identify@1`, `lain.metadata.search@1`, `lain.metadata.resolve@1` | the files Anything leaves next to its downloads |
 //!
 //! Every bridge declines instead of failing the binding: an app that is
 //! not installed, not running or not ready fails `health` with
@@ -21,6 +22,7 @@ pub mod discovery;
 #[doc(hidden)]
 pub mod fake;
 pub mod http1;
+pub mod library;
 pub mod parser;
 
 use std::collections::BTreeMap;
@@ -39,6 +41,11 @@ pub fn catalog() -> Vec<(&'static str, Vec<&'static str>, &'static str)> {
         (parser::MODEL_ID, vec![lain_identify::CAP_RELEASE_PARSE], "the lain-parser model (filename-parser)"),
         (animesubs::ID, vec![animesubs::CAP_SUBTITLE_TRANSLATE], "subtitle translation by AnimeSubs' local server"),
         (anything::ID, vec![anything::CAP_ACQUIRE_EXTRACT], "web media extraction by the Anything daemon"),
+        (
+            library::ID,
+            vec![lain_identify::CAP_MEDIA_IDENTIFY, library::CAP_METADATA_SEARCH, library::CAP_METADATA_RESOLVE],
+            "identity and metadata from the files Anything leaves next to its downloads",
+        ),
     ]
 }
 
@@ -69,6 +76,7 @@ pub fn build(id: &str, opts: &Options) -> Result<Arc<dyn Provider>, String> {
             let loc = anything::Anything::locator(opts.get("home").map(PathBuf::from), opts.get("url").cloned());
             Ok(Arc::new(anything::Anything::new(loc)))
         }
+        library::ID => Ok(Arc::new(library::AnythingLibrary)),
         other => Err(format!("unknown bridge {other}")),
     }
 }
@@ -81,6 +89,7 @@ pub fn known_options(id: &str) -> &'static [&'static str] {
         parser::MODEL_ID => &["parser", "data-dir"],
         animesubs::ID => &["home", "url", "model-kind", "model", "base-url", "data-dir"],
         anything::ID => &["home", "url", "data-dir"],
+        library::ID => &["data-dir"],
         _ => &[],
     }
 }

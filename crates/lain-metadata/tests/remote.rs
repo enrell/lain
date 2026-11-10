@@ -17,8 +17,7 @@ use lain_http::{Client, Config};
 use lain_metadata::remote::{AniList, Jikan, Kitsu, TvMaze};
 use lain_metadata::{
     ANILIST_ID, CAP_METADATA_ENRICH, CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, DEFAULT_PROVIDERS, ENRICH_ID,
-    Endpoints, Enricher, JIKAN_ID, KITSU_ID, MetadataCandidate, MetadataRecord, Nfo, Remote, SIDECAR_ID, Sidecar,
-    TVMAZE_ID,
+    Endpoints, Enricher, JIKAN_ID, KITSU_ID, MetadataCandidate, MetadataRecord, NFO_ID, Nfo, Remote, TVMAZE_ID,
 };
 
 fn upstream() -> Upstream {
@@ -191,7 +190,6 @@ fn registry(u: &Upstream, store: Arc<lain_store::Store>) -> Arc<Registry> {
     bindings.insert(CAP_METADATA_ENRICH.into(), Binding::new(BindingMode::ExactlyOne, &[ENRICH_ID]));
     let reg = Arc::new(Registry::new(Composition { version: 8, bindings }));
     reg.register(Arc::new(Nfo));
-    reg.register(Arc::new(Sidecar));
     for p in providers(u).into_values() {
         reg.register(p);
     }
@@ -237,7 +235,8 @@ fn enrich_merges_every_provider() {
 }
 
 /// A private library's titles stay on the machine: its items are
-/// enriched from the files next to them, and no network provider is
+/// enriched from the files next to them (the library import component
+/// is not installed here and is skipped), and no network provider is
 /// asked, not even for a title one of them knows exactly, nor when a
 /// caller names one.
 #[test]
@@ -250,10 +249,10 @@ fn a_private_library_is_enriched_from_local_files_only() {
     let reg = registry(&u, store);
 
     let media = dir.join("media").join("Show Name");
-    std::fs::create_dir_all(media.join(".metadata")).unwrap();
+    std::fs::create_dir_all(&media).unwrap();
     std::fs::write(
-        media.join(".metadata").join("meta.toml"),
-        "title = \"Show Name (my cut)\"\ntags = [\"Drama\"]\ndescription = \"From the folder.\"\nupload_date = \"2019-05-01\"\n",
+        media.join("tvshow.nfo"),
+        "<tvshow><title>Show Name (my cut)</title><year>2019</year><genre>Drama</genre><plot>From the folder.</plot></tvshow>",
     )
     .unwrap();
     let item = CatalogItem {
@@ -265,7 +264,7 @@ fn a_private_library_is_enriched_from_local_files_only() {
         ..Default::default()
     };
     let out = reg.invoke_provider(CAP_METADATA_ENRICH, ENRICH_ID, "enrich", json!({"item": item})).unwrap();
-    assert_eq!(out["provider"], SIDECAR_ID);
+    assert_eq!(out["provider"], NFO_ID);
     assert_eq!((out["title"].as_str(), out["year"].as_i64()), (Some("Show Name (my cut)"), Some(2019)));
     assert_eq!(out["genres"], json!(["Drama"]));
     assert_eq!(out["synopsis"], "From the folder.");

@@ -96,7 +96,7 @@ impl Enricher {
     /// merge; only total failure is an error.
     /// A private library (D-156) says nothing about its titles to the
     /// outside: its items are enriched from the files next to them
-    /// (`.nfo`, download sidecar) and never by a network provider.
+    /// (`.nfo`, the library import component) and never by a network provider.
     fn local_only(&self, library_id: &str) -> bool {
         if library_id.is_empty() {
             return false;
