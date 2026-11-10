@@ -14,13 +14,22 @@
 
 	let {
 		open = $bindable(false),
-		library,
+		library = null,
+		libraries = [],
 		onunlocked
 	}: {
 		open?: boolean;
-		library: Library | null;
+		/** One library, named in the title (the settings page). */
+		library?: Library | null;
+		/**
+		 * Or every locked one at once, without naming any: the dialog can be
+		 * opened with someone else looking at the screen.
+		 */
+		libraries?: Library[];
 		onunlocked?: (lib: Library) => void;
 	} = $props();
+
+	const discreet = $derived(!library && libraries.length > 0);
 
 	let usePassword = $state(false);
 	let secret = $state('');
@@ -32,19 +41,32 @@
 		if (open) {
 			secret = '';
 			error = null;
-			void tick().then(() => document.getElementById(fieldId)?.focus());
+			// The modal moves focus to its first control once it has opened;
+			// the field takes it back after that, so typing goes to the secret.
+			const focus = (): void => document.getElementById(fieldId)?.focus();
+			void tick().then(focus);
+			const later = setTimeout(focus, 80);
+			return () => clearTimeout(later);
 		}
 	});
 
 	async function submit(): Promise<void> {
-		if (!library || !secret) return;
+		const targets = library ? [library] : libraries;
+		if (targets.length === 0 || !secret) return;
 		busy = true;
 		error = null;
 		try {
-			const lib = await api.libraries.unlock(library.id, usePassword ? { password: secret } : { pin: secret });
-			toasts.success(t('privateLibrary.unlockedToast', { name: lib.name }));
+			const credentials = usePassword ? { password: secret } : { pin: secret };
+			// One secret opens them all; a wrong one stops at the first, so it
+			// costs one failed attempt, not one per library.
+			let last: Library | null = null;
+			for (const target of targets) last = await api.libraries.unlock(target.id, credentials);
+			if (!last) return;
+			toasts.success(
+				discreet ? t('privateLibrary.unlockedAllToast') : t('privateLibrary.unlockedToast', { name: last.name })
+			);
 			open = false;
-			onunlocked?.(lib);
+			onunlocked?.(last);
 		} catch (err) {
 			error = errorMessage(err, t('privateLibrary.unlockFailed'));
 		} finally {
@@ -64,7 +86,7 @@
 
 <Modal
 	bind:open
-	title={t('privateLibrary.unlockTitle', { name: library?.name ?? '' })}
+	title={discreet ? t('privateLibrary.unlock') : t('privateLibrary.unlockTitle', { name: library?.name ?? '' })}
 	description={t('privateLibrary.unlockDescription')}
 >
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
