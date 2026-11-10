@@ -37,9 +37,12 @@ fun groupTitles(items: List<Item>): List<Title> {
     return groups.map { (key, list) ->
         val sorted = list.sortedWith(compareBy<Item>({ it.season }, { it.episode }, { it.fileName }))
         val first = sorted.first()
+        // Spellings differ only in case within a group; show the one the
+        // most recently updated item carries (the latest metadata).
+        val newest = sorted.maxBy { it.updatedAt }
         Title(
             key = key,
-            title = first.title,
+            title = newest.title,
             kind = first.kind,
             libraryId = first.libraryId,
             items = sorted,
