@@ -46,7 +46,6 @@ android {
 
     sourceSets.getByName("main") {
         java.srcDir("generated/uniffi")
-        kotlin.srcDir("generated/uniffi")
         jniLibs.srcDir("build/rustJniLibs")
     }
 
@@ -85,10 +84,3 @@ dependencies {
     testImplementation(libs.jna)
 }
 
-androidComponents {
-    onVariants { variant ->
-        val dir = layout.projectDirectory.dir("generated/uniffi").asFile.absolutePath
-        variant.sources.kotlin?.addStaticSourceDirectory(dir)
-        logger.lifecycle("lain: ${variant.name} kotlin sources += $dir (exists: ${File(dir).isDirectory})")
-    }
-}
