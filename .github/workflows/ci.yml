@@ -120,7 +120,10 @@ jobs:
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-xcb-dev libxcb1-dev \
             libfontconfig1-dev libfreetype-dev libvulkan-dev
       - name: Toolchain
-        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt && rustc --version
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup target add wasm32-wasip2
+          rustc --version
       - uses: actions/cache@v4
         with:
           path: |
@@ -128,19 +131,46 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             apps/desktop/target
-          key: desktop-${{ runner.os }}-${{ hashFiles('apps/desktop/Cargo.lock') }}-${{ hashFiles('apps/desktop/src/**', 'crates/lain-client/src/**', 'crates/lain-api/src/**') }}
+          key: desktop-${{ runner.os }}-${{ hashFiles('apps/desktop/Cargo.lock') }}-${{ hashFiles('apps/desktop/src/**', 'crates/lain-client/src/**', 'crates/lain-api/src/**', 'crates/lain-http/src/**', 'crates/lain-ext-api/**', 'examples/extensions/**') }}
           restore-keys: |
             desktop-${{ runner.os }}-${{ hashFiles('apps/desktop/Cargo.lock') }}-
             desktop-${{ runner.os }}-
       - name: Format
         if: runner.os == 'Linux'
-        run: cargo fmt -- --check
+        run: |
+          cargo fmt -- --check
+          cargo fmt --manifest-path ../../crates/lain-ext-api/Cargo.toml --all -- --check
+          cargo fmt --manifest-path ../../examples/extensions/seasonal-stats/Cargo.toml -- --check
+      # Extensions (P6, D-262): the guest SDK, the host tests' probe guest
+      # and the sample, built to wasm32-wasip2 components.
+      - name: Extension guests
+        run: |
+          cargo clippy --locked --release --target wasm32-wasip2 --manifest-path ../../crates/lain-ext-api/Cargo.toml --workspace -- -D warnings
+          cargo clippy --locked --release --target wasm32-wasip2 --manifest-path ../../examples/extensions/seasonal-stats/Cargo.toml -- -D warnings
+          cargo build --locked --release --target wasm32-wasip2 --manifest-path ../../crates/lain-ext-api/Cargo.toml --workspace
+          cargo build --locked --release --target wasm32-wasip2 --manifest-path ../../examples/extensions/seasonal-stats/Cargo.toml
+          ls -l "$CARGO_TARGET_DIR/wasm32-wasip2/release/"*.wasm
       - name: Clippy
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Build
         run: cargo build --locked
       - name: Test
+        # The extension host tests load the guests built above and fail
+        # (not skip) without them.
+        env:
+          LAIN_EXT_GUESTS: ${{ env.CARGO_TARGET_DIR }}/wasm32-wasip2/release
+          LAIN_REQUIRE_EXT_GUESTS: "1"
         run: cargo test --locked
+      - name: Sample extension
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p seasonal-stats
+          cp ../../examples/extensions/seasonal-stats/extension.json "$CARGO_TARGET_DIR/wasm32-wasip2/release/seasonal_stats.wasm" seasonal-stats/
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'Linux'
+        with:
+          name: seasonal-stats-wasm
+          path: apps/desktop/seasonal-stats/
 
   conformance:
     name: conformance (lain server)

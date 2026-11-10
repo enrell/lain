@@ -1,0 +1,172 @@
+// lain client extensions, tier 3 of the modding model (DESIGN-v2 §8.3,
+// docs/MODDING.md). An extension is a WebAssembly component that targets
+// the `extension` world. It sees only what this file declares, and the
+// host answers each call only when the user granted the scope it needs:
+// a call outside the grants returns `host-error::denied(<scope>)` and
+// never reaches the server.
+//
+// Compatibility: a change that only adds functions or cases bumps the
+// minor version (0.1 -> 0.2) and the host keeps linking older guests; a
+// change to an existing signature bumps the major version.
+package lain:extension@0.1.0;
+
+/// Values shared by the host and extensions.
+interface types {
+    /// A catalog item, as the user's account sees it.
+    record item {
+        id: string,
+        library-id: string,
+        /// `anime`, `tv`, `movie`, `manga`, `comic`, ...
+        kind: string,
+        title: string,
+        season: s64,
+        episode: s64,
+        year: s64,
+        size: s64,
+        /// Unix seconds of the last catalog change (the scan time of a new file).
+        updated-at: s64,
+    }
+
+    record library {
+        id: string,
+        name: string,
+        kind: string,
+    }
+
+    /// The user's progress on one item.
+    record progress {
+        item-id: string,
+        position-sec: f64,
+        duration-sec: f64,
+        completed: bool,
+        /// Unix seconds.
+        updated-at: s64,
+    }
+
+    /// Something happened. Delivered only with `events:subscribe`.
+    variant event {
+        /// The user's progress on this item changed (any device).
+        progress-changed(string),
+        /// Libraries or the catalog changed (a scan, an import, a deletion).
+        library-changed,
+        /// The user opened this item's page.
+        item-opened(string),
+        /// Playback of this item started.
+        playback-started(string),
+        /// Playback of this item stopped (closed or finished).
+        playback-stopped(string),
+    }
+
+    variant host-error {
+        /// The call needs this scope and the user did not grant it.
+        denied(string),
+        not-found,
+        /// The server (or the remote host) is unreachable.
+        offline,
+        /// The answer exceeded a host limit.
+        too-large,
+        /// Anything else, with a short human reason.
+        failed(string),
+    }
+
+    /// A card in a Home rail. With `item-id` it shows that item's art and
+    /// opens its page.
+    record card {
+        title: string,
+        subtitle: string,
+        item-id: option<string>,
+    }
+
+    /// A rail on Home (`ui:rail`). `id` is stable: layouts place rails by
+    /// `ext:<extension id>/<rail id>`.
+    record rail {
+        id: string,
+        title: string,
+        cards: list<card>,
+    }
+
+    record row {
+        label: string,
+        value: string,
+    }
+
+    /// A panel on an item's page (`ui:panel`).
+    record panel {
+        id: string,
+        title: string,
+        rows: list<row>,
+        /// Free text under the rows (may be empty).
+        text: string,
+    }
+
+    record http-response {
+        status: u16,
+        /// Header names in lower case.
+        headers: list<tuple<string, string>>,
+        body: list<u8>,
+    }
+}
+
+/// What the host offers. Each function names the scope it needs.
+interface host {
+    use types.{item, library, progress, host-error, http-response};
+
+    enum log-level {
+        debug,
+        info,
+        warn,
+        error,
+    }
+
+    /// Writes to the app's log, prefixed with the extension id. No scope.
+    log: func(level: log-level, message: string);
+
+    /// The scopes the user granted, e.g. `catalog:read`, `net:example.org`.
+    /// No scope.
+    granted-scopes: func() -> list<string>;
+
+    /// Asks the host to call `rails` again after the current call. No scope.
+    invalidate: func();
+
+    /// The libraries the user can see. `catalog:read`.
+    list-libraries: func() -> result<list<library>, host-error>;
+
+    /// A page of the catalog (`limit` at most 500). `catalog:read`.
+    list-catalog: func(offset: u32, limit: u32) -> result<list<item>, host-error>;
+
+    /// One item. `catalog:read`.
+    get-item: func(id: string) -> result<item, host-error>;
+
+    /// The user's progress on one item (`none` if never played).
+    /// `progress:read`.
+    get-progress: func(item-id: string) -> result<option<progress>, host-error>;
+
+    /// The user's Continue list, unfinished items first. `progress:read`.
+    continue-watching: func() -> result<list<progress>, host-error>;
+
+    /// An HTTP(S) GET to a host the user granted as `net:<host>`.
+    /// Redirects are not followed (a 3xx comes back as is), the body is
+    /// capped at 1 MiB and no lain token is ever sent.
+    http-get: func(url: string) -> result<http-response, host-error>;
+}
+
+/// A lain client extension.
+world extension {
+    import host;
+    use types.{event, rail, panel};
+
+    /// Called once after the component loads, with the `config` object of
+    /// `extension.json` as JSON (`{}` when absent). An error disables the
+    /// extension with that message.
+    export activate: func(config: string) -> result<_, string>;
+
+    /// The rails this extension adds to Home. Called after `activate`,
+    /// after `invalidate`, and on refresh; only with `ui:rail`.
+    export rails: func() -> list<rail>;
+
+    /// The panels for an item's page. Only with `ui:panel`.
+    export panels: func(item-id: string) -> list<panel>;
+
+    /// An event. Only with `events:subscribe`.
+    export on-event: func(event: event);
+}

@@ -1,0 +1,23 @@
+[package]
+name = "seasonal-stats"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+description = "A sample lain extension: a Home rail of what is new this anime season and a stats panel on title pages"
+
+# An extension is its own project, as a third-party one would be.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+lain-ext-api = { path = "../../../crates/lain-ext-api" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

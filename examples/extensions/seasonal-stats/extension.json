@@ -1,0 +1,12 @@
+{
+  "format": "lain.extension@1",
+  "id": "seasonal-stats",
+  "name": "Seasonal stats",
+  "version": "0.1.0",
+  "author": "lain",
+  "description": "A Home rail of the titles that got new episodes this anime season, and a panel with your season stats on each title page.",
+  "api": "0.1.0",
+  "wasm": "seasonal_stats.wasm",
+  "scopes": ["catalog:read", "progress:read", "events:subscribe", "ui:rail", "ui:panel"],
+  "config": { "days": 0 }
+}

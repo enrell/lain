@@ -4,6 +4,10 @@
 //! from the rail's animated offset, so a 5,000-card rail costs the same
 //! as a 10-card one. GPUI has no element transforms, so the hover
 //! "scale" grows the card's layout box around its centre.
+//!
+//! Which rails appear, in what order, and the hero's style come from the
+//! theme's layout slots (`layout.rs`, tier 2); extension rails (`ui:rail`,
+//! tier 3) fill the `extensions` and `ext:<id>` slots.
 
 use std::time::Instant;
 
@@ -23,11 +27,22 @@ pub enum RailKind {
     Posters,
 }
 
-/// What a card shows: a title (series index) or one item (catalog index).
+/// What a card shows: a title (series index), one item (catalog index),
+/// or an extension's card (index into `HomeState::ext_cards`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Card {
     Series(usize),
     Item(usize),
+    Ext(usize),
+}
+
+/// A card from an extension rail; `item` is its catalog index when the
+/// extension linked one this account can see.
+#[derive(Debug, Clone)]
+pub struct ExtCard {
+    pub title: String,
+    pub subtitle: String,
+    pub item: Option<usize>,
 }
 
 pub struct RailState {
@@ -63,6 +78,7 @@ pub struct HomeState {
     focus_at: Instant,
     drag: Option<Drag>,
     pub featured: Option<Card>,
+    pub ext_cards: Vec<ExtCard>,
     /// Data changed: rebuild the rails on the next frame.
     pub dirty: bool,
 }
@@ -78,6 +94,7 @@ impl Default for HomeState {
             focus_at: Instant::now(),
             drag: None,
             featured: None,
+            ext_cards: Vec::new(),
             dirty: true,
         }
     }
@@ -120,13 +137,17 @@ pub struct Geo {
 }
 
 impl LainApp {
-    /// Rebuilds the rails from the catalog, Continue and the libraries,
-    /// keeping offsets and focus where the rails still exist.
+    /// Rebuilds the rails from the catalog, Continue, the libraries and the
+    /// extensions, in the layout's slot order, keeping offsets and focus
+    /// where the rails still exist.
     pub fn build_home(&mut self) {
+        use crate::layout::{Hero, RailSlot};
         let old: Vec<(String, Anim, f32)> =
             self.home.rails.iter().map(|r| (r.title.clone(), r.off, r.target)).collect();
         let mut rails: Vec<RailState> = Vec::new();
-        let mut push = |title: String, kind: RailKind, cards: Vec<Card>| {
+        let mut ext_cards: Vec<ExtCard> = Vec::new();
+        let mut placed: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let push = |rails: &mut Vec<RailState>, title: String, kind: RailKind, cards: Vec<Card>| {
             if cards.is_empty() {
                 return;
             }
@@ -135,32 +156,98 @@ impl LainApp {
         };
         let cont: Vec<Card> =
             self.continues.iter().filter_map(|p| self.by_id.get(&p.item_id).map(|&i| Card::Item(i))).collect();
-        push("Continue".into(), RailKind::Continue, cont.clone());
-        let mut recent: Vec<usize> = (0..self.series.len()).collect();
-        recent.sort_by(|&a, &b| self.series[b].latest.cmp(&self.series[a].latest));
-        push("Recently added".into(), RailKind::Posters, recent.into_iter().take(30).map(Card::Series).collect());
-        if let Some(libs) = self.libraries.ready() {
-            for l in libs.iter().filter(|l| l.locked != Some(true)) {
-                let cards: Vec<Card> = self
-                    .series
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, s)| s.library_id == l.id)
-                    .map(|(i, _)| Card::Series(i))
-                    .collect();
-                push(l.name.clone(), RailKind::Posters, cards);
+        let libs: Vec<lain_client::types::Library> = self
+            .libraries
+            .ready()
+            .map(|l| l.iter().filter(|l| l.locked != Some(true)).cloned().collect())
+            .unwrap_or_default();
+        let lib_rail = |l: &lain_client::types::Library| -> Vec<Card> {
+            self.series.iter().enumerate().filter(|(_, s)| s.library_id == l.id).map(|(i, _)| Card::Series(i)).collect()
+        };
+        let mut ext_rail = |rails: &mut Vec<RailState>, r: &crate::ext::Rail| {
+            let cards = r
+                .cards
+                .iter()
+                .map(|c| {
+                    ext_cards.push(ExtCard {
+                        title: c.title.clone(),
+                        subtitle: c.subtitle.clone(),
+                        item: c.item_id.as_ref().and_then(|id| self.by_id.get(id).copied()),
+                    });
+                    Card::Ext(ext_cards.len() - 1)
+                })
+                .collect();
+            push(rails, r.title.clone(), RailKind::Posters, cards);
+        };
+        for slot in self.layout.rails.clone() {
+            match slot {
+                RailSlot::Continue => {
+                    if placed.insert("continue".into()) {
+                        push(&mut rails, "Continue".into(), RailKind::Continue, cont.clone());
+                    }
+                }
+                RailSlot::Recent => {
+                    if placed.insert("recent".into()) {
+                        let mut recent: Vec<usize> = (0..self.series.len()).collect();
+                        recent.sort_by(|&a, &b| self.series[b].latest.cmp(&self.series[a].latest));
+                        let cards = recent.into_iter().take(self.layout.recent_limit).map(Card::Series).collect();
+                        push(&mut rails, "Recently added".into(), RailKind::Posters, cards);
+                    }
+                }
+                RailSlot::Libraries => {
+                    for l in &libs {
+                        if placed.insert(format!("lib:{}", l.id)) {
+                            push(&mut rails, l.name.clone(), RailKind::Posters, lib_rail(l));
+                        }
+                    }
+                }
+                RailSlot::Library(name) => {
+                    if let Some(l) = libs.iter().find(|l| l.name.eq_ignore_ascii_case(&name) || l.id == name)
+                        && placed.insert(format!("lib:{}", l.id))
+                    {
+                        push(&mut rails, l.name.clone(), RailKind::Posters, lib_rail(l));
+                    }
+                }
+                RailSlot::Extensions => {
+                    for (ext, list) in &self.ext.rails {
+                        for r in list {
+                            if placed.insert(format!("ext:{ext}/{}", r.id)) {
+                                ext_rail(&mut rails, r);
+                            }
+                        }
+                    }
+                }
+                RailSlot::Ext(ext, which) => {
+                    for r in self.ext.rails.get(&ext).into_iter().flatten() {
+                        if which.as_ref().is_none_or(|w| *w == r.id) && placed.insert(format!("ext:{ext}/{}", r.id)) {
+                            ext_rail(&mut rails, r);
+                        }
+                    }
+                }
             }
         }
-        self.home.featured = cont
-            .first()
-            .copied()
-            .or_else(|| rails.iter().find(|r| r.kind == RailKind::Posters).and_then(|r| r.cards.first().copied()));
+        self.home.featured = if self.layout.hero == Hero::None {
+            None
+        } else {
+            cont.first().copied().or_else(|| {
+                rails
+                    .iter()
+                    .filter(|r| r.kind == RailKind::Posters)
+                    .flat_map(|r| r.cards.iter())
+                    .find(|c| !matches!(c, Card::Ext(_)))
+                    .copied()
+            })
+        };
         if let Focus::Card(r, i) = self.home.focus
             && (r >= rails.len() || i >= rails[r].cards.len())
         {
             self.home.focus = Focus::Hero;
         }
+        if self.home.focus == Focus::Hero && self.layout.hero == Hero::None && !rails.is_empty() {
+            self.home.focus = Focus::Card(0, 0);
+        }
         self.home.rails = rails;
+        self.home.ext_cards = ext_cards;
         self.home.dirty = false;
     }
 
@@ -179,11 +266,16 @@ impl LainApp {
     }
 
     pub fn geo(&self, vw: f32, vh: f32) -> Geo {
+        use crate::layout::Hero;
         let th = &self.theme;
-        let hero_h = (vh * th.hero.height).max(320.);
+        let hero_h = match self.layout.hero {
+            Hero::Full => (vh * th.hero.height).max(320.),
+            Hero::Compact => (vh * th.hero.height * 0.6).max(260.),
+            Hero::None => 0.,
+        };
         let margin = th.sp(6);
         let header_h = th.ts(1) * 1.4 + th.sp(2);
-        let mut y = hero_h - th.sp(6);
+        let mut y = if self.layout.hero == crate::layout::Hero::None { 84. } else { hero_h - th.sp(6) };
         let mut rails = Vec::new();
         for r in &self.home.rails {
             let d = self.dims(r.kind);
@@ -194,6 +286,9 @@ impl LainApp {
     }
 
     pub fn home_nav_solid(&self) -> f32 {
+        if self.layout.hero == crate::layout::Hero::None {
+            return 1.;
+        }
         (self.home.page.value(&self.theme) / 120.).clamp(0., 1.)
     }
 
@@ -283,6 +378,13 @@ impl LainApp {
                     self.navigate(Screen::Item(id), cx);
                 }
             }
+            Card::Ext(e) => match self.home.ext_cards.get(e).and_then(|c| c.item) {
+                Some(i) => {
+                    let id = self.catalog[i].id.clone();
+                    self.navigate(Screen::Item(id), cx);
+                }
+                None => self.toast("This card does not link to a title", false),
+            },
         }
     }
 
@@ -300,6 +402,10 @@ impl LainApp {
             ("down", Focus::Hero) => Focus::Card(0, self.nearest(&geo, 0, None)),
             ("down", Focus::Card(r, i)) if r + 1 < n_rails => {
                 Focus::Card(r + 1, self.nearest(&geo, r + 1, Some((r, i))))
+            }
+            ("up", Focus::Card(0, _)) if self.layout.hero == crate::layout::Hero::None => {
+                self.move_focus(1);
+                return true;
             }
             ("up", Focus::Card(0, _)) => Focus::Hero,
             ("up", Focus::Card(r, i)) => Focus::Card(r - 1, self.nearest(&geo, r - 1, Some((r, i)))),
@@ -351,6 +457,7 @@ impl LainApp {
                 let c = Card::Item(i);
                 self.open_card(c, cx);
             }
+            Some(Card::Ext(_)) => {}
             Some(Card::Series(s)) => {
                 if let Some(id) = self.next_up(s) {
                     if self.series[s].reading() {
@@ -538,6 +645,8 @@ impl LainApp {
                 Card::Series(s) => {
                     (self.series[s].items.first().map(|&i| self.catalog[i].id.clone()).unwrap_or_default(), Some(s))
                 }
+                // Never featured (build_home skips them).
+                Card::Ext(_) => (String::new(), None),
             };
             let q = |v: f32| ((v * sf / 64.).ceil() * 64.) as u32;
             let key = ImgKey {
@@ -590,6 +699,7 @@ impl LainApp {
             root = root.child(hero);
 
             let (sub, play_label, kicker) = match (fc, series_idx) {
+                (Card::Ext(_), _) => (String::new(), "Open".to_string(), ""),
                 (Card::Item(i), _) => {
                     let it = &self.catalog[i];
                     let p = self.progress.get(&it.id);
@@ -625,7 +735,7 @@ impl LainApp {
             let hero_focus = self.home.focus == Focus::Hero && self.focused.is_none();
             let fp = self.focus_progress(Focus::Hero, &th);
             animating |= fp.1;
-            let title_size = th.ts(5);
+            let title_size = if self.layout.hero == crate::layout::Hero::Compact { th.ts(4) } else { th.ts(5) };
             let text_bottom = vh - (geo.hero_h - th.sp(6) - th.sp(5) - page);
             let details_id = item_id.clone();
             root = root.child(
@@ -795,6 +905,10 @@ impl LainApp {
         for (k, card) in cards.into_iter().enumerate() {
             let i = first + k;
             let (item_idx, title, sub, progress) = match card {
+                Card::Ext(e) => {
+                    let c = &self.home.ext_cards[e];
+                    (c.item, c.title.clone(), c.subtitle.clone(), None)
+                }
                 Card::Item(ci) => {
                     let it = &self.catalog[ci];
                     let p = self.progress.get(&it.id);
@@ -803,7 +917,7 @@ impl LainApp {
                         .map(|p| (p.position_sec / p.duration_sec).clamp(0., 1.) as f32);
                     let left = p.map(|p| (p.duration_sec - p.position_sec).max(0.)).unwrap_or(0.);
                     (
-                        ci,
+                        Some(ci),
                         it.title.clone(),
                         format!("{} · {} left", episode_label(it.season, it.episode), fmt_time(left)),
                         frac,
@@ -820,7 +934,7 @@ impl LainApp {
                         "ep"
                     };
                     (
-                        ser.items[0],
+                        Some(ser.items[0]),
                         ser.title.clone(),
                         format!("{n} {unit}{}", if ser.year > 0 { format!(" · {}", ser.year) } else { String::new() }),
                         None,
@@ -833,13 +947,15 @@ impl LainApp {
             let (w, h) = (d.w * s, d.h * s);
             let x = geo.margin + i as f32 * d.step - off - (w - d.w) / 2.;
             let y = d.pad - (h - d.h) / 2.;
-            let key = ImgKey {
-                src: Source::Thumb(self.catalog[item_idx].id.clone()),
-                w: (d.w * scale * sf).round() as u32,
-                h: (d.h * scale * sf).round() as u32,
-                blur: 0,
-            };
-            let art = self.images.update(cx, |st, cx| st.get(&key, cx));
+            let art = item_idx.and_then(|ii| {
+                let key = ImgKey {
+                    src: Source::Thumb(self.catalog[ii].id.clone()),
+                    w: (d.w * scale * sf).round() as u32,
+                    h: (d.h * scale * sf).round() as u32,
+                    blur: 0,
+                };
+                self.images.update(cx, |st, cx| st.get(&key, cx))
+            });
             let radius = th.radius.card * s;
             if fp > 0. {
                 let ring = 3.;
