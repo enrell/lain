@@ -303,6 +303,10 @@ backward compatible.
 - **Offline downloads** within the device budget.
 - **Later:** Chromecast/DLNA handoff and Android TV leanback.
 
+v1 is in `apps/android` (D-245..D-253): `lain-client` through a thin UniFFI
+crate, Media3 with HLS for transcodes, CBZ copies read on the device, and the
+ASS fallback as server burn-in; mpv-android is not added yet.
+
 If the desktop prototype picks Slint, sharing UI code with Android becomes
 possible. The proposal still prefers Compose for Android, because it gives the
 most native feel and the best video stack.

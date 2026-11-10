@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **The Android app v1** (P5, D-245..D-253, `apps/android`): Kotlin +
+  Compose + Media3 on `lain-client` through UniFFI (`lain-ffi`). Connect and
+  log in, navigation from `/api/modules`, Home rails, Library, Read, title
+  pages, Search, the player (direct play, HLS transcodes, side-loaded
+  subtitles, ASS burn-in) and the comic/manga reader, both resuming and
+  syncing progress; offline copies within the device budget that play and
+  read without the server, with offline progress synced on reconnect; the
+  shipped themes. CI builds the debug APK (`lain-android-debug`).
+
 ### Removed
 - **The Go server** (D-235..D-243, DESIGN-v2 §13 step 5). `cmd/`,
   `internal/`, `go.mod` and the Go CI, image and release builds are gone;
