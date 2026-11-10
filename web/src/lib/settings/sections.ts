@@ -94,6 +94,7 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'resources', href: '/settings/transcoding', anchor: 'resources', keywords: 'cache threads queue storage path ffmpeg', admin: true },
 	{ id: 'sessions', href: '/settings/transcoding', anchor: 'sessions', keywords: 'sessions running jobs cancel', admin: true },
 	{ id: 'integrations', href: '/settings/integrations', anchor: 'integrations', keywords: 'oauth client id secret anilist', admin: true },
+	{ id: 'apiKeys', href: '/settings/integrations', anchor: 'api-keys', keywords: 'api key token integration downloader import', admin: true },
 	{ id: 'plugins', href: '/settings/plugins', anchor: 'capabilities', keywords: 'plugin provider capability composition replace', admin: true },
 	{ id: 'backup', href: '/settings/backup', anchor: 'backup', keywords: 'backup snapshot database export', admin: true },
 	{ id: 'downloadQueue', href: '/settings/downloads', anchor: 'queue', keywords: 'download fetch url queue pause resume cancel', admin: true },

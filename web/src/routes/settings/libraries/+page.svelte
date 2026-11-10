@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import Folder from '@lucide/svelte/icons/folder';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
@@ -225,12 +225,8 @@
 		if (new URL(window.location.href).searchParams.has('add')) openCreate();
 		void load();
 		void loadExtras();
-		void scan.refresh().then(() => {
-			if (scan.running) scan.follow();
-		});
+		void scan.watch();
 	});
-
-	onDestroy(() => scan.stop());
 
 	async function create(scanAfter: boolean): Promise<void> {
 		creating = true;
@@ -314,8 +310,29 @@
 
 		<div class="mt-4 text-sm">
 			{#if scan.running}
-				<div class="flex items-center gap-2 text-accent">
-					<Spinner class="size-4" /> Scanning libraries…
+				{@const fraction = scan.fraction}
+				<div class="flex items-center gap-2 text-accent" role="status">
+					<Spinner class="size-4" />
+					<span class="tabular-nums">{scan.line}</span>
+					{#if scan.elapsed}
+						<span class="font-mono text-xs tabular-nums text-muted">
+							{t('scan.elapsed', { time: scan.elapsed })}
+						</span>
+					{/if}
+				</div>
+				<!-- Indeterminate (full, pulsing) until the phase has a total. -->
+				<div
+					class="mt-2 h-0.5 w-full max-w-md overflow-hidden rounded-full bg-hairline"
+					role="progressbar"
+					aria-label={t('scan.progress')}
+					aria-valuemin={0}
+					aria-valuemax={100}
+					aria-valuenow={fraction === null ? undefined : Math.round(fraction * 100)}
+				>
+					<div
+						class="h-full bg-accent transition-[width] duration-500 {fraction === null ? 'animate-pulse' : ''}"
+						style:width="{fraction === null ? 100 : fraction * 100}%"
+					></div>
 				</div>
 			{:else if scan.status?.state === 'error'}
 				<p class="text-danger" role="alert">Scan failed: {scan.status.error}</p>
