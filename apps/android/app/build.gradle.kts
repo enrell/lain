@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = "io.github.enrell.lain"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.enrell.lain"
