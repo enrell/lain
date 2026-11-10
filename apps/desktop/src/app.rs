@@ -157,6 +157,8 @@ pub enum Screen {
     Settings(Section),
     Downloads,
     Reader(String),
+    /// Torrents, downloads and wanted titles (admins, acquire module).
+    Acquire,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -235,6 +237,7 @@ pub enum Act {
     SaveIntegrations,
     ConfirmYes,
     ConfirmNo,
+    AcquireOp(&'static str, String, &'static str),
     LinkOp(String, &'static str),
     SaveTranscode,
     DiscardTranscode,
@@ -348,6 +351,7 @@ pub struct LainApp {
     pub settings: settings::SettingsState,
     pub reader: Option<reader::ReaderState>,
     pub dl: crate::screens::downloads::DlState,
+    pub acq: crate::screens::acquire::AcquireState,
     pub links: Load<Vec<lain_client::types::Link>>,
     pub tc: crate::screens::transcode::TranscodeState,
     pub player: Option<player::PlayerSession>,
@@ -462,6 +466,7 @@ impl LainApp {
             settings: settings::SettingsState::default(),
             reader: None,
             dl: Default::default(),
+            acq: Default::default(),
             links: Load::Idle,
             tc: Default::default(),
             player: None,
@@ -909,10 +914,15 @@ impl LainApp {
             ("library", "Library", "library", Screen::Library { read: false, lib: String::new() }),
             ("read", "Read", "book", Screen::Library { read: true, lib: String::new() }),
             ("search", "Search", "search", Screen::Search),
+            ("acquire", "Acquire", "plus", Screen::Acquire),
             ("downloads", "Downloads", "download", Screen::Downloads),
             ("settings", "Settings", "settings", Screen::Settings(Section::Account)),
         ];
         for (id, label, icon, screen) in table {
+            // Acquire is an admin surface (D-116).
+            if *id == "acquire" && !self.is_admin() {
+                continue;
+            }
             if ids.iter().any(|x| x == id) {
                 out.push((*id, *label, *icon, screen.clone()));
             }
@@ -950,6 +960,7 @@ impl LainApp {
             Screen::Search => self.focused = Some("search.q".into()),
             Screen::Reader(id) => self.open_reader(&id, cx),
             Screen::Library { .. } => self.lib.page = 0,
+            Screen::Acquire => self.load_acquire(cx),
             Screen::Home | Screen::Downloads => {}
         }
     }
@@ -1010,6 +1021,7 @@ impl LainApp {
                 }
             }
             Act::ConfirmNo => self.confirm = None,
+            Act::AcquireOp(k, id, a) => self.acquire_op(k, id, a, cx),
             Act::LinkOp(p, op) => self.link_op(p, op, cx),
             Act::SaveTranscode => self.save_transcode(cx),
             Act::DiscardTranscode => self.load_transcode(cx),
@@ -1132,6 +1144,9 @@ impl LainApp {
         if n.is_multiple_of(30) {
             self.settings_tick(cx);
             self.downloads_tick(cx);
+            if self.screen == Screen::Acquire && n.is_multiple_of(60) {
+                self.load_acquire(cx);
+            }
             if self.item.dirty
                 && let Screen::Item(id) = self.screen.clone()
             {
@@ -1728,6 +1743,7 @@ impl Render for LainApp {
                     Screen::Search => (self.render_search(window, cx).into_any_element(), 1.),
                     Screen::Settings(s) => (self.render_settings(s, window, cx).into_any_element(), 1.),
                     Screen::Downloads => (self.render_downloads(window, cx).into_any_element(), 1.),
+                    Screen::Acquire => (self.render_acquire(window, cx).into_any_element(), 1.),
                     Screen::Reader(id) => (self.render_reader(&id, window, cx).into_any_element(), 1.),
                 };
                 let mut shell = div().size_full().relative().child(content);
