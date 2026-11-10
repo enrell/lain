@@ -69,6 +69,8 @@ conformance suite it was checked against stays as the API spec.
     locations D-157/D-186), the library watcher on `notify`, the scan
     controller and the folder picker.
   - `lain-metadata` — the metadata module: enrich, the NFO provider,
+    the download-sidecar provider (D-265, local-only for private
+    libraries, D-267),
     the network providers (Kitsu, AniList, Jikan, TVMaze, in-process,
     D-201), the merge and the overlay and cache tables.
   - `lain-subtitle` — sidecar discovery, naming and the moviehash,

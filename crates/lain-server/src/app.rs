@@ -267,6 +267,7 @@ impl App {
         });
         registry.register(Arc::new(lain_ingest::Runner::new(&registry, Some(progress))));
         registry.register(Arc::new(lain_metadata::Nfo));
+        registry.register(Arc::new(lain_metadata::Sidecar));
         let http = lain_http::Client::new(lain_http::Config {
             user_agent: format!("lain/{}", cfg.version),
             offline: cfg.offline,
