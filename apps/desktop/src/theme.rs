@@ -518,6 +518,9 @@ pub fn install_zip(zip: &Path, dir: &Path) -> Result<String, String> {
         .ok_or("the archive has no theme.json")?
         .to_string();
     let prefix = manifest.trim_end_matches("theme.json").to_string();
+    if Path::new(&prefix).components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
+        return Err(format!("unsafe path in archive: {manifest}"));
+    }
     let theme: Theme =
         serde_json::from_slice(&files.iter().find(|(n, _)| *n == manifest).map(|(_, b)| b.clone()).unwrap_or_default())
             .map_err(|e| format!("theme.json: {e}"))?;
@@ -584,6 +587,23 @@ mod tests {
             assert_eq!(t.format, FORMAT);
             assert!(t.palette().1.is_empty(), "{id}: {:?}", t.palette().1);
         }
+    }
+
+    #[test]
+    fn zip_installs_into_its_folder_and_refuses_escapes() {
+        let dir = std::env::temp_dir().join(format!("lain-theme-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip = dir.join("Neon Night.zip");
+        let json = r##"{"format":"lain.ui.theme@1","name":"neon","colors":{"accent":"#ff00aa"}}"##;
+        std::fs::write(&zip, crate::zip::tests::stored("neon-night/theme.json", json.as_bytes())).unwrap();
+        let themes = dir.join("themes");
+        let id = install_zip(&zip, &themes).unwrap();
+        assert_eq!(id, "neon-night");
+        assert_eq!(load_dir(&themes.join("neon-night")).unwrap().name, "neon");
+        std::fs::write(&zip, crate::zip::tests::stored("../theme.json", json.as_bytes())).unwrap();
+        assert!(install_zip(&zip, &themes).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
