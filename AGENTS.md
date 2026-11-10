@@ -68,9 +68,8 @@ conformance suite it was checked against stays as the API spec.
     pipeline, the `commit_scan` plan (moves D-019, missing D-068,
     locations D-157/D-186), the library watcher on `notify`, the scan
     controller and the folder picker.
-  - `lain-metadata` — the metadata module: enrich, the NFO provider,
-    the download-sidecar provider (D-265, local-only for private
-    libraries, D-267),
+  - `lain-metadata` — the metadata module: enrich (local-only for
+    private libraries, D-268), the NFO provider,
     the network providers (Kitsu, AniList, Jikan, TVMaze, in-process,
     D-201), the merge and the overlay and cache tables.
   - `lain-subtitle` — sidecar discovery, naming and the moviehash,
@@ -102,8 +101,10 @@ conformance suite it was checked against stays as the API spec.
   - `lain-bridge` — the bridges to the owner's standalone apps served
     as components (P4, D-225..D-231): `lain-release-model` (lain-parser,
     `lain.release.parse@1`), `lain-subtitle-animesubs`
-    (`lain.subtitle.translate@1`) and `lain-acquire-anything`
-    (`lain.acquire.extract@1`), their discovery of each app's
+    (`lain.subtitle.translate@1`), `lain-acquire-anything`
+    (`lain.acquire.extract@1`) and `lain-library-anything` (identity
+    and metadata from the files Anything leaves next to its downloads,
+    D-265), their discovery of each app's
     `server.json` and token, and a std-only HTTP/1.1 client for loopback
     services; `lain component install|run|list|uninstall`. No crate
     added. `tools/parser-v5` (outside the workspace) is the V-5 parser

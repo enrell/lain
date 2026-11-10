@@ -1,6 +1,6 @@
-//! `lain-metadata-sidecar`: the download sidecar. A downloader that
-//! files each item in its own folder (the Anything bridge's does, D-230)
-//! leaves what it knew about the item next to it:
+//! `lain-library-anything`: what Anything wrote next to its downloads.
+//! Anything files each item in its own folder and leaves what it knew
+//! about it there:
 //!
 //! ```text
 //! <item>/<item>.mp4
@@ -8,12 +8,18 @@
 //! <item>/.metadata/thumbs/thumbnail.jpg
 //! ```
 //!
-//! Like an `.nfo`, this is offline and already about this exact file, so
-//! it is local, curated metadata: the title, the year of the upload
-//! date, the tags as genres and the description. The remote id is the
-//! sidecar's path. The still next to it is the item's artwork
-//! ([`artwork`]): the gateway serves it where it would otherwise cut a
-//! frame out of the video.
+//! This bridge imports that file into lain, without lain writing
+//! anything back, through two capabilities:
+//!
+//! | Capability | Answer |
+//! |---|---|
+//! | `lain.media.identify@1` | the series and episode the file names, or its title as one video |
+//! | `lain.metadata.search@1`, `lain.metadata.resolve@1` | title, year of the upload date, tags as genres, description |
+//!
+//! It is local and curated like an `.nfo`: the file is about that exact
+//! item. The remote id is the sidecar's path. Unlike the other bridges
+//! it talks to no running app; it only reads files, so it is healthy
+//! whenever it is installed.
 //!
 //! The file is TOML, but only the flat part is read: top-level strings,
 //! numbers and string arrays. Tables (`[remote]`, `[images]`, `[local]`)
@@ -22,17 +28,48 @@
 
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use lain_core::{Error, Provider};
 use lain_identify::{CAP_MEDIA_IDENTIFY, Candidate, Proposal};
 
-use crate::nfo::{CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH};
-use crate::types::{MetadataCandidate, MetadataRecord, MetadataResolveInput, MetadataSearchInput};
+pub const ID: &str = "lain-library-anything";
+pub const CAP_METADATA_SEARCH: &str = "lain.metadata.search@1";
+pub const CAP_METADATA_RESOLVE: &str = "lain.metadata.resolve@1";
 
-pub const SIDECAR_ID: &str = "lain-metadata-sidecar";
-/// The identifier that reads the same file (D-270).
-pub const SIDECAR_IDENTIFY_ID: &str = "lain-identify-sidecar";
+/// The wire shapes of the metadata contracts this bridge answers (the
+/// fields it reads and writes; `lain-metadata` owns the full types).
+#[derive(Debug, Clone, Default, Deserialize)]
+struct SearchInput {
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    dir: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct ResolveInput {
+    #[serde(default)]
+    remote_id: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Record {
+    pub provider: String,
+    pub remote_id: String,
+    pub title: String,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub year: i64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub genres: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub synopsis: String,
+}
+
+fn is_zero(v: &i64) -> bool {
+    *v == 0
+}
 
 const DIR: &str = ".metadata";
 const FILE: &str = "meta.toml";
@@ -45,30 +82,6 @@ const MAX_SYNOPSIS: usize = 8000;
 /// The sidecar of the item whose media lives in `dir`.
 pub fn sidecar_path(dir: &Path) -> PathBuf {
     dir.join(DIR).join(FILE)
-}
-
-/// The item's own still, when its folder has one: a non-empty regular
-/// file, never a link out of the folder.
-pub fn artwork(media_file: &Path) -> Option<PathBuf> {
-    let thumbs = media_file.parent()?.join(DIR).join("thumbs");
-    ["thumbnail.jpg", "banner.jpg"]
-        .iter()
-        .map(|n| thumbs.join(n))
-        .find(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file() && m.len() > 0))
-}
-
-/// The content type of a still by its first bytes: downloaders keep the
-/// `.jpg` name whatever the site served.
-pub fn image_type(path: &Path) -> &'static str {
-    use std::io::Read;
-    let mut head = [0u8; 12];
-    let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut head)).unwrap_or(0);
-    match &head[..n] {
-        [0x89, b'P', b'N', b'G', ..] => "image/png",
-        [b'G', b'I', b'F', b'8', ..] => "image/gif",
-        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P'] => "image/webp",
-        _ => "image/jpeg",
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -204,7 +217,7 @@ fn year_of(date: &str) -> i64 {
 }
 
 /// Reads one sidecar into a record.
-pub fn resolve_sidecar(path: &Path) -> Result<MetadataRecord, Error> {
+pub fn resolve_sidecar(path: &Path) -> Result<Record, Error> {
     // The remote id comes back from a client: it must name a sidecar.
     if path.file_name().and_then(|n| n.to_str()) != Some(FILE)
         || path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()) != Some(DIR)
@@ -239,33 +252,33 @@ pub fn resolve_sidecar(path: &Path) -> Result<MetadataRecord, Error> {
         let cut = (0..=MAX_SYNOPSIS).rev().find(|i| synopsis.is_char_boundary(*i)).unwrap_or(0);
         synopsis.truncate(cut);
     }
-    Ok(MetadataRecord {
-        provider: SIDECAR_ID.into(),
+    Ok(Record {
+        provider: ID.into(),
         remote_id: path.to_string_lossy().into_owned(),
         title,
         year: year_of(text(&doc, "upload_date")),
         genres,
         synopsis,
-        ..MetadataRecord::default()
     })
 }
 
-/// The sidecar of `input.dir`, if it has one: it is about the file
-/// being enriched, so the query does not have to match its title.
-pub fn search_sidecar(input: &MetadataSearchInput) -> Vec<MetadataCandidate> {
+/// The sidecar of the folder being enriched, if it has one: it is
+/// about that file, so the query does not have to match its title.
+fn search(input: &SearchInput) -> Vec<Value> {
     if input.dir.is_empty() {
         return Vec::new();
     }
-    let path = sidecar_path(Path::new(&input.dir));
-    match resolve_sidecar(&path) {
-        Ok(rec) => vec![MetadataCandidate {
-            provider: SIDECAR_ID.into(),
-            remote_id: rec.remote_id,
-            title: rec.title,
-            year: rec.year,
-            kind: input.kind.clone(),
-            ..MetadataCandidate::default()
-        }],
+    match resolve_sidecar(&sidecar_path(Path::new(&input.dir))) {
+        Ok(rec) => {
+            let mut hit = json!({"provider": ID, "remote_id": rec.remote_id, "title": rec.title});
+            if rec.year != 0 {
+                hit["year"] = json!(rec.year);
+            }
+            if !input.kind.is_empty() {
+                hit["kind"] = json!(input.kind);
+            }
+            vec![hit]
+        }
         Err(_) => Vec::new(),
     }
 }
@@ -315,50 +328,20 @@ pub fn identify_sidecar(c: &Candidate) -> Proposal {
         year: year_of(text(&doc, "upload_date")),
         confidence: 0.95,
         evidence: vec!["sidecar".into()],
-        plugin_id: SIDECAR_IDENTIFY_ID.into(),
+        plugin_id: ID.into(),
         ..Proposal::default()
     }
 }
 
-/// `lain-identify-sidecar` (`lain.media.identify@1`), first in the
-/// binding order: what was written down beats what a name suggests.
-pub struct SidecarIdentifier;
+pub struct AnythingLibrary;
 
-impl Provider for SidecarIdentifier {
+impl Provider for AnythingLibrary {
     fn id(&self) -> &str {
-        SIDECAR_IDENTIFY_ID
+        ID
     }
 
     fn capabilities(&self) -> Vec<String> {
-        vec![CAP_MEDIA_IDENTIFY.into()]
-    }
-
-    fn health(&self) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn invoke(&self, cap: &str, op: &str, input: Value) -> Result<Value, Error> {
-        if cap != CAP_MEDIA_IDENTIFY {
-            return Err(Error::invalid(format!("unsupported cap {cap}")));
-        }
-        if !op.is_empty() && op != "identify" {
-            return Err(Error::invalid(format!("capability {cap} has no op {op}")));
-        }
-        let c: Candidate =
-            serde_json::from_value(input).map_err(|e| Error::invalid(format!("Candidate required: {e}")))?;
-        Ok(json!(identify_sidecar(&c)))
-    }
-}
-
-pub struct Sidecar;
-
-impl Provider for Sidecar {
-    fn id(&self) -> &str {
-        SIDECAR_ID
-    }
-
-    fn capabilities(&self) -> Vec<String> {
-        vec![CAP_METADATA_SEARCH.into(), CAP_METADATA_RESOLVE.into()]
+        vec![CAP_MEDIA_IDENTIFY.into(), CAP_METADATA_SEARCH.into(), CAP_METADATA_RESOLVE.into()]
     }
 
     fn health(&self) -> Result<(), Error> {
@@ -367,17 +350,22 @@ impl Provider for Sidecar {
 
     fn invoke(&self, cap: &str, op: &str, input: Value) -> Result<Value, Error> {
         match cap {
+            CAP_MEDIA_IDENTIFY if op.is_empty() || op == "identify" => {
+                let c: Candidate =
+                    serde_json::from_value(input).map_err(|e| Error::invalid(format!("Candidate required: {e}")))?;
+                Ok(json!(identify_sidecar(&c)))
+            }
             CAP_METADATA_SEARCH if op.is_empty() || op == "search" => {
-                let i: MetadataSearchInput = serde_json::from_value(input)
+                let i: SearchInput = serde_json::from_value(input)
                     .map_err(|e| Error::invalid(format!("MetadataSearchInput required: {e}")))?;
-                Ok(json!(search_sidecar(&i)))
+                Ok(json!(search(&i)))
             }
             CAP_METADATA_RESOLVE if op.is_empty() || op == "resolve" => {
-                let i: MetadataResolveInput = serde_json::from_value(input)
+                let i: ResolveInput = serde_json::from_value(input)
                     .map_err(|e| Error::invalid(format!("MetadataResolveInput required: {e}")))?;
                 Ok(json!(resolve_sidecar(Path::new(&i.remote_id))?))
             }
-            CAP_METADATA_SEARCH | CAP_METADATA_RESOLVE => {
+            CAP_MEDIA_IDENTIFY | CAP_METADATA_SEARCH | CAP_METADATA_RESOLVE => {
                 Err(Error::invalid(format!("capability {cap} has no op {op}")))
             }
             _ => Err(Error::invalid(format!("unsupported cap {cap}"))),
@@ -438,23 +426,15 @@ video_path = "/somewhere/else.mp4"
         let dir = item_dir("ok");
         std::fs::write(sidecar_path(&dir), SAMPLE).unwrap();
         let rec = resolve_sidecar(&sidecar_path(&dir)).unwrap();
-        assert_eq!(
-            (rec.provider.as_str(), rec.title.as_str(), rec.year),
-            (SIDECAR_ID, "Lighthouse at Dusk - Studio", 2024)
-        );
+        assert_eq!((rec.provider.as_str(), rec.title.as_str(), rec.year), (ID, "Lighthouse at Dusk - Studio", 2024));
         assert_eq!(rec.genres, ["Short Film", "4K", "Landscape", "Sea \"Storm\""]);
         assert_eq!(rec.synopsis, "Line one.\nLine é.");
-        assert!(rec.poster.is_empty() && rec.cover.is_empty());
 
-        let hits = search_sidecar(&MetadataSearchInput {
-            query: "a file name that says something else".into(),
-            kind: "anime".into(),
-            limit: 5,
-            dir: dir.to_string_lossy().into(),
-        });
+        let hits = search(&SearchInput { kind: "anime".into(), dir: dir.to_string_lossy().into() });
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].remote_id, sidecar_path(&dir).to_string_lossy());
-        assert!(search_sidecar(&MetadataSearchInput::default()).is_empty());
+        assert_eq!(hits[0]["remote_id"], json!(sidecar_path(&dir).to_string_lossy()));
+        assert_eq!((hits[0]["provider"].as_str(), hits[0]["year"].as_i64()), (Some(ID), Some(2024)));
+        assert!(search(&SearchInput::default()).is_empty());
         std::fs::remove_dir_all(dir).ok();
     }
 
@@ -466,12 +446,13 @@ video_path = "/somewhere/else.mp4"
         assert_eq!(resolve_sidecar(&dir.join("secrets.toml")).unwrap_err().code, "invalid-message");
         std::fs::write(sidecar_path(&dir), "tags = [\"a\"]\n").unwrap();
         assert!(resolve_sidecar(&sidecar_path(&dir)).is_err());
-        assert!(
-            search_sidecar(&MetadataSearchInput { dir: dir.to_string_lossy().into(), ..Default::default() }).is_empty()
-        );
+        assert!(search(&SearchInput { dir: dir.to_string_lossy().into(), ..Default::default() }).is_empty());
         std::fs::remove_file(sidecar_path(&dir)).unwrap();
         assert_eq!(
-            Sidecar.invoke(CAP_METADATA_RESOLVE, "", json!({"remote_id": sidecar_path(&dir)})).unwrap_err().code,
+            AnythingLibrary
+                .invoke(CAP_METADATA_RESOLVE, "", json!({"remote_id": sidecar_path(&dir)}))
+                .unwrap_err()
+                .code,
             "not-found"
         );
         std::fs::remove_dir_all(dir).ok();
@@ -491,7 +472,7 @@ video_path = "/somewhere/else.mp4"
         .unwrap();
         let p = identify_sidecar(&cand("whatever the file is called.mp4"));
         assert_eq!((p.kind.as_str(), p.title.as_str(), p.episode, p.year), ("episode", "Some Show", 3, 2021));
-        assert_eq!((p.plugin_id.as_str(), p.confidence), (SIDECAR_IDENTIFY_ID, 0.95));
+        assert_eq!((p.plugin_id.as_str(), p.confidence), (ID, 0.95));
         // Not a video: declined, so an archive still goes to the comic identifier.
         assert!(!identify_sidecar(&cand("extras.cbz")).accepted());
 
@@ -502,29 +483,8 @@ video_path = "/somewhere/else.mp4"
         assert_eq!((p.kind.as_str(), p.title.as_str(), p.episode), ("video", "A Short", 0));
         std::fs::write(sidecar_path(&dir), "tags = [\"a\"]\n").unwrap();
         assert!(!identify_sidecar(&cand("x.mp4")).accepted());
-        let out = SidecarIdentifier.invoke(CAP_MEDIA_IDENTIFY, "identify", json!(cand("x.mp4"))).unwrap();
+        let out = AnythingLibrary.invoke(CAP_MEDIA_IDENTIFY, "identify", json!(cand("x.mp4"))).unwrap();
         assert_eq!(out["title"], "");
-        std::fs::remove_dir_all(dir).ok();
-    }
-
-    #[test]
-    fn artwork_is_the_still_in_the_item_folder() {
-        let dir = item_dir("art");
-        let media = dir.join("item.mp4");
-        assert_eq!(artwork(&media), None);
-        std::fs::write(dir.join(DIR).join("thumbs").join("thumbnail.jpg"), b"").unwrap();
-        assert_eq!(artwork(&media), None, "an empty file is not artwork");
-        std::fs::write(dir.join(DIR).join("thumbs").join("banner.jpg"), b"jpg").unwrap();
-        assert_eq!(artwork(&media), Some(dir.join(DIR).join("thumbs").join("banner.jpg")));
-        std::fs::write(dir.join(DIR).join("thumbs").join("thumbnail.jpg"), b"jpg").unwrap();
-        let still = dir.join(DIR).join("thumbs").join("thumbnail.jpg");
-        assert_eq!(artwork(&media), Some(still.clone()));
-        assert_eq!(image_type(&still), "image/jpeg");
-        std::fs::write(&still, b"RIFF\x10\0\0\0WEBPVP8 ").unwrap();
-        assert_eq!(image_type(&still), "image/webp");
-        std::fs::write(&still, b"\x89PNG\r\n\x1a\n").unwrap();
-        assert_eq!(image_type(&still), "image/png");
-        assert_eq!(image_type(&dir.join("missing.jpg")), "image/jpeg");
         std::fs::remove_dir_all(dir).ok();
     }
 }
