@@ -33,7 +33,9 @@
 	let createOpen = $state(false);
 	let creating = $state(false);
 	let formError = $state<string | null>(null);
-	let form = $state({ name: '', type: 'anime', path: '' });
+	let form = $state({ name: '', type: 'anime', path: '', private: false });
+	// The name follows the folder until the user types one.
+	let nameTouched = $state(false);
 
 	let deleteTarget = $state<Library | null>(null);
 	let deleteOpen = $state(false);
@@ -119,17 +121,29 @@
 		}
 	}
 
+	// The folder picker: the path bar is the choice. Opening a folder moves
+	// the bar there; a typed path is checked by listing it.
 	let browsePath = $state('');
 	let browseParent = $state('');
 	let browseDirs = $state<BrowseDir[]>([]);
 	let browseLoading = $state(false);
 	let browseError = $state<string | null>(null);
+	let pathDraft = $state('');
+	let cursor = $state(0);
+	let listEl = $state<HTMLUListElement | null>(null);
+	let pathEl = $state<HTMLInputElement | null>(null);
 
 	function openCreate(): void {
 		createOpen = true;
 		formError = null;
-		form = { name: '', type: 'anime', path: '' };
+		form = { name: '', type: 'anime', path: '', private: false };
+		nameTouched = false;
+		pathDraft = '';
 		void loadBrowse();
+	}
+
+	function folderName(path: string): string {
+		return path.split(/[\\/]/).filter(Boolean).pop() ?? '';
 	}
 
 	async function loadBrowse(path?: string): Promise<void> {
@@ -140,22 +154,53 @@
 			browsePath = res.path;
 			browseParent = res.parent;
 			browseDirs = res.dirs;
+			cursor = 0;
+			pathDraft = res.path;
+			form.path = res.path;
+			formError = null;
+			if (!nameTouched) form.name = folderName(res.path);
+			// A long path keeps its end, the folder being chosen, in view.
+			requestAnimationFrame(() => {
+				if (pathEl && document.activeElement !== pathEl) pathEl.scrollLeft = pathEl.scrollWidth;
+			});
 		} catch (err) {
-			browseError = errorMessage(err, 'Could not list server folders.');
+			browseError = errorMessage(err, 'Could not list that folder.');
+			// Keep what was typed: the server has the last word on Add.
+			if (path) form.path = path;
 		} finally {
 			browseLoading = false;
 		}
 	}
 
-	function useFolder(dir?: BrowseDir): void {
-		const picked = dir ? dir.path : browsePath;
-		if (!picked) return;
-		form.path = picked;
-		formError = null;
-		if (!form.name.trim()) {
-			const base = (dir ? dir.name : picked.split('/').filter(Boolean).pop()) ?? '';
-			if (base) form.name = base;
+	function goUp(): void {
+		if (browseParent) void loadBrowse(browseParent);
+	}
+
+	function pathKey(e: KeyboardEvent): void {
+		if (e.key === 'Enter') {
+			// Enter here opens the typed path; it does not submit the form.
+			e.preventDefault();
+			void loadBrowse(pathDraft.trim() || undefined);
+		} else if (e.key === 'ArrowDown' && browseDirs.length > 0) {
+			e.preventDefault();
+			listEl?.focus();
 		}
+	}
+
+	function listKey(e: KeyboardEvent): void {
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		const last = browseDirs.length - 1;
+		if (e.key === 'ArrowDown') cursor = Math.min(last, cursor + 1);
+		else if (e.key === 'ArrowUp') cursor = Math.max(0, cursor - 1);
+		else if (e.key === 'Home') cursor = 0;
+		else if (e.key === 'End') cursor = Math.max(0, last);
+		else if (e.key === 'Enter' || e.key === 'ArrowRight') {
+			const dir = browseDirs[cursor];
+			if (dir) void loadBrowse(dir.path);
+		} else if (e.key === 'Backspace' || e.key === 'ArrowLeft') goUp();
+		else return;
+		e.preventDefault();
+		listEl?.querySelector(`[data-index="${cursor}"]`)?.scrollIntoView({ block: 'nearest' });
 	}
 
 	function askRemove(lib: Library): void {
@@ -191,15 +236,18 @@
 		creating = true;
 		formError = null;
 		try {
-			const lib = await api.libraries.create({
+			let lib = await api.libraries.create({
 				name: form.name.trim(),
 				type: form.type,
 				path: form.path.trim()
 			});
+			// Private before the first scan: a scan of a public library may
+			// look its titles up online.
+			if (form.private) lib = await api.libraries.update(lib.id, { private: true });
 			libraries = [...libraries, lib].sort((a, b) => a.name.localeCompare(b.name));
 			rememberLibrary(lib);
 			createOpen = false;
-			form = { name: '', type: 'anime', path: '' };
+			form = { name: '', type: 'anime', path: '', private: false };
 			toasts.success(`Library “${lib.name}” added.`);
 			if (scanAfter) await scan.start();
 		} catch (err) {
@@ -468,78 +516,137 @@
 	description="Lain indexes files in place. Nothing is copied, moved or modified."
 >
 	<form
-		class="space-y-4"
+		class="space-y-5"
 		onsubmit={(e) => {
 			e.preventDefault();
 			void create(true);
 		}}
 	>
 		{#if formError}
-			<div
-				class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
-				role="alert"
-			>
+			<div class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
 				{formError}
 			</div>
 		{/if}
-		<Input label="Name" bind:value={form.name} placeholder="Anime" required />
-		<Select label="Type" bind:value={form.type} options={typeOptions} />
-		<div>
-			<span class="mb-1 block text-sm font-medium text-foreground">Server folders</span>
-			{#if browseLoading}
-				<p class="py-2 text-sm text-muted">Listing server folders…</p>
-			{:else if browseError}
-				<div class="flex items-center gap-2 py-1 text-sm">
-					<p class="text-danger" role="alert">{browseError}</p>
-					<Button variant="ghost" size="sm" onclick={() => void loadBrowse()}>Retry</Button>
-				</div>
-			{:else}
-				<p class="truncate font-mono text-xs text-muted" title={browsePath}>{browsePath}</p>
-				<div class="mt-1 flex gap-2">
-					<Button
-						variant="ghost"
-						size="sm"
-						disabled={!browseParent}
-						onclick={() => void loadBrowse(browseParent || undefined)}
-					>
-						<ArrowUp class="size-4" /> Up
-					</Button>
-					<Button variant="secondary" size="sm" onclick={() => useFolder()}>
-						Use this folder
-					</Button>
-				</div>
-				{#if browseDirs.length === 0}
-					<p class="py-2 text-sm text-muted">No subfolders here.</p>
+
+		<!-- The folder: one path bar, and the folders inside it. -->
+		<div class="space-y-1.5">
+			<label for="library-path" class="block text-sm font-medium text-muted">Folder</label>
+			<div class="flex gap-2">
+				<input
+					id="library-path"
+					bind:this={pathEl}
+					bind:value={pathDraft}
+					onkeydown={pathKey}
+					onblur={() => {
+						if (pathDraft.trim() && pathDraft.trim() !== browsePath) void loadBrowse(pathDraft.trim());
+					}}
+					placeholder="/media/anime"
+					spellcheck="false"
+					autocomplete="off"
+					aria-invalid={browseError ? 'true' : undefined}
+					aria-describedby="library-path-hint"
+					class={[
+						'h-10 min-w-0 flex-1 rounded-md border bg-field px-3 font-mono text-sm text-foreground',
+						'placeholder:text-muted/60 focus:border-accent/60 focus:outline-none',
+						browseError ? 'border-danger/60' : 'border-transparent'
+					].join(' ')}
+				/>
+				<Button
+					variant="secondary"
+					disabled={!browseParent || browseLoading}
+					onclick={goUp}
+					title="Parent folder (Backspace in the list)"
+					aria-label="Parent folder"
+				>
+					<ArrowUp class="size-4" />
+				</Button>
+			</div>
+
+			<div class="overflow-hidden rounded-md border border-line bg-surface/40">
+				{#if browseLoading && browseDirs.length === 0}
+					<p class="flex h-56 items-center justify-center gap-2 text-sm text-muted"><Spinner /> Listing folders…</p>
+				{:else if browseError}
+					<div class="flex h-56 flex-col items-center justify-center gap-2 px-4 text-center text-sm">
+						<p class="text-danger" role="alert">{browseError}</p>
+						<Button variant="ghost" size="sm" onclick={() => void loadBrowse(browsePath || undefined)}>
+							Back to {folderName(browsePath) || 'the start'}
+						</Button>
+					</div>
+				{:else if browseDirs.length === 0}
+					<p class="flex h-56 items-center justify-center px-4 text-center text-sm text-muted">
+						No folders inside this one. It can still be the library.
+					</p>
 				{:else}
-					<ul class="settings-list mt-1 max-h-44 overflow-y-auto">
-						{#each browseDirs as dir (dir.path)}
-							<li class="flex items-center gap-2 bg-surface/40 px-3 py-2">
+					<ul
+						bind:this={listEl}
+						class="h-56 overflow-y-auto py-1 focus:outline-none"
+						tabindex="0"
+						role="listbox"
+						aria-label="Folders in {browsePath}"
+						aria-activedescendant="library-dir-{cursor}"
+						onkeydown={listKey}
+					>
+						{#each browseDirs as dir, index (dir.path)}
+							<li id="library-dir-{index}" data-index={index} role="option" aria-selected={index === cursor}>
 								<button
 									type="button"
-									class="flex min-w-0 flex-1 items-center gap-2 text-left"
+									tabindex="-1"
+									class={[
+										'flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm',
+										index === cursor ? 'bg-surface-hover text-foreground' : 'text-foreground/90 hover:bg-surface-hover'
+									].join(' ')}
 									onclick={() => void loadBrowse(dir.path)}
-									title={`Open ${dir.path}`}
+									onmousemove={() => (cursor = index)}
 								>
 									<Folder class="size-4 shrink-0 text-muted" />
-									<span class="truncate text-sm text-foreground">{dir.name}</span>
+									<span class="truncate">{dir.name}</span>
 								</button>
-								<Button variant="ghost" size="sm" onclick={() => useFolder(dir)}>Use</Button>
 							</li>
 						{/each}
 					</ul>
 				{/if}
-			{/if}
+			</div>
+			<p id="library-path-hint" class="text-xs text-muted">
+				The library is the folder in the bar. Click a folder to go into it, or type a path and press
+				<kbd class="font-mono text-[10px]">Enter</kbd>. In the list:
+				<kbd class="font-mono text-[10px]">↑↓</kbd> move,
+				<kbd class="font-mono text-[10px]">Enter</kbd> open,
+				<kbd class="font-mono text-[10px]">Backspace</kbd> up. In Docker, these are the container's paths.
+			</p>
 		</div>
-		<Input
-			label="Server directory path"
-			bind:value={form.path}
-			placeholder="/media/anime"
-			hint="Filled in by the folder picker above; type only for paths outside it. In Docker, use the container path."
-			required
-		/>
+
+		<div class="grid gap-4 sm:grid-cols-[1fr_11rem]">
+			<Input
+				label="Name"
+				bind:value={form.name}
+				oninput={() => (nameTouched = true)}
+				placeholder="Anime"
+				required
+			/>
+			<Select label="Type" bind:value={form.type} options={typeOptions} />
+		</div>
+
+		{#if roots !== null}
+			<Switch
+				bind:checked={form.private}
+				label={t('privateLibrary.makePrivate')}
+				description={t('privateLibrary.makePrivateHint')}
+			/>
+		{/if}
+
 		<div class="flex justify-end gap-2 pt-1">
 			<Button type="button" variant="ghost" onclick={() => (createOpen = false)}>Cancel</Button>
-			<Button type="submit" loading={creating}>Add and scan</Button>
+			<Button
+				type="button"
+				variant="secondary"
+				disabled={creating || !form.path.trim() || !form.name.trim()}
+				onclick={() => void create(false)}
+			>
+				Add
+			</Button>
+			<Button type="submit" loading={creating} disabled={!form.path.trim() || !form.name.trim()}>
+				Add and scan <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
+			</Button>
 		</div>
 	</form>
 </Modal>
