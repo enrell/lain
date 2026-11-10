@@ -20,6 +20,7 @@ use lain_client::types::{CatalogItem, Library, ModulesView, Progress, User};
 use crate::backend::{self, Backend, Net, Poke};
 use crate::config::Config;
 use crate::images::ImageStore;
+use crate::layout::Layout;
 use crate::screens::{connect, home, item, library, player, reader, search, settings};
 use crate::theme::{self, Palette, Theme, ThemeEntry};
 use crate::ui::{Field, Tone};
@@ -90,6 +91,7 @@ pub enum Section {
     Profile,
     Privacy,
     Appearance,
+    Extensions,
     Playback,
     Users,
     Libraries,
@@ -101,7 +103,7 @@ pub enum Section {
 
 impl Section {
     pub const YOU: &[Section] =
-        &[Section::Account, Section::Profile, Section::Privacy, Section::Appearance, Section::Playback];
+        &[Section::Account, Section::Profile, Section::Privacy, Section::Appearance, Section::Extensions, Section::Playback];
     pub const SERVER: &[Section] =
         &[Section::Users, Section::Libraries, Section::Plugins, Section::Modules, Section::Server, Section::Backup];
     pub fn label(self) -> &'static str {
@@ -110,6 +112,7 @@ impl Section {
             Section::Profile => "Profile",
             Section::Privacy => "Private libraries",
             Section::Appearance => "Appearance",
+            Section::Extensions => "Extensions",
             Section::Playback => "Playback & downloads",
             Section::Users => "Users",
             Section::Libraries => "Libraries",
@@ -125,6 +128,7 @@ impl Section {
             Section::Profile => "profile",
             Section::Privacy => "privacy",
             Section::Appearance => "appearance",
+            Section::Extensions => "extensions",
             Section::Playback => "playback",
             Section::Users => "users",
             Section::Libraries => "libraries",
@@ -220,6 +224,16 @@ pub enum Act {
     ToggleAutoplay,
     SaveOffline,
     SavePathMap,
+    // extensions (tier 3)
+    ExtAllow,
+    ExtDeny,
+    ExtReview(String),
+    ExtToggle(String),
+    ExtScope(String, String),
+    ExtAskUninstall(String),
+    ExtUninstall(String),
+    InstallExtension,
+    OpenExtensionsFolder,
     // admin
     CreateUser,
     UserDisabled(String, bool),
@@ -307,6 +321,12 @@ pub struct LainApp {
     pub theme_gen: u64,
     pub theme_errors: Vec<String>,
     pub themes: Vec<ThemeEntry>,
+    /// The active theme's layout slots (tier 2, `layout.rs`).
+    pub layout: Layout,
+    // extensions (tier 3, `ext/`)
+    pub ext: crate::ext::Manager,
+    /// The extension whose permission prompt is showing.
+    pub ext_prompt: Option<String>,
     // plumbing
     pub net: Arc<Net>,
     pub backend: Option<Arc<Backend>>,
@@ -403,6 +423,9 @@ impl LainApp {
         };
         let (pal, mut theme_errors) = theme.palette();
         theme_errors.extend(terr);
+        let (layout, layout_errors) = Layout::load(&theme_dir);
+        theme_errors.extend(layout_errors);
+        let (ext, mut ext_rx) = crate::ext::Manager::new(crate::ext::manifest::extensions_dir(&dir));
         theme::set_icon_overrides(&theme_dir);
         let fonts = resolve_fonts(&theme, cx);
         for n in fonts.notes.iter().chain(theme_errors.iter()) {
@@ -418,6 +441,9 @@ impl LainApp {
         window.focus(&focus);
 
         let mut app = LainApp {
+            layout,
+            ext,
+            ext_prompt: None,
             themes: theme::list(&tdir),
             theme_stamp: theme::stamp(&theme_dir),
             theme_dir,
@@ -476,6 +502,26 @@ impl LainApp {
             args,
         };
         app.start(cx);
+
+        // Extension output (rails, panels, failures) onto the UI thread.
+        cx.spawn(async move |this, cx| {
+            while let Some(first) = ext_rx.recv().await {
+                let mut batch = vec![first];
+                while let Ok(o) = ext_rx.try_recv() {
+                    batch.push(o);
+                }
+                let alive = this.update(cx, |app, cx| {
+                    for o in batch {
+                        app.on_ext(o, cx);
+                    }
+                    cx.notify();
+                });
+                if alive.is_err() {
+                    return;
+                }
+            }
+        })
+        .detach();
 
         // The UI tick: player state, progress saves, theme hot reload, toasts.
         cx.spawn(async move |this, cx| {
@@ -594,6 +640,7 @@ impl LainApp {
         self.focused = None;
         self.start_events(cx);
         self.reload_all(cx);
+        self.ext_connect(cx);
     }
 
     pub fn is_admin(&self) -> bool {
@@ -605,6 +652,8 @@ impl LainApp {
             let _ = b.client.logout();
         }
         self.close_player(cx);
+        self.ext.set_api(None);
+        self.ext_prompt = None;
         self.me = None;
         self.phase = Phase::Connect;
         self.connect = connect::ConnectState { step: connect::Step::Login, ..Default::default() };
@@ -778,12 +827,16 @@ impl LainApp {
                     return;
                 }
                 Poke::Progress(id) => {
+                    self.ext_event(crate::ext::Event::ProgressChanged(id.clone()));
                     prog = true;
                     if self.item.has(&id) {
                         self.item.dirty = true;
                     }
                 }
-                Poke::Library => lib = true,
+                Poke::Library => {
+                    self.ext_event(crate::ext::Event::LibraryChanged);
+                    lib = true;
+                }
                 Poke::Scan(s) => {
                     let done = s.state != "running";
                     let was_running = matches!(&self.settings.scan, Load::Ready(x) if x.state == "running");
@@ -981,6 +1034,7 @@ impl LainApp {
             }
             Act::Refresh => {
                 self.reload_all(cx);
+                self.ext_refresh();
                 self.on_enter(cx);
                 self.toast("Refreshed", false);
             }
@@ -1033,6 +1087,15 @@ impl LainApp {
                 }
             }
             Act::CancelTranscode(s) => self.cancel_session(s, cx),
+            Act::ExtAllow
+            | Act::ExtDeny
+            | Act::ExtReview(_)
+            | Act::ExtToggle(_)
+            | Act::ExtScope(..)
+            | Act::ExtAskUninstall(_)
+            | Act::ExtUninstall(_)
+            | Act::InstallExtension
+            | Act::OpenExtensionsFolder => self.run_ext(act, cx),
             other => self.run_settings(other, window, cx),
         }
         cx.notify();
@@ -1173,7 +1236,11 @@ impl LainApp {
     pub fn apply_theme_dir(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
         match theme::load_dir(&dir) {
             Ok(t) => {
-                let (pal, errs) = t.palette();
+                let (pal, mut errs) = t.palette();
+                let (layout, layout_errors) = Layout::load(&dir);
+                errs.extend(layout_errors);
+                self.layout = layout;
+                self.home.dirty = true;
                 self.pal = pal;
                 self.theme = t;
                 self.theme_errors = errs;
@@ -1218,6 +1285,22 @@ impl LainApp {
         let k = ev.keystroke.key.as_str();
         let m = ev.keystroke.modifiers;
         let ctrl = m.control || m.platform;
+        if self.ext_prompt.is_some() && self.confirm.is_none() {
+            match k {
+                "enter" | "space" => {
+                    let deny = self.focused.as_ref().map(|f| f.as_ref()) == Some("ext.deny");
+                    self.run(if deny { Act::ExtDeny } else { Act::ExtAllow }, window, cx);
+                }
+                "escape" => self.run(Act::ExtDeny, window, cx),
+                "tab" | "left" | "right" => {
+                    let deny = self.focused.as_ref().map(|f| f.as_ref()) == Some("ext.deny");
+                    self.focused = Some(if deny { "ext.allow" } else { "ext.deny" }.into());
+                    cx.notify();
+                }
+                _ => {}
+            }
+            return;
+        }
         if let Some(_c) = &self.confirm {
             match k {
                 "enter" | "y" => self.run(Act::ConfirmYes, window, cx),
@@ -1631,6 +1714,10 @@ impl LainApp {
                     )
                     .into_any_element(),
             );
+        }
+        // extension permission prompt
+        if let Some(p) = self.render_ext_prompt(cx) {
+            out.push(p);
         }
         // palette
         if self.palette.is_some() {

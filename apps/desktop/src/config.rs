@@ -22,6 +22,8 @@ pub struct Config {
     /// Server path prefix → local path prefix, for playing files straight
     /// from shared storage when the server cannot stream them yet.
     pub path_map: Vec<(String, String)>,
+    /// Per extension: enabled, granted and reviewed scopes (`ext/mod.rs`).
+    pub extensions: std::collections::BTreeMap<String, crate::ext::ExtSettings>,
 }
 
 impl Default for Config {
@@ -33,6 +35,7 @@ impl Default for Config {
             offline_max_gib: 10,
             autoplay_next: true,
             path_map: Vec::new(),
+            extensions: Default::default(),
         }
     }
 }

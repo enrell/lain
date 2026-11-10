@@ -3,6 +3,7 @@
 pub mod acquire;
 pub mod connect;
 pub mod downloads;
+pub mod extensions;
 pub mod home;
 pub mod item;
 pub mod library;

@@ -1,0 +1,26 @@
+[package]
+name = "lain-ext-api"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+license = "Apache-2.0"
+description = "The lain client extension API (P6, DESIGN-v2 §8.3): the `lain:extension` WIT world and the guest SDK for extensions built to wasm32-wasip2"
+
+# Guest code (wasm32-wasip2). Its own workspace: neither the server
+# workspace nor the desktop app compiles wit-bindgen. `probe/` is the
+# guest the desktop host's tests load.
+[workspace]
+members = [".", "probe"]
+
+[dependencies]
+# Guest-side bindings for the WIT world (D-257); `macros` + `realloc`
+# only (no async runtime, no bitflags: the world has no flags).
+wit-bindgen = { version = "=0.63.0", default-features = false, features = ["macros", "realloc", "std"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

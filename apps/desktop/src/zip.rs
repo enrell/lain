@@ -78,27 +78,41 @@ pub(crate) mod tests {
 
     /// A stored-only archive with one file, built by hand.
     pub(crate) fn stored(name: &str, body: &[u8]) -> Vec<u8> {
+        stored_many(&[(name, body)])
+    }
+
+    /// A stored-only archive with these files.
+    pub(crate) fn stored_many(files: &[(&str, &[u8])]) -> Vec<u8> {
         let mut z = Vec::new();
         let crc = 0u32; // not checked by this reader
-        z.extend_from_slice(&[0x50, 0x4b, 0x03, 0x04, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        z.extend_from_slice(&crc.to_le_bytes());
-        z.extend_from_slice(&(body.len() as u32).to_le_bytes());
-        z.extend_from_slice(&(body.len() as u32).to_le_bytes());
-        z.extend_from_slice(&(name.len() as u16).to_le_bytes());
-        z.extend_from_slice(&0u16.to_le_bytes());
-        z.extend_from_slice(name.as_bytes());
-        z.extend_from_slice(body);
+        let mut offsets = Vec::new();
+        for (name, body) in files {
+            offsets.push(z.len() as u32);
+            z.extend_from_slice(&[0x50, 0x4b, 0x03, 0x04, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            z.extend_from_slice(&crc.to_le_bytes());
+            z.extend_from_slice(&(body.len() as u32).to_le_bytes());
+            z.extend_from_slice(&(body.len() as u32).to_le_bytes());
+            z.extend_from_slice(&(name.len() as u16).to_le_bytes());
+            z.extend_from_slice(&0u16.to_le_bytes());
+            z.extend_from_slice(name.as_bytes());
+            z.extend_from_slice(body);
+        }
         let cd = z.len();
-        z.extend_from_slice(&[0x50, 0x4b, 0x01, 0x02, 20, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        z.extend_from_slice(&crc.to_le_bytes());
-        z.extend_from_slice(&(body.len() as u32).to_le_bytes());
-        z.extend_from_slice(&(body.len() as u32).to_le_bytes());
-        z.extend_from_slice(&(name.len() as u16).to_le_bytes());
-        z.extend_from_slice(&[0; 12]);
-        z.extend_from_slice(&0u32.to_le_bytes());
-        z.extend_from_slice(name.as_bytes());
+        for ((name, body), off) in files.iter().zip(offsets) {
+            z.extend_from_slice(&[0x50, 0x4b, 0x01, 0x02, 20, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            z.extend_from_slice(&crc.to_le_bytes());
+            z.extend_from_slice(&(body.len() as u32).to_le_bytes());
+            z.extend_from_slice(&(body.len() as u32).to_le_bytes());
+            z.extend_from_slice(&(name.len() as u16).to_le_bytes());
+            z.extend_from_slice(&[0; 12]);
+            z.extend_from_slice(&off.to_le_bytes());
+            z.extend_from_slice(name.as_bytes());
+        }
         let cdlen = z.len() - cd;
-        z.extend_from_slice(&[0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 1, 0, 1, 0]);
+        let n = files.len() as u16;
+        z.extend_from_slice(&[0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0]);
+        z.extend_from_slice(&n.to_le_bytes());
+        z.extend_from_slice(&n.to_le_bytes());
         z.extend_from_slice(&(cdlen as u32).to_le_bytes());
         z.extend_from_slice(&(cd as u32).to_le_bytes());
         z.extend_from_slice(&0u16.to_le_bytes());

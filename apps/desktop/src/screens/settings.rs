@@ -86,6 +86,7 @@ impl LainApp {
                 self.reload_libraries(cx);
             }
             Section::Appearance => self.themes = crate::theme::list(&crate::theme::themes_dir(&self.dir)),
+            Section::Extensions => self.ext_sync(cx),
             Section::Playback => {
                 let gib = self.config.offline_max_gib.to_string();
                 self.set_text("play.gib", &gib);
@@ -619,6 +620,7 @@ impl LainApp {
             Section::Profile => self.set_profile(cx),
             Section::Privacy => self.set_privacy(cx),
             Section::Appearance => self.set_appearance(cx),
+            Section::Extensions => self.set_extensions(cx),
             Section::Playback => self.set_playback(cx),
             Section::Users => self.set_users(cx),
             Section::Libraries => self.set_libraries(cx),

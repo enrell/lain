@@ -7,7 +7,9 @@ mod backend;
 mod config;
 mod demo;
 mod engine;
+mod ext;
 mod images;
+mod layout;
 #[cfg(windows)]
 mod mpv;
 #[cfg(unix)]
