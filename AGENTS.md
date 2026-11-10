@@ -269,7 +269,7 @@ Kotlin + Jetpack Compose + Media3 on `lain-client`. Two builds:
   a screen stack, `BitmapFactory` and one `AppGraph` do those jobs.
 
 `scripts/build-rust.sh` builds the host library, generates the Kotlin
-bindings into `app/build/generated/uniffi` and builds the ABIs
+bindings into `app/generated/uniffi` (git-ignored) and builds the ABIs
 (`arm64-v8a`, `x86_64`) with cargo-ndk into `app/build/rustJniLibs`;
 Gradle adds both. Nothing generated is committed. **Do not install the
 Android SDK/NDK on the owner's machine** (the disk is tight): Rust parts

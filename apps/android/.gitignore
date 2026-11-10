@@ -5,3 +5,4 @@ local.properties
 .idea/
 .kotlin/
 lain-ffi/target/
+app/generated/
