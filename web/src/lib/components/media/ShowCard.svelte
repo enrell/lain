@@ -4,6 +4,7 @@
 	import type { Progress } from '$lib/api/types';
 	import type { SeriesGroup } from '$lib/utilities/grouping';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
+	import { artItem as pickArt } from '$lib/utilities/browse';
 	import Poster from './Poster.svelte';
 
 	/**
@@ -16,14 +17,17 @@
 	let {
 		group,
 		progress = null,
-		priority = false
+		priority = false,
+		wide = false
 	}: {
 		group: SeriesGroup;
 		progress?: Progress | null;
 		priority?: boolean;
+		/** Landscape frame, for titles shown by a still rather than a poster. */
+		wide?: boolean;
 	} = $props();
 
-	const artItem = $derived(group.items.find((i) => i.episode > 0) ?? group.items[0]);
+	const artItem = $derived(pickArt(group));
 	const seasons = $derived([...new Set(group.items.map((i) => i.season).filter((s) => s > 0))]);
 	const detail = $derived.by(() => {
 		const parts: string[] = [
@@ -49,7 +53,7 @@
 	<div
 		class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/15"
 	>
-		<div class="aspect-[2/3]">
+		<div class={wide ? 'aspect-video' : 'aspect-[2/3]'}>
 			<Poster
 				item={artItem}
 				enrichment={enrichmentCache.get(artItem.id) ?? null}
@@ -65,6 +69,12 @@
 		>
 			<Play class="size-4 translate-x-px" aria-hidden="true" />
 		</div>
+		<span
+			class="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 font-mono text-[10px] font-semibold text-foreground backdrop-blur"
+			aria-hidden="true"
+		>
+			{group.count}
+		</span>
 		{#if progress && progress.duration_sec > 0}
 			<div class="absolute inset-x-0 bottom-0 h-1 bg-black/40">
 				<div
