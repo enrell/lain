@@ -32,6 +32,16 @@ val MIME_FAMILIES: Map<String, String> = mapOf(
     "audio/vnd.dts" to "dts",
 )
 
+/**
+ * [claim] without the codec [family], for when the device's decoder turns
+ * out not to handle it (an HEVC decoder with no Main10 profile, say); a
+ * container left with no codec drops too.
+ */
+fun withoutFamily(claim: List<String>, family: String): List<String> {
+    val pairs = claim.filter { '/' in it && it.substringAfter('/') != family }
+    return (pairs.map { it.substringBefore('/') }.toSet() + pairs).sorted()
+}
+
 /** The claim for a device that decodes [families]; sorted, without duplicates. */
 fun decodeClaim(families: Set<String>): List<String> {
     val out = sortedSetOf<String>()
