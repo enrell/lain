@@ -19,7 +19,7 @@ pub mod types;
 pub use enrich::{CAP_METADATA_ENRICH, ENRICH_ID, Enricher};
 pub use nfo::{CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, NFO_ID, Nfo};
 pub use remote::{ANILIST_ID, Endpoints, JIKAN_ID, KITSU_ID, Remote, TVMAZE_ID};
-pub use sidecar::{SIDECAR_ID, Sidecar};
+pub use sidecar::{SIDECAR_ID, SIDECAR_IDENTIFY_ID, Sidecar, SidecarIdentifier};
 pub use types::{MetadataCandidate, MetadataRecord, MetadataResolveInput, MetadataSearchInput};
 
 /// The providers that read files next to the media and never the
