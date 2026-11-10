@@ -160,7 +160,8 @@ fn rail_slot(s: &str) -> Option<RailSlot> {
         _ => {
             if let Some(name) = s.strip_prefix("library:").filter(|n| !n.trim().is_empty()) {
                 RailSlot::Library(name.trim().to_string())
-            } else if let Some(rest) = s.strip_prefix("ext:").filter(|r| !r.is_empty()) {
+            } else {
+                let rest = s.strip_prefix("ext:").filter(|r| !r.is_empty())?;
                 match rest.split_once('/') {
                     Some((id, rail)) if !id.is_empty() && !rail.is_empty() => {
                         RailSlot::Ext(id.to_string(), Some(rail.to_string()))
@@ -168,8 +169,6 @@ fn rail_slot(s: &str) -> Option<RailSlot> {
                     Some(_) => return None,
                     None => RailSlot::Ext(rest.to_string(), None),
                 }
-            } else {
-                return None;
             }
         }
     })
@@ -259,8 +258,14 @@ impl Layout {
         let rails = list("home.rails", r.home.rails, rail_slot, d.rails.clone(), |_| false, &mut errors);
         let header = list("item.header", r.item.header, header_part, d.header.clone(), |_| false, &mut errors);
         let columns = list("item.columns", r.item.columns, column, d.columns.clone(), |_| false, &mut errors);
-        let controls =
-            list("player.controls", r.player.controls, control, d.controls.clone(), |c| *c == Control::Spacer, &mut errors);
+        let controls = list(
+            "player.controls",
+            r.player.controls,
+            control,
+            d.controls.clone(),
+            |c| *c == Control::Spacer,
+            &mut errors,
+        );
         let player_title = match r.player.title.as_deref() {
             None | Some("top") => Place::Top,
             Some("bottom") => Place::Bottom,

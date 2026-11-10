@@ -76,6 +76,7 @@ impl LainApp {
         match act {
             Act::ExtAllow | Act::ExtDeny => {
                 let Some(id) = self.ext_prompt.take() else { return };
+                self.focused = None;
                 let requested: Vec<String> = self
                     .ext
                     .find(&id)
@@ -133,16 +134,14 @@ impl LainApp {
                 self.ask(format!("Uninstall {name}? Its data folder is removed too."), Act::ExtUninstall(id));
                 return;
             }
-            Act::ExtUninstall(id) => {
-                match ext::manifest::uninstall(&self.ext.root, &id) {
-                    Ok(()) => {
-                        let name = self.ext.name(&id);
-                        self.config.extensions.remove(&id);
-                        self.toast(format!("{name} uninstalled"), false);
-                    }
-                    Err(e) => self.toast(format!("Uninstall: {e}"), true),
+            Act::ExtUninstall(id) => match ext::manifest::uninstall(&self.ext.root, &id) {
+                Ok(()) => {
+                    let name = self.ext.name(&id);
+                    self.config.extensions.remove(&id);
+                    self.toast(format!("{name} uninstalled"), false);
                 }
-            }
+                Err(e) => self.toast(format!("Uninstall: {e}"), true),
+            },
             Act::InstallExtension => {
                 let rx = cx.prompt_for_paths(PathPromptOptions {
                     files: true,
@@ -217,19 +216,21 @@ impl LainApp {
                     .flex()
                     .items_start()
                     .gap(px(th.sp(3)))
-                    .child(div().pt(px(6.)).size(px(7.)).rounded_full().bg(if s.sensitive() { pal.warn } else { pal.accent }))
+                    .child(div().pt(px(6.)).size(px(7.)).rounded_full().bg(if s.sensitive() {
+                        pal.warn
+                    } else {
+                        pal.accent
+                    }))
                     .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .child(div().child(s.describe()))
-                            .child(
-                                div()
-                                    .flex()
-                                    .gap(px(th.sp(2)))
-                                    .child(self.label(s.id()))
-                                    .when(new && scopes.len() != unreviewed.len(), |d| d.child(self.label("new").text_color(pal.warn))),
-                            ),
+                        div().flex().flex_col().child(div().child(s.describe())).child(
+                            div()
+                                .flex()
+                                .gap(px(th.sp(2)))
+                                .child(self.label(s.id()))
+                                .when(new && scopes.len() != unreviewed.len(), |d| {
+                                    d.child(self.label("new").text_color(pal.warn))
+                                }),
+                        ),
                     ),
             );
         }
@@ -261,7 +262,11 @@ impl LainApp {
                                 .child(format!("{} {}", m.name, m.version)),
                         )
                         .child(div().text_color(pal.muted).child(format!("{}{by}", m.description)))
-                        .child(div().child(if scopes.is_empty() { "It may:".to_string() } else { "It asks to:".to_string() }))
+                        .child(div().child(if scopes.is_empty() {
+                            "It may:".to_string()
+                        } else {
+                            "It asks to:".to_string()
+                        }))
                         .child(list)
                         .child(div().text_size(px(th.ts(-1))).text_color(pal.muted).child(
                             "It runs sandboxed: no files, network or other extensions beyond what you allow. \
@@ -286,14 +291,18 @@ impl LainApp {
             div().flex().gap(px(th.sp(1))).child(install).child(open),
         ));
         if let Some(e) = &self.ext.runtime_error {
-            col = col.child(div().py(px(th.sp(2))).text_color(pal.danger).child(format!("The extension runtime failed: {e}")));
+            col = col.child(
+                div().py(px(th.sp(2))).text_color(pal.danger).child(format!("The extension runtime failed: {e}")),
+            );
         }
         let installed = self.ext.installed.clone();
         if installed.is_empty() {
-            col = col.child(div().py(px(th.sp(3))).text_color(pal.muted).child(format!(
-                "None installed. Install one, or put its folder in {}.",
-                self.ext.root.display()
-            )));
+            col = col.child(
+                div()
+                    .py(px(th.sp(3)))
+                    .text_color(pal.muted)
+                    .child(format!("None installed. Install one, or put its folder in {}.", self.ext.root.display())),
+            );
         }
         for inst in installed {
             let id = inst.id.clone();
@@ -309,15 +318,24 @@ impl LainApp {
             let (title, sub) = match &inst.manifest {
                 Ok(m) => (
                     format!("{} {}", m.name, m.version),
-                    format!("{}{}", m.description, if m.author.is_empty() { String::new() } else { format!(" · {}", m.author) }),
+                    format!(
+                        "{}{}",
+                        m.description,
+                        if m.author.is_empty() { String::new() } else { format!(" · {}", m.author) }
+                    ),
                 ),
                 Err(_) => (id.clone(), inst.dir.display().to_string()),
             };
             let toggle = match &status {
                 Status::Broken(_) => None,
-                Status::NeedsReview => {
-                    Some(self.btn(&format!("ext.{id}.review"), "Review permissions", None, Tone::Primary, Act::ExtReview(id.clone()), cx))
-                }
+                Status::NeedsReview => Some(self.btn(
+                    &format!("ext.{id}.review"),
+                    "Review permissions",
+                    None,
+                    Tone::Primary,
+                    Act::ExtReview(id.clone()),
+                    cx,
+                )),
                 _ => Some(self.btn(
                     &format!("ext.{id}.toggle"),
                     if s.enabled { "Turn off" } else { "Turn on" },
@@ -327,8 +345,14 @@ impl LainApp {
                     cx,
                 )),
             };
-            let remove =
-                self.btn(&format!("ext.{id}.remove"), "Uninstall", None, Tone::Danger, Act::ExtAskUninstall(id.clone()), cx);
+            let remove = self.btn(
+                &format!("ext.{id}.remove"),
+                "Uninstall",
+                None,
+                Tone::Danger,
+                Act::ExtAskUninstall(id.clone()),
+                cx,
+            );
             card = card.child(
                 div()
                     .flex()
@@ -417,19 +441,13 @@ impl LainApp {
     pub fn ext_panel(&self, ext: &str, p: &ext::Panel) -> gpui::Div {
         let th = &self.theme;
         let pal = &self.pal;
-        let mut d = self
-            .panel()
-            .p(px(th.sp(4)))
-            .flex()
-            .flex_col()
-            .gap(px(th.sp(2)))
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .child(self.label(p.title.clone()).text_color(pal.accent))
-                    .child(self.label(self.ext.name(ext))),
-            );
+        let mut d = self.panel().p(px(th.sp(4))).flex().flex_col().gap(px(th.sp(2))).child(
+            div()
+                .flex()
+                .justify_between()
+                .child(self.label(p.title.clone()).text_color(pal.accent))
+                .child(self.label(self.ext.name(ext))),
+        );
         for r in &p.rows {
             d = d.child(
                 div()

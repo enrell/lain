@@ -126,6 +126,14 @@ outside its folder. Installing a zip refuses entries with `..` or
 absolute paths, caps the unpacked size (64 MiB) and the entry count.
 Logic belongs to tier 3 (WASM extensions, DESIGN-v2 §8.3).
 
+## Skins (tier 2)
+
+A theme folder may also hold a `layout.json` (`lain.ui.layout@1`): layout
+slots that choose and order Home's rails, the hero style, a title page's
+header parts and columns, and the player overlay. It reloads with the
+theme. The schema, the sample skin `shelf` and tier 3 extensions are in
+[`MODDING.md`](MODDING.md).
+
 ## Versioning
 
 A change that only adds keys keeps `@1`. Changing the meaning of a key

@@ -102,8 +102,14 @@ pub enum Section {
 }
 
 impl Section {
-    pub const YOU: &[Section] =
-        &[Section::Account, Section::Profile, Section::Privacy, Section::Appearance, Section::Extensions, Section::Playback];
+    pub const YOU: &[Section] = &[
+        Section::Account,
+        Section::Profile,
+        Section::Privacy,
+        Section::Appearance,
+        Section::Extensions,
+        Section::Playback,
+    ];
     pub const SERVER: &[Section] =
         &[Section::Users, Section::Libraries, Section::Plugins, Section::Modules, Section::Server, Section::Backup];
     pub fn label(self) -> &'static str {

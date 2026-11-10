@@ -158,7 +158,7 @@ macro_rules! register_extension {
                 }
             }
 
-            $crate::wit::export!(__LainExtension with_types_in $crate::wit);
+    $crate::wit::export!(__LainExtension with_types_in $crate::wit);
         };
     };
 }

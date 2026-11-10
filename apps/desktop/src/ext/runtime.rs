@@ -22,9 +22,9 @@
 
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
 use std::time::Duration;
 
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
@@ -129,12 +129,28 @@ impl Grants {
 #[derive(Debug, Clone)]
 pub enum Out {
     /// The extension is running (after `activate`).
-    Ready { ext: String },
-    Rails { ext: String, rails: Vec<Rail> },
-    Panels { ext: String, item: String, panels: Vec<Panel> },
-    Log { ext: String, level: LogLevel, line: String },
+    Ready {
+        ext: String,
+    },
+    Rails {
+        ext: String,
+        rails: Vec<Rail>,
+    },
+    Panels {
+        ext: String,
+        item: String,
+        panels: Vec<Panel>,
+    },
+    Log {
+        ext: String,
+        level: LogLevel,
+        line: String,
+    },
     /// The extension trapped or failed to load; its worker has ended.
-    Failed { ext: String, reason: String },
+    Failed {
+        ext: String,
+        reason: String,
+    },
 }
 
 /// From the app to a worker.

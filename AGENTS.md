@@ -224,8 +224,22 @@ natively on Windows (`cargo build` in `apps/desktop`; output on C: per
 - `raw-window-handle` — the native window handle mpv renders into.
 - `windows` 0.61 (Windows only) — the video host window, window placement,
   PrintWindow captures; the version GPUI compiles.
+- `lain-http` (path, P6, D-263) — `net:<host>` GETs of extensions; its
+  rustls/ring are already in the desktop tree under GPUI.
+- `wasmtime` (=50.0.1; `cranelift`, `runtime`, `component-model`, `std`,
+  no defaults) and `wasmtime-wasi` (=50.0.1, `p2` only) — tier 3
+  extensions (P6, D-256, D-263): the component-model runtime with fuel,
+  epoch interruption and store limits, and the WASI p2 interfaces every
+  `wasm32-wasip2` guest imports, linked with an empty context. The owner
+  approved them in the P6 brief. They add about 25 MB to the release exe
+  (15 → 40 MB) and about a minute to a clean release build.
 - `patches/xattr-0.2.3` — a one-constant patch so GPUI's transitive `xattr`
   builds on Linux against the `libc` pin (see `patches/README.md`).
+
+Guest side (`crates/lain-ext-api`, its own workspace, never compiled by
+the server or the app): `wit-bindgen` (=0.63.0, `macros`, `realloc`,
+`std`) for the `lain:extension` world. Extensions and the probe guest
+build for `wasm32-wasip2`; spec in `docs/MODDING.md`.
 
 ## Workflow
 

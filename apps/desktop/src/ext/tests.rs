@@ -245,7 +245,10 @@ fn installs_from_a_folder_and_a_zip_and_refuses_escapes() {
     let zip = d.join("probe.zip");
     std::fs::write(
         &zip,
-        crate::zip::tests::stored_many(&[("probe/extension.json", MANIFEST.as_bytes()), ("probe/probe.wasm", b"\0asm")]),
+        crate::zip::tests::stored_many(&[
+            ("probe/extension.json", MANIFEST.as_bytes()),
+            ("probe/probe.wasm", b"\0asm"),
+        ]),
     )
     .unwrap();
     manifest::install(&zip, &root).unwrap();
@@ -394,7 +397,8 @@ fn a_panic_is_a_trap_that_names_the_panic() {
 #[test]
 fn bad_components_and_refusals_fail_cleanly() {
     let d = temp("bad");
-    let mut r = run(b"\0asm not really".to_vec(), "ok", scopes(&[]), Limits::default(), Arc::new(FakeApi::default()), &d);
+    let mut r =
+        run(b"\0asm not really".to_vec(), "ok", scopes(&[]), Limits::default(), Arc::new(FakeApi::default()), &d);
     assert!(r.failed().contains("not a valid component"));
     let Some(wasm) = guest("lain_ext_probe") else { return };
     let mut r = run(wasm, "refuse", scopes(&["ui:rail"]), Limits::default(), Arc::new(FakeApi::default()), &d);
@@ -423,7 +427,9 @@ fn the_manager_waits_for_review_and_disables_a_crashing_extension() {
     let d = temp("manager");
     let root = d.join("extensions");
     std::fs::create_dir_all(root.join("probe")).unwrap();
-    let m = MANIFEST.replace("net:example.org", "events:subscribe").replace("\"ui:rail\"]", "\"ui:rail\"],\"config\":{\"mode\":\"panic\"}");
+    let m = MANIFEST
+        .replace("net:example.org", "events:subscribe")
+        .replace("\"ui:rail\"]", "\"ui:rail\"],\"config\":{\"mode\":\"panic\"}");
     std::fs::write(root.join("probe/extension.json"), m).unwrap();
     std::fs::write(root.join("probe/probe.wasm"), wasm).unwrap();
     let (mut mgr, mut rx) = Manager::new(root);
@@ -507,7 +513,8 @@ fn seasonal_stats_builds_its_rail_and_panel() {
     r.worker.send(Cmd::Panels("item-1".into()));
     match r.next(30) {
         Some(Out::Panels { panels, .. }) => {
-            let rows: Vec<(String, String)> = panels[0].rows.iter().map(|r| (r.label.clone(), r.value.clone())).collect();
+            let rows: Vec<(String, String)> =
+                panels[0].rows.iter().map(|r| (r.label.clone(), r.value.clone())).collect();
             assert!(rows.contains(&("new files".into(), "2 of 2".into())), "{rows:?}");
             assert!(rows.contains(&("finished".into(), "1".into())), "{rows:?}");
             assert!(rows.contains(&("time spent".into(), "34 min".into())), "{rows:?}");
