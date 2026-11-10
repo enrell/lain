@@ -225,7 +225,9 @@ jobs:
         timeout-minutes: 20
         run: cargo test --manifest-path lain-ffi/Cargo.toml --locked --no-fail-fast
       - name: Rust libraries and Kotlin bindings
-        run: ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" scripts/build-rust.sh
+        run: |
+          ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" scripts/build-rust.sh
+          find app/generated -name '*.kt' -exec sh -c 'echo "$1"; grep -m1 "^package" "$1"' _ {} \;
       - name: Unit tests and debug APK
         run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug -PlainHostLib="$PWD/lain-ffi/target/debug/liblain_ffi.so"
       - uses: actions/upload-artifact@v7
