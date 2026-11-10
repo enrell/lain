@@ -1,7 +1,7 @@
 // The Android app (DESIGN-v2 §8.5, D-245..D-254). The Rust core is built
 // outside Gradle by `scripts/build-rust.sh` (cargo-ndk + uniffi-bindgen):
 // it writes the native libraries to build/rustJniLibs/<abi>/ and the
-// Kotlin bindings to build/generated/uniffi/, which are added here.
+// Kotlin bindings to generated/uniffi/ (git-ignored), added here.
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -45,7 +45,7 @@ android {
     }
 
     sourceSets.getByName("main") {
-        kotlin.srcDir("build/generated/uniffi")
+        java.srcDir("generated/uniffi")
         jniLibs.srcDir("build/rustJniLibs")
     }
 

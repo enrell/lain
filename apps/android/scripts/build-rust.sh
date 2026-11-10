@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the Rust core for the app (D-251):
 #   1. lain-ffi for the host, then the Kotlin bindings from it
-#      (uniffi-bindgen in library mode) into app/build/generated/uniffi;
+#      (uniffi-bindgen in library mode) into app/generated/uniffi;
 #   2. lain-ffi for each Android ABI with cargo-ndk into
 #      app/build/rustJniLibs/<abi>/ (skipped with --bindings-only).
 # Needs cargo; step 2 needs cargo-ndk, the Rust Android targets and an
@@ -20,10 +20,10 @@ case "$(uname -s)" in
 esac
 
 cargo build --locked --manifest-path "$ffi/Cargo.toml"
-rm -rf "$app/build/generated/uniffi"
+rm -rf "$app/generated/uniffi"
 cargo run --locked --manifest-path "$ffi/Cargo.toml" --features bindgen --bin uniffi-bindgen -- \
     generate --library "$target_dir/debug/$host_lib" --language kotlin --no-format \
-    --out-dir "$app/build/generated/uniffi"
+    --out-dir "$app/generated/uniffi"
 echo "host library: $target_dir/debug/$host_lib"
 
 if [ "${1:-}" = "--bindings-only" ]; then
