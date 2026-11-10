@@ -7,9 +7,7 @@
 	import { api } from '$lib/api';
 	import type { Library, Progress } from '$lib/api/types';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
-	import { isReadable } from '$lib/reader/kinds';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
-	import { prefersWide } from '$lib/utilities/browse';
 	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
 	import MediaCard from './MediaCard.svelte';
 	import ShowCard from './ShowCard.svelte';
@@ -26,7 +24,6 @@
 	}
 	let shelves = $state<Record<string, Shelf>>({});
 	let progressMap = $state<Map<string, Progress>>(new Map());
-	const enrichmentOf = (id: string) => enrichmentCache.get(id);
 
 	async function load(lib: Library): Promise<void> {
 		try {
@@ -51,7 +48,6 @@
 <div class="space-y-10">
 	{#each libraries as lib (lib.id)}
 		{@const shelf = shelves[lib.id]}
-		{@const wide = shelf ? prefersWide(shelf.groups, enrichmentOf, isReadable(lib.type)) : false}
 		<section class="space-y-3" aria-labelledby={`shelf-${lib.id}`}>
 			<div class="flex items-baseline justify-between gap-4">
 				<h2 id={`shelf-${lib.id}`} class="min-w-0">
@@ -78,13 +74,13 @@
 			{:else if shelf.groups.length === 0}
 				<p class="text-sm text-muted">Nothing indexed here yet.</p>
 			{:else}
-				<div class="-mx-5 flex snap-x gap-3.5 overflow-x-auto px-5 pb-3 pt-1 no-scrollbar sm:-mx-8 sm:px-8 md:mx-0 md:gap-4 md:px-0">
+				<div class="-mx-5 flex snap-x gap-3.5 overflow-x-auto px-5 pb-3 pt-1 no-scrollbar [--card-h:9.5rem] sm:-mx-8 sm:px-8 sm:[--card-h:12rem] md:mx-0 md:px-0 lg:[--card-h:14rem]">
 					{#each shelf.groups as group, i (group.key)}
-						<div class={['shrink-0 snap-start', wide ? 'w-[70vw] max-w-72 sm:w-64 lg:w-72' : 'w-[40vw] max-w-44 sm:w-36 lg:w-44'].join(' ')}>
+						<div class="shrink-0 snap-start">
 							{#if group.count > 1}
 								<ShowCard
 									{group}
-									{wide}
+									fit
 									progress={group.items.map((it) => progressMap.get(it.id)).find(Boolean) ?? null}
 									priority={i < 4}
 								/>
@@ -93,7 +89,7 @@
 									item={group.items[0]}
 									enrichment={enrichmentCache.get(group.items[0].id) ?? null}
 									progress={progressMap.get(group.items[0].id) ?? null}
-									{wide}
+									fit
 								/>
 							{/if}
 						</div>
@@ -101,7 +97,7 @@
 					{#if shelf.total > shelf.groups.reduce((n, g) => n + g.count, 0)}
 						<a
 							href={`/library/${lib.id}`}
-							class={['flex shrink-0 snap-start items-center justify-center rounded-xl border border-dashed border-line text-sm text-muted transition-colors hover:border-white/25 hover:text-foreground', wide ? 'aspect-video w-40' : 'aspect-[2/3] w-28'].join(' ')}
+							class="flex h-[var(--card-h)] w-28 shrink-0 snap-start items-center justify-center rounded-xl border border-dashed border-line text-sm text-muted transition-colors hover:border-white/25 hover:text-foreground"
 						>
 							See all
 						</a>

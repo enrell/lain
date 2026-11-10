@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Enrichment } from '$lib/api/types';
-import { genreCounts, prefersWide, withGenres } from './browse';
+import { genreCounts, withGenres } from './browse';
 import { groupItems } from './grouping';
 
 function item(id: string, title: string, episode = 0): CatalogItem {
@@ -15,17 +15,6 @@ function lookup(map: Record<string, Partial<Enrichment>>) {
 }
 
 const groups = groupItems([item('a1', 'Alpha', 1), item('a2', 'Alpha', 2), item('b', 'Beta'), item('c', 'Gamma')]);
-
-describe('prefersWide', () => {
-	it('is landscape when most titles have no poster art', () => {
-		expect(prefersWide(groups, lookup({ a1: { poster: 'p.jpg' } }), false)).toBe(true);
-		expect(prefersWide(groups, lookup({ a1: { poster: 'p.jpg' }, b: { cover: 'c.jpg' } }), false)).toBe(false);
-	});
-	it('stays portrait for reading libraries and for nothing at all', () => {
-		expect(prefersWide(groups, lookup({}), true)).toBe(false);
-		expect(prefersWide([], lookup({}), false)).toBe(false);
-	});
-});
 
 describe('genres', () => {
 	const e = lookup({ a1: { genres: ['Drama'] }, a2: { genres: ['drama', 'Mystery'] }, b: { genres: ['Mystery'] } });

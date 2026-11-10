@@ -3,6 +3,7 @@
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import { isReadable } from '$lib/reader/kinds';
+	import { recordShape } from '$lib/stores/shapes.svelte';
 	import PlaceholderPoster from './PlaceholderPoster.svelte';
 
 	let {
@@ -64,6 +65,10 @@
 			fetchpriority={priority ? 'high' : 'auto'}
 			referrerpolicy="no-referrer"
 			class={['relative size-full', isStill ? 'object-contain' : 'object-cover'].join(' ')}
+			onload={(e) => {
+				const img = e.currentTarget as HTMLImageElement;
+				recordShape(item.id, img.naturalWidth, img.naturalHeight);
+			}}
 			onerror={handleError}
 		/>
 	{:else}

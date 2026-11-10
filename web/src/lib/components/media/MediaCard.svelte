@@ -4,6 +4,8 @@
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
 	import { mediaSubtitle } from '$lib/utilities/format';
 	import { progressRatio } from '$lib/utilities/progress';
+	import { isReadable as readable } from '$lib/reader/kinds';
+	import { RATIO, shapeOf } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
 	import ProgressBar from './ProgressBar.svelte';
 
@@ -12,17 +14,22 @@
 		enrichment = null,
 		progress = null,
 		priority = false,
-		wide = false
+		fit = false
 	}: {
 		item: CatalogItem;
 		enrichment?: Enrichment | null;
 		progress?: Progress | null;
 		priority?: boolean;
-		/** Landscape frame, for titles shown by a still rather than a poster. */
-		wide?: boolean;
+		/** Take the shape of the picture: the card sets its own width from
+		 * `--card-h`, for a row of cards of one height (see MediaGrid). */
+		fit?: boolean;
 	} = $props();
 
 	const title = $derived(enrichment?.title || item.title);
+	const shape = $derived(
+		shapeOf(item.id, enrichment?.poster || enrichment?.cover || readable(item.kind) ? 'portrait' : 'landscape')
+	);
+
 	const subtitle = $derived(
 		[enrichment?.year && item.year === 0 ? String(enrichment.year) : '', mediaSubtitle(item)]
 			.filter(Boolean)
@@ -39,13 +46,14 @@
 
 <a
 	href={`/item/${item.id}`}
-	class="group block rounded-card transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+	style={fit ? `width: calc(var(--card-h) * ${RATIO[shape]})` : undefined}
+	class="group block shrink-0 rounded-card transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 	aria-label={accessibleName}
 >
 	<div
 		class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/15"
 	>
-		<div class={wide ? 'aspect-video' : 'aspect-[2/3]'}>
+		<div class={fit ? '' : 'aspect-[2/3]'} style={fit ? 'height: var(--card-h)' : undefined}>
 			<Poster {item} {enrichment} {priority} class="size-full transition-transform duration-500 ease-out group-hover:scale-[1.035]" />
 		</div>
 		<div

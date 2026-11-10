@@ -1,7 +1,8 @@
 <script lang="ts" module>
-	/** Grid columns for portrait cards and for landscape ones. */
+	/** Portrait cards in equal columns. */
 	export const GRID = 'grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6';
-	export const GRID_WIDE = 'grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+	/** Rows of one height; each card is as wide as its picture's shape. */
+	export const FIT = 'flex flex-wrap gap-x-3.5 gap-y-6 [--card-h:9.5rem] sm:[--card-h:12rem] lg:[--card-h:15rem]';
 </script>
 
 <script lang="ts">
@@ -13,23 +14,23 @@
 		items,
 		progressMap = null,
 		priority = false,
-		wide = false
+		fit = false
 	}: {
 		items: CatalogItem[];
 		progressMap?: Map<string, Progress> | null;
 		priority?: boolean;
-		wide?: boolean;
+		fit?: boolean;
 	} = $props();
 </script>
 
-<div class={wide ? GRID_WIDE : GRID}>
+<div class={fit ? FIT : GRID}>
 	{#each items as item, i (item.id)}
 		<MediaCard
 			{item}
 			enrichment={enrichmentCache.get(item.id) ?? null}
 			progress={progressMap?.get(item.id) ?? null}
 			priority={priority && i < 6}
-			{wide}
+			{fit}
 		/>
 	{/each}
 </div>

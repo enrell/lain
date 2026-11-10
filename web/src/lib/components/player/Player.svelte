@@ -35,6 +35,7 @@
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
 	import { isCompleted } from '$lib/utilities/progress';
+	import { reportCopyCodecs } from '$lib/utilities/capabilities';
 	import { ProgressReporter, type ProgressSnapshot } from '$lib/utilities/progress-reporter';
 	import { elapsedSince, formatTime } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
@@ -206,6 +207,12 @@
 	let forcedTranscode = $state(false);
 	let directFallbackNote = $state(false);
 	let frameCheck: ReturnType<typeof setTimeout> | null = null;
+	// An HEVC source is copied into the session when this browser says it
+	// decodes HEVC (D-273). That is a claim too: hevcCopied marks a session
+	// carrying the copy, and a decode failure on one sets hevcCopyRefused
+	// and rebuilds it as an H.264 encode instead of ending in an error.
+	let hevcCopied = false;
+	let hevcCopyRefused = false;
 	const mode = $derived(forcedTranscode ? 'transcode' : plan.mode);
 
 	const audioTracks = $derived((plan.streams ?? []).filter((s) => s.type === 'audio'));
@@ -498,6 +505,7 @@
 					hls?.recoverMediaError();
 					return;
 				}
+				if (data.type === Hls.ErrorTypes.MEDIA_ERROR && refuseHevcCopy()) return;
 				error = 'HLS playback failed.';
 			});
 			hls.loadSource(url);
@@ -593,8 +601,10 @@
 				audio_stream: selection?.audio_stream ?? (selectedAudio === '' ? undefined : Number(selectedAudio)),
 				subtitle_stream: subtitleStream,
 				subtitle_mode: (languageMetadataKnown || chosenSidecar !== null) && embeddedSubtitle === '' ? 'off' : undefined,
-				start_sec: baseOffset || undefined
+				start_sec: baseOffset || undefined,
+				video_copy_codecs: copyCodecs()
 			});
+			hevcCopied = status.video_direct === true && status.video_codec === 'hevc';
 			transcodeSession = status.session;
 			delivery = status.delivery ?? 'progressive';
 			transcodeReasons = status.reasons ?? transcodeReasons;
@@ -639,6 +649,22 @@
 				transcodeAbort = null;
 			}
 		}
+	}
+
+	function copyCodecs(): string[] | undefined {
+		if (hevcCopyRefused) return undefined;
+		const codecs = reportCopyCodecs((plan.streams ?? []).find((s) => s.type === 'video'));
+		return codecs.length > 0 ? codecs : undefined;
+	}
+
+	// The copied HEVC stream did not decode: prepare the encoded version
+	// from the viewer's position. True when a rebuild was started.
+	function refuseHevcCopy(): boolean {
+		if (!hevcCopied || hevcCopyRefused || mode !== 'transcode') return false;
+		hevcCopyRefused = true;
+		hevcCopied = false;
+		void rebuildAt(currentTime);
+		return true;
 	}
 
 	// A direct-play subtitle choice only swaps the sidecar; a transcode
@@ -840,6 +866,12 @@
 			(code === MediaError.MEDIA_ERR_DECODE || code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED)
 		) {
 			void fallbackToTranscode();
+			return;
+		}
+		if (
+			(code === MediaError.MEDIA_ERR_DECODE || code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) &&
+			refuseHevcCopy()
+		) {
 			return;
 		}
 		switch (code) {
