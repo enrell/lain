@@ -1,0 +1,7 @@
+# Global config for uniffi-bindgen (UniFFI 0.32+): `--config` takes this
+# format, not a flat uniffi.toml (old-style files are ignored with a warning,
+# which left the bindings in the default package). Same values as uniffi.toml.
+[defaults.bindings.kotlin]
+package_name = "io.github.enrell.lain.core"
+cdylib_name = "lain_ffi"
+generate_immutable_records = true

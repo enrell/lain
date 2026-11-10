@@ -1,0 +1,4 @@
+[bindings.kotlin]
+package_name = "io.github.enrell.lain.core"
+cdylib_name = "lain_ffi"
+generate_immutable_records = true

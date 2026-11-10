@@ -51,6 +51,11 @@ jobs:
           build-mode: none
         - language: rust
           build-mode: none
+        # The Android app (apps/android). CodeQL's build-mode none does not
+        # cover Kotlin, so it is compiled: the Kotlin bindings come from the
+        # host build of lain-ffi, then Gradle compiles the debug sources.
+        - language: java-kotlin
+          build-mode: manual
         # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'rust', 'swift'
         # Use `c-cpp` to analyze code written in C, C++ or both
         # Use 'java-kotlin' to analyze code written in Java, Kotlin or both
@@ -88,16 +93,23 @@ jobs:
     # to build your code.
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
-    - name: Run manual build steps
-      if: matrix.build-mode == 'manual'
+    - name: Set up Java (java-kotlin)
+      if: matrix.language == 'java-kotlin'
+      uses: actions/setup-java@v6
+      with:
+        distribution: temurin
+        java-version: "21"
+
+    - name: Build the Android app (java-kotlin)
+      if: matrix.language == 'java-kotlin'
       shell: bash
+      working-directory: apps/android
+      env:
+        CARGO_BUILD_JOBS: "4"
       run: |
-        echo 'If you are using a "manual" build mode for one or more of the' \
-          'languages you are analyzing, replace this with the commands to build' \
-          'your code, for example:'
-        echo '  make bootstrap'
-        echo '  make release'
-        exit 1
+        rustup toolchain install stable --profile minimal
+        scripts/build-rust.sh --bindings-only
+        ./gradlew --no-daemon :app:compileDebugKotlin :app:compileDebugUnitTestKotlin
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
