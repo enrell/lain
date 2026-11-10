@@ -21,11 +21,11 @@ esac
 
 cargo build --locked --manifest-path "$ffi/Cargo.toml"
 rm -rf "$app/generated/uniffi"
-# From the crate's directory: library mode reads `uniffi.toml` (the Kotlin
-# package) through cargo metadata of the current workspace.
+# From the crate's directory. `--config` is UniFFI 0.32's global format (the Kotlin
+# package), so the bindings land in io.github.enrell.lain.core.
 (cd "$ffi" && cargo run --locked --features bindgen --bin uniffi-bindgen -- \
     generate --library "$target_dir/debug/$host_lib" --language kotlin --no-format \
-    --config "$ffi/uniffi.toml" --out-dir "$app/generated/uniffi")
+    --config "$ffi/uniffi-global.toml" --out-dir "$app/generated/uniffi")
 echo "host library: $target_dir/debug/$host_lib"
 
 if [ "${1:-}" = "--bindings-only" ]; then
