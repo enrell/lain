@@ -4,7 +4,7 @@
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>lain — local-first media server</title>
-	<meta name="description" content="lain is a local-first media server in Go. A tiny trusted core hosts replaceable plugins: catalog, playback, search, metadata and thumbnails. Embedded web UI, mpv CLI and a native desktop client." />
+	<meta name="description" content="lain is a local-first media server in Rust. A tiny trusted core hosts replaceable plugins: catalog, playback, search, metadata and thumbnails. Embedded web UI, mpv CLI and a native desktop client." />
 	<meta name="theme-color" content="#07080a" />
 	<meta property="og:title" content="lain — local-first media server" />
 	<meta property="og:description" content="Your data. Your machine. Your rules. Your plugins." />
@@ -55,7 +55,7 @@
 				<h1 class="wordmark"><span class="wordmark-text">lain</span><span class="wordmark-caret" aria-hidden="true">_</span></h1>
 				<p class="mantra">Your data. Your machine.<br />Your rules. <em>Your plugins.</em></p>
 				<p class="lede">
-					A single static binary in Go. A tiny trusted core hosts replaceable
+					A single binary in Rust. A tiny trusted core hosts replaceable
 					plugins — catalog, playback, search, metadata, thumbnails — and your
 					library streams to the embedded web UI, to <span class="mono">mpv</span> and to the
 					native desktop client.
@@ -196,7 +196,7 @@
 						<h3>Surfaces</h3>
 					</div>
 					<div class="spec-value">
-						<p>The Svelte 5 SPA is compiled into the Go binary — same process, same
+						<p>The Svelte 5 SPA is compiled into the lain binary — same process, same
 						origin, no Node at runtime. The CLI drives mpv with an authenticated stream
 						URL. The desktop client speaks the same API.</p>
 						<figure class="figure">
@@ -352,7 +352,7 @@ tar -xzf lain_0.1.0_linux_amd64.tar.gz && ./lain serve --port 9360"></pre>
 		</div>
 		<div class="footer-base mono">
 			<span>Apache-2.0</span>
-			<span>built with Go + Qt</span>
+			<span>built with Rust</span>
 			<span>no trackers on this page</span>
 		</div>
 	</footer>

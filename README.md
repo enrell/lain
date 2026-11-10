@@ -5,15 +5,16 @@
 [![Container](https://img.shields.io/badge/ghcr.io-enrell%2Flain-2496ED?logo=docker&logoColor=white)](https://github.com/enrell/lain/pkgs/container/lain)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-A local-first media server in Go, organized as replaceable plugins over a
-small trusted core. Fast to build (stdlib + one small dep, seconds to
-compile), local by default, swappable by design.
+A local-first media server in Rust, organized as replaceable providers
+over a small trusted core: few, pure-Rust dependencies, local by default,
+swappable by design.
 
 > Your data. Your machine. Your rules. Your plugins.
 
-**v0.1.0** ships as: a single static binary with the web UI embedded, a
-multi-arch container image, and a desktop client
-([lain-desktop](https://github.com/enrell/lain-desktop)). The core is
+**v0.1.0** ships as: one `lain` binary per platform (Linux, macOS,
+Windows) with the web UI embedded, holding both the server and the
+command-line client, and a multi-arch container image. The native desktop
+app (`apps/desktop`, GPUI) is built on the same client core. The core is
 file-backed and dependency-light; the plugin registry supports runtime
 swap with generation fencing and last-good fallback. See `docs/` for
 boundaries and contracts.
@@ -39,9 +40,10 @@ or let the installer generate a filled-in, commented one (data dir,
 read-write media mounts, port, tag). It prints the file before applying
 it so you can audit every host mount. Re-running preserves manual edits
 by default; explicitly choosing regeneration creates timestamped backups.
-The image bundles `ffmpeg` for thumbnails and
-`ca-certificates` for remote metadata providers; no Node, no second
-origin — the SPA is embedded in the binary.
+The image bundles `ffmpeg` for probing, thumbnails and
+transcoding; TLS roots for the remote metadata providers are compiled
+into the binary. No Node, no second origin: the SPA is embedded in the
+binary.
 
 On Omarchy, the native server automatically reads the current palette.
 For Docker, set `LAIN_OMARCHY_CURRENT` to
@@ -88,25 +90,26 @@ for automation). Media directories are never touched at any level.
 ### Static binary
 
 ```sh
-# from a release (linux/amd64 or linux/arm64):
+# from a release (linux/{amd64,arm64}, darwin/{amd64,arm64}; windows/amd64 is a .zip):
 curl -fsSLO https://github.com/enrell/lain/releases/latest/download/lain_0.1.0_linux_amd64.tar.gz
 curl -fsSLO https://github.com/enrell/lain/releases/latest/download/lain_0.1.0_linux_amd64.tar.gz.sha256
 sha256sum -c lain_0.1.0_linux_amd64.tar.gz.sha256
 tar -xzf lain_0.1.0_linux_amd64.tar.gz
 install -Dm755 lain ~/.local/bin/lain
 lain serve --port 9360          # data: ~/.local/share/lain
+lain service install            # or run it as a user service (systemd, launchd, Task Scheduler)
 ```
 
 ### From source
 
 ```sh
 git clone https://github.com/enrell/lain && cd lain
-mise install          # go/node/pnpm/just pinned in .mise.toml (optional)
-just build            # pnpm build -> internal/webui/dist -> go build
-./lain serve --port 9360
+mise install          # rust/node/pnpm/just pinned in .mise.toml (optional)
+just build            # pnpm build -> crates/lain/webui -> cargo build --release
+target/release/lain serve --port 9360
 ```
 
-`go build ./...` does not need Node: a binary built without `just web`
+`cargo build` does not need Node: a binary built without `just web`
 serves a "web UI not built" notice on `/` while the API keeps working.
 
 ## First steps
@@ -196,18 +199,16 @@ mpv "http://localhost:9360/api/items/<id>/stream?token=$TOK"
 - **Backup/restore.** Online backups stream a consistent snapshot from
   one read transaction (safe mid-scan, mid-stream); restore validates
   structure and refuses over a live database.
-- **Embedded web UI.** Svelte 5 SPA compiled into the Go binary — same
+- **Embedded web UI.** Svelte 5 SPA compiled into the `lain` binary — same
   process, same origin, no Node at runtime. Its semantic color tokens follow
   the server host's live Omarchy palette, with a safe built-in fallback.
 
 ## Desktop client
 
-A native client lives in [enrell/lain-desktop](https://github.com/enrell/lain-desktop):
-Qt 6 Quick/QML + libmpv, real API integration (first-run setup, login,
-catalog, search, enrichment, playback with resume), server-side
-thumbnails and a headless test suite. The installer above can set up
-both. Releases provide a Linux tarball; on Arch a source build is one
-`pacman` away.
+The native desktop app (`apps/desktop`, GPUI) is built on
+the shared client core `lain-client`, like the `lain` CLI below. The older Qt client
+lives in [enrell/lain-desktop](https://github.com/enrell/lain-desktop); the
+installer above can still set it up.
 
 ## CLI
 
@@ -217,8 +218,10 @@ lain serve --log-level debug            # or LAIN_LOG_LEVEL (debug/info/warn/err
 lain serve --list-sync=0                # or LAIN_LIST_SYNC=0 (manual list syncs only)
 # AniList OAuth can also be seeded from env instead of the admin UI:
 #   LAIN_ANILIST_CLIENT_ID / LAIN_ANILIST_CLIENT_SECRET (secret is env-only)
-lain doctor                             # environment report
-lain plugins                            # registered providers + composition
+lain doctor                             # environment report (ffmpeg, players, transcode probe)
+lain plugins                            # providers + composition of a stopped data dir
+lain service install|start|stop|status|logs   # background service; --dry-run prints the plan
+lain export --out catalog.json          # lain.catalog-export@3; lain import --in reads it back
 lain version
 lain login --server http://127.0.0.1:9360 --username admin
 lain watch frieren                      # search, pick, play in mpv, save progress
@@ -227,9 +230,21 @@ lain player vlc                         # make VLC the local CLI default
 lain language por                       # prefer Portuguese audio, then subtitles
 lain watch --next                       # resume first unfinished entry
 lain install-player-handler             # enable web "Open in mpv/VLC" links locally
-lain backup --out backups               # online when the server runs
-lain restore backups/lain-backup-<ts> --data-dir ~/.local/share/lain
+lain download add frieren --rest       # offline copies: this episode and every later one
+lain download list                      # state, size, usage; pause/resume/cancel/rm <id>
+lain download play frieren              # play a copy with the server unreachable
+lain download sync                      # push offline positions, refresh watched state
+lain backup --out backups               # online when the server runs, else from the stopped data dir
+lain restore backups/lain-backup-<ts>.tar --data-dir ~/.local/share/lain-restored
 ```
+
+The client commands keep their state in the per-user `lain-client`
+directory (`$LAIN_CLIENT_HOME`, else `~/.local/share/lain-client`,
+`~/Library/Application Support/lain-client`, `%LOCALAPPDATA%\lain-client`):
+sessions per server, the offline copies and their progress queue, and
+`cli.json` (current server, default player, offline limits). A position
+measured while the server is unreachable is queued and pushed later, with
+explicit conflict rules (`crates/lain-client/src/sync.rs`).
 
 `watch` resolves an item and launches mpv or VLC. A series opens as one
 playlist from the chosen episode onward: the player's Next/Previous
@@ -248,12 +263,16 @@ unsupported browser subtitle formats keep the player fallback. The
 viewer can still change tracks manually. The stream URL contains the
 API token while the player runs; series playlists are temporary private
 files and single-item playback passes the URL as a process argument.
-Treat local process command lines as private. `--dry-run` redacts the URL.
+Treat local process command lines as private. `--dry-run` lists the
+entries and redacts the URL.
 
 For external playback from the web UI, the simplest path needs no CLI at
 all: when the server runs natively on the same computer as the browser,
 choosing mpv or VLC in Settings makes the server itself open the player —
-progress and language preference apply exactly as in `lain watch`. When
+progress and language preference apply exactly as in `lain watch`.
+Link registration (`install-player-handler`) uses `xdg-mime`, so it is
+Linux/BSD only for now; VLC progress needs its Unix RC socket, so on
+Windows `lain watch` uses mpv. When
 the browser is on a *different* computer, install this CLI and the player
 on the **browser's computer**. Log in with the exact origin shown in the web
 page's setup instructions, then run `lain install-player-handler` on that
@@ -272,7 +291,7 @@ are recorded in [docs/CLIENTS.md](docs/CLIENTS.md).
 ## Web UI development
 
 ```sh
-./lain serve              # terminal 1 (Go API)
+cargo run -p lain -- serve   # terminal 1 (API)
 cd web && pnpm dev        # terminal 2 (Vite HMR on :5173, API proxied)
 ```
 
@@ -304,28 +323,33 @@ secrets ever). The dev container runs full log; see
 ## Layout
 
 ```text
-cmd/lain/                   CLI: serve, doctor, plugins, watch, backup, version
-internal/contracts/         capability names + JSON shapes
-internal/core/              composition, registry, generations, recovery
-internal/store/             atomic JSON documents
-internal/auth/              setup, bcrypt, HS256 tokens (stdlib JWT)
-internal/gateway/           HTTP boundary (no plugin code touches net/http)
-internal/matrix/            seam: manifests + doctor (embedded core in v0.1)
-internal/plugins/source/    filesystem enumerator
-internal/plugins/identify/  anime release parser + generic fallback
-internal/plugins/catalog/   authoritative file catalog + export/import
-internal/plugins/userstate/ progress, separate from catalog
-internal/plugins/playback/  direct vs transcode planner
-internal/plugins/transcode/ ffmpeg MP4 preparation, on-disk cache
-internal/plugins/search/    substring search (replaceable ranking)
-internal/plugins/ingest/    scan orchestrator (policy-free pipeline)
-internal/plugins/metadata/  NFO + Kitsu/AniList/Jikan + TVMaze, merge-many + cache
-internal/plugins/thumbnail/ ffmpeg stills, on-disk cache, path not bytes
-internal/webui/             embedded SPA + static handler
+crates/lain/                the `lain` binary: server and client commands, embedded web UI
+crates/lain-server/         HTTP gateway (axum), modules, events, service mode, SPA serving
+crates/lain-core/           composition, provider registry, generations, module layer
+crates/lain-store/          redb tables (the embedded database)
+crates/lain-auth/           setup, Argon2id passwords and PINs, HS256 tokens
+crates/lain-component/      component host (out-of-process providers over NDJSON)
+crates/lain-ingest/         filesystem source, scan pipeline, library watcher
+crates/lain-identify/       release-name tokenizer and identifiers
+crates/lain-metadata/       NFO + Kitsu/AniList/Jikan/TVMaze, merge-many + cache
+crates/lain-probe/          ffprobe as an external process
+crates/lain-watch/          playback planner, transcoder (HLS), thumbnails, local players
+crates/lain-read/           comic and manga archives
+crates/lain-subtitle/       sidecars, WebVTT, OpenSubtitles
+crates/lain-acquire/        indexers, grabs, automation
+crates/lain-torrent/        the in-house BitTorrent engine
+crates/lain-downloads/      the server download manager
+crates/lain-lists/          tracking lists and linked accounts (AniList)
+crates/lain-social/         friends, activity, ratings, comments, collections
+crates/lain-admin/          theme, backups, integrations, avatars
+crates/lain-http/           outbound HTTPS (rustls)
+crates/lain-api/            the HTTP API's JSON types
+crates/lain-client/         the client core (typed API, sessions, offline store, sync, events)
+conformance/                the language-neutral API spec and its runner
 web/                        SvelteKit source (Svelte 5, Tailwind 4)
 scripts/install.sh          interactive Linux installer
 site/                       project site (GitHub Pages)
-docs/                       ARCHITECTURE, CONTRACTS, PLUGIN, RECOVERY
+docs/                       DESIGN-v2, CONTRACTS, ARCHITECTURE, decisions
 ```
 
 ## API map
@@ -372,21 +396,19 @@ everyone; libraries, scans, plugins and user administration are
 admin-only. Disabling and password rotation kill live tokens on next
 request (password version rides the JWT and is checked live).
 
-State lives in one embedded database (`lain.db`, bbolt — pure Go, no
-cgo, millisecond builds intact): users, libraries, catalog, progress.
-A v0.1 JSON data dir is imported once on first boot and its files
-renamed to `*.imported`. Thumbnails cache under `<data>/thumbnails/`.
+State lives in one embedded database (`lain.redb`, redb, pure Rust):
+users, libraries, catalog, progress and every module's tables.
+Thumbnails cache under `<data>/thumbnails/`.
 
 ## Docker notes
 
 The application image is Alpine-based and built for `linux/amd64` and
-`linux/arm64`. It includes `ffmpeg` (thumbnails) and
-`ca-certificates` (remote metadata over TLS), so it is around 210 MB on
-disk — the alternative is a server whose thumbnail capability reports
-itself unavailable.
+`linux/arm64`. It includes `ffmpeg` (probing, thumbnails, transcoding), which is most
+of its size; without it those capabilities report themselves
+unavailable.
 
 It runs as the unprivileged `lain` user with `/data` as the volume
-(`LAIN_DATA_DIR=/data`), binds `0.0.0.0:9360` and includes a
+(`LAIN_HOME=/data`), binds `0.0.0.0:9360` and includes a
 `HEALTHCHECK`. Named volumes are initialized with the right ownership;
 media is mounted read-write so deleting episodes or series from Lain
 removes the files on the host; the container user must be able to write
@@ -396,15 +418,16 @@ deletes. If you bind-mount a host data
 directory instead, make it writable by uid 1000 or run the container
 with `--user`.
 
-Compose defaults cap memory softly (`GOMEMLIMIT=256MiB`) and hard
-(`mem_limit: 384m`); thumbnail extraction runs inside the same cgroup,
-so raise both for very large libraries or high-resolution stills.
+Compose caps memory at `mem_limit: 384m`; ffmpeg runs inside the same
+cgroup, so raise it for very large libraries, transcodes or
+high-resolution stills.
 
 ## Testing
 
 ```sh
-go test ./...                 # unit + gateway e2e (thumbnail tests skip without ffmpeg)
-go vet ./...
+cargo test --workspace        # every crate, the conformance suites in-process, the CLI end to end
+cargo clippy --workspace --all-targets -- -D warnings
+conformance/run.sh            # the API spec against a throwaway `lain serve`
 just web                      # frontend build + embed
 web/e2e/smoke.mjs             # Chromium/CDP end-to-end against a fresh data dir
 ```
@@ -420,8 +443,10 @@ refresh, responsive layouts and a console/network quality gate.
 Tags `vX.Y.Z` publish:
 
 - container images `ghcr.io/enrell/lain:{X.Y.Z, X.Y, latest}` (multi-arch);
-- `lain_X.Y.Z_linux_{amd64,arm64}.tar.gz` binaries with `.sha256`
-  sidecars and a combined `checksums.txt`;
+- `lain_X.Y.Z_{linux,darwin}_{amd64,arm64}.tar.gz` and
+  `lain_X.Y.Z_windows_amd64.zip` binaries (web UI embedded; Linux builds
+  static on musl) with `.sha256` sidecars, a combined `checksums.txt` and
+  build attestations;
 - the matching [desktop release](https://github.com/enrell/lain-desktop/releases)
   is versioned independently.
 
