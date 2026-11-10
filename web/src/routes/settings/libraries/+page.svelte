@@ -33,7 +33,7 @@
 	let createOpen = $state(false);
 	let creating = $state(false);
 	let formError = $state<string | null>(null);
-	let form = $state({ name: '', type: 'anime', path: '', private: false });
+	let form = $state({ name: '', type: 'auto', path: '', private: false });
 	// The name follows the folder until the user types one.
 	let nameTouched = $state(false);
 
@@ -136,7 +136,7 @@
 	function openCreate(): void {
 		createOpen = true;
 		formError = null;
-		form = { name: '', type: 'anime', path: '', private: false };
+		form = { name: '', type: 'auto', path: '', private: false };
 		nameTouched = false;
 		pathDraft = '';
 		void loadBrowse();
@@ -247,7 +247,7 @@
 			libraries = [...libraries, lib].sort((a, b) => a.name.localeCompare(b.name));
 			rememberLibrary(lib);
 			createOpen = false;
-			form = { name: '', type: 'anime', path: '', private: false };
+			form = { name: '', type: 'auto', path: '', private: false };
 			toasts.success(`Library “${lib.name}” added.`);
 			if (scanAfter) await scan.start();
 		} catch (err) {
@@ -283,7 +283,10 @@
 		}
 	}
 
+	// Auto takes videos and comic archives alike; the others only filter
+	// which files of the folder count.
 	const typeOptions = [
+		{ value: 'auto', label: 'Auto' },
 		{ value: 'anime', label: 'Anime' },
 		{ value: 'series', label: 'Series' },
 		{ value: 'movie', label: 'Movies' },
@@ -625,6 +628,13 @@
 			/>
 			<Select label="Type" bind:value={form.type} options={typeOptions} />
 		</div>
+		<p class="-mt-3 text-xs text-muted">
+			{form.type === 'auto'
+				? 'Auto reads videos and comic archives, and tells each file apart by itself.'
+				: form.type === 'manga' || form.type === 'comic'
+					? 'Only comic archives (cbz, cbr, cb7) in the folder are read.'
+					: 'Only video files in the folder are read.'}
+		</p>
 
 		{#if roots !== null}
 			<Switch

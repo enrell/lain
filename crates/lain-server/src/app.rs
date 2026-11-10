@@ -33,7 +33,34 @@ use crate::roots::{self, Roots};
 use lain_ingest::{ScanEvent, Scanner, SourceWatch};
 
 /// The composition document version.
-pub const COMPOSITION_VERSION: u32 = 8;
+pub const COMPOSITION_VERSION: u32 = 9;
+
+/// `Composition::upgrade` adds capabilities a saved document lacks, but
+/// keeps the provider list of the ones it has (an operator's override).
+/// A provider the defaults gained for an existing capability is placed
+/// here, once, when the document is older than the version that
+/// introduced it: version 9 added the download-sidecar providers
+/// (D-265, D-270). An operator who removes one afterwards keeps it
+/// removed, since the document is then saved at the new version.
+fn adopt_new_providers(saved: &mut Composition, from: u32) {
+    use lain_identify::CAP_MEDIA_IDENTIFY;
+    use lain_metadata::{CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, NFO_ID, SIDECAR_ID, SIDECAR_IDENTIFY_ID};
+    if from >= 9 {
+        return;
+    }
+    let mut place = |cap: &str, id: &str, after: Option<&str>| {
+        let Some(b) = saved.bindings.get_mut(cap) else { return };
+        if b.providers.iter().any(|p| p == id) {
+            return;
+        }
+        let at = after.and_then(|a| b.providers.iter().position(|p| p == a)).map(|i| i + 1).unwrap_or(0);
+        b.providers.insert(at, id.to_string());
+        tracing::info!(capability = cap, provider = id, "new default provider adopted");
+    };
+    place(CAP_MEDIA_IDENTIFY, SIDECAR_IDENTIFY_ID, None);
+    place(CAP_METADATA_SEARCH, SIDECAR_ID, Some(NFO_ID));
+    place(CAP_METADATA_RESOLVE, SIDECAR_ID, Some(NFO_ID));
+}
 
 /// Providers that only ever run as components, so a binding may name
 /// them before their manifest is installed (unregistered, they are
@@ -58,8 +85,10 @@ pub fn default_composition() -> Composition {
     bindings.insert(lain_ingest::CAP_SOURCE_ENUMERATE.into(), one(lain_ingest::SOURCE_ID));
     bindings.insert(lain_ingest::CAP_INGEST_SCAN.into(), one(lain_ingest::INGEST_ID));
     bindings.insert(lain_ingest::CAP_SOURCE_WATCH.into(), one(lain_ingest::WATCH_ID));
-    bindings
-        .insert(CAP_MEDIA_IDENTIFY.into(), Binding::new(BindingMode::OrderedMany, &[COMIC_ID, ANIME_ID, GENERIC_ID]));
+    bindings.insert(
+        CAP_MEDIA_IDENTIFY.into(),
+        Binding::new(BindingMode::OrderedMany, &[lain_metadata::SIDECAR_IDENTIFY_ID, COMIC_ID, ANIME_ID, GENERIC_ID]),
+    );
     // The lain-parser model (D-225) answers first when its component is
     // installed and healthy; the tokenizer answers whenever it declines.
     bindings.insert(
@@ -237,7 +266,9 @@ impl App {
             let mut saved: Composition =
                 serde_json::from_slice(&raw).map_err(|e| format!("corrupt document composition.json: {e}"))?;
             if !saved.bindings.is_empty() {
+                let from = saved.version;
                 let added = saved.upgrade(&default_composition());
+                adopt_new_providers(&mut saved, from);
                 if !added.is_empty() {
                     tracing::info!(added = %added.join(","), "new capabilities from defaults");
                 }
@@ -268,6 +299,7 @@ impl App {
         registry.register(Arc::new(lain_ingest::Runner::new(&registry, Some(progress))));
         registry.register(Arc::new(lain_metadata::Nfo));
         registry.register(Arc::new(lain_metadata::Sidecar));
+        registry.register(Arc::new(lain_metadata::SidecarIdentifier));
         let http = lain_http::Client::new(lain_http::Config {
             user_agent: format!("lain/{}", cfg.version),
             offline: cfg.offline,

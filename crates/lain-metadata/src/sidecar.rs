@@ -25,11 +25,14 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use lain_core::{Error, Provider};
+use lain_identify::{CAP_MEDIA_IDENTIFY, Candidate, Proposal};
 
 use crate::nfo::{CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH};
 use crate::types::{MetadataCandidate, MetadataRecord, MetadataResolveInput, MetadataSearchInput};
 
 pub const SIDECAR_ID: &str = "lain-metadata-sidecar";
+/// The identifier that reads the same file (D-270).
+pub const SIDECAR_IDENTIFY_ID: &str = "lain-identify-sidecar";
 
 const DIR: &str = ".metadata";
 const FILE: &str = "meta.toml";
@@ -267,6 +270,86 @@ pub fn search_sidecar(input: &MetadataSearchInput) -> Vec<MetadataCandidate> {
     }
 }
 
+/// What the downloader said the file is: the series and the episode
+/// number when it knew both (an episode of that series), else the
+/// item's title (a standalone video). The default proposal, which the
+/// scan does not accept, when the folder has no sidecar or the file is
+/// not a video: the name-based identifiers then have their turn.
+pub fn identify_sidecar(c: &Candidate) -> Proposal {
+    let path = Path::new(&c.path);
+    let video = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| ["mkv", "mp4", "avi", "mov", "m4v", "webm"].contains(&e.to_ascii_lowercase().as_str()));
+    let Some(dir) = path.parent().filter(|_| video) else { return Proposal::default() };
+    let file = sidecar_path(dir);
+    let Ok(meta) = std::fs::metadata(&file) else { return Proposal::default() };
+    if !meta.is_file() || meta.len() > MAX_SIDECAR {
+        return Proposal::default();
+    }
+    let Ok(raw) = std::fs::read(&file) else { return Proposal::default() };
+    let doc = parse(&String::from_utf8_lossy(&raw));
+    let series = text(&doc, "series");
+    // "3", "03" or the number itself; anything else is not an episode.
+    let episode = doc
+        .iter()
+        .find_map(|(k, v)| match v {
+            Val::Str(s) if k == "episode" => s.trim().parse::<i64>().ok(),
+            Val::Int(n) if k == "episode" => Some(*n),
+            _ => None,
+        })
+        .filter(|n| (1..=9999).contains(n))
+        .unwrap_or(0);
+    let (kind, title) = if !series.is_empty() && episode > 0 {
+        ("episode", series)
+    } else {
+        ("video", if text(&doc, "title").is_empty() { text(&doc, "remote_title") } else { text(&doc, "title") })
+    };
+    if title.is_empty() {
+        return Proposal::default();
+    }
+    Proposal {
+        kind: kind.into(),
+        title: title.to_string(),
+        episode: if kind == "episode" { episode } else { 0 },
+        year: year_of(text(&doc, "upload_date")),
+        confidence: 0.95,
+        evidence: vec!["sidecar".into()],
+        plugin_id: SIDECAR_IDENTIFY_ID.into(),
+        ..Proposal::default()
+    }
+}
+
+/// `lain-identify-sidecar` (`lain.media.identify@1`), first in the
+/// binding order: what was written down beats what a name suggests.
+pub struct SidecarIdentifier;
+
+impl Provider for SidecarIdentifier {
+    fn id(&self) -> &str {
+        SIDECAR_IDENTIFY_ID
+    }
+
+    fn capabilities(&self) -> Vec<String> {
+        vec![CAP_MEDIA_IDENTIFY.into()]
+    }
+
+    fn health(&self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn invoke(&self, cap: &str, op: &str, input: Value) -> Result<Value, Error> {
+        if cap != CAP_MEDIA_IDENTIFY {
+            return Err(Error::invalid(format!("unsupported cap {cap}")));
+        }
+        if !op.is_empty() && op != "identify" {
+            return Err(Error::invalid(format!("capability {cap} has no op {op}")));
+        }
+        let c: Candidate =
+            serde_json::from_value(input).map_err(|e| Error::invalid(format!("Candidate required: {e}")))?;
+        Ok(json!(identify_sidecar(&c)))
+    }
+}
+
 pub struct Sidecar;
 
 impl Provider for Sidecar {
@@ -391,6 +474,36 @@ video_path = "/somewhere/else.mp4"
             Sidecar.invoke(CAP_METADATA_RESOLVE, "", json!({"remote_id": sidecar_path(&dir)})).unwrap_err().code,
             "not-found"
         );
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn identity_comes_from_the_sidecar_when_there_is_one() {
+        let dir = item_dir("ident");
+        let cand = |name: &str| Candidate { path: dir.join(name).to_string_lossy().into(), ..Default::default() };
+        // No sidecar: declined, the name-based identifiers decide.
+        assert!(!identify_sidecar(&cand("Some Show - 03.mkv")).accepted());
+
+        std::fs::write(
+            sidecar_path(&dir),
+            "title = \"Some Show - EP3\"\nseries = \"Some Show\"\nepisode = \"03\"\nupload_date = \"2021-07-01\"\n",
+        )
+        .unwrap();
+        let p = identify_sidecar(&cand("whatever the file is called.mp4"));
+        assert_eq!((p.kind.as_str(), p.title.as_str(), p.episode, p.year), ("episode", "Some Show", 3, 2021));
+        assert_eq!((p.plugin_id.as_str(), p.confidence), (SIDECAR_IDENTIFY_ID, 0.95));
+        // Not a video: declined, so an archive still goes to the comic identifier.
+        assert!(!identify_sidecar(&cand("extras.cbz")).accepted());
+
+        // A series without an episode number, or no series: one video by its title.
+        std::fs::write(sidecar_path(&dir), "title = \"A Short\"\nseries = \"A Short\"\nepisode = \"special\"\n")
+            .unwrap();
+        let p = identify_sidecar(&cand("x.mp4"));
+        assert_eq!((p.kind.as_str(), p.title.as_str(), p.episode), ("video", "A Short", 0));
+        std::fs::write(sidecar_path(&dir), "tags = [\"a\"]\n").unwrap();
+        assert!(!identify_sidecar(&cand("x.mp4")).accepted());
+        let out = SidecarIdentifier.invoke(CAP_MEDIA_IDENTIFY, "identify", json!(cand("x.mp4"))).unwrap();
+        assert_eq!(out["title"], "");
         std::fs::remove_dir_all(dir).ok();
     }
 
