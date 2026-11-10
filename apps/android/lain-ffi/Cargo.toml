@@ -1,0 +1,70 @@
+# The Android bindings over lain-client (DESIGN-v2 §8.5, D-245): UniFFI
+# Kotlin bindings, built for Android with cargo-ndk. Its own cargo
+# workspace and Cargo.lock, like apps/desktop (D-180), so the server
+# workspace never compiles UniFFI.
+[package]
+name = "lain-ffi"
+description = "Lain's Android bindings: a thin UniFFI surface over lain-client (D-245)"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.90"
+publish = false
+
+[lib]
+name = "lain_ffi"
+crate-type = ["cdylib", "rlib"]
+
+# The Kotlin generator (library mode over the built cdylib); only built
+# with `--features bindgen`, so the app's libraries never link it.
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli", "uniffi/cargo-metadata"]
+
+[dependencies]
+# D-245: the bindings generator V-12 named for Android; scaffolding
+# only (no default features), the CLI behind `bindgen`.
+uniffi = { version = "=0.32.2", default-features = false }
+lain-client = { path = "../../../crates/lain-client" }
+lain-api = { path = "../../../crates/lain-api" }
+# D-248: offline CBZ copies are read on the device with the read
+# module's in-tree ZIP reader.
+lain-read = { path = "../../../crates/lain-read" }
+lain-core = { path = "../../../crates/lain-core" }
+tokio = { version = "=1.54.1", default-features = false, features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+
+[dev-dependencies]
+# The end-to-end test runs the real server in-process, through
+# lain-client's own test harness (crates/lain-client/tests/support).
+lain-server = { path = "../../../crates/lain-server" }
+lain-conformance = { path = "../../../conformance/runner" }
+lain-store = { path = "../../../crates/lain-store" }
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+# The APK's libraries: small and fast.
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "debuginfo"
+
+[workspace]

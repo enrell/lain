@@ -172,6 +172,75 @@ jobs:
           name: seasonal-stats-wasm
           path: apps/desktop/seasonal-stats/
 
+  android:
+    # The Android app (apps/android, D-245..D-254): lain-ffi (its own cargo
+    # workspace) is checked and tested on the host, built for the two
+    # ABIs with cargo-ndk, its Kotlin bindings generated, then Gradle
+    # runs the JVM unit tests (the bindings smoke test against the host
+    # library) and assembles the debug APK. The runner image ships the
+    # Android SDK and NDK; nothing is installed locally (D-251).
+    name: android (lain-ffi, APK)
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: "4"
+      CARGO_INCREMENTAL: "0"
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt \
+            --target aarch64-linux-android,x86_64-linux-android
+          rustc --version
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/bin/cargo-ndk
+            apps/android/lain-ffi/target
+          key: android-${{ hashFiles('apps/android/lain-ffi/Cargo.lock') }}-${{ hashFiles('apps/android/lain-ffi/src/**', 'crates/lain-client/src/**', 'crates/lain-api/src/**', 'crates/lain-read/src/**') }}
+          restore-keys: |
+            android-${{ hashFiles('apps/android/lain-ffi/Cargo.lock') }}-
+            android-
+      - name: cargo-ndk
+        run: command -v cargo-ndk >/dev/null || cargo install cargo-ndk --locked --version 4.1.2
+      - name: Lint the build script
+        run: sh -n scripts/build-rust.sh && shellcheck scripts/build-rust.sh
+      - name: Format (lain-ffi)
+        run: cargo fmt --manifest-path lain-ffi/Cargo.toml -- --check
+      - name: Clippy (lain-ffi)
+        run: cargo clippy --manifest-path lain-ffi/Cargo.toml --all-targets --locked -- -D warnings
+      - name: Test (lain-ffi, end to end against the server in-process)
+        timeout-minutes: 20
+        run: cargo test --manifest-path lain-ffi/Cargo.toml --locked --no-fail-fast
+      - name: Rust libraries and Kotlin bindings
+        run: ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" scripts/build-rust.sh
+      - name: Unit tests and debug APK
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug -PlainHostLib="$PWD/lain-ffi/target/debug/liblain_ffi.so"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lain-android-debug
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: android-test-reports
+          path: apps/android/app/build/reports/
+          retention-days: 7
+
   conformance:
     name: conformance (lain server)
     needs: web

@@ -1,0 +1,96 @@
+package io.github.enrell.lain.domain
+
+import io.github.enrell.lain.core.Item
+import io.github.enrell.lain.core.LibraryInfo
+import io.github.enrell.lain.core.ProgressInfo
+
+/** Item kinds that open in the reader instead of the player. */
+val READING_KINDS = setOf("comic", "manga", "book")
+
+fun Item.reading(): Boolean = kind in READING_KINDS
+
+/**
+ * One title: the items of a library that share a title, in episode
+ * order. The desktop groups the catalog the same way (D-181).
+ */
+data class Title(
+    val key: String,
+    val title: String,
+    val kind: String,
+    val libraryId: String,
+    val items: List<Item>,
+    val latest: Long,
+    val year: Long,
+) {
+    val reading: Boolean get() = kind in READING_KINDS
+}
+
+fun titleKey(item: Item): String = item.libraryId + "\u0000" + item.title.lowercase()
+
+/** Groups the catalog into titles, sorted by name; missing files are left out (D-068). */
+fun groupTitles(items: List<Item>): List<Title> {
+    val groups = LinkedHashMap<String, MutableList<Item>>()
+    for (item in items) {
+        if (item.missing) continue
+        groups.getOrPut(titleKey(item)) { mutableListOf() }.add(item)
+    }
+    return groups.map { (key, list) ->
+        val sorted = list.sortedWith(compareBy<Item>({ it.season }, { it.episode }, { it.fileName }))
+        val first = sorted.first()
+        Title(
+            key = key,
+            title = first.title,
+            kind = first.kind,
+            libraryId = first.libraryId,
+            items = sorted,
+            latest = sorted.maxOf { it.updatedAt },
+            year = sorted.firstOrNull { it.year != 0L }?.year ?: 0L,
+        )
+    }.sortedBy { it.title.lowercase() }
+}
+
+/** What a rail is called; the screen translates it. */
+sealed interface RailLabel {
+    data object Continue : RailLabel
+    data object Recent : RailLabel
+    data class Library(val name: String) : RailLabel
+}
+
+sealed interface Card {
+    data class Resume(val item: Item, val progress: ProgressInfo) : Card
+    data class Show(val title: Title) : Card
+}
+
+data class Rail(val label: RailLabel, val cards: List<Card>)
+
+/** Home: Continue, Recently added (30), then one rail per library. Empty rails are dropped. */
+fun buildRails(
+    titles: List<Title>,
+    continues: List<ProgressInfo>,
+    items: Map<String, Item>,
+    libraries: List<LibraryInfo>,
+): List<Rail> {
+    val rails = mutableListOf<Rail>()
+    val resume = continues.filter { !it.completed }.mapNotNull { p -> items[p.itemId]?.let { Card.Resume(it, p) } }
+    rails += Rail(RailLabel.Continue, resume)
+    rails += Rail(RailLabel.Recent, titles.sortedByDescending { it.latest }.take(30).map { Card.Show(it) })
+    val byLibrary = titles.groupBy { it.libraryId }
+    val named = libraries.associateBy { it.id }
+    for ((id, list) in byLibrary) {
+        val name = named[id]?.name ?: continue
+        rails += Rail(RailLabel.Library(name), list.map { Card.Show(it) })
+    }
+    return rails.filter { it.cards.isNotEmpty() }
+}
+
+/** The item a title's main action opens: the first one not finished, else the first. */
+fun nextUp(title: Title, progress: Map<String, ProgressInfo>): Item =
+    title.items.firstOrNull { progress[it.id]?.completed != true } ?: title.items.first()
+
+/** How far along an item is, 0..1. */
+fun fraction(p: ProgressInfo?): Float {
+    if (p == null) return 0f
+    if (p.completed) return 1f
+    if (p.durationSec <= 0.0) return 0f
+    return (p.positionSec / p.durationSec).toFloat().coerceIn(0f, 1f)
+}
