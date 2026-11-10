@@ -104,7 +104,7 @@ function run(command, args, { cwd, timeout = 600000, env = {} } = {}) {
 
 /** Rebuild the embedded SPA whenever the sources are newer than the bundle. */
 async function ensureWeb(root, log) {
-	const dist = join(root, 'internal/webui/dist/index.html');
+	const dist = join(root, 'crates/lain/webui/index.html');
 	const src = newestMtime(join(root, 'web/src'));
 	if (existsSync(dist) && statSync(dist).mtimeMs >= src.newest) {
 		log(`web bundle is current (${dist})`);
@@ -116,14 +116,18 @@ async function ensureWeb(root, log) {
 }
 
 async function ensureBinary(root, log) {
-	const binary = join(root, CACHE, 'lain');
-	const src = newestMtime(join(root, 'internal'));
-	const goSrc = newestMtime(join(root, 'cmd'));
-	const newest = Math.max(src.newest, goSrc.newest);
-	if (existsSync(binary) && statSync(binary).mtimeMs >= newest) return binary;
+	const binary = join(CACHE, 'lain');
+	const built = join(root, 'target/release/lain');
+	const newest = Math.max(
+		newestMtime(join(root, 'crates')).newest,
+		newestMtime(join(root, 'crates/lain/webui')).newest,
+	);
+	if (existsSync(join(root, binary)) && statSync(join(root, binary)).mtimeMs >= newest) return join(root, binary);
 	log('building the QA target binary');
-	await run('go', ['build', '-trimpath', '-o', join(CACHE, 'lain'), './cmd/lain'], { cwd: root, timeout: 600000 });
-	return binary;
+	await run('cargo', ['build', '--release', '--locked', '-p', 'lain'], { cwd: root, timeout: 1800000 });
+	await run('mkdir', ['-p', CACHE], { cwd: root, timeout: 60000 });
+	await run('cp', [built, binary], { cwd: root, timeout: 60000 });
+	return join(root, binary);
 }
 
 async function ensureFixtures(root, log) {

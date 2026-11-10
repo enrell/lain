@@ -1,18 +1,11 @@
 # Toolchain pinning for development. The same versions are used by CI
 # (.github/workflows) and by the Docker build (Dockerfile), so a local
 # `mise install` reproduces the exact toolchain:
-#   go    -> go.mod / setup-go go-version-file
+#   rust  -> rustup stable in CI, the Dockerfile build stage
 #   node  -> setup-node, Dockerfile web stage
 #   pnpm  -> pnpm/action-setup, Dockerfile web stage
 [tools]
-go = "1.27.1"
+rust = "1.99.1"
 node = "26.8.2"
 pnpm = "12.3.4"
 just = "1.58.0"
-
-# Pure-Go builds only (AGENTS.md: no cgo). Without this, Go defaults to
-# CGO_ENABLED=1 whenever gcc exists and routes the stdlib net package
-# through gcc, producing a dynamically linked binary unlike CI/release.
-# The race detector needs cgo: use `just test-race`.
-[env]
-CGO_ENABLED = "0"

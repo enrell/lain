@@ -34,41 +34,38 @@ down:
 logs:
     {{dev-compose}} logs -f api
 
-# Native Go run without Docker (same :9360; stop the stack first).
+# Native run without Docker (same :9360; stop the stack first).
 server:
-    go run ./cmd/lain serve
+    cargo run -p lain -- serve
 
-# Static binary with the web UI embedded.
+# Release binary with the web UI embedded.
 build: web
-    go build -trimpath -ldflags="-s -w" -o lain ./cmd/lain
+    cargo build --release --locked -p lain
+    @echo 'binary: target/release/lain'
 
-# Compile the SPA into the Go embed tree.
+# Compile the SPA into the binary's embed tree (crates/lain/webui).
 web:
     cd web && pnpm install --frozen-lockfile
     cd web && pnpm build
-    rm -rf internal/webui/dist
-    mkdir -p internal/webui/dist
-    cp -r web/build/. internal/webui/dist/
-    touch internal/webui/dist/.gitkeep
+    rm -rf crates/lain/webui
+    mkdir -p crates/lain/webui
+    cp -r web/build/. crates/lain/webui/
+    touch crates/lain/webui/.gitkeep
 
-# Vet plus all tests (Go and web).
+# Format, lint, then every check (Rust and web).
 check:
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-targets --locked -- -D warnings
     cd web && pnpm check
-    go vet ./...
-    go test ./...
 
 # All tests.
 test:
-    go test ./...
+    cargo test --workspace --locked
     cd web && pnpm test
 
-# Every test that runs the host ffmpeg (minutes; skipped by plain `go test`).
-test-e2e:
-    go test -tags e2e -count=1 ./internal/gateway/ ./internal/plugins/transcode/ ./internal/plugins/thumbnail/
-
-# Race detector on the hot packages (the race runtime requires cgo).
-test-race:
-    CGO_ENABLED=1 go test -race ./internal/gateway/ ./internal/plugins/transcode/ ./internal/plugins/ingest/
+# The conformance suite against a throwaway server (needs ffmpeg for watch).
+conformance:
+    conformance/run.sh
 
 # Copy the example env when none exists.
 setup:
@@ -77,9 +74,9 @@ setup:
 # Drop build outputs and the dev database volume.
 clean:
     rm -rf web/build web/.svelte-kit
-    rm -rf internal/webui/dist
-    mkdir -p internal/webui/dist
-    touch internal/webui/dist/.gitkeep
+    rm -rf crates/lain/webui
+    mkdir -p crates/lain/webui
+    touch crates/lain/webui/.gitkeep
     docker volume rm lain_lain-dev-data 2>/dev/null || true
 
 # --- QA agent fleet ----------------------------------------------------------
