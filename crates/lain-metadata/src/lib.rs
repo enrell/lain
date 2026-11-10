@@ -20,15 +20,14 @@ pub use nfo::{CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, NFO_ID, Nfo};
 pub use remote::{ANILIST_ID, Endpoints, JIKAN_ID, KITSU_ID, Remote, TVMAZE_ID};
 pub use types::{MetadataCandidate, MetadataRecord, MetadataResolveInput, MetadataSearchInput};
 
-/// The component that imports what a downloader left next to its
-/// downloads (`lain-bridge`'s `library::ID`; a component, so this crate
-/// only knows its name).
-pub const LIBRARY_ID: &str = "lain-library-anything";
+/// The provider id of an overlay an integration wrote (D-266): not a
+/// search provider, so it is never asked; the record is stored as is.
+pub const IMPORT_ID: &str = "lain-import";
 
 /// The providers that read files next to the media and never the
 /// network.
-pub const LOCAL_PROVIDERS: &[&str] = &[NFO_ID, LIBRARY_ID];
+pub const LOCAL_PROVIDERS: &[&str] = &[NFO_ID];
 
 /// The default precedence of the merge-many metadata bindings: local
 /// first, then the remote providers Go ships.
-pub const DEFAULT_PROVIDERS: &[&str] = &[NFO_ID, LIBRARY_ID, KITSU_ID, ANILIST_ID, JIKAN_ID, TVMAZE_ID];
+pub const DEFAULT_PROVIDERS: &[&str] = &[NFO_ID, KITSU_ID, ANILIST_ID, JIKAN_ID, TVMAZE_ID];

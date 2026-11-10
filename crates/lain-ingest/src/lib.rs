@@ -13,7 +13,7 @@ pub mod source;
 pub mod watch;
 
 pub use commit::{CommitPlan, CommitScanInput, CommitScanOutput, ScanEntry, item_id, location, plan, title_key};
-pub use scan::{CAP_INGEST_SCAN, INGEST_ID, LibraryDone, Runner, ScanInput};
+pub use scan::{CAP_INGEST_SCAN, INGEST_ID, LibraryDone, Runner, ScanInput, Step};
 pub use scanner::{ScanEvent, Scanner};
 pub use source::{CAP_SOURCE_ENUMERATE, Filesystem, SOURCE_ID};
 pub use watch::{CAP_SOURCE_WATCH, DEFAULT_DEBOUNCE, SourceWatch, WATCH_ID};

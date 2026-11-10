@@ -501,8 +501,28 @@ pub struct ScanStats {
     pub extra: BTreeMap<String, Value>,
 }
 
+/// Where a running scan is (`ScanStatus.progress`). `phase` is the
+/// furthest step reached: `walk` (roots are being listed), `identify`
+/// (`files_done` of `files`; `files` grows as roots finish their walk,
+/// `libraries_walked` of `libraries`), `commit` (`libraries_done` of
+/// `libraries`) or `enrich` (`enrich_done` of `enrich_total`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScanProgress {
+    pub phase: String,
+    pub libraries: i64,
+    pub libraries_walked: i64,
+    pub libraries_done: i64,
+    pub files: i64,
+    pub files_done: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub enrich_total: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub enrich_done: i64,
+}
+
 /// `GET /api/library/scan`: `state` is `idle`, `running`, `done` or
-/// `error`; `trigger` is `manual` or `watch`.
+/// `error`; `trigger` is `manual` or `watch`; `progress` is present
+/// while the scan runs.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ScanStatus {
     pub state: String,
@@ -512,6 +532,8 @@ pub struct ScanStatus {
     pub finished_at: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stats: Option<ScanStats>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<ScanProgress>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub error: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
