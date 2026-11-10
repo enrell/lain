@@ -45,8 +45,8 @@ android {
     }
 
     sourceSets.getByName("main") {
-        kotlin.srcDir(layout.buildDirectory.dir("generated/uniffi"))
-        jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs"))
+        kotlin.srcDir("build/generated/uniffi")
+        jniLibs.srcDir("build/rustJniLibs")
     }
 
     testOptions {
