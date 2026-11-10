@@ -597,6 +597,9 @@ impl OfflineStore {
         if total > 0 {
             e.size = total;
         }
+        // Keep the validator now: a transfer dropped mid-way (the CLI's
+        // Ctrl+C) then resumes from its part file instead of restarting.
+        self.save(e)?;
         let evict = |v: Vec<OfflineEntry>| {
             for x in &v {
                 if let Some(o) = observer {
