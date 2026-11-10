@@ -1,5 +1,5 @@
-//! The P4 components end to end: `lain-rs component install` writes a
-//! manifest, the provisioner spawns the real `lain-rs component run`
+//! The P4 components end to end: `lain component install` writes a
+//! manifest, the provisioner spawns the real `lain component run`
 //! process, and the bindings and routes reach the bridged app (a
 //! scripted stand-in here; the live tests in `lain-bridge` use the real
 //! apps). Health and declines are what decide who answers.
@@ -16,7 +16,7 @@ use lain_bridge::fake::{Fake, Handler};
 use lain_conformance::http::{self, Base};
 use lain_server::app::{App, Config};
 
-const EXE: &str = env!("CARGO_BIN_EXE_lain-rs");
+const EXE: &str = env!("CARGO_BIN_EXE_lain");
 
 struct Server {
     url: String,
