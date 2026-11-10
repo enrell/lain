@@ -1,6 +1,6 @@
 //! Bridges to the owner's standalone apps (DESIGN-v2 §6, P4): each one
 //! is a [`lain_core::Provider`] that talks to an app over its own local
-//! API and runs as a lain component (`lain-rs component run <id> --sock
+//! API and runs as a lain component (`lain component run <id> --sock
 //! {sock}`), so the apps keep their own lifecycles, users and release
 //! channels and lain sees them only through versioned capabilities.
 //!
@@ -29,11 +29,11 @@ use std::sync::Arc;
 
 use lain_core::Provider;
 
-/// Options of `lain-rs component run` (`--name value` pairs).
+/// Options of `lain component run` (`--name value` pairs).
 pub type Options = BTreeMap<String, String>;
 
 /// Every bridge id with its capabilities and a one-line summary, for
-/// `lain-rs component list` and manifests.
+/// `lain component list` and manifests.
 pub fn catalog() -> Vec<(&'static str, Vec<&'static str>, &'static str)> {
     vec![
         (parser::MODEL_ID, vec![lain_identify::CAP_RELEASE_PARSE], "the lain-parser model (filename-parser)"),
@@ -73,7 +73,7 @@ pub fn build(id: &str, opts: &Options) -> Result<Arc<dyn Provider>, String> {
     }
 }
 
-/// The option names each bridge reads (`lain-rs component install`
+/// The option names each bridge reads (`lain component install`
 /// refuses others, so a typo is not silently ignored). Tokens are never
 /// options: they come from the app's token file or its own environment.
 pub fn known_options(id: &str) -> &'static [&'static str] {

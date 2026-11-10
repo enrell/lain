@@ -1,65 +1,39 @@
-//! `lain-rs`: the lain server (D-171).
+//! The server-side commands: `serve`, `export`, `import`, `service`,
+//! `plugins` and `doctor`. They run on the machine that holds the data
+//! dir; the client commands live in `client.rs` and its siblings.
 
 use std::path::{Path, PathBuf};
+
+use serde_json::json;
 
 use lain_server::VERSION;
 use lain_server::app::{App, Config};
 use lain_server::datadir::{Os, default_data_dir};
 use lain_server::logging::{self, Sink};
 use lain_server::service::{self, Action, Host, Spec};
+use lain_server::webui::WebAssets;
 
-const DEFAULT_PORT: &str = "9360";
+use crate::args::{flag, has};
 
-fn usage() {
-    eprintln!(
-        "usage: lain-rs <command> [flags]
+pub const DEFAULT_PORT: &str = "9360";
 
-  serve     run the server (--data-dir, --port {DEFAULT_PORT}, --bind 127.0.0.1, --log-level info, --log-file,
-            --watch=0 or LAIN_WATCH=0 stops library watching, --list-sync=0 or LAIN_LIST_SYNC=0 the
-            scheduled list import, LAIN_AUTO_ENRICH=0 the post-scan metadata pass)
-  export    write the catalog as lain.catalog-export@3 (--data-dir, --out FILE; default stdout)
-  import    replace the catalog with a lain.catalog-export@3 document (--data-dir, --in FILE)
-  service   install|uninstall|start|stop|status|logs the background service
-            (--name lain, --system, --linger, --port, --bind, --data-dir, --dry-run; logs: --follow, --lines N)
-  component list | run <id> --sock S [--k v...] | install <id> [--data-dir] [--k v...] | uninstall <id>
-            the bridges to standalone apps (lain-parser, AnimeSubs, Anything) as components; install writes
-            <data-dir>/plugins/<id>.json, which the running server picks up
-  version   print version
-
-The data dir is --data-dir, else $LAIN_HOME, else the per-OS default
-(~/.local/share/lain, ~/Library/Application Support/lain,
-%LOCALAPPDATA%\\lain)."
-    );
+mod embedded {
+    include!(concat!(env!("OUT_DIR"), "/webui.rs"));
 }
 
-/// `--name value` or `--name=value`, like the Go CLI.
-fn flag(args: &[String], name: &str) -> Option<String> {
-    let long = format!("--{name}");
-    let eq = format!("--{name}=");
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        if *a == long {
-            return it.next().cloned();
-        }
-        if let Some(v) = a.strip_prefix(&eq) {
-            return Some(v.to_string());
-        }
-    }
-    None
+/// The web SPA compiled into this binary (D-235).
+pub fn web() -> WebAssets {
+    WebAssets::new(embedded::WEB_FILES)
 }
 
-fn has(args: &[String], name: &str) -> bool {
-    args.iter().any(|a| *a == format!("--{name}"))
-}
-
-fn data_dir(args: &[String]) -> Result<PathBuf, String> {
+pub fn data_dir(args: &[String]) -> Result<PathBuf, String> {
     match flag(args, "data-dir") {
         Some(d) => Ok(PathBuf::from(d)),
         None => default_data_dir(),
     }
 }
 
-fn absolute(p: &Path) -> PathBuf {
+pub fn absolute(p: &Path) -> PathBuf {
     if p.is_absolute() {
         p.to_path_buf()
     } else {
@@ -67,7 +41,11 @@ fn absolute(p: &Path) -> PathBuf {
     }
 }
 
-fn cmd_serve(args: &[String]) -> Result<(), String> {
+fn off(v: Option<String>) -> bool {
+    v.is_some_and(|v| v == "0" || v == "false" || v == "FALSE")
+}
+
+pub fn serve(args: &[String]) -> Result<(), String> {
     let dir = data_dir(args)?;
     let port: u16 = flag(args, "port").unwrap_or_else(|| DEFAULT_PORT.into()).parse().map_err(|_| "bad --port")?;
     let bind = flag(args, "bind").unwrap_or_else(|| "127.0.0.1".into());
@@ -92,12 +70,15 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
     };
     logging::init(level, sink);
     let mut cfg = Config::new(&dir, VERSION);
-    let off = |v: Option<String>| v.is_some_and(|v| v == "0" || v == "false" || v == "FALSE");
     cfg.auto_enrich = !off(std::env::var("LAIN_AUTO_ENRICH").ok());
     cfg.watch = !off(flag(args, "watch").or_else(|| std::env::var("LAIN_WATCH").ok()));
     cfg.metadata_endpoints = lain_metadata::Endpoints::from_env();
     cfg.anilist_endpoints = lain_lists::anilist::Endpoints::from_env();
     cfg.list_sync = !off(flag(args, "list-sync").or_else(|| std::env::var("LAIN_LIST_SYNC").ok()));
+    cfg.web = web();
+    if !cfg.web.is_built() {
+        tracing::warn!("this binary was built without the web UI (just web, then rebuild)");
+    }
     let app = App::open(cfg)?;
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| e.to_string())?;
     rt.block_on(async move {
@@ -105,6 +86,7 @@ fn cmd_serve(args: &[String]) -> Result<(), String> {
         let listener = tokio::net::TcpListener::bind((bind.as_str(), port))
             .await
             .map_err(|e| format!("listen {bind}:{port}: {e}"))?;
+        eprintln!("lain {VERSION} on http://{bind}:{port} (data {})", dir.display());
         lain_server::serve(app, listener, shutdown_signal()).await.map_err(|e| e.to_string())
     })
 }
@@ -132,7 +114,7 @@ async fn shutdown_signal() {
     tracing::info!("shutting down");
 }
 
-fn cmd_import(args: &[String]) -> Result<(), String> {
+pub fn import(args: &[String]) -> Result<(), String> {
     let file = flag(args, "in").ok_or("import needs --in <export.json>")?;
     let dir = data_dir(args)?;
     let raw = std::fs::read(&file).map_err(|e| format!("{file}: {e}"))?;
@@ -142,7 +124,7 @@ fn cmd_import(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_export(args: &[String]) -> Result<(), String> {
+pub fn export(args: &[String]) -> Result<(), String> {
     let dir = data_dir(args)?;
     let doc = lain_server::export(&dir)?;
     let raw = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
@@ -153,6 +135,36 @@ fn cmd_export(args: &[String]) -> Result<(), String> {
             std::io::stdout().write_all(&raw).map_err(|e| e.to_string())
         }
     }
+}
+
+pub fn service(args: &[String]) -> Result<(), String> {
+    let action_name = args.first().ok_or("service needs install|uninstall|start|stop|status|logs")?;
+    let lines = flag(args, "lines").map(|n| n.parse().unwrap_or(200)).unwrap_or(200);
+    let action = Action::parse(action_name, has(args, "follow"), lines)
+        .ok_or_else(|| format!("unknown service action {action_name}"))?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let spec = Spec {
+        name: flag(args, "name").unwrap_or_else(|| "lain".into()),
+        exe: exe.canonicalize().unwrap_or(exe),
+        data_dir: absolute(&data_dir(args)?),
+        port: flag(args, "port").unwrap_or_else(|| DEFAULT_PORT.into()).parse().map_err(|_| "bad --port")?,
+        bind: flag(args, "bind").unwrap_or_else(|| "127.0.0.1".into()),
+        system: has(args, "system"),
+        linger: has(args, "linger"),
+    };
+    let os = match flag(args, "os").as_deref() {
+        Some("linux") => Os::Linux,
+        Some("macos") => Os::MacOs,
+        Some("windows") => Os::Windows,
+        Some(other) => return Err(format!("unknown --os {other}")),
+        None => Os::current(),
+    };
+    let plan = service::plan(os, &action, &spec, &Host::detect())?;
+    if has(args, "dry-run") || os != Os::current() {
+        print!("{}", service::describe(&plan));
+        return Ok(());
+    }
+    service::execute(&plan)
 }
 
 /// `--k v` pairs after the bridge id (`--sock` and `--data-dir` of
@@ -173,7 +185,7 @@ fn bridge_options(args: &[String], skip: &[&str]) -> Result<lain_bridge::Options
     Ok(opts)
 }
 
-fn cmd_component(args: &[String]) -> Result<(), String> {
+pub fn component(args: &[String]) -> Result<(), String> {
     let sub = args.first().map(String::as_str).ok_or("component needs list|run|install|uninstall")?;
     if sub == "list" {
         for (id, caps, what) in lain_bridge::catalog() {
@@ -214,64 +226,43 @@ fn cmd_component(args: &[String]) -> Result<(), String> {
     }
 }
 
-fn cmd_service(args: &[String]) -> Result<(), String> {
-    let action_name = args.first().ok_or("service needs install|uninstall|start|stop|status|logs")?;
-    let lines = flag(args, "lines").map(|n| n.parse().unwrap_or(200)).unwrap_or(200);
-    let action = Action::parse(action_name, has(args, "follow"), lines)
-        .ok_or_else(|| format!("unknown service action {action_name}"))?;
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let spec = Spec {
-        name: flag(args, "name").unwrap_or_else(|| "lain".into()),
-        exe: exe.canonicalize().unwrap_or(exe),
-        data_dir: absolute(&data_dir(args)?),
-        port: flag(args, "port").unwrap_or_else(|| DEFAULT_PORT.into()).parse().map_err(|_| "bad --port")?,
-        bind: flag(args, "bind").unwrap_or_else(|| "127.0.0.1".into()),
-        system: has(args, "system"),
-        linger: has(args, "linger"),
-    };
-    let os = match flag(args, "os").as_deref() {
-        Some("linux") => Os::Linux,
-        Some("macos") => Os::MacOs,
-        Some("windows") => Os::Windows,
-        Some(other) => return Err(format!("unknown --os {other}")),
-        None => Os::current(),
-    };
-    let plan = service::plan(os, &action, &spec, &Host::detect())?;
-    if has(args, "dry-run") || os != Os::current() {
-        print!("{}", service::describe(&plan));
-        return Ok(());
-    }
-    service::execute(&plan)
+/// `lain plugins`: the providers and the composition of a data dir,
+/// read with the server stopped (the store is locked while it runs;
+/// a running server answers `GET /api/plugins`).
+pub fn plugins(args: &[String]) -> Result<(), String> {
+    let dir = data_dir(args)?;
+    let mut cfg = Config::new(&dir, VERSION);
+    cfg.offline = true;
+    cfg.watch = false;
+    cfg.list_sync = false;
+    cfg.auto_enrich = false;
+    let app = App::open(cfg).map_err(|e| format!("{e} (is the server running? use GET /api/plugins)"))?;
+    let out = json!({"composition": app.registry.composition(), "providers": app.registry.providers()});
+    app.shutdown();
+    println!("{}", serde_json::to_string_pretty(&out).map_err(|e| e.to_string())?);
+    Ok(())
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let Some(cmd) = args.first() else {
-        usage();
-        std::process::exit(2);
-    };
-    let rest = &args[1..];
-    let result = match cmd.as_str() {
-        "serve" => cmd_serve(rest),
-        "import" => cmd_import(rest),
-        "export" => cmd_export(rest),
-        "service" => cmd_service(rest),
-        "component" => cmd_component(rest),
-        "version" | "--version" | "-V" => {
-            println!("lain-rs {VERSION}");
-            Ok(())
-        }
-        "help" | "-h" | "--help" => {
-            usage();
-            Ok(())
-        }
-        _ => {
-            usage();
-            std::process::exit(2);
-        }
-    };
-    if let Err(e) = result {
-        eprintln!("error: {e}");
-        std::process::exit(1);
+/// `lain doctor`: what this machine offers the server and the CLI.
+pub fn doctor(args: &[String]) -> Result<(), String> {
+    let dir = data_dir(args)?;
+    let present = |b: &str| lain_probe::exec::look_path(b).is_some();
+    let mut rep = json!({
+        "version": VERSION,
+        "data_dir": dir.to_string_lossy(),
+        "data_dir_present": dir.is_dir(),
+        "web_ui": web().is_built(),
+        "ffprobe": present("ffprobe"),
+        "ffmpeg": present("ffmpeg"),
+        "mpv": present("mpv"),
+        "vlc": present("vlc"),
+    });
+    // What the local ffmpeg can actually do: hardware is opt-in and its
+    // probe result is never hidden (D-031).
+    if present("ffmpeg") {
+        let caps = lain_watch::transcode::policy::probe_build(&lain_watch::settings::defaults());
+        rep["transcode"] = json!(lain_watch::transcode::policy::report(&caps));
     }
+    println!("{}", serde_json::to_string_pretty(&rep).map_err(|e| e.to_string())?);
+    Ok(())
 }

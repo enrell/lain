@@ -10,10 +10,6 @@ publish.workspace = true
 [lib]
 path = "src/lib.rs"
 
-[[bin]]
-name = "lain-rs"
-path = "src/main.rs"
-
 [dependencies]
 lain-api.workspace = true
 lain-admin.workspace = true
