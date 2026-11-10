@@ -12,8 +12,8 @@ a process.
 
 ## The fixed core
 
-`internal/core` + `internal/store` + `internal/auth` + `internal/gateway`
-+ `internal/matrix` + `internal/component` (the component seam). It owns:
+`lain-core` + `lain-store` + `lain-auth` + `lain-server` (the gateway)
++ `lain-component` (the component seam). It owns:
 
 - composition load/validate/persist (`composition.json`)
 - provider registry, health-gated swap, generation fencing, last-good
@@ -71,15 +71,11 @@ JSON documents under the data dir: `users`, `secret`, `libraries`,
 
 ## Matrix seam
 
-Component mode is real: `internal/component` runs a provider as a
-supervised child process speaking NDJSON over a unix socket — `hello`
-handshake, sequenced `invoke`/`result`/`error` frames, transport-level
-`health`, respawn with backoff, `outcome-unknown` on timeouts. `lain
-plugin-run --id <provider> --sock <path>` adapts any built-in provider
-into a component, and `<data-dir>/plugins/` is watched: manifests
-install, reload and remove providers without a rebuild or restart
-(D-077). `internal/matrix` keeps exporting manifests in Matrix
-component shape and diagnosing the operator environment (`lain doctor
---matrix-bin ...`); the PKI/daemon provisioning under `matrix-managed`
-remains a later slice — the wire protocol already exists, so that is
+Component mode is real: `lain-component` runs a provider as a
+supervised child process speaking NDJSON over a Unix socket or a named
+pipe — `hello` handshake, sequenced `invoke`/`result`/`error` frames,
+transport-level `health`, respawn with backoff, `outcome-unknown` on
+timeouts — and `<data-dir>/plugins/` is watched: manifests install,
+reload and remove providers without a rebuild or restart (D-077). The
+PKI/daemon provisioning under `matrix-managed` remains a later slice — the wire protocol already exists, so that is
 an identity layer, not a redesign.

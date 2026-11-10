@@ -866,9 +866,9 @@ texts. `GET /api/events` adds `grab-changed` and `download-changed`
 
 The owner's standalone apps plug in as components (DESIGN-v2 §6). Each
 bridge in `crates/lain-bridge` is a provider that talks to one app over
-the app's own local API; `lain-rs component run <id> --sock {sock}`
-serves it, and `lain-rs component install <id> [--data-dir D] [--k v…]`
-writes `<data-dir>/plugins/<id>.json` (entrypoint: this `lain-rs`), which
+the app's own local API; `lain component run <id> --sock {sock}`
+serves it, and `lain component install <id> [--data-dir D] [--k v…]`
+writes `<data-dir>/plugins/<id>.json` (entrypoint: this `lain`), which
 the running server's provisioner picks up (`uninstall` removes it,
 `list` names them). The apps keep their own lifecycles: nothing in lain
 starts them. Credentials never go into a manifest: tokens come from the
