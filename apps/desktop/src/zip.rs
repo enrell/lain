@@ -73,11 +73,11 @@ pub fn read_all(raw: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// A stored-only archive with one file, built by hand.
-    fn stored(name: &str, body: &[u8]) -> Vec<u8> {
+    pub(crate) fn stored(name: &str, body: &[u8]) -> Vec<u8> {
         let mut z = Vec::new();
         let crc = 0u32; // not checked by this reader
         z.extend_from_slice(&[0x50, 0x4b, 0x03, 0x04, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
