@@ -417,6 +417,15 @@ fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
         Ok(it) => it,
         Err(o) => return *o,
     };
+    // An item that came with its own still (a download sidecar) shows
+    // that one; a frame is cut only when a time is asked for.
+    if w.req.query("t").trim().is_empty()
+        && let Some(art) = lain_metadata::sidecar::artwork(Path::new(&it.file_path))
+    {
+        let headers = vec![("cache-control", "private, max-age=86400".into())];
+        let kind = lain_metadata::sidecar::image_type(&art);
+        return file(art, kind, headers, "thumbnail unavailable");
+    }
     let at = w.req.query("t").trim().parse::<f64>().ok().filter(|t| *t >= 0.0 && t.is_finite()).unwrap_or(10.0);
     let width = w.req.query("w").trim().parse::<i64>().ok().filter(|n| *n > 0).unwrap_or(480).clamp(32, 1280);
     let req = thumbnail::Request { file_path: it.file_path.clone(), time_sec: at, width };

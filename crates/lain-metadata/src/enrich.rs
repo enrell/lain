@@ -9,10 +9,11 @@ use std::sync::{Arc, Weak};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use lain_api::{CatalogItem, Enrichment};
+use lain_api::{CatalogItem, Enrichment, Library};
 use lain_core::{Error, Provider, Registry};
-use lain_store::Store;
+use lain_store::{Bucket, Store};
 
+use crate::LOCAL_PROVIDERS;
 use crate::merge::merge_candidates;
 use crate::nfo::{CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH};
 use crate::store;
@@ -74,7 +75,8 @@ impl Enricher {
         } else {
             item.kind.as_str()
         };
-        let merged = self.search(&item.title, kind, &dir_of(&item.file_path), only).inspect_err(|e| {
+        let local = self.local_only(&item.library_id);
+        let merged = self.search(&item.title, kind, &dir_of(&item.file_path), only, local).inspect_err(|e| {
             tracing::warn!(item = %item.id, title = %item.title, err = %e, "enrich search failed");
         })?;
         let Some(best) = merged.first() else {
@@ -92,7 +94,44 @@ impl Enricher {
     /// Cache, else the merge-many fan-out (cached when not empty and not
     /// restricted to one provider). A failing provider degrades the
     /// merge; only total failure is an error.
-    fn search(&self, query: &str, kind: &str, dir: &str, only: &str) -> Result<Vec<MetadataCandidate>, Error> {
+    /// A private library (D-156) says nothing about its titles to the
+    /// outside: its items are enriched from the files next to them
+    /// (`.nfo`, download sidecar) and never by a network provider.
+    fn local_only(&self, library_id: &str) -> bool {
+        if library_id.is_empty() {
+            return false;
+        }
+        let lib: Option<Library> =
+            self.store.read(|tx| tx.get_json(Bucket::Libraries, library_id.as_bytes())).ok().flatten();
+        lib.is_some_and(|l| l.private)
+    }
+
+    /// The local providers only, each asked on its own: the merge-many
+    /// call would reach the network ones too, and the answer is about
+    /// one folder, so it is not cached under the title either.
+    fn search_local(&self, input: &MetadataSearchInput, only: &str) -> Result<Vec<MetadataCandidate>, Error> {
+        let reg = self.reg()?;
+        let lists: Vec<Vec<MetadataCandidate>> = LOCAL_PROVIDERS
+            .iter()
+            .filter(|id| only.is_empty() || **id == only)
+            .filter_map(|id| reg.invoke_provider(CAP_METADATA_SEARCH, id, "search", json!(input)).ok())
+            .map(|v| serde_json::from_value::<Vec<MetadataCandidate>>(v).unwrap_or_default())
+            .collect();
+        Ok(merge_candidates(&input.query, &lists, 10))
+    }
+
+    fn search(
+        &self,
+        query: &str,
+        kind: &str,
+        dir: &str,
+        only: &str,
+        local: bool,
+    ) -> Result<Vec<MetadataCandidate>, Error> {
+        if local {
+            let input = MetadataSearchInput { query: query.into(), kind: kind.into(), limit: 5, dir: dir.into() };
+            return self.search_local(&input, only);
+        }
         let now = lain_core::now_unix();
         if only.is_empty()
             && let Some(hit) = store::cached_search(&self.store, kind, query, now)

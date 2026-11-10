@@ -1,7 +1,11 @@
 import { mediaUrl } from './client';
 
 export interface ThumbnailOptions {
-	/** Seconds into the file; a seek past the end falls back to frame 0 on the server. */
+	/**
+	 * Seconds into the file; a seek past the end falls back to frame 0 on the
+	 * server. Left out, the server picks the cover: the still that came with
+	 * the item when it has one, else the frame at 10 s.
+	 */
 	at?: number;
 	/** Output width in pixels (the server clamps to 32..1280). */
 	width?: number;
@@ -19,7 +23,7 @@ export interface ThumbnailOptions {
 export const thumbnail = {
 	url: (id: string, token: string | null, opts: ThumbnailOptions = {}) =>
 		mediaUrl(`/api/items/${encodeURIComponent(id)}/thumbnail`, token, {
-			t: String(opts.at ?? 10),
+			...(opts.at === undefined ? {} : { t: String(opts.at) }),
 			w: String(opts.width ?? 480)
 		})
 };
