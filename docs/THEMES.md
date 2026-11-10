@@ -22,7 +22,11 @@ Where clients keep them:
   `~/.local/share/lain-client/themes`). Settings → Appearance lists them,
   installs a zip and opens the folder. The built-in themes are written
   there on first run, so they can be edited.
-- Clients reload the active theme when any of its files changes.
+- Android: `files/themes/<id>/` in the app's private storage, with the two
+  built-in themes written there on first run; Settings lists them. The tokens
+  are parsed by the shared Rust core (`apps/android/lain-ffi`). Fonts, icon
+  overrides, wallpapers, blur and live reload are not applied yet (D-249).
+- Clients reload the active theme when any of its files changes (desktop).
 
 ## `theme.json`
 
