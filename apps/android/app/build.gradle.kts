@@ -44,6 +44,11 @@ android {
         }
     }
 
+    sourceSets.getByName("main") {
+        kotlin.srcDir(layout.buildDirectory.dir("generated/uniffi"))
+        jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs"))
+    }
+
     testOptions {
         unitTests.all { test ->
             // The bindings smoke test loads the host build of lain-ffi
@@ -56,12 +61,6 @@ android {
     }
 }
 
-androidComponents {
-    onVariants { variant ->
-        variant.sources.kotlin?.addStaticSourceDirectory("build/generated/uniffi")
-        variant.sources.jniLibs?.addStaticSourceDirectory("build/rustJniLibs")
-    }
-}
 
 dependencies {
     implementation(libs.androidx.core.ktx)
