@@ -8,6 +8,7 @@
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import ApiKeys from './ApiKeys.svelte';
 
 	// The operator's OAuth application credentials (D-080). The secret is
 	// write-only: the server reports secret_set and keeps the stored one
@@ -131,4 +132,5 @@
 			</form>
 		{/if}
 	</section>
+	<ApiKeys />
 </div>

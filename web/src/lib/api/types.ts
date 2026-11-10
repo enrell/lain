@@ -293,11 +293,27 @@ export interface ScanStats {
 /** gateway.ScanStatus (server.go). */
 export type ScanState = 'idle' | 'running' | 'done' | 'error';
 
+/** Where a running scan is; `phase` is the furthest step reached. */
+export interface ScanProgress {
+	phase: 'walk' | 'identify' | 'commit' | 'enrich';
+	libraries: number;
+	/** Roots whose listing finished; `files` grows with it. */
+	libraries_walked: number;
+	/** Roots committed to the catalog. */
+	libraries_done: number;
+	files: number;
+	files_done: number;
+	enrich_total?: number;
+	enrich_done?: number;
+}
+
 export interface ScanStatus {
 	state: ScanState;
 	started_at?: number;
 	finished_at?: number;
 	stats?: ScanStats;
+	/** Present while the scan runs. */
+	progress?: ScanProgress;
 	error?: string;
 	/** What started this scan: a button press or the filesystem watcher. */
 	trigger?: 'manual' | 'watch';

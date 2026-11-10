@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { t } from '$lib/i18n';
+	import { i18n, t } from '$lib/i18n';
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
 	import SignalMark from '../primitives/SignalMark.svelte';
@@ -35,6 +35,19 @@
 		socialBadge.start();
 		return () => socialBadge.stop();
 	});
+
+	// The shell owns scan polling: the header stays live on every page,
+	// and a scan started elsewhere (the watcher, another tab) shows on load.
+	$effect(() => {
+		void scan.watch();
+		return () => scan.stop();
+	});
+
+	const scanLabel = $derived(
+		scan.fraction === null
+			? t('nav.scanning')
+			: t('nav.scanningPercent', { percent: i18n.formatNumber(scan.fraction, { style: 'percent' }) })
+	);
 
 </script>
 
@@ -76,7 +89,7 @@
 				<!-- Operational state earns the header only while it is happening. -->
 				{#if scan.running}
 					<a href="/settings/libraries#scan" class="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
-						<span class="size-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true"></span>{t('nav.scanning')}
+						<span class="size-1.5 animate-pulse rounded-full bg-accent" aria-hidden="true"></span><span class="tabular-nums" title={scan.line}>{scanLabel}</span>
 					</a>
 				{/if}
 				<button

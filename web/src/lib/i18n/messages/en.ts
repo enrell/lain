@@ -72,7 +72,19 @@ const en = {
 		accountMenu: 'Account menu',
 		palette: 'Open command palette (Ctrl+K)',
 		scanning: 'scanning',
+		scanningPercent: 'scanning {percent}',
 		skip: 'Skip to content'
+	},
+	scan: {
+		running: 'Scanning libraries…',
+		walk: 'Reading folders · {walked}/{libraries} libraries',
+		identify: 'Identifying files · {done}/{total}',
+		identifyWalking: 'Identifying files · {done}/{total} · {walked}/{libraries} libraries read',
+		commit: 'Updating the catalog · {done}/{libraries} libraries',
+		enrich: 'Fetching metadata · {done}/{total}',
+		enrichStarting: 'Fetching metadata…',
+		elapsed: '{time} elapsed',
+		progress: 'Scan progress'
 	},
 	boot: {
 		connecting: 'Connecting to your server…',
@@ -115,7 +127,7 @@ const en = {
 			libraries: { label: 'Libraries', hint: 'Media folders and scans' },
 			users: { label: 'Users', hint: 'Accounts and roles' },
 			transcoding: { label: 'Transcoding', hint: 'How files become streams' },
-			integrations: { label: 'Integrations', hint: 'OAuth apps for list sync' },
+			integrations: { label: 'Integrations', hint: 'OAuth apps and API keys' },
 			plugins: { label: 'Plugins', hint: 'Which provider does each job' },
 			backup: { label: 'Backup', hint: 'Database snapshot' },
 			downloads: { label: 'Downloads', hint: 'Fetch to server disk, limits' },
@@ -154,6 +166,7 @@ const en = {
 			resources: 'Resources & storage',
 			sessions: 'Active transcode sessions',
 			integrations: 'AniList OAuth app',
+			apiKeys: 'API keys for other programs',
 			plugins: 'Plugins & capabilities',
 			backup: 'Download backup',
 			downloadQueue: 'Download queue',

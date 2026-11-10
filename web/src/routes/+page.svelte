@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { isReadable } from '$lib/reader/kinds';
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import Clapperboard from '@lucide/svelte/icons/clapperboard';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import ScanLine from '@lucide/svelte/icons/scan-line';
@@ -107,12 +107,8 @@
 
 	onMount(() => {
 		void load();
-		void scan.refresh().then(() => {
-			if (scan.running) scan.follow();
-		});
+		void scan.watch();
 	});
-
-	onDestroy(() => scan.stop());
 
 	async function startScan(): Promise<void> {
 		try {
