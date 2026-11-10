@@ -8,9 +8,10 @@
 	 * bookmarked, and Back returns to it. The grid lists titles, one card
 	 * per show (it opens the show's page) or per single file.
 	 */
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { onMount, tick } from 'svelte';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Film from '@lucide/svelte/icons/film';
 	import Search from '@lucide/svelte/icons/search';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
@@ -44,11 +45,16 @@
 	let {
 		libraries = [],
 		libraryId = '',
-		showLibraryFilter = false
+		showLibraryFilter = false,
+		name = '',
+		backHref = ''
 	}: {
 		libraries?: Library[];
 		libraryId?: string;
 		showLibraryFilter?: boolean;
+		/** Shown in the sticky bar once the page header has scrolled away. */
+		name?: string;
+		backHref?: string;
 	} = $props();
 
 	let selectedLibrary = $state('');
@@ -71,6 +77,49 @@
 		}
 	}
 
+	// ---- where you were ----------------------------------------------------
+	// Opening a title and coming Back returns to the same spot: the scroll
+	// position and how much of the grid was rendered are kept per URL.
+	const PLACE = 'lain.library.place:';
+	let scrollY = $state(0);
+	let returning = false;
+	const placeKey = () => PLACE + page.url.pathname + page.url.search;
+	beforeNavigate(() => {
+		try {
+			sessionStorage.setItem(placeKey(), JSON.stringify({ y: window.scrollY, shown }));
+		} catch {
+			/* no storage: Back lands at the top */
+		}
+	});
+	afterNavigate((nav) => {
+		returning = nav.type === 'popstate';
+	});
+	async function restorePlace(): Promise<void> {
+		if (!returning) return;
+		returning = false;
+		try {
+			const saved = JSON.parse(sessionStorage.getItem(placeKey()) ?? 'null');
+			if (!saved || !(saved.y > 0)) return;
+			shown = Math.max(RENDER, Number(saved.shown) || RENDER);
+			await tick();
+			window.scrollTo({ top: saved.y });
+		} catch {
+			/* stay at the top */
+		}
+	}
+
+	function toTop(): void {
+		const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		window.scrollTo({ top: 0, behavior: calm ? 'auto' : 'smooth' });
+	}
+	let gridTop = $state<HTMLElement | null>(null);
+	/** A new result set starts at its beginning, not mid-scroll. */
+	function toResults(): void {
+		if (!gridTop) return;
+		const top = gridTop.getBoundingClientRect().top + window.scrollY - 190;
+		if (window.scrollY > top) window.scrollTo({ top: Math.max(0, top) });
+	}
+
 	async function load(): Promise<void> {
 		const mine = ++run;
 		items = [];
@@ -91,6 +140,7 @@
 				if (got.items.length === 0 || items.length >= got.total) break;
 			}
 			loading = false;
+			void restorePlace();
 			// Overlays carry the genres and artwork; the titles are usable
 			// before they arrive.
 			const ids = items.map((i) => i.id);
@@ -128,6 +178,7 @@
 	function set(patch: Partial<Filters>): void {
 		const query = filtersToParams({ ...filters, ...patch }, defaultSort).toString();
 		shown = RENDER;
+		toResults();
 		void goto(query ? `?${query}` : page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 	const toggle = <K extends 'watch' | 'added' | 'shape' | 'kind'>(key: K, value: Filters[K]) =>
@@ -250,11 +301,17 @@
 		} else if (e.key === 'c' && narrowed) {
 			e.preventDefault();
 			clearAll();
+		} else if (e.key === 't' && scrollY > 400) {
+			e.preventDefault();
+			toTop();
+		} else if (e.key === 'Backspace' && backHref) {
+			e.preventDefault();
+			void goto(backHref);
 		}
 	}
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} bind:scrollY />
 
 {#snippet option(label: string, count: number | undefined, on: boolean, pick: () => void)}
 	<button
@@ -452,6 +509,17 @@
 			</div>
 
 			<div class="flex min-h-7 flex-wrap items-center gap-1.5">
+				{#if backHref && scrollY > 140}
+					<a
+						href={backHref}
+						class="mr-1 flex items-center gap-1.5 rounded-md py-0.5 pr-2 text-sm text-muted transition-colors hover:text-foreground"
+						title="Back (Backspace)"
+					>
+						<span aria-hidden="true">‹</span>
+						<span class="max-w-40 truncate font-medium text-foreground">{name || 'Library'}</span>
+					</a>
+					<span class="mr-1 text-muted/40" aria-hidden="true">·</span>
+				{/if}
 				<p class="mr-1 text-sm text-muted" aria-live="polite">
 					{#if loading && items.length === 0}
 						Loading…
@@ -480,6 +548,7 @@
 			</div>
 		</div>
 
+		<div bind:this={gridTop}></div>
 		{#if error && items.length === 0}
 			<ErrorState message={error} retry={() => void load()} />
 		{:else if loading && items.length === 0}
@@ -524,6 +593,11 @@
 			</div>
 			{#if visible.length < results.length}
 				<div class="h-10" bind:this={sentinel}></div>
+			{:else if results.length > 24}
+				<p class="pt-8 text-center text-xs text-muted">
+					{results.length} titles ·
+					<button type="button" class="underline-offset-4 hover:text-foreground hover:underline" onclick={toTop}>back to top</button>
+				</p>
 			{/if}
 			{#if error}
 				<p class="mt-4 text-center text-sm text-danger" role="alert">{error}</p>
@@ -531,6 +605,19 @@
 		{/if}
 	</div>
 </div>
+
+{#if scrollY > 700}
+	<button
+		type="button"
+		class="fixed bottom-24 right-5 z-30 flex h-10 items-center gap-2 rounded-full border border-line bg-surface/95 pl-3 pr-3.5 text-sm text-muted shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur transition-colors hover:border-white/20 hover:text-foreground md:bottom-8 md:right-8"
+		aria-label="Back to top"
+		onclick={toTop}
+	>
+		<ArrowUp class="size-4" />
+		<span class="hidden sm:inline">Top</span>
+		<kbd class="hidden font-mono text-[10px] opacity-60 md:inline">T</kbd>
+	</button>
+{/if}
 
 <Modal bind:open={sheet} title="Filters">
 	<div class="mt-4">
