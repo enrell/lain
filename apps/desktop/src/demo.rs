@@ -5,14 +5,14 @@
 //! - `wait:<ms>`
 //! - `connect:<url>`, `login` (credentials from `LAIN_DEMO_USER` and
 //!   `LAIN_DEMO_PASS`; on a fresh server it runs the first-admin setup)
-//! - `home`, `library`, `read`, `search:<text>`, `downloads`,
+//! - `home`, `library`, `read`, `search:<text>`, `downloads`, `acquire`,
 //!   `settings:<section id>`, `palette[:<text>]`
 //! - `item:<n>` (the n-th title), `play:<n>` (its next episode),
 //!   `reader:<n>` (the n-th reading title), `controls` (keep the player
 //!   chrome visible), `seek:<s>`, `sub:<id>`
 //! - `theme:<id>`, `focus:<widget id>`, `tab`, `key:<down|up|right|left>`
 //!   (in-app focus moves, not OS input)
-//! - `set:<field>=<text>`, `kind:<library kind>`, `run:<create-library|scan|refresh|set-pin|save-profile|save-pathmap>`
+//! - `set:<field>=<text>`, `kind:<library kind>`, `run:<create-library|scan|refresh|set-pin|save-profile|save-pathmap|download>`
 //!   (fill fields and run actions as a user would)
 //! - `shot:<name>`: a PNG of this window into the `--shot` directory
 //! - `log:<text>`, `quit`
@@ -169,6 +169,7 @@ fn step_now(app: &mut LainApp, cmd: &str, arg: &str, window: &mut gpui::Window, 
         "library" => app.navigate(Screen::Library { read: false, lib: arg.to_string() }, cx),
         "read" => app.navigate(Screen::Library { read: true, lib: arg.to_string() }, cx),
         "downloads" => app.navigate(Screen::Downloads, cx),
+        "acquire" => app.navigate(Screen::Acquire, cx),
         "search" => {
             app.navigate(Screen::Search, cx);
             app.set_text("search.q", arg);
@@ -246,6 +247,9 @@ fn step_now(app: &mut LainApp, cmd: &str, arg: &str, window: &mut gpui::Window, 
                 "set-pin" => Some(Act::SetPin),
                 "save-profile" => Some(Act::SaveProfile),
                 "save-pathmap" => Some(Act::SavePathMap),
+                "download" => {
+                    app.item.episodes.ready().and_then(|e| e.get(app.item.sel)).map(|e| Act::Download(e.id.clone()))
+                }
                 _ => None,
             };
             match act {
