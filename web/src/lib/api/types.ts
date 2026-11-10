@@ -121,6 +121,9 @@ export interface TranscodeSelection {
 	/** Client-side permissions, mirroring Jellyfin's PlaybackInfo flags. */
 	allow_video_stream_copy?: boolean;
 	allow_audio_stream_copy?: boolean;
+	/** Codecs beyond H.264 this client decodes in fMP4; a source in one
+	 * of them is copied instead of re-encoded (D-273). */
+	video_copy_codecs?: string[];
 }
 
 export interface TranscodeStatus {

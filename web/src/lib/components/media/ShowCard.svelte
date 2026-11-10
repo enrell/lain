@@ -5,6 +5,8 @@
 	import type { SeriesGroup } from '$lib/utilities/grouping';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { artItem as pickArt } from '$lib/utilities/browse';
+	import { isReadable as readable } from '$lib/reader/kinds';
+	import { RATIO, shapeOf } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
 
 	/**
@@ -18,16 +20,22 @@
 		group,
 		progress = null,
 		priority = false,
-		wide = false
+		fit = false
 	}: {
 		group: SeriesGroup;
 		progress?: Progress | null;
 		priority?: boolean;
-		/** Landscape frame, for titles shown by a still rather than a poster. */
-		wide?: boolean;
+		/** Take the shape of the picture: the card sets its own width from
+		 * `--card-h`, for a row of cards of one height (see MediaGrid). */
+		fit?: boolean;
 	} = $props();
 
 	const artItem = $derived(pickArt(group));
+	const art = $derived(enrichmentCache.get(artItem.id));
+	const shape = $derived(
+		shapeOf(artItem.id, art?.poster || art?.cover || readable(artItem.kind) ? 'portrait' : 'landscape')
+	);
+
 	const seasons = $derived([...new Set(group.items.map((i) => i.season).filter((s) => s > 0))]);
 	const detail = $derived.by(() => {
 		const parts: string[] = [
@@ -47,13 +55,14 @@
 
 <a
 	href={`/item/${artItem.id}`}
-	class="group block w-full text-left transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+	style={fit ? `width: calc(var(--card-h) * ${RATIO[shape]})` : undefined}
+	class="group block shrink-0 text-left transition-transform {fit ? '' : 'w-full'} duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 	aria-label={`${group.title}, ${detail}`}
 >
 	<div
 		class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/15"
 	>
-		<div class={wide ? 'aspect-video' : 'aspect-[2/3]'}>
+		<div class={fit ? '' : 'aspect-[2/3]'} style={fit ? 'height: var(--card-h)' : undefined}>
 			<Poster
 				item={artItem}
 				enrichment={enrichmentCache.get(artItem.id) ?? null}

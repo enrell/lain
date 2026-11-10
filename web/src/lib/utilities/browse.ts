@@ -8,22 +8,6 @@ export function artItem(group: SeriesGroup) {
 	return group.items.find((i) => i.episode > 0) ?? group.items[0];
 }
 
-/**
- * Whether a set of cards should be landscape. Portrait slots suit poster
- * art; a title with none is shown by a 16:9 still, which a portrait slot
- * letterboxes. The whole set takes one shape, the majority's, so a grid
- * never mixes the two.
- */
-export function prefersWide(groups: SeriesGroup[], enrichment: Lookup, reading: boolean): boolean {
-	if (reading || groups.length === 0) return false;
-	let bare = 0;
-	for (const group of groups) {
-		const e = enrichment(artItem(group).id);
-		if (!e?.poster && !e?.cover) bare += 1;
-	}
-	return bare * 2 > groups.length;
-}
-
 /** Every genre of a group's files, first spelling kept, case ignored. */
 export function groupGenres(group: SeriesGroup, enrichment: Lookup): string[] {
 	const seen = new Map<string, string>();

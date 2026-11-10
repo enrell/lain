@@ -5,7 +5,7 @@
 	import Film from '@lucide/svelte/icons/film';
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { api } from '$lib/api';
-	import MediaGrid, { GRID, GRID_WIDE } from '$lib/components/media/MediaGrid.svelte';
+	import MediaGrid, { FIT } from '$lib/components/media/MediaGrid.svelte';
 	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
@@ -13,7 +13,7 @@
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
-	import { genreCounts, prefersWide, withGenres } from '$lib/utilities/browse';
+	import { genreCounts, withGenres } from '$lib/utilities/browse';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { groupItems, sortGroups } from '$lib/utilities/grouping';
 
@@ -138,9 +138,6 @@
 		libraries.find((lib) => lib.id === (selectedLibrary || libraryId))?.type ?? ''
 	);
 	const reading = $derived(isReadable(activeType));
-	// One shape for the whole page, decided by what was loaded first so
-	// the grid does not reflow as more arrives.
-	const wide = $derived(prefersWide(allGroups.slice(0, PAGE_SIZE), enrichmentOf, reading));
 	const showHeading = $derived(activeType === 'movie' ? 'Movies' : reading ? 'Series' : 'Shows');
 	const singleHeading = $derived(
 		activeType === 'movie' ? 'Movies' : reading ? 'One-shots' : 'Movies & specials'
@@ -239,11 +236,11 @@
 		{#if shows.length > 0}
 			<section class="space-y-4">
 				<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{showHeading}</h2>
-				<div class={wide ? GRID_WIDE : GRID}>
+				<div class={FIT}>
 					{#each shows as group, i (group.key)}
 						<ShowCard
 							{group}
-							{wide}
+							fit
 							progress={group.items.map((it) => progressMap.get(it.id)).find(Boolean) ?? null}
 							priority={i < 6}
 						/>
@@ -257,14 +254,14 @@
 				{#if shows.length > 0}
 					<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{singleHeading}</h2>
 				{/if}
-				<MediaGrid items={singles} {progressMap} {wide} />
+				<MediaGrid items={singles} {progressMap} fit />
 			</section>
 		{/if}
 
 		{#if loading}
-			<div class={['mt-6', wide ? GRID_WIDE : GRID].join(' ')}>
-				{#each Array(wide ? 4 : 6) as _}
-					<Skeleton class={wide ? 'aspect-video' : 'aspect-[2/3]'} />
+			<div class={['mt-6', FIT].join(' ')}>
+				{#each Array(5) as _}
+					<Skeleton class="aspect-video h-[var(--card-h)]" />
 				{/each}
 			</div>
 		{:else if !done}
