@@ -48,6 +48,8 @@ conformance suite it was checked against stays as the API spec.
     (`lain.ui.theme@1`), backups (`lain.backup.create@1`, tar of a
     consistent store snapshot), integration settings and avatars.
   - `lain-server` — the axum gateway, `/api/modules`, `/api/events`,
+    integrations (API keys other programs feed a library with,
+    D-265..D-267),
     service mode, catalog `export`/`import` (`lain.catalog-export@3`)
     and the web SPA's static serving (`webui.rs`, D-235), on the
     canonical data dir (`lain`) and port 9360 (D-178). A library: the
@@ -101,10 +103,8 @@ conformance suite it was checked against stays as the API spec.
   - `lain-bridge` — the bridges to the owner's standalone apps served
     as components (P4, D-225..D-231): `lain-release-model` (lain-parser,
     `lain.release.parse@1`), `lain-subtitle-animesubs`
-    (`lain.subtitle.translate@1`), `lain-acquire-anything`
-    (`lain.acquire.extract@1`) and `lain-library-anything` (identity
-    and metadata from the files Anything leaves next to its downloads,
-    D-265), their discovery of each app's
+    (`lain.subtitle.translate@1`) and `lain-acquire-anything`
+    (`lain.acquire.extract@1`), their discovery of each app's
     `server.json` and token, and a std-only HTTP/1.1 client for loopback
     services; `lain component install|run|list|uninstall`. No crate
     added. `tools/parser-v5` (outside the workspace) is the V-5 parser

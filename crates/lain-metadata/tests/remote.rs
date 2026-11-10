@@ -235,8 +235,7 @@ fn enrich_merges_every_provider() {
 }
 
 /// A private library's titles stay on the machine: its items are
-/// enriched from the files next to them (the library import component
-/// is not installed here and is skipped), and no network provider is
+/// enriched from the files next to them, and no network provider is
 /// asked, not even for a title one of them knows exactly, nor when a
 /// caller names one.
 #[test]

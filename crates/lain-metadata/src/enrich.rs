@@ -23,9 +23,14 @@ pub const ENRICH_ID: &str = "lain-metadata-enrich";
 pub const CAP_METADATA_ENRICH: &str = "lain.metadata.enrich@1";
 const CAP_CATALOG_READ: &str = "lain.catalog.read@1";
 
+/// Called by `backfill` with (`done`, `total`) before the first item
+/// and after each one (in-process observers only).
+pub type BackfillProgress = Arc<dyn Fn(i64, i64) + Send + Sync>;
+
 pub struct Enricher {
     registry: Weak<Registry>,
     store: Arc<Store>,
+    progress: Option<BackfillProgress>,
 }
 
 #[derive(Deserialize)]
@@ -61,7 +66,12 @@ fn dir_of(path: &str) -> String {
 
 impl Enricher {
     pub fn new(registry: &Arc<Registry>, store: Arc<Store>) -> Self {
-        Enricher { registry: Arc::downgrade(registry), store }
+        Enricher { registry: Arc::downgrade(registry), store, progress: None }
+    }
+
+    pub fn with_progress(mut self, progress: BackfillProgress) -> Self {
+        self.progress = Some(progress);
+        self
     }
 
     fn reg(&self) -> Result<Arc<Registry>, Error> {
@@ -96,7 +106,7 @@ impl Enricher {
     /// merge; only total failure is an error.
     /// A private library (D-156) says nothing about its titles to the
     /// outside: its items are enriched from the files next to them
-    /// (`.nfo`, the library import component) and never by a network provider.
+    /// (`.nfo`) and never by a network provider.
     fn local_only(&self, library_id: &str) -> bool {
         if library_id.is_empty() {
             return false;
@@ -182,14 +192,21 @@ impl Enricher {
         let (out, _) = self.reg()?.call_one(CAP_CATALOG_READ, "list", Value::Null)?;
         let items: Vec<CatalogItem> =
             serde_json::from_value(out).map_err(|_| Error::internal("catalog read returned a bad shape"))?;
-        let mut done = 0;
-        for it in items {
-            if store::get(&self.store, &it.id).is_some() {
-                continue;
+        let pending: Vec<CatalogItem> =
+            items.into_iter().filter(|it| store::get(&self.store, &it.id).is_none()).collect();
+        let total = pending.len() as i64;
+        let report = |n: i64| {
+            if let Some(p) = &self.progress {
+                p(n, total);
             }
-            if self.enrich(&it, "").is_ok() {
+        };
+        report(0);
+        let mut done = 0;
+        for (n, it) in pending.iter().enumerate() {
+            if self.enrich(it, "").is_ok() {
                 done += 1;
             }
+            report(n as i64 + 1);
         }
         Ok(done)
     }
