@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window before Compose draws; the app's colors come from the
+         lain.ui.theme@1 tokens (D-249). -->
+    <style name="Theme.Lain" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/lain_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
