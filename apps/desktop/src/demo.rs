@@ -14,6 +14,9 @@
 //!   (in-app focus moves, not OS input)
 //! - `set:<field>=<text>`, `kind:<library kind>`, `run:<create-library|scan|refresh|set-pin|save-profile|save-pathmap|download>`
 //!   (fill fields and run actions as a user would)
+//! - `ext-install:<path>` (an extension folder or zip), `ext-allow`,
+//!   `ext-deny` (answer the permission prompt), `ext-toggle:<id>`,
+//!   `ext-scope:<id>/<scope>` (grant or revoke one scope)
 //! - `shot:<name>`: a PNG of this window into the `--shot` directory
 //! - `log:<text>`, `quit`
 
@@ -75,14 +78,22 @@ pub async fn run(this: WeakEntity<LainApp>, cx: &mut AsyncWindowContext) {
                     .read_with(cx, |app, _| {
                         let rails: Vec<String> =
                             app.home.rails.iter().map(|r| format!("{} ({})", r.title, r.cards.len())).collect();
+                        let exts: Vec<String> =
+                            app.ext.status.iter().map(|(id, s)| format!("{id}={}", s.label())).collect();
+                        let panels: Vec<String> = app.ext.panels.1.iter().map(|(e, p)| format!("{e}/{}", p.id)).collect();
                         format!(
-                            "frames {} · screen {:?} · {} items, {} titles · rails: {} · focus {:?}",
+                            "frames {} · screen {:?} · {} items, {} titles · rails: {} · focus {:?} · layout {:?} hero {:?} · extensions: {} · panels: {} · prompt {:?}",
                             app.demo.frames,
                             app.screen,
                             app.catalog.len(),
                             app.series.len(),
                             rails.join(", "),
-                            app.focused
+                            app.focused,
+                            app.layout.name,
+                            app.layout.hero,
+                            exts.join(", "),
+                            panels.join(", "),
+                            app.ext_prompt
                         )
                     })
                     .unwrap_or_default();
@@ -258,6 +269,15 @@ fn step_now(app: &mut LainApp, cmd: &str, arg: &str, window: &mut gpui::Window, 
             }
         }
         "theme" => app.run(Act::PickTheme(arg.to_string()), window, cx),
+        "ext-install" => app.install_extension(std::path::Path::new(arg), cx),
+        "ext-allow" => app.run(Act::ExtAllow, window, cx),
+        "ext-deny" => app.run(Act::ExtDeny, window, cx),
+        "ext-toggle" => app.run(Act::ExtToggle(arg.to_string()), window, cx),
+        "ext-scope" => {
+            if let Some((id, scope)) = arg.split_once('/') {
+                app.run(Act::ExtScope(id.to_string(), scope.to_string()), window, cx);
+            }
+        }
         "focus" => app.focused = Some(arg.to_string().into()),
         "tab" => app.move_focus(1),
         "key" => {

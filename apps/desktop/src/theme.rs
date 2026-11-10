@@ -21,7 +21,11 @@ pub const FORMAT: &str = "lain.ui.theme@1";
 pub const BUILTIN: &[(&str, &str)] = &[
     ("lain-dark", include_str!("../themes/lain-dark/theme.json")),
     ("paper-light", include_str!("../themes/paper-light/theme.json")),
+    ("shelf", include_str!("../themes/shelf/theme.json")),
 ];
+
+/// Built-in `layout.json` files (tier 2, `layout.rs`): the sample skin.
+pub const BUILTIN_LAYOUTS: &[(&str, &str)] = &[("shelf", include_str!("../themes/shelf/layout.json"))];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -432,6 +436,14 @@ pub fn install_builtins(dir: &Path) {
             eprintln!("theme {id}: {e}");
         }
     }
+    for (id, json) in BUILTIN_LAYOUTS {
+        let f = dir.join(id).join("layout.json");
+        if !f.exists()
+            && let Err(e) = std::fs::write(&f, json)
+        {
+            eprintln!("layout {id}: {e}");
+        }
+    }
 }
 
 pub fn load_dir(dir: &Path) -> Result<Theme, String> {
@@ -466,6 +478,10 @@ pub fn list(dir: &Path) -> Vec<ThemeEntry> {
 /// icons/, wallpapers/), for hot reload.
 pub fn stamp(dir: &Path) -> Option<SystemTime> {
     let mut best = std::fs::metadata(dir.join("theme.json")).and_then(|m| m.modified()).ok();
+    // The skin's layout slots reload with the theme (tier 2, layout.rs).
+    if let Ok(m) = std::fs::metadata(dir.join("layout.json")).and_then(|m| m.modified()) {
+        best = best.max(Some(m));
+    }
     for sub in ["icons", "wallpapers"] {
         if let Ok(rd) = std::fs::read_dir(dir.join(sub)) {
             for e in rd.flatten() {
