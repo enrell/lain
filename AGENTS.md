@@ -241,6 +241,42 @@ the server or the app): `wit-bindgen` (=0.63.0, `macros`, `realloc`,
 `std`) for the `lain:extension` world. Extensions and the probe guest
 build for `wasm32-wasip2`; spec in `docs/MODDING.md`.
 
+## Android app (`apps/android`, P5, D-245..D-254)
+
+Kotlin + Jetpack Compose + Media3 on `lain-client`. Two builds:
+
+- `apps/android/lain-ffi` — the bindings crate, its own cargo workspace
+  and `Cargo.lock` (like the desktop, so the server workspace never
+  compiles UniFFI); path dependencies on `crates/lain-client`,
+  `crates/lain-api`, `crates/lain-read` (offline CBZ pages) and
+  `crates/lain-core` (its error type). Direct dependencies:
+  - `uniffi` (=0.32.2, no default features; `cli` + `cargo-metadata`
+    only behind the `bindgen` feature of the `uniffi-bindgen` binary) —
+    the Kotlin bindings V-12 named for Android; D-245.
+  - `tokio`, `serde`, `serde_json` — the workspace pins.
+  - dev: `lain-server`, `lain-conformance`, `lain-store` for the
+    end-to-end test against the server in-process.
+- `apps/android` — Gradle (Kotlin DSL, `gradle/libs.versions.toml`, the
+  wrapper is committed). Dependencies (D-251): AndroidX `core-ktx`,
+  `activity-compose`, `lifecycle-viewmodel-compose` and
+  `lifecycle-runtime-compose` (the activity, back handling, the app
+  view model); Compose `ui`, `foundation`, `material3` through the BOM
+  (the UI); Media3 `exoplayer`, `exoplayer-hls`, `ui` (the player: direct
+  play, HLS transcodes, `PlayerView`); `kotlinx-coroutines-android`
+  (UniFFI's suspend functions); `jna` (the bindings' native calls; the
+  `aar` in the app, the jar in JVM tests); tests: `junit`,
+  `kotlinx-coroutines-test`. No navigation, image-loading or DI library:
+  a screen stack, `BitmapFactory` and one `AppGraph` do those jobs.
+
+`scripts/build-rust.sh` builds the host library, generates the Kotlin
+bindings into `app/build/generated/uniffi` and builds the ABIs
+(`arm64-v8a`, `x86_64`) with cargo-ndk into `app/build/rustJniLibs`;
+Gradle adds both. Nothing generated is committed. **Do not install the
+Android SDK/NDK on the owner's machine** (the disk is tight): Rust parts
+build and test on the host (`cargo test --manifest-path
+apps/android/lain-ffi/Cargo.toml`), Kotlin compiles only in CI (the
+`android` job, artifact `lain-android-debug`). See `apps/android/README.md`.
+
 ## Workflow
 
 1. Read the relevant source + `docs/` before changing conventions.
