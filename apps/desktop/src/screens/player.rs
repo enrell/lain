@@ -132,6 +132,7 @@ impl LainApp {
         if self.player.is_some() {
             return;
         }
+        self.ext_event(crate::ext::Event::PlaybackStarted(id.to_string()));
         #[cfg(windows)]
         if self.hwnd == 0 {
             return;
@@ -333,6 +334,7 @@ impl LainApp {
 
     pub fn close_player(&mut self, cx: &mut Context<Self>) {
         let Some(s) = self.player.take() else { return };
+        self.ext_event(crate::ext::Event::PlaybackStopped(s.item_id.clone()));
         let st = s.engine_state();
         if st.duration > 0.
             && let Some(b) = self.backend.clone()
@@ -600,6 +602,7 @@ impl LainApp {
             self.by_id.get(&id).map(|&i| episode_label(self.catalog[i].season, self.catalog[i].episode))
         });
         let tg = self.theme_gen;
+        let lay = self.layout.clone();
         let p = self.player.as_mut().expect("player");
         #[cfg(windows)]
         if let Some(h) = p.host.as_mut() {
@@ -710,44 +713,45 @@ impl LainApp {
         };
         let ip = |n: &str| SharedIcon(gpui::SharedString::from(format!("icons/{n}.svg?g={tg}")));
 
-        // ---- top: back + title
-        root = root.child(
-            div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .w(px(vw))
-                .h(px(130.))
-                .opacity(opacity)
-                .bg(linear_gradient(
-                    180.,
-                    linear_color_stop(pal.controls_bg, 0.),
-                    linear_color_stop(pal.controls_bg.opacity(0.), 1.),
-                ))
-                .flex()
-                .items_start()
-                .gap(px(th.sp(3)))
-                .px(px(m))
-                .pt(px(th.sp(4)))
-                .child(
-                    btn("back", ip("back"), 44.)
-                        .on_click(cx.listener(|app, _: &ClickEvent, _, cx| app.close_player(cx))),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .text_color(fg)
-                        .child(
-                            div()
-                                .font_family(display)
-                                .text_size(px(th.ts(3)))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(p.title.clone()),
-                        )
-                        .child(div().text_color(fg.opacity(0.7)).child(format!("{} · {}", p.label, p.source_note))),
-                ),
-        );
+        // ---- the title block: top (default), above the seek bar, or hidden
+        // (layout slots, `layout.rs`)
+        let title_block = div()
+            .flex()
+            .flex_col()
+            .text_color(fg)
+            .child(
+                div()
+                    .font_family(display)
+                    .text_size(px(th.ts(3)))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(p.title.clone()),
+            )
+            .child(div().text_color(fg.opacity(0.7)).child(format!("{} · {}", p.label, p.source_note)));
+        let mut title_block = Some(title_block);
+        let mut top = div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .w(px(vw))
+            .h(px(130.))
+            .opacity(opacity)
+            .bg(linear_gradient(
+                180.,
+                linear_color_stop(pal.controls_bg, 0.),
+                linear_color_stop(pal.controls_bg.opacity(0.), 1.),
+            ))
+            .flex()
+            .items_start()
+            .gap(px(th.sp(3)))
+            .px(px(m))
+            .pt(px(th.sp(4)))
+            .child(
+                btn("back", ip("back"), 44.).on_click(cx.listener(|app, _: &ClickEvent, _, cx| app.close_player(cx))),
+            );
+        if lay.player_title == crate::layout::Place::Top {
+            top = top.children(title_block.take());
+        }
+        root = root.child(top);
 
         // ---- bottom: seek bar + controls
         let dur = st.duration.max(0.);
@@ -814,94 +818,114 @@ impl LainApp {
         let vol_w = 96.;
         let has_next = p.next_id.is_some();
         let playing_icon = if st.paused { "play" } else { "pause" };
-        let mut controls = div().flex().items_center().gap(px(th.sp(2))).w(px(seek_w)).text_color(fg).child(
-            btn("pp", ip(playing_icon), 44.).on_click(cx.listener(|app, _: &ClickEvent, _, cx| {
-                if let Some(p) = &app.player {
-                    p.cmd(&["cycle", "pause"]);
+        let mut controls = div().flex().items_center().gap(px(th.sp(2))).w(px(seek_w)).text_color(fg);
+        for c in &lay.controls {
+            use crate::layout::Control as C;
+            controls = match c {
+                C::Play => controls.child(btn("pp", ip(playing_icon), 44.).on_click(cx.listener(
+                    |app, _: &ClickEvent, _, cx| {
+                        if let Some(p) = &app.player {
+                            p.cmd(&["cycle", "pause"]);
+                        }
+                        cx.notify();
+                    },
+                ))),
+                C::Next if has_next => {
+                    controls.child(btn("next", ip("next"), 40.).on_click(cx.listener(|app, _: &ClickEvent, _, cx| {
+                        app.player_next(cx);
+                        cx.notify();
+                    })))
                 }
-                cx.notify();
-            })),
-        );
-        if has_next {
-            controls =
-                controls.child(btn("next", ip("next"), 40.).on_click(cx.listener(|app, _: &ClickEvent, _, cx| {
-                    app.player_next(cx);
-                    cx.notify();
-                })));
-        }
-        controls =
-            controls
-                .child(div().font_family(mono).text_size(px(th.ts(-1))).child(format!(
+                C::Next => controls,
+                C::Time => controls.child(div().font_family(mono.clone()).text_size(px(th.ts(-1))).child(format!(
                     "{} / {}",
                     fmt_time(shown_t),
                     fmt_time(dur)
-                )))
-                .child(div().flex_1())
-                .child(btn("mute", ip(if st.muted { "mute" } else { "volume" }), 40.).on_click(cx.listener(
-                    |app, _: &ClickEvent, _, cx| {
+                ))),
+                C::Spacer => controls.child(div().flex_1()),
+                C::Mute => controls.child(btn("mute", ip(if st.muted { "mute" } else { "volume" }), 40.).on_click(
+                    cx.listener(|app, _: &ClickEvent, _, cx| {
                         if let Some(p) = &app.player {
                             p.cmd(&["cycle", "mute"]);
                         }
                         cx.notify();
+                    }),
+                )),
+                C::Volume => {
+                    let vc = vol_cell.clone();
+                    controls.child(
+                        div()
+                            .relative()
+                            .w(px(vol_w))
+                            .h(px(18.))
+                            .flex()
+                            .items_center()
+                            .cursor_pointer()
+                            .child(canvas(move |b, _, _| vc.set(b), |_, _, _, _| {}).absolute().inset_0())
+                            .child(div().w_full().h(px(seek_h)).rounded_full().bg(fg.opacity(0.18)).child(
+                                div().h_full().w(px(vol_w * if st.muted { 0. } else { vol })).rounded_full().bg(fg),
+                            )),
+                    )
+                }
+                C::Audio => controls.child(btn("audio", ip("audio"), 40.).on_click(cx.listener(
+                    |app, _: &ClickEvent, _, cx| {
+                        if let Some(p) = app.player.as_mut() {
+                            p.menu = if p.menu == Some(Menu::Audio) { None } else { Some(Menu::Audio) };
+                        }
+                        cx.notify();
                     },
-                )))
-                .child(
-                    div()
-                        .relative()
-                        .w(px(vol_w))
-                        .h(px(18.))
-                        .flex()
-                        .items_center()
-                        .cursor_pointer()
-                        .child(canvas(move |b, _, _| vol_cell.set(b), |_, _, _, _| {}).absolute().inset_0())
-                        .child(div().w_full().h(px(seek_h)).rounded_full().bg(fg.opacity(0.18)).child(
-                            div().h_full().w(px(vol_w * if st.muted { 0. } else { vol })).rounded_full().bg(fg),
-                        )),
-                )
-                .child(btn("audio", ip("audio"), 40.).on_click(cx.listener(|app, _: &ClickEvent, _, cx| {
-                    if let Some(p) = app.player.as_mut() {
-                        p.menu = if p.menu == Some(Menu::Audio) { None } else { Some(Menu::Audio) };
-                    }
-                    cx.notify();
-                })))
-                .child(btn("subs", ip("subtitles"), 40.).on_click(cx.listener(|app, _: &ClickEvent, _, cx| {
-                    if let Some(p) = app.player.as_mut() {
-                        p.menu = if p.menu == Some(Menu::Subs) { None } else { Some(Menu::Subs) };
-                    }
-                    cx.notify();
-                })))
-                .child(
+                ))),
+                C::Subs => controls.child(btn("subs", ip("subtitles"), 40.).on_click(cx.listener(
+                    |app, _: &ClickEvent, _, cx| {
+                        if let Some(p) = app.player.as_mut() {
+                            p.menu = if p.menu == Some(Menu::Subs) { None } else { Some(Menu::Subs) };
+                        }
+                        cx.notify();
+                    },
+                ))),
+                C::Fullscreen => controls.child(
                     btn("fs", ip(if fullscreen { "windowed" } else { "fullscreen" }), 40.)
                         .on_click(cx.listener(|_, _: &ClickEvent, window, _| window.toggle_fullscreen())),
-                );
-
-        root = root.child(
-            div()
-                .absolute()
-                .left_0()
-                .bottom_0()
-                .w(px(vw))
-                .h(px(170.))
-                .opacity(opacity)
-                .bg(linear_gradient(180., linear_color_stop(pal.controls_bg.opacity(0.), 0.), linear_color_stop(pal.controls_bg, 1.)))
-                .flex()
-                .flex_col()
-                .justify_end()
-                .items_center()
-                .gap(px(th.sp(1)))
-                .pb(px(th.sp(4)))
-                .child(seek)
-                .child(controls)
-                .child(
-                    div()
-                        .w(px(seek_w))
-                        .flex()
-                        .gap(px(th.sp(3)))
-                        .text_size(px(th.ts(-3)))
-                        .text_color(fg.opacity(0.5))
-                        .child("Space pause · ←/→ 5 s · J/L 10 s · 0–9 jump · A audio · S subs · N next · F fullscreen · Esc back"),
                 ),
-        );
+            };
+        }
+
+        let mut bottom = div()
+            .absolute()
+            .left_0()
+            .bottom_0()
+            .w(px(vw))
+            .h(px(if title_block.is_some() && lay.player_title == crate::layout::Place::Bottom { 240. } else { 170. }))
+            .opacity(opacity)
+            .bg(linear_gradient(
+                180.,
+                linear_color_stop(pal.controls_bg.opacity(0.), 0.),
+                linear_color_stop(pal.controls_bg, 1.),
+            ))
+            .flex()
+            .flex_col()
+            .justify_end()
+            .items_center()
+            .gap(px(th.sp(1)))
+            .pb(px(th.sp(4)));
+        if lay.player_title == crate::layout::Place::Bottom
+            && let Some(t) = title_block.take()
+        {
+            bottom = bottom.child(div().w(px(seek_w)).pb(px(th.sp(2))).child(t));
+        }
+        bottom = if lay.seek_above { bottom.child(seek).child(controls) } else { bottom.child(controls).child(seek) };
+        if lay.hints {
+            bottom = bottom.child(
+                div()
+                    .w(px(seek_w))
+                    .flex()
+                    .gap(px(th.sp(3)))
+                    .text_size(px(th.ts(-3)))
+                    .text_color(fg.opacity(0.5))
+                    .child("Space pause · ←/→ 5 s · J/L 10 s · 0–9 jump · A audio · S subs · N next · F fullscreen · Esc back"),
+            );
+        }
+        root = root.child(bottom);
 
         // ---- track menu
         if let Some(menu) = menu {

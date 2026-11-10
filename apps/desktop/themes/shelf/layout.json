@@ -1,0 +1,19 @@
+{
+  "format": "lain.ui.layout@1",
+  "name": "shelf",
+  "home": {
+    "hero": "compact",
+    "rails": ["extensions", "continue", "libraries"],
+    "recent_limit": 30
+  },
+  "item": {
+    "header": ["title", "actions", "facts", "synopsis"],
+    "columns": ["details", "panels", "episodes"]
+  },
+  "player": {
+    "title": "bottom",
+    "controls": ["play", "next", "time", "spacer", "subs", "audio", "mute", "fullscreen"],
+    "seek": "below",
+    "hints": false
+  }
+}

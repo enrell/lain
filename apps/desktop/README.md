@@ -2,7 +2,8 @@
 
 The desktop app v1 (DESIGN-v2 §10 P3, D-180): the parity checklist of §8.4
 on [GPUI](https://crates.io/crates/gpui), with themes tier 1 (§8.3,
-[`docs/THEMES.md`](../../docs/THEMES.md)). It grew from the P2b prototype
+[`docs/THEMES.md`](../../docs/THEMES.md)), and since P6 skins (layout
+slots) and WASM extensions, tiers 2 and 3 ([`docs/MODDING.md`](../../docs/MODDING.md)). It grew from the P2b prototype
 (`proto/gpui`). Every server call goes through `lain-client`.
 
 ## Build
@@ -66,6 +67,10 @@ window lands elsewhere. No simulated input: the app is driven by `--demo`, a
 ```
 --demo "login;wait:1500;shot:home.png;item:0;shot:item.png;play:0;controls;wait:4000;shot:player.png;quit"
 ```
+
+Extension steps: `ext-install:<folder or zip>`, `ext-allow`, `ext-deny`,
+`ext-toggle:<id>`, `ext-scope:<id>/<scope>`; `log:` also prints the layout,
+each extension's state and the panels shown.
 
 `login` takes `LAIN_DEMO_USER`/`LAIN_DEMO_PASS` from the environment (and
 runs first-admin setup on a fresh server); `log:<tag>` prints the screen,
@@ -155,6 +160,22 @@ installs a zip and opens the folder; edits to the active theme apply live.
 | `wallpaper` | honored on the connect/login screens |
 | `icons/<name>.svg` | honored, live |
 
+## Skins and extensions (P6, D-255..D-264)
+
+- **Skins:** `layout.json` in a theme folder (`lain.ui.layout@1`) picks
+  Home's rails and their order, the hero style (`full`, `compact`,
+  `none`), a title page's header parts and columns, and the player
+  overlay (title position, control order, seek bar position, key
+  legend). It hot-reloads with the theme. Built-in sample: `shelf`.
+- **Extensions:** WebAssembly components on wasmtime (`src/ext/`), one
+  thread and store each, with fuel, a 10 s deadline per call, a 64 MiB
+  memory cap and scope-gated host calls through `lain-client`.
+  Settings → Extensions installs a folder or zip, turns them on and off,
+  grants and revokes each scope and shows their log; the permission
+  prompt (Enter allow, Esc not now) appears the first time one is found.
+  A trapping extension is turned off with a notice; the app keeps
+  running. Sample: `examples/extensions/seasonal-stats`.
+
 ## Dependencies (D-184)
 
 | Crate | Why |
@@ -167,6 +188,8 @@ installs a zip and opens the folder; edits to the active theme apply live.
 | `flate2` | deflate for theme zips (in-tree reader); already in the tree |
 | `raw-window-handle` | the native window handle |
 | `windows` 0.61 (Windows) | the video host window, placement, captures; the version GPUI compiles |
+| `wasmtime`, `wasmtime-wasi` =50.0.1 (P6) | extensions: the component model, fuel, epochs, limits; WASI p2 with an empty context |
+| `lain-http` (path, P6) | `net:<host>` GETs of extensions (rustls already in the tree) |
 
 No gpui-component: plain `div`, `img`, `svg` and `canvas`. libmpv FFI is
 hand-written and loaded at run time.
@@ -184,3 +207,6 @@ hand-written and loaded at run time.
 | `src/engine.rs`, `src/mpv.rs`, `src/mpv_ipc.rs` | player engines (embedded / external) |
 | `src/screens/*` | one file per screen |
 | `src/demo.rs`, `src/platform.rs` | test automation; placement, captures |
+| `src/layout.rs` | `lain.ui.layout@1` layout slots (tier 2) |
+| `src/ext/` | extensions (tier 3): manifest and scopes, the wasmtime host, the `lain-client` API, tests |
+| `src/screens/extensions.rs` | the permission prompt, Settings → Extensions, extension panels |

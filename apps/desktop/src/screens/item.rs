@@ -1,6 +1,8 @@
 //! A title's page: art, facts, the episodes (or volumes) with progress,
 //! mark watched, offline copies, and the selected file's details with its
-//! subtitle sidecars.
+//! subtitle sidecars. The header's parts and the columns (episodes,
+//! details, extension panels) follow the theme's layout slots
+//! (`layout.rs`); extension panels come from `ui:panel` extensions.
 
 use std::collections::HashMap;
 
@@ -61,6 +63,8 @@ impl LainApp {
         }
         let (c2, want2) = (b.client.clone(), id.to_string());
         self.spawn_ui(cx, async move { c2.enrichment(&want2).await }, |app, r, _| app.item.meta = r.ok());
+        self.ext.request_panels(id);
+        self.ext_event(crate::ext::Event::ItemOpened(id.to_string()));
         let c = b.client.clone();
         let want = id.to_string();
         self.spawn_ui(cx, async move { c.episodes(&want).await }, |app, r, cx| {
@@ -275,50 +279,63 @@ impl LainApp {
             };
             actions = actions.child(self.btn("item.download", dl_label, Some("D"), Tone::Ghost, dl_act, cx));
         }
-        let header = div()
-            .flex()
-            .flex_col()
-            .gap(px(th.sp(2)))
-            .child(
-                self.label(format!(
-                    "{kind}{}",
-                    if lib_name.is_empty() { String::new() } else { format!(" · {lib_name}") }
-                ))
-                .text_color(pal.accent),
-            )
-            .child(
-                div()
-                    .font_family(self.fonts.display.clone())
-                    .text_size(px(title_size))
-                    .line_height(px(title_size * 1.05))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(title.clone()),
-            )
-            .child(div().text_color(pal.text.opacity(0.75)).child(format!(
-                "{} {}{} · {watched} of {} {}",
-                eps.len(),
-                if reading {
-                    "volumes"
-                } else if eps.len() == 1 {
-                    "file"
-                } else {
-                    "episodes"
+        let facts = format!(
+            "{} {}{} · {watched} of {} {}",
+            eps.len(),
+            if reading {
+                "volumes"
+            } else if eps.len() == 1 {
+                "file"
+            } else {
+                "episodes"
+            },
+            if year > 0 { format!(" · {year}") } else { String::new() },
+            eps.len(),
+            if reading { "read" } else { "watched" }
+        );
+        let mut actions = Some(actions);
+        let mut header = div().flex().flex_col().gap(px(th.sp(2)));
+        for part in self.layout.header.clone() {
+            use crate::layout::HeaderPart as H;
+            header = match part {
+                H::Kicker => header.child(
+                    self.label(format!(
+                        "{kind}{}",
+                        if lib_name.is_empty() { String::new() } else { format!(" · {lib_name}") }
+                    ))
+                    .text_color(pal.accent),
+                ),
+                H::Title => header.child(
+                    div()
+                        .font_family(self.fonts.display.clone())
+                        .text_size(px(title_size))
+                        .line_height(px(title_size * 1.05))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(title.clone()),
+                ),
+                H::Facts => header.child(div().text_color(pal.text.opacity(0.75)).child(facts.clone())),
+                H::Genres => match self.item.meta.as_ref().filter(|m| !m.genres.is_empty()) {
+                    Some(m) => header.child(self.label(m.genres.join(" · "))),
+                    None => header,
                 },
-                if year > 0 { format!(" · {year}") } else { String::new() },
-                eps.len(),
-                if reading { "read" } else { "watched" }
-            )))
-            .when_some(self.item.meta.clone(), |d, m| {
-                let mut synopsis: String = m.synopsis.chars().take(420).collect();
-                if m.synopsis.chars().count() > 420 {
-                    synopsis.push('…');
+                H::Synopsis => {
+                    let syn = self.item.meta.as_ref().map(|m| m.synopsis.clone()).unwrap_or_default();
+                    let mut synopsis: String = syn.chars().take(420).collect();
+                    if syn.chars().count() > 420 {
+                        synopsis.push('…');
+                    }
+                    if synopsis.is_empty() {
+                        header
+                    } else {
+                        header.child(div().max_w(px(760.)).text_color(pal.text.opacity(0.8)).child(synopsis))
+                    }
                 }
-                d.when(!m.genres.is_empty(), |d| d.child(self.label(m.genres.join(" · "))))
-                    .when(!synopsis.is_empty(), |d| {
-                        d.child(div().max_w(px(760.)).text_color(pal.text.opacity(0.8)).child(synopsis))
-                    })
-            })
-            .child(div().pt(px(th.sp(2))).child(actions));
+                H::Actions => match actions.take() {
+                    Some(a) => header.child(div().pt(px(th.sp(2))).child(a)),
+                    None => header,
+                },
+            };
+        }
 
         // ---- episodes list
         let mut list = div()
@@ -449,6 +466,48 @@ impl LainApp {
             };
         }
 
+        // ---- columns, in the layout's order
+        let panels: Vec<gpui::Div> = if self.ext.panels.0 == id {
+            self.ext.panels.1.iter().map(|(e, p)| self.ext_panel(e, p)).collect()
+        } else {
+            Vec::new()
+        };
+        let mut episodes = Some(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h(px(0.))
+                .gap(px(th.sp(2)))
+                .child(self.label(if reading { "volumes" } else { "episodes" }))
+                .child(list),
+        );
+        let mut details = Some(details);
+        let mut panels = Some(panels);
+        let mut columns = div().flex().flex_1().gap(px(th.sp(5))).min_h(px(0.));
+        for c in self.layout.columns.clone() {
+            use crate::layout::Column as C;
+            match c {
+                C::Episodes => columns = columns.children(episodes.take()),
+                C::Details => columns = columns.children(details.take()),
+                C::Panels => {
+                    if let Some(p) = panels.take().filter(|p| !p.is_empty()) {
+                        columns = columns.child(
+                            div()
+                                .id("item.panels")
+                                .w(px(320.))
+                                .flex_none()
+                                .flex()
+                                .flex_col()
+                                .gap(px(th.sp(3)))
+                                .overflow_y_scroll()
+                                .children(p),
+                        );
+                    }
+                }
+            }
+        }
+
         let body = div()
             .absolute()
             .top(px(hero_h * 0.42))
@@ -459,24 +518,7 @@ impl LainApp {
             .flex_col()
             .gap(px(th.sp(5)))
             .child(header)
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .gap(px(th.sp(5)))
-                    .min_h(px(0.))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_h(px(0.))
-                            .gap(px(th.sp(2)))
-                            .child(self.label(if reading { "volumes" } else { "episodes" }))
-                            .child(list),
-                    )
-                    .child(details),
-            )
+            .child(columns)
             .child(
                 div()
                     .flex()
