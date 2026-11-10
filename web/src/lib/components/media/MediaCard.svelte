@@ -11,12 +11,15 @@
 		item,
 		enrichment = null,
 		progress = null,
-		priority = false
+		priority = false,
+		wide = false
 	}: {
 		item: CatalogItem;
 		enrichment?: Enrichment | null;
 		progress?: Progress | null;
 		priority?: boolean;
+		/** Landscape frame, for titles shown by a still rather than a poster. */
+		wide?: boolean;
 	} = $props();
 
 	const title = $derived(enrichment?.title || item.title);
@@ -42,7 +45,7 @@
 	<div
 		class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/15"
 	>
-		<div class="aspect-[2/3]">
+		<div class={wide ? 'aspect-video' : 'aspect-[2/3]'}>
 			<Poster {item} {enrichment} {priority} class="size-full transition-transform duration-500 ease-out group-hover:scale-[1.035]" />
 		</div>
 		<div

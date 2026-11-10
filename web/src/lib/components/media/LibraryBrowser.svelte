@@ -5,14 +5,15 @@
 	import Film from '@lucide/svelte/icons/film';
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { api } from '$lib/api';
-	import MediaGrid from '$lib/components/media/MediaGrid.svelte';
+	import MediaGrid, { GRID, GRID_WIDE } from '$lib/components/media/MediaGrid.svelte';
 	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
-	import { ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { genreCounts, prefersWide, withGenres } from '$lib/utilities/browse';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { groupItems, sortGroups } from '$lib/utilities/grouping';
 
@@ -67,6 +68,7 @@
 	}
 
 	async function reset(): Promise<void> {
+		picked = [];
 		items = [];
 		total = 0;
 		done = false;
@@ -110,13 +112,35 @@
 		{ value: 'recent', label: 'Recently indexed' }
 	];
 
-	const groups = $derived(sortGroups(groupItems(items), sort));
+	const enrichmentOf = (id: string) => enrichmentCache.get(id);
+	const allGroups = $derived(sortGroups(groupItems(items), sort));
+	// Genres narrow what is loaded, so a pick loads the rest of the library
+	// (the effect below) instead of filtering one page of it.
+	let picked = $state<string[]>([]);
+	let moreGenres = $state(false);
+	const GENRES_SHOWN = 14;
+	const genres = $derived(genreCounts(allGroups, enrichmentOf));
+	const shownGenres = $derived(
+		moreGenres ? genres : genres.filter((g, i) => i < GENRES_SHOWN || picked.includes(g.genre))
+	);
+	const groups = $derived(withGenres(allGroups, picked, enrichmentOf));
 	const shows = $derived(groups.filter((g) => g.count > 1));
 	const singles = $derived(groups.filter((g) => g.count === 1).flatMap((g) => g.items));
+
+	function toggleGenre(genre: string): void {
+		picked = picked.includes(genre) ? picked.filter((g) => g !== genre) : [...picked, genre];
+	}
+
+	$effect(() => {
+		if (picked.length > 0 && !done && !loading && !error) void loadMore();
+	});
 	const activeType = $derived(
 		libraries.find((lib) => lib.id === (selectedLibrary || libraryId))?.type ?? ''
 	);
 	const reading = $derived(isReadable(activeType));
+	// One shape for the whole page, decided by what was loaded first so
+	// the grid does not reflow as more arrives.
+	const wide = $derived(prefersWide(allGroups.slice(0, PAGE_SIZE), enrichmentOf, reading));
 	const showHeading = $derived(activeType === 'movie' ? 'Movies' : reading ? 'Series' : 'Shows');
 	const singleHeading = $derived(
 		activeType === 'movie' ? 'Movies' : reading ? 'One-shots' : 'Movies & specials'
@@ -126,7 +150,8 @@
 			`${total} ${total === 1 ? 'item' : 'items'}`,
 			shows.length > 0 ? `${shows.length} ${shows.length === 1 ? (reading ? 'series' : 'show') : reading ? 'series' : 'shows'}` : '',
 			singles.length > 0 ? `${singles.length} ${singles.length === 1 ? 'title' : 'titles'}` : '',
-			items.length < total ? `showing ${items.length}` : ''
+			picked.length > 0 ? `${groups.length} matching` : '',
+			items.length < total ? (picked.length > 0 ? 'loading the rest…' : `showing ${items.length}`) : ''
 		]
 			.filter(Boolean)
 			.join(' · ')
@@ -159,6 +184,45 @@
 		</div>
 	</div>
 
+	{#if genres.length > 0}
+		<div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by genre">
+			{#each shownGenres as g (g.genre)}
+				{@const on = picked.includes(g.genre)}
+				<button
+					type="button"
+					aria-pressed={on}
+					class={[
+						'rounded-full border px-2.5 py-1 text-xs transition-colors',
+						on
+							? 'border-accent/70 bg-accent/15 text-foreground'
+							: 'border-line text-muted hover:border-white/20 hover:text-foreground'
+					].join(' ')}
+					onclick={() => toggleGenre(g.genre)}
+				>
+					{g.genre} <span class="font-mono text-[10px] opacity-60">{g.count}</span>
+				</button>
+			{/each}
+			{#if genres.length > GENRES_SHOWN}
+				<button
+					type="button"
+					class="rounded-full px-2.5 py-1 text-xs text-muted hover:text-foreground"
+					onclick={() => (moreGenres = !moreGenres)}
+				>
+					{moreGenres ? 'Fewer' : `${genres.length - shownGenres.length} more`}
+				</button>
+			{/if}
+			{#if picked.length > 0}
+				<button
+					type="button"
+					class="rounded-full px-2.5 py-1 text-xs text-muted hover:text-foreground"
+					onclick={() => (picked = [])}
+				>
+					Clear
+				</button>
+			{/if}
+		</div>
+	{/if}
+
 	{#if error && items.length === 0}
 		<ErrorState message={error} retry={() => void reset()} />
 	{:else if !loading && items.length === 0 && !error}
@@ -169,13 +233,17 @@
 			{#snippet icon()}<Film class="size-6 text-muted" />{/snippet}
 		</EmptyState>
 	{:else}
+		{#if picked.length > 0 && groups.length === 0 && done}
+			<p class="py-10 text-center text-sm text-muted">Nothing carries all of these genres.</p>
+		{/if}
 		{#if shows.length > 0}
 			<section class="space-y-4">
 				<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{showHeading}</h2>
-				<div class="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+				<div class={wide ? GRID_WIDE : GRID}>
 					{#each shows as group, i (group.key)}
 						<ShowCard
 							{group}
+							{wide}
 							progress={group.items.map((it) => progressMap.get(it.id)).find(Boolean) ?? null}
 							priority={i < 6}
 						/>
@@ -189,14 +257,14 @@
 				{#if shows.length > 0}
 					<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{singleHeading}</h2>
 				{/if}
-				<MediaGrid items={singles} {progressMap} />
+				<MediaGrid items={singles} {progressMap} {wide} />
 			</section>
 		{/if}
 
 		{#if loading}
-			<div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-				{#each Array(6) as _}
-					<Skeleton class="aspect-[2/3]" />
+			<div class={['mt-6', wide ? GRID_WIDE : GRID].join(' ')}>
+				{#each Array(wide ? 4 : 6) as _}
+					<Skeleton class={wide ? 'aspect-video' : 'aspect-[2/3]'} />
 				{/each}
 			</div>
 		{:else if !done}

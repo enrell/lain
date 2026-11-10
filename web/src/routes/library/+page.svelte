@@ -5,6 +5,7 @@
 	import type { Library } from '$lib/api/types';
 	import { session } from '$lib/auth/session.svelte';
 	import LibraryBrowser from '$lib/components/media/LibraryBrowser.svelte';
+	import LibraryShelves from '$lib/components/media/LibraryShelves.svelte';
 	import UnlockLibraryDialog from '$lib/components/media/UnlockLibraryDialog.svelte';
 	import { t } from '$lib/i18n';
 	import { api } from '$lib/api';
@@ -19,6 +20,18 @@
 	const open = $derived(libraries.filter((l) => l.private && !l.locked));
 	// What the browser may name: a locked library is not on the page at all.
 	const visible = $derived(nameable(libraries));
+	// Shelves (one row per library) or every title in one grid. The choice
+	// is a per-browser convenience; shelves need more than one library.
+	const VIEW_KEY = 'lain.library.view';
+	let view = $state<'shelves' | 'all'>('shelves');
+	function setView(next: 'shelves' | 'all'): void {
+		view = next;
+		try {
+			localStorage.setItem(VIEW_KEY, next);
+		} catch {
+			/* private window: the choice lasts for this visit */
+		}
+	}
 	let unlockOpen = $state(false);
 	// Re-mounts the browser so it refetches once a library unlocks.
 	let generation = $state(0);
@@ -47,6 +60,11 @@
 	}
 
 	onMount(() => {
+		try {
+			if (localStorage.getItem(VIEW_KEY) === 'all') view = 'all';
+		} catch {
+			/* default view */
+		}
 		void ensureLibraries()
 			.then((libs) => (libraries = libs))
 			.catch(() => {
@@ -122,8 +140,26 @@
 			</div>
 		{/if}
 	</header>
-	{#key generation}
-		<LibraryBrowser libraries={visible} showLibraryFilter />
+	{#if visible.length > 1}
+		<div class="flex gap-1 font-mono text-[11px] uppercase tracking-[0.14em]" role="group" aria-label="View">
+			{#each [['shelves', 'By library'], ['all', 'All titles']] as const as [id, label] (id)}
+				<button
+					type="button"
+					aria-pressed={view === id}
+					class={['rounded-md px-2.5 py-1.5 transition-colors', view === id ? 'bg-surface-active text-foreground' : 'text-muted hover:bg-surface-hover hover:text-foreground'].join(' ')}
+					onclick={() => setView(id)}
+				>
+					{label}
+				</button>
+			{/each}
+		</div>
+	{/if}
+	{#key `${generation}:${visible.map((l) => l.id).join(',')}`}
+		{#if visible.length > 1 && view === 'shelves'}
+			<LibraryShelves libraries={visible} />
+		{:else}
+			<LibraryBrowser libraries={visible} showLibraryFilter={visible.length > 1} />
+		{/if}
 	{/key}
 </div>
 

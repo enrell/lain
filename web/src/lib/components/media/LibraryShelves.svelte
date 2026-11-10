@@ -1,0 +1,113 @@
+<script lang="ts">
+	// The Library page's front: one shelf per library, newest first, so
+	// collections of different kinds are not poured into one grid. A shelf
+	// opens its library, where sorting and genres live.
+	import { onMount } from 'svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import { api } from '$lib/api';
+	import type { Library, Progress } from '$lib/api/types';
+	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
+	import { isReadable } from '$lib/reader/kinds';
+	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { prefersWide } from '$lib/utilities/browse';
+	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
+	import MediaCard from './MediaCard.svelte';
+	import ShowCard from './ShowCard.svelte';
+
+	const FETCH = 60;
+	const SHOWN = 14;
+
+	let { libraries }: { libraries: Library[] } = $props();
+
+	interface Shelf {
+		groups: SeriesGroup[];
+		total: number;
+		failed: boolean;
+	}
+	let shelves = $state<Record<string, Shelf>>({});
+	let progressMap = $state<Map<string, Progress>>(new Map());
+	const enrichmentOf = (id: string) => enrichmentCache.get(id);
+
+	async function load(lib: Library): Promise<void> {
+		try {
+			const page = await api.catalog.list({ libraryId: lib.id, limit: FETCH, sort: 'recent' });
+			const groups = sortGroups(groupItems(page.items), 'recent').slice(0, SHOWN);
+			shelves[lib.id] = { groups, total: page.total, failed: false };
+			await ensureEnrichments(groups.flatMap((g) => g.items.map((i) => i.id)));
+		} catch {
+			shelves[lib.id] = { groups: [], total: 0, failed: true };
+		}
+	}
+
+	onMount(() => {
+		for (const lib of libraries) void load(lib);
+		void api.me
+			.continueWatching()
+			.then((list) => (progressMap = new Map(list.map((p) => [p.item_id, p]))))
+			.catch(() => {});
+	});
+</script>
+
+<div class="space-y-10">
+	{#each libraries as lib (lib.id)}
+		{@const shelf = shelves[lib.id]}
+		{@const wide = shelf ? prefersWide(shelf.groups, enrichmentOf, isReadable(lib.type)) : false}
+		<section class="space-y-3" aria-labelledby={`shelf-${lib.id}`}>
+			<div class="flex items-baseline justify-between gap-4">
+				<h2 id={`shelf-${lib.id}`} class="min-w-0">
+					<a
+						href={`/library/${lib.id}`}
+						class="group/title flex items-center gap-1 text-lg font-semibold tracking-[-0.02em] text-foreground hover:text-accent"
+					>
+						<span class="truncate">{lib.name}</span>
+						<ChevronRight class="size-4 shrink-0 text-muted transition-transform group-hover/title:translate-x-0.5" aria-hidden="true" />
+					</a>
+				</h2>
+				{#if shelf && !shelf.failed}
+					<a href={`/library/${lib.id}`} class="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted hover:text-foreground">
+						{shelf.total} {shelf.total === 1 ? 'item' : 'items'}
+					</a>
+				{/if}
+			</div>
+			{#if !shelf}
+				<div class="flex gap-4 overflow-hidden">
+					{#each Array(6) as _}<Skeleton class="aspect-[2/3] w-40 shrink-0" />{/each}
+				</div>
+			{:else if shelf.failed}
+				<p class="text-sm text-muted">Could not load this library.</p>
+			{:else if shelf.groups.length === 0}
+				<p class="text-sm text-muted">Nothing indexed here yet.</p>
+			{:else}
+				<div class="-mx-5 flex snap-x gap-3.5 overflow-x-auto px-5 pb-3 pt-1 no-scrollbar sm:-mx-8 sm:px-8 md:mx-0 md:gap-4 md:px-0">
+					{#each shelf.groups as group, i (group.key)}
+						<div class={['shrink-0 snap-start', wide ? 'w-[70vw] max-w-72 sm:w-64 lg:w-72' : 'w-[40vw] max-w-44 sm:w-36 lg:w-44'].join(' ')}>
+							{#if group.count > 1}
+								<ShowCard
+									{group}
+									{wide}
+									progress={group.items.map((it) => progressMap.get(it.id)).find(Boolean) ?? null}
+									priority={i < 4}
+								/>
+							{:else}
+								<MediaCard
+									item={group.items[0]}
+									enrichment={enrichmentCache.get(group.items[0].id) ?? null}
+									progress={progressMap.get(group.items[0].id) ?? null}
+									{wide}
+								/>
+							{/if}
+						</div>
+					{/each}
+					{#if shelf.total > shelf.groups.reduce((n, g) => n + g.count, 0)}
+						<a
+							href={`/library/${lib.id}`}
+							class={['flex shrink-0 snap-start items-center justify-center rounded-xl border border-dashed border-line text-sm text-muted transition-colors hover:border-white/25 hover:text-foreground', wide ? 'aspect-video w-40' : 'aspect-[2/3] w-28'].join(' ')}
+						>
+							See all
+						</a>
+					{/if}
+				</div>
+			{/if}
+		</section>
+	{/each}
+</div>
