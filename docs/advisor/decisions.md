@@ -394,7 +394,7 @@ Numbers `D-245`..`D-254` (the P5 range), DESIGN-v2 §8.5 and §10 P5 ("Compose +
 - `D-252` — Cleartext HTTP is allowed for every host (`network_security_config.xml`): a lain server is self-hosted and usually on the LAN, and `lain-client` has no TLS yet (Q-045). When TLS lands, the default flips to HTTPS with cleartext as an explicit per-server choice. Source: P5 brief.
 - `D-253` — Tests: `lain-ffi` unit tests (theme, cache, labels) and an end-to-end suite against the real server in-process through `lain-client`'s harness (`crates/lain-client/tests/support`, with its own fixture loaders): login, modules, catalog, resume, an offline copy with progress reports, the network dropped by the proxy (the copy plays from the saved position, the catalog and search come from the snapshot, a save is queued), back online (the queue flushes to the server), a manga read offline from its CBZ copy, and the event stream pushing queued progress on connect and closing cleanly. Kotlin: JVM tests of the view models and models on a fake `LainCoreInterface` (connect, login, offline start, auth loss, navigation, player resume/offset/watched/burn-in, reader resume/turns/finish) and of the pure domain code (titles, rails, decode claim, destinations), plus a smoke test of the generated bindings against the host library through JNA (skipped without it). No instrumentation or UI tests in CI yet. Source: P5 brief.
 
-**Next number:** `D-232`.
+**Next number:** `D-265`.
 
 ## P6: modding tiers 2 and 3 (2026-11-09)
 
