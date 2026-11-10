@@ -389,7 +389,7 @@
 	</aside>
 
 	<div class="min-w-0 space-y-4">
-		<div class="z-20 -mx-1 space-y-3 bg-background/92 px-1 py-2 backdrop-blur md:sticky md:top-[5.25rem]">
+		<div class="z-20 -mx-3 space-y-3 bg-background px-3 pb-3 pt-2 md:sticky md:top-16 md:pt-6 md:shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]">
 			<div class="flex items-center gap-2">
 				<div class="relative min-w-0 flex-1">
 					<Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />

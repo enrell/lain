@@ -215,6 +215,7 @@ fn scan_root(reg: &Registry, lib: &Library, step: &(dyn Fn(Step<'_>) + Sync)) ->
         res.entries.push(entry);
         step(Step::Identified);
     }
+    crate::siblings::number_siblings(&mut res.entries);
     res
 }
 

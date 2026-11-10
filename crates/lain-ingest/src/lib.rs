@@ -9,6 +9,7 @@ pub mod browse;
 pub mod commit;
 pub mod scan;
 pub mod scanner;
+mod siblings;
 pub mod source;
 pub mod watch;
 
