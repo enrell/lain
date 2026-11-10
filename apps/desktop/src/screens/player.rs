@@ -745,7 +745,9 @@ impl LainApp {
             .gap(px(th.sp(3)))
             .px(px(m))
             .pt(px(th.sp(4)))
-            .child(btn("back", ip("back"), 44.).on_click(cx.listener(|app, _: &ClickEvent, _, cx| app.close_player(cx))));
+            .child(
+                btn("back", ip("back"), 44.).on_click(cx.listener(|app, _: &ClickEvent, _, cx| app.close_player(cx))),
+            );
         if lay.player_title == crate::layout::Place::Top {
             top = top.children(title_block.take());
         }

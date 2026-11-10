@@ -134,10 +134,7 @@ impl Manifest {
         }
         let (major, minor) = parse_api(&self.api)?;
         if major != API_VERSION.0 || minor > API_VERSION.1 {
-            return Err(format!(
-                "built for API {}, this app implements {}.{}",
-                self.api, API_VERSION.0, API_VERSION.1
-            ));
+            return Err(format!("built for API {}, this app implements {}.{}", self.api, API_VERSION.0, API_VERSION.1));
         }
         safe_rel(&self.wasm).ok_or_else(|| format!("wasm {:?}: a file name inside the folder", self.wasm))?;
         if !self.wasm.ends_with(".wasm") {

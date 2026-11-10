@@ -51,10 +51,13 @@ impl Probe {
             card("http-other", outcome(host::http_get("https://other.example/x"), |r| r.status.to_string())),
         ];
         let fs = std::fs::write("/data/probe.txt", b"hi").and_then(|_| std::fs::read("/data/probe.txt"));
-        out.push(card("fs", match fs {
-            Ok(b) => format!("ok {}", b.len()),
-            Err(e) => format!("error {e}"),
-        }));
+        out.push(card(
+            "fs",
+            match fs {
+                Ok(b) => format!("ok {}", b.len()),
+                Err(e) => format!("error {e}"),
+            },
+        ));
         let env = std::env::vars().count();
         out.push(card("env", format!("ok {env}")));
         out

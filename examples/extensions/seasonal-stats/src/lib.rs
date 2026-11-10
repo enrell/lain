@@ -77,11 +77,7 @@ fn title_key(it: &Item) -> String {
 impl Seasonal {
     /// The window: its label and its first second.
     fn window(&self) -> (String, i64) {
-        if self.days > 0 {
-            (format!("Last {} days", self.days), now() - self.days * 86_400)
-        } else {
-            season(now())
-        }
+        if self.days > 0 { (format!("Last {} days", self.days), now() - self.days * 86_400) } else { season(now()) }
     }
 
     fn catalog(&mut self) -> Option<&[Item]> {
@@ -135,7 +131,7 @@ impl Extension for Seasonal {
             }
         }
         let mut rows: Vec<_> = titles.into_values().collect();
-        rows.sort_by(|a, b| b.1.cmp(&a.1));
+        rows.sort_by_key(|r| std::cmp::Reverse(r.1));
         let cards: Vec<Card> = rows
             .into_iter()
             .take(40)
