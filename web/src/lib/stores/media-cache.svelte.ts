@@ -122,3 +122,12 @@ export async function ensureLibraries(force = false): Promise<Library[]> {
 export function libraryName(id: string): string | undefined {
 	return libraryCache.get(id)?.name;
 }
+
+/**
+ * The libraries a page may name. A private library this session has not
+ * unlocked stays out of every list and menu; only its management page
+ * (Settings, Libraries) shows it.
+ */
+export function nameable<T extends { private?: boolean; locked?: boolean }>(libraries: T[]): T[] {
+	return libraries.filter((l) => !(l.private && l.locked));
+}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { nameable } from '$lib/stores/media-cache.svelte';
 	import { onMount } from 'svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
@@ -36,7 +37,7 @@
 		player = loadPreferredPlayer(session.user.id);
 		language = session.user.preferred_language ?? '';
 		policy = loadEffectsPolicy(session.user.id);
-		void api.libraries.list().then((v) => (libraries = v)).catch(() => {});
+		void api.libraries.list().then((v) => (libraries = nameable(v))).catch(() => {});
 	});
 
 	function changePlayer(value: string): void {
