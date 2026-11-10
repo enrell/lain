@@ -265,7 +265,20 @@ fn rooted_private_scans_leak_nothing() {
     assert!(item["file_path"].as_str().unwrap().ends_with("01 [1080p].mkv"));
     // Stored without a machine path; the id is the location's.
     drop(server);
-    let doc = lain_server::export(&data).unwrap();
+    // Windows releases the store's file lock a moment after the server's
+    // threads exit; retry instead of racing it.
+    let doc = {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            match lain_server::export(&data) {
+                Ok(doc) => break doc,
+                Err(e) if std::time::Instant::now() < deadline && e.contains("already open") => {
+                    std::thread::sleep(std::time::Duration::from_millis(100))
+                }
+                Err(e) => panic!("export: {e}"),
+            }
+        }
+    };
     assert_eq!(doc.items[&id].rel_path, item["rel_path"]);
     assert_eq!(id, lain_ingest::item_id(&lib_id, "anime/Frieren/[Fansub-A] Frieren - 01 [1080p].mkv"));
     let server = Server::start_with(&data, |c| c.watch = false);
