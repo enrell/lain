@@ -31,6 +31,8 @@
 	const continueReading = $derived(continueItems.slice(1).filter((i) => isReadable(i.kind)));
 	let progressMap = $state<Map<string, Progress>>(new Map());
 	let nextUpItems = $state<CatalogItem[]>([]);
+	// The titles kept as favourites (the social module's list), newest first.
+	let favoriteItems = $state<CatalogItem[]>([]);
 	const nextUpWatching = $derived(nextUpItems.filter((i) => !isReadable(i.kind)));
 	const nextUpReading = $derived(nextUpItems.filter((i) => isReadable(i.kind)));
 	let recent = $state<CatalogItem[]>([]);
@@ -61,6 +63,16 @@
 		return found;
 	}
 
+	// A server without the social module, or an account with no favourites, has no such rail.
+	async function loadFavorites(): Promise<CatalogItem[]> {
+		try {
+			const ids = (await api.social.settings()).favorites.map((f) => f.item_id ?? '').filter((id) => id !== '');
+			return (await ensureItems(ids.reverse())).filter((item): item is CatalogItem => item !== undefined);
+		} catch {
+			return [];
+		}
+	}
+
 	async function load(): Promise<void> {
 		loading = true;
 		error = null;
@@ -81,6 +93,7 @@
 			);
 			continueItems = activeItems;
 			nextUpItems = await loadNextUp(progressList);
+			favoriteItems = await loadFavorites();
 
 			// One row per library when there is more than one: the
 			// catalog filter runs server-side, nothing is preloaded.
@@ -95,6 +108,7 @@
 			const ids = [
 				...continueItems.map((i) => i.id),
 				...nextUpItems.map((i) => i.id),
+				...favoriteItems.map((i) => i.id),
 				...recent.map((i) => i.id),
 				...libraryRows.flatMap((r) => r.items.map((i) => i.id))
 			];
@@ -179,7 +193,7 @@
 				progress={progressMap.get(hero.id) ?? null}
 			/>
 		{/if}
-		<section id="home-library" class="home-library relative bg-background pb-24 pt-14 sm:pt-18 md:pb-20 md:pt-20">
+		<section id="home-library" class="home-library relative bg-background pb-24 pt-10 sm:pt-12 md:pb-20 md:pt-10">
 			<div class="mx-auto w-full max-w-[1800px] space-y-14 md:space-y-16 px-5 sm:px-8 lg:px-10">
 				{#if scan.running}
 					<div class="flex"><Badge tone="accent"><ScanLine class="size-3" /> Scanning…</Badge></div>
@@ -193,6 +207,10 @@
 
 				{#if continueReading.length > 0}
 					<MediaRow title="Continue reading" href="/library" actionLabel="Browse all" items={continueReading} {progressMap} layout="poster" />
+				{/if}
+
+				{#if favoriteItems.length > 0}
+					<MediaRow title="Favorites" href={session.user ? `/u/${session.user.id}` : null} actionLabel="Your profile" items={favoriteItems} {progressMap} layout="poster" />
 				{/if}
 
 				{#if nextUpWatching.length > 0}
