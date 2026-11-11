@@ -79,6 +79,7 @@ object Ic {
     val RotateCcw by lazy { stroke("M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", "M3 3v5h5") }
     val Heart by lazy { stroke("M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z") }
     val HeartFilled by lazy { stroke("M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z", filled = true) }
+    val CheckCircle by lazy { stroke("M21.8 10A10 10 0 1 1 17 3.34", "m9 11 3 3L22 4") }
     val Swap by lazy { stroke("M8 3 4 7l4 4", "M4 7h16", "m16 21 4-4-4-4", "M20 17H4") }
     val Check by lazy { stroke("M20 6 9 17l-5-5") }
 }

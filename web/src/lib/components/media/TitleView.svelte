@@ -1,4 +1,5 @@
 <script lang="ts">
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -50,13 +51,16 @@
 		group,
 		progressMap = null,
 		libraries = [],
-		manage = []
+		manage = [],
+		onProgressChanged = undefined
 	}: {
 		group: SeriesGroup;
 		progressMap?: Map<string, Progress> | null;
 		libraries?: Library[];
 		/** What an admin can do with the title, from the page that owns it. */
 		manage?: MenuEntry[];
+		/** Called after marks changed, so the page reads progress again. */
+		onProgressChanged?: () => void;
 	} = $props();
 
 	// Comics and manga open in the reader; external players never apply (D-085).
@@ -252,6 +256,29 @@
 		return length || (reading ? 'Unread' : 'Not watched');
 	}
 
+	// Marking the whole title watched (or not): asked first, since every part changes at once.
+	let confirmMark = $state(false);
+	let marking = $state(false);
+	const allDone = $derived(group.count > 0 && watched === group.count);
+	async function markAll(): Promise<void> {
+		if (marking) return;
+		marking = true;
+		const done = !allDone;
+		try {
+			for (const it of group.items) {
+				const dur = durations.get(it.id) ?? progressMap?.get(it.id)?.duration_sec ?? 0;
+				await api.progress.put(it.id, { position_sec: done ? dur : 0, duration_sec: dur, completed: done });
+			}
+			toasts.success(done ? (reading ? 'All marked as read.' : 'All marked as watched.') : 'Marks removed.');
+			onProgressChanged?.();
+		} catch (err) {
+			toasts.error(errorMessage(err, 'Could not change the marks.'));
+		} finally {
+			marking = false;
+			confirmMark = false;
+		}
+	}
+
 	function stillUrl(id: string): string {
 		return api.thumbnail.url(id, session.token, { width: 480 });
 	}
@@ -309,6 +336,9 @@
 						</Button>
 					{/if}
 					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} size="md" /></span>{/if}
+					<Button variant="ghost" size="md" onclick={() => (confirmMark = true)}>
+						<CircleCheck class="size-4" aria-hidden="true" /> {allDone ? (reading ? 'Mark all unread' : 'Mark all unwatched') : reading ? 'Mark all read' : 'Mark all watched'}
+					</Button>
 					<DownloadFileButton items={group.items} variant="ghost" size="md" label={t('download.all')} />
 					<Menu label={t('title.manage')} hint={t('title.manageHint')} entries={manageEntries} variant="ghost" size="md">
 						{#snippet icon()}<Settings2 class="size-4" aria-hidden="true" />{/snippet}
@@ -335,7 +365,7 @@
 						aria-pressed={season === 'all'}
 						class={[
 							'rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors',
-							season === 'all' ? 'bg-foreground text-background' : 'bg-surface text-muted hover:text-foreground'
+							season === 'all' ? 'bg-accent text-accent-fg' : 'bg-surface text-muted hover:text-foreground'
 						].join(' ')}
 					>
 						All
@@ -347,7 +377,7 @@
 							aria-pressed={season === s}
 							class={[
 								'rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors',
-								season === s ? 'bg-foreground text-background' : 'bg-surface text-muted hover:text-foreground'
+								season === s ? 'bg-accent text-accent-fg' : 'bg-surface text-muted hover:text-foreground'
 							].join(' ')}
 						>
 							{reading ? `Vol ${s}` : `Season ${s}`}
@@ -556,4 +586,15 @@
 		</Button>
 	{/snippet}
 	<p class="text-sm text-muted">This cannot be undone — the media bytes are gone.</p>
+</Modal>
+
+<Modal
+	bind:open={confirmMark}
+	title={allDone ? 'Remove every mark?' : reading ? 'Mark all as read?' : 'Mark all as watched?'}
+	description={`${countLabel} of ${displayTitle} change at once. Progress inside each one is replaced.`}
+>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (confirmMark = false)}>Cancel</Button>
+		<Button loading={marking} onclick={() => void markAll()}>{allDone ? 'Remove marks' : 'Mark all'}</Button>
+	{/snippet}
 </Modal>

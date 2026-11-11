@@ -620,7 +620,8 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
             },
         ) {
             SheetHeading(stringResource(R.string.sort))
-            val sorts = listOfNotNull(Sort.Title, Sort.Recent, Sort.YearDesc, Sort.Year, if (anySeries) Sort.EpisodesDesc else null, Sort.TitleDesc)
+            // Each order beside its reverse.
+            val sorts = listOfNotNull(Sort.Title, Sort.TitleDesc, Sort.YearDesc, Sort.Year, Sort.Recent, if (anySeries) Sort.EpisodesDesc else null)
             for (pair in sorts.chunked(2)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (s in pair) ChoiceTile(sortLabel(s), draft.sort == s, { draft = draft.copy(sort = s) }, Modifier.weight(1f))
@@ -742,6 +743,14 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
     // A book opened at its first page has not been started: page 1 is where everyone begins.
     val resume = state.progress[next.id]?.takeIf { !it.completed && it.positionSec > (if (title.reading) 1.0 else 0.0) }
     val total = title.items.sumOf { state.durations[it.id] ?: 0.0 }
+    val more = remember(state.titles, state.overlays, title.key) {
+        val mine = state.genresOf(title).map { it.lowercase() }.toSet()
+        val others = state.titles.filter { it.key != title.key && it.reading == title.reading }
+        val alike = others.map { t -> t to state.genresOf(t).count { it.lowercase() in mine } }.filter { it.second > 0 }
+            .sortedWith(compareByDescending<Pair<Title, Int>> { it.second }.thenByDescending { it.first.libraryId == title.libraryId }.thenBy { it.first.title })
+            .map { it.first }
+        (alike.ifEmpty { others.filter { it.libraryId == title.libraryId } }).take(12)
+    }
     var menu by remember { mutableStateOf<Item?>(null) }
     var confirmAll by remember { mutableStateOf(false) }
     var confirmMark by remember { mutableStateOf(false) }
@@ -828,7 +837,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (resume != null) QuietAction(this, Ic.RotateCcw, stringResource(R.string.start_over)) { vm.markWatched(listOf(next.id), false) }
                     QuietAction(this, 
-                        Ic.Eye,
+                        Ic.CheckCircle,
                         stringResource(
                             when {
                                 allDone && series -> R.string.mark_all_unwatched
@@ -894,6 +903,18 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.6f)))
             }
         }
+        // Where to go next: titles that share a genre with this one (its own
+        // library first), or its library's others when nothing is known of it.
+        if (more.isNotEmpty()) {
+            item {
+                Column(Modifier.padding(top = 26.dp)) {
+                    RailHeader(stringResource(R.string.more_like_this), null, null)
+                    LazyRow(Modifier.padding(top = 8.dp), contentPadding = PaddingValues(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(more, key = { it.key }) { RailCard(it, vm, seen = titleFraction(it, allProgressOf(state))) }
+                    }
+                }
+            }
+        }
     }
     // Scrolled past the hero, the page keeps a top of its own: the way back and
     // the name, on solid ground, so nothing runs up into the status bar.
@@ -944,7 +965,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         Sheet(rowLabel(item, title.reading), { menu = null }) {
             SheetAction(Ic.Play, stringResource(if (title.reading) R.string.action_read else R.string.action_play)) { menu = null; vm.open(item) }
             if (p != null && !p.completed && p.positionSec > 0) SheetAction(Ic.RotateCcw, stringResource(R.string.start_over)) { menu = null; vm.markWatched(listOf(item.id), false) }
-            SheetAction(Ic.Eye, stringResource(if (p?.completed == true) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
+            SheetAction(Ic.CheckCircle, stringResource(if (p?.completed == true) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
                 menu = null
                 vm.markWatched(listOf(item.id), p?.completed != true)
             }

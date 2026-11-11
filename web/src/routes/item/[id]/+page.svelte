@@ -1,4 +1,6 @@
 <script lang="ts">
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -80,12 +82,16 @@
 			(item ? api.thumbnail.url(item.id, session.token, { at: 30, width: 960 }) : '')
 	);
 
-	// One line of what it is: year, length, library. Each fact once; the
+	// The picture's size, as people name it (1080p), from the file's own video stream.
+	const videoHeight = $derived(plan?.streams?.find((st) => st.type === 'video')?.height ?? 0);
+
+	// One line of what it is: year, length, picture size. Each fact once; the
 	// file's size and path are an admin's business (File details).
 	const metaSegments = $derived(
 		[
 			enrichment?.year || item?.year ? String(enrichment?.year || item?.year) : '',
-			formatLength(plan?.duration_sec)
+			formatLength(plan?.duration_sec),
+			videoHeight ? `${videoHeight}p` : ''
 		].filter((segment) => segment !== '')
 	);
 
@@ -219,6 +225,22 @@
 		}
 	}
 
+	// Marking watched (or not) by hand: anyone may, for a title seen elsewhere.
+	let marking = $state(false);
+	async function markWatched(done: boolean): Promise<void> {
+		if (!item || marking) return;
+		marking = true;
+		try {
+			const dur = plan?.duration_sec ?? progress?.duration_sec ?? 0;
+			progress = await api.progress.put(item.id, { position_sec: done ? dur : 0, duration_sec: dur, completed: done });
+			toasts.success(done ? (reading ? 'Marked as read.' : 'Marked as watched.') : 'Mark removed.');
+		} catch (err) {
+			toasts.error(errorMessage(err, 'Could not change the mark.'));
+		} finally {
+			marking = false;
+		}
+	}
+
 	async function resetProgress(): Promise<void> {
 		if (!item || resetting) return;
 		resetting = true;
@@ -266,7 +288,7 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if series}
 	{#key series.key}
-		<TitleView group={series} {progressMap} {libraries} {manage} />
+		<TitleView group={series} {progressMap} {libraries} {manage} onProgressChanged={() => void load()} />
 	{/key}
 	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} /></div>{/if}
 {:else if item}
@@ -328,6 +350,9 @@
 								<RotateCcw class="size-4" /> {t('title.startOver')}
 							</Button>
 						{/if}
+						<Button variant="ghost" size="md" loading={marking} onclick={() => void markWatched(!progress?.completed)}>
+							<CircleCheck class="size-4" /> {progress?.completed ? (reading ? 'Mark unread' : 'Mark unwatched') : reading ? 'Mark read' : 'Mark watched'}
+						</Button>
 						{#if !item.missing && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={item.id} size="md" /></span>{/if}
 						{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="ghost" size="md" label={t('download.one')} />{/if}
 						<Menu label={t('title.manage')} hint={t('title.manageHint')} entries={manageSingle} variant="ghost" size="md">
@@ -399,6 +424,10 @@
 			</details>
 		{/if}
 	</article>
+{/if}
+
+{#if !loading && !notFound && !error && item}
+	<RelatedRow libraryId={item.library_id} exclude={series ? series.items.map((i) => i.id) : [item.id]} heading={library ? `More in ${library.name}` : 'More like this'} />
 {/if}
 
 <!-- Social slice (docs/slices/social.md): ratings, comments, sharing for the work. -->

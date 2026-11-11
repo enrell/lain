@@ -100,7 +100,8 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                         Text(pluralStringResource(R.plurals.count_copies, state.copies.size, state.copies.size), color = l.muted, fontSize = 13.sp)
                     }
                     if (u.maxBytes > 0) {
-                        Box(Modifier.padding(top = 12.dp).fillMaxWidth().height(6.dp).clip(CircleShape).background(l.raised)) {
+                        // An empty track is faint: at nothing stored it must not look like a full bar.
+                        Box(Modifier.padding(top = 12.dp).fillMaxWidth().height(6.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.08f))) {
                             Box(Modifier.fillMaxWidth((u.usedBytes.toFloat() / u.maxBytes).coerceIn(if (u.usedBytes > 0) 0.02f else 0f, 1f)).height(6.dp).clip(CircleShape).background(l.accent))
                         }
                     }
