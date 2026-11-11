@@ -153,10 +153,11 @@
 	</div>
 {:else if item && plan}
 	<div class="flex h-dvh flex-col bg-black lg:flex-row">
-		<!-- A phone held upright: the picture sits at the top with its controls on
-		     it, and what comes next fills the rest, instead of a frame floating in
-		     the middle of a black screen. On its side, or full screen, it is all picture. -->
-		<div class="relative min-h-0 min-w-0 flex-1 bg-black max-md:portrait:aspect-video max-md:portrait:flex-none">
+		<!-- A phone held upright: a square stage at the top, the picture in its
+		     middle and the controls in the bands above and below it (on a 16:9
+		     frame that small they would cover the picture), and what comes next
+		     fills the rest. On its side, or full screen, it is all picture. -->
+		<div class="relative min-h-0 min-w-0 flex-1 bg-black max-md:portrait:aspect-square max-md:portrait:flex-none">
 			{#if plan.available}
 				<!-- A new episode is a new session: keying on the item rebuilds
 				     the player (video element, transcode session, clock) instead
@@ -275,7 +276,7 @@
 			<div class="hidden min-h-0 flex-1 overflow-y-auto bg-background px-5 py-5 max-md:portrait:block">
 				<h1 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{item.title}</h1>
 				{#if item.year > 0}<p class="mt-1 text-sm text-muted">{item.year}</p>{/if}
-				<a href={`/item/${item.id}`} class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover"><ArrowLeft class="size-4" aria-hidden="true" /> Details</a>
+				<a href={`/item/${item.id}`} class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover">Details</a>
 			</div>
 		{/if}
 	</div>

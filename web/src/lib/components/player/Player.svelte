@@ -1695,7 +1695,7 @@
 			aria-label={ended ? 'Play again' : 'Play'}
 		>
 			<span
-				class="flex size-20 items-center justify-center rounded-full border border-foreground/25 bg-background/60 text-foreground backdrop-blur transition-transform duration-150 hover:scale-105 max-md:portrait:size-14 max-md:portrait:-translate-y-4"
+				class="flex size-20 items-center justify-center rounded-full border border-foreground/25 bg-background/60 text-foreground backdrop-blur transition-transform duration-150 hover:scale-105 max-md:portrait:size-16"
 			>
 				<Play class="size-9 translate-x-0.5" />
 			</span>
@@ -1880,7 +1880,8 @@
 	<footer
 		bind:this={chromeFootEl}
 		class={[
-			'relative z-20 bg-transparent px-3 pb-3 pt-2 sm:px-6 sm:pb-4',
+			// On the picture the controls are white, not the page's muted grey.
+			'relative z-20 bg-gradient-to-t from-black/70 to-transparent px-3 pb-3 pt-6 sm:px-6 sm:pb-4 [&_button:not(.bg-accent)]:text-white/90 [&_button:not(.bg-accent):hover]:text-white',
 			chromeClass
 		].join(' ')}
 	>

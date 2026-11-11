@@ -269,8 +269,8 @@
 			<ArrowLeft class="size-5" aria-hidden="true" />
 		</button>
 		<!-- One template for every kind of title: the cover, then what it is and what it can do. -->
-		<div class="relative mx-auto flex w-full max-w-[1800px] flex-col gap-5 px-5 pb-6 pt-16 sm:px-8 md:min-h-[30rem] md:flex-row md:items-end md:gap-10 md:pb-12 md:pt-36 lg:px-10">
-			<div class="aspect-[2/3] w-28 shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-56">
+		<div class="relative mx-auto flex w-full max-w-[1800px] flex-col gap-5 px-5 pb-6 pt-16 sm:px-8 md:min-h-[26rem] md:flex-row md:items-end md:gap-10 md:pb-10 md:pt-32 lg:px-10">
+			<div class="aspect-[2/3] w-24 shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
 			<div class="hero-monolith-copy min-w-0 max-w-5xl flex-1">
@@ -303,7 +303,7 @@
 				</div>
 				<p class="mt-3 text-sm text-muted" aria-live="polite">{watchedLine}</p>
 				{#if synopsis}
-					<p class="mt-4 line-clamp-3 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{synopsis}</p>
+					<p class="mt-4 line-clamp-2 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7 md:line-clamp-3">{synopsis}</p>
 				{/if}
 			</div>
 		</div>

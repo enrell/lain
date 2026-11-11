@@ -416,12 +416,16 @@
 				{/each}
 			</div>
 		{/if}
-		<div>
-			{@render heading('Added')}
-			{#each ADDED as a (a.value)}
-				{@render option(a.label, addedCounts.get(a.value), filters.added === a.value, () => toggle('added', a.value))}
-			{/each}
-		</div>
+		<!-- "Added" is offered when it tells titles apart: four rows that all
+		     say the whole library are noise. -->
+		{#if filters.added || ADDED.some((a) => addedCounts.get(a.value) !== all.length)}
+			<div>
+				{@render heading('Added')}
+				{#each ADDED as a (a.value)}
+					{@render option(a.label, addedCounts.get(a.value), filters.added === a.value, () => toggle('added', a.value))}
+				{/each}
+			</div>
+		{/if}
 		{#if genres.length > 0}
 			<div>
 				{@render heading(`Genres · ${genres.length}`)}

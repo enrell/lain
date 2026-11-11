@@ -259,13 +259,13 @@ fun bytes(n: Long): String {
     }
 }
 
-/** A length as people say it: `24 min`, `1 h 42 min`, `45 s`. */
+/** A length as people say it: `24 min`, `1 h 42 min`, `45 sec`. */
 fun length(sec: Double): String {
     val s = sec.toLong().coerceAtLeast(0)
     val h = s / 3600
     val m = (s % 3600 + 30) / 60
     return when {
-        s < 60 -> "$s s"
+        s < 60 -> "$s sec"
         h == 0L -> "$m min"
         m == 0L -> "$h h"
         else -> "$h h $m min"

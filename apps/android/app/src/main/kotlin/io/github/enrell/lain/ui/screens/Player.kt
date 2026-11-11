@@ -1,5 +1,7 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import io.github.enrell.lain.core.Item
 import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlaybackException
@@ -322,7 +324,8 @@ fun PlayerScreen(
     val pinned = idle || settings || tracksPanel != 0 || scrub != null || state.error != null || state.loading || countdown != null
     LaunchedEffect(controls, playing, pinned, touched) {
         if (controls && playing && !pinned) {
-            delay(l.tokens.autohideMs.toLong().coerceAtLeast(1500))
+            // Long enough to find a button and press it: a second and a half was a race.
+            delay(l.tokens.autohideMs.toLong().coerceAtLeast(4500))
             controls = false
             settings = false
         }
@@ -458,15 +461,25 @@ fun PlayerScreen(
 
         if (buffering || state.loading) {
             CircularProgressIndicator(Modifier.align(Alignment.Center).size(44.dp), color = Color.White, strokeWidth = 3.dp)
-        } else if (idle && countdown == null && scrub == null && !settings && tracksPanel == 0) {
-            // Not playing: a big button that says which (paused, or over and
-            // ready to play again), so a pause never looks like hidden controls.
+        }
+
+        val shown = controls || pinned
+        // The transport, in the middle of the picture where a thumb lands: back,
+        // play or pause, forward. It is the one play target; the bar below keeps
+        // time and options. Over a paused picture it stays, and the picture dims.
+        if (idle && countdown == null) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)))
+        if (shown && !buffering && !state.loading && countdown == null && scrub == null && !settings && tracksPanel == 0) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier.size(76.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)).border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape).clickable { togglePlay() },
-                    contentAlignment = Alignment.Center,
-                ) { Icon(if (ended) Ic.RotateCcw else Ic.Play, null, tint = Color.White, modifier = Modifier.size(30.dp)) }
-                // The end says what the button does; a pause needs no caption beside its button.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(36.dp)) {
+                    SkipButton(Ic.Back10, skipSec(), stringResource(R.string.player_skip_back, skipSec())) { seekBy(-skipMs()); touched++ }
+                    Box(
+                        Modifier.size(76.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                            .clickable(onClickLabel = stringResource(if (playing) R.string.action_pause else R.string.action_play)) { togglePlay() },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(if (ended) Ic.RotateCcw else if (playing) Ic.Pause else Ic.Play, stringResource(if (playing) R.string.action_pause else R.string.action_play), tint = Color.White, modifier = Modifier.size(32.dp)) }
+                    SkipButton(Ic.Fwd10, skipSec(), stringResource(R.string.player_skip_fwd, skipSec())) { seekBy(skipMs()); touched++ }
+                }
+                // The end says what the button does.
                 if (ended) {
                     Text(
                         stringResource(R.string.play_again),
@@ -477,7 +490,6 @@ fun PlayerScreen(
             }
         }
 
-        val shown = controls || pinned
         // Header: the way back and the title, over the picture.
         if (shown) {
             Column(
@@ -527,7 +539,7 @@ fun PlayerScreen(
             val at = scrub?.let { it * total } ?: nowSec()
             Column(
                 Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).safeDrawingPadding().padding(horizontal = 12.dp).padding(bottom = 10.dp, top = 24.dp),
+                    .background(Brush.verticalGradient(0f to Color.Transparent, 0.45f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.88f))).safeDrawingPadding().padding(horizontal = 12.dp).padding(bottom = 10.dp, top = 36.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     BoxWithConstraints(Modifier.weight(1f)) {
@@ -565,7 +577,7 @@ fun PlayerScreen(
                                 Modifier.layout { measurable, constraints ->
                                     val p = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
                                     layout(0, 0) { p.place(x.roundToPx(), -p.height - 6.dp.roundToPx()) }
-                                }.width(w),
+                                }.width(w).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.85f)).padding(4.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(Color.Black).border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))) {
@@ -583,8 +595,9 @@ fun PlayerScreen(
                                     } else {
                                         preview?.let { Image(it, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
                                     }
-                                    Text(clock(sec), Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.75f)).padding(horizontal = 9.dp, vertical = 3.dp), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
+                                // Its time under it, on the same card: off the picture, and not floating.
+                                Text(clock(sec), Modifier.padding(top = 5.dp, bottom = 1.dp), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                         Box(
@@ -625,12 +638,6 @@ fun PlayerScreen(
                     )
                 }
                 Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Box(
-                        Modifier.size(44.dp).clip(l.buttonShape).background(l.accent).clickable { togglePlay() },
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(if (playing) Ic.Pause else Ic.Play, null, tint = l.onAccent, modifier = Modifier.size(20.dp)) }
-                    SkipButton(Ic.Back10, skipSec()) { seekBy(-skipMs()); touched++ }
-                    SkipButton(Ic.Fwd10, skipSec()) { seekBy(skipMs()); touched++ }
                     if (next != null) IconBtn(Ic.SkipNext, stringResource(R.string.player_next), { onNext(next) }, tint = Color.White)
                     if (speed != 1f) {
                         Text(
@@ -693,7 +700,10 @@ fun PlayerScreen(
                 Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, bottom = 104.dp).width(280.dp).heightIn(max = 420.dp).clip(RoundedCornerShape(10.dp))
                     .verticalScroll(rememberScrollState()).background(l.bg).border(1.dp, l.line.copy(alpha = 0.6f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
             ) {
-                Text(stringResource(R.string.player_playback), Modifier.padding(top = 6.dp, bottom = 4.dp), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.player_playback), Modifier.weight(1f), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    IconBtn(Ic.Close, "Close", { settings = false }, tint = l.text)
+                }
                 PickRow(
                     stringResource(R.string.player_speed),
                     if (speed == 1f) stringResource(R.string.player_normal) else "$speed×",
@@ -778,10 +788,14 @@ private class TextTrack(val group: Tracks.Group, val index: Int, val label: Stri
 
 /** The skip buttons: the turning arrow with the step inside. */
 @Composable
-private fun SkipButton(icon: androidx.compose.ui.graphics.vector.ImageVector, seconds: Int, onClick: () -> Unit) {
-    Box(Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        Icon(icon, null, tint = Color.White, modifier = Modifier.size(24.dp))
-        Text(seconds.toString(), Modifier.padding(top = 2.dp), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+private fun SkipButton(icon: androidx.compose.ui.graphics.vector.ImageVector, seconds: Int, label: String, onClick: () -> Unit) {
+    // Each says which way it goes: the two share a number, not a name.
+    Box(
+        Modifier.size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.4f)).clickable(onClickLabel = label, onClick = onClick).semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, null, tint = Color.White, modifier = Modifier.size(30.dp))
+        Text(seconds.toString(), Modifier.padding(top = 2.dp), color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 

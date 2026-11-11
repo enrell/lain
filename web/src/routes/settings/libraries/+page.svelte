@@ -417,7 +417,12 @@
 								{/if}
 							</div>
 							<!-- A long path is cut at its start: the folder's own name is the part that tells libraries apart. -->
-							<p class="mt-0.5 truncate text-left font-mono text-xs text-muted" style="direction: rtl" title={lib.path}><bdi>{lib.path}</bdi></p>
+							<details class="group/path mt-0.5 text-left font-mono text-xs text-muted">
+								<summary class="cursor-pointer list-none truncate hover:text-foreground [&::-webkit-details-marker]:hidden" title="Show the whole path">
+									<span class="group-open/path:hidden">…/{lib.path.split(/[\\/]/).filter(Boolean).slice(-2).join('/')}</span>
+									<span class="hidden break-all whitespace-normal group-open/path:inline">{lib.path}</span>
+								</summary>
+							</details>
 						</div>
 						{#if roots !== null}
 							<div class="flex items-center gap-2 text-sm text-muted">

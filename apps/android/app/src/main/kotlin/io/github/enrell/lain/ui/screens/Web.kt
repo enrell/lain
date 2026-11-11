@@ -146,7 +146,8 @@ fun Mono(text: String, modifier: Modifier = Modifier, color: Color? = null, size
     Text(
         text.uppercase(),
         modifier = modifier,
-        style = TextStyle(fontFamily = l.mono, fontSize = size.sp, letterSpacing = (size * 0.18f).sp, color = color ?: l.muted, fontWeight = FontWeight.Medium),
+        // A label is small and spaced: it needs more light than body's secondary text to read.
+        style = TextStyle(fontFamily = l.mono, fontSize = size.sp, letterSpacing = (size * 0.18f).sp, color = color ?: l.text.copy(alpha = 0.66f), fontWeight = FontWeight.Medium),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
@@ -269,7 +270,7 @@ fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String, 
  * turned to mud on a muted theme and read as a statistic, not a choice.)
  */
 @Composable
-fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enabled: Boolean = true) {
+fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enabled: Boolean = true, multi: Boolean = false) {
     val l = LocalLain.current
     Row(
         Modifier
@@ -285,9 +286,11 @@ fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enab
         val c = if (on) l.text else l.muted.copy(alpha = if (enabled) 1f else 0.35f)
         Text(label, Modifier.weight(1f).padding(start = 9.dp), color = c, fontSize = 14.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (count != null) Text(count.toString(), style = TextStyle(fontFamily = l.mono, fontSize = 11.sp, color = c.copy(alpha = c.alpha * 0.7f)))
+        // A square where several can be picked, a ring where one can: the mark says which.
+        val mark = if (multi) RoundedCornerShape(5.dp) else CircleShape
         Box(
-            Modifier.padding(start = 10.dp, end = 10.dp).size(20.dp).clip(CircleShape).background(if (on) l.accent else Color.Transparent)
-                .border(1.5.dp, if (on) l.accent else l.muted.copy(alpha = if (enabled) 0.55f else 0.2f), CircleShape),
+            Modifier.padding(start = 10.dp, end = 10.dp).size(20.dp).clip(mark).background(if (on) l.accent else Color.Transparent)
+                .border(1.5.dp, if (on) l.accent else l.muted.copy(alpha = if (enabled) 0.55f else 0.2f), mark),
             contentAlignment = Alignment.Center,
         ) { if (on) Icon(Ic.Check, null, tint = l.onAccent, modifier = Modifier.size(12.dp)) }
     }

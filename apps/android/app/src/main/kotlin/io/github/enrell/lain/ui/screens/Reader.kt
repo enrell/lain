@@ -1,5 +1,6 @@
 package io.github.enrell.lain.ui.screens
 
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.shape.CircleShape
 import io.github.enrell.lain.graph
@@ -110,15 +111,17 @@ fun ReaderScreen(
         Centered { Text(stringResource(R.string.reader_empty), color = l.muted) }
         return
     }
-    val pager = rememberPagerState(initialPage = state.page) { book.pages.size }
-    LaunchedEffect(pager.currentPage) { model.goTo(pager.currentPage) }
+    // One page past the last is the end of the volume: a swipe reaches it as a tap does.
+    val pager = rememberPagerState(initialPage = state.page) { book.pages.size + 1 }
+    // The page that came to rest is the page being read (the ones a jump passes over are not).
+    LaunchedEffect(pager.settledPage) { if (pager.settledPage < book.pages.size) model.goTo(pager.settledPage) }
     LaunchedEffect(state.page) {
-        if (pager.currentPage != state.page) pager.animateScrollToPage(state.page)
+        if (pager.settledPage != state.page) pager.scrollToPage(state.page)
     }
+    val turns = androidx.compose.runtime.rememberCoroutineScope()
+    val atEnd = pager.currentPage >= book.pages.size
     LaunchedEffect(Unit) { focus.requestFocus() }
     var chrome by remember { mutableStateOf(true) }
-    // Turning past the last page is the end of the volume, said so.
-    var atEnd by remember(itemId) { mutableStateOf(false) }
     val prefs = androidx.compose.ui.platform.LocalContext.current.graph.prefs
     var hint by remember { mutableStateOf(!prefs.readerHintSeen) }
     LaunchedEffect(hint) {
@@ -130,12 +133,12 @@ fun ReaderScreen(
     }
     fun forward() {
         hint = false
-        if (state.page >= book.pages.size - 1) atEnd = true else model.next()
+        if (atEnd) return
+        turns.launch { pager.animateScrollToPage(pager.currentPage + 1) }
     }
     fun backward() {
         hint = false
-        atEnd = false
-        model.previous()
+        if (pager.currentPage > 0) turns.launch { pager.animateScrollToPage(pager.currentPage - 1) }
     }
     // The book's own direction, which the reader may turn around.
     var rtl by remember(book.direction) { mutableStateOf(book.direction == "rtl") }
@@ -167,6 +170,23 @@ fun ReaderScreen(
             },
     ) {
         HorizontalPager(state = pager, reverseLayout = rtl, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize()) { i ->
+            if (i >= book.pages.size) {
+                // The end of the volume: said, with where to go from here.
+                Box(Modifier.fillMaxSize().pointerInput(rtl) { detectTapGestures { o -> if ((o.x / size.width > 0.7f) == rtl || (o.x / size.width < 0.3f) != rtl) backward() } }, contentAlignment = Alignment.Center) {
+                    Column(
+                        Modifier.padding(horizontal = 32.dp).clip(RoundedCornerShape(16.dp)).background(l.surface).border(1.dp, l.line, RoundedCornerShape(16.dp)).padding(22.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(stringResource(R.string.end_of_volume), color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Text(title, Modifier.padding(top = 4.dp), color = l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            WButton(stringResource(R.string.player_back), onBack, kind = Btn.Secondary)
+                            if (next != null) WButton(stringResource(R.string.next_volume), { onNext(next) }, icon = Ic.ChevronRight)
+                        }
+                    }
+                }
+                return@HorizontalPager
+            }
             val bmp: ImageBitmap? by produceState<ImageBitmap?>(null, i) {
                 val bytes = model.page(i)
                 value = bytes?.let { withContext(Dispatchers.Default) { decode(it, 2400) } }
@@ -197,21 +217,6 @@ fun ReaderScreen(
                 color = Color.White, fontSize = 13.sp, lineHeight = 19.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
-        if (atEnd) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).pointerInput(Unit) { detectTapGestures { atEnd = false } }, contentAlignment = Alignment.Center) {
-                Column(
-                    Modifier.padding(horizontal = 32.dp).clip(RoundedCornerShape(16.dp)).background(l.bg).border(1.dp, l.line, RoundedCornerShape(16.dp)).padding(22.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(stringResource(R.string.end_of_volume), color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                    Text(title, Modifier.padding(top = 4.dp), color = l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        WButton(stringResource(R.string.player_back), onBack, kind = Btn.Secondary)
-                        if (next != null) WButton(stringResource(R.string.next_volume), { onNext(next) }, icon = Ic.ChevronRight)
-                    }
-                }
-            }
-        }
         // The bars: the web reader's glass panels.
         AnimatedVisibility(chrome, Modifier.align(Alignment.TopCenter), enter = fadeIn() + slideInVertically { -it / 2 }, exit = fadeOut() + slideOutVertically { -it / 2 }) {
             Row(
@@ -232,7 +237,8 @@ fun ReaderScreen(
                         .clickable(onClickLabel = stringResource(R.string.reader_rtl)) { rtl = !rtl }.padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(if (rtl) Ic.ArrowLeft else Ic.ChevronRight, null, tint = if (rtl) l.accent else l.muted, modifier = Modifier.size(14.dp))
+                    // A swap mark: it is a control that turns the book around, not a status.
+                    Icon(Ic.Swap, null, tint = if (rtl) l.accent else l.muted, modifier = Modifier.size(14.dp))
                     Text(stringResource(if (rtl) R.string.reader_rtl else R.string.reader_ltr), Modifier.padding(start = 6.dp), color = if (rtl) l.text else l.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
             }
