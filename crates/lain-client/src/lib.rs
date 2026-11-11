@@ -7,6 +7,8 @@
 //! - auth: setup, login, logout and `/api/me`, with sessions kept by a
 //!   [`TokenStore`] ([`FileTokenStore`], [`MemoryTokenStore`]);
 //! - discovery behind [`Discovery`] ([`ManualDiscovery`]);
+//! - `https` servers through rustls, with [`trust_roots`] for a private
+//!   CA (D-274);
 //! - offline copies ([`OfflineStore`]), mirroring D-094's CLI store, on
 //!   redb ([`ClientDb`]);
 //! - progress sync with an offline queue and explicit conflict rules
@@ -33,7 +35,7 @@ pub use db::ClientDb;
 pub use discovery::{Discovery, DiscoverySource, ManualDiscovery, ServerCandidate};
 pub use error::ClientError;
 pub use events::{EventStream, ServerEvent, StreamConfig, StreamItem};
-pub use http::{DEFAULT_PORT, ServerUrl};
+pub use http::{DEFAULT_PORT, ServerUrl, trust_roots};
 pub use offline::{DiskSpace, FetchObserver, GcReport, OfflineConfig, OfflineEntry, OfflineState, OfflineStore};
 pub use sync::{ConflictRule, FlushItem, FlushReport, ProgressSync, QueuedProgress, RecordOutcome, Resolution};
 pub use token::{FileTokenStore, MemoryTokenStore, Session, TokenStore};

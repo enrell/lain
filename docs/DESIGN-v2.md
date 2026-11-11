@@ -191,8 +191,8 @@ Android gets it through **UniFFI** (Kotlin bindings). Writing the logic once is
 what keeps two native apps affordable. It lives in this Cargo workspace as
 `crates/lain-client` (D-179): the separate repo existed only to keep the Go
 server's build fast, and the server is Rust now. The JSON shapes it shares with
-the server live in `crates/lain-api`. Built in P2a; the crates the keychain,
-mDNS and TLS need are Q-045.
+the server live in `crates/lain-api`. Built in P2a; TLS is `lain-http`'s
+(D-274), and the crates the keychain and mDNS need are Q-045.
 
 ### 8.2 Desktop app: framework selection — `V-13` **[owner]**
 

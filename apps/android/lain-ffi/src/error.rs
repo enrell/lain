@@ -48,6 +48,11 @@ pub enum LainError {
     Unsupported {
         detail: String,
     },
+    /// An `https` server whose TLS handshake failed (a certificate that
+    /// is not trusted, expired or for another name).
+    Tls {
+        detail: String,
+    },
     Store {
         detail: String,
     },
@@ -88,6 +93,7 @@ impl std::fmt::Display for LainError {
             | LainError::Decode { detail }
             | LainError::Invalid { detail }
             | LainError::Unsupported { detail }
+            | LainError::Tls { detail }
             | LainError::Store { detail }
             | LainError::Unplayable { detail }
             | LainError::Internal { detail } => f.write_str(detail),
@@ -118,6 +124,7 @@ impl From<ClientError> for LainError {
             ClientError::Decode { message } => LainError::Decode { detail: message },
             ClientError::Invalid { message } => LainError::Invalid { detail: message },
             ClientError::Unsupported { message } => LainError::Unsupported { detail: message },
+            ClientError::Tls { message } => LainError::Tls { detail: message },
             ClientError::Store { message } => LainError::Store { detail: message },
             ClientError::NoRoom { code, message } => LainError::NoRoom { code, detail: message },
         }
