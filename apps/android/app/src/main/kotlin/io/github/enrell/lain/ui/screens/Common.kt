@@ -117,8 +117,9 @@ fun ErrorLine(e: Throwable?, modifier: Modifier = Modifier) {
 fun Art(itemId: String, modifier: Modifier = Modifier, scale: ContentScale = ContentScale.Crop) {
     val l = LocalLain.current
     val ctx = LocalContext.current
-    val bmp: ImageBitmap? by produceState<ImageBitmap?>(null, itemId) {
-        value = ctx.graph.art(itemId)?.also { Shapes.record(itemId, it.width, it.height) }
+    // What memory already holds paints in the first frame.
+    val bmp: ImageBitmap? by produceState(ctx.graph.artNow(itemId)?.also { Shapes.record(itemId, it.width, it.height) }, itemId) {
+        if (value == null) value = ctx.graph.art(itemId)?.also { Shapes.record(itemId, it.width, it.height) }
     }
     Box(modifier.background(l.surface)) {
         bmp?.let { Image(it, contentDescription = null, contentScale = scale, modifier = Modifier.fillMaxSize()) }

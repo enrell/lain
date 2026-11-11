@@ -1,5 +1,8 @@
 package io.github.enrell.lain
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import android.app.Application
 import android.content.Context
 import android.graphics.BitmapFactory
@@ -30,17 +33,52 @@ class AppGraph(context: Context) {
     val downloads = DownloadTracker()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val art = object : LruCache<String, ImageBitmap>(48 * 1024 * 1024) {
+    private val art = object : LruCache<String, ImageBitmap>(64 * 1024 * 1024) {
         override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
     }
+    private val artDir = File(context.cacheDir, "art").apply { mkdirs() }
 
-    /** An item's art, decoded off the main thread; `null` when there is none. */
+    /** A few fetches at a time: a fast scroll must not queue a hundred requests ahead of what is on screen. */
+    private val artGate = Semaphore(6)
+
+    /** The art already in memory, without suspending: a card that scrolls back paints at once. */
+    fun artNow(itemId: String): ImageBitmap? = art.get(itemId)
+
+    /**
+     * An item's art: from memory, else from this device's disk (covers
+     * rarely change, so a copy is good for a week), else from the server.
+     * Decoding is off the main thread and at card size.
+     */
     suspend fun art(itemId: String): ImageBitmap? {
         art.get(itemId)?.let { return it }
-        val bytes = runCatching { core.thumbnail(itemId) }.getOrNull() ?: return null
-        val bmp = withContext(Dispatchers.Default) { decode(bytes, 720) } ?: return null
+        val file = File(artDir, itemId.replace(Regex("[^A-Za-z0-9_-]"), "_"))
+        val bmp = withContext(Dispatchers.IO) {
+            val fresh = file.isFile && System.currentTimeMillis() - file.lastModified() < ART_TTL_MS
+            val bytes = if (fresh) {
+                runCatching { file.readBytes() }.getOrNull()
+            } else {
+                artGate.withPermit { runCatching { core.thumbnail(itemId) }.getOrNull() }?.also { runCatching { file.writeBytes(it) } }
+                    // Unreachable server: an old copy is better than a blank card.
+                    ?: runCatching { file.takeIf { it.isFile }?.readBytes() }.getOrNull()
+            }
+            bytes?.let { decode(it, 480) }
+        } ?: return null
         art.put(itemId, bmp)
         return bmp
+    }
+
+    /** A frame of an item at a time, for the seek bar; a few stay in memory. */
+    private val frames = object : LruCache<String, ImageBitmap>(24) {}
+
+    suspend fun frame(itemId: String, atSec: Long): ImageBitmap? {
+        val key = "$itemId@$atSec"
+        frames.get(key)?.let { return it }
+        // In the app's scope: a drag that moves on must not cancel a frame
+        // the server is already cutting; it lands in the cache for when the
+        // finger comes back to it.
+        return scope.async(Dispatchers.IO) {
+            runCatching { core.frame(itemId, atSec.toDouble(), 320u) }.getOrNull()?.let { decode(it, 320) }?.also { frames.put(key, it) }
+        }.await()
     }
 
     fun savePolicy(p: OfflinePolicy) {
@@ -58,6 +96,8 @@ fun decode(bytes: ByteArray, maxSide: Int): ImageBitmap? {
     val opts = BitmapFactory.Options().apply { inSampleSize = sample }
     return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)?.asImageBitmap()
 }
+
+private const val ART_TTL_MS = 7L * 24 * 3600 * 1000
 
 class LainApp : Application() {
     lateinit var graph: AppGraph

@@ -30,8 +30,10 @@ data class Filters(
     val kind: String = "",
     /** Days back, 0 for any. */
     val added: Int = 0,
+    /** Genres a title must all carry. */
+    val genres: List<String> = emptyList(),
 ) {
-    val active: Int get() = listOf(watch != null, form != null, kind.isNotEmpty(), added > 0).count { it }
+    val active: Int get() = listOf(watch != null, form != null, kind.isNotEmpty(), added > 0).count { it } + genres.size
     val narrowed: Boolean get() = active > 0 || q.isNotBlank()
     fun cleared(): Filters = Filters(sort = sort)
 }
@@ -56,10 +58,15 @@ fun watchState(title: Title, progress: Map<String, ProgressInfo>): Watch {
     }
 }
 
-enum class Axis { Watch, Form, Kind, Added }
+enum class Axis { Watch, Form, Kind, Added, Genres }
+
+/** A title's genres, however the caller knows them (the overlays). */
+typealias GenresOf = (Title) -> List<String>
+
+private val NO_GENRES: GenresOf = { emptyList() }
 
 /** Whether a title passes; [skip] leaves one axis out (how a facet counts its options). */
-fun matches(t: Title, f: Filters, progress: Map<String, ProgressInfo>, now: Long, skip: Axis? = null): Boolean {
+fun matches(t: Title, f: Filters, progress: Map<String, ProgressInfo>, now: Long, skip: Axis? = null, genres: GenresOf = NO_GENRES): Boolean {
     if (f.q.isNotBlank()) {
         val hay = fold(t.title)
         if (fold(f.q).split(Regex("\\s+")).filter { it.isNotEmpty() }.any { it !in hay }) return false
@@ -68,6 +75,10 @@ fun matches(t: Title, f: Filters, progress: Map<String, ProgressInfo>, now: Long
     if (skip != Axis.Kind && f.kind.isNotEmpty() && t.items.none { it.kind == f.kind }) return false
     if (skip != Axis.Added && f.added > 0 && t.latest < now - f.added * 86400L) return false
     if (skip != Axis.Watch && f.watch != null && watchState(t, progress) != f.watch) return false
+    if (skip != Axis.Genres && f.genres.isNotEmpty()) {
+        val have = genres(t).map { it.lowercase() }.toSet()
+        if (f.genres.any { it.lowercase() !in have }) return false
+    }
     return true
 }
 
@@ -86,14 +97,25 @@ fun sorted(titles: List<Title>, sort: Sort): List<Title> = when (sort) {
     Sort.EpisodesDesc -> titles.sortedWith(compareByDescending<Title> { it.items.size }.then(byTitle))
 }
 
-fun applyFilters(titles: List<Title>, f: Filters, progress: Map<String, ProgressInfo>, now: Long): List<Title> =
-    sorted(titles.filter { matches(it, f, progress, now) }, f.sort)
+fun applyFilters(titles: List<Title>, f: Filters, progress: Map<String, ProgressInfo>, now: Long, genres: GenresOf = NO_GENRES): List<Title> =
+    sorted(titles.filter { matches(it, f, progress, now, genres = genres) }, f.sort)
+
+/** Genres with the titles each would leave if picked on top of the other filters, most common first. */
+fun genreFacets(titles: List<Title>, f: Filters, progress: Map<String, ProgressInfo>, now: Long, genres: GenresOf): List<Pair<String, Int>> {
+    val counts = LinkedHashMap<String, Pair<String, Int>>()
+    for (g in f.genres) counts[g.lowercase()] = g to 0
+    for (t in titles) {
+        if (!matches(t, f, progress, now, genres = genres)) continue
+        for (g in genres(t)) counts[g.lowercase()] = (counts[g.lowercase()]?.first ?: g) to ((counts[g.lowercase()]?.second ?: 0) + 1)
+    }
+    return counts.values.sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
+}
 
 /** Counts per option of one axis, ignoring that axis's own pick. */
-fun <K> countBy(titles: List<Title>, f: Filters, progress: Map<String, ProgressInfo>, now: Long, axis: Axis, values: (Title) -> List<K>): Map<K, Int> {
+fun <K> countBy(titles: List<Title>, f: Filters, progress: Map<String, ProgressInfo>, now: Long, axis: Axis, genres: GenresOf = NO_GENRES, values: (Title) -> List<K>): Map<K, Int> {
     val out = HashMap<K, Int>()
     for (t in titles) {
-        if (!matches(t, f, progress, now, axis)) continue
+        if (!matches(t, f, progress, now, axis, genres)) continue
         for (v in values(t)) out[v] = (out[v] ?: 0) + 1
     }
     return out

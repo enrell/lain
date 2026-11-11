@@ -114,6 +114,16 @@ pub struct LibraryInfo {
     pub locked: bool,
 }
 
+/// An item's metadata overlay: what the catalog entry does not carry.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Overlay {
+    pub item_id: String,
+    pub title: String,
+    pub year: i64,
+    pub genres: Vec<String>,
+    pub synopsis: String,
+}
+
 /// One progress record. For reading, `position_sec` is the 1-based
 /// page and `duration_sec` the page count.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
