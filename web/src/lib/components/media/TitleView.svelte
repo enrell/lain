@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { onMount } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
@@ -204,7 +205,9 @@
 		reading
 			? resuming
 				? `Continue from page ${Math.floor(resumeProgress!.position_sec)}`
-				: 'Read'
+				: resumeTarget && group.items.length > 1
+					? `Read · ${label(resumeTarget)}`
+					: 'Read'
 			: resuming
 				? `Resume from ${formatTime(resumeProgress!.position_sec)}`
 				: 'Play'
@@ -262,12 +265,15 @@
 			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md" />
 		{/if}
 		<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
-		<div class="relative mx-auto flex min-h-[17rem] w-full max-w-[1800px] flex-col justify-end px-5 pb-6 pt-20 sm:px-8 md:min-h-[30rem] md:pb-14 md:pt-40 lg:px-10">
-			<div class="hero-monolith-copy max-w-5xl">
-				<!-- Phone: the cover whole and crisp; the backdrop is only its colours. -->
-				<div class="mb-5 aspect-[2/3] w-28 overflow-hidden rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.5)] ring-1 ring-white/10 md:hidden">
-					<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
-				</div>
+		<button type="button" class="absolute left-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur md:hidden" aria-label="Back" onclick={() => history.back()}>
+			<ArrowLeft class="size-5" aria-hidden="true" />
+		</button>
+		<!-- One template for every kind of title: the cover, then what it is and what it can do. -->
+		<div class="relative mx-auto flex w-full max-w-[1800px] flex-col gap-5 px-5 pb-6 pt-16 sm:px-8 md:min-h-[30rem] md:flex-row md:items-end md:gap-10 md:pb-12 md:pt-36 lg:px-10">
+			<div class="aspect-[2/3] w-28 shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-56">
+				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
+			</div>
+			<div class="hero-monolith-copy min-w-0 max-w-5xl flex-1">
 				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">{meta}</p>
 				<h1 class="title-hero-name mt-4 text-foreground">{displayTitle}</h1>
 				{#if genres.length > 0}
@@ -303,52 +309,8 @@
 		</div>
 	</header>
 
-	<div class="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-8">
-		<div class="max-lg:contents lg:sticky lg:top-24 lg:space-y-5">
-			<!-- The hero already shows the art on a phone. -->
-			<div class="hidden aspect-[2/3] w-44 overflow-hidden rounded-xl bg-surface shadow-2xl ring-1 ring-white/10 lg:block lg:w-full">
-				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
-			</div>
-			<div class="rounded-xl border border-line/70 bg-surface/30 p-4 max-lg:order-4">
-				<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">Information</h2>
-				<dl class="mt-2 text-sm">
-					{#if group.year > 0}
-						<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-							<dt class="text-xs uppercase tracking-wider text-muted">Year</dt>
-							<dd class="font-semibold text-foreground">{group.year}</dd>
-						</div>
-					{/if}
-					{#if seasons.length > 0}
-						<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-							<dt class="text-xs uppercase tracking-wider text-muted">Seasons</dt>
-							<dd class="font-semibold text-foreground">{seasons.length}</dd>
-						</div>
-					{/if}
-					<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? (group.items[0]?.kind === 'manga' ? 'Volumes' : 'Issues') : 'Episodes'}</dt>
-						<dd class="font-semibold text-foreground">{group.count}</dd>
-					</div>
-					{#if totalLength > 0}
-						<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-							<dt class="text-xs uppercase tracking-wider text-muted">{t('title.length')}</dt>
-							<dd class="font-semibold text-foreground">{formatLength(totalLength)}</dd>
-						</div>
-					{/if}
-					{#if libraryNames.length > 0}
-						<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-							<dt class="text-xs uppercase tracking-wider text-muted">Library</dt>
-							<dd class="truncate font-semibold text-foreground">{libraryNames.join(' · ')}</dd>
-						</div>
-					{/if}
-					<div class="flex items-center justify-between gap-3 border-y border-line/60 py-2">
-						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? 'Read' : 'Watched'}</dt>
-						<dd class="font-semibold text-foreground">{watched} of {group.count}</dd>
-					</div>
-				</dl>
-			</div>
-		</div>
-
-		<div class="min-w-0 max-lg:order-3">
+	<div>
+		<div class="min-w-0">
 			{#if seasons.length > 1}
 				<div class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Seasons">
 					<button
@@ -480,6 +442,44 @@
 				{/each}
 			</ul>
 		</div>
+		<!-- What is known of the title, as one quiet strip under its episodes. -->
+		<section class="mt-12" aria-label="Details">
+			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">Details</h2>
+			<dl class="mt-3 grid grid-cols-2 gap-x-8 text-sm sm:grid-cols-3 lg:grid-cols-6">
+					{#if group.year > 0}
+						<div class="border-t border-line/60 py-3">
+							<dt class="text-xs uppercase tracking-wider text-muted">Year</dt>
+							<dd class="mt-1 font-semibold text-foreground">{group.year}</dd>
+						</div>
+					{/if}
+					{#if seasons.length > 0}
+						<div class="border-t border-line/60 py-3">
+							<dt class="text-xs uppercase tracking-wider text-muted">Seasons</dt>
+							<dd class="mt-1 font-semibold text-foreground">{seasons.length}</dd>
+						</div>
+					{/if}
+					<div class="border-t border-line/60 py-3">
+						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? (group.items[0]?.kind === 'manga' ? 'Volumes' : 'Issues') : 'Episodes'}</dt>
+						<dd class="mt-1 font-semibold text-foreground">{group.count}</dd>
+					</div>
+					{#if totalLength > 0}
+						<div class="border-t border-line/60 py-3">
+							<dt class="text-xs uppercase tracking-wider text-muted">{t('title.length')}</dt>
+							<dd class="mt-1 font-semibold text-foreground">{formatLength(totalLength)}</dd>
+						</div>
+					{/if}
+					{#if libraryNames.length > 0}
+						<div class="border-t border-line/60 py-3">
+							<dt class="text-xs uppercase tracking-wider text-muted">Library</dt>
+							<dd class="mt-1 truncate font-semibold text-foreground">{libraryNames.join(' · ')}</dd>
+						</div>
+					{/if}
+					<div class="border-t border-line/60 py-3">
+						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? 'Read' : 'Watched'}</dt>
+						<dd class="mt-1 font-semibold text-foreground">{watched} of {group.count}</dd>
+					</div>
+				</dl>
+		</section>
 	</div>
 </article>
 

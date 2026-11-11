@@ -54,6 +54,7 @@
 		{#if settings.mode === 'paged'}
 			<ReaderToggle
 				label={settings.direction === 'rtl' ? 'Reading right to left (R)' : 'Reading left to right (R)'}
+				active={settings.direction === 'rtl'}
 				onclick={() => settings.toggleDirection()}
 			>
 				<ArrowLeftRight class="size-4" aria-hidden="true" />

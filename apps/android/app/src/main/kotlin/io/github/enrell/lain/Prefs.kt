@@ -19,6 +19,10 @@ class Prefs(private val sp: SharedPreferences) {
         get() = sp.getString("library_sort", "title") ?: "title"
         set(v) = sp.edit().putString("library_sort", v).apply()
 
+    /** The order one library was last put in ("" is the whole catalog): "most episodes" means nothing among films. */
+    fun sortOf(scope: String): String = sp.getString("library_sort:$scope", "title") ?: "title"
+    fun setSortOf(scope: String, v: String) = sp.edit().putString("library_sort:$scope", v).apply()
+
     var smallTiles: Boolean
         get() = sp.getBoolean("small_tiles", false)
         set(v) = sp.edit().putBoolean("small_tiles", v).apply()

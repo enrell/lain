@@ -100,8 +100,8 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                         Text(pluralStringResource(R.plurals.count_copies, state.copies.size, state.copies.size), color = l.muted, fontSize = 13.sp)
                     }
                     if (u.maxBytes > 0) {
-                        Box(Modifier.padding(top = 12.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(l.raised)) {
-                            Box(Modifier.fillMaxWidth((u.usedBytes.toFloat() / u.maxBytes).coerceIn(0f, 1f)).height(4.dp).clip(CircleShape).background(l.accent))
+                        Box(Modifier.padding(top = 12.dp).fillMaxWidth().height(6.dp).clip(CircleShape).background(l.raised)) {
+                            Box(Modifier.fillMaxWidth((u.usedBytes.toFloat() / u.maxBytes).coerceIn(if (u.usedBytes > 0) 0.02f else 0f, 1f)).height(6.dp).clip(CircleShape).background(l.accent))
                         }
                     }
                 }
@@ -144,7 +144,12 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                 }
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(c.title, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val ep = episodeLabel(c.season, c.episode, reading)
+                    val ep = when {
+                        c.episode <= 0L && c.season <= 0L -> ""
+                        reading -> stringResource(R.string.volume_long, (if (c.season > 0) c.season else c.episode).toInt())
+                        c.season > 0 -> stringResource(R.string.season_episode, c.season.toInt(), c.episode.toInt())
+                        else -> stringResource(R.string.episode_n, c.episode.toInt())
+                    }
                     Text(
                         listOf(
                             ep,
@@ -172,7 +177,7 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                     })
                     CopyState.DONE -> Unit
                 }
-                IconBtn(Ic.Trash, stringResource(R.string.remove_download), { removing = c.itemId })
+                IconBtn(Ic.Trash, stringResource(R.string.remove_download), { removing = c.itemId }, tint = l.text.copy(alpha = 0.85f))
             }
         }
     }
@@ -202,7 +207,7 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
             }
         }
         SettingsGroup(stringResource(R.string.settings_playback)) {
-            SettingRow(stringResource(R.string.player_skip), stringResource(R.string.settings_skip_hint), below = true) {
+            SettingRow(stringResource(R.string.player_skip), if (skip == 0) stringResource(R.string.settings_skip_hint) else stringResource(R.string.settings_skip_fixed, skip), below = true) {
                 Segmented(io.github.enrell.lain.domain.SKIP_CHOICES.map { it to if (it == 0) stringResource(R.string.settings_auto) else "$it s" }, skip, { skip = it; graph.prefs.skipSec = it })
             }
         }
@@ -224,7 +229,7 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
             }
         }
         SettingsGroup(stringResource(R.string.settings_account)) {
-            SettingRow(stringResource(R.string.settings_sync), stringResource(R.string.settings_sync_hint, queued)) {
+            SettingRow(stringResource(R.string.settings_sync), if (queued.toInt() == 0) stringResource(R.string.settings_sync_none) else pluralStringResource(R.plurals.settings_sync_waiting, queued.toInt(), queued.toInt())) {
                 WButton(stringResource(R.string.settings_sync_now), {
                     scope.launch {
                         runCatching { graph.core.flushProgress() }
@@ -237,9 +242,9 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
                 WButton(stringResource(R.string.settings_change), { vm.changeServer() }, kind = Btn.Secondary)
             }
             SettingRow(stringResource(R.string.settings_session), stringResource(R.string.settings_session_hint)) {
-                WButton(stringResource(R.string.settings_logout), { vm.logout() }, kind = Btn.Ghost)
+                WButton(stringResource(R.string.settings_logout), { vm.logout() }, kind = Btn.Danger)
             }
         }
-        Mono(stringResource(R.string.settings_about, io.github.enrell.lain.core.coreVersion()), Modifier.padding(top = 28.dp))
+        Text(stringResource(R.string.settings_about, io.github.enrell.lain.core.coreVersion()), Modifier.padding(top = 28.dp), color = l.muted, fontSize = 12.sp)
     }
 }

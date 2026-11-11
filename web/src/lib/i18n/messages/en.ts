@@ -437,7 +437,7 @@ const en = {
 		title: {
 			heading: 'Community',
 			scored: { one: 'from {count} rating you can see', other: 'from {count} ratings you can see' },
-			unrated: 'No ratings you can see yet.',
+			unrated: 'No ratings yet.',
 			rate: 'Rate',
 			yourScore: 'Your score: {score}',
 			editReview: 'Edit review',

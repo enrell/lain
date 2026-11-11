@@ -120,7 +120,8 @@
 						aria-label={locked.length > 0 ? t('privateLibrary.unlockHint') : t('privateLibrary.lockHint')}
 						onclick={() => void toggleLock()}
 					>
-						{#if locked.length > 0}<LockIcon class="size-3.5" />{:else}<LockOpen class="size-3.5" />{/if}
+						{#if locked.length > 0}<LockIcon class="size-3.5" />{:else}<LockOpen class="size-3.5 text-accent" />{/if}
+						{locked.length > 0 ? t('privateLibrary.unlock') : t('privateLibrary.lock')}
 						<kbd class="text-muted/70">U</kbd>
 					</button>
 				{/if}

@@ -1,5 +1,6 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.shape.CircleShape
 import io.github.enrell.lain.graph
 import androidx.compose.foundation.systemGestureExclusion
@@ -230,7 +231,10 @@ fun ReaderScreen(
                     Modifier.padding(end = 6.dp).height(40.dp).clip(l.buttonShape).background(if (rtl) l.raised else Color.Transparent).border(1.dp, if (rtl) l.accent.copy(alpha = 0.55f) else l.line, l.buttonShape)
                         .clickable(onClickLabel = stringResource(R.string.reader_rtl)) { rtl = !rtl }.padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                ) { Mono(if (rtl) "RTL" else "LTR", color = if (rtl) l.text else l.muted, size = 11) }
+                ) {
+                    Icon(if (rtl) Ic.ArrowLeft else Ic.ChevronRight, null, tint = if (rtl) l.accent else l.muted, modifier = Modifier.size(14.dp))
+                    Text(stringResource(if (rtl) R.string.reader_rtl else R.string.reader_ltr), Modifier.padding(start = 6.dp), color = if (rtl) l.text else l.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                }
             }
         }
         AnimatedVisibility(chrome && book.pages.size > 1, Modifier.align(Alignment.BottomCenter), enter = fadeIn() + slideInVertically { it / 2 }, exit = fadeOut() + slideOutVertically { it / 2 }) {
