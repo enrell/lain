@@ -1,5 +1,17 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -231,7 +243,7 @@ fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String, 
                 textStyle = TextStyle(color = l.text, fontSize = 16.sp),
                 cursorBrush = SolidColor(l.accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder },
             )
         }
         if (value.isNotEmpty()) IconBtn(Ic.Close, "Clear", { onChange("") })
@@ -328,5 +340,178 @@ fun SecretField(value: String, onChange: (String) -> Unit, numeric: Boolean, onD
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onDone() }),
             modifier = Modifier.fillMaxWidth().focusRequester(focus),
         )
+    }
+}
+
+/** A labelled text field, as the web client's `Input`: the label above a quiet filled box. */
+@Composable
+fun Field(
+    value: String,
+    onChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    password: Boolean = false,
+    keyboardType: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text,
+    imeAction: ImeAction = ImeAction.Done,
+    onIme: () -> Unit = {},
+    focus: androidx.compose.ui.focus.FocusRequester? = null,
+) {
+    val l = LocalLain.current
+    var focused by remember { androidx.compose.runtime.mutableStateOf(false) }
+    Column(modifier) {
+        if (label.isNotEmpty()) Text(label, Modifier.padding(bottom = 6.dp), color = l.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Box(
+            Modifier.fillMaxWidth().height(48.dp).clip(l.buttonShape).background(l.field)
+                .border(1.dp, if (focused) l.accent.copy(alpha = 0.7f) else l.line, l.buttonShape).padding(horizontal = 14.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            if (value.isEmpty() && placeholder.isNotEmpty()) Text(placeholder, color = l.muted.copy(alpha = 0.6f), fontSize = 16.sp, maxLines = 1)
+            BasicTextField(
+                value = value,
+                onValueChange = onChange,
+                singleLine = true,
+                textStyle = TextStyle(color = l.text, fontSize = 16.sp),
+                cursorBrush = SolidColor(l.accent),
+                visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+                keyboardOptions = KeyboardOptions(keyboardType = if (password) androidx.compose.ui.text.input.KeyboardType.Password else keyboardType, imeAction = imeAction, autoCorrectEnabled = false),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onAny = { onIme() }),
+                modifier = Modifier.fillMaxWidth()
+                    .then(if (focus != null) Modifier.focusRequester(focus) else Modifier)
+                    .onFocusChanged { focused = it.isFocused }
+                    .semantics { contentDescription = label.ifEmpty { placeholder } },
+            )
+        }
+    }
+}
+
+/** Nothing here yet: a quiet dashed card with what the place is for and the way forward. */
+@Composable
+fun EmptyState(icon: ImageVector, title: String, body: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
+    val l = LocalLain.current
+    Column(
+        modifier.fillMaxWidth().clip(l.panelShape).dashedBorder(l.line, 12.dp).padding(horizontal = 28.dp, vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.size(56.dp).clip(CircleShape).border(1.dp, l.line, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = l.muted, modifier = Modifier.size(22.dp))
+        }
+        Text(title, Modifier.padding(top = 18.dp), color = l.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Text(body, Modifier.padding(top = 6.dp), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        if (action != null) Box(Modifier.padding(top = 18.dp)) { action() }
+    }
+}
+
+/** A dashed rounded outline (the web's `border-dashed`). */
+fun Modifier.dashedBorder(color: Color, radius: Dp): Modifier = drawBehind {
+    val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
+        width = 1.dp.toPx(),
+        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx())),
+    )
+    drawRoundRect(color, style = stroke, cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius.toPx()))
+}
+
+/** The web client's switch: a pill with a knob, the accent when on. */
+@Composable
+fun Toggle(checked: Boolean, onChange: (Boolean) -> Unit, label: String) {
+    val l = LocalLain.current
+    val x by androidx.compose.animation.core.animateDpAsState(if (checked) 22.dp else 2.dp, label = "toggle")
+    Box(
+        Modifier.width(48.dp).height(28.dp).clip(CircleShape).background(if (checked) l.accent else l.raised).border(1.dp, if (checked) Color.Transparent else l.line, CircleShape)
+            .clickable(onClickLabel = label) { onChange(!checked) }
+            .semantics { contentDescription = label; stateDescription = if (checked) "on" else "off" },
+        contentAlignment = Alignment.CenterStart,
+    ) { Box(Modifier.padding(start = x).size(24.dp).clip(CircleShape).background(if (checked) l.onAccent else l.muted)) }
+}
+
+/** A group of settings: a mono heading over rows separated by hairlines. */
+@Composable
+fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    val l = LocalLain.current
+    Column(Modifier.fillMaxWidth().padding(top = 26.dp)) {
+        Mono(title, Modifier.padding(bottom = 10.dp), color = l.text, size = 10)
+        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line))
+        content()
+    }
+}
+
+/** One setting: its name and what it does on the left, the control on the right or underneath. */
+@Composable
+fun SettingRow(label: String, hint: String = "", below: Boolean = false, control: @Composable () -> Unit) {
+    val l = LocalLain.current
+    Column {
+        if (below) {
+            Column(Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
+                Text(label, color = l.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                if (hint.isNotEmpty()) Text(hint, Modifier.padding(top = 3.dp), color = l.muted, fontSize = 13.sp, lineHeight = 18.sp)
+                Box(Modifier.padding(top = 10.dp)) { control() }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 14.dp)) {
+                    Text(label, color = l.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    if (hint.isNotEmpty()) Text(hint, Modifier.padding(top = 3.dp), color = l.muted, fontSize = 13.sp, lineHeight = 18.sp)
+                }
+                control()
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.6f)))
+    }
+}
+
+/** A few choices in a row, one of them on (the web's segmented control). */
+@Composable
+fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit, modifier: Modifier = Modifier) {
+    val l = LocalLain.current
+    Row(modifier.clip(l.buttonShape).background(l.field).padding(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        for ((value, label) in options) {
+            val on = value == selected
+            Box(
+                Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(5.dp)).background(if (on) l.raised else Color.Transparent)
+                    .clickable { onPick(value) }.padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text(label, color = if (on) l.text else l.muted, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1) }
+        }
+    }
+}
+
+/** A placeholder that breathes while the real thing loads. */
+@Composable
+fun Skeleton(modifier: Modifier = Modifier) {
+    val l = LocalLain.current
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "skeleton")
+    val a by t.animateFloat(
+        0.35f, 0.75f,
+        androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(900), androidx.compose.animation.core.RepeatMode.Reverse),
+        label = "skeleton",
+    )
+    Box(modifier.clip(l.cardShape).background(l.raised.copy(alpha = a)))
+}
+
+/** A thin slider: the web player's seek bar, for anything with a position. */
+@Composable
+fun ThinSlider(fraction: Float, onChange: (Float) -> Unit, onCommit: (Float) -> Unit, modifier: Modifier = Modifier, reversed: Boolean = false, label: String = "") {
+    val l = LocalLain.current
+    var drag by remember { androidx.compose.runtime.mutableStateOf<Float?>(null) }
+    val shown = (drag ?: fraction).coerceIn(0f, 1f)
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier.height(36.dp).semantics { contentDescription = label }
+            .pointerInput(reversed) {
+                detectTapGestures { o -> val f = (o.x / size.width).coerceIn(0f, 1f).let { if (reversed) 1f - it else it }; onChange(f); onCommit(f) }
+            }
+            .pointerInput(reversed) {
+                detectHorizontalDragGestures(
+                    onDragEnd = { drag?.let(onCommit); drag = null },
+                    onDragCancel = { drag = null },
+                ) { change, _ -> val f = (change.position.x / size.width).coerceIn(0f, 1f).let { if (reversed) 1f - it else it }; drag = f; onChange(f) }
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        val w = maxWidth
+        val x = if (reversed) 1f - shown else shown
+        Box(Modifier.fillMaxWidth().height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.22f)))
+        if (reversed) Box(Modifier.align(Alignment.CenterEnd).fillMaxWidth(shown).height(3.dp).clip(CircleShape).background(l.accent))
+        else Box(Modifier.fillMaxWidth(shown).height(3.dp).clip(CircleShape).background(l.accent))
+        Box(Modifier.offset(x = (w - 14.dp) * x).size(if (drag != null) 18.dp else 14.dp).clip(CircleShape).background(l.accent))
     }
 }
