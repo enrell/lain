@@ -457,6 +457,36 @@ impl LainCore {
         self.run(async move { Ok(b.client.frame(&item_id, at_sec, width).await?) }).await
     }
 
+    /// The works this account keeps as favourites (the social module's
+    /// list, the same one the web client shows).
+    pub async fn favorites(&self) -> Result<Vec<FavoriteInfo>, LainError> {
+        let b = self.backend()?;
+        self.run(
+            async move { Ok(b.client.social_settings().await?.favorites.into_iter().map(favorite_info).collect()) },
+        )
+        .await
+    }
+
+    /// Adds the work an item belongs to to the favourites, or takes it out;
+    /// answers the list as it then stands. A work is its kind and title, so
+    /// any episode of a series names the series.
+    pub async fn set_favorite(&self, item_id: String, on: bool) -> Result<Vec<FavoriteInfo>, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let target = lain_api::WorkRef { item_id, ..Default::default() };
+            let work = b.client.work(&target).await?.work;
+            let same = |w: &lain_api::WorkRef| work_key(w) == work_key(&work);
+            let mut next: Vec<lain_api::WorkRef> =
+                b.client.social_settings().await?.favorites.into_iter().filter(|w| !same(w)).collect();
+            if on {
+                next.push(target);
+            }
+            let patch = lain_api::SocialSettingsPatch { favorites: Some(next), ..Default::default() };
+            Ok(b.client.update_social_settings(patch).await?.favorites.into_iter().map(favorite_info).collect())
+        })
+        .await
+    }
+
     /// How long these videos are (the ones the server can tell).
     pub async fn durations(&self, item_ids: Vec<String>) -> Result<Vec<DurationInfo>, LainError> {
         let b = self.backend()?;
@@ -703,4 +733,14 @@ impl LainCore {
     pub fn stop_events(&self) {
         self.close_events();
     }
+}
+
+fn favorite_info(w: lain_api::WorkRef) -> FavoriteInfo {
+    FavoriteInfo { item_id: w.item_id, kind: w.kind, title: w.title }
+}
+
+/// A work's identity as the server compares it: kind and title, case and
+/// spacing aside.
+fn work_key(w: &lain_api::WorkRef) -> (String, String) {
+    (w.kind.to_lowercase(), w.title.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" "))
 }

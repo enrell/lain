@@ -1,5 +1,14 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.launch
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.shape.CircleShape
@@ -201,20 +210,47 @@ fun ReaderScreen(
             }
             // A tap on a side turns the page (by reading direction) and the middle
             // shows or hides the bars; a swipe goes through to the pager.
+            // Two fingers zoom into the page (up to 4x) and one then moves around
+            // it; at its own size a drag is the pager's, so swipes still turn pages.
+            var zoom by remember(i) { mutableStateOf(1f) }
+            var pan by remember(i) { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+            LaunchedEffect(pager.settledPage) { if (pager.settledPage != i) { zoom = 1f; pan = androidx.compose.ui.geometry.Offset.Zero } }
             Box(
-                Modifier.fillMaxSize().pointerInput(rtl) {
-                    detectTapGestures { o ->
-                        val x = o.x / size.width
-                        when {
-                            x in 0.3f..0.7f -> chrome = !chrome
-                            (x > 0.7f) != rtl -> forward()
-                            else -> backward()
+                Modifier.fillMaxSize()
+                    .pointerInput(i) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            do {
+                                val event = awaitPointerEvent()
+                                if (event.changes.count { it.pressed } > 1 || zoom > 1f) {
+                                    zoom = (zoom * event.calculateZoom()).coerceIn(1f, 4f)
+                                    val maxX = size.width * (zoom - 1f) / 2f
+                                    val maxY = size.height * (zoom - 1f) / 2f
+                                    val moved = pan + event.calculatePan()
+                                    pan = if (zoom == 1f) androidx.compose.ui.geometry.Offset.Zero else androidx.compose.ui.geometry.Offset(moved.x.coerceIn(-maxX, maxX), moved.y.coerceIn(-maxY, maxY))
+                                    event.changes.forEach { if (it.positionChanged()) it.consume() }
+                                }
+                            } while (event.changes.any { it.pressed })
                         }
                     }
-                },
+                    .pointerInput(rtl) {
+                        detectTapGestures { o ->
+                            val x = o.x / size.width
+                            when {
+                                x in 0.3f..0.7f -> chrome = !chrome
+                                (x > 0.7f) != rtl -> forward()
+                                else -> backward()
+                            }
+                        }
+                    },
                 contentAlignment = Alignment.Center,
             ) {
-                bmp?.let { Image(it, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
+                bmp?.let {
+                    Image(
+                        it, contentDescription = null, contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y },
+                    )
+                }
                     ?: CircularProgressIndicator(Modifier.size(36.dp), color = l.muted, strokeWidth = 2.dp)
             }
         }
@@ -248,15 +284,18 @@ fun ReaderScreen(
                         Modifier.padding(top = 2.dp), color = l.muted, fontSize = 12.sp, maxLines = 1,
                     )
                 }
-                // The direction is a control: on when pages run right to left.
-                Row(
-                    Modifier.padding(end = 6.dp).height(40.dp).clip(l.buttonShape).background(if (rtl) l.raised else Color.Transparent).border(1.dp, if (rtl) l.accent.copy(alpha = 0.55f) else l.line, l.buttonShape)
-                        .clickable(onClickLabel = stringResource(R.string.reader_rtl)) { rtl = !rtl }.padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // A swap mark: it is a control that turns the book around, not a status.
-                    Icon(Ic.Swap, null, tint = if (rtl) l.accent else l.muted, modifier = Modifier.size(14.dp))
-                    Text(stringResource(if (rtl) R.string.reader_rtl else R.string.reader_ltr), Modifier.padding(start = 6.dp), color = if (rtl) l.text else l.muted, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                // The direction is a choice between two, the one in force lit.
+                Row(Modifier.padding(end = 6.dp).height(40.dp).clip(l.buttonShape).border(1.dp, l.line, l.buttonShape)) {
+                    for ((toRtl, label) in listOf(false to "L \u2192 R", true to "R \u2190 L")) {
+                        val on = rtl == toRtl
+                        Box(
+                            Modifier.fillMaxHeight().background(if (on) l.accent.copy(alpha = 0.22f) else Color.Transparent)
+                                .clickable(onClickLabel = stringResource(if (toRtl) R.string.reader_rtl else R.string.reader_ltr)) { rtl = toRtl }
+                                .semantics { contentDescription = if (toRtl) "Right to left" else "Left to right"; stateDescription = if (on) "selected" else "not selected" }
+                                .padding(horizontal = 11.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text(label, color = if (on) l.text else l.muted, fontSize = 12.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
+                    }
                 }
             }
         }

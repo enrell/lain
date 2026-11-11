@@ -85,8 +85,7 @@
 	const metaSegments = $derived(
 		[
 			enrichment?.year || item?.year ? String(enrichment?.year || item?.year) : '',
-			formatLength(plan?.duration_sec),
-			library?.name ?? ''
+			formatLength(plan?.duration_sec)
 		].filter((segment) => segment !== '')
 	);
 
@@ -331,7 +330,7 @@
 						{/if}
 						{#if !item.missing && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={item.id} size="md" /></span>{/if}
 						{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="ghost" size="md" label={t('download.one')} />{/if}
-						<Menu label={t('title.manage')} entries={manageSingle} variant="ghost" size="md">
+						<Menu label={t('title.manage')} hint={t('title.manageHint')} entries={manageSingle} variant="ghost" size="md">
 							{#snippet icon()}<Settings2 class="size-4" aria-hidden="true" />{/snippet}
 						</Menu>
 					</div>

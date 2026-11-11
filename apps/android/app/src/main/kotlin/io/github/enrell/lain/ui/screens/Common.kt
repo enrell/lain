@@ -253,6 +253,7 @@ fun bytes(n: Long): String {
         i++
     }
     return when {
+        n == 0L -> "0 MB"
         i == 0 -> "$n B"
         v >= 100 || v % 1.0 < 0.05 -> "%.0f %s".format(v, units[i])
         else -> "%.1f %s".format(v, units[i])

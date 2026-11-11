@@ -97,6 +97,18 @@ class FakeCore : LainCoreInterface {
     override suspend fun progress(itemId: String): ProgressInfo = progress[itemId] ?: progress(itemId, 0.0, 0.0, at = 0)
     override fun queuedProgress(): Long = 0
     override suspend fun refreshWatched(): Long = 0
+    val favoriteIds = mutableListOf<String>()
+
+    private fun favoriteList() = favoriteIds.mapNotNull { id -> items.firstOrNull { it.id == id } }.map { io.github.enrell.lain.core.FavoriteInfo(it.id, it.kind, it.title) }
+
+    override suspend fun favorites(): List<io.github.enrell.lain.core.FavoriteInfo> = favoriteList()
+
+    override suspend fun setFavorite(itemId: String, on: Boolean): List<io.github.enrell.lain.core.FavoriteInfo> {
+        favoriteIds.remove(itemId)
+        if (on) favoriteIds.add(itemId)
+        return favoriteList()
+    }
+
     override suspend fun durations(itemIds: List<String>): List<io.github.enrell.lain.core.DurationInfo> = emptyList()
 
     override suspend fun saveProgress(itemId: String, positionSec: Double, durationSec: Double, completed: Boolean): SaveOutcome {

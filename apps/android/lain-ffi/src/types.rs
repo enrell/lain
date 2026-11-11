@@ -220,6 +220,15 @@ pub struct PlaySource {
     pub session: String,
 }
 
+/// A work kept as a favourite: its kind and title, and the catalog item it
+/// points at (empty when that item is no longer visible).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct FavoriteInfo {
+    pub item_id: String,
+    pub kind: String,
+    pub title: String,
+}
+
 /// One video's length, in seconds.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct DurationInfo {

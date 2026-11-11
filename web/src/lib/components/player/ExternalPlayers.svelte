@@ -60,7 +60,7 @@
 </script>
 
 {#if origin}
-	<Menu label={t('openWith.label')} {entries} {variant} {size} class={className} align="start">
+	<Menu label={t('openWith.label')} {entries} {variant} {size} class={className} align="start" hint={t('openWith.hint')}>
 		{#snippet icon()}<ExternalLink class="size-3.5" aria-hidden="true" />{/snippet}
 	</Menu>
 	<Modal bind:open={setup} title={t('openWith.setupTitle')} description={t('openWith.setupBody')}>
