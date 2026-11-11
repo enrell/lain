@@ -193,8 +193,9 @@ fun ShapeCard(
                     Icon(Ic.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
                 }
             } else if (progress > 0f) {
-                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(5.dp).background(Color.Black.copy(alpha = 0.6f))) {
-                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(5.dp).background(l.accent))
+                // Inset and rounded: flush with the edge it was half cut by the card's corners.
+                Box(Modifier.align(Alignment.BottomStart).padding(horizontal = 10.dp, vertical = 9.dp).fillMaxWidth().height(5.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f))) {
+                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(5.dp).clip(CircleShape).background(l.accent))
                 }
             }
         }
@@ -247,8 +248,10 @@ fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String, 
     val l = LocalLain.current
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    // The field you are typing in wears the accent.
+    var focused by remember { androidx.compose.runtime.mutableStateOf(false) }
     Row(
-        modifier.height(44.dp).clip(l.buttonShape).background(l.field).border(1.dp, l.line, l.buttonShape).padding(start = 12.dp),
+        modifier.height(44.dp).clip(l.buttonShape).background(l.field).border(if (focused) 1.5.dp else 1.dp, if (focused) l.accent else l.line, l.buttonShape).padding(start = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Ic.Search, null, tint = l.muted, modifier = Modifier.size(16.dp))
@@ -263,7 +266,7 @@ fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String, 
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 // The search key puts the keyboard away: what it covered is reachable again.
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { keyboard?.hide(); focusManager.clearFocus() }),
-                modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier).semantics { contentDescription = placeholder },
+                modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier).onFocusChanged { focused = it.isFocused }.semantics { contentDescription = placeholder },
             )
         }
         if (value.isNotEmpty()) IconBtn(Ic.Close, "Clear", { onChange("") })

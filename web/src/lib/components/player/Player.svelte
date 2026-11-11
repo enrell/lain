@@ -1706,9 +1706,9 @@
 	{/if}
 
 	<!-- Paused start / ended: a large, unmissable play affordance. -->
-	{#if transcodeReady && (ended || (!playing && !error && !waiting && currentTime === 0)) && controlsVisible}
+	{#if transcodeReady && (ended || (!playing && !error && !waiting)) && controlsVisible && !settingsOpen && !keysOpen}
 		<button
-			class="absolute inset-0 flex items-center justify-center"
+			class="absolute inset-0 z-10 flex items-center justify-center"
 			onclick={togglePlay}
 			aria-label={ended ? 'Play again' : 'Play'}
 		>
@@ -1888,7 +1888,7 @@
 		bind:this={chromeFootEl}
 		class={[
 			// On the picture the controls are white, not the page's muted grey.
-			'relative z-20 bg-gradient-to-t from-black/70 to-transparent px-3 pb-3 pt-6 sm:px-6 sm:pb-4 [&_button:not(.bg-accent)]:text-white/90 [&_button:not(.bg-accent):hover]:text-white',
+			'relative z-20 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-3 pb-3 pt-10 sm:px-6 sm:pb-4 [&_button:not(.bg-accent)]:text-white/90 [&_button:not(.bg-accent):hover]:text-white',
 			chromeClass
 		].join(' ')}
 	>
@@ -1950,7 +1950,7 @@
 				}}
 				class="relative flex h-6 w-full touch-none select-none items-center"
 			>
-				<span class="relative h-1 w-full grow overflow-hidden rounded-full bg-white/25">
+				<span class="relative h-1 w-full grow overflow-hidden rounded-full bg-white/30">
 					<!-- The ready range sits where it actually is: a resumed or
 					     re-seeked session begins partway into the episode. -->
 					<span

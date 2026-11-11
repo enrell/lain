@@ -236,7 +236,7 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
                         queued = vm.queuedProgress()
                         vm.refreshProgress()
                     }
-                }, kind = Btn.Secondary)
+                }, kind = Btn.Secondary, enabled = queued.toInt() > 0)
             }
             SettingRow(stringResource(R.string.settings_server), listOf(state.server, state.serverVersion).filter { it.isNotEmpty() }.joinToString(" · ")) {
                 WButton(stringResource(R.string.settings_change), { vm.changeServer() }, kind = Btn.Secondary)

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { onMount } from 'svelte';
@@ -106,6 +107,9 @@
 			.map((lib) => lib.name)
 			.filter((name, index, all) => all.indexOf(name) === index)
 	);
+
+	const homeLibrary = $derived(libraries.find((lib) => group.libraryIds.includes(lib.id)) ?? null);
+	let synopsisOpen = $state(false);
 
 	const watched = $derived(group.items.filter((i) => progressMap?.get(i.id)?.completed).length);
 
@@ -277,6 +281,11 @@
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
 			<div class="hero-monolith-copy min-w-0 max-w-5xl flex-1">
+				{#if homeLibrary}
+					<a href={`/library/${homeLibrary.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
+						<ChevronLeft class="size-4" aria-hidden="true" /> {homeLibrary.name}
+					</a>
+				{/if}
 				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">{meta}</p>
 				<h1 class="title-hero-name mt-4 text-foreground">{displayTitle}</h1>
 				{#if genres.length > 0}
@@ -306,7 +315,10 @@
 				</div>
 				<p class="mt-3 text-sm text-muted" aria-live="polite">{watchedLine}</p>
 				{#if synopsis}
-					<p class="mt-4 line-clamp-2 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7 md:line-clamp-3">{synopsis}</p>
+					<!-- A cut synopsis opens on a tap: an ellipsis with no way past it is a dead end. -->
+					<button type="button" class="mt-4 block max-w-2xl text-left" aria-expanded={synopsisOpen} onclick={() => (synopsisOpen = !synopsisOpen)}>
+						<span class={['block text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? '' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
+					</button>
 				{/if}
 			</div>
 		</div>

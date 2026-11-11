@@ -1,4 +1,6 @@
 <script lang="ts">
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import { ensureLibraries } from '$lib/stores/media-cache.svelte';
 	import X from '@lucide/svelte/icons/x';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -106,6 +108,11 @@
 
 	const emptyResults = $derived(!loading && searchedFor !== '' && items.length === 0 && !error);
 	const showIdle = $derived(searchedFor === '' && !loading);
+	// The libraries, to browse from before anything is typed.
+	let browse = $state<{ id: string; name: string }[]>([]);
+	$effect(() => {
+		void ensureLibraries().then((libs) => (browse = libs.map((l) => ({ id: l.id, name: l.name }))));
+	});
 </script>
 
 <svelte:head><title>{query ? `${query} — Search — Lain` : 'Search — Lain'}</title></svelte:head>
@@ -153,12 +160,21 @@
 	{#if error}
 		<ErrorState message={error} retry={() => void run(query, true)} />
 	{:else if showIdle}
-		<EmptyState
-			title="Search your library"
-			description="Type a title. Matching is case-insensitive and covers what the catalog knows, not raw filenames."
-		>
-			{#snippet icon()}<Search class="size-6 text-muted" />{/snippet}
-		</EmptyState>
+		<!-- Before a query: the libraries to start from. -->
+		<section aria-label="Browse" class="max-w-2xl">
+			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">Browse</h2>
+			<ul class="mt-2 divide-y divide-line/50">
+				{#each browse as lib (lib.id)}
+					<li>
+						<a href={`/library/${lib.id}`} class="flex min-h-12 items-center justify-between gap-3 rounded-md px-1 text-sm font-medium text-foreground hover:bg-surface-hover">
+							{lib.name}
+							<ChevronRight class="size-4 text-muted" aria-hidden="true" />
+						</a>
+					</li>
+				{/each}
+			</ul>
+			<p class="mt-4 text-sm text-muted">Search matches titles, whatever their case; it does not look at file names.</p>
+		</section>
 	{:else if loading && items.length === 0}
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
 			{#each Array(12) as _}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -293,6 +294,11 @@
 					<Poster {item} {enrichment} class="aspect-[2/3] rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10" priority />
 				</div>
 				<div class="hero-monolith-copy min-w-0 flex-1">
+					{#if library}
+						<a href={`/library/${library.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
+							<ChevronLeft class="size-4" aria-hidden="true" /> {library.name}
+						</a>
+					{/if}
 					{#if metaSegments.length > 0}
 						<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-accent sm:text-[11px]">{metaSegments.join('  ·  ')}</p>
 					{/if}
