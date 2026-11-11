@@ -78,7 +78,7 @@
 				type="button"
 				aria-pressed={typeFilter === t.id}
 				class={[
-					'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+					'rounded-full border px-3.5 py-2 text-sm font-medium transition-colors sm:px-3 sm:py-1.5 sm:text-xs',
 					typeFilter === t.id
 						? 'border-accent bg-accent/15 text-foreground'
 						: 'border-line bg-surface/60 text-muted hover:text-foreground'
@@ -90,7 +90,7 @@
 		{/each}
 		<span class="mx-1 hidden h-4 w-px bg-line sm:inline" aria-hidden="true"></span>
 		<select
-			class="rounded-full border border-line bg-surface/60 px-3 py-1.5 text-xs font-medium text-muted hover:text-foreground"
+			class="rounded-full border border-line bg-surface/60 px-3.5 py-2 text-sm font-medium text-muted hover:text-foreground sm:px-3 sm:py-1.5 sm:text-xs"
 			value={statusFilter}
 			aria-label="Status"
 			onchange={(e) => pickStatus(e.currentTarget.value)}

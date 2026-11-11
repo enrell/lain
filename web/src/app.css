@@ -321,6 +321,20 @@ details.settings-section > summary {
 	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, textarea) {
 		max-width: 100%;
 	}
+	/* Thumb-sized fields; text fields and pickers span the column. */
+	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, button[role='combobox']) {
+		min-height: 2.75rem;
+	}
+	.settings-body :is(input:is([type='text'], [type='password'], [type='url'], [type='search'], [type='email'], :not([type])), select, textarea, button[role='combobox']) {
+		width: 100%;
+	}
+	/* Small mono links under a page title (sub-pages) become tappable. */
+	main a.font-mono {
+		padding-block: 0.5rem;
+	}
+	main button.font-mono {
+		min-height: 2.25rem;
+	}
 }
 
 /* ---- cards that take the shape of their picture ----------------------- */
