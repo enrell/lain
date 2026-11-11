@@ -28,6 +28,8 @@
 	import { api } from '$lib/api';
 	import type { StoryboardLayout } from '$lib/api/thumbnail';
 	import { session } from '$lib/auth/session.svelte';
+	import Modal from '$lib/components/primitives/Modal.svelte';
+	import Keyboard from '@lucide/svelte/icons/keyboard';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
@@ -122,6 +124,8 @@
 	let fullscreenNotice = $state<string | null>(null);
 	let controlsVisible = $state(true);
 	let settingsOpen = $state(false);
+	// The keys, listed on `?` (the reader does the same).
+	let keysOpen = $state(false);
 	let settingsButton = $state<HTMLButtonElement | null>(null);
 	$effect(() => {
 		if (settingsOpen) void tick().then(() => chromeTailEl?.querySelector<HTMLSelectElement>('select')?.focus());
@@ -304,7 +308,16 @@
 		}
 	);
 
+	/*
+	 * Progress is what was watched: nothing is written until the picture has
+	 * actually played in this session. Opening a finished title (its player
+	 * starts at 0:00) and leaving used to write "0:00, not finished" over
+	 * "finished", which un-watched it and put it back in Continue.
+	 */
+	let watched = false;
+
 	function persistNow(): void {
+		if (!watched) return;
 		const snap = snapshot();
 		if (snap.duration_sec <= 0) return;
 		void api.progress.put(item.id, snap, { keepalive: true }).catch(() => {
@@ -816,14 +829,14 @@
 			bufferedStart = el.buffered.start(0) + baseOffset;
 			bufferedEnd = el.buffered.end(el.buffered.length - 1) + baseOffset;
 		}
-		void reporter.update(snapshot());
+		if (watched) void reporter.update(snapshot());
 	}
 
 	function onPause(): void {
 		playing = false;
 		waiting = false;
 		controlsVisible = true;
-		void reporter.update(snapshot(), { force: true });
+		if (watched) void reporter.update(snapshot(), { force: true });
 	}
 
 	function onPlay(): void {
@@ -834,6 +847,7 @@
 	}
 
 	function onPlaying(): void {
+		watched = true;
 		waiting = false;
 		confirmFrameProof();
 	}
@@ -844,7 +858,7 @@
 
 	function onSeeked(): void {
 		if (video) currentTime = video.currentTime + baseOffset;
-		void reporter.update(snapshot(), { force: true });
+		if (watched) void reporter.update(snapshot(), { force: true });
 	}
 
 	function onEnded(): void {
@@ -1419,6 +1433,10 @@
 			case 'F':
 				void toggleFullscreen();
 				break;
+			case '?':
+				consume(event);
+				keysOpen = true;
+				break;
 		}
 	}
 
@@ -1705,7 +1723,7 @@
 	<!-- Resume banner -->
 	{#if showResume && resumedFrom > 0}
 		<div
-			class="absolute left-4 top-20 rounded-md border border-line/40 bg-background/95 px-4 py-3 text-sm text-foreground"
+			class="absolute bottom-28 left-4 z-20 rounded-md border border-line/40 bg-background/95 px-4 py-3 text-sm text-foreground"
 		>
 			Resuming from {formatTime(resumedFrom)}
 			<button class="ml-3 text-accent hover:text-accent-hover" onclick={skipResumeToStart}>
@@ -1994,6 +2012,9 @@
 			</div>
 
 			<div class="ml-auto flex items-center gap-1.5">
+				<IconButton label="Keyboard shortcuts (?)" class="max-md:hidden" onclick={() => (keysOpen = true)}>
+					<Keyboard class="size-5" />
+				</IconButton>
 				<button bind:this={settingsButton} type="button" aria-label="Playback settings" aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
 					<Settings class="size-5" />
 					<span class="sr-only">Playback settings</span>
@@ -2009,6 +2030,15 @@
 		</div>
 	</footer>
 </div>
+
+<Modal bind:open={keysOpen} title="Keyboard shortcuts">
+	<dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-sm">
+		{#each [[['Space', 'K'], 'Play or pause'], [['←', '→'], 'Back or forward 5 seconds'], [['J', 'L'], `Back or forward ${skipSec} seconds`], [['↑', '↓'], 'Volume'], [['M'], 'Mute'], [['F'], 'Full screen'], [['Esc'], 'Close a panel, leave full screen'], [['?'], 'This list']] as [keys, what] (what)}
+			<dt class="flex gap-1">{#each keys as key (key)}<kbd>{key}</kbd>{/each}</dt>
+			<dd class="text-muted">{what}</dd>
+		{/each}
+	</dl>
+</Modal>
 
 <style>
 	.player-settings .chrome-chip {

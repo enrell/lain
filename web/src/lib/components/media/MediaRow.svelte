@@ -33,9 +33,9 @@
 		{#if href}
 			<a
 				href={href}
-				class="inline-flex min-h-6 items-center text-[10px] font-semibold uppercase tracking-[0.18em] text-muted transition-colors hover:text-accent sm:text-xs"
+				class="inline-flex min-h-6 items-center gap-1 text-sm text-foreground/70 transition-colors hover:text-foreground"
 			>
-				{actionLabel}
+				{actionLabel} <ChevronRight class="size-3.5" aria-hidden="true" />
 			</a>
 		{/if}
 	</div>

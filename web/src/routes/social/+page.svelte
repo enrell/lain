@@ -4,6 +4,7 @@
 	 * collections. Keys: 1–4 switch tabs, / searches people, r marks
 	 * notifications read, n starts a collection.
 	 */
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -239,7 +240,7 @@
 			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('social.heading')}</h1>
 			<p class="mt-0.5 text-sm text-muted">{t('social.subtitle')}</p>
 		</div>
-		<a href="/settings/privacy" class="font-mono text-[10px] uppercase tracking-[0.2em] text-muted hover:text-foreground">{t('social.privacyLink')}</a>
+		<a href="/settings/privacy" class="inline-flex min-h-9 items-center gap-1 text-sm text-foreground/70 hover:text-foreground">{t('social.privacyLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>
 	</header>
 
 	<div class="flex flex-wrap gap-6 border-b border-hairline" role="tablist" aria-label={t('social.heading')}>

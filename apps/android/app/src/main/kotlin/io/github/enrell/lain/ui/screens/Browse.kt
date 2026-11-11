@@ -117,7 +117,7 @@ private fun titleSubtitle(t: Title): String = when {
 
 /** A title's card at rail height: as wide as its picture's shape. */
 @Composable
-private fun RailCard(t: Title, vm: AppViewModel, height: Dp = RAIL_H) {
+private fun RailCard(t: Title, vm: AppViewModel, height: Dp = RAIL_H, seen: Float = 0f) {
     val wide = t.wide()
     ShapeCard(
         artId = t.art(),
@@ -126,8 +126,24 @@ private fun RailCard(t: Title, vm: AppViewModel, height: Dp = RAIL_H) {
         onClick = { vm.go(Screen.TitleDetail(t.key)) },
         modifier = Modifier.width(height * (if (wide) Shapes.LANDSCAPE else Shapes.PORTRAIT)),
         landscape = wide,
+        progress = seen,
         badge = null,
     )
+}
+
+/** How far into a title you are: its finished parts plus the part of the one in progress, of the whole. */
+private fun titleFraction(t: Title, progress: Map<String, io.github.enrell.lain.core.ProgressInfo>): Float {
+    if (t.items.isEmpty()) return 0f
+    val sum = t.items.sumOf { item ->
+        val p = progress[item.id]
+        when {
+            p == null -> 0.0
+            p.completed -> 1.0
+            p.durationSec > 0 -> (p.positionSec / p.durationSec).coerceIn(0.0, 1.0)
+            else -> 0.0
+        }
+    }
+    return (sum / t.items.size).toFloat().let { if (it in 0.0001f..0.03f) 0.03f else it }
 }
 
 @Composable
@@ -181,9 +197,9 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
     LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
         if (hero != null) {
             item {
-                HeroFrame(hero.art(), (LocalConfiguration.current.screenHeightDp * 0.6f).dp) {
+                HeroFrame(hero.art(), (LocalConfiguration.current.screenHeightDp * 0.44f).dp) {
                     Mono(
-                        stringResource(if (resumeHero != null) R.string.hero_continue else R.string.hero_label) + if (hero.year > 0) " / ${hero.year}" else "",
+                        stringResource(if (resumeHero != null) R.string.hero_continue else R.string.hero_label),
                         color = l.accent,
                     )
                     Text(
@@ -200,7 +216,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                         resumeHero?.item?.takeIf { it.episode > 0 && !hero.reading }?.let { stringResource(R.string.episode_n, it.episode.toInt()) },
                         left?.let { stringResource(R.string.time_left, length(it)) },
                         if (resumeHero == null && hero.items.size > 1) titleSubtitle(hero) else null,
-                        if (resumeHero == null) hero.year.takeIf { it > 0 }?.toString() else null,
+                        hero.year.takeIf { it > 0 }?.toString(),
                     ) + state.genresOf(hero).take(2)
                     Text(facts.joinToString("  ·  "), Modifier.padding(top = 10.dp), color = l.text.copy(alpha = 0.8f), fontSize = 13.sp, lineHeight = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     resumeHero?.progress?.let { p ->
@@ -211,9 +227,6 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                             }
                         }
                     }
-                    state.synopsisOf(hero).takeIf { it.isNotEmpty() }?.let { text ->
-                        Text(text, Modifier.padding(top = 10.dp), color = l.text.copy(alpha = 0.7f), fontSize = 14.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
                     Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(
                             Modifier.height(46.dp).clip(CircleShape).background(Color.White).clickable { vm.open(resumeHero?.item ?: nextUp(hero, state.progress)) }.padding(horizontal = 24.dp),
@@ -223,7 +236,8 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                             Icon(Ic.Play, null, tint = Color.Black, modifier = Modifier.size(14.dp))
                             Text(
                                 when {
-                                    resumeHero != null && hero.reading -> stringResource(R.string.continue_page, resumeHero.progress.positionSec.toInt().coerceAtLeast(1))
+                                    resumeHero != null && hero.reading && resumeHero.progress.positionSec > 1 -> stringResource(R.string.continue_page_short, resumeHero.progress.positionSec.toInt())
+                                    hero.reading -> stringResource(R.string.action_read)
                                     resumeHero != null && resumeHero.item.episode > 0 -> stringResource(R.string.action_resume_short) + " · " + episodeLabel(resumeHero.item.season, resumeHero.item.episode, hero.reading)
                                     resumeHero != null -> stringResource(R.string.action_resume_short)
                                     hero.reading -> stringResource(R.string.action_read)
@@ -239,7 +253,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Icon(Ic.Info, null, tint = l.text, modifier = Modifier.size(16.dp))
-                            Text(stringResource(R.string.action_details), color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.action_details), color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                         }
                     }
                 }
@@ -278,7 +292,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                                 landscape = true,
                                 progress = fraction(card.progress),
                             )
-                            is Card.Show -> RailCard(card.title, vm)
+                            is Card.Show -> RailCard(card.title, vm, seen = titleFraction(card.title, allProgressOf(state)))
                         }
                     }
                 }
@@ -340,7 +354,7 @@ fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     Icon(if (locked) Ic.Lock else Ic.LockOpen, null, tint = if (locked) l.muted else l.accent, modifier = Modifier.size(16.dp))
-                    Text(stringResource(if (locked) R.string.private_badge else R.string.lock_again), color = if (locked) l.muted else l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(if (locked) R.string.unlock_short else R.string.lock_short), color = if (locked) l.muted else l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -383,7 +397,7 @@ fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
                             openLibrary(vm, lib.id)
                         }
                         LazyRow(Modifier.padding(top = 8.dp), contentPadding = PaddingValues(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            items(mine.take(14), key = { it.key }) { RailCard(it, vm) }
+                            items(mine.take(14), key = { it.key }) { RailCard(it, vm, seen = titleFraction(it, allProgressOf(state))) }
                             if (mine.size > 14) {
                                 item {
                                     Box(
@@ -515,14 +529,14 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                         span = { GridItemSpan(if (wide[it]) (if (dense) 3 else 6) else (if (dense) 2 else 3)) },
                     ) { i ->
                         val t = results[i]
-                        val p = t.items.firstNotNullOfOrNull { progress[it.id]?.takeIf { pr -> !pr.completed && pr.positionSec > 0 } }
+                        val seen = titleFraction(t, progress)
                         ShapeCard(
                             artId = t.art(),
                             title = t.title,
                             subtitle = titleSubtitle(t),
                             onClick = { vm.go(Screen.TitleDetail(t.key)) },
                             landscape = wide[i],
-                            progress = fraction(p),
+                            progress = seen,
                             badge = null,
                         )
                     }
@@ -1176,11 +1190,11 @@ private fun HeroFrame(artId: String, minHeight: Dp, back: (() -> Unit)? = null, 
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Color.Transparent, 0.5f to l.bg.copy(alpha = 0.35f), 0.86f to l.bg.copy(alpha = 0.62f), 1f to l.bg)))
         Box(
             // Masked, not covered: the picture fades to nothing over the wash.
-            Modifier.fillMaxWidth().height(minHeight * 0.62f)
+            Modifier.fillMaxWidth().height(minHeight * 0.52f)
                 .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
                 .drawWithContent {
                     drawContent()
-                    drawRect(Brush.verticalGradient(0f to Color.Black, 0.45f to Color.Black, 1f to Color.Transparent), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+                    drawRect(Brush.verticalGradient(0f to Color.Black, 0.35f to Color.Black, 1f to Color.Transparent), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
                 },
         ) {
             Art(artId, Modifier.matchParentSize(), alignment = Alignment.TopCenter)
@@ -1261,3 +1275,9 @@ private fun rememberGridMemory(key: String): androidx.compose.foundation.lazy.gr
     DisposableEffect(key) { onDispose { ListMemory.at[key] = state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset } }
     return state
 }
+
+
+/** Everything known of the user's progress (what is in progress and what a title page loaded), kept while it does not change. */
+@Composable
+private fun allProgressOf(state: AppState): Map<String, io.github.enrell.lain.core.ProgressInfo> =
+    remember(state.continues, state.progress) { state.allProgress() }

@@ -272,8 +272,8 @@
     <string name="remove_download_q">Remove this download?</string>
     <string name="remove_download_body">The copy on this device is deleted. The title stays in your library.</string>
     <string name="download_queued_ep">%1$s · %2$s: downloading</string>
-    <string name="player_original">Playing the original file</string>
-    <string name="player_converted">Converted by the server · %1$s</string>
+    <string name="player_original">Original file</string>
+    <string name="player_converted">Converted · %1$s</string>
     <string name="player_effects_hint">Anime4K sharpens drawn video. It uses more battery.</string>
     <plurals name="count_volumes">
         <item quantity="one">%1$d volume</item>
@@ -296,4 +296,9 @@
     <string name="player_skip_back">Back %1$d seconds</string>
     <string name="player_skip_fwd">Forward %1$d seconds</string>
     <string name="genres_all_hint">Titles shown have every genre you pick.</string>
+    <string name="unlock_short">Unlock</string>
+    <string name="lock_short">Lock</string>
+    <string name="player_source">Source</string>
+    <string name="continue_page_short">Continue · page %1$d</string>
+    <string name="reader_rtl_note">Right to left: the next page is on the left</string>
 </resources>

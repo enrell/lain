@@ -60,8 +60,8 @@
 					</a>
 				</h2>
 				{#if shelf && !shelf.failed}
-					<a href={`/library/${lib.id}`} class="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted hover:text-foreground">
-						View all
+					<a href={`/library/${lib.id}`} class="inline-flex shrink-0 items-center gap-1 text-sm text-foreground/70 hover:text-foreground">
+						View all <ChevronRight class="size-3.5" aria-hidden="true" />
 					</a>
 				{/if}
 			</div>
