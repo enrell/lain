@@ -474,6 +474,8 @@ fn transcode_request(app: &App, v: &Verified, path: &str, sel: &TranscodeSelecti
         start_sec: sel.start_sec,
         allow_video_stream_copy: sel.allow_video_stream_copy,
         allow_audio_stream_copy: sel.allow_audio_stream_copy,
+        video_copy_codecs: sel.video_copy_codecs.clone(),
+        video_effect: sel.video_effect.clone(),
         policy: limits,
         user_id: v.user_id.clone(),
         item_id: item_id.into(),
@@ -765,9 +767,15 @@ fn subtitles(app: &App, w: &WReq, v: &Verified) -> Out {
 
 fn playback_options(app: &App, _: &WReq, _: &Verified) -> Out {
     let s = settings(app);
+    let effects = if app.media.transcoder.probe(&s).video_effects {
+        transcode::effects::PRESETS.iter().map(|p| p.to_string()).collect()
+    } else {
+        Vec::new()
+    };
     Reply::ok(json!(PlaybackOptions {
         default_delivery: s.default_delivery,
         deliveries: vec![st::DELIVERY_HLS.into(), st::DELIVERY_PROGRESSIVE.into()],
+        effects,
         qualities: s.qualities,
     }))
     .into()

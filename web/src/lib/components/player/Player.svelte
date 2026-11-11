@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { Slider } from 'bits-ui';
 	import Hls from 'hls.js';
@@ -39,7 +39,7 @@
 	import { ProgressReporter, type ProgressSnapshot } from '$lib/utilities/progress-reporter';
 	import { elapsedSince, formatTime } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
-	import { EFFECT_PRESETS, loadEffectsPolicy, resolveEffect, type EffectPreset } from '$lib/player/effects-policy';
+	import { EFFECT_PRESETS, loadEffectsPolicy, resolveEffect, serverEffectFor, type EffectPreset, type EffectRenderer } from '$lib/player/effects-policy';
 	import { detectBrowserProfile, type BrowserProfile, type RendererBackend } from '$lib/player/browser-profile';
 	import { VideoRenderer } from '$lib/player/webgpu/engine';
 	import type { WebGLAnime4KRenderer } from '$lib/player/webgl/engine';
@@ -76,6 +76,11 @@
 	let selectedEffect = $state<EffectPreset>('off');
 	let effectError = $state<string | null>(null);
 	let effectManual = false;
+	// Effects run on this device's GPU unless the viewer asked the server
+	// to render them into the session (D-274). serverEffect is the preset
+	// the server renders: '' while the device does, or when the server
+	// does not offer that preset.
+	let renderOn = $state<EffectRenderer>('client');
 	const rendererPasses = $derived(
 		selectedEffect === 'anime4k-dog-x2' ? ANIME4K_DOG_X2 : [PASSTHROUGH_PASS]
 	);
@@ -87,6 +92,7 @@
 	async function applyEffectDefault(): Promise<void> {
 		if (!session.user || effectManual) return;
 		const policy = loadEffectsPolicy(session.user.id);
+		renderOn = policy.renderOn ?? 'client';
 		let libraries: Awaited<ReturnType<typeof api.libraries.list>> = [];
 		try {
 			libraries = await api.libraries.list();
@@ -183,6 +189,8 @@
 	// v3 session state (D-042): delivery actually used, the quality the
 	// viewer picked, why the server transcodes, and the hls.js instance.
 	let playbackOptions = $state<PlaybackOptions | null>(null);
+	const serverEffect = $derived(serverEffectFor(renderOn, selectedEffect, playbackOptions?.effects));
+	let appliedServerEffect: string = '';
 	let selectedQuality = $state('');
 	let delivery = $state<TranscodeDelivery | ''>('');
 	let transcodeReasons = $state<string[]>([]);
@@ -400,7 +408,8 @@
 		const ready = transcodeReady;
 		const passes = rendererPasses;
 		const mode = computeMode;
-		if (!el || !gpuCanvas || !glCanvas || !profile || !ready || trackFailed || selectedEffect === 'off') {
+		const onServer = serverEffect !== '';
+		if (!el || !gpuCanvas || !glCanvas || !profile || !ready || trackFailed || selectedEffect === 'off' || onServer) {
 			stopRenderer();
 			return;
 		}
@@ -602,8 +611,14 @@
 				subtitle_stream: subtitleStream,
 				subtitle_mode: (languageMetadataKnown || chosenSidecar !== null) && embeddedSubtitle === '' ? 'off' : undefined,
 				start_sec: baseOffset || undefined,
-				video_copy_codecs: copyCodecs()
+				video_copy_codecs: copyCodecs(),
+				video_effect: serverEffect || undefined
 			});
+			// The server answers a request it cannot honour with the plain
+			// session and the reason; say it instead of showing nothing.
+			if (serverEffect && !(status.reasons ?? []).some((reason) => reason.startsWith('video effect'))) {
+				effectError = status.fallback || 'the server did not render the effect';
+			}
 			hevcCopied = status.video_direct === true && status.video_codec === 'hevc';
 			transcodeSession = status.session;
 			delivery = status.delivery ?? 'progressive';
@@ -747,12 +762,36 @@
 	// out loud instead of a black frame.
 	async function fallbackToTranscode(): Promise<void> {
 		if (forcedTranscode) return;
-		forcedTranscode = true;
 		directFallbackNote = true;
+		await leaveDirectPlay();
+	}
+
+	// A server-rendered effect lives inside a session, so choosing one (or
+	// changing it) rebuilds the session at the viewer's position, and a
+	// direct play is left for a session first.
+	$effect(() => {
+		const want = serverEffect;
+		if (want === appliedServerEffect) return;
+		appliedServerEffect = want;
+		untrack(() => {
+			if (mode === 'transcode') {
+				if (transcodeSession || preparingTranscode) void rebuildAt(currentTime || baseOffset);
+			} else if (want && mode === 'direct') {
+				void leaveDirectPlay();
+			}
+		});
+	});
+
+	async function leaveDirectPlay(): Promise<void> {
+		if (forcedTranscode) return;
+		forcedTranscode = true;
+		if (frameCheck) clearTimeout(frameCheck);
+		frameCheck = null;
 		destroyHLS();
 		const el = video;
 		const at = el && el.currentTime > 1 ? el.currentTime : resumePosition();
 		el?.pause();
+		transcodeReady = false;
 		baseOffset = at;
 		resumeApplied = true;
 		await prepareTranscode();
@@ -1579,6 +1618,15 @@
 					{#each EFFECT_PRESETS as preset}<option value={preset.id}>{preset.label}</option>{/each}
 				</select>
 			</label>
+			{#if (playbackOptions?.effects?.length ?? 0) > 0}
+				<label class="chrome-chip">
+					Render on
+					<select class="chrome-select" bind:value={renderOn} aria-label="Where video effects are rendered" onchange={() => { effectError = null; }}>
+						<option value="client">This device</option>
+						<option value="server">Server</option>
+					</select>
+				</label>
+			{/if}
 			{#if effectError && selectedEffect !== 'off'}<p class="mt-1 text-xs text-danger" role="status">Anime4K unavailable: {effectError}</p>{/if}
 			<a class="mt-1 block text-xs text-accent hover:underline" href="/settings/playback#effects">Set default effects and overrides</a>
 			{#if mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}

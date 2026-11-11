@@ -152,7 +152,13 @@ impl EncodePlan {
         a.extend([s("-i"), self.spec.path.clone()]);
         let sub = escape_filter_path(&subtitle_file.to_string_lossy());
         let fonts = escape_filter_path(&self.settings.fallback_font_path);
-        let fill = |chain: &str| chain.replace(SUBTITLE_PLACEHOLDER, &sub).replace(FONTS_PLACEHOLDER, &fonts);
+        let effect = escape_filter_path(&self.effect_file);
+        let fill = |chain: &str| {
+            chain
+                .replace(SUBTITLE_PLACEHOLDER, &sub)
+                .replace(FONTS_PLACEHOLDER, &fonts)
+                .replace(super::effects::EFFECT_PLACEHOLDER, &effect)
+        };
         if !self.complex_filter.is_empty() {
             a.extend([s("-filter_complex"), fill(&self.complex_filter), s("-map"), s("[vout]")]);
         } else {
@@ -170,6 +176,11 @@ impl EncodePlan {
         }
         if self.copy_video {
             a.extend([s("-c:v"), s("copy")]);
+            // Matroska HEVC would be muxed as `hev1`, which Safari
+            // refuses; `hvc1` plays everywhere HEVC does (D-273).
+            if matches!(self.video.codec_name.to_ascii_lowercase().as_str(), "hevc" | "h265") {
+                a.extend([s("-tag:v"), s("hvc1")]);
+            }
         } else {
             a.extend([s("-c:v"), self.encoder.clone()]);
             a.extend(self.video_quality_args());
@@ -475,8 +486,11 @@ mod tests {
             a.contains("-force_key_frames expr:gte(t,n_forced*6) -g 144 -keyint_min 144 -sc_threshold 0 /c/s/raw.m3u8"),
             "{a}"
         );
-        p.settings.hls_segment_container = "mpegts".into();
         p.copy_video = true;
+        let a = p.ffmpeg_args(Path::new("/c/s/raw.m3u8"), Path::new(""), false).join(" ");
+        assert!(a.contains("-c:v copy -tag:v hvc1 -c:a") && !a.contains("-force_key_frames"), "{a}");
+        p.video.codec_name = "h264".into();
+        p.settings.hls_segment_container = "mpegts".into();
         let a = p.ffmpeg_args(Path::new("/c/s/raw.m3u8"), Path::new(""), false).join(" ");
         assert!(
             a.contains("-hls_segment_type mpegts") && a.contains("seg%05d.ts") && !a.contains("-force_key_frames"),
