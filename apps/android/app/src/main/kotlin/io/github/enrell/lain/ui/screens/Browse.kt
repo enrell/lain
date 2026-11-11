@@ -1,51 +1,129 @@
 package io.github.enrell.lain.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.enrell.lain.R
 import io.github.enrell.lain.core.Item
+import io.github.enrell.lain.core.ProgressInfo
+import io.github.enrell.lain.domain.ADDED_DAYS
+import io.github.enrell.lain.domain.Axis
 import io.github.enrell.lain.domain.Card
+import io.github.enrell.lain.domain.Filters
+import io.github.enrell.lain.domain.Form
 import io.github.enrell.lain.domain.RailLabel
+import io.github.enrell.lain.domain.Sort
 import io.github.enrell.lain.domain.Title
+import io.github.enrell.lain.domain.Watch
+import io.github.enrell.lain.domain.applyFilters
 import io.github.enrell.lain.domain.buildRails
+import io.github.enrell.lain.domain.countBy
 import io.github.enrell.lain.domain.fraction
 import io.github.enrell.lain.domain.nextUp
 import io.github.enrell.lain.domain.reading
 import io.github.enrell.lain.domain.titleKey
+import io.github.enrell.lain.domain.watchState
+import io.github.enrell.lain.graph
 import io.github.enrell.lain.ui.AppState
 import io.github.enrell.lain.ui.AppViewModel
 import io.github.enrell.lain.ui.Screen
 import io.github.enrell.lain.ui.theme.LocalLain
+import kotlinx.coroutines.launch
+
+private val GUTTER = 20.dp
+private val RAIL_H = 152.dp
+
+private fun Title.art(): String = (items.firstOrNull { it.episode > 0 } ?: items.first()).id
+private fun Title.wide(): Boolean = Shapes.landscape(art(), guess = !reading)
+
+/** Every progress record the app holds, by item. */
+private fun AppState.allProgress(): Map<String, ProgressInfo> = continues.associateBy { it.itemId } + progress
+
+@Composable
+private fun titleSubtitle(t: Title): String = when {
+    t.items.size > 1 && t.reading -> pluralStringResource(R.plurals.count_items, t.items.size, t.items.size)
+    t.items.size > 1 -> pluralStringResource(R.plurals.count_episodes, t.items.size, t.items.size)
+    t.year > 0 -> t.year.toString()
+    else -> t.kind
+}
+
+/** A title's card at rail height: as wide as its picture's shape. */
+@Composable
+private fun RailCard(t: Title, vm: AppViewModel, height: Dp = RAIL_H) {
+    val wide = t.wide()
+    ShapeCard(
+        artId = t.art(),
+        title = t.title,
+        subtitle = titleSubtitle(t),
+        onClick = { vm.go(Screen.TitleDetail(t.key)) },
+        modifier = Modifier.width(height * (if (wide) Shapes.LANDSCAPE else Shapes.PORTRAIT)),
+        landscape = wide,
+        badge = if (t.items.size > 1) t.items.size.toString() else null,
+    )
+}
+
+@Composable
+private fun RailHeader(title: String, action: String?, onClick: (() -> Unit)?) {
+    val l = LocalLain.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = GUTTER).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SectionTitle(title)
+        if (onClick != null) Icon(Ic.ChevronRight, null, tint = l.muted, modifier = Modifier.padding(start = 4.dp).size(16.dp))
+        Box(Modifier.weight(1f))
+        if (action != null) Mono(action, color = l.muted, size = 10)
+    }
+}
 
 /** Home: a title-first hero, then Continue, Recently added and one rail per library. */
 @Composable
@@ -63,32 +141,53 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
         }
         return
     }
-    val hero: Title? = rails.firstNotNullOfOrNull { r ->
-        r.cards.firstNotNullOfOrNull { c ->
-            when (c) {
-                is Card.Resume -> state.titles.firstOrNull { it.key == titleKey(c.item) }
-                is Card.Show -> c.title
+    val hero: Title? = remember(rails, state.titles) {
+        rails.firstNotNullOfOrNull { r ->
+            r.cards.firstNotNullOfOrNull { c ->
+                when (c) {
+                    is Card.Resume -> state.titles.firstOrNull { it.key == titleKey(c.item) }
+                    is Card.Show -> c.title
+                }
             }
         }
     }
-    val heroH = (LocalConfiguration.current.screenHeightDp * l.tokens.heroHeight).dp
-    LazyColumn(contentPadding = PaddingValues(bottom = l.sp(5))) {
+    val heroH = (LocalConfiguration.current.screenHeightDp * 0.66f).dp
+    LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
         if (hero != null) {
             item {
                 Box(Modifier.fillMaxWidth().height(heroH)) {
-                    Art(hero.items.first().id, Modifier.fillMaxSize())
-                    Box(Modifier.fillMaxSize().background(heroScrim(l.heroStops, l.bg)))
-                    Column(Modifier.align(Alignment.BottomStart).padding(l.sp(4)), verticalArrangement = Arrangement.spacedBy(l.sp(2))) {
-                        Label(if (hero.reading) stringResource(R.string.kind_reading) else stringResource(R.string.kind_watching))
-                        Text(hero.title, style = MaterialTheme.typography.displayLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Row(horizontalArrangement = Arrangement.spacedBy(l.sp(2))) {
-                            Action(
-                                stringResource(if (hero.reading) R.string.action_read else R.string.action_play),
-                                "Enter",
-                                { vm.open(nextUp(hero, state.progress)) },
-                                primary = true,
-                            )
-                            Action(stringResource(R.string.action_details), null, { vm.go(Screen.TitleDetail(hero.key)) })
+                    Art(hero.art(), Modifier.fillMaxSize())
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, 0.45f to l.bg.copy(alpha = 0.35f), 1f to l.bg)))
+                    Column(Modifier.align(Alignment.BottomStart).padding(horizontal = GUTTER).padding(bottom = 20.dp)) {
+                        Mono(
+                            stringResource(R.string.hero_label) + if (hero.year > 0) " / ${hero.year}" else "",
+                            color = l.accent,
+                        )
+                        Text(
+                            hero.title.uppercase(),
+                            Modifier.padding(top = 14.dp),
+                            color = l.text, fontSize = 40.sp, lineHeight = 40.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.6).sp,
+                            maxLines = 3, overflow = TextOverflow.Ellipsis,
+                        )
+                        Mono(heroMeta(hero), Modifier.padding(top = 14.dp), color = l.text.copy(alpha = 0.75f))
+                        Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(
+                                Modifier.height(44.dp).clip(CircleShape).background(Color.White).clickable { vm.open(nextUp(hero, state.progress)) }.padding(horizontal = 24.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(Ic.Play, null, tint = Color.Black, modifier = Modifier.size(14.dp))
+                                Text(stringResource(if (hero.reading) R.string.action_read else R.string.action_play), color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Row(
+                                Modifier.height(44.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)).border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                    .clickable { vm.go(Screen.TitleDetail(hero.key)) }.padding(horizontal = 20.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(Ic.Info, null, tint = l.text, modifier = Modifier.size(16.dp))
+                                Text(stringResource(R.string.action_details), color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
@@ -96,34 +195,31 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
         }
         if (state.fromCache) item { OfflineNote(state) }
         items(rails) { rail ->
-            Column(Modifier.padding(top = l.sp(4))) {
-                Label(
+            Column(Modifier.padding(top = 28.dp)) {
+                val lib = (rail.label as? RailLabel.Library)
+                val libId = lib?.let { n -> state.libraries.firstOrNull { it.name == n.name }?.id }
+                RailHeader(
                     when (val lab = rail.label) {
                         RailLabel.Continue -> stringResource(R.string.rail_continue)
                         RailLabel.Recent -> stringResource(R.string.rail_recent)
                         is RailLabel.Library -> lab.name
                     },
-                    Modifier.padding(start = l.sp(4), bottom = l.sp(2)),
+                    if (libId != null) stringResource(R.string.view_all) else null,
+                    libId?.let { id -> { vm.go(Screen.LibraryDetail(id)) } },
                 )
-                LazyRow(contentPadding = PaddingValues(horizontal = l.sp(4)), horizontalArrangement = Arrangement.spacedBy(l.gap)) {
-                    items(rail.cards) { card ->
+                LazyRow(Modifier.padding(top = 8.dp), contentPadding = PaddingValues(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    items(rail.cards.take(20)) { card ->
                         when (card) {
-                            is Card.Resume -> PosterCard(
+                            is Card.Resume -> ShapeCard(
                                 artId = card.item.id,
                                 title = card.item.title,
-                                subtitle = episodeLabel(card.item.season, card.item.episode, card.item.reading()),
-                                progress = fraction(card.progress),
+                                subtitle = episodeText(card.item),
                                 onClick = { vm.open(card.item) },
-                                width = l.cardW * 1.6f,
-                                height = l.cardW * 0.9f,
+                                modifier = Modifier.width(RAIL_H * Shapes.LANDSCAPE),
+                                landscape = true,
+                                progress = fraction(card.progress),
                             )
-                            is Card.Show -> PosterCard(
-                                artId = card.title.items.first().id,
-                                title = card.title.title,
-                                subtitle = if (card.title.year > 0) card.title.year.toString() else "",
-                                progress = 0f,
-                                onClick = { vm.go(Screen.TitleDetail(card.title.key)) },
-                            )
+                            is Card.Show -> RailCard(card.title, vm)
                         }
                     }
                 }
@@ -133,49 +229,293 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
 }
 
 @Composable
+private fun heroMeta(t: Title): String = listOfNotNull(
+    if (t.items.size > 1) titleSubtitle(t) else null,
+    t.year.takeIf { it > 0 }?.toString(),
+    t.kind,
+).joinToString(" · ")
+
+@Composable
+private fun episodeText(item: Item): String =
+    if (item.episode > 0) stringResource(if (item.reading()) R.string.volume_n else R.string.episode_n, item.episode.toInt()) else if (item.year > 0) item.year.toString() else item.kind
+
+@Composable
 fun OfflineNote(state: AppState) {
     val l = LocalLain.current
-    Row(Modifier.padding(horizontal = l.sp(4), vertical = l.sp(2)), horizontalArrangement = Arrangement.spacedBy(l.sp(2)), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.padding(horizontal = GUTTER, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Dot(l.warn)
-        Text(stringResource(R.string.offline_snapshot), color = l.muted, style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.offline_snapshot), color = l.muted, fontSize = 12.sp)
     }
 }
 
-/** The Library grid (all titles) or Read (comics and manga only). */
+/** The Library front: one shelf per library, or every title in one grid. */
 @Composable
 fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
     val l = LocalLain.current
+    val prefs = LocalContext.current.graph.prefs
     val titles = remember(state.titles, readingOnly) { if (readingOnly) state.titles.filter { it.reading } else state.titles }
+    val libraries = remember(titles, state.libraries) { state.libraries.filter { lib -> titles.any { it.libraryId == lib.id } } }
+    var shelves by rememberSaveable { mutableStateOf(prefs.libraryShelves) }
+    val byShelf = libraries.size > 1 && shelves
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(l.sp(4)), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(l.sp(2))) {
-            Text(stringResource(if (readingOnly) R.string.nav_read else R.string.nav_library), style = MaterialTheme.typography.headlineLarge)
-            Label(pluralStringResource(R.plurals.count_titles, titles.size, titles.size))
+        Row(Modifier.padding(start = GUTTER, end = GUTTER, top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(if (readingOnly) R.string.nav_read else R.string.nav_library), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
+        }
+        if (libraries.size > 1) {
+            Row(Modifier.padding(horizontal = GUTTER).padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                for ((on, label) in listOf(true to R.string.view_by_library, false to R.string.view_all_titles)) {
+                    Box(
+                        Modifier.clip(l.buttonShape).background(if (shelves == on) l.raised else Color.Transparent)
+                            .clickable { shelves = on; prefs.libraryShelves = on }.padding(horizontal = 12.dp, vertical = 10.dp),
+                    ) { Mono(stringResource(label), color = if (shelves == on) l.text else l.muted, size = 11) }
+                }
+            }
         }
         if (state.fromCache) OfflineNote(state)
         if (titles.isEmpty()) {
             Centered { Text(stringResource(R.string.library_empty), color = l.muted) }
             return
         }
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(l.cardW),
-            contentPadding = PaddingValues(l.sp(4)),
-            horizontalArrangement = Arrangement.spacedBy(l.gap),
-            verticalArrangement = Arrangement.spacedBy(l.gap),
-        ) {
-            items(titles, key = { it.key }) { t ->
-                PosterCard(
-                    artId = t.items.first().id,
-                    title = t.title,
-                    subtitle = pluralStringResource(R.plurals.count_items, t.items.size, t.items.size),
-                    progress = 0f,
-                    onClick = { vm.go(Screen.TitleDetail(t.key)) },
+        if (byShelf) {
+            LazyColumn(contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp)) {
+                items(libraries, key = { it.id }) { lib ->
+                    val mine = remember(titles, lib.id) { titles.filter { it.libraryId == lib.id }.sortedByDescending { it.latest } }
+                    Column(Modifier.padding(top = 20.dp)) {
+                        RailHeader(lib.name, pluralStringResource(R.plurals.count_items, mine.sumOf { it.items.size }, mine.sumOf { it.items.size })) {
+                            vm.go(Screen.LibraryDetail(lib.id))
+                        }
+                        LazyRow(Modifier.padding(top = 8.dp), contentPadding = PaddingValues(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            items(mine.take(14), key = { it.key }) { RailCard(it, vm) }
+                            if (mine.size > 14) {
+                                item {
+                                    Box(
+                                        Modifier.height(RAIL_H).width(112.dp).clip(l.cardShape).border(1.dp, l.line, l.cardShape).clickable { vm.go(Screen.LibraryDetail(lib.id)) },
+                                        contentAlignment = Alignment.Center,
+                                    ) { Text(stringResource(R.string.see_all), color = l.muted, fontSize = 14.sp) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Box(Modifier.padding(top = 10.dp)) { LibraryBrowser(titles, state, vm, searchHint = stringResource(R.string.search_library)) }
+        }
+    }
+}
+
+/** One library: its name with the way back, then the browser. */
+@Composable
+fun LibraryDetailScreen(state: AppState, vm: AppViewModel, id: String) {
+    val l = LocalLain.current
+    val lib = state.libraries.firstOrNull { it.id == id }
+    val titles = remember(state.titles, id) { state.titles.filter { it.libraryId == id } }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = GUTTER, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconBtn(Ic.ChevronLeft, stringResource(R.string.nav_library), { vm.back() })
+            Column {
+                Mono(stringResource(R.string.nav_library), size = 10)
+                Text(lib?.name ?: "", color = l.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Box(Modifier.padding(top = 8.dp)) { LibraryBrowser(titles, state, vm, searchHint = stringResource(R.string.search_library)) }
+    }
+}
+
+/**
+ * A set of titles to search and narrow: a search field and a filters
+ * sheet (sort, tile size, progress, form, kind, added), then a grid by
+ * shape: a landscape still takes the row and portraits two a row, or
+ * two and three with small tiles.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searchHint: String) {
+    val l = LocalLain.current
+    val prefs = LocalContext.current.graph.prefs
+    var filters by remember { mutableStateOf(Filters(sort = Sort.of(prefs.librarySort))) }
+    var dense by remember { mutableStateOf(prefs.smallTiles) }
+    var sheet by remember { mutableStateOf(false) }
+    val now = remember { System.currentTimeMillis() / 1000 }
+    val progress = remember(state.continues, state.progress) { state.allProgress() }
+    val results = remember(titles, filters, progress) { applyFilters(titles, filters, progress, now) }
+    val grid = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+    val far by remember { derivedStateOf { grid.firstVisibleItemIndex > 10 } }
+    // A new result set starts at its beginning.
+    LaunchedEffect(filters) { grid.scrollToItem(0) }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.padding(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                SearchField(filters.q, { filters = filters.copy(q = it) }, searchHint, Modifier.weight(1f))
+                Box {
+                    IconBtn(Ic.Sliders, stringResource(R.string.filters), { sheet = true }, tint = if (filters.active > 0) l.text else l.muted, outlined = true)
+                    if (filters.active > 0) {
+                        Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(8.dp).clip(CircleShape).background(l.accent))
+                    }
+                }
+            }
+            FlowRow(
+                Modifier.padding(horizontal = GUTTER).padding(top = 10.dp, bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    if (filters.narrowed) stringResource(R.string.count_of, results.size, titles.size) else pluralStringResource(R.plurals.count_titles, titles.size, titles.size),
+                    Modifier.padding(end = 4.dp).align(Alignment.CenterVertically),
+                    color = l.muted, fontSize = 14.sp,
                 )
+                filters.watch?.let { w -> FilterChip(watchLabel(w)) { filters = filters.copy(watch = null) } }
+                filters.form?.let { s -> FilterChip(formLabel(s)) { filters = filters.copy(form = null) } }
+                if (filters.kind.isNotEmpty()) FilterChip(filters.kind) { filters = filters.copy(kind = "") }
+                if (filters.added > 0) FilterChip(addedLabel(filters.added)) { filters = filters.copy(added = 0) }
+                if (filters.narrowed) {
+                    Text(stringResource(R.string.clear), Modifier.clip(CircleShape).clickable { filters = filters.cleared() }.padding(horizontal = 8.dp, vertical = 4.dp), color = l.muted, fontSize = 12.sp)
+                }
+            }
+            if (results.isEmpty()) {
+                Column(Modifier.fillMaxWidth().padding(top = 56.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        if (filters.q.isNotBlank()) stringResource(R.string.nothing_matches, filters.q.trim()) else stringResource(R.string.nothing_passes),
+                        color = l.text, fontSize = 14.sp,
+                    )
+                    Gap(16.dp)
+                    WButton(stringResource(R.string.clear_all), { filters = filters.cleared() }, kind = Btn.Secondary)
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(6),
+                    state = grid,
+                    contentPadding = PaddingValues(start = GUTTER, end = GUTTER, top = 8.dp, bottom = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    items(
+                        results,
+                        key = { it.key },
+                        span = { t -> GridItemSpan(if (t.wide()) (if (dense) 3 else 6) else (if (dense) 2 else 3)) },
+                    ) { t ->
+                        val p = t.items.firstNotNullOfOrNull { progress[it.id]?.takeIf { pr -> !pr.completed && pr.positionSec > 0 } }
+                        ShapeCard(
+                            artId = t.art(),
+                            title = t.title,
+                            subtitle = titleSubtitle(t),
+                            onClick = { vm.go(Screen.TitleDetail(t.key)) },
+                            landscape = t.wide(),
+                            progress = fraction(p),
+                            badge = if (t.items.size > 1) t.items.size.toString() else null,
+                        )
+                    }
+                }
+            }
+        }
+        if (far) {
+            Row(
+                Modifier.align(Alignment.BottomEnd).padding(20.dp).height(40.dp).clip(CircleShape).background(l.surface.copy(alpha = 0.95f)).border(1.dp, l.line, CircleShape)
+                    .clickable { scope.launch { grid.animateScrollToItem(0) } }.padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Ic.ArrowUp, null, tint = l.muted, modifier = Modifier.size(16.dp))
+                Text(stringResource(R.string.top), color = l.muted, fontSize = 14.sp)
+            }
+        }
+    }
+
+    if (sheet) {
+        val watchCounts = countBy(titles, filters, progress, now, Axis.Watch) { listOf(watchState(it, progress)) }
+        val formCounts = countBy(titles, filters, progress, now, Axis.Form) { listOf(if (it.items.size > 1) Form.Series else Form.Single) }
+        val kindCounts = countBy(titles, filters, progress, now, Axis.Kind) { t -> t.items.map { it.kind }.distinct() }
+        val kinds = remember(titles) { titles.flatMap { t -> t.items.map { it.kind } }.distinct().filter { it.isNotEmpty() }.sorted() }
+        Sheet(
+            stringResource(R.string.filters),
+            { sheet = false },
+            footer = {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    WButton(stringResource(R.string.clear), { filters = filters.cleared() }, Modifier.weight(1f), kind = Btn.Ghost, enabled = filters.active > 0)
+                    WButton(pluralStringResource(R.plurals.show_titles, results.size, results.size), { sheet = false }, Modifier.weight(1f))
+                }
+            },
+        ) {
+            SheetHeading(stringResource(R.string.sort))
+            for (pair in Sort.entries.chunked(2)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (s in pair) {
+                        ChoiceTile(sortLabel(s), filters.sort == s, { filters = filters.copy(sort = s); prefs.librarySort = s.id }, Modifier.weight(1f))
+                    }
+                }
+            }
+            SheetHeading(stringResource(R.string.tiles))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ChoiceTile(stringResource(R.string.tiles_large), !dense, { dense = false; prefs.smallTiles = false }, Modifier.weight(1f))
+                ChoiceTile(stringResource(R.string.tiles_small), dense, { dense = true; prefs.smallTiles = true }, Modifier.weight(1f))
+            }
+            SheetHeading(stringResource(R.string.progress))
+            for (w in Watch.entries) {
+                OptionRow(watchLabel(w), watchCounts[w] ?: 0, filters.watch == w, { filters = filters.copy(watch = if (filters.watch == w) null else w) }, enabled = (watchCounts[w] ?: 0) > 0)
+            }
+            if ((formCounts[Form.Series] ?: 0) > 0 && (formCounts[Form.Single] ?: 0) > 0) {
+                SheetHeading(stringResource(R.string.form))
+                for (s in Form.entries) {
+                    OptionRow(formLabel(s), formCounts[s] ?: 0, filters.form == s, { filters = filters.copy(form = if (filters.form == s) null else s) })
+                }
+            }
+            if (kinds.size > 1) {
+                SheetHeading(stringResource(R.string.kind))
+                for (k in kinds) {
+                    OptionRow(k, kindCounts[k] ?: 0, filters.kind == k, { filters = filters.copy(kind = if (filters.kind == k) "" else k) }, enabled = (kindCounts[k] ?: 0) > 0)
+                }
+            }
+            SheetHeading(stringResource(R.string.added))
+            for (d in ADDED_DAYS) {
+                val n = remember(titles, filters, d) { applyFilters(titles, filters.copy(added = d), progress, now).size }
+                OptionRow(addedLabel(d), n, filters.added == d, { filters = filters.copy(added = if (filters.added == d) 0 else d) }, enabled = n > 0)
             }
         }
     }
 }
 
-/** A title: hero art, the main action, the episode or volume list with progress and downloads. */
+@Composable
+private fun sortLabel(s: Sort): String = stringResource(
+    when (s) {
+        Sort.Title -> R.string.sort_title
+        Sort.TitleDesc -> R.string.sort_title_desc
+        Sort.Recent -> R.string.sort_recent
+        Sort.Oldest -> R.string.sort_oldest
+        Sort.YearDesc -> R.string.sort_year_desc
+        Sort.Year -> R.string.sort_year
+        Sort.SizeDesc -> R.string.sort_size
+        Sort.EpisodesDesc -> R.string.sort_episodes
+    },
+)
+
+@Composable
+private fun watchLabel(w: Watch): String = stringResource(
+    when (w) {
+        Watch.Unwatched -> R.string.watch_unwatched
+        Watch.InProgress -> R.string.watch_in_progress
+        Watch.Watched -> R.string.progress_done
+    },
+)
+
+@Composable
+private fun formLabel(s: Form): String = stringResource(if (s == Form.Series) R.string.form_series else R.string.form_single)
+
+@Composable
+private fun addedLabel(days: Int): String = stringResource(
+    when (days) {
+        1 -> R.string.added_today
+        7 -> R.string.added_week
+        30 -> R.string.added_month
+        else -> R.string.added_quarter
+    },
+)
+
+/**
+ * A title: the hero, the main action on arrival, then its episodes or
+ * volumes as rows (thumbnail, label, state) and the facts.
+ */
 @Composable
 fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Item) -> Unit) {
     val l = LocalLain.current
@@ -185,93 +525,179 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         return
     }
     LaunchedEffect(key) { vm.loadProgress(title.items.map { it.id }) }
-    LazyColumn(contentPadding = PaddingValues(bottom = l.sp(5))) {
+    val next = nextUp(title, state.progress)
+    val watched = title.items.count { state.progress[it.id]?.completed == true }
+    val series = title.items.size > 1
+    LazyColumn(contentPadding = PaddingValues(bottom = 40.dp)) {
         item {
-            Box(Modifier.fillMaxWidth().height(260.dp)) {
-                Art(title.items.first().id, Modifier.fillMaxSize())
-                Box(Modifier.fillMaxSize().background(heroScrim(l.heroStops, l.bg)))
-                Column(Modifier.align(Alignment.BottomStart).padding(l.sp(4)), verticalArrangement = Arrangement.spacedBy(l.sp(2))) {
-                    Label(if (title.year > 0) "${title.kind} · ${title.year}" else title.kind)
-                    Text(title.title, style = MaterialTheme.typography.displayMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    val next = nextUp(title, state.progress)
-                    Action(
-                        stringResource(if (title.reading) R.string.action_read else R.string.action_play) +
-                            episodeLabel(next.season, next.episode, title.reading).let { if (it.isEmpty()) "" else " · $it" },
-                        "Enter",
-                        { vm.open(next) },
-                        primary = true,
+            Box(Modifier.fillMaxWidth().height(272.dp)) {
+                Art(title.art(), Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to l.bg.copy(alpha = 0.25f), 0.5f to l.bg.copy(alpha = 0.55f), 1f to l.bg)))
+                Box(Modifier.padding(6.dp)) { IconBtn(Ic.ArrowLeft, "Back", { vm.back() }, tint = l.text) }
+                Column(Modifier.align(Alignment.BottomStart).padding(horizontal = GUTTER).padding(bottom = 20.dp)) {
+                    Mono(
+                        listOfNotNull(
+                            title.year.takeIf { it > 0 }?.toString(),
+                            if (series) stringResource(R.string.format_series) else title.kind,
+                            if (series) titleSubtitle(title) else null,
+                        ).joinToString(" · "),
+                        color = l.accent,
+                    )
+                    Text(
+                        title.title.uppercase(),
+                        Modifier.padding(top = 12.dp),
+                        color = l.text, fontSize = 30.sp, lineHeight = 32.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.1).sp,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
         }
-        items(title.items, key = { it.id }) { item ->
-            ItemRow(item, state, vm, onDownload)
-        }
-    }
-}
-
-@Composable
-private fun ItemRow(item: Item, state: AppState, vm: AppViewModel, onDownload: (Item) -> Unit) {
-    val l = LocalLain.current
-    val p = state.progress[item.id]
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = l.sp(4), vertical = l.sp(1)),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(l.sp(2)),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                episodeLabel(item.season, item.episode, item.reading()).ifEmpty { item.title },
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Text(item.fileName, color = l.muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (p != null && (p.completed || p.positionSec > 0)) {
-                Label(
+        item {
+            Column(Modifier.padding(horizontal = GUTTER)) {
+                val resume = state.progress[next.id]?.takeIf { !it.completed && it.positionSec > 0 }
+                WButton(
                     when {
-                        p.completed -> stringResource(R.string.progress_done)
-                        item.reading() -> stringResource(R.string.progress_page, p.positionSec.toInt(), p.durationSec.toInt())
-                        else -> stringResource(R.string.progress_at, clock(p.positionSec))
-                    },
-                    color = if (p.completed) l.ok else l.accent,
+                        title.reading && resume != null -> stringResource(R.string.continue_page, resume.positionSec.toInt())
+                        title.reading -> stringResource(R.string.action_read)
+                        resume != null -> stringResource(R.string.resume_from, clock(resume.positionSec))
+                        else -> stringResource(R.string.action_play)
+                    } + if (series && next.episode > 0) " · " + episodeLabel(next.season, next.episode, title.reading) else "",
+                    { vm.open(next) },
+                    Modifier.fillMaxWidth(),
+                    icon = Ic.Play,
+                    large = true,
                 )
-            }
-        }
-        Action(stringResource(if (item.reading()) R.string.action_read else R.string.action_play), null, { vm.open(item) })
-        Action(stringResource(R.string.action_download), null, { onDownload(item) })
-    }
-}
-
-/** Search: the server's search, or offline a title match over the snapshot. */
-@Composable
-fun SearchScreen(state: AppState, vm: AppViewModel) {
-    val l = LocalLain.current
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    Column(Modifier.fillMaxSize().padding(l.sp(4)), verticalArrangement = Arrangement.spacedBy(l.sp(3))) {
-        OutlinedTextField(
-            value = state.query,
-            onValueChange = { vm.search(it) },
-            label = { Text(stringResource(R.string.search_hint)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().focusRequester(focus),
-        )
-        if (state.searching) Label(stringResource(R.string.working))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(l.sp(1))) {
-            items(state.results, key = { it.id }) { item ->
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(l.sp(2))) {
-                    Column(Modifier.weight(1f)) {
-                        Text(item.title, style = MaterialTheme.typography.titleSmall)
-                        Label(listOf(item.kind, episodeLabel(item.season, item.episode, item.reading())).filter { it.isNotEmpty() }.joinToString(" · "))
+                Text(
+                    when {
+                        watched == title.items.size -> stringResource(R.string.progress_done)
+                        watched > 0 || resume != null -> stringResource(R.string.watched_of, watched, title.items.size)
+                        else -> stringResource(R.string.watch_unwatched)
+                    },
+                    Modifier.fillMaxWidth().padding(top = 8.dp),
+                    color = l.muted, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+                if (!series) {
+                    Row(Modifier.padding(top = 10.dp)) {
+                        WButton(stringResource(R.string.action_download), { onDownload(next) }, kind = Btn.Ghost, icon = Ic.Download)
                     }
-                    Action(stringResource(R.string.action_details), null, { vm.go(Screen.TitleDetail(titleKey(item))) })
-                    Action(stringResource(if (item.reading()) R.string.action_read else R.string.action_play), null, { vm.open(item) })
                 }
             }
         }
-        if (!state.searching && state.query.isNotBlank() && state.results.isEmpty()) {
-            Text(stringResource(R.string.search_none), color = l.muted)
+        if (series) {
+            item {
+                Text(
+                    stringResource(if (title.reading) R.string.volumes else R.string.episodes),
+                    Modifier.padding(start = GUTTER, top = 22.dp, bottom = 10.dp),
+                    color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp,
+                )
+            }
+            items(title.items, key = { it.id }) { item -> EpisodeRow(item, title, state, vm, onDownload) }
         }
-        Spacer(Modifier.height(l.sp(4)))
+        item {
+            Column(
+                Modifier.padding(horizontal = GUTTER).padding(top = 22.dp).fillMaxWidth().clip(l.panelShape).border(1.dp, l.line.copy(alpha = 0.7f), l.panelShape)
+                    .background(l.surface.copy(alpha = 0.3f)).padding(16.dp),
+            ) {
+                Mono(stringResource(R.string.information))
+                Gap(8.dp)
+                Fact(stringResource(R.string.fact_format), if (series) stringResource(R.string.format_series) else title.kind)
+                if (title.year > 0) Fact(stringResource(R.string.fact_year), title.year.toString())
+                if (series) Fact(stringResource(if (title.reading) R.string.volumes else R.string.episodes), title.items.size.toString())
+                state.libraries.firstOrNull { it.id == title.libraryId }?.let { Fact(stringResource(R.string.nav_library), it.name) }
+                Fact(stringResource(R.string.fact_size), bytes(title.items.sumOf { it.size }))
+                Fact(stringResource(if (title.reading) R.string.fact_read else R.string.fact_watched), stringResource(R.string.n_of_m, watched, title.items.size))
+            }
+        }
+    }
+}
+
+@Composable
+private fun Fact(label: String, value: String) {
+    val l = LocalLain.current
+    Column {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.6f)))
+        Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label.uppercase(), Modifier.weight(1f), color = l.muted, fontSize = 12.sp, letterSpacing = 0.6.sp)
+            Text(value, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** An episode or volume as a row: six fit a screen. */
+@Composable
+private fun EpisodeRow(item: Item, title: Title, state: AppState, vm: AppViewModel, onDownload: (Item) -> Unit) {
+    val l = LocalLain.current
+    val p = state.progress[item.id]
+    Row(
+        Modifier.padding(horizontal = GUTTER, vertical = 4.dp).fillMaxWidth().clip(l.cardShape).border(1.dp, l.line.copy(alpha = 0.6f), l.cardShape)
+            .background(l.surface.copy(alpha = 0.3f)).clickable { vm.open(item) },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(if (title.reading) 64.dp else 144.dp).aspectRatio(if (title.reading) 3f / 4f else 16f / 9f)) {
+            Art(item.id, Modifier.fillMaxSize())
+            val f = if (p?.completed == true) 0f else fraction(p)
+            if (f > 0f) {
+                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.5f))) {
+                    Box(Modifier.fillMaxWidth(f).height(4.dp).background(l.accent))
+                }
+            }
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+            Mono(
+                if (item.episode > 0) stringResource(if (title.reading) R.string.volume_n else R.string.episode_n, item.episode.toInt()) +
+                    (if (item.season > 0 && !title.reading) " · S${item.season}" else "") else item.title,
+                color = l.accent,
+            )
+            Text(
+                when {
+                    p?.completed == true -> stringResource(R.string.progress_done)
+                    p != null && p.positionSec > 0 && title.reading -> stringResource(R.string.progress_page, p.positionSec.toInt(), p.durationSec.toInt())
+                    p != null && p.positionSec > 0 -> stringResource(R.string.progress_at, clock(p.positionSec))
+                    else -> bytes(item.size)
+                },
+                Modifier.padding(top = 5.dp),
+                color = l.muted, fontSize = 12.sp, maxLines = 1,
+            )
+        }
+        IconBtn(Ic.Download, stringResource(R.string.action_download), { onDownload(item) })
+    }
+}
+
+/** Search: one field, results as cards by shape. */
+@Composable
+fun SearchScreen(state: AppState, vm: AppViewModel) {
+    val l = LocalLain.current
+    Column(Modifier.fillMaxSize()) {
+        Text(stringResource(R.string.nav_search), Modifier.padding(start = GUTTER, top = 18.dp), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
+        SearchField(state.query, { vm.search(it) }, stringResource(R.string.search_hint), Modifier.padding(horizontal = GUTTER).padding(top = 12.dp).fillMaxWidth())
+        when {
+            state.query.isBlank() -> Column(Modifier.fillMaxWidth().padding(top = 64.dp, start = 40.dp, end = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.size(56.dp).clip(CircleShape).border(1.dp, l.line, CircleShape), contentAlignment = Alignment.Center) { Icon(Ic.Search, null, tint = l.muted, modifier = Modifier.size(22.dp)) }
+                Text(stringResource(R.string.search_title), Modifier.padding(top = 18.dp), color = l.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.search_body), Modifier.padding(top = 6.dp), color = l.muted, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+            state.searching && state.results.isEmpty() -> Mono(stringResource(R.string.working), Modifier.padding(GUTTER))
+            state.results.isEmpty() -> Text(stringResource(R.string.search_none), Modifier.padding(GUTTER), color = l.muted, fontSize = 14.sp)
+            else -> {
+                Text(pluralStringResource(R.plurals.results_for, state.results.size, state.results.size, state.query.trim()), Modifier.padding(start = GUTTER, top = 14.dp), color = l.muted, fontSize = 14.sp)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(6),
+                    contentPadding = PaddingValues(start = GUTTER, end = GUTTER, top = 14.dp, bottom = 32.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    items(state.results, key = { it.id }, span = { GridItemSpan(if (Shapes.landscape(it.id, !it.reading())) 6 else 3) }) { item ->
+                        ShapeCard(
+                            artId = item.id,
+                            title = item.title,
+                            subtitle = episodeText(item),
+                            onClick = { vm.go(Screen.TitleDetail(titleKey(item))) },
+                            landscape = Shapes.landscape(item.id, !item.reading()),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
