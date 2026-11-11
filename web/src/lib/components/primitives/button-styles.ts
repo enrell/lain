@@ -2,7 +2,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
 
 const base =
-	'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors duration-150 select-none disabled:opacity-50 disabled:pointer-events-none';
+	'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors duration-150 select-none disabled:opacity-50 disabled:pointer-events-none';
 
 const variants: Record<ButtonVariant, string> = {
 	primary: 'bg-accent text-accent-fg hover:bg-accent-hover',
@@ -12,10 +12,11 @@ const variants: Record<ButtonVariant, string> = {
 };
 
 const sizes: Record<ButtonSize, string> = {
-	sm: 'h-8 px-3 text-sm',
-	md: 'h-10 px-4 text-sm',
+	// Phones get thumb-sized targets; from md up the compact desktop sizes.
+	sm: 'h-10 px-3.5 text-sm md:h-8 md:px-3',
+	md: 'h-11 px-4 text-sm md:h-10',
 	lg: 'h-12 px-6 text-base',
-	icon: 'size-9'
+	icon: 'size-11 md:size-9'
 };
 
 export function buttonClasses(

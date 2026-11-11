@@ -360,3 +360,20 @@ details.settings-section > summary {
 		aspect-ratio: var(--r);
 	}
 }
+
+/* A phone lists episodes as rows (thumbnail, then text): six fit a screen
+   where one card each took most of it. */
+@media (max-width: 639px) {
+	.episode-rows > li > :is(a, button, div) {
+		display: flex;
+		align-items: center;
+	}
+	.episode-rows .episode-thumb {
+		width: 9rem;
+		flex-shrink: 0;
+	}
+	.episode-rows .episode-text {
+		flex: 1;
+		padding: 0.5rem 0.875rem;
+	}
+}
