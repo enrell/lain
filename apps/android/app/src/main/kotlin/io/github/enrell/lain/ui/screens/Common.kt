@@ -98,6 +98,7 @@ fun errorText(e: Throwable): String = when (e) {
     is LainException.NoRoom -> stringResource(R.string.err_no_room, e.detail)
     is LainException.Unplayable -> e.detail
     is LainException.Unsupported -> e.detail
+    is LainException.Tls -> stringResource(R.string.err_tls, e.detail)
     is LainException.Invalid -> e.detail
     is LainException.Api -> e.detail.ifBlank { stringResource(R.string.err_server, e.status.toInt()) }
     is LainException.NoServer -> stringResource(R.string.err_no_server)

@@ -25,19 +25,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import io.github.enrell.lain.R
 import io.github.enrell.lain.ui.AppState
 import io.github.enrell.lain.ui.AppViewModel
 import io.github.enrell.lain.ui.theme.LocalLain
 
-/** Server URL (manual discovery, D-179). Enter connects. */
+/**
+ * Server URL (manual discovery, D-179). Enter connects. The field starts
+ * at `https://`; a LAN server is typed with `http://` or as a bare
+ * address (D-252, D-274).
+ */
 @Composable
 fun ConnectScreen(state: AppState, vm: AppViewModel) {
-    var url by rememberSaveable { mutableStateOf(state.server.ifEmpty { "http://" }) }
+    // The caret starts after the prefilled scheme, not before it.
+    var url by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(state.server.ifEmpty { "https://" }.let { TextFieldValue(it, TextRange(it.length)) })
+    }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     Shell(stringResource(R.string.connect_title), stringResource(R.string.connect_hint)) {
@@ -47,11 +56,11 @@ fun ConnectScreen(state: AppState, vm: AppViewModel) {
             label = { Text(stringResource(R.string.connect_url)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-            keyboardActions = KeyboardActions(onGo = { vm.connect(url) }),
+            keyboardActions = KeyboardActions(onGo = { vm.connect(url.text) }),
             modifier = Modifier.fillMaxWidth().focusRequester(focus),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(LocalLain.current.sp(2)), verticalAlignment = Alignment.CenterVertically) {
-            Action(stringResource(R.string.connect_go), "Enter", { vm.connect(url) }, primary = true, enabled = !state.busy)
+            Action(stringResource(R.string.connect_go), "Enter", { vm.connect(url.text) }, primary = true, enabled = !state.busy)
             if (state.busy) Label(stringResource(R.string.working))
         }
         ErrorLine(state.error)

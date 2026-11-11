@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A lain server is self-hosted, usually on the LAN, and lain-client has
-     no TLS yet (Q-045): cleartext is allowed for every host (D-252). -->
+<!-- A lain server is self-hosted, usually on the LAN and without a
+     certificate, so cleartext stays allowed for every host; the user
+     chooses it per server by typing http:// (D-252, D-274). -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

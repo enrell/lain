@@ -1,6 +1,6 @@
 # lain for Android
 
-The Android client (DESIGN-v2 §8.5, P5; decisions D-245..D-253): Kotlin +
+The Android client (DESIGN-v2 §8.5, P5; decisions D-245..D-253, D-274, D-275): Kotlin +
 Jetpack Compose for the UI, Media3/ExoPlayer for video, and the shared Rust
 client core (`crates/lain-client`) through UniFFI bindings.
 
@@ -14,8 +14,10 @@ apps/android/
 
 ## What it does
 
-- **Connect and log in**: a server URL (plain HTTP for now, D-252) and an
-  account; the session is kept for the next start.
+- **Connect and log in**: a server URL and an account; the session is kept
+  for the next start. `https://` is the default (D-274): public certificates
+  are checked against the root set compiled into the core. A server on your
+  own network is typed as `http://host:9360` or as a bare address.
 - **Navigation from `/api/modules`** (D-250): Home, Library, Read, Search and
   Settings appear when their module is on; Downloads is the app's own.
 - **Home**: a title-first hero, Continue, Recently added and one rail per
@@ -82,11 +84,39 @@ JVM unit tests: `./gradlew :app:testDebugUnitTest`; add
 `-PlainHostLib=<path to the host liblain_ffi.so>` to run the bindings smoke
 test through JNA.
 
+## Releases (D-275)
+
+A `v*` tag attaches `lain_<version>_android.apk` to the GitHub release when
+the repository has these secrets; without them the job is skipped:
+
+| Secret | Value |
+| --- | --- |
+| `LAIN_ANDROID_KEYSTORE_BASE64` | the keystore file, base64 |
+| `LAIN_ANDROID_KEYSTORE_PASSWORD` | its password |
+| `LAIN_ANDROID_KEY_ALIAS` | the key's alias |
+| `LAIN_ANDROID_KEY_PASSWORD` | the key's password (the keystore's when unset) |
+
+Make the key once and keep it: Android refuses an update signed by another
+key.
+
+```sh
+keytool -genkeypair -v -keystore lain-release.jks -alias lain \
+    -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 lain-release.jks | gh secret set LAIN_ANDROID_KEYSTORE_BASE64
+gh secret set LAIN_ANDROID_KEYSTORE_PASSWORD
+gh secret set LAIN_ANDROID_KEY_ALIAS --body lain
+```
+
+Locally, the same variables without `_BASE64` sign `./gradlew
+:app:assembleRelease` (`LAIN_ANDROID_KEYSTORE` is the keystore's path).
+
 ## Gaps (v1)
 
-- No TLS (the client core has none yet); no mDNS or QR pairing.
+- No way yet to trust a private CA or a self-signed certificate from the
+  app (the core has `trust_roots`; nothing calls it, and the player uses the
+  platform's trust store). No mDNS or QR pairing.
 - CBR/CB7 books read online only (their extractors are external tools).
 - Theme fonts, icon overrides, wallpapers, blur and live reload are not
   applied; the platform's sans, serif and mono families stand in.
 - No Chromecast/DLNA, Android TV leanback, picture-in-picture or
-  background audio; no release signing.
+  background audio.

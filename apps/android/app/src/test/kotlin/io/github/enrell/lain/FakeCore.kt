@@ -107,7 +107,7 @@ class FakeCore : LainCoreInterface {
     override fun session(): SessionInfo? = sessionInfo
     override fun setOfflinePolicy(policy: OfflinePolicy) = Unit
     override fun setServer(url: String): String {
-        if (!url.startsWith("http://")) throw LainException.Unsupported("only http")
+        if (!url.startsWith("http://") && !url.startsWith("https://")) throw LainException.Invalid("only http and https")
         serverUrl = url.trimEnd('/')
         return serverUrl!!
     }
@@ -118,7 +118,9 @@ class FakeCore : LainCoreInterface {
     override suspend fun thumbnail(itemId: String): ByteArray = ByteArray(0)
     override suspend fun playBurnedIn(itemId: String, stream: Long, startSec: Double): PlaySource =
         burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=b", "burned", startSec, startSec, null, emptyList(), "sess-b")
+    val playCaps = mutableListOf<List<String>>()
     override suspend fun playSource(itemId: String, caps: List<String>): PlaySource {
+        playCaps += caps
         val start = progress[itemId]?.takeIf { !it.completed && it.positionSec > 3 }?.positionSec ?: 0.0
         return source.copy(startSec = start)
     }
