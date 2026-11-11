@@ -8,7 +8,7 @@
          "settings": {"default_delivery": "hls", "hls_segment_seconds": 6, "hls_segment_container": "fmp4", "throttle": true, "crf": 23,
            "queue_size": 8, "max_concurrent": 2, "subtitle_mode": "auto", "max_muxing_queue_size": 2048, "hardware_acceleration": "$string",
            "qualities": {"$len": 5}, "$open": true},
-         "capabilities": {"ffmpeg": "$string", "encoders": {"$contains": ["libx264"]}, "tone_mapping": "$bool", "tone_mapping_bt2390": "$bool", "hardware": "$object"}}}},
+         "capabilities": {"ffmpeg": "$string", "encoders": {"$contains": ["libx264"]}, "tone_mapping": "$bool", "tone_mapping_bt2390": "$bool", "video_effects": "$bool", "hardware": "$object"}}}},
       {"req": {"method": "GET", "path": "/api/admin/settings/transcode", "auth": "w_bob"}, "expect": {"status": 403, "body": {"error": "admin required"}}}
     ]},
     {"name": "a partial update keeps every omitted field", "requires": ["w_admin"], "steps": [

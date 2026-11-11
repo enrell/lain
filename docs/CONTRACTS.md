@@ -339,6 +339,33 @@ allows them), `audio_codec`, `audio_stream`, `subtitle_stream`,
 `subtitle_mode` (`auto|extract|burn|off`), `segment_index`, `policy`
 (the requesting user's limits) and `settings`.
 
+`video_copy_codecs` (D-273, optional) lists the codecs beyond H.264 the
+client decodes in fragmented MP4. Only `hevc` is known; other values
+are ignored. With it, an SDR HEVC source (4:2:0, 8 or 10 bit) is stream
+copied under the rules H.264 already copies by (no burn-in, no
+downscale, inside the bitrate limit, stream copy not refused) and
+tagged `hvc1`; the status then reports `video_codec: "hevc"`,
+`video_direct: true`. It is not `video_codec`, which names the encoder
+target and stays behind `allow_hevc`: a copy encodes nothing, so the
+operator setting does not gate it. HDR sources are still tone-mapped,
+and the MPEG-TS segment container never carries the copy. The claim is
+part of the profile key only when it names `hevc`.
+
+`video_effect` (D-274, optional) asks the server to render a video
+effect into the session: `anime4k-a`, `anime4k-aa` or `anime4k-lite`,
+the web player's presets, run by ffmpeg's `libplacebo` filter with the
+player's own shader files. `GET /api/playback/options` lists what this
+server renders in `effects` (empty when libplacebo cannot run here; the
+admin capabilities say the same in `video_effects`). With an effect the
+video is always encoded, the two upscaling presets produce twice the
+source up to 1920x1080 (never past a `quality` box, never below the
+source), `width`/`height` report that frame and `reasons` gains
+`video effect (<preset>)`. An unknown preset is `invalid-message`. A
+known one this session cannot carry — no libplacebo, an HDR source, an
+image subtitle burned in, a VA-API encode — is not an error: the
+session is the plain one and `fallback` says why. The preset is part of
+the profile key when set.
+
 Status fields: `delivery`, `playable` (HLS: a playlist with at least
 one segment exists), `encoder`, `hardware`, `fallback` (why software
 was used instead), `reasons` (why the transcode is needed at all),
