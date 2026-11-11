@@ -2,11 +2,12 @@
 //! TCP stream, one connection per request (a LAN server answers in
 //! milliseconds; pooling can come later without an API change).
 //!
-//! Plain HTTP only for LAN v1. The connection is a boxed [`Io`], so TLS
-//! is one more `connect` arm producing another `Io` (a TLS crate needs
-//! the owner's approval first); an `https` URL parses today and fails
-//! with [`ClientError::Unsupported`] when used.
+//! `https` servers are reached through `lain-http`'s rustls setup
+//! (D-274): the webpki-roots trust anchors, plus the roots given to
+//! [`trust_roots`] for a private CA or a self-signed certificate. A
+//! failed handshake is [`ClientError::Tls`].
 
+use std::sync::Mutex;
 use std::time::Duration;
 
 use http_body_util::{BodyExt, Full};
@@ -108,18 +109,66 @@ pub fn encode(s: &str) -> String {
     out
 }
 
-/// A byte stream hyper can drive: TCP today, TLS later.
+/// A byte stream hyper can drive: TCP, or TLS over it.
 pub(crate) trait Io: hyper::rt::Read + hyper::rt::Write + Unpin + Send {}
 impl<T: hyper::rt::Read + hyper::rt::Write + Unpin + Send> Io for T {}
 
-async fn connect(url: &ServerUrl) -> Result<Box<dyn Io>, ClientError> {
-    if url.tls {
-        return Err(ClientError::Unsupported { message: "https needs TLS, which this build does not have yet".into() });
+/// The longest wait for a TLS handshake.
+const TLS_HANDSHAKE: Duration = Duration::from_secs(10);
+
+/// The process-wide TLS setup: the extra roots, and the connector built
+/// from them on first use.
+struct Trust {
+    roots: Vec<Vec<u8>>,
+    connector: Option<lain_http::tls::Connector>,
+}
+
+static TRUST: Mutex<Trust> = Mutex::new(Trust { roots: Vec::new(), connector: None });
+
+fn tls_error(e: lain_http::Error) -> ClientError {
+    match e.kind {
+        lain_http::ErrorKind::Timeout => ClientError::Timeout,
+        _ => ClientError::Tls { message: e.to_string() },
     }
+}
+
+/// Trusts more root certificates (DER, X.509) for `https` servers, on
+/// top of the public roots compiled in: a private CA, or a server's
+/// self-signed certificate. Process-wide, for every client made before
+/// or after; a certificate that does not parse changes nothing.
+pub fn trust_roots(der: Vec<Vec<u8>>) -> Result<(), ClientError> {
+    let mut t = TRUST.lock().unwrap_or_else(|e| e.into_inner());
+    let mut roots = t.roots.clone();
+    for d in der {
+        if !roots.contains(&d) {
+            roots.push(d);
+        }
+    }
+    let connector = lain_http::tls::Connector::new(&roots)
+        .map_err(|e| ClientError::Invalid { message: format!("root certificate: {e}") })?;
+    *t = Trust { roots, connector: Some(connector) };
+    Ok(())
+}
+
+fn connector() -> Result<lain_http::tls::Connector, ClientError> {
+    let mut t = TRUST.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(c) = &t.connector {
+        return Ok(c.clone());
+    }
+    let c = lain_http::tls::Connector::new(&t.roots).map_err(tls_error)?;
+    t.connector = Some(c.clone());
+    Ok(c)
+}
+
+async fn connect(url: &ServerUrl) -> Result<Box<dyn Io>, ClientError> {
     let tcp = tokio::net::TcpStream::connect((url.host.as_str(), url.port))
         .await
         .map_err(|e| ClientError::Offline { message: format!("{}: {e}", url.authority()) })?;
     let _ = tcp.set_nodelay(true);
+    if url.tls {
+        let stream = connector()?.connect(&url.host, tcp, TLS_HANDSHAKE).await.map_err(tls_error)?;
+        return Ok(Box::new(TokioIo::new(stream)));
+    }
     Ok(Box::new(TokioIo::new(tcp)))
 }
 

@@ -35,8 +35,12 @@ pub enum ClientError {
     Decode { message: String },
     /// Bad input caught before any request.
     Invalid { message: String },
-    /// Not supported by this build (an `https` URL before TLS lands).
+    /// Not supported by this build.
     Unsupported { message: String },
+    /// The TLS handshake with an `https` server failed: a certificate
+    /// that is not trusted, expired or for another name, or a server
+    /// that does not speak TLS on that port.
+    Tls { message: String },
     /// The local store (tokens, offline copies, the progress queue).
     Store { message: String },
     /// The offline store has no room: `code` is `quota-exceeded` or
@@ -48,7 +52,7 @@ impl ClientError {
     /// Whether the failure means "not reachable right now", the cue to
     /// queue work and retry later.
     pub fn is_offline(&self) -> bool {
-        matches!(self, ClientError::Offline { .. } | ClientError::Timeout)
+        matches!(self, ClientError::Offline { .. } | ClientError::Timeout | ClientError::Tls { .. })
     }
 
     /// Maps a non-2xx answer.
@@ -86,6 +90,7 @@ impl std::fmt::Display for ClientError {
             ClientError::Decode { message } => write!(f, "unexpected answer: {message}"),
             ClientError::Invalid { message } => write!(f, "invalid input: {message}"),
             ClientError::Unsupported { message } => write!(f, "unsupported: {message}"),
+            ClientError::Tls { message } => write!(f, "no secure connection: {message}"),
             ClientError::Store { message } => write!(f, "local store: {message}"),
             ClientError::NoRoom { message, .. } => f.write_str(message),
         }
