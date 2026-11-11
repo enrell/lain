@@ -7,6 +7,7 @@ import io.github.enrell.lain.core.OfflineCopy
 import io.github.enrell.lain.core.OfflinePolicy
 import io.github.enrell.lain.core.OfflineUsage
 import io.github.enrell.lain.core.PlaySource
+import io.github.enrell.lain.core.QualityInfo
 import io.github.enrell.lain.core.SaveOutcome
 import io.github.enrell.lain.core.SourceKind
 import io.github.enrell.lain.core.SubtitleTrack
@@ -33,7 +34,16 @@ data class PlayerState(
     /** The last save went to the device queue, not the server. */
     val savedLocally: Boolean = false,
     val completed: Boolean = false,
+    /** The transcode quality asked for; empty is the server's choice. */
+    val quality: String = "",
+    /** The embedded subtitle stream burned into the picture, if any. */
+    val burnStream: Long? = null,
+    /** What the quality menu offers (a transcode only). */
+    val qualities: List<QualityInfo> = emptyList(),
 )
+
+/** A seek this close to the range a session holds is still a player seek. */
+const val SEEK_GRACE_SEC = 3.0
 
 /**
  * The player's logic, apart from ExoPlayer: where the play comes from
@@ -57,6 +67,9 @@ class PlayerModel(
             try {
                 val src = core.playSource(itemId, caps)
                 _state.update { it.copy(loading = false, source = src) }
+                if (src.kind == SourceKind.HLS) {
+                    runCatching { core.playQualities() }.onSuccess { q -> _state.update { it.copy(qualities = q) } }
+                }
             } catch (e: LainException) {
                 _state.update { it.copy(loading = false, error = e) }
             }
@@ -98,19 +111,47 @@ class PlayerModel(
     fun burnable(): List<SubtitleTrack> = _state.value.source?.subtitles?.filter { it.typeset && it.stream >= 0 }.orEmpty()
 
     /** Switches to an HLS session with [track] burned in, from the current position. */
-    fun burnIn(track: SubtitleTrack, positionMs: Long) {
-        val from = sourceSec(positionMs)
+    fun burnIn(track: SubtitleTrack, positionMs: Long) = rebuild(sourceSec(positionMs), burnStream = track.stream)
+
+    /**
+     * A new HLS session whose timeline begins at [fromSec]: how a seek
+     * outside the range the current session holds, a quality change and a
+     * burn-in all keep the viewer where they were (the web player's
+     * `rebuildAt`). The length and the subtitle list carry over.
+     */
+    fun rebuild(fromSec: Double, quality: String = _state.value.quality, burnStream: Long? = _state.value.burnStream) {
         val previous = _state.value.source
-        _state.update { it.copy(loading = true, error = null) }
+        _state.update { it.copy(loading = true, error = null, quality = quality, burnStream = burnStream) }
         scope.launch {
             try {
-                val src = core.playBurnedIn(itemId, track.stream, from)
+                val src = core.playTranscoded(itemId, fromSec.coerceAtLeast(0.0), quality, burnStream)
                 stopSession(previous)
-                _state.update { it.copy(loading = false, source = src.copy(durationSec = src.durationSec ?: previous?.durationSec)) }
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        source = src.copy(
+                            durationSec = src.durationSec ?: previous?.durationSec,
+                            subtitles = if (burnStream == null) previous?.subtitles.orEmpty() else emptyList(),
+                        ),
+                    )
+                }
             } catch (e: LainException) {
                 _state.update { it.copy(loading = false, error = e) }
             }
         }
+    }
+
+    /** The source seconds the current session holds: from its start to what the player has of it. */
+    fun sessionRange(playerDurationMs: Long): ClosedFloatingPointRange<Double> {
+        val offset = _state.value.source?.offsetSec ?: 0.0
+        return offset..(offset + playerDurationMs.coerceAtLeast(0) / 1000.0)
+    }
+
+    /** Whether a seek to [targetSec] needs a new session instead of a player seek. */
+    fun needsRebuild(targetSec: Double, playerDurationMs: Long): Boolean {
+        if (_state.value.source?.kind != SourceKind.HLS) return false
+        val held = sessionRange(playerDurationMs)
+        return targetSec < held.start - SEEK_GRACE_SEC || targetSec > held.endInclusive + SEEK_GRACE_SEC
     }
 
     private suspend fun stopSession(src: PlaySource?) {

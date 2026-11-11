@@ -67,6 +67,26 @@ class AppGraph(context: Context) {
         return bmp
     }
 
+    private val boards = object : LruCache<String, Board>(2) {}
+
+    /**
+     * An item's storyboard, decoded: every preview of the seek bar is a
+     * tile cut out of it, so nothing is fetched while dragging. The first
+     * call for an item waits while the server makes the picture; `null`
+     * when it has none.
+     */
+    suspend fun storyboard(itemId: String): Board? {
+        boards.get(itemId)?.let { return it }
+        return scope.async(Dispatchers.IO) {
+            val sheet = runCatching { core.storyboard(itemId) }.getOrNull() ?: return@async null
+            val bmp = BitmapFactory.decodeByteArray(sheet.image, 0, sheet.image.size)?.asImageBitmap() ?: return@async null
+            val columns = sheet.columns.toInt().coerceAtLeast(1)
+            val rows = ((sheet.count.toInt() + columns - 1) / columns).coerceAtLeast(1)
+            Board(bmp, sheet.intervalSec.coerceAtLeast(1), sheet.count.toInt().coerceAtLeast(1), columns, bmp.width / columns, bmp.height / rows)
+                .also { boards.put(itemId, it) }
+        }.await()
+    }
+
     /** A frame of an item at a time, for the seek bar; a few stay in memory. */
     private val frames = object : LruCache<String, ImageBitmap>(24) {}
 
@@ -95,6 +115,15 @@ fun decode(bytes: ByteArray, maxSide: Int): ImageBitmap? {
     while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
     val opts = BitmapFactory.Options().apply { inSampleSize = sample }
     return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)?.asImageBitmap()
+}
+
+/** A decoded storyboard: tile `i`, row by row, is the frame near `i * intervalSec`. */
+class Board(val image: ImageBitmap, val intervalSec: Long, val count: Int, val columns: Int, val tileWidth: Int, val tileHeight: Int) {
+    /** The top-left corner of the tile for a time, in pixels. */
+    fun tileAt(sec: Double): Pair<Int, Int> {
+        val i = (sec / intervalSec).toInt().coerceIn(0, count - 1)
+        return (i % columns) * tileWidth to (i / columns) * tileHeight
+    }
 }
 
 private const val ART_TTL_MS = 7L * 24 * 3600 * 1000

@@ -118,9 +118,12 @@ impl Provider for ThumbProvider {
     fn health(&self) -> Result<(), Error> {
         self.0.health()
     }
-    fn invoke(&self, cap: &str, _: &str, v: Value) -> Result<Value, Error> {
+    fn invoke(&self, cap: &str, op: &str, v: Value) -> Result<Value, Error> {
         if cap != thumbnail::CAP {
             return Err(wrong_cap(cap));
+        }
+        if op == "storyboard" {
+            return out(&self.0.storyboard(&input(v, "StoryboardRequest")?)?);
         }
         out(&self.0.generate(&input(v, "ThumbnailRequest")?)?)
     }

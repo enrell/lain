@@ -220,6 +220,27 @@ pub struct PlaySource {
     pub session: String,
 }
 
+/// A quality the server can transcode to (the player's quality menu).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct QualityInfo {
+    pub name: String,
+    pub max_height: i64,
+    pub bitrate_kbps: i64,
+}
+
+/// One picture of small frames of a video, for the seek bar's preview:
+/// tile `i` (row by row, `columns` a row) is the frame near
+/// `i * interval_sec`.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct StoryboardSheet {
+    pub image: Vec<u8>,
+    pub interval_sec: i64,
+    pub count: i64,
+    pub columns: i64,
+    pub tile_width: i64,
+    pub tile_height: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct PageInfo {
     pub index: i64,

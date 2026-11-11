@@ -197,4 +197,8 @@
     <string name="player_off">Off</string>
     <string name="player_normal">Normal</string>
     <string name="player_back">Back</string>
+    <string name="player_quality">Quality</string>
+    <string name="player_auto">Auto</string>
+    <string name="player_effects">Effects</string>
+    <string name="player_effect_failed">Anime4K unavailable: %1$s</string>
 </resources>

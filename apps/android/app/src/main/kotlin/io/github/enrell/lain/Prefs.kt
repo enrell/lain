@@ -27,6 +27,11 @@ class Prefs(private val sp: SharedPreferences) {
         get() = sp.getBoolean("library_shelves", true)
         set(v) = sp.edit().putBoolean("library_shelves", v).apply()
 
+    /** The video effect used last in the player (a preset id). */
+    var videoEffect: String
+        get() = sp.getString("video_effect", "off") ?: "off"
+        set(v) = sp.edit().putString("video_effect", v).apply()
+
     var theme: String
         get() = sp.getString("theme", "lain-dark") ?: "lain-dark"
         set(v) = sp.edit().putString("theme", v).apply()
