@@ -117,6 +117,13 @@ class FakeCore : LainCoreInterface {
     }
     override suspend fun thumbnail(itemId: String): ByteArray = ByteArray(0)
     override suspend fun frame(itemId: String, atSec: Double, width: UInt): ByteArray = ByteArray(0)
+    var transcodes = mutableListOf<Triple<Double, String, Long?>>()
+    override suspend fun playTranscoded(itemId: String, startSec: Double, quality: String, burnStream: Long?): PlaySource {
+        transcodes += Triple(startSec, quality, burnStream)
+        return burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=b", "burned", startSec, startSec, null, emptyList(), "sess-b")
+    }
+    override suspend fun playQualities(): List<io.github.enrell.lain.core.QualityInfo> = listOf(io.github.enrell.lain.core.QualityInfo("720p", 720, 4000))
+    override suspend fun storyboard(itemId: String): io.github.enrell.lain.core.StoryboardSheet = throw LainException.NotFound("")
     override suspend fun overlays(itemIds: List<String>): List<io.github.enrell.lain.core.Overlay> = emptyList()
     override suspend fun unlockLibrary(libraryId: String, secret: String, pin: Boolean): LibraryInfo = LibraryInfo(libraryId, "", "", true, false)
     override suspend fun lockLibrary(libraryId: String): LibraryInfo = LibraryInfo(libraryId, "", "", true, true)

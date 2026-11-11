@@ -51,7 +51,14 @@ android {
         }
     }
 
+    // The Anime4K shader packs are the web player's own files: one copy in
+    // the repository, packaged here as assets (its TypeScript index is not).
+    androidResources {
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!*.ts"
+    }
+
     sourceSets.getByName("main") {
+        assets.srcDir("../../../web/src/lib/player/webgl/packs")
         java.srcDir("generated/uniffi")
         kotlin.srcDir("generated/uniffi")
         jniLibs.srcDir("build/rustJniLibs")
@@ -82,6 +89,8 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
+    // Video effects (the Anime4K shaders) run in Media3's frame processor.
+    implementation(libs.media3.effect)
     implementation(libs.kotlinx.coroutines.android)
     // UniFFI's Kotlin bindings call the Rust library through JNA.
     implementation(libs.jna) { artifact { type = "aar" } }

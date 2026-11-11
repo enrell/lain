@@ -562,6 +562,15 @@ accepts `?token=` (image elements cannot attach headers). ffmpeg is
 spawned by the provider with a 20s timeout and at most 2 concurrent
 processes; absence degrades this capability, never the boot.
 
+`GET /api/items/{id}/storyboard` (D-273) is how a seek bar previews
+without a request per position: `{interval_sec, count, columns, rows,
+tile_width, tile_height}` for a video whose length is known (404
+otherwise), and `GET /api/items/{id}/storyboard/image` is one JPEG of
+`count` frames, `columns` a row, tile `i` (row by row) being the frame
+near `i * interval_sec`. At most 120 tiles of 160x90, at least 2 s apart.
+The image is made on its first request, which waits for it (keyframes
+only, one pass over the file), and is cached like a thumbnail.
+
 ## Metadata (merge-many)
 
 `lain.metadata.search@1`: `{query, kind, limit, dir}` →

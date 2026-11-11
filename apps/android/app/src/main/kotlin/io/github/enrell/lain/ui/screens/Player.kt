@@ -1,5 +1,15 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import io.github.enrell.lain.Board
+import io.github.enrell.lain.player.Anime4kEffect
+import io.github.enrell.lain.player.VideoEffect
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.Image
@@ -157,6 +167,15 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
     var scrub by remember { mutableStateOf<Float?>(null) }
     var touched by remember { mutableStateOf(0L) }
     var preview by remember { mutableStateOf<ImageBitmap?>(null) }
+    // The storyboard, once it has arrived: previews are cut out of it.
+    var board by remember { mutableStateOf<Board?>(null) }
+    // Where a seek that needs a new session is headed, until it plays.
+    var pendingSec by remember { mutableStateOf<Double?>(null) }
+    var effect by remember { mutableStateOf(VideoEffect.of(graph.prefs.videoEffect)) }
+    var effectError by remember { mutableStateOf<String?>(null) }
+    var effectsOn by remember { mutableStateOf(false) }
+    // The size the picture is shown at, read by the effect on the GL thread.
+    val shownAt = remember { java.util.concurrent.atomic.AtomicReference(0 to 0) }
     // The running total of a burst of skips, and its side (-1 back, 1 forward).
     var flash by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var lastSkip by remember { mutableStateOf(0L) }
@@ -211,10 +230,38 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
         player.setMediaItem(mediaItem(src), model.seekOnStartMs(src))
         player.prepare()
         player.playWhenReady = true
+        pendingSec = null
+        positionMs = model.seekOnStartMs(src)
         focus.requestFocus()
         while (true) {
             delay(SAVE_EVERY_MS)
             if (player.isPlaying) model.report(player.currentPosition, player.duration)
+        }
+    }
+    // The storyboard is asked for once the play is known; until it is
+    // here the preview falls back to single frames.
+    LaunchedEffect(itemId, src != null) {
+        if (src != null && src.kind != SourceKind.OFFLINE && board == null) board = graph.storyboard(itemId)
+    }
+    // The video effect: Media3 runs the shaders on each decoded frame.
+    LaunchedEffect(effect, src != null) {
+        if (src == null) return@LaunchedEffect
+        if (effect == VideoEffect.Off) {
+            if (effectsOn) player.setVideoEffects(emptyList())
+            effectsOn = false
+        } else {
+            val main = android.os.Handler(android.os.Looper.getMainLooper())
+            player.setVideoEffects(
+                listOf(
+                    Anime4kEffect(effect, { shownAt.get() }) { reason ->
+                        main.post {
+                            effectError = reason
+                            effect = VideoEffect.Off
+                        }
+                    },
+                ),
+            )
+            effectsOn = true
         }
     }
     // The clock the chrome reads: often enough for a smooth bar.
@@ -236,11 +283,24 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
         }
     }
 
-    fun seekBy(deltaMs: Long) {
-        val to = player.currentPosition + deltaMs
-        player.seekTo(if (player.duration > 0) to.coerceIn(0, player.duration) else to.coerceAtLeast(0))
+    // Everything the bar shows and takes is in source seconds: the whole
+    // title, whatever part of it the current session holds.
+    fun totalSec(): Double = model.durationSec(durationMs)
+    fun nowSec(): Double = pendingSec ?: model.sourceSec(positionMs)
+    fun seekToSec(target: Double) {
+        val total = totalSec()
+        val t = if (total > 0) target.coerceIn(0.0, total) else target.coerceAtLeast(0.0)
+        if (model.needsRebuild(t, player.duration)) {
+            // Outside what this session holds: a new one that begins there.
+            pendingSec = t
+            model.rebuild(t)
+            return
+        }
+        val offset = state.source?.offsetSec ?: 0.0
+        player.seekTo(((t - offset) * 1000).toLong().coerceAtLeast(0))
         positionMs = player.currentPosition
     }
+    fun seekBy(deltaMs: Long) = seekToSec(nowSec() + deltaMs / 1000.0)
     fun skip(side: Int) {
         seekBy(side * SKIP_MS)
         flash = side to ((flash?.takeIf { it.first == side }?.second ?: 0) + (SKIP_MS / 1000).toInt())
@@ -265,6 +325,7 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .onSizeChanged { shownAt.set(it.width to it.height) }
             .focusRequester(focus)
             .focusable()
             .onPreviewKeyEvent { e ->
@@ -366,8 +427,8 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
 
         // Footer: the seek row, then the transport.
         if (shown) {
-            val total = durationMs.coerceAtLeast(1)
-            val at = scrub?.let { (it * total).toLong() } ?: positionMs
+            val total = totalSec().coerceAtLeast(0.001)
+            val at = scrub?.let { it * total } ?: nowSec()
             Column(
                 Modifier.align(Alignment.BottomStart).fillMaxWidth()
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).safeDrawingPadding().padding(horizontal = 12.dp).padding(bottom = 10.dp, top = 24.dp),
@@ -375,25 +436,27 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     BoxWithConstraints(Modifier.weight(1f)) {
                         val width = maxWidth
-                        val fraction = (at.toFloat() / total).coerceIn(0f, 1f)
+                        val fraction = (at / total).toFloat().coerceIn(0f, 1f)
                         // The frame the bar points at, while dragging it.
                         scrub?.let { f ->
-                            val sec = model.sourceSec((f * total).toLong())
-                            val step = (model.durationSec(durationMs) / 150).toLong().coerceAtLeast(2)
-                            val quantized = (sec.toLong() / step) * step
-                            // One request at a time, always for where the finger is
-                            // now: a drag fetches a handful of frames, not one per
-                            // step, and the last one that arrived stays up meanwhile.
-                            val wanted by rememberUpdatedState(quantized)
-                            LaunchedEffect(Unit) {
-                                var last = -1L
-                                while (true) {
-                                    val want = wanted
-                                    if (want != last) {
-                                        last = want
-                                        graph.frame(itemId, want)?.let { preview = it }
-                                    } else {
-                                        delay(40)
+                            val sec = f * total
+                            val sheet = board
+                            if (sheet == null) {
+                                // No storyboard (yet): single frames on a coarse grid,
+                                // one request at a time, always for where the finger is.
+                                val step = (total / 150).toLong().coerceAtLeast(2)
+                                val quantized = (sec.toLong() / step) * step
+                                val wanted by rememberUpdatedState(quantized)
+                                LaunchedEffect(Unit) {
+                                    var last = -1L
+                                    while (true) {
+                                        val want = wanted
+                                        if (want != last) {
+                                            last = want
+                                            graph.frame(itemId, want)?.let { preview = it }
+                                        } else {
+                                            delay(40)
+                                        }
                                     }
                                 }
                             }
@@ -401,48 +464,66 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                             val x = (width * f - w / 2).coerceIn(0.dp, (width - w).coerceAtLeast(0.dp))
                             Column(
                                 // Floats above the bar without taking room in the row.
-                                Modifier.width(w).layout { measurable, constraints ->
+                                // (The layout comes first: a node that reports a size
+                                // under its minimum is centred by its parent.)
+                                Modifier.layout { measurable, constraints ->
                                     val p = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
                                     layout(0, 0) { p.place(x.roundToPx(), -p.height - 6.dp.roundToPx()) }
-                                },
+                                }.width(w),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(Color.Black).border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))) {
-                                    preview?.let { Image(it, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
+                                    if (sheet != null) {
+                                        // The tile for this second, cut out of the sheet: nothing to fetch.
+                                        val (x, y) = sheet.tileAt(sec)
+                                        Canvas(Modifier.fillMaxSize()) {
+                                            drawImage(
+                                                sheet.image,
+                                                srcOffset = IntOffset(x, y),
+                                                srcSize = IntSize(sheet.tileWidth, sheet.tileHeight),
+                                                dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                                            )
+                                        }
+                                    } else {
+                                        preview?.let { Image(it, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
+                                    }
                                 }
                                 Text(clock(sec), Modifier.padding(top = 4.dp), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                         Box(
                             Modifier.fillMaxWidth().height(36.dp)
-                                .pointerInput(durationMs) {
+                                .pointerInput(Unit) {
                                     detectTapGestures { o ->
-                                        if (durationMs > 0) player.seekTo((o.x / size.width * durationMs).toLong().coerceIn(0, durationMs))
+                                        if (totalSec() > 0) seekToSec(o.x / size.width * totalSec())
                                         touched++
                                     }
                                 }
-                                .pointerInput(durationMs) {
+                                .pointerInput(Unit) {
                                     detectHorizontalDragGestures(
-                                        onDragStart = { o -> if (durationMs > 0) scrub = (o.x / size.width).coerceIn(0f, 1f) },
+                                        onDragStart = { o -> if (totalSec() > 0) scrub = (o.x / size.width).coerceIn(0f, 1f) },
                                         onDragEnd = {
-                                            scrub?.let { player.seekTo((it * durationMs).toLong()) }
-                                            positionMs = player.currentPosition
+                                            scrub?.let { seekToSec(it * totalSec()) }
                                             scrub = null
                                             touched++
                                         },
                                         onDragCancel = { scrub = null },
-                                    ) { change, _ -> if (durationMs > 0) scrub = (change.position.x / size.width).coerceIn(0f, 1f) }
+                                    ) { change, _ -> if (totalSec() > 0) scrub = (change.position.x / size.width).coerceIn(0f, 1f) }
                                 },
                             contentAlignment = Alignment.CenterStart,
                         ) {
                             Box(Modifier.fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.25f)))
-                            Box(Modifier.fillMaxWidth((bufferedMs.toFloat() / total).coerceIn(0f, 1f)).height(3.dp).background(Color.White.copy(alpha = 0.25f)))
+                            // What is loaded sits where it is: a session that began
+                            // partway holds a range inside the title, not its start.
+                            val heldFrom = ((state.source?.offsetSec ?: 0.0) / total).toFloat().coerceIn(0f, 1f)
+                            val heldTo = (model.sourceSec(bufferedMs) / total).toFloat().coerceIn(heldFrom, 1f)
+                            Box(Modifier.offset(x = width * heldFrom).width(width * (heldTo - heldFrom)).height(3.dp).background(Color.White.copy(alpha = 0.3f)))
                             Box(Modifier.fillMaxWidth(fraction).height(3.dp).background(l.accent))
                             Box(Modifier.offset(x = (width - 14.dp) * fraction).size(if (scrub != null) 18.dp else 14.dp).clip(CircleShape).background(l.accent))
                         }
                     }
                     Text(
-                        clock(model.sourceSec(at)) + " / " + clock(model.durationSec(durationMs)),
+                        clock(at) + " / " + clock(totalSec()),
                         Modifier.padding(start = 12.dp),
                         color = Color.White, fontSize = 12.sp,
                     )
@@ -470,8 +551,8 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
         // Settings: a small list above the gear, as on the web's phone layout.
         if (settings) {
             Column(
-                Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, bottom = 104.dp).width(248.dp).clip(RoundedCornerShape(8.dp))
-                    .background(l.bg).border(1.dp, l.line.copy(alpha = 0.6f), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+                Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, bottom = 104.dp).width(264.dp).heightIn(max = 420.dp).clip(RoundedCornerShape(8.dp))
+                    .verticalScroll(rememberScrollState()).background(l.bg).border(1.dp, l.line.copy(alpha = 0.6f), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 PickRow(
                     stringResource(R.string.player_speed),
@@ -501,6 +582,36 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                         player.trackSelectionParameters = b.build()
                     }
                 }
+                if (src?.kind == SourceKind.HLS && state.qualities.isNotEmpty()) {
+                    val auto = stringResource(R.string.player_auto)
+                    PickRow(
+                        stringResource(R.string.player_quality),
+                        state.quality.ifEmpty { auto },
+                        listOf(auto to state.quality.isEmpty()) + state.qualities.map { q ->
+                            (q.name + when {
+                                q.bitrateKbps >= 1000 -> " · ${q.bitrateKbps / 1000} Mbps"
+                                q.bitrateKbps > 0 -> " · ${q.bitrateKbps} kbps"
+                                else -> ""
+                            }) to (q.name == state.quality)
+                        },
+                    ) { i ->
+                        val pick = if (i == 0) "" else state.qualities[i - 1].name
+                        if (pick != state.quality) {
+                            pendingSec = nowSec()
+                            model.rebuild(nowSec(), quality = pick)
+                        }
+                    }
+                }
+                PickRow(
+                    stringResource(R.string.player_effects),
+                    effect.label,
+                    VideoEffect.entries.map { it.label to (it == effect) },
+                ) { i ->
+                    effectError = null
+                    effect = VideoEffect.entries[i]
+                    graph.prefs.videoEffect = effect.id
+                }
+                effectError?.let { Text(stringResource(R.string.player_effect_failed, it), color = l.danger, fontSize = 12.sp, lineHeight = 16.sp) }
                 val burnable = model.burnable()
                 if (burnable.isNotEmpty()) {
                     Text(stringResource(R.string.player_ass_note), Modifier.padding(top = 6.dp), color = l.muted, fontSize = 12.sp, lineHeight = 16.sp)

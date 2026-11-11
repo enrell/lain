@@ -194,6 +194,8 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/api/items/{id}/playback", route(GET, Gate::User, playback))
         .route("/api/items/{id}/stream", route(GET, Gate::User, stream))
         .route("/api/items/{id}/thumbnail", route(GET, Gate::User, thumbnail_get))
+        .route("/api/items/{id}/storyboard", route(GET, Gate::User, storyboard_get))
+        .route("/api/items/{id}/storyboard/image", route(GET, Gate::User, storyboard_image))
         .route(
             "/api/items/{id}/transcode",
             route(GET, Gate::User, transcode_get).merge(route(POST, Gate::User, transcode_start)).merge(route(
@@ -441,6 +443,58 @@ fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
             }
         };
     file(&thumb.path, "image/jpeg", vec![("cache-control", "private, max-age=86400".into())], "thumbnail unavailable")
+}
+
+/// The item's length, probed; `None` when it is not a file ffprobe reads.
+fn duration_of(app: &App, it: &CatalogItem) -> Option<f64> {
+    let settings = settings(app);
+    let (out, _) = app
+        .registry
+        .call_one(CAP_MEDIA_PROBE, "probe", json!({"file_path": it.file_path, "ffprobe_path": settings.ffprobe_path}))
+        .ok()?;
+    serde_json::from_value::<MediaInfo>(out).ok().map(|i| i.duration).filter(|d| *d > 0.0)
+}
+
+/// How the item's storyboard is laid out (D-273). Cheap: it probes the
+/// length and makes nothing; a client asks this, then the image.
+fn storyboard_get(app: &App, w: &WReq, v: &Verified) -> Out {
+    let it = match item(app, w, v) {
+        Ok(it) => it,
+        Err(o) => return *o,
+    };
+    match duration_of(app, &it).and_then(thumbnail::storyboard_layout) {
+        Some(layout) => Reply::ok(json!(layout)).into(),
+        None => Reply::err(404, "no storyboard for this item").into(),
+    }
+}
+
+/// The storyboard itself, one JPEG; made on the first request (which
+/// waits for it) and served from the cache afterwards.
+fn storyboard_image(app: &App, w: &WReq, v: &Verified) -> Out {
+    let it = match item(app, w, v) {
+        Ok(it) => it,
+        Err(o) => return *o,
+    };
+    let Some(duration_sec) = duration_of(app, &it) else {
+        return Reply::err(404, "no storyboard for this item").into();
+    };
+    let req = thumbnail::StoryboardRequest { file_path: it.file_path.clone(), duration_sec };
+    match app.registry.call_one(thumbnail::CAP, "storyboard", serde_json::to_value(&req).unwrap_or_default()) {
+        Ok((out, _)) => match serde_json::from_value::<thumbnail::Storyboard>(out) {
+            Ok(sb) if !sb.path.is_empty() => file(
+                &sb.path,
+                "image/jpeg",
+                vec![("cache-control", "private, max-age=86400".into())],
+                "storyboard unavailable",
+            ),
+            _ => Reply::err(500, "bad storyboard result").into(),
+        },
+        Err(e) if e.code == "invalid-message" => Reply::err(404, "no storyboard for this item").into(),
+        Err(e) => {
+            tracing::warn!(item = %it.id, err = %e, "storyboard failed");
+            Reply::err(503, &e.to_string()).into()
+        }
+    }
 }
 
 // ---- transcode ----------------------------------------------------------

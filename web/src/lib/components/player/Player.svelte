@@ -26,6 +26,7 @@
 		TranscodeStatus
 	} from '$lib/api/types';
 	import { api } from '$lib/api';
+	import type { StoryboardLayout } from '$lib/api/thumbnail';
 	import { session } from '$lib/auth/session.svelte';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
@@ -1141,10 +1142,41 @@
 	let hoverAt = $state<number | null>(null);
 	let seekRow = $state<HTMLElement | null>(null);
 	let previewSrc = $state('');
+	// The storyboard, once it is here: every preview is a tile of one
+	// picture, so nothing is fetched while dragging. Until then (and for an
+	// item that has none) the single-frame requests below stand in.
+	let board = $state<{ layout: StoryboardLayout; url: string } | null>(null);
+	$effect(() => {
+		const id = item.id;
+		board = null;
+		let live = true;
+		void api.storyboard
+			.layout(id)
+			.then((layout) => {
+				const url = api.storyboard.imageUrl(id, session.token);
+				const img = new Image();
+				img.onload = () => {
+					if (live) board = { layout, url };
+				};
+				img.src = url;
+			})
+			.catch(() => undefined);
+		return () => {
+			live = false;
+		};
+	});
+	const boardStyle = $derived.by(() => {
+		if (!board || previewAt === null) return '';
+		const { layout, url } = board;
+		const i = Math.min(layout.count - 1, Math.max(0, Math.floor(previewAt / layout.interval_sec)));
+		const x = (i % layout.columns) / Math.max(1, layout.columns - 1);
+		const y = Math.floor(i / layout.columns) / Math.max(1, layout.rows - 1);
+		return `background-image:url("${url}");background-size:${layout.columns * 100}% ${layout.rows * 100}%;background-position:${x * 100}% ${layout.rows > 1 ? y * 100 : 0}%`;
+	});
 	const previewAt = $derived(scrubbing ? scrubValue : hoverAt);
 	const previewStep = $derived(Math.max(2, Math.round(totalDuration / 150)));
 	const previewWanted = $derived.by(() => {
-		if (previewAt === null || totalDuration <= 0) return '';
+		if (board || previewAt === null || totalDuration <= 0) return '';
 		const at = Math.min(Math.max(0, totalDuration - 1), Math.round(previewAt / previewStep) * previewStep);
 		return api.thumbnail.url(item.id, session.token, { at, width: 320 });
 	});
@@ -1834,7 +1866,9 @@
 				<div class="pointer-events-none absolute bottom-full left-0 right-[6.5rem] mb-2 sm:right-[7.5rem]" aria-hidden="true">
 					<div class="absolute bottom-0 w-44 -translate-x-1/2 sm:w-56" style={`left: clamp(5.5rem, ${previewLeft}%, calc(100% - 5.5rem))`}>
 						<div class="overflow-hidden rounded-lg border border-white/20 bg-black shadow-[0_10px_30px_rgba(0,0,0,0.6)]">
-							{#if previewSrc}
+							{#if board}
+								<div class="aspect-video w-full bg-no-repeat" style={boardStyle}></div>
+							{:else if previewSrc}
 								<img src={previewSrc} alt="" class="aspect-video w-full object-contain" />
 							{:else}
 								<div class="aspect-video w-full bg-black"></div>
