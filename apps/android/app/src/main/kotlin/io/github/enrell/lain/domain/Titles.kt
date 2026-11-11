@@ -56,6 +56,9 @@ fun groupTitles(items: List<Item>): List<Title> {
 sealed interface RailLabel {
     data object Continue : RailLabel
     data object Recent : RailLabel
+
+    /** The titles kept as favourites. */
+    data object MyList : RailLabel
     data class Library(val name: String) : RailLabel
 }
 
@@ -72,10 +75,12 @@ fun buildRails(
     continues: List<ProgressInfo>,
     items: Map<String, Item>,
     libraries: List<LibraryInfo>,
+    favorites: List<Title> = emptyList(),
 ): List<Rail> {
     val rails = mutableListOf<Rail>()
     val resume = continues.filter { !it.completed }.mapNotNull { p -> items[p.itemId]?.let { Card.Resume(it, p) } }
     rails += Rail(RailLabel.Continue, resume)
+    rails += Rail(RailLabel.MyList, favorites.map { Card.Show(it) })
     rails += Rail(RailLabel.Recent, titles.sortedByDescending { it.latest }.take(30).map { Card.Show(it) })
     val byLibrary = titles.groupBy { it.libraryId }
     val named = libraries.associateBy { it.id }
@@ -103,4 +108,18 @@ fun fraction(p: ProgressInfo?): Float {
     if (p.completed) return 1f
     if (p.durationSec <= 0.0) return 0f
     return (p.positionSec / p.durationSec).toFloat().coerceIn(0f, 1f)
+}
+
+/**
+ * The titles a list of favourites names. A favourite is a work (kind and
+ * title): it points at one catalog item, and any item of the title, or the
+ * same name, makes the match.
+ */
+fun favoriteTitles(titles: List<Title>, favorites: List<io.github.enrell.lain.core.FavoriteInfo>): List<Title> {
+    if (favorites.isEmpty()) return emptyList()
+    val ids = favorites.mapNotNull { it.itemId.takeIf { id -> id.isNotEmpty() } }.toSet()
+    val names = favorites.map { fold(it.title).trim() }.toSet()
+    val order = favorites.withIndex().associate { (i, f) -> fold(f.title).trim() to i }
+    return titles.filter { t -> t.items.any { it.id in ids } || fold(t.title).trim() in names }
+        .sortedByDescending { order[fold(it.title).trim()] ?: -1 }
 }

@@ -106,6 +106,15 @@ async fn watch_offline_and_sync_back() {
     );
     assert_eq!(core.search("frier".into(), 10).await.unwrap().len(), 2);
 
+    // The account's list: a favourite is the work, so the second episode
+    // names the same one, and taking it out by either empties the list.
+    assert!(core.favorites().await.unwrap().is_empty());
+    let favs = core.set_favorite(ITEM1.into(), true).await.unwrap();
+    assert_eq!(favs.iter().map(|f| f.title.as_str()).collect::<Vec<_>>(), ["Frieren"]);
+    let ep2 = snap.items.iter().find(|i| i.id != ITEM1).unwrap().id.clone();
+    assert_eq!(core.set_favorite(ep2, true).await.unwrap().len(), 1, "one work, whichever episode named it");
+    assert!(core.set_favorite(ITEM1.into(), false).await.unwrap().is_empty());
+
     // Resume: a position saved online is the next play's start.
     let saved = core.save_progress(ITEM1.into(), 600., 1440., false).await.unwrap();
     assert!(matches!(saved, SaveOutcome::Synced { .. }), "{saved:?}");

@@ -143,7 +143,8 @@
 		if (!p) return 'Not watched';
 		if (p.completed) return 'Watched';
 		if (p.duration_sec > 0)
-			return `Resume at ${Math.min(100, Math.round((p.position_sec / p.duration_sec) * 100))}%`;
+			// What is left, as every other place says it (not a percentage here and a time there).
+			return `${formatLength(Math.max(1, p.duration_sec - p.position_sec))} left`;
 		return 'Not watched';
 	}
 </script>
@@ -239,11 +240,16 @@
 					<p class="mt-0.5 text-xs text-muted">{episodes.length} episodes</p>
 					<button
 						type="button"
-						class="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted hover:text-foreground"
-						aria-pressed={autoplayNext}
+						class="mt-2 inline-flex min-h-8 items-center gap-2 text-xs text-foreground/80 hover:text-foreground"
+						role="switch"
+						aria-checked={autoplayNext}
 						onclick={toggleAutoplay}
 					>
-						Autoplay next: {autoplayNext ? 'on' : 'off'}
+						<!-- A switch that looks like one: as small caps it read as a fact, not a choice. -->
+						<span class={['relative h-4 w-7 rounded-full transition-colors', autoplayNext ? 'bg-accent' : 'bg-white/20'].join(' ')}>
+							<span class={['absolute top-0.5 size-3 rounded-full bg-white transition-all', autoplayNext ? 'left-3.5' : 'left-0.5'].join(' ')}></span>
+						</span>
+						Autoplay next
 					</button>
 				</div>
 				<ul class="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">

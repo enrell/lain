@@ -84,6 +84,8 @@ data class AppState(
     val continues: List<ProgressInfo> = emptyList(),
     val progress: Map<String, ProgressInfo> = emptyMap(),
     val libraries: List<LibraryInfo> = emptyList(),
+    /** The account's favourites (its list); null while unknown or when the server has no such list. */
+    val favorites: List<io.github.enrell.lain.core.FavoriteInfo>? = null,
     /** How long each video is, in seconds, for the items asked about so far. */
     val durations: Map<String, Double> = emptyMap(),
     /** Metadata overlays by item (genres, synopsis), when the server has them. */
@@ -281,6 +283,7 @@ class AppViewModel(
                 _state.update { it.copy(error = e, online = !offline(e)) }
             }
             runCatching { core.libraries() }.onSuccess { l -> _state.update { it.copy(libraries = l) } }
+            runCatching { withContext(io) { core.favorites() } }.onSuccess { f -> _state.update { it.copy(favorites = f) } }
             refreshProgressNow()
             _state.update { it.copy(busy = false) }
         }
@@ -312,6 +315,14 @@ class AppViewModel(
             }
             refresh()
         }
+    }
+
+    /** Puts a title on the account's list, or takes it off; false when the server refused. */
+    suspend fun setFavorite(title: io.github.enrell.lain.domain.Title, on: Boolean): Boolean {
+        val id = title.items.firstOrNull()?.id ?: return false
+        val got = runCatching { withContext(io) { core.setFavorite(id, on) } }.getOrNull() ?: return false
+        _state.update { it.copy(favorites = got) }
+        return true
     }
 
     /** Asks how long these videos are (a title page's episodes, the rails' cards). */

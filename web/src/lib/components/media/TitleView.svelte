@@ -214,14 +214,15 @@
 					? `Read · ${label(resumeTarget)}`
 					: 'Read'
 			: resuming
-				? `Resume from ${formatTime(resumeProgress!.position_sec)}`
+				? // The phrase the smoke test keys on, then which episode it is.
+					`Resume from ${formatTime(resumeProgress!.position_sec)} · ${label(resumeTarget!)}`
 				: 'Play'
 	);
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
 			? reading
 				? `Up next · ${label(resumeTarget!)} · page ${Math.floor(resumeProgress!.position_sec)} of ${Math.floor(resumeProgress!.duration_sec)}`
-				: `Up next · ${label(resumeTarget!)} · ${t('title.left', { time: formatLength(Math.max(1, resumeProgress!.duration_sec - resumeProgress!.position_sec)) })}`
+				: `${t('title.left', { time: formatLength(Math.max(1, resumeProgress!.duration_sec - resumeProgress!.position_sec)) })} · ${watched} of ${group.count} watched`
 			: available.length === 0
 				? 'All files missing'
 				: watched > 0
@@ -309,7 +310,7 @@
 					{/if}
 					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} size="md" /></span>{/if}
 					<DownloadFileButton items={group.items} variant="ghost" size="md" label={t('download.all')} />
-					<Menu label={t('title.manage')} entries={manageEntries} variant="ghost" size="md">
+					<Menu label={t('title.manage')} hint={t('title.manageHint')} entries={manageEntries} variant="ghost" size="md">
 						{#snippet icon()}<Settings2 class="size-4" aria-hidden="true" />{/snippet}
 					</Menu>
 				</div>

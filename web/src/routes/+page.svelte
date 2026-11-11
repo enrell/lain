@@ -26,8 +26,9 @@
 	let libraries = $state<Library[]>([]);
 	let continueItems = $state<CatalogItem[]>([]);
 	// Reading and watching are different habits: two rows, not one mixed shelf.
-	const continueWatching = $derived(continueItems.filter((i) => !isReadable(i.kind)));
-	const continueReading = $derived(continueItems.filter((i) => isReadable(i.kind)));
+	// What the hero resumes (the first of them) is not repeated as the first card of its rail.
+	const continueWatching = $derived(continueItems.slice(1).filter((i) => !isReadable(i.kind)));
+	const continueReading = $derived(continueItems.slice(1).filter((i) => isReadable(i.kind)));
 	let progressMap = $state<Map<string, Progress>>(new Map());
 	let nextUpItems = $state<CatalogItem[]>([]);
 	const nextUpWatching = $derived(nextUpItems.filter((i) => !isReadable(i.kind)));

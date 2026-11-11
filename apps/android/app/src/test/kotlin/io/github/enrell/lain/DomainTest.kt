@@ -47,6 +47,22 @@ class DomainTest {
     }
 
     @Test
+    fun favoritesNameTitlesAndGetARail() {
+        val core = FakeCore()
+        val titles = groupTitles(core.items)
+        val frieren = titles.first { it.title == "Frieren" }
+        // By any item of the title, or by its name alone (an item that left the catalog).
+        val byItem = listOf(io.github.enrell.lain.core.FavoriteInfo(frieren.items.last().id, "anime", "whatever"))
+        val byName = listOf(io.github.enrell.lain.core.FavoriteInfo("", "anime", "  frieren "))
+        assertEquals(listOf(frieren.key), io.github.enrell.lain.domain.favoriteTitles(titles, byItem).map { it.key })
+        assertEquals(listOf(frieren.key), io.github.enrell.lain.domain.favoriteTitles(titles, byName).map { it.key })
+        assertTrue(io.github.enrell.lain.domain.favoriteTitles(titles, emptyList()).isEmpty())
+        val libs = listOf(io.github.enrell.lain.core.LibraryInfo("lib-1", "Anime", "anime", false, false))
+        val rails = buildRails(titles, emptyList(), core.items.associateBy { it.id }, libs, listOf(frieren))
+        assertTrue(rails.any { it.label == RailLabel.MyList && it.cards.size == 1 })
+    }
+
+    @Test
     fun nextUpSkipsFinishedItems() {
         val t = groupTitles(FakeCore().items).first { it.title == "Frieren" }
         assertEquals("e1", nextUp(t, emptyMap()).id)

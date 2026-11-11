@@ -243,15 +243,22 @@ fun PlayerScreen(
             }
 
             override fun onTracksChanged(tracks: Tracks) {
-                fun of(type: Int) = tracks.groups.filter { it.type == type }.flatMap { g ->
+                // A track is named by its title and language; codec names and bare
+                // language codes beside a full name are noise. A language offered twice
+                // (in the file and again converted by the server) is listed once.
+                val noise = setOf("subrip", "srt", "ass", "ssa", "webvtt", "vtt", "mov_text", "pgs", "aac", "ac3", "eac3", "opus", "flac")
+                fun of(type: Int, once: Boolean) = tracks.groups.filter { it.type == type }.flatMap { g ->
                     (0 until g.length).map { i ->
                         val f = g.getTrackFormat(i)
-                        val name = listOfNotNull(f.label, f.language?.takeIf { it != "und" }?.uppercase()).distinct().joinToString(" · ")
-                        TextTrack(g, i, name.ifEmpty { "#${i + 1}" }, g.isTrackSelected(i))
+                        val lang = f.language?.takeIf { it != "und" }
+                        val words = (f.label ?: "").split(" · ", " - ").map { it.trim() }.filter { w -> w.isNotEmpty() && w.lowercase() !in noise && !w.equals(lang, ignoreCase = true) && !(w.length == 3 && w == w.lowercase()) }
+                        val name = (words + listOfNotNull(lang?.uppercase())).distinctBy { it.lowercase() }.joinToString(" · ")
+                        // Two audio tracks in one language are two tracks (a commentary); two subtitles are the same text twice.
+                        (if (once) lang ?: name else "${g.hashCode()}:$i") to TextTrack(g, i, name.ifEmpty { "#${i + 1}" }, g.isTrackSelected(i))
                     }
-                }
-                textTracks = of(C.TRACK_TYPE_TEXT)
-                audioTracks = of(C.TRACK_TYPE_AUDIO)
+                }.groupBy({ it.first }, { it.second }).values.map { same -> same.firstOrNull { it.selected } ?: same.first() }
+                textTracks = of(C.TRACK_TYPE_TEXT, once = true)
+                audioTracks = of(C.TRACK_TYPE_AUDIO, once = false)
             }
 
             override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
@@ -421,6 +428,8 @@ fun PlayerScreen(
                     useController = false
                 }
             },
+            // Subtitles sit above the bar while it is up, and near the edge when it is not.
+            update = { view -> view.subtitleView?.setBottomPaddingFraction(if (controls || pinned) 0.36f else 0.08f) },
             modifier = Modifier.fillMaxSize(),
         )
 

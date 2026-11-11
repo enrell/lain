@@ -211,11 +211,19 @@ fun ShapeCard(
 /** Every dialog is a bottom sheet on a phone. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Sheet(title: String, onDismiss: () -> Unit, footer: (@Composable () -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+fun Sheet(
+    title: String,
+    onDismiss: () -> Unit,
+    footer: (@Composable () -> Unit)? = null,
+    /** False for a sheet that holds unsaved choices: scrolling it back up must not fling it shut. */
+    dragToClose: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val l = LocalLain.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetGesturesEnabled = dragToClose,
         containerColor = l.surface,
         contentColor = l.text,
         scrimColor = Color.Black.copy(alpha = 0.62f),

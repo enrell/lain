@@ -33,6 +33,7 @@
 		variant = 'secondary',
 		size = 'sm',
 		align = 'end',
+		hint = undefined,
 		class: className = ''
 	}: {
 		label: string;
@@ -41,13 +42,15 @@
 		variant?: ButtonVariant;
 		size?: ButtonSize;
 		align?: 'start' | 'end';
+		/** What the menu is for, as a tooltip. */
+		hint?: string;
 		class?: string;
 	} = $props();
 </script>
 
 {#if entries.length > 0}
 	<DropdownMenu.Root>
-		<DropdownMenu.Trigger class={buttonClasses(variant, size, className)}>
+		<DropdownMenu.Trigger class={buttonClasses(variant, size, className)} title={hint}>
 			{@render icon?.()}
 			{label}
 			<ChevronDown class="size-3.5 opacity-70" aria-hidden="true" />

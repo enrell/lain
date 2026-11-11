@@ -28,7 +28,7 @@
     <!-- browse -->
     <string name="home_empty">Nothing here yet. Add a library on the server.</string>
     <string name="library_empty">No titles.</string>
-    <string name="rail_continue">Continue</string>
+    <string name="rail_continue">Continue watching</string>
     <string name="rail_recent">Recently added</string>
     <string name="kind_reading">Reading</string>
     <string name="kind_watching">Watching</string>
@@ -101,7 +101,7 @@
     <string name="settings_floor_hint">Downloads stop before the device has less free space than this.</string>
     <string name="settings_evict">Make room automatically</string>
     <string name="settings_evict_hint">Delete watched, synced copies (oldest first) when space runs out.</string>
-    <string name="settings_about">Lain for Android · core %1$s</string>
+    <string name="settings_about">lain for Android · core %1$s</string>
 
     <!-- errors -->
     <string name="err_offline">The server is unreachable.</string>
@@ -259,7 +259,7 @@
     <string name="end_of_volume">End of the volume</string>
     <string name="end_of_book">You have reached the end.</string>
     <string name="next_volume">Next volume</string>
-    <string name="reader_hint">Tap a side or swipe to turn the page · tap the middle for the controls</string>
+    <string name="reader_hint">Tap a side or swipe to turn the page · tap the middle for the controls · pinch to zoom</string>
     <string name="sorted_by">Sorted by %1$s</string>
     <string name="private_unlocked">Private libraries unlocked for this session</string>
     <string name="private_locked">Private libraries locked</string>
@@ -303,4 +303,14 @@
     <string name="reader_rtl_note">Right to left: the next page is on the left</string>
     <string name="hero_continue_reading">Continue reading</string>
     <string name="fact_download_size">Download size</string>
+    <string name="rail_my_list">My list</string>
+    <string name="fav_add">Add to my list</string>
+    <string name="fav_remove">Remove from my list</string>
+    <string name="fav_added">Added to your list</string>
+    <string name="fav_removed">Removed from your list</string>
+    <string name="mark_all_watched_q">Mark all as watched?</string>
+    <string name="mark_all_read_q">Mark all as read?</string>
+    <string name="mark_all_unwatched_q">Mark all as not watched?</string>
+    <string name="mark_all_body">Every one of them changes at once. Progress inside an episode is replaced.</string>
+    <string name="confirm_mark">Mark all</string>
 </resources>

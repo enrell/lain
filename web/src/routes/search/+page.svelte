@@ -120,7 +120,7 @@
 <div class="space-y-6">
 	<header class="space-y-3">
 		<h1 class="text-xl font-semibold tracking-tight text-foreground">Search</h1>
-		<form class="relative max-w-2xl" onsubmit={submit} role="search">
+		<form class="relative" onsubmit={submit} role="search">
 			<Search
 				class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
 				aria-hidden="true"
@@ -161,7 +161,7 @@
 		<ErrorState message={error} retry={() => void run(query, true)} />
 	{:else if showIdle}
 		<!-- Before a query: the libraries to start from. -->
-		<section aria-label="Browse" class="max-w-2xl">
+		<section aria-label="Browse">
 			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">Browse</h2>
 			<ul class="mt-2 divide-y divide-line/50">
 				{#each browse as lib (lib.id)}

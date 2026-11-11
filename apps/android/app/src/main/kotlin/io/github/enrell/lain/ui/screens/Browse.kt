@@ -1,5 +1,6 @@
 package io.github.enrell.lain.ui.screens
 
+import io.github.enrell.lain.domain.favoriteTitles
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.runtime.collectAsState
@@ -112,7 +113,7 @@ private fun titleSubtitle(t: Title): String = when {
     t.items.size > 1 && t.reading -> pluralStringResource(R.plurals.count_volumes, t.items.size, t.items.size)
     t.items.size > 1 -> pluralStringResource(R.plurals.count_episodes, t.items.size, t.items.size)
     t.year > 0 -> t.year.toString()
-    else -> t.kind
+    else -> ""
 }
 
 /** A title's card at rail height: as wide as its picture's shape. */
@@ -165,7 +166,7 @@ private fun RailHeader(title: String, action: String?, onClick: (() -> Unit)?) {
 fun HomeScreen(state: AppState, vm: AppViewModel) {
     val l = LocalLain.current
     val rails = remember(state.titles, state.continues, state.libraries) {
-        buildRails(state.titles, state.continues, state.items, state.libraries)
+        buildRails(state.titles, state.continues, state.items, state.libraries, favoriteTitles(state.titles, state.favorites.orEmpty()))
     }
     if (rails.isEmpty()) {
         if (state.busy && state.error == null) {
@@ -210,7 +211,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                     )
                     // What it is, in words: the episode you are on and what is left of it, or the
                     // size of the thing; then up to two genres. Tokens drop before anything is cut.
-                    val left = resumeHero?.progress?.let { p -> (p.durationSec - p.positionSec).takeIf { it > 0 && p.durationSec > 0 } }
+                    val left = resumeHero?.progress?.takeIf { !hero.reading }?.let { p -> (p.durationSec - p.positionSec).takeIf { it > 0 && p.durationSec > 0 } }
                     val facts = listOfNotNull(
                         resumeHero?.takeIf { hero.reading && it.progress.durationSec > 0 }?.let { stringResource(R.string.progress_page, it.progress.positionSec.toInt().coerceAtLeast(1), it.progress.durationSec.toInt()) },
                         resumeHero?.item?.takeIf { it.episode > 0 && !hero.reading }?.let { stringResource(R.string.episode_n, it.episode.toInt()) },
@@ -260,7 +261,11 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
             }
         }
         if (state.fromCache) item { OfflineNote(state) }
-        items(rails) { rail ->
+        // What the hero resumes is not repeated as the first card of Continue.
+        val shown = rails.map { r ->
+            if (r.label == RailLabel.Continue && resumeHero != null) r.copy(cards = r.cards.filterNot { c -> c is Card.Resume && c.item.id == resumeHero.item.id }) else r
+        }.filter { it.cards.isNotEmpty() }
+        items(shown) { rail ->
             Column(Modifier.padding(top = 26.dp)) {
                 val lib = (rail.label as? RailLabel.Library)
                 val libId = lib?.let { n -> state.libraries.firstOrNull { it.name == n.name }?.id }
@@ -268,6 +273,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                     when (val lab = rail.label) {
                         RailLabel.Continue -> stringResource(R.string.rail_continue)
                         RailLabel.Recent -> stringResource(R.string.rail_recent)
+                        RailLabel.MyList -> stringResource(R.string.rail_my_list)
                         is RailLabel.Library -> lab.name
                     },
                     null,
@@ -594,6 +600,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                 if (draft != filters || draftDense != dense) unapplied = draft
                 sheet = false
             },
+            dragToClose = false,
             footer = {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     WButton(stringResource(R.string.clear), { draft = Filters(q = draft.q) }, Modifier.weight(1f), kind = Btn.Secondary, enabled = changed)
@@ -737,6 +744,8 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
     val total = title.items.sumOf { state.durations[it.id] ?: 0.0 }
     var menu by remember { mutableStateOf<Item?>(null) }
     var confirmAll by remember { mutableStateOf(false) }
+    var confirmMark by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
     // The copies on this device, read while the screen is up (faster while one is arriving).
     val graph = LocalContext.current.graph
     val scope = rememberCoroutineScope()
@@ -775,6 +784,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         }
         item {
             Column(Modifier.padding(horizontal = GUTTER)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 WButton(
                     when {
                         title.reading && resume != null -> stringResource(R.string.continue_page, resume.positionSec.toInt())
@@ -786,10 +796,27 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                         else -> stringResource(R.string.action_play)
                     } + if (series && (next.episode > 0 || next.season > 0)) " · " + rowLabelShort(next, title.reading) else "",
                     { vm.open(if (allDone) title.items.first() else next) },
-                    Modifier.fillMaxWidth(),
+                    Modifier.weight(1f),
                     icon = if (title.reading) Ic.Book else Ic.Play,
                     large = true,
                 )
+                // Keeping it: the account's list, the same one the web client shows.
+                state.favorites?.let { favs ->
+                    val listed = remember(favs, title.key) { favoriteTitles(listOf(title), favs).isNotEmpty() }
+                    val added = stringResource(R.string.fav_added)
+                    val removed = stringResource(R.string.fav_removed)
+                    Box(
+                        Modifier.size(48.dp).clip(l.buttonShape).background(if (listed) l.accent.copy(alpha = 0.2f) else l.surface.copy(alpha = 0.55f))
+                            .border(1.dp, if (listed) l.accent else l.line, l.buttonShape)
+                            .clickable(onClickLabel = stringResource(if (listed) R.string.fav_remove else R.string.fav_add)) {
+                                scope.launch {
+                                    if (vm.setFavorite(title, !listed)) android.widget.Toast.makeText(ctx, if (listed) removed else added, android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(if (listed) Ic.HeartFilled else Ic.Heart, stringResource(if (listed) R.string.fav_remove else R.string.fav_add), tint = if (listed) l.accent else l.text, modifier = Modifier.size(20.dp)) }
+                }
+                }
                 // What else can be done with the title, at one weight below the main action.
                 // One row of columns, icon over word; each takes room by the length of its word, so none wraps alone.
                 Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -806,7 +833,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                                 else -> R.string.mark_watched
                             },
                         ),
-                    ) { vm.markWatched(title.items.map { it.id }, !allDone) }
+                    ) { if (series) confirmMark = true else vm.markWatched(title.items.map { it.id }, !allDone) }
                     val have = title.items.count { copyOf[it.id]?.state == io.github.enrell.lain.core.CopyState.DONE }
                     if (have == title.items.size) {
                         QuietAction(this, Ic.Check, stringResource(R.string.dl_downloaded)) { vm.go(Screen.Downloads) }
@@ -818,7 +845,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 }
                 // Under the actions: what is left of the one in progress, and how much of the whole is done.
                 val under = listOfNotNull(
-                    resume?.takeIf { series && !title.reading }?.let { stringResource(R.string.time_left, length((it.durationSec - it.positionSec).coerceAtLeast(0.0))) },
+                    resume?.takeIf { series && !title.reading }?.let { rowLabelShort(next, false) + ": " + stringResource(R.string.time_left, length((it.durationSec - it.positionSec).coerceAtLeast(0.0))) },
                     if (series && watched > 0) stringResource(if (title.reading) R.string.read_of else R.string.watched_of, watched, title.items.size) else null,
                 )
                 if (under.isNotEmpty()) Text(under.joinToString("  ·  "), Modifier.padding(top = 10.dp), color = l.muted, fontSize = 13.sp)
@@ -874,6 +901,22 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         }
     }
     }
+    if (confirmMark) {
+        // A whole title's marks change at once: asked first, since there is no undo.
+        val n = title.items.size
+        Sheet(stringResource(if (allDone) R.string.mark_all_unwatched_q else if (title.reading) R.string.mark_all_read_q else R.string.mark_all_watched_q), { confirmMark = false }, footer = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                WButton(stringResource(R.string.player_cancel), { confirmMark = false }, Modifier.weight(1f), kind = Btn.Secondary)
+                WButton(stringResource(R.string.confirm_mark), { confirmMark = false; vm.markWatched(title.items.map { it.id }, !allDone) }, Modifier.weight(1f))
+            }
+        }) {
+            Text(
+                (if (title.reading) pluralStringResource(R.plurals.count_volumes, n, n) else pluralStringResource(R.plurals.count_episodes, n, n)) + "  ·  " + title.title,
+                color = l.text, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+            )
+            Text(stringResource(R.string.mark_all_body), Modifier.padding(top = 6.dp), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
+        }
+    }
     if (confirmAll) {
         // A whole title is a lot of room: say how much before taking it.
         val missing = title.items.filter { copyOf[it.id] == null }
@@ -920,7 +963,7 @@ private fun rowLabel(item: Item, reading: Boolean): String = when {
 
 @Composable
 private fun rowLabelShort(item: Item, reading: Boolean): String = when {
-    reading && item.season > 0 -> "Vol. ${item.season}"
+    reading && item.season > 0 -> "Vol ${item.season}"
     reading -> episodeLabel(item.season, item.episode, true)
     item.episode > 0 -> stringResource(R.string.episode_n, item.episode.toInt())
     else -> episodeLabel(item.season, item.episode, false)
@@ -983,12 +1026,14 @@ private fun EpisodeRow(item: Item, title: Title, state: AppState, onOpen: () -> 
             .background(l.surface.copy(alpha = 0.3f)).clickable(onClickLabel = stringResource(if (title.reading) R.string.action_read else R.string.action_play), onClick = onOpen),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(if (title.reading) 64.dp else 132.dp).aspectRatio(if (title.reading) 3f / 4f else 16f / 9f)) {
+        // A volume shows its whole cover, at a cover's shape; an episode its still.
+        Box(Modifier.width(if (title.reading) 84.dp else 132.dp).aspectRatio(if (title.reading) 2f / 3f else 16f / 9f)) {
             Art(item.id, Modifier.fillMaxSize())
+            if (p?.completed == true) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
             val f = if (p?.completed == true) 0f else fraction(p)
             if (f > 0f) {
-                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.55f))) {
-                    Box(Modifier.fillMaxWidth(f).height(4.dp).background(l.accent))
+                Box(Modifier.align(Alignment.BottomStart).padding(horizontal = 7.dp, vertical = 7.dp).fillMaxWidth().height(5.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.65f))) {
+                    Box(Modifier.fillMaxWidth(f).height(5.dp).clip(CircleShape).background(l.accent))
                 }
             }
             if (!title.reading) {
@@ -1115,8 +1160,12 @@ fun SearchScreen(state: AppState, vm: AppViewModel) {
                 }
                 // Shapes are read in composition, never in the span lambda (see LibraryBrowser).
                 val wide = found.map { it.wide() }
+                val resultsState = rememberLazyGridState()
+                val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+                LaunchedEffect(resultsState.isScrollInProgress) { if (resultsState.isScrollInProgress) keyboard?.hide() }
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(6),
+                    state = resultsState,
                     contentPadding = PaddingValues(start = GUTTER, end = GUTTER, top = 14.dp, bottom = 32.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),

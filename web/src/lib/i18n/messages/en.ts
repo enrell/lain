@@ -587,6 +587,7 @@ const en = {
 	},
 	openWith: {
 		label: 'Open with',
+		hint: 'Play in another player: mpv, VLC or the one on this machine',
 		thisMachine: 'The player on this machine',
 		setup: 'Set up mpv and VLC…',
 		setupTitle: 'Open in mpv or VLC',
@@ -597,6 +598,7 @@ const en = {
 	},
 	title: {
 		manage: 'Manage',
+		manageHint: 'For administrators: metadata, subtitles and files of this title',
 		fetchMetadata: 'Fetch metadata',
 		refetchMetadata: 'Refetch metadata',
 		removeMetadata: 'Remove metadata',

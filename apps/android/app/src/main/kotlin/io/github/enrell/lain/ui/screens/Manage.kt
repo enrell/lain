@@ -230,13 +230,16 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
         }
         SettingsGroup(stringResource(R.string.settings_account)) {
             SettingRow(stringResource(R.string.settings_sync), if (queued.toInt() == 0) stringResource(R.string.settings_sync_none) else pluralStringResource(R.plurals.settings_sync_waiting, queued.toInt(), queued.toInt())) {
-                WButton(stringResource(R.string.settings_sync_now), {
-                    scope.launch {
-                        runCatching { graph.core.flushProgress() }
-                        queued = vm.queuedProgress()
-                        vm.refreshProgress()
-                    }
-                }, kind = Btn.Secondary, enabled = queued.toInt() > 0)
+                // Offered when something waits: a greyed button beside "everything is synced" read as broken.
+                if (queued.toInt() > 0) {
+                    WButton(stringResource(R.string.settings_sync_now), {
+                        scope.launch {
+                            runCatching { graph.core.flushProgress() }
+                            queued = vm.queuedProgress()
+                            vm.refreshProgress()
+                        }
+                    }, kind = Btn.Secondary)
+                }
             }
             SettingRow(stringResource(R.string.settings_server), listOf(state.server, state.serverVersion).filter { it.isNotEmpty() }.joinToString(" · ")) {
                 WButton(stringResource(R.string.settings_change), { vm.changeServer() }, kind = Btn.Secondary)
