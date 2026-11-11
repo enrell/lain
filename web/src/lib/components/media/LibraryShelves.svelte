@@ -74,7 +74,7 @@
 			{:else if shelf.groups.length === 0}
 				<p class="text-sm text-muted">Nothing indexed here yet.</p>
 			{:else}
-				<div class="-mx-5 flex snap-x gap-3.5 overflow-x-auto px-5 pb-3 pt-1 no-scrollbar [--card-h:9.5rem] sm:-mx-8 sm:px-8 sm:[--card-h:12rem] md:mx-0 md:px-0 lg:[--card-h:14rem]">
+				<div class="-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-3 pt-1 no-scrollbar sm:scroll-px-8 md:scroll-px-0 [--card-h:9.5rem] sm:-mx-8 sm:px-8 sm:[--card-h:12rem] md:mx-0 md:px-0 lg:[--card-h:14rem]">
 					{#each shelf.groups as group, i (group.key)}
 						<div class="shrink-0 snap-start">
 							{#if group.count > 1}

@@ -158,7 +158,7 @@
 			{#snippet icon()}<SearchX class="size-6 text-muted" />{/snippet}
 		</EmptyState>
 	{:else}
-		<MediaGrid {items} />
+		<MediaGrid {items} fit />
 		{#if items.length < total}
 			<div class="mt-8 flex justify-center">
 				<Button variant="secondary" loading={loading} onclick={() => void run(searchedFor, false)}>

@@ -105,18 +105,28 @@
 		</div>
 	</header>
 
-	<header class="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-background/88 px-5 py-3 backdrop-blur-xl md:hidden">
-		<a href="/" class="flex items-center gap-2" aria-label={t('common.home')}>
-			<SignalMark class="size-5 text-accent" />
-			<span class="font-semibold tracking-[0.2em] text-foreground">lain</span>
+	<header
+		class="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-background/92 pl-5 pr-3 backdrop-blur-xl md:hidden"
+		style="padding-top: env(safe-area-inset-top);"
+	>
+		<a href="/" class="flex h-12 items-center gap-2" aria-label={t('common.home')}>
+			<SignalMark class="size-[18px] text-accent" />
+			<span class="text-[15px] font-semibold tracking-[0.2em] text-foreground">lain</span>
 		</a>
-		<div class="w-40"><UserMenu /></div>
+		<div class="flex items-center gap-1">
+			{#if scan.running}
+				<span class="flex items-center gap-1.5 pr-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted" aria-live="polite">
+					<span class="size-1.5 animate-pulse rounded-full bg-accent"></span>{scanLabel}
+				</span>
+			{/if}
+			<UserMenu side="bottom" compact />
+		</div>
 	</header>
 
 	<CommandPalette />
 
 	<main id="main" tabindex="-1" class="overflow-x-clip">
-		<div class={page.url.pathname === '/' ? 'w-full pb-24 md:pb-0' : 'mx-auto w-full max-w-[1800px] px-5 sm:px-8 lg:px-10 pb-28 pt-6 md:pb-14 md:pt-28'}>
+		<div class={page.url.pathname === '/' ? 'w-full pb-24 md:pb-0' : 'mx-auto w-full max-w-[1800px] px-5 sm:px-8 lg:px-10 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 md:pb-14 md:pt-28'}>
 			{@render children()}
 		</div>
 	</main>
