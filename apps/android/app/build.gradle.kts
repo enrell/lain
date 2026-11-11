@@ -7,6 +7,13 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Release identity (D-275), all from the environment so nothing secret
+// is ever in the tree: the version from the release tag, the version
+// code from the workflow run, and the signing key from a keystore file.
+// Without a keystore the release APK is built unsigned.
+fun env(name: String): String? = providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+val releaseKeystore = env("LAIN_ANDROID_KEYSTORE")
+
 android {
     namespace = "io.github.enrell.lain"
     compileSdk = 37
@@ -15,16 +22,29 @@ android {
         applicationId = "io.github.enrell.lain"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = env("LAIN_ANDROID_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = env("LAIN_VERSION")?.removePrefix("v") ?: "0.1.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
     }
 
+    signingConfigs {
+        releaseKeystore?.let { keystore ->
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = env("LAIN_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = env("LAIN_ANDROID_KEY_ALIAS")
+                keyPassword = env("LAIN_ANDROID_KEY_PASSWORD") ?: env("LAIN_ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // No R8: JNA and the UniFFI bindings are reached by name.
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

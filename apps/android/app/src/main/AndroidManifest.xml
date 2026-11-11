@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- lain-client speaks plain HTTP until TLS lands (Q-045, D-252). -->
+    <!-- Cleartext is the user's choice per server (D-252, D-274). -->
     <application
         android:name=".LainApp"
         android:allowBackup="false"

@@ -209,7 +209,7 @@ jobs:
             ~/.cargo/git/db
             ~/.cargo/bin/cargo-ndk
             apps/android/lain-ffi/target
-          key: android-${{ hashFiles('apps/android/lain-ffi/Cargo.lock') }}-${{ hashFiles('apps/android/lain-ffi/src/**', 'crates/lain-client/src/**', 'crates/lain-api/src/**', 'crates/lain-read/src/**') }}
+          key: android-${{ hashFiles('apps/android/lain-ffi/Cargo.lock') }}-${{ hashFiles('apps/android/lain-ffi/src/**', 'crates/lain-client/src/**', 'crates/lain-http/src/**', 'crates/lain-api/src/**', 'crates/lain-read/src/**') }}
           restore-keys: |
             android-${{ hashFiles('apps/android/lain-ffi/Cargo.lock') }}-
             android-
@@ -228,8 +228,10 @@ jobs:
         run: |
           ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" scripts/build-rust.sh
           find app/generated -name '*.kt' -exec sh -c 'echo "$1"; grep -m1 "^package" "$1"' _ {} \;
-      - name: Unit tests and debug APK
-        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug -PlainHostLib="$PWD/lain-ffi/target/debug/liblain_ffi.so"
+      # The release variant is assembled too (unsigned here, D-275), so
+      # a tag never meets it for the first time.
+      - name: Unit tests, debug APK and the release variant
+        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease -PlainHostLib="$PWD/lain-ffi/target/debug/liblain_ffi.so"
       - uses: actions/upload-artifact@v7
         with:
           name: lain-android-debug

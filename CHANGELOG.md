@@ -14,6 +14,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   syncing progress; offline copies within the device budget that play and
   read without the server, with offline progress synced on reconnect; the
   shipped themes. CI builds the debug APK (`lain-android-debug`).
+- **`https` servers in every native client** (D-274): `lain-client` speaks
+  TLS through `lain-http`'s rustls setup, so `lain login --server
+  https://...`, the desktop app and Android reach a server behind a reverse
+  proxy. A failed handshake is `ClientError::Tls`. Android's connect field
+  starts at `https://`.
+- **Signed Android releases** (D-275): a `v*` tag attaches
+  `lain_<version>_android.apk` when the signing secrets are set.
 
 ### Removed
 - **The Go server** (D-235..D-243, DESIGN-v2 §13 step 5). `cmd/`,

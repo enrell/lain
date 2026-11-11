@@ -7,7 +7,7 @@
 
     <!-- connect and login -->
     <string name="connect_title">Connect to a server</string>
-    <string name="connect_hint">The address of your lain server, for example http://192.168.1.10:9360.</string>
+    <string name="connect_hint">The address of your lain server: https://lain.example.org, or http://192.168.1.10:9360 on your own network.</string>
     <string name="connect_url">Server URL</string>
     <string name="connect_go">Connect</string>
     <string name="login_title">Log in</string>
@@ -70,6 +70,7 @@
     <!-- downloads -->
     <string name="download_channel">Offline copies</string>
     <string name="download_running">Downloading offline copies</string>
+    <string name="copy_pending">Offline copy pending</string>
     <string name="download_queued">%1$s: queued for offline</string>
     <string name="downloads_hint">Offline copies play and read without the server. Progress made offline syncs when it is back.</string>
     <string name="downloads_usage">%1$s of %2$s</string>
@@ -105,6 +106,7 @@
 
     <!-- errors -->
     <string name="err_offline">The server is unreachable.</string>
+    <string name="err_tls">No secure connection to the server: %1$s</string>
     <string name="err_unauthorized">Your session ended; log in again.</string>
     <string name="err_login">Login refused: %1$s</string>
     <string name="err_forbidden">Not allowed.</string>

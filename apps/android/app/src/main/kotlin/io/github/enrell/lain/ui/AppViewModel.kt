@@ -2,6 +2,7 @@ package io.github.enrell.lain.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.enrell.lain.core.CopyState
 import io.github.enrell.lain.core.CoreEvent
 import io.github.enrell.lain.core.Item
 import io.github.enrell.lain.core.LainCoreInterface
@@ -83,6 +84,8 @@ data class AppState(
     val titles: List<Title> = emptyList(),
     val continues: List<ProgressInfo> = emptyList(),
     val progress: Map<String, ProgressInfo> = emptyMap(),
+    /** The offline copies of this server by item, for the title rows. */
+    val copies: Map<String, CopyState> = emptyMap(),
     val libraries: List<LibraryInfo> = emptyList(),
     val stack: List<Screen> = listOf(Screen.Home),
     val query: String = "",
@@ -311,7 +314,15 @@ class AppViewModel(
     }
 
     /** Queues an offline copy; the caller starts the download service. */
-    suspend fun download(itemId: String): Result<Unit> = runCatching { core.offlineAdd(itemId) }.map { }
+    suspend fun download(itemId: String): Result<Unit> = runCatching { core.offlineAdd(itemId) }.map { loadCopies() }
+
+    /** Which items have an offline copy, and in what state. */
+    fun loadCopies() {
+        viewModelScope.launch {
+            val copies = withContext(io) { runCatching { core.offlineCopies() }.getOrDefault(emptyList()) }
+            _state.update { it.copy(copies = copies.associate { c -> c.itemId to c.state }) }
+        }
+    }
 
     suspend fun queuedProgress(): Long = withContext(io) { runCatching { core.queuedProgress() }.getOrDefault(0) }
 

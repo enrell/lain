@@ -33,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.enrell.lain.R
+import io.github.enrell.lain.core.CopyState
 import io.github.enrell.lain.core.Item
 import io.github.enrell.lain.domain.Card
 import io.github.enrell.lain.domain.RailLabel
@@ -184,7 +185,10 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         Centered { Text(stringResource(R.string.err_not_found), color = l.muted) }
         return
     }
-    LaunchedEffect(key) { vm.loadProgress(title.items.map { it.id }) }
+    LaunchedEffect(key) {
+        vm.loadProgress(title.items.map { it.id })
+        vm.loadCopies()
+    }
     LazyColumn(contentPadding = PaddingValues(bottom = l.sp(5))) {
         item {
             Box(Modifier.fillMaxWidth().height(260.dp)) {
@@ -214,6 +218,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
 private fun ItemRow(item: Item, state: AppState, vm: AppViewModel, onDownload: (Item) -> Unit) {
     val l = LocalLain.current
     val p = state.progress[item.id]
+    val copy = state.copies[item.id]
     Row(
         Modifier.fillMaxWidth().padding(horizontal = l.sp(4), vertical = l.sp(1)),
         verticalAlignment = Alignment.CenterVertically,
@@ -235,9 +240,14 @@ private fun ItemRow(item: Item, state: AppState, vm: AppViewModel, onDownload: (
                     color = if (p.completed) l.ok else l.accent,
                 )
             }
+            when (copy) {
+                null -> Unit
+                CopyState.DONE -> Label(stringResource(R.string.reader_offline), color = l.ok)
+                else -> Label(stringResource(R.string.copy_pending))
+            }
         }
         Action(stringResource(if (item.reading()) R.string.action_read else R.string.action_play), null, { vm.open(item) })
-        Action(stringResource(R.string.action_download), null, { onDownload(item) })
+        if (copy != CopyState.DONE) Action(stringResource(R.string.action_download), null, { onDownload(item) })
     }
 }
 

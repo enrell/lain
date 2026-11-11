@@ -1,5 +1,6 @@
 package io.github.enrell.lain.ui.screens
 
+import android.app.Activity
 import android.net.Uri
 import android.view.ViewGroup
 import androidx.annotation.OptIn
@@ -12,11 +13,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.media3.common.PlaybackException
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -31,8 +35,12 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -92,6 +100,20 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
         }
     }
     val focus = remember { FocusRequester() }
+    val view = LocalView.current
+
+    // The player owns the whole screen: the system bars hide (a swipe
+    // shows them for a moment) and the display stays on while it is up.
+    DisposableEffect(view) {
+        val bars = (context as? Activity)?.window?.let { WindowCompat.getInsetsController(it, view) }
+        bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        bars?.hide(WindowInsetsCompat.Type.systemBars())
+        view.keepScreenOn = true
+        onDispose {
+            bars?.show(WindowInsetsCompat.Type.systemBars())
+            view.keepScreenOn = false
+        }
+    }
 
     LaunchedEffect(itemId) { model.load() }
     DisposableEffect(itemId) {
@@ -102,6 +124,12 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (!isPlaying) model.report(player.currentPosition, player.duration)
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                val mime = (error as? ExoPlaybackException)?.rendererFormat?.sampleMimeType
+                val retried = error.errorCode in DECODER_ERRORS && model.decoderFailed(mime, player.currentPosition, player.duration)
+                if (!retried) model.playerFailed(error)
             }
         }
         player.addListener(listener)
@@ -167,7 +195,7 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
             modifier = Modifier.fillMaxSize(),
         )
         Column(
-            Modifier.align(Alignment.TopStart).fillMaxWidth().background(l.controlsBg).padding(l.sp(3)),
+            Modifier.align(Alignment.TopStart).fillMaxWidth().background(l.controlsBg).safeDrawingPadding().padding(l.sp(3)),
             verticalArrangement = Arrangement.spacedBy(l.sp(1)),
         ) {
             Text(title, style = MaterialTheme.typography.titleMedium, color = Color.White)
@@ -177,6 +205,9 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                     src != null -> Label(src.note, color = Color.White)
                 }
                 if (state.savedLocally) Label(stringResource(R.string.player_saved_locally), color = l.warn)
+            }
+            // The keys sit on their own row: a long note must not squeeze them.
+            Row(horizontalArrangement = Arrangement.spacedBy(l.sp(2)), verticalAlignment = Alignment.CenterVertically) {
                 Kbd("Space")
                 Kbd("← →")
                 Kbd("Esc")
@@ -192,3 +223,12 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
         }
     }
 }
+
+/** Errors where the device's decoder, not the file or network, gave up. */
+private val DECODER_ERRORS = setOf(
+    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+    PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+    PlaybackException.ERROR_CODE_DECODING_FAILED,
+    PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+)
