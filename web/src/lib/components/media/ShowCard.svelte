@@ -79,8 +79,13 @@
 		>
 			<Play class="size-4 translate-x-px" aria-hidden="true" />
 		</div>
+		{#if progress && progress.duration_sec > 0 && !progress.completed}
+			<span class="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground backdrop-blur">
+				{isReadable(group.items[0]?.kind) ? 'Reading' : 'Watching'}
+			</span>
+		{/if}
 		{#if progress && progress.duration_sec > 0}
-			<div class="absolute inset-x-0 bottom-0 h-1 bg-black/40">
+			<div class="absolute inset-x-0 bottom-0 h-1.5 bg-black/50">
 				<div
 					class="h-full bg-accent"
 					style={`width: ${Math.min(100, Math.round((progress.position_sec / progress.duration_sec) * 100))}%`}

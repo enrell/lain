@@ -187,19 +187,19 @@
 				{/if}
 
 				{#if continueWatching.length > 0}
-					<MediaRow title="Continue watching" href="/library" actionLabel="Open library" items={continueWatching} {progressMap} layout="landscape" />
+					<MediaRow title="Continue watching" href="/library" actionLabel="Browse all" items={continueWatching} {progressMap} layout="landscape" />
 				{/if}
 
 				{#if continueReading.length > 0}
-					<MediaRow title="Continue reading" href="/library" actionLabel="Open library" items={continueReading} {progressMap} layout="poster" />
+					<MediaRow title="Continue reading" href="/library" actionLabel="Browse all" items={continueReading} {progressMap} layout="poster" />
 				{/if}
 
 				{#if nextUpWatching.length > 0}
-					<MediaRow title="Next up" href="/library" actionLabel="Open library" items={nextUpWatching} {progressMap} layout="landscape" />
+					<MediaRow title="Next up" href="/library" actionLabel="Browse all" items={nextUpWatching} {progressMap} layout="landscape" />
 				{/if}
 
 				{#if nextUpReading.length > 0}
-					<MediaRow title="Read next" href="/library" actionLabel="Open library" items={nextUpReading} {progressMap} layout="poster" />
+					<MediaRow title="Read next" href="/library" actionLabel="Browse all" items={nextUpReading} {progressMap} layout="poster" />
 				{/if}
 
 				{#if recent.length > 0}

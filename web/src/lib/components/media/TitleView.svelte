@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BookOpen from '@lucide/svelte/icons/book-open';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { onMount } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
@@ -63,7 +64,7 @@
 	function playHref(id: string): string { return playbackHref(origin, id, player, group.items[0]?.kind); }
 	function label(item: CatalogItem): string { return reading ? readingLabel(item) : episodeLabel(item); }
 	const unitPlural = $derived(
-		!reading ? 'episodes' : group.items[0]?.kind === 'manga' ? 'volumes & chapters' : 'issues'
+		!reading ? 'episodes' : group.items[0]?.kind !== 'manga' ? 'issues' : group.items.some((i) => i.episode > 0) ? 'volumes & chapters' : 'volumes'
 	);
 
 	const seasons = $derived(
@@ -214,7 +215,9 @@
 	);
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
-			? `Up next · ${label(resumeTarget!)} · ${Math.round((resumeProgress!.position_sec / resumeProgress!.duration_sec) * 100)}% ${reading ? 'read' : 'watched'}`
+			? reading
+				? `Up next · ${label(resumeTarget!)} · page ${Math.floor(resumeProgress!.position_sec)} of ${Math.floor(resumeProgress!.duration_sec)}`
+				: `Up next · ${label(resumeTarget!)} · ${t('title.left', { time: formatLength(Math.max(1, resumeProgress!.duration_sec - resumeProgress!.position_sec)) })}`
 			: available.length === 0
 				? 'All files missing'
 				: watched > 0
@@ -288,7 +291,7 @@
 				<div class="mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
 					{#if resumeTarget}
 						<LinkButton href={playHref(resumeTarget.id)} size="lg" class="max-md:w-full" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
-							<Play class="size-4 fill-current" aria-hidden="true" /> {resumeLabel}
+							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
 						</LinkButton>
 					{:else}
 						<Button size="lg" disabled class="max-md:w-full" title="The files are no longer on disk">
@@ -500,8 +503,13 @@
 				<Play class="size-3.5 translate-x-px" aria-hidden="true" />
 			</span>
 		{/if}
+		{#if progress?.completed}
+			<span class="absolute left-2 top-2 flex size-6 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur" aria-hidden="true">
+				<Check class="size-3.5" />
+			</span>
+		{/if}
 		{#if ratio > 0}
-			<div class="absolute inset-x-0 bottom-0 h-1 bg-black/50">
+			<div class="absolute inset-x-0 bottom-0 h-1.5 bg-black/50">
 				<div class="h-full bg-accent" style={`width: ${ratio}%`}></div>
 			</div>
 		{/if}

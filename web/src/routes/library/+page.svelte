@@ -142,12 +142,12 @@
 		{/if}
 	</header>
 	{#if visible.length > 1}
-		<div class="flex gap-1 font-mono text-[11px] uppercase tracking-[0.14em]" role="group" aria-label="View">
+		<div class="inline-flex gap-1 rounded-lg bg-surface/60 p-1 text-sm" role="group" aria-label="View">
 			{#each [['shelves', 'By library'], ['all', 'All titles']] as const as [id, label] (id)}
 				<button
 					type="button"
 					aria-pressed={view === id}
-					class={['rounded-md px-3 py-2.5 transition-colors md:px-2.5 md:py-1.5', view === id ? 'bg-surface-active text-foreground' : 'text-muted hover:bg-surface-hover hover:text-foreground'].join(' ')}
+					class={['rounded-md px-3 py-2 transition-colors md:px-3 md:py-1.5', view === id ? 'bg-surface-active font-semibold text-foreground ring-1 ring-accent/50' : 'text-muted hover:bg-surface-hover hover:text-foreground'].join(' ')}
 					onclick={() => setView(id)}
 				>
 					{label}

@@ -49,7 +49,7 @@
 	// What it is, in words: the episode you are on and what is left of it,
 	// or the year; then up to two genres.
 	const left = $derived(
-		resume && !reading && progress && progress.duration_sec - progress.position_sec > 30
+		resume && !reading && progress && progress.duration_sec - progress.position_sec > 0
 			? t('title.left', { time: formatLength(progress.duration_sec - progress.position_sec) })
 			: ''
 	);

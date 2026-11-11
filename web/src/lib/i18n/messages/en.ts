@@ -756,6 +756,7 @@ const en = {
 			empty: 'No releases found.',
 			noIndexers: 'No indexer is configured yet.',
 			noIndexersTitle: 'No indexer yet',
+			noIndexersBody: 'Search asks your indexers for releases. Add one to start.',
 			addIndexer: 'Add an indexer',
 			keys: { one: '{count} release · Enter grabs · j/k move', other: '{count} releases · Enter grabs · j/k move' },
 			seedersPeers: 'Seeders / peers',

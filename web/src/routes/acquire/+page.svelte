@@ -275,7 +275,7 @@
 			<a href="/settings/libraries" class="rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-foreground">{t('acquire.noLibrariesAction')}</a>
 		</EmptyState>
 	{:else if tab === 'search' && indexers.length === 0}
-		<EmptyState title={t('acquire.search.noIndexersTitle')} description={t('acquire.search.noIndexers')}>
+		<EmptyState title={t('acquire.search.noIndexersTitle')} description={t('acquire.search.noIndexersBody')}>
 			{#snippet icon()}<SearchIcon class="size-6" aria-hidden="true" />{/snippet}
 			<LinkButton href="/settings/indexers">{t('acquire.search.addIndexer')}</LinkButton>
 		</EmptyState>
