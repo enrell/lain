@@ -173,7 +173,8 @@ fun PlayerScreen(
     var durationMs by remember { mutableStateOf(0L) }
     var bufferedMs by remember { mutableStateOf(0L) }
     var muted by remember { mutableStateOf(false) }
-    var speed by remember { mutableStateOf(1f) }
+    var speed by remember { mutableStateOf(graph.prefs.speed) }
+    LaunchedEffect(player) { if (speed != 1f) player.setPlaybackSpeed(speed) }
     var textTracks by remember { mutableStateOf(listOf<TextTrack>()) }
     var textOff by remember { mutableStateOf(false) }
     var audioTracks by remember { mutableStateOf(listOf<TextTrack>()) }
@@ -701,6 +702,8 @@ fun PlayerScreen(
                         if (subs) textOff = false
                         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(type, false)
                             .setOverrideForType(TrackSelectionOverride(t.group.mediaTrackGroup, t.index)).build()
+                        // Said, since nothing on the picture shows which track plays.
+                        android.widget.Toast.makeText(context, context.getString(if (subs) R.string.player_subtitles_now else R.string.player_audio_now, t.label), android.widget.Toast.LENGTH_SHORT).show()
                         tracksPanel = 0
                     })
                 }
@@ -721,6 +724,7 @@ fun PlayerScreen(
                     SPEEDS.map { (if (it == 1f) stringResource(R.string.player_normal) else "$it×") to (it == speed) },
                 ) { i ->
                     speed = SPEEDS[i]
+                    graph.prefs.speed = speed
                     player.setPlaybackSpeed(speed)
                 }
                 if (src?.kind == SourceKind.HLS && state.qualities.isNotEmpty()) {

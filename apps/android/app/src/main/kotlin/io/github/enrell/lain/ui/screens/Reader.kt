@@ -285,7 +285,9 @@ fun ReaderScreen(
                     )
                 }
                 // The direction is a choice between two, the one in force lit.
-                Row(Modifier.padding(end = 6.dp).height(40.dp).clip(l.buttonShape).border(1.dp, l.line, l.buttonShape)) {
+                Column(Modifier.padding(end = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Mono(stringResource(R.string.reader_direction), Modifier.padding(bottom = 3.dp), size = 8)
+                Row(Modifier.height(32.dp).clip(l.buttonShape).border(1.dp, l.line, l.buttonShape)) {
                     for ((toRtl, label) in listOf(false to "L \u2192 R", true to "R \u2190 L")) {
                         val on = rtl == toRtl
                         Box(
@@ -296,6 +298,7 @@ fun ReaderScreen(
                             contentAlignment = Alignment.Center,
                         ) { Text(label, color = if (on) l.text else l.muted, fontSize = 12.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
                     }
+                }
                 }
             }
         }

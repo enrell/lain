@@ -310,7 +310,11 @@ class AppViewModel(
     /** Locks every private library again. */
     fun lockAll() {
         viewModelScope.launch {
-            for (lib in _state.value.libraries.filter { it.private && !it.locked }) {
+            // Hidden before the server answers: "locked" must be true the moment it is said.
+            val open = _state.value.libraries.filter { it.private && !it.locked }
+            val ids = open.map { it.id }.toSet()
+            _state.update { st -> st.copy(libraries = st.libraries.map { if (it.id in ids) it.copy(locked = true) else it }, titles = st.titles.filter { it.libraryId !in ids }) }
+            for (lib in open) {
                 runCatching { withContext(io) { core.lockLibrary(lib.id) } }
             }
             refresh()
