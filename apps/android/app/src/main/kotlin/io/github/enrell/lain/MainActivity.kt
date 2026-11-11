@@ -254,7 +254,7 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                         }
                     }
                     // A row half out of view reads as "more below", not as cut by the bar.
-                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(64.dp).background(Brush.verticalGradient(0f to Color.Transparent, 0.55f to l.bg.copy(alpha = 0.82f), 1f to l.bg)))
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(14.dp).background(Brush.verticalGradient(listOf(Color.Transparent, l.bg))))
                     if (s is Screen.TitleDetail) {
                         Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(20.dp).background(Brush.verticalGradient(listOf(l.bg, Color.Transparent))))
                     }

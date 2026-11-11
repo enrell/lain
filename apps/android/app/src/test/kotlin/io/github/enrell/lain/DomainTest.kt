@@ -52,6 +52,11 @@ class DomainTest {
         assertEquals("e1", nextUp(t, emptyMap()).id)
         assertEquals("e2", nextUp(t, mapOf("e1" to progress("e1", 1440.0, done = true))).id)
         assertEquals("e1", nextUp(t, t.items.associate { it.id to progress(it.id, 1.0, done = true) }).id)
+        // The one in progress wins; otherwise what follows the last one finished.
+        if (t.items.size >= 3) {
+            assertEquals(t.items[2].id, nextUp(t, mapOf(t.items[1].id to progress(t.items[1].id, 1440.0, done = true))).id)
+            assertEquals(t.items[0].id, nextUp(t, mapOf(t.items[1].id to progress(t.items[1].id, 1440.0, done = true), t.items[0].id to progress(t.items[0].id, 300.0))).id)
+        }
         assertEquals(0.5f, fraction(progress("e1", 720.0)), 1e-6f)
         assertEquals(1f, fraction(progress("e1", 0.0, done = true)), 0f)
         assertEquals(0f, fraction(progress("e1", 10.0, dur = 0.0)), 0f)

@@ -102,10 +102,16 @@ class AppGraph(context: Context) {
         ambient.get(itemId)?.let { return it }
         val full = art(itemId) ?: return null
         return withContext(Dispatchers.Default) {
-            val src = full.asAndroidBitmap()
-            val w = 12
-            val h = (w.toFloat() * src.height / src.width).toInt().coerceIn(6, 24)
-            android.graphics.Bitmap.createScaledBitmap(src, w, h, true).asImageBitmap()
+            // Halved step by step, so each pixel is the average of what it stands
+            // for (one jump to a few pixels samples points, and lettering survives
+            // as bright smears). Three columns keep the art's colours and none of
+            // its shapes; drawn large with filtering, they are a smooth wash.
+            var cur = full.asAndroidBitmap()
+            while (cur.width > 6 && cur.height > 6) {
+                cur = android.graphics.Bitmap.createScaledBitmap(cur, (cur.width / 2).coerceAtLeast(3), (cur.height / 2).coerceAtLeast(3), true)
+            }
+            val h = (3f * cur.height / cur.width).toInt().coerceIn(3, 6)
+            android.graphics.Bitmap.createScaledBitmap(cur, 3, h, true).asImageBitmap()
         }.also { ambient.put(itemId, it) }
     }
 

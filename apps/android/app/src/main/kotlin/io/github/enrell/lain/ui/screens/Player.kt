@@ -697,7 +697,7 @@ fun PlayerScreen(
         }
         if (settings) {
             Column(
-                Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, bottom = 104.dp).width(280.dp).heightIn(max = 420.dp).clip(RoundedCornerShape(10.dp))
+                Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, top = 12.dp, bottom = 12.dp).width(300.dp).clip(RoundedCornerShape(10.dp))
                     .verticalScroll(rememberScrollState()).background(l.bg).border(1.dp, l.line.copy(alpha = 0.6f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -752,12 +752,15 @@ fun PlayerScreen(
                 }
                 effectError?.let { Text(stringResource(R.string.player_effect_failed, it), color = l.danger, fontSize = 12.sp, lineHeight = 16.sp) }
                 Text(stringResource(R.string.player_effects_hint), Modifier.padding(bottom = 4.dp), color = l.muted, fontSize = 12.sp, lineHeight = 16.sp)
-                // How it is reaching you, in words; the detail is the server's.
+                // How it is reaching you, as a fact with its name (not more help text under Upscaling).
                 src?.note?.takeIf { it.isNotBlank() }?.let { note ->
-                    Text(
-                        if (note.contains("direct", ignoreCase = true)) stringResource(R.string.player_original) else stringResource(R.string.player_converted, note.lowercase()),
-                        Modifier.padding(top = 8.dp, bottom = 6.dp), color = l.muted, fontSize = 12.sp,
-                    )
+                    Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.player_source), Modifier.weight(1f), color = l.text, fontSize = 13.sp)
+                        Text(
+                            if (note.contains("direct", ignoreCase = true)) stringResource(R.string.player_original) else stringResource(R.string.player_converted, note.lowercase()),
+                            color = l.muted, fontSize = 13.sp,
+                        )
+                    }
                 }
                 val burnable = model.burnable()
                 if (burnable.isNotEmpty()) {

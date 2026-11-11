@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatLength } from '$lib/utilities/format';
 	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -30,6 +31,19 @@
 	let item = $state<CatalogItem | null>(null);
 	let plan = $state<PlaybackPlan | null>(null);
 	let progress = $state<Progress | null>(null);
+	// What the title is about, for the column under an upright phone's player.
+	let about = $state<{ synopsis: string; genres: string[] } | null>(null);
+	$effect(() => {
+		const current = item?.id;
+		about = null;
+		if (!current) return;
+		void api.enrich
+			.get(current)
+			.then((e) => {
+				if (item?.id === current && e) about = { synopsis: e.synopsis ?? '', genres: e.genres ?? [] };
+			})
+			.catch(() => {});
+	});
 	// The title's other files, listed in the sidebar so the viewer can
 	// switch episodes without going back to the title page.
 	let episodes = $state<CatalogItem[]>([]);
@@ -274,9 +288,12 @@
 			</aside>
 		{:else}
 			<div class="hidden min-h-0 flex-1 overflow-y-auto bg-background px-5 py-5 max-md:portrait:block">
-				<h1 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{item.title}</h1>
-				{#if item.year > 0}<p class="mt-1 text-sm text-muted">{item.year}</p>{/if}
-				<a href={`/item/${item.id}`} class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover">Details</a>
+				<h1 class="text-xl font-semibold tracking-[-0.02em] text-foreground">{item.title}</h1>
+				<p class="mt-1.5 text-sm text-muted">
+					{[item.year > 0 ? String(item.year) : '', formatLength(plan?.duration_sec), ...(about?.genres ?? []).slice(0, 2)].filter(Boolean).join('  ·  ')}
+				</p>
+				{#if about?.synopsis}<p class="mt-4 text-sm leading-6 text-foreground/75">{about.synopsis}</p>{/if}
+				<a href={`/item/${item.id}`} class="mt-5 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover">Details</a>
 			</div>
 		{/if}
 	</div>

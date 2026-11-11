@@ -1,4 +1,6 @@
 <script lang="ts">
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import { nameable } from '$lib/stores/media-cache.svelte';
 	/*
@@ -251,9 +253,9 @@
 			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('acquire.heading')}</h1>
 			<p class="mt-0.5 text-sm text-muted">{t('acquire.subtitle')}</p>
 		</div>
-		<div class="flex gap-4 font-mono text-[10px] uppercase tracking-[0.2em]">
-			<a href="/settings/indexers" class="text-muted hover:text-foreground">{t('acquire.indexersLink')}</a>
-			<a href="/settings/acquisition" class="text-muted hover:text-foreground">{t('acquire.settingsLink')}</a>
+		<div class="flex gap-4 text-sm">
+			<a href="/settings/indexers" class="inline-flex min-h-9 items-center gap-1 text-foreground/70 hover:text-foreground">{t('acquire.indexersLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>
+			<a href="/settings/acquisition" class="inline-flex min-h-9 items-center gap-1 text-foreground/70 hover:text-foreground">{t('acquire.settingsLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>
 		</div>
 	</header>
 
@@ -271,6 +273,11 @@
 	{#if libraries.length === 0}
 		<EmptyState title={t('acquire.noLibrariesTitle')} description={t('acquire.noLibrariesBody')}>
 			<a href="/settings/libraries" class="rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-foreground">{t('acquire.noLibrariesAction')}</a>
+		</EmptyState>
+	{:else if tab === 'search' && indexers.length === 0}
+		<EmptyState title={t('acquire.search.noIndexersTitle')} description={t('acquire.search.noIndexers')}>
+			{#snippet icon()}<SearchIcon class="size-6" aria-hidden="true" />{/snippet}
+			<LinkButton href="/settings/indexers">{t('acquire.search.addIndexer')}</LinkButton>
 		</EmptyState>
 	{:else if tab === 'search'}
 		<form class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_6rem_6rem_auto] sm:items-end" onsubmit={search}>

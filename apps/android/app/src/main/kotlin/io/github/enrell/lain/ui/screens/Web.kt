@@ -1,5 +1,6 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.ui.semantics.password
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -108,14 +109,14 @@ fun WButton(
     }
     // Disabled is a neutral surface, not a faded accent: on a muted theme
     // the two looked alike.
-    val fill = if (enabled) bg else if (kind == Btn.Ghost) Color.Transparent else l.raised.copy(alpha = 0.6f)
-    val ink = if (enabled) fg else l.muted.copy(alpha = 0.6f)
+    val fill = if (enabled) bg else Color.Transparent
+    val ink = if (enabled) fg else l.muted.copy(alpha = 0.45f)
     Row(
         modifier
             .height(if (large) 48.dp else 44.dp)
             .clip(shape)
             .background(fill)
-            .border(1.dp, if (enabled) edge else Color.Transparent, shape)
+            .border(1.dp, if (enabled) edge else l.line.copy(alpha = 0.5f), shape)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = if (large) 24.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -363,9 +364,11 @@ fun PinField(value: String, onChange: (String) -> Unit, onDone: () -> Unit, modi
             singleLine = true,
             textStyle = TextStyle(color = Color.Transparent, fontSize = 1.sp),
             cursorBrush = SolidColor(Color.Transparent),
+            // Masked for whatever reads the screen too: the digits are never in the tree.
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword, imeAction = ImeAction.Done),
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onDone() }),
-            modifier = Modifier.size(1.dp).focusRequester(focus).semantics { contentDescription = label },
+            modifier = Modifier.size(1.dp).focusRequester(focus).semantics { contentDescription = label; password() },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             repeat(maxOf(4, value.length)) { i ->

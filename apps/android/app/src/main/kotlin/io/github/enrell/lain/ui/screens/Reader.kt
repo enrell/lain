@@ -124,6 +124,14 @@ fun ReaderScreen(
     var chrome by remember { mutableStateOf(true) }
     val prefs = androidx.compose.ui.platform.LocalContext.current.graph.prefs
     var hint by remember { mutableStateOf(!prefs.readerHintSeen) }
+    // A book that runs right to left says so as it opens: next is on the left.
+    var directionNote by remember(itemId) { mutableStateOf(book.direction == "rtl") }
+    LaunchedEffect(directionNote) {
+        if (directionNote) {
+            kotlinx.coroutines.delay(3500)
+            directionNote = false
+        }
+    }
     LaunchedEffect(hint) {
         if (hint) {
             kotlinx.coroutines.delay(5000)
@@ -208,6 +216,15 @@ fun ReaderScreen(
             ) {
                 bmp?.let { Image(it, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
                     ?: CircularProgressIndicator(Modifier.size(36.dp), color = l.muted, strokeWidth = 2.dp)
+            }
+        }
+        if (directionNote && !hint && !atEnd) {
+            Row(
+                Modifier.align(Alignment.Center).clip(CircleShape).background(Color.Black.copy(alpha = 0.75f)).padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Ic.ArrowLeft, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Text(stringResource(R.string.reader_rtl_note), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }
         }
         if (hint && !atEnd) {

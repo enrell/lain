@@ -87,8 +87,15 @@ fun buildRails(
 }
 
 /** The item a title's main action opens: the first one not finished, else the first. */
-fun nextUp(title: Title, progress: Map<String, ProgressInfo>): Item =
-    title.items.firstOrNull { progress[it.id]?.completed != true } ?: title.items.first()
+fun nextUp(title: Title, progress: Map<String, ProgressInfo>): Item {
+    // The one in progress; else the one after the last finished (watching
+    // episode 2 leads to 3, whatever happened to 1); else the first.
+    title.items.firstOrNull { progress[it.id]?.let { p -> !p.completed && p.positionSec > 0 } == true }?.let { return it }
+    val last = title.items.indexOfLast { progress[it.id]?.completed == true }
+    return title.items.drop(last + 1).firstOrNull { progress[it.id]?.completed != true }
+        ?: title.items.firstOrNull { progress[it.id]?.completed != true }
+        ?: title.items.first()
+}
 
 /** How far along an item is, 0..1. */
 fun fraction(p: ProgressInfo?): Float {
