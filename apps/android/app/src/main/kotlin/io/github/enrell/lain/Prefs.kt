@@ -52,6 +52,21 @@ class Prefs(private val sp: SharedPreferences) {
         sp.edit().putStringSet("decode_failed", all.takeLast(400).toSet()).apply()
     }
 
+    /** The last few searches that found something, newest first. */
+    var recentSearches: List<String>
+        get() = (sp.getString("recent_searches", "") ?: "").split('\n').filter { it.isNotBlank() }
+        set(v) = sp.edit().putString("recent_searches", v.joinToString("\n")).apply()
+
+    /** The player's gestures were explained once. */
+    var playerHintSeen: Boolean
+        get() = sp.getBoolean("player_hint_seen", false)
+        set(v) = sp.edit().putBoolean("player_hint_seen", v).apply()
+
+    /** The reader's gestures were explained once. */
+    var readerHintSeen: Boolean
+        get() = sp.getBoolean("reader_hint_seen", false)
+        set(v) = sp.edit().putBoolean("reader_hint_seen", v).apply()
+
     var theme: String
         get() = sp.getString("theme", "lain-dark") ?: "lain-dark"
         set(v) = sp.edit().putString("theme", v).apply()

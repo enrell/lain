@@ -585,8 +585,38 @@ const en = {
 			saveFailed: 'Could not save the setting.'
 		}
 	},
+	openWith: {
+		label: 'Open with',
+		thisMachine: 'The player on this machine',
+		setup: 'Set up mpv and VLC…',
+		setupTitle: 'Open in mpv or VLC',
+		setupBody: 'Install the Lain CLI and mpv or VLC on this computer, then run these two commands once.',
+		setupNote: 'Your browser may ask before opening the player. Playback uses the CLI login and saves your progress.',
+		playing: 'Playing in {player} on this machine.',
+		failed: 'Could not start local playback.'
+	},
+	title: {
+		manage: 'Manage',
+		fetchMetadata: 'Fetch metadata',
+		refetchMetadata: 'Refetch metadata',
+		removeMetadata: 'Remove metadata',
+		selectEpisodes: 'Select episodes',
+		deleteFile: 'Delete file',
+		deleteTitle: 'Delete title',
+		startOver: 'Start over',
+		left: '{time} left',
+		watched: 'Watched',
+		watchedLength: 'Watched · {time}',
+		fileDetails: 'File details',
+		episodes: { one: '{count} episode', other: '{count} episodes' },
+		volumes: { one: '{count} volume', other: '{count} volumes' },
+		issues: { one: '{count} issue', other: '{count} issues' },
+		length: 'Length'
+	},
 	download: {
 		file: 'Download file',
+		one: 'Download',
+		all: 'Download all',
 		files: { one: 'Download {count} file', other: 'Download {count} files' }
 	},
 	acquire: {

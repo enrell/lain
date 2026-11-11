@@ -194,6 +194,7 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/api/items/{id}/playback", route(GET, Gate::User, playback))
         .route("/api/items/{id}/stream", route(GET, Gate::User, stream))
         .route("/api/items/{id}/thumbnail", route(GET, Gate::User, thumbnail_get))
+        .route("/api/durations", route(GET, Gate::User, durations_get))
         .route("/api/items/{id}/storyboard", route(GET, Gate::User, storyboard_get))
         .route("/api/items/{id}/storyboard/image", route(GET, Gate::User, storyboard_image))
         .route(
@@ -453,6 +454,64 @@ fn duration_of(app: &App, it: &CatalogItem) -> Option<f64> {
         .call_one(CAP_MEDIA_PROBE, "probe", json!({"file_path": it.file_path, "ffprobe_path": settings.ffprobe_path}))
         .ok()?;
     serde_json::from_value::<MediaInfo>(out).ok().map(|i| i.duration).filter(|d| *d > 0.0)
+}
+
+/// The most ids one `GET /api/durations` reads (a title's episodes).
+const MAX_DURATION_IDS: usize = 200;
+
+/// Lengths already probed, by file identity (path, size, modified time):
+/// a replaced file is probed again, an unchanged one never is. In memory:
+/// a restart pays one ffprobe per file a client asks about, once.
+fn duration_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, f64>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, f64>>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// `GET /api/durations?ids=a,b,c` (D-274): how long each video is, so a
+/// list of episodes can say "24 min" where the catalog only knows a file.
+/// Items that are not videos, are not visible, or cannot be probed are
+/// left out; nothing here fails the request.
+fn durations_get(app: &App, w: &WReq, v: &Verified) -> Out {
+    let ids: Vec<&str> =
+        w.req.query("ids").split(',').map(str::trim).filter(|s| !s.is_empty()).take(MAX_DURATION_IDS).collect();
+    let mut known: Vec<(String, f64)> = Vec::new();
+    let mut misses: Vec<(CatalogItem, String)> = Vec::new();
+    for id in ids {
+        let Some(it) = app.visible_item(v, id) else { continue };
+        if !content_type(&it.file_path).starts_with("video/") {
+            continue;
+        }
+        let Ok(meta) = std::fs::metadata(&it.file_path) else { continue };
+        let mtime = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let key = format!("{}|{}|{mtime}", it.file_path, meta.len());
+        let hit = duration_cache().lock().unwrap_or_else(|e| e.into_inner()).get(&key).copied();
+        match hit {
+            Some(d) => known.push((it.id, d)),
+            None => misses.push((it, key)),
+        }
+    }
+    // A few probes at a time: a season asked for at once must not start
+    // twenty-six ffprobes together.
+    for chunk in misses.chunks(4) {
+        let probed: Vec<Option<f64>> = std::thread::scope(|s| {
+            let handles: Vec<_> = chunk.iter().map(|(it, _)| s.spawn(move || duration_of(app, it))).collect();
+            handles.into_iter().map(|h| h.join().ok().flatten()).collect()
+        });
+        for ((it, key), d) in chunk.iter().zip(probed) {
+            if let Some(d) = d {
+                duration_cache().lock().unwrap_or_else(|e| e.into_inner()).insert(key.clone(), d);
+                known.push((it.id.clone(), d));
+            }
+        }
+    }
+    let items: Vec<Value> = known.into_iter().map(|(id, d)| json!({"item_id": id, "duration_sec": d})).collect();
+    Reply::ok(json!({"items": items})).into()
 }
 
 /// How the item's storyboard is laid out (D-273). Cheap: it probes the

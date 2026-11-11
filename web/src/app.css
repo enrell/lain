@@ -284,6 +284,33 @@ details.settings-section > summary {
 	}
 }
 
+/*
+ * A key next to an action reads as a key: a small cap with a border, never
+ * a bare letter or number that could be taken for a count.
+ */
+@layer base {
+	kbd,
+	.key-hint {
+		display: inline-flex;
+		min-width: 1.25rem;
+		height: 1.25rem;
+		align-items: center;
+		justify-content: center;
+		padding: 0 0.3rem;
+		border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+		border-bottom-width: 2px;
+		border-radius: 0.3rem;
+		background: color-mix(in srgb, currentColor 6%, transparent);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 500;
+		line-height: 1;
+		letter-spacing: 0;
+		text-transform: none;
+		opacity: 0.8;
+	}
+}
+
 /* ---- phones ---------------------------------------------------------- */
 /* Keyboard hints mean nothing without a keyboard. */
 @media (hover: none) and (pointer: coarse) {

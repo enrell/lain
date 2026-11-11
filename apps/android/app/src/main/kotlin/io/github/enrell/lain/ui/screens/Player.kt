@@ -1,5 +1,6 @@
 package io.github.enrell.lain.ui.screens
 
+import io.github.enrell.lain.core.Item
 import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlaybackException
 import io.github.enrell.lain.domain.SKIP_CHOICES
@@ -134,7 +135,15 @@ private fun mediaItem(src: PlaySource): MediaItem {
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferredLanguage: String) {
+fun PlayerScreen(
+    core: LainCoreInterface,
+    itemId: String,
+    title: String,
+    preferredLanguage: String,
+    /** What plays after this one (the title's next episode), if anything. */
+    next: Item? = null,
+    onNext: (Item) -> Unit = {},
+) {
     val l = LocalLain.current
     val context = LocalContext.current
     val graph = context.graph
@@ -165,10 +174,17 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
     var speed by remember { mutableStateOf(1f) }
     var textTracks by remember { mutableStateOf(listOf<TextTrack>()) }
     var textOff by remember { mutableStateOf(false) }
+    var audioTracks by remember { mutableStateOf(listOf<TextTrack>()) }
+    // Which list is open over the picture: 0 none, 1 subtitles, 2 audio.
+    var tracksPanel by remember { mutableStateOf(0) }
+    var showRemaining by remember { mutableStateOf(false) }
+    // Seconds until the next episode starts by itself, once this one ends.
+    var countdown by remember { mutableStateOf<Int?>(null) }
+    var hint by remember { mutableStateOf(!graph.prefs.playerHintSeen) }
 
     var controls by remember { mutableStateOf(true) }
     var settings by remember { mutableStateOf(false) }
-    var landscape by remember { mutableStateOf(false) }
+    var landscape by remember { mutableStateOf(true) }
     // Dragging the seek bar: the fraction under the finger, or null.
     var scrub by remember { mutableStateOf<Float?>(null) }
     var touched by remember { mutableStateOf(0L) }
@@ -195,6 +211,7 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
         bars?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         bars?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
         window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         onDispose {
             bars?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -224,11 +241,22 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
             }
 
             override fun onTracksChanged(tracks: Tracks) {
-                textTracks = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.flatMap { g ->
+                fun of(type: Int) = tracks.groups.filter { it.type == type }.flatMap { g ->
                     (0 until g.length).map { i ->
                         val f = g.getTrackFormat(i)
-                        TextTrack(g, i, f.label ?: f.language?.uppercase() ?: "#${i + 1}", g.isTrackSelected(i))
+                        val name = listOfNotNull(f.label, f.language?.takeIf { it != "und" }?.uppercase()).distinct().joinToString(" · ")
+                        TextTrack(g, i, name.ifEmpty { "#${i + 1}" }, g.isTrackSelected(i))
                     }
+                }
+                textTracks = of(C.TRACK_TYPE_TEXT)
+                audioTracks = of(C.TRACK_TYPE_AUDIO)
+            }
+
+            override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
+                // A picture that is taller than wide is watched upright.
+                if (size.width > 0 && size.height > size.width && landscape) {
+                    landscape = false
+                    activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 }
             }
         }
@@ -289,7 +317,9 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
         }
     }
     // The controls leave after a while of playing untouched.
-    val pinned = settings || scrub != null || state.error != null || state.loading
+    // Paused or ended is a state you can see: the controls stay until it plays again.
+    val idle = !playing && !buffering && !state.loading && state.source != null
+    val pinned = idle || settings || tracksPanel != 0 || scrub != null || state.error != null || state.loading || countdown != null
     LaunchedEffect(controls, playing, pinned, touched) {
         if (controls && playing && !pinned) {
             delay(l.tokens.autohideMs.toLong().coerceAtLeast(1500))
@@ -333,8 +363,28 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
     }
     LaunchedEffect(flash) {
         if (flash != null) {
-            delay(700)
+            delay(900)
             flash = null
+        }
+    }
+    LaunchedEffect(ended, next?.id) {
+        if (ended && next != null) {
+            for (n in 6 downTo 1) {
+                countdown = n
+                delay(1000)
+                if (countdown == null) return@LaunchedEffect
+            }
+            countdown = null
+            onNext(next)
+        } else {
+            countdown = null
+        }
+    }
+    LaunchedEffect(hint, playing) {
+        if (hint && playing) {
+            delay(4500)
+            hint = false
+            graph.prefs.playerHintSeen = true
         }
     }
 
@@ -391,12 +441,15 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                 ) {
                     val f = flash
                     if (f != null && f.first == side) {
-                        Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
-                            Text(
-                                (if (side < 0) "−" else "+") + f.second + "s",
-                                Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 14.dp, vertical = 6.dp),
-                                color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                            )
+                        // A skip you can see: the side lights up and says how far.
+                        Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+                            Row(
+                                Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 18.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(if (side < 0) Ic.Back10 else Ic.Fwd10, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                                Text((if (side < 0) "−" else "+") + f.second + " s", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -405,40 +458,65 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
 
         if (buffering || state.loading) {
             CircularProgressIndicator(Modifier.align(Alignment.Center).size(44.dp), color = Color.White, strokeWidth = 3.dp)
-        } else if (controls && (ended || (!playing && positionMs < 500))) {
-            // The big button, before the first frame moves and at the end.
-            Box(
-                Modifier.align(Alignment.Center).size(72.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).clickable { togglePlay() },
-                contentAlignment = Alignment.Center,
-            ) { Icon(Ic.Play, null, tint = Color.White, modifier = Modifier.size(28.dp)) }
+        } else if (idle && countdown == null && scrub == null && !settings && tracksPanel == 0) {
+            // Not playing: a big button that says which (paused, or over and
+            // ready to play again), so a pause never looks like hidden controls.
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.size(76.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)).border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape).clickable { togglePlay() },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(if (ended) Ic.RotateCcw else Ic.Play, null, tint = Color.White, modifier = Modifier.size(30.dp)) }
+                if (ended || positionMs > 500) {
+                    Text(
+                        stringResource(if (ended) R.string.play_again else R.string.player_paused),
+                        Modifier.padding(top = 10.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 12.dp, vertical = 5.dp),
+                        color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
         }
 
         val shown = controls || pinned
-        // Header: the way back and the title.
+        // Header: the way back and the title, over the picture.
         if (shown) {
             Column(
                 Modifier.align(Alignment.TopStart).fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent))).safeDrawingPadding().padding(horizontal = 8.dp, vertical = 6.dp),
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.65f), Color.Transparent))).safeDrawingPadding().padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(
-                        Modifier.height(44.dp).clip(l.buttonShape).clickable { back?.onBackPressed() }.padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(Ic.ArrowLeft, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                        Text(stringResource(R.string.player_back), color = Color.White, fontSize = 14.sp)
-                    }
-                    Text(title, Modifier.weight(1f).padding(start = 8.dp), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    IconBtn(Ic.ArrowLeft, stringResource(R.string.player_back), { back?.onBackPressed() }, tint = Color.White)
+                    Text(title, Modifier.weight(1f).padding(start = 4.dp), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Row(Modifier.padding(start = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    when {
-                        state.loading -> Mono(stringResource(R.string.player_preparing), color = Color.White)
-                        src != null && src.note.isNotBlank() -> Mono(src.note, color = Color.White.copy(alpha = 0.6f))
+                if (state.loading || state.savedLocally) {
+                    Row(Modifier.padding(start = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (state.loading) Mono(stringResource(R.string.player_preparing), color = Color.White)
+                        if (state.savedLocally) Mono(stringResource(R.string.player_saved_locally), color = l.warn)
                     }
-                    if (state.savedLocally) Mono(stringResource(R.string.player_saved_locally), color = l.warn)
                 }
                 ErrorLine(state.error, Modifier.padding(start = 16.dp, top = 6.dp))
+            }
+        }
+        // The gestures, said once.
+        if (hint && playing && !pinned) {
+            Text(
+                stringResource(R.string.player_hint),
+                Modifier.align(Alignment.Center).padding(horizontal = 32.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 16.dp, vertical = 10.dp),
+                color = Color.White, fontSize = 13.sp, lineHeight = 18.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
+        // The end of an episode: the next one starts by itself unless stopped.
+        countdown?.let { n ->
+            if (next != null) {
+                Column(
+                    Modifier.align(Alignment.Center).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.78f)).padding(horizontal = 22.dp, vertical = 18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(stringResource(R.string.player_next_in, n), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        WButton(stringResource(R.string.player_cancel), { countdown = null }, kind = Btn.Secondary)
+                        WButton(stringResource(R.string.action_play), { countdown = null; onNext(next) }, icon = Ic.Play)
+                    }
+                }
             }
         }
 
@@ -505,7 +583,8 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                                         preview?.let { Image(it, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
                                     }
                                 }
-                                Text(clock(sec), Modifier.padding(top = 4.dp), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                // On a ground of its own: over a bright picture bare digits disappear.
+                                Text(clock(sec), Modifier.padding(top = 5.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.72f)).padding(horizontal = 9.dp, vertical = 3.dp), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                         Box(
@@ -518,7 +597,7 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                                 }
                                 .pointerInput(Unit) {
                                     detectHorizontalDragGestures(
-                                        onDragStart = { o -> if (totalSec() > 0) scrub = (o.x / size.width).coerceIn(0f, 1f) },
+                                        onDragStart = { o -> settings = false; tracksPanel = 0; if (totalSec() > 0) scrub = (o.x / size.width).coerceIn(0f, 1f) },
                                         onDragEnd = {
                                             scrub?.let { seekToSec(it * totalSec()) }
                                             scrub = null
@@ -540,9 +619,9 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                         }
                     }
                     Text(
-                        clock(at) + " / " + clock(totalSec()),
-                        Modifier.padding(start = 12.dp),
-                        color = Color.White, fontSize = 12.sp,
+                        if (showRemaining) "−" + clock((totalSec() - at).coerceAtLeast(0.0)) else clock(at) + " / " + clock(totalSec()),
+                        Modifier.padding(start = 6.dp).clip(l.buttonShape).clickable { showRemaining = !showRemaining; touched++ }.padding(horizontal = 6.dp, vertical = 8.dp),
+                        color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                     )
                 }
                 Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -552,9 +631,24 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                     ) { Icon(if (playing) Ic.Pause else Ic.Play, null, tint = l.onAccent, modifier = Modifier.size(20.dp)) }
                     SkipButton(Ic.Back10, skipSec()) { seekBy(-skipMs()); touched++ }
                     SkipButton(Ic.Fwd10, skipSec()) { seekBy(skipMs()); touched++ }
+                    if (next != null) IconBtn(Ic.SkipNext, stringResource(R.string.player_next), { onNext(next) }, tint = Color.White)
+                    if (speed != 1f) {
+                        Text(
+                            "$speed×",
+                            Modifier.padding(start = 4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)).clickable { tracksPanel = 0; settings = true }.padding(horizontal = 10.dp, vertical = 5.dp),
+                            color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                     IconBtn(if (muted) Ic.Muted else Ic.Volume, "Mute", { muted = !muted; player.volume = if (muted) 0f else 1f; touched++ }, tint = Color.White)
                     Box(Modifier.weight(1f))
-                    IconBtn(Ic.Gear, "Settings", { settings = !settings }, tint = Color.White)
+                    // Subtitles and audio are on the bar, not behind the gear.
+                    if (textTracks.isNotEmpty()) {
+                        IconBtn(Ic.Captions, stringResource(R.string.player_subtitles), { settings = false; tracksPanel = if (tracksPanel == 1) 0 else 1 }, tint = if (tracksPanel == 1 || (!textOff && textTracks.any { it.selected })) l.accent else Color.White)
+                    }
+                    if (audioTracks.size > 1) {
+                        IconBtn(Ic.Audio, stringResource(R.string.player_audio), { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }, tint = if (tracksPanel == 2) l.accent else Color.White)
+                    }
+                    IconBtn(Ic.Gear, "Settings", { tracksPanel = 0; settings = !settings }, tint = if (settings) l.accent else Color.White)
                     IconBtn(Ic.Maximize, "Fullscreen", {
                         landscape = !landscape
                         activity?.requestedOrientation =
@@ -565,12 +659,41 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
             }
         }
 
-        // Settings: a small list above the gear, as on the web's phone layout.
+        // A list over the picture closes with a tap outside it.
+        if (settings || tracksPanel != 0) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).pointerInput(Unit) { detectTapGestures { settings = false; tracksPanel = 0 } })
+        }
+        if (tracksPanel != 0) {
+            val subs = tracksPanel == 1
+            Column(
+                Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, bottom = 104.dp).width(264.dp).heightIn(max = 360.dp).clip(RoundedCornerShape(10.dp))
+                    .verticalScroll(rememberScrollState()).background(l.bg).border(1.dp, l.line.copy(alpha = 0.6f), RoundedCornerShape(10.dp)).padding(8.dp),
+            ) {
+                Text(stringResource(if (subs) R.string.player_subtitles else R.string.player_audio), Modifier.padding(start = 8.dp, top = 6.dp, bottom = 8.dp), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                if (subs) {
+                    OptionRow(stringResource(R.string.player_off), null, textOff || textTracks.none { it.selected }, {
+                        textOff = true
+                        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+                        tracksPanel = 0
+                    })
+                }
+                for (t in if (subs) textTracks else audioTracks) {
+                    OptionRow(t.label, null, t.selected && !(subs && textOff), {
+                        val type = if (subs) C.TRACK_TYPE_TEXT else C.TRACK_TYPE_AUDIO
+                        if (subs) textOff = false
+                        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(type, false)
+                            .setOverrideForType(TrackSelectionOverride(t.group.mediaTrackGroup, t.index)).build()
+                        tracksPanel = 0
+                    })
+                }
+            }
+        }
         if (settings) {
             Column(
-                Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, bottom = 104.dp).width(264.dp).heightIn(max = 420.dp).clip(RoundedCornerShape(8.dp))
-                    .verticalScroll(rememberScrollState()).background(l.bg).border(1.dp, l.line.copy(alpha = 0.6f), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+                Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, bottom = 104.dp).width(280.dp).heightIn(max = 420.dp).clip(RoundedCornerShape(10.dp))
+                    .verticalScroll(rememberScrollState()).background(l.bg).border(1.dp, l.line.copy(alpha = 0.6f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
             ) {
+                Text(stringResource(R.string.player_playback), Modifier.padding(top = 6.dp, bottom = 4.dp), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 PickRow(
                     stringResource(R.string.player_speed),
                     if (speed == 1f) stringResource(R.string.player_normal) else "$speed×",
@@ -578,26 +701,6 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                 ) { i ->
                     speed = SPEEDS[i]
                     player.setPlaybackSpeed(speed)
-                }
-                if (textTracks.isNotEmpty()) {
-                    val off = stringResource(R.string.player_off)
-                    PickRow(
-                        stringResource(R.string.player_subtitles),
-                        if (textOff) off else textTracks.firstOrNull { it.selected }?.label ?: off,
-                        listOf(off to (textOff || textTracks.none { it.selected })) + textTracks.map { it.label to (!textOff && it.selected) },
-                    ) { i ->
-                        val b = player.trackSelectionParameters.buildUpon()
-                        if (i == 0) {
-                            textOff = true
-                            b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                        } else {
-                            val t = textTracks[i - 1]
-                            textOff = false
-                            b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                                .setOverrideForType(TrackSelectionOverride(t.group.mediaTrackGroup, t.index))
-                        }
-                        player.trackSelectionParameters = b.build()
-                    }
                 }
                 if (src?.kind == SourceKind.HLS && state.qualities.isNotEmpty()) {
                     val auto = stringResource(R.string.player_auto)
@@ -638,6 +741,14 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                     graph.prefs.videoEffect = effect.id
                 }
                 effectError?.let { Text(stringResource(R.string.player_effect_failed, it), color = l.danger, fontSize = 12.sp, lineHeight = 16.sp) }
+                Text(stringResource(R.string.player_effects_hint), Modifier.padding(bottom = 4.dp), color = l.muted, fontSize = 12.sp, lineHeight = 16.sp)
+                // How it is reaching you, in words; the detail is the server's.
+                src?.note?.takeIf { it.isNotBlank() }?.let { note ->
+                    Text(
+                        if (note.contains("direct", ignoreCase = true)) stringResource(R.string.player_original) else stringResource(R.string.player_converted, note.lowercase()),
+                        Modifier.padding(top = 8.dp, bottom = 6.dp), color = l.muted, fontSize = 12.sp,
+                    )
+                }
                 val burnable = model.burnable()
                 if (burnable.isNotEmpty()) {
                     Text(stringResource(R.string.player_ass_note), Modifier.padding(top = 6.dp), color = l.muted, fontSize = 12.sp, lineHeight = 16.sp)

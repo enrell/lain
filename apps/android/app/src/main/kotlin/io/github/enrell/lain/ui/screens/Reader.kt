@@ -1,5 +1,11 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.foundation.shape.CircleShape
+import io.github.enrell.lain.graph
+import androidx.compose.foundation.systemGestureExclusion
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -71,7 +77,15 @@ import kotlinx.coroutines.withContext
  * Keys: ←/→ (by direction), Space/PageDown next, PageUp back, Home/End.
  */
 @Composable
-fun ReaderScreen(core: LainCoreInterface, itemId: String, title: String = "", onBack: () -> Unit = {}) {
+fun ReaderScreen(
+    core: LainCoreInterface,
+    itemId: String,
+    title: String = "",
+    onBack: () -> Unit = {},
+    /** The volume after this one in its title, if any. */
+    next: io.github.enrell.lain.core.Item? = null,
+    onNext: (io.github.enrell.lain.core.Item) -> Unit = {},
+) {
     val l = LocalLain.current
     val scope = remember(itemId) { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
     val model = remember(itemId) { ReaderModel(core, itemId, scope) }
@@ -102,6 +116,35 @@ fun ReaderScreen(core: LainCoreInterface, itemId: String, title: String = "", on
     }
     LaunchedEffect(Unit) { focus.requestFocus() }
     var chrome by remember { mutableStateOf(true) }
+    // Turning past the last page is the end of the volume, said so.
+    var atEnd by remember(itemId) { mutableStateOf(false) }
+    val prefs = androidx.compose.ui.platform.LocalContext.current.graph.prefs
+    var hint by remember { mutableStateOf(!prefs.readerHintSeen) }
+    LaunchedEffect(hint) {
+        if (hint) {
+            kotlinx.coroutines.delay(5000)
+            hint = false
+            prefs.readerHintSeen = true
+        }
+    }
+    fun forward() {
+        hint = false
+        if (state.page >= book.pages.size - 1) atEnd = true else model.next()
+    }
+    fun backward() {
+        hint = false
+        atEnd = false
+        model.previous()
+    }
+    // The book's own direction, which the reader may turn around.
+    var rtl by remember(book.direction) { mutableStateOf(book.direction == "rtl") }
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    DisposableEffect(Unit) {
+        val bars = activity?.window?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
+        bars?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        bars?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        onDispose { bars?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+    }
     Box(
         Modifier
             .fillMaxSize()
@@ -111,10 +154,10 @@ fun ReaderScreen(core: LainCoreInterface, itemId: String, title: String = "", on
             .onPreviewKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (e.key) {
-                    Key.DirectionRight -> if (state.rtl) model.previous() else model.next()
-                    Key.DirectionLeft -> if (state.rtl) model.next() else model.previous()
-                    Key.Spacebar, Key.PageDown, Key.DirectionDown -> model.next()
-                    Key.PageUp, Key.DirectionUp -> model.previous()
+                    Key.DirectionRight -> if (rtl) backward() else forward()
+                    Key.DirectionLeft -> if (rtl) forward() else backward()
+                    Key.Spacebar, Key.PageDown, Key.DirectionDown -> forward()
+                    Key.PageUp, Key.DirectionUp -> backward()
                     Key.MoveHome -> model.goTo(0)
                     Key.MoveEnd -> model.goTo(book.pages.size - 1)
                     else -> return@onPreviewKeyEvent false
@@ -122,30 +165,50 @@ fun ReaderScreen(core: LainCoreInterface, itemId: String, title: String = "", on
                 true
             },
     ) {
-        HorizontalPager(state = pager, reverseLayout = state.rtl, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize()) { i ->
+        HorizontalPager(state = pager, reverseLayout = rtl, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize()) { i ->
             val bmp: ImageBitmap? by produceState<ImageBitmap?>(null, i) {
                 val bytes = model.page(i)
                 value = bytes?.let { withContext(Dispatchers.Default) { decode(it, 2400) } }
             }
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // A tap on a side turns the page (by reading direction) and the middle
+            // shows or hides the bars; a swipe goes through to the pager.
+            Box(
+                Modifier.fillMaxSize().pointerInput(rtl) {
+                    detectTapGestures { o ->
+                        val x = o.x / size.width
+                        when {
+                            x in 0.3f..0.7f -> chrome = !chrome
+                            (x > 0.7f) != rtl -> forward()
+                            else -> backward()
+                        }
+                    }
+                },
+                contentAlignment = Alignment.Center,
+            ) {
                 bmp?.let { Image(it, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
                     ?: CircularProgressIndicator(Modifier.size(36.dp), color = l.muted, strokeWidth = 2.dp)
             }
         }
-        // A tap on a side turns the page (by reading direction); the middle shows or hides the bars.
-        Row(Modifier.fillMaxSize()) {
-            for (side in listOf(-1, 0, 1)) {
-                Box(
-                    Modifier.weight(if (side == 0) 0.4f else 0.3f).fillMaxHeight().pointerInput(side, state.rtl) {
-                        detectTapGestures {
-                            when {
-                                side == 0 -> chrome = !chrome
-                                (side > 0) != state.rtl -> model.next()
-                                else -> model.previous()
-                            }
-                        }
-                    },
-                )
+        if (hint && !atEnd) {
+            Text(
+                stringResource(R.string.reader_hint),
+                Modifier.align(Alignment.Center).padding(horizontal = 36.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.72f)).padding(horizontal = 16.dp, vertical = 12.dp),
+                color = Color.White, fontSize = 13.sp, lineHeight = 19.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
+        if (atEnd) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).pointerInput(Unit) { detectTapGestures { atEnd = false } }, contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier.padding(horizontal = 32.dp).clip(RoundedCornerShape(16.dp)).background(l.bg).border(1.dp, l.line, RoundedCornerShape(16.dp)).padding(22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(stringResource(R.string.end_of_volume), color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Text(title, Modifier.padding(top = 4.dp), color = l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        WButton(stringResource(R.string.player_back), onBack, kind = Btn.Secondary)
+                        if (next != null) WButton(stringResource(R.string.next_volume), { onNext(next) }, icon = Ic.ChevronRight)
+                    }
+                }
             }
         }
         // The bars: the web reader's glass panels.
@@ -156,28 +219,46 @@ fun ReaderScreen(core: LainCoreInterface, itemId: String, title: String = "", on
             ) {
                 IconBtn(Ic.ArrowLeft, "Back", onBack, tint = l.text)
                 Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
-                    Mono(if (book.offline) stringResource(R.string.reader_offline) else stringResource(if (state.rtl) R.string.reader_rtl else R.string.reader_ltr), color = l.accent)
-                    Text(title, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(title, color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        stringResource(R.string.progress_page, state.page + 1, book.pages.size) + if (book.offline) " · " + stringResource(R.string.reader_offline) else "",
+                        Modifier.padding(top = 2.dp), color = l.muted, fontSize = 12.sp, maxLines = 1,
+                    )
                 }
-                Text(stringResource(R.string.reader_pages, state.page + 1, book.pages.size), Modifier.padding(horizontal = 12.dp), style = TextStyle(fontFamily = l.mono, fontSize = 12.sp, color = l.muted))
+                // The direction is a control: on when pages run right to left.
+                Row(
+                    Modifier.padding(end = 6.dp).height(40.dp).clip(l.buttonShape).background(if (rtl) l.raised else Color.Transparent).border(1.dp, if (rtl) l.accent.copy(alpha = 0.55f) else l.line, l.buttonShape)
+                        .clickable(onClickLabel = stringResource(R.string.reader_rtl)) { rtl = !rtl }.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { Mono(if (rtl) "RTL" else "LTR", color = if (rtl) l.text else l.muted, size = 11) }
             }
         }
         AnimatedVisibility(chrome && book.pages.size > 1, Modifier.align(Alignment.BottomCenter), enter = fadeIn() + slideInVertically { it / 2 }, exit = fadeOut() + slideOutVertically { it / 2 }) {
             Row(
-                Modifier.safeDrawingPadding().padding(12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(l.bg.copy(alpha = 0.88f)).border(1.dp, l.line.copy(alpha = 0.7f), RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp),
+                // Clear of the system's bottom gesture strip: with the bars hidden the
+                // safe area is the whole screen, and a drag there opened Recents.
+                Modifier.safeDrawingPadding().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 40.dp).fillMaxWidth().systemGestureExclusion().clip(RoundedCornerShape(16.dp)).background(l.bg.copy(alpha = 0.88f)).border(1.dp, l.line.copy(alpha = 0.7f), RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val last = book.pages.size - 1
-                Text(if (state.rtl) book.pages.size.toString() else "1", style = TextStyle(fontFamily = l.mono, fontSize = 11.sp, color = l.muted))
+                Text(
+                    if (rtl) book.pages.size.toString() else "1",
+                    Modifier.clip(CircleShape).clickable { model.goTo(if (rtl) last else 0) }.padding(horizontal = 8.dp, vertical = 10.dp),
+                    style = TextStyle(fontFamily = l.mono, fontSize = 12.sp, color = l.muted),
+                )
                 ThinSlider(
                     state.page.toFloat() / last,
                     onChange = {},
                     onCommit = { f -> model.goTo((f * last).roundToInt().coerceIn(0, last)) },
-                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                    reversed = state.rtl,
+                    modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
+                    reversed = rtl,
                     label = stringResource(R.string.progress_page, state.page + 1, book.pages.size),
                 )
-                Text(if (state.rtl) "1" else book.pages.size.toString(), style = TextStyle(fontFamily = l.mono, fontSize = 11.sp, color = l.muted))
+                Text(
+                    if (rtl) "1" else book.pages.size.toString(),
+                    Modifier.clip(CircleShape).clickable { model.goTo(if (rtl) 0 else last) }.padding(horizontal = 8.dp, vertical = 10.dp),
+                    style = TextStyle(fontFamily = l.mono, fontSize = 12.sp, color = l.muted),
+                )
             }
         }
     }

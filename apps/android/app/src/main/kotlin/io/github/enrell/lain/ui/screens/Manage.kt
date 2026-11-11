@@ -75,6 +75,17 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
         }
     }
     val queued = state.copies.count { it.state == CopyState.QUEUED }
+    var removing by remember { mutableStateOf<String?>(null) }
+    removing?.let { id ->
+        Sheet(stringResource(R.string.remove_download_q), { removing = null }, footer = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                WButton(stringResource(R.string.player_cancel), { removing = null }, Modifier.weight(1f), kind = Btn.Secondary)
+                WButton(stringResource(R.string.remove_download), { model.remove(id); removing = null }, Modifier.weight(1f), kind = Btn.Danger)
+            }
+        }) {
+            Text(stringResource(R.string.remove_download_body), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
+        }
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 32.dp)) {
         item {
             Text(stringResource(R.string.nav_downloads), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
@@ -86,7 +97,7 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                         Text(bytes(u.usedBytes), color = l.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                         if (u.maxBytes > 0) Text(stringResource(R.string.downloads_of, bytes(u.maxBytes)), Modifier.padding(start = 6.dp, bottom = 2.dp), color = l.muted, fontSize = 13.sp)
                         Box(Modifier.weight(1f))
-                        Mono(pluralStringResource(R.plurals.count_copies, state.copies.size, state.copies.size))
+                        Text(pluralStringResource(R.plurals.count_copies, state.copies.size, state.copies.size), color = l.muted, fontSize = 13.sp)
                     }
                     if (u.maxBytes > 0) {
                         Box(Modifier.padding(top = 12.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(l.raised)) {
@@ -161,7 +172,7 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                     })
                     CopyState.DONE -> Unit
                 }
-                IconBtn(Ic.Trash, stringResource(R.string.action_delete), { model.remove(c.itemId) })
+                IconBtn(Ic.Trash, stringResource(R.string.remove_download), { removing = c.itemId })
             }
         }
     }
@@ -177,7 +188,6 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
     var budget by remember { mutableStateOf((policy.maxBytes shr 30).toString()) }
     var floor by remember { mutableStateOf((policy.minFreeBytes shr 30).toString()) }
     var skip by remember { mutableStateOf(graph.prefs.skipSec) }
-    var small by remember { mutableStateOf(graph.prefs.smallTiles) }
     LaunchedEffect(Unit) { queued = vm.queuedProgress() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 40.dp)) {
         Text(stringResource(R.string.nav_settings), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
@@ -188,15 +198,12 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
             }
             Column(Modifier.padding(start = 14.dp)) {
                 Text(state.user?.username ?: "", color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Mono(listOf(state.user?.role ?: "", state.server.removePrefix("http://").removePrefix("https://")).filter { it.isNotEmpty() }.joinToString(" · "), Modifier.padding(top = 4.dp))
+                Text((state.user?.role ?: "").replaceFirstChar { it.uppercase() }, Modifier.padding(top = 2.dp), color = l.muted, fontSize = 13.sp)
             }
         }
         SettingsGroup(stringResource(R.string.settings_playback)) {
             SettingRow(stringResource(R.string.player_skip), stringResource(R.string.settings_skip_hint), below = true) {
                 Segmented(io.github.enrell.lain.domain.SKIP_CHOICES.map { it to if (it == 0) stringResource(R.string.settings_auto) else "$it s" }, skip, { skip = it; graph.prefs.skipSec = it })
-            }
-            SettingRow(stringResource(R.string.tiles), stringResource(R.string.settings_tiles_hint)) {
-                Segmented(listOf(false to stringResource(R.string.tiles_large), true to stringResource(R.string.tiles_small)), small, { small = it; graph.prefs.smallTiles = it })
             }
         }
         SettingsGroup(stringResource(R.string.settings_offline)) {
@@ -230,10 +237,9 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
                 WButton(stringResource(R.string.settings_change), { vm.changeServer() }, kind = Btn.Secondary)
             }
             SettingRow(stringResource(R.string.settings_session), stringResource(R.string.settings_session_hint)) {
-                WButton(stringResource(R.string.settings_logout), { vm.logout() }, kind = Btn.Danger)
+                WButton(stringResource(R.string.settings_logout), { vm.logout() }, kind = Btn.Ghost)
             }
         }
         Mono(stringResource(R.string.settings_about, io.github.enrell.lain.core.coreVersion()), Modifier.padding(top = 28.dp))
-        Text(stringResource(R.string.settings_colours), Modifier.padding(top = 6.dp), color = l.muted.copy(alpha = 0.7f), fontSize = 12.sp)
     }
 }

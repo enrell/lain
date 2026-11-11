@@ -97,6 +97,8 @@ class FakeCore : LainCoreInterface {
     override suspend fun progress(itemId: String): ProgressInfo = progress[itemId] ?: progress(itemId, 0.0, 0.0, at = 0)
     override fun queuedProgress(): Long = 0
     override suspend fun refreshWatched(): Long = 0
+    override suspend fun durations(itemIds: List<String>): List<io.github.enrell.lain.core.DurationInfo> = emptyList()
+
     override suspend fun saveProgress(itemId: String, positionSec: Double, durationSec: Double, completed: Boolean): SaveOutcome {
         val p = progress(itemId, positionSec, durationSec, completed, at = saved.size + 10L)
         saved += p

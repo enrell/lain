@@ -68,5 +68,14 @@ object Ic {
     val Maximize by lazy { stroke("M8 3H5a2 2 0 0 0-2 2v3", "M21 8V5a2 2 0 0 0-2-2h-3", "M3 16v3a2 2 0 0 0 2 2h3", "M16 21h3a2 2 0 0 0 2-2v-3") }
     val Trash by lazy { stroke("M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", "M10 11v6", "M14 11v6") }
     val Refresh by lazy { stroke("M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", "M21 3v5h-5", "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", "M8 16H3v5") }
+    val Grid by lazy { stroke("M4 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z", "M15 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z", "M15 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z", "M4 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z") }
+    /** The lain mark: three nodes, joined. */
+    val Mark by lazy { stroke("M6 4.5a2 2 0 1 0 0 4a2 2 0 1 0 0-4", "M18 4.5a2 2 0 1 0 0 4a2 2 0 1 0 0-4", "M12 15.5a2 2 0 1 0 0 4a2 2 0 1 0 0-4", "M8 6.5h8", "M7 8.3l4 7.4", "M17 8.3l-4 7.4") }
+    val Captions by lazy { stroke("M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z", "M7 15h4", "M15 15h2", "M7 11h2", "M13 11h4") }
+    val Audio by lazy { stroke("M2 10v3", "M6 6v11", "M10 3v18", "M14 8v7", "M18 5v13", "M22 10v3") }
+    val SkipNext by lazy { stroke("M5 4l10 8-10 8z", "M19 5v14") }
+    val Dots by lazy { stroke("M12 4a1 1 0 1 0 0 2a1 1 0 1 0 0-2", "M12 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2", "M12 18a1 1 0 1 0 0 2a1 1 0 1 0 0-2", filled = true) }
+    val Eye by lazy { stroke("M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0", "M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6") }
+    val RotateCcw by lazy { stroke("M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", "M3 3v5h5") }
     val Check by lazy { stroke("M20 6 9 17l-5-5") }
 }

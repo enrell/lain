@@ -1,5 +1,4 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
@@ -19,14 +18,20 @@
 	import Poster from '$lib/components/media/Poster.svelte';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
-	import { formatTime } from '$lib/utilities/format';
+	import { formatLength, formatTime } from '$lib/utilities/format';
+	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
+	import Settings2 from '@lucide/svelte/icons/settings-2';
+	import { t } from '$lib/i18n';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
+	// How long each episode is, asked once for the whole title (D-274).
+	let durations = $state<Map<string, number>>(new Map());
 	onMount(() => {
 		origin = window.location.origin;
 		if (session.user) preferredPlayer = loadPreferredPlayer(session.user.id);
+		if (!isReadable(group.items[0]?.kind)) void api.playback.durations(group.items.map((i) => i.id)).then((d) => (durations = d));
 	});
 
 	/**
@@ -42,12 +47,13 @@
 		group,
 		progressMap = null,
 		libraries = [],
-		actions = undefined
+		manage = []
 	}: {
 		group: SeriesGroup;
 		progressMap?: Map<string, Progress> | null;
 		libraries?: Library[];
-		actions?: Snippet;
+		/** What an admin can do with the title, from the page that owns it. */
+		manage?: MenuEntry[];
 	} = $props();
 
 	// Comics and manga open in the reader; external players never apply (D-085).
@@ -86,15 +92,11 @@
 		enrichments.map((e) => e?.title).find((t) => t && t.length > 0) ?? group.title
 	);
 
-	const meta = $derived(
-		[
-			group.year > 0 ? String(group.year) : '',
-			'Series',
-			reading ? `${group.count} ${group.count === 1 ? 'file' : 'files'}` : `${group.count} ${group.count === 1 ? 'episode' : 'episodes'}`
-		]
-			.filter(Boolean)
-			.join('  ·  ')
+	const countLabel = $derived(
+		t(!reading ? 'title.episodes' : group.items[0]?.kind === 'manga' ? 'title.volumes' : 'title.issues', { count: group.count })
 	);
+	const totalLength = $derived(group.items.reduce((sum, i) => sum + (durations.get(i.id) ?? 0), 0));
+	const meta = $derived([group.year > 0 ? String(group.year) : '', countLabel].filter(Boolean).join('  ·  '));
 
 	const libraryNames = $derived(
 		libraries
@@ -217,13 +219,30 @@
 					: 'Not started'
 	);
 
-	function stillUrl(id: string): string {
-		return api.thumbnail.url(id, session.token, { width: 480 });
+	// The title's own management joins what the page passed in.
+	const manageEntries = $derived<MenuEntry[]>(
+		session.isAdmin
+			? [
+					...manage,
+					{ label: t('title.selectEpisodes'), icon: ListChecks, onSelect: () => (selecting = true), separated: manage.length > 0 },
+					{ label: t('title.deleteTitle'), icon: Trash2, danger: true, disabled: group.items.every(isGone), onSelect: deleteAllFiles }
+				]
+			: []
+	);
+
+	function cardLine(item: CatalogItem, progress: Progress | null): string {
+		const length = formatLength(durations.get(item.id));
+		if (progress && !progress.completed && progress.duration_sec > 0 && progress.position_sec > 0) {
+			return reading
+				? `Page ${Math.floor(progress.position_sec)} of ${Math.floor(progress.duration_sec)}`
+				: t('title.left', { time: formatLength(Math.max(60, progress.duration_sec - progress.position_sec)) });
+		}
+		if (progress?.completed) return reading ? 'Read' : length ? t('title.watchedLength', { time: length }) : t('title.watched');
+		return length || (reading ? 'Unread' : 'Not watched');
 	}
 
-	function formatSize(bytes: number): string {
-		if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
-		return `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+	function stillUrl(id: string): string {
+		return api.thumbnail.url(id, session.token, { width: 480 });
 	}
 
 	function cardProgress(id: string): number {
@@ -238,18 +257,19 @@
 	     border; the art runs under the navigation and fades into the page. -->
 	<header class="title-hero relative -mx-5 -mt-5 overflow-hidden sm:-mx-8 md:mx-0 md:-mt-28">
 		{#if backdrop}
-			<img src={backdrop} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full object-cover object-center md:w-[70%]" referrerpolicy="no-referrer" />
+			<img src={backdrop} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full object-cover object-center max-md:scale-150 max-md:opacity-55 max-md:blur-3xl" referrerpolicy="no-referrer" />
 		{:else}
-			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md md:w-[70%]" />
+			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md" />
 		{/if}
 		<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
 		<div class="relative mx-auto flex min-h-[17rem] w-full max-w-[1800px] flex-col justify-end px-5 pb-6 pt-20 sm:px-8 md:min-h-[30rem] md:pb-14 md:pt-40 lg:px-10">
 			<div class="hero-monolith-copy max-w-5xl">
+				<!-- Phone: the cover whole and crisp; the backdrop is only its colours. -->
+				<div class="mb-5 aspect-[2/3] w-28 overflow-hidden rounded-xl shadow-[0_16px_40px_rgba(0,0,0,0.5)] ring-1 ring-white/10 md:hidden">
+					<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
+				</div>
 				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">{meta}</p>
 				<h1 class="title-hero-name mt-4 text-foreground">{displayTitle}</h1>
-				{#if displayTitle !== group.title}
-					<p class="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">Indexed as “{group.title}”</p>
-				{/if}
 				{#if genres.length > 0}
 					<ul class="mt-5 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground/75" aria-label="Genres">
 						{#each genres as genre, i (genre)}
@@ -257,8 +277,27 @@
 						{/each}
 					</ul>
 				{/if}
+				<!-- The main action and what else the title can do, where the eye
+				     already is; the rail below keeps the cover and the facts. -->
+				<div class="mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
+					{#if resumeTarget}
+						<LinkButton href={playHref(resumeTarget.id)} size="lg" class="max-md:w-full" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
+							<Play class="size-4 fill-current" aria-hidden="true" /> {resumeLabel}
+						</LinkButton>
+					{:else}
+						<Button size="lg" disabled class="max-md:w-full" title="The files are no longer on disk">
+							<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? 'Read' : 'Play'}
+						</Button>
+					{/if}
+					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} size="md" /></span>{/if}
+					<DownloadFileButton items={group.items} variant="ghost" size="md" label={t('download.all')} />
+					<Menu label={t('title.manage')} entries={manageEntries} variant="ghost" size="md">
+						{#snippet icon()}<Settings2 class="size-4" aria-hidden="true" />{/snippet}
+					</Menu>
+				</div>
+				<p class="mt-3 text-sm text-muted" aria-live="polite">{watchedLine}</p>
 				{#if synopsis}
-					<p class="mt-5 line-clamp-3 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{synopsis}</p>
+					<p class="mt-4 line-clamp-3 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{synopsis}</p>
 				{/if}
 			</div>
 		</div>
@@ -270,32 +309,9 @@
 			<div class="hidden aspect-[2/3] w-44 overflow-hidden rounded-xl bg-surface shadow-2xl ring-1 ring-white/10 lg:block lg:w-full">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
-			<div class="max-lg:order-1">
-				{#if resumeTarget}
-					<LinkButton href={playHref(resumeTarget.id)} size="lg" class="w-full justify-center" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
-						<Play class="size-4 fill-current" aria-hidden="true" /> {resumeLabel}
-					</LinkButton>
-				{:else}
-					<Button size="lg" disabled class="w-full justify-center" title="The files are no longer on disk">
-						<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? 'Read' : 'Play'}
-					</Button>
-				{/if}
-				<!-- Handing playback to mpv or VLC is a desktop matter. -->
-				{#if resumeTarget && !reading}<div class="mt-3 max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} /></div>{/if}
-				<p class="mt-2 text-center text-xs text-muted" aria-live="polite">{watchedLine}</p>
-			</div>
-			{#if actions}
-				<div class="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 max-lg:order-2 sm:-mx-8 sm:px-8 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0">
-					{@render actions()}
-				</div>
-			{/if}
 			<div class="rounded-xl border border-line/70 bg-surface/30 p-4 max-lg:order-4">
 				<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">Information</h2>
 				<dl class="mt-2 text-sm">
-					<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-						<dt class="text-xs uppercase tracking-wider text-muted">Format</dt>
-						<dd class="font-semibold text-foreground">Series</dd>
-					</div>
 					{#if group.year > 0}
 						<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
 							<dt class="text-xs uppercase tracking-wider text-muted">Year</dt>
@@ -309,9 +325,15 @@
 						</div>
 					{/if}
 					<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? 'Files' : 'Episodes'}</dt>
+						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? (group.items[0]?.kind === 'manga' ? 'Volumes' : 'Issues') : 'Episodes'}</dt>
 						<dd class="font-semibold text-foreground">{group.count}</dd>
 					</div>
+					{#if totalLength > 0}
+						<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
+							<dt class="text-xs uppercase tracking-wider text-muted">{t('title.length')}</dt>
+							<dd class="font-semibold text-foreground">{formatLength(totalLength)}</dd>
+						</div>
+					{/if}
 					{#if libraryNames.length > 0}
 						<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
 							<dt class="text-xs uppercase tracking-wider text-muted">Library</dt>
@@ -395,18 +417,6 @@
 							</Button>
 							<Button variant="ghost" size="sm" onclick={exitSelecting}>
 								<X class="size-3.5" aria-hidden="true" /> Done
-							</Button>
-						{:else}
-							<Button variant="secondary" size="sm" onclick={() => (selecting = true)}>
-								<ListChecks class="size-3.5" aria-hidden="true" /> Select
-							</Button>
-							<Button
-								variant="danger"
-								size="sm"
-								disabled={group.items.every(isGone)}
-								onclick={deleteAllFiles}
-							>
-								<Trash2 class="size-3.5" aria-hidden="true" /> Delete title
 							</Button>
 						{/if}
 					</div>
@@ -502,17 +512,7 @@
 			<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>
 		{/if}
 		<p class={['mt-1 truncate text-xs', gone ? 'text-danger' : 'text-muted'].join(' ')}>
-			{#if gone}
-				Missing from disk
-			{:else if progress && !progress.completed && progress.duration_sec > 0}
-				{reading ? `Page ${Math.floor(progress.position_sec)} of ${Math.floor(progress.duration_sec)}` : `Resume at ${Math.min(100, Math.round((progress.position_sec / progress.duration_sec) * 100))}%`}
-			{:else if progress?.completed}
-				{reading ? 'Read' : 'Watched'}
-			{:else if item.size > 0}
-				{formatSize(item.size)}
-			{:else}
-				{reading ? 'Unread' : 'Not watched'}
-			{/if}
+			{gone ? 'Missing from disk' : cardLine(item, progress)}
 		</p>
 	</div>
 {/snippet}

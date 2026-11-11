@@ -16,12 +16,15 @@
 		items,
 		hotkey = false,
 		size = 'sm',
-		variant = 'secondary'
+		variant = 'secondary',
+		label = undefined
 	}: {
 		items: { id: string; missing?: boolean }[];
 		hotkey?: boolean;
 		size?: ButtonSize;
 		variant?: ButtonVariant;
+		/** Said instead of the count (a whole title: "Download all"). */
+		label?: string;
 	} = $props();
 
 	const ready = $derived(downloadable(items));
@@ -61,6 +64,6 @@
 
 <Button {variant} {size} loading={busy} disabled={ready.length === 0} onclick={() => void start()}>
 	<Download class="size-3.5" aria-hidden="true" />
-	{ready.length > 1 ? t('download.files', { count: ready.length }) : t('download.file')}
-	{#if hotkey}<kbd class="ms-1 font-mono text-[10px] opacity-70">d</kbd>{/if}
+	{label ?? (ready.length > 1 ? t('download.files', { count: ready.length }) : t('download.file'))}
+	{#if hotkey}<kbd class="ms-1 opacity-70">d</kbd>{/if}
 </Button>

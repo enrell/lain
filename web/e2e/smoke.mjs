@@ -482,19 +482,20 @@ try {
 	// Scans auto-enrich now, so strip any existing overlay first: the
 	// manual fetch below must exercise the full NFO path. Either button
 	// proves the controls rendered (enrichment loads async after the item).
-	await waitFor(
-		`document.body.innerText.includes('Refetch metadata') || document.body.innerText.includes('Fetch metadata')`,
-		15000,
-		'enrich controls'
-	);
-	const hasOverlay = await evalValue(`document.body.innerText.includes('Refetch metadata')`);
-	if (hasOverlay) {
-		await clickText('Remove');
+	// The admin controls sit behind the title's Manage menu.
+	const menuHas = (text) =>
+		evalValue(`[...document.querySelectorAll('[role="menuitem"]')].some((e) => (e.textContent || '').includes(${JSON.stringify(text)}))`);
+	await waitText('Manage', 15000);
+	await clickText('Manage');
+	await waitFor(`document.querySelectorAll('[role="menuitem"]').length > 0`, 5000, 'manage menu');
+	if (await menuHas('Refetch metadata')) {
+		await clickText('Remove metadata', '[role="menuitem"]');
 		await clickText('Remove overlay');
-		await waitText('Fetch metadata', 10000);
+		await waitText('Metadata overlay removed', 10000);
+		await clickText('Manage');
+		await waitFor(`document.querySelectorAll('[role="menuitem"]').length > 0`, 5000, 'manage menu');
 	}
-	await waitText('Fetch metadata');
-	await clickText('Fetch metadata');
+	await clickText('Fetch metadata', '[role="menuitem"]');
 	await waitText('Metadata added from', 15000);
 	await waitText("Frieren: Beyond Journey's End", 10000);
 	console.log('   local NFO overlay applied without network providers');

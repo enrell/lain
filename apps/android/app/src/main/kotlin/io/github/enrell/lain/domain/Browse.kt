@@ -35,7 +35,8 @@ data class Filters(
 ) {
     val active: Int get() = listOf(watch != null, form != null, kind.isNotEmpty(), added > 0).count { it } + genres.size
     val narrowed: Boolean get() = active > 0 || q.isNotBlank()
-    fun cleared(): Filters = Filters(sort = sort)
+    /** Back to everything, in the default order: Clear clears the sort too. */
+    fun cleared(): Filters = Filters()
 }
 
 val ADDED_DAYS = listOf(1, 7, 30, 90)
