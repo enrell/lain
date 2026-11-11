@@ -765,7 +765,13 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
     Box(Modifier.fillMaxSize()) {
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 56.dp)) {
         item {
-            HeroFrame(title.art(), 320.dp, back = { vm.back() }) {
+            HeroFrame(title.art(), 320.dp, back = { vm.back() }, lead = 0.2f) {
+                // The cover itself, whole and sharp, over its own colours: a title page shows what the title looks like.
+                val wideArt = title.wide()
+                Box(
+                    Modifier.padding(bottom = 16.dp).width(if (wideArt) 196.dp else 112.dp).aspectRatio(if (wideArt) Shapes.LANDSCAPE else Shapes.PORTRAIT)
+                        .clip(l.cardShape).border(1.dp, Color.White.copy(alpha = 0.12f), l.cardShape),
+                ) { Art(title.art(), Modifier.fillMaxSize(), label = title.title) }
                 Text(
                     title.title.uppercase(),
                     color = l.text, fontSize = 30.sp, lineHeight = 31.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.3).sp,
@@ -1255,7 +1261,7 @@ fun UnlockSheet(vm: AppViewModel, onClose: () -> Unit) {
  * height leaves the next section on screen.
  */
 @Composable
-private fun HeroFrame(artId: String, minHeight: Dp, back: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+private fun HeroFrame(artId: String, minHeight: Dp, back: (() -> Unit)? = null, lead: Float = 0.52f, content: @Composable ColumnScope.() -> Unit) {
     val l = LocalLain.current
     Box(Modifier.fillMaxWidth().heightIn(min = minHeight)) {
         // The art's colours wash the whole block, so the title and facts sit on
@@ -1275,7 +1281,7 @@ private fun HeroFrame(artId: String, minHeight: Dp, back: (() -> Unit)? = null, 
             Art(artId, Modifier.matchParentSize(), alignment = Alignment.TopCenter)
             Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.3f), 0.25f to Color.Transparent)))
         }
-        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = GUTTER).padding(top = minHeight * 0.52f, bottom = 18.dp), content = content)
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = GUTTER).padding(top = minHeight * lead, bottom = 18.dp), content = content)
         if (back != null) Box(Modifier.padding(8.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f))) { IconBtn(Ic.ArrowLeft, "Back", back, tint = Color.White) }
     }
 }

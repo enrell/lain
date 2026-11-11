@@ -658,11 +658,13 @@ fun PlayerScreen(
                     IconBtn(if (muted) Ic.Muted else Ic.Volume, "Mute", { muted = !muted; player.volume = if (muted) 0f else 1f; touched++ }, tint = Color.White)
                     Box(Modifier.weight(1f))
                     // Subtitles and audio are on the bar, not behind the gear.
+                    // Named, not only drawn: a waveform alone does not say "audio track".
                     if (textTracks.isNotEmpty()) {
-                        IconBtn(Ic.Captions, stringResource(R.string.player_subtitles), { settings = false; tracksPanel = if (tracksPanel == 1) 0 else 1 }, tint = if (tracksPanel == 1 || (!textOff && textTracks.any { it.selected })) l.accent else Color.White)
+                        val on = tracksPanel == 1 || (!textOff && textTracks.any { it.selected })
+                        BarAction(Ic.Captions, stringResource(R.string.player_subtitles), on) { settings = false; tracksPanel = if (tracksPanel == 1) 0 else 1 }
                     }
                     if (audioTracks.size > 1) {
-                        IconBtn(Ic.Audio, stringResource(R.string.player_audio), { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }, tint = if (tracksPanel == 2) l.accent else Color.White)
+                        BarAction(Ic.Audio, stringResource(R.string.player_audio), tracksPanel == 2) { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }
                     }
                     IconBtn(Ic.Gear, "Settings", { tracksPanel = 0; settings = !settings }, tint = if (settings) l.accent else Color.White)
                     IconBtn(Ic.Maximize, "Fullscreen", {
@@ -843,3 +845,17 @@ private fun PickRow(label: String, value: String, options: List<Pair<String, Boo
 fun restOrientation(activity: android.app.Activity?): Int =
     if ((activity?.resources?.configuration?.smallestScreenWidthDp ?: 0) < 600) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+
+/** An action of the player's bar that needs its name beside its drawing. */
+@Composable
+private fun BarAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, on: Boolean, onClick: () -> Unit) {
+    val l = LocalLain.current
+    Row(
+        Modifier.height(44.dp).clip(CircleShape).clickable(onClickLabel = label, onClick = onClick).padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(icon, null, tint = if (on) l.accent else Color.White, modifier = Modifier.size(20.dp))
+        Text(label, color = if (on) l.accent else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    }
+}
