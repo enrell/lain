@@ -220,6 +220,13 @@ pub struct PlaySource {
     pub session: String,
 }
 
+/// One video's length, in seconds.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DurationInfo {
+    pub item_id: String,
+    pub duration_sec: f64,
+}
+
 /// A quality the server can transcode to (the player's quality menu).
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct QualityInfo {

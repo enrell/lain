@@ -509,7 +509,7 @@
 							<X class="size-4" />
 						</button>
 					{:else}
-						<kbd class="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 font-mono text-[11px] text-muted/70 md:block">/</kbd>
+						<kbd class="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 text-muted/70 md:inline-flex">/</kbd>
 					{/if}
 				</div>
 				<div class="hidden w-44 shrink-0 sm:block">
@@ -561,7 +561,7 @@
 					{:else if narrowed}
 						<span class="text-foreground">{results.length}</span> of {all.length} {all.length === 1 ? 'title' : 'titles'}
 					{:else}
-						{all.length} {all.length === 1 ? 'title' : 'titles'}{#if items.length !== all.length}&nbsp;· {total} files{/if}
+						{all.length} {all.length === 1 ? 'title' : 'titles'}
 					{/if}
 					{#if loading && items.length > 0}<span class="text-muted/70"> · loading the rest…</span>{/if}
 				</p>
@@ -577,7 +577,7 @@
 				{/each}
 				{#if narrowed}
 					<button type="button" class="rounded-full px-2 py-0.5 text-xs text-muted hover:text-foreground" onclick={clearAll}>
-						Clear <kbd class="ml-0.5 hidden font-mono text-[10px] opacity-70 md:inline">C</kbd>
+						Clear <kbd class="ml-0.5 hidden opacity-70 md:inline-flex">C</kbd>
 					</button>
 				{/if}
 			</div>
@@ -650,7 +650,7 @@
 	>
 		<ArrowUp class="size-4" />
 		<span class="hidden sm:inline">Top</span>
-		<kbd class="hidden font-mono text-[10px] opacity-60 md:inline">T</kbd>
+		<kbd class="hidden opacity-60 md:inline-flex">T</kbd>
 	</button>
 {/if}
 

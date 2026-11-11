@@ -72,7 +72,8 @@ class DomainTest {
         val core = FakeCore()
         assertEquals(listOf("home", "library", "search", "downloads", "settings"), destinations(core.modules).map { it.id })
         val withRead = core.modules.map { if (it.id == "read") it.copy(enabled = true) else it }
-        assertEquals(listOf("home", "library", "read", "search", "downloads", "settings"), destinations(withRead).map { it.id })
+        // Comics are libraries, reached like the others: reading adds no place of its own.
+        assertEquals(listOf("home", "library", "search", "downloads", "settings"), destinations(withRead).map { it.id })
         // /api/modules unavailable: the core destinations.
         assertEquals(listOf("home", "library", "search", "downloads", "settings"), destinations(null).map { it.id })
     }

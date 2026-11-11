@@ -200,6 +200,20 @@ pub struct PlaybackOptions {
     pub qualities: Vec<TranscodeQuality>,
 }
 
+/// One video's length (`GET /api/durations`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ItemDuration {
+    pub item_id: String,
+    pub duration_sec: f64,
+}
+
+/// The envelope of `GET /api/durations`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ItemDurations {
+    #[serde(default)]
+    pub items: Vec<ItemDuration>,
+}
+
 /// How an item's storyboard is laid out (`GET /api/items/{id}/storyboard`):
 /// tile `i`, row by row, is the frame near `i * interval_sec`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

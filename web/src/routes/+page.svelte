@@ -124,7 +124,7 @@
 <div>
 	{#if loading}
 		<div class="space-y-12 pb-20">
-			<Skeleton class="h-[72svh] min-h-[32rem] w-full rounded-none" />
+			<Skeleton class="h-[60svh] min-h-[24rem] w-full rounded-none md:h-[74svh]" />
 			<div class="mx-auto w-full max-w-[1800px] space-y-5 px-5 sm:px-8 lg:px-10">
 				<Skeleton class="h-7 w-52" />
 				<div class="flex gap-4 overflow-hidden">
@@ -170,15 +170,12 @@
 		</div>
 	{:else}
 		{@const hero = continueItems[0] ?? recent[0]}
-		{@const upNext = hero ? (continueItems.find((i) => i.id !== hero.id) ?? null) : null}
 		{#if hero}
 			<Hero
 				item={hero}
 				enrichment={enrichmentCache.get(hero.id) ?? null}
 				resume={progressMap.has(hero.id)}
-				{upNext}
-				upNextEnrichment={upNext ? enrichmentCache.get(upNext.id) ?? null : null}
-				upNextProgress={upNext ? progressMap.get(upNext.id) ?? null : null}
+				progress={progressMap.get(hero.id) ?? null}
 			/>
 		{/if}
 		<section id="home-library" class="home-library relative bg-background pb-24 pt-14 sm:pt-18 md:pb-20 md:pt-20">

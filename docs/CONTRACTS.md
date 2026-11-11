@@ -571,6 +571,14 @@ near `i * interval_sec`. At most 120 tiles of 160x90, at least 2 s apart.
 The image is made on its first request, which waits for it (keyframes
 only, one pass over the file), and is cached like a thumbnail.
 
+`GET /api/durations?ids=a,b,c` (D-274) answers how long several videos
+are in one request, so a list of episodes can say "24 min" where the
+catalog only knows a file: `{items: [{item_id, duration_sec}]}`. Ids that
+are unknown, not visible to the caller, not videos or not probeable are
+left out (never an error); at most 200 ids are read. The server probes a
+file once and remembers the length by path, size and modified time, a few
+files at a time.
+
 ## Metadata (merge-many)
 
 `lain.metadata.search@1`: `{query, kind, limit, dir}` →

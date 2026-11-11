@@ -114,11 +114,24 @@ class ModelsTest {
         assertTrue(vm.state.value.screen is Screen.TitleDetail)
         vm.open(core.items.first { it.kind == "manga" })
         assertEquals(Screen.Reader("m1"), vm.state.value.screen)
-        // A destination resets the stack; back from a destination goes Home, then out.
-        vm.go(Screen.Library)
-        assertEquals(listOf<Screen>(Screen.Library), vm.state.value.stack)
+        // A destination resets the stack, and Back from it returns to the deep
+        // place it was opened from (never into a player or a reader), then Home, then out.
+        vm.go(Screen.Settings)
+        assertEquals(listOf<Screen>(Screen.Settings), vm.state.value.stack)
+        assertTrue(vm.back())
+        assertTrue(vm.state.value.screen is Screen.TitleDetail)
         assertTrue(vm.back())
         assertEquals(Screen.Home, vm.state.value.screen)
+        assertFalse(vm.back())
+        // From a destination's own root there is nowhere to return to but Home.
+        vm.go(Screen.Library)
+        vm.go(Screen.Settings)
+        assertTrue(vm.back())
+        assertEquals(Screen.Home, vm.state.value.screen)
+        assertFalse(vm.back())
+        // Home never leads back into another place.
+        vm.go(Screen.TitleDetail(s.titles.first { it.title == "Frieren" }.key))
+        vm.go(Screen.Home)
         assertFalse(vm.back())
         vm.search("frier")
         advanceUntilIdle()

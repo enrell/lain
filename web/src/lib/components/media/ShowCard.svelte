@@ -40,7 +40,7 @@
 	const detail = $derived.by(() => {
 		const parts: string[] = [
 			isReadable(group.items[0]?.kind)
-				? `${group.count} ${group.count === 1 ? 'file' : 'files'}`
+				? `${group.count} ${group.count === 1 ? 'volume' : 'volumes'}`
 				: `${group.count} episodes`
 		];
 		// A reading file's "season" is its volume; the count already says it.

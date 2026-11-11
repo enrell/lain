@@ -457,6 +457,21 @@ impl LainCore {
         self.run(async move { Ok(b.client.frame(&item_id, at_sec, width).await?) }).await
     }
 
+    /// How long these videos are (the ones the server can tell).
+    pub async fn durations(&self, item_ids: Vec<String>) -> Result<Vec<DurationInfo>, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let mut out = Vec::new();
+            for chunk in item_ids.chunks(100) {
+                for d in b.client.durations(chunk).await? {
+                    out.push(DurationInfo { item_id: d.item_id, duration_sec: d.duration_sec });
+                }
+            }
+            Ok(out)
+        })
+        .await
+    }
+
     /// The metadata overlays that exist for these items (genres, synopsis).
     pub async fn overlays(&self, item_ids: Vec<String>) -> Result<Vec<Overlay>, LainError> {
         let b = self.backend()?;

@@ -1,5 +1,7 @@
 package io.github.enrell.lain
 
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
@@ -96,7 +98,10 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The app is dark whatever the system's mode: light icons on both
+        // bars and no light scrim behind the navigation buttons.
+        val dark = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = dark, navigationBarStyle = dark)
         val graph = this.graph
         setContent {
             var themeId by remember { mutableStateOf(graph.prefs.theme) }
@@ -158,7 +163,7 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
     val scope = rememberCoroutineScope()
     val activity = context as? MainActivity
     var depth by remember { mutableStateOf(1) }
-    val canBack = state.phase == Phase.Main && (state.stack.size > 1 || state.screen != Screen.Home)
+    val canBack = state.phase == Phase.Main && (state.stack.size > 1 || state.screen != Screen.Home || state.returnTo != null)
     BackHandler(enabled = canBack) { vm.back() }
 
     val download: (Item) -> Unit = { item ->
@@ -167,7 +172,8 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                 onSuccess = {
                     activity?.askNotifications()
                     DownloadService.start(context)
-                    Toast.makeText(context, context.getString(R.string.download_queued, item.title), Toast.LENGTH_SHORT).show()
+                    val what = episodeLabel(item.season, item.episode, item.kind in io.github.enrell.lain.domain.READING_KINDS)
+                    Toast.makeText(context, if (what.isEmpty()) context.getString(R.string.download_queued, item.title) else context.getString(R.string.download_queued_ep, item.title, what), Toast.LENGTH_SHORT).show()
                 },
                 onFailure = { Toast.makeText(context, it.message ?: it.toString(), Toast.LENGTH_LONG).show() },
             )
@@ -203,12 +209,19 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                 is Screen.Player -> {
                     val item = state.items[s.itemId]
                     val title = item?.let { it.title + episodeLabel(it.season, it.episode, false).let { e -> if (e.isEmpty()) "" else " · $e" } } ?: ""
-                    PlayerScreen(graph.core, s.itemId, title, state.user?.preferredLanguage ?: "")
+                    // What comes after it in its title, so the end of an episode leads on.
+                    val nextItem = item?.let { cur ->
+                        state.titles.firstOrNull { t -> t.items.any { it.id == cur.id } }?.items?.let { all -> all.getOrNull(all.indexOfFirst { it.id == cur.id } + 1) }
+                    }
+                    PlayerScreen(graph.core, s.itemId, title, state.user?.preferredLanguage ?: "", nextItem) { n -> vm.replace(Screen.Player(n.id)) }
                 }
                 is Screen.Reader -> {
                     val item = state.items[s.itemId]
                     val title = item?.let { it.title + episodeLabel(it.season, it.episode, true).let { e -> if (e.isEmpty()) "" else " · $e" } } ?: ""
-                    ReaderScreen(graph.core, s.itemId, title) { vm.back() }
+                    val nextVolume = item?.let { cur ->
+                        state.titles.firstOrNull { t -> t.items.any { it.id == cur.id } }?.items?.let { all -> all.getOrNull(all.indexOfFirst { it.id == cur.id } + 1) }
+                    }
+                    ReaderScreen(graph.core, s.itemId, title, { vm.back() }, nextVolume) { n -> vm.replace(Screen.Reader(n.id)) }
                 }
                 else -> Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                     // A title page runs its art up under the status bar's edge
@@ -253,7 +266,8 @@ private fun TopBar(state: io.github.enrell.lain.ui.AppState, vm: AppViewModel) {
     val l = LocalLain.current
     Column {
         Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("lain", color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 3.sp)
+            Icon(Ic.Mark, null, tint = l.accent, modifier = Modifier.size(18.dp))
+            Text("lain", Modifier.padding(start = 8.dp), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 3.sp)
             Box(Modifier.weight(1f))
             if (!state.online) {
                 Row(Modifier.padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -272,48 +286,31 @@ private fun TopBar(state: io.github.enrell.lain.ui.AppState, vm: AppViewModel) {
 
 private fun iconOf(id: String) = when (id) {
     "home" -> Ic.Home
-    "library" -> Ic.Library
-    "read" -> Ic.Book
+    "library" -> Ic.Grid
     "search" -> Ic.Search
     "downloads" -> Ic.Download
-    else -> Ic.Sliders
+    else -> Ic.Gear
 }
 
-/** The bar's four places; everything else is behind More. */
-private val BAR = listOf("home", "library", "search", "downloads")
+/**
+ * The bar: the same five places on every screen. Comics are libraries,
+ * reached like the others, so nothing hides behind a "More".
+ */
+private val BAR = listOf("home", "library", "search", "downloads", "settings")
 
 @Composable
 private fun BottomBar(dests: List<Dest>, current: Screen, vm: AppViewModel) {
     val l = LocalLain.current
-    var more by remember { mutableStateOf(false) }
     val bar = BAR.mapNotNull { id -> dests.firstOrNull { it.id == id } }
-    val rest = dests.filter { it.id !in BAR }
     // A screen opened from a destination keeps that destination lit.
     val root = when (current) {
-        is Screen.LibraryDetail, is Screen.TitleDetail -> Screen.Library
+        is Screen.LibraryDetail, is Screen.TitleDetail, Screen.Read -> Screen.Library
         else -> current
     }
     Column(Modifier.background(l.bg)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(l.line))
-        Row(Modifier.fillMaxWidth().height(60.dp)) {
+        Row(Modifier.fillMaxWidth().height(62.dp)) {
             for (d in bar) Tab(stringResource(labelOf(d.id)), iconOf(d.id), d.screen == root, Modifier.weight(1f)) { vm.go(d.screen) }
-            Tab(stringResource(R.string.nav_more), Ic.More, rest.any { it.screen == root }, Modifier.weight(1f)) { more = true }
-        }
-    }
-    if (more) {
-        Sheet(stringResource(R.string.nav_more), { more = false }) {
-            for (d in rest) {
-                val on = d.screen == root
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(l.buttonShape).background(if (on) l.raised else Color.Transparent)
-                        .clickable { more = false; vm.go(d.screen) }.padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Icon(iconOf(d.id), null, tint = if (on) l.accent else l.muted, modifier = Modifier.size(20.dp))
-                    Text(stringResource(labelOf(d.id)), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                }
-            }
         }
     }
 }
@@ -321,15 +318,17 @@ private fun BottomBar(dests: List<Dest>, current: Screen, vm: AppViewModel) {
 @Composable
 private fun Tab(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val l = LocalLain.current
+    // The place you are in: a lighter pill and the accent, not the accent alone.
     val tint = if (on) l.accent else l.muted
     Column(
-        modifier.fillMaxHeight().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        modifier.fillMaxHeight().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClickLabel = label, onClick = onClick)
+            .semantics { selected = on },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Box(Modifier.width(56.dp).height(28.dp).clip(CircleShape).background(if (on) l.accent.copy(alpha = 0.15f) else Color.Transparent), contentAlignment = Alignment.Center) {
+        Box(Modifier.width(58.dp).height(30.dp).clip(CircleShape).background(if (on) l.raised else Color.Transparent), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
         }
-        Text(label, Modifier.padding(top = 5.dp), color = tint, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        Text(label, Modifier.padding(top = 5.dp), color = if (on) l.text else l.muted, fontSize = 11.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
     }
 }

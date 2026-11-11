@@ -1,5 +1,11 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -101,7 +107,7 @@ private fun AppState.allProgress(): Map<String, ProgressInfo> = continues.associ
 
 @Composable
 private fun titleSubtitle(t: Title): String = when {
-    t.items.size > 1 && t.reading -> pluralStringResource(R.plurals.count_items, t.items.size, t.items.size)
+    t.items.size > 1 && t.reading -> pluralStringResource(R.plurals.count_volumes, t.items.size, t.items.size)
     t.items.size > 1 -> pluralStringResource(R.plurals.count_episodes, t.items.size, t.items.size)
     t.year > 0 -> t.year.toString()
     else -> t.kind
@@ -118,7 +124,7 @@ private fun RailCard(t: Title, vm: AppViewModel, height: Dp = RAIL_H) {
         onClick = { vm.go(Screen.TitleDetail(t.key)) },
         modifier = Modifier.width(height * (if (wide) Shapes.LANDSCAPE else Shapes.PORTRAIT)),
         landscape = wide,
-        badge = if (t.items.size > 1) t.items.size.toString() else null,
+        badge = if (t.items.size > 1) "${t.items.size} ${if (t.reading) "VOL" else "EP"}" else null,
     )
 }
 
@@ -173,20 +179,29 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
     LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
         if (hero != null) {
             item {
-                HeroFrame(hero.art(), hero.wide()) {
+                HeroFrame(hero.art(), (LocalConfiguration.current.screenHeightDp * 0.6f).dp) {
                     Mono(
                         stringResource(if (resumeHero != null) R.string.hero_continue else R.string.hero_label) + if (hero.year > 0) " / ${hero.year}" else "",
                         color = l.accent,
                     )
                     Text(
-                        hero.title.uppercase(),
-                        Modifier.padding(top = 12.dp),
-                        color = l.text, fontSize = 36.sp, lineHeight = 37.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.4).sp,
+                        hero.title,
+                        Modifier.padding(top = 10.dp),
+                        color = l.text, fontSize = 34.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.2).sp,
                         maxLines = 3, overflow = TextOverflow.Ellipsis,
                     )
-                    Mono(heroMeta(hero) + state.genresOf(hero).take(2).joinToString("") { " · $it" }, Modifier.padding(top = 12.dp), color = l.text.copy(alpha = 0.75f))
+                    // What it is, in words: the episode you are on and what is left of it, or the
+                    // size of the thing; then up to two genres. Tokens drop before anything is cut.
+                    val left = resumeHero?.progress?.let { p -> (p.durationSec - p.positionSec).takeIf { it > 30 } }
+                    val facts = listOfNotNull(
+                        resumeHero?.item?.takeIf { it.episode > 0 }?.let { stringResource(R.string.episode_n, it.episode.toInt()) },
+                        left?.let { stringResource(R.string.time_left, length(it)) },
+                        if (resumeHero == null && hero.items.size > 1) titleSubtitle(hero) else null,
+                        if (resumeHero == null) hero.year.takeIf { it > 0 }?.toString() else null,
+                    ) + state.genresOf(hero).take(2)
+                    Text(facts.joinToString("  ·  "), Modifier.padding(top = 10.dp), color = l.text.copy(alpha = 0.8f), fontSize = 13.sp, lineHeight = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     state.synopsisOf(hero).takeIf { it.isNotEmpty() }?.let { text ->
-                        Text(text, Modifier.padding(top = 12.dp), color = l.text.copy(alpha = 0.7f), fontSize = 14.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(text, Modifier.padding(top = 10.dp), color = l.text.copy(alpha = 0.7f), fontSize = 14.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(
@@ -196,8 +211,13 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                         ) {
                             Icon(Ic.Play, null, tint = Color.Black, modifier = Modifier.size(14.dp))
                             Text(
-                                stringResource(when { resumeHero != null -> R.string.action_resume_short; hero.reading -> R.string.action_read; else -> R.string.action_play }),
-                                color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                when {
+                                    resumeHero != null && resumeHero.item.episode > 0 -> stringResource(R.string.action_resume_short) + " · " + episodeLabel(resumeHero.item.season, resumeHero.item.episode, hero.reading)
+                                    resumeHero != null -> stringResource(R.string.action_resume_short)
+                                    hero.reading -> stringResource(R.string.action_read)
+                                    else -> stringResource(R.string.action_play)
+                                },
+                                color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
                             )
                         }
                         Row(
@@ -233,7 +253,10 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                             is Card.Resume -> ShapeCard(
                                 artId = card.item.id,
                                 title = card.item.title,
-                                subtitle = episodeText(card.item),
+                                subtitle = listOfNotNull(
+                                    card.item.takeIf { it.episode > 0 }?.let { episodeText(it) },
+                                    (card.progress.durationSec - card.progress.positionSec).takeIf { it > 30 }?.let { stringResource(R.string.time_left, length(it)) },
+                                ).joinToString(" · ").ifEmpty { episodeText(card.item) },
                                 onClick = { vm.open(card.item) },
                                 modifier = Modifier.width(RAIL_H * Shapes.LANDSCAPE),
                                 landscape = true,
@@ -286,24 +309,33 @@ fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
             // or says how many there are (D-156).
             val locked = state.libraries.any { it.private && it.locked }
             if (state.libraries.any { it.private }) {
-                IconBtn(
-                    if (locked) Ic.Lock else Ic.LockOpen,
-                    stringResource(if (locked) R.string.unlock_title else R.string.lock_again),
-                    { if (locked) unlocking = true else vm.lockAll() },
-                    outlined = true,
-                )
+                val ctx = LocalContext.current
+                val lockedText = stringResource(R.string.private_locked)
+                // Open is a different picture and a different colour, with its name beside it.
+                Row(
+                    Modifier.height(40.dp).clip(CircleShape).background(if (locked) Color.Transparent else l.accent.copy(alpha = 0.16f)).border(1.dp, if (locked) l.line else l.accent.copy(alpha = 0.6f), CircleShape)
+                        .clickable(onClickLabel = stringResource(if (locked) R.string.unlock_title else R.string.lock_again)) {
+                            if (locked) unlocking = true else {
+                                vm.lockAll()
+                                android.widget.Toast.makeText(ctx, lockedText, android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }.padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Icon(if (locked) Ic.Lock else Ic.LockOpen, null, tint = if (locked) l.muted else l.accent, modifier = Modifier.size(16.dp))
+                    Text(stringResource(if (locked) R.string.private_badge else R.string.lock_again), color = if (locked) l.muted else l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                }
             }
         }
         if (unlocking) UnlockSheet(vm) { unlocking = false }
         if (libraries.size > 1) {
-            Row(Modifier.padding(horizontal = GUTTER).padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                for ((on, label) in listOf(true to R.string.view_by_library, false to R.string.view_all_titles)) {
-                    Box(
-                        Modifier.clip(l.buttonShape).background(if (shelves == on) l.raised else Color.Transparent)
-                            .clickable { shelves = on; prefs.libraryShelves = on }.padding(horizontal = 12.dp, vertical = 10.dp),
-                    ) { Mono(stringResource(label), color = if (shelves == on) l.text else l.muted, size = 11) }
-                }
-            }
+            Segmented(
+                listOf(true to stringResource(R.string.view_by_library), false to stringResource(R.string.view_all_titles)),
+                shelves,
+                { shelves = it; prefs.libraryShelves = it },
+                Modifier.padding(horizontal = GUTTER).padding(top = 12.dp),
+            )
         }
         if (state.fromCache) OfflineNote(state)
         if (titles.isEmpty()) {
@@ -322,11 +354,13 @@ fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
         }
         if (byShelf) {
             Refreshable(state.busy, { vm.refresh() }) {
-            LazyColumn(contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp)) {
-                items(libraries, key = { it.id }) { lib ->
+            // Private libraries come first once unlocked: what the PIN opened is on screen.
+            val ordered = remember(libraries) { libraries.sortedByDescending { it.private } }
+            LazyColumn(state = rememberListMemory("library-root"), contentPadding = PaddingValues(top = 12.dp, bottom = 56.dp)) {
+                items(ordered, key = { it.id }) { lib ->
                     val mine = remember(titles, lib.id) { titles.filter { it.libraryId == lib.id }.sortedByDescending { it.latest } }
                     Column(Modifier.padding(top = 20.dp)) {
-                        RailHeader(lib.name, pluralStringResource(R.plurals.count_items, mine.sumOf { it.items.size }, mine.sumOf { it.items.size })) {
+                        RailHeader(lib.name + if (lib.private) "  ·  " + stringResource(R.string.private_badge) else "", pluralStringResource(R.plurals.count_titles, mine.size, mine.size)) {
                             vm.go(Screen.LibraryDetail(lib.id))
                         }
                         LazyRow(Modifier.padding(top = 8.dp), contentPadding = PaddingValues(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -357,12 +391,9 @@ fun LibraryDetailScreen(state: AppState, vm: AppViewModel, id: String) {
     val lib = state.libraries.firstOrNull { it.id == id }
     val titles = remember(state.titles, id) { state.titles.filter { it.libraryId == id } }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = GUTTER, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconBtn(Ic.ChevronLeft, stringResource(R.string.nav_library), { vm.back() })
-            Column {
-                Mono(stringResource(R.string.nav_library), size = 10)
-                Text(lib?.name ?: "", color = l.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = GUTTER, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconBtn(Ic.ArrowLeft, stringResource(R.string.nav_library), { vm.back() }, tint = l.text)
+            Text(lib?.name ?: "", Modifier.padding(start = 4.dp), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Box(Modifier.padding(top = 8.dp)) { LibraryBrowser(titles, state, vm, searchHint = stringResource(R.string.search_library)) }
     }
@@ -386,19 +417,20 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
     val progress = remember(state.continues, state.progress) { state.allProgress() }
     val genresOf: (Title) -> List<String> = remember(state.overlays) { { t: Title -> state.genresOf(t) } }
     val results = remember(titles, filters, progress, state.overlays) { applyFilters(titles, filters, progress, now, genresOf) }
-    val grid = rememberLazyGridState()
+    val grid = rememberGridMemory("grid-" + (titles.firstOrNull()?.libraryId ?: "") + "-" + titles.size)
     val scope = rememberCoroutineScope()
     val far by remember { derivedStateOf { grid.firstVisibleItemIndex > 10 } }
-    // A new result set starts at its beginning.
-    LaunchedEffect(filters) { grid.scrollToItem(0) }
+    // A new result set starts at its beginning (not the one a screen comes back to).
+    var first by remember { mutableStateOf(true) }
+    LaunchedEffect(filters) { if (first) first = false else grid.scrollToItem(0) }
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.padding(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 SearchField(filters.q, { filters = filters.copy(q = it) }, searchHint, Modifier.weight(1f))
                 Box {
-                    IconBtn(Ic.Sliders, stringResource(R.string.filters), { sheet = true }, tint = if (filters.active > 0) l.text else l.muted, outlined = true)
-                    if (filters.active > 0) {
+                    IconBtn(Ic.Sliders, stringResource(R.string.filters), { sheet = true }, tint = if (filters.active > 0 || filters.sort != Sort.Title) l.text else l.muted, outlined = true)
+                    if (filters.active > 0 || filters.sort != Sort.Title) {
                         Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(8.dp).clip(CircleShape).background(l.accent))
                     }
                 }
@@ -413,13 +445,16 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                     Modifier.padding(end = 4.dp).align(Alignment.CenterVertically),
                     color = l.muted, fontSize = 14.sp,
                 )
+                if (filters.sort != Sort.Title) {
+                    FilterChip(stringResource(R.string.sorted_by, sortLabel(filters.sort))) { filters = filters.copy(sort = Sort.Title); prefs.librarySort = Sort.Title.id }
+                }
                 for (g in filters.genres) FilterChip(g) { filters = filters.copy(genres = filters.genres - g) }
                 filters.watch?.let { w -> FilterChip(watchLabel(w)) { filters = filters.copy(watch = null) } }
                 filters.form?.let { s -> FilterChip(formLabel(s)) { filters = filters.copy(form = null) } }
                 if (filters.kind.isNotEmpty()) FilterChip(filters.kind) { filters = filters.copy(kind = "") }
                 if (filters.added > 0) FilterChip(addedLabel(filters.added)) { filters = filters.copy(added = 0) }
                 if (filters.narrowed) {
-                    Text(stringResource(R.string.clear), Modifier.clip(CircleShape).clickable { filters = filters.cleared() }.padding(horizontal = 8.dp, vertical = 4.dp), color = l.muted, fontSize = 12.sp)
+                    Text(stringResource(R.string.clear), Modifier.clip(CircleShape).clickable { filters = filters.cleared(); prefs.librarySort = Sort.Title.id }.padding(horizontal = 8.dp, vertical = 4.dp), color = l.muted, fontSize = 12.sp)
                 }
             }
             if (results.isEmpty()) {
@@ -429,7 +464,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                         color = l.text, fontSize = 14.sp,
                     )
                     Gap(16.dp)
-                    WButton(stringResource(R.string.clear_all), { filters = filters.cleared() }, kind = Btn.Secondary)
+                    WButton(stringResource(R.string.clear_all), { filters = filters.cleared(); prefs.librarySort = Sort.Title.id }, kind = Btn.Secondary)
                 }
             } else {
                 // The shapes are read here, in composition, and handed to the grid
@@ -459,7 +494,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                             onClick = { vm.go(Screen.TitleDetail(t.key)) },
                             landscape = wide[i],
                             progress = fraction(p),
-                            badge = if (t.items.size > 1) t.items.size.toString() else null,
+                            badge = if (t.items.size > 1) "${t.items.size} ${if (t.reading) "VOL" else "EP"}" else null,
                         )
                     }
                 }
@@ -479,69 +514,91 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
     }
 
     if (sheet) {
-        val watchCounts = countBy(titles, filters, progress, now, Axis.Watch, genresOf) { listOf(watchState(it, progress)) }
-        val formCounts = countBy(titles, filters, progress, now, Axis.Form, genresOf) { listOf(if (it.items.size > 1) Form.Series else Form.Single) }
-        val kindCounts = countBy(titles, filters, progress, now, Axis.Kind, genresOf) { t -> t.items.map { it.kind }.distinct() }
-        val genres = remember(titles, filters, progress, state.overlays) { genreFacets(titles, filters, progress, now, genresOf) }
+        // The sheet edits a draft: "Show N titles" applies it, and closing the
+        // sheet any other way (a drag, the scrim, Close) leaves the list as it was.
+        var draft by remember { mutableStateOf(filters) }
+        var draftDense by remember { mutableStateOf(dense) }
+        val shown = remember(titles, draft, progress, state.overlays) { applyFilters(titles, draft, progress, now, genresOf).size }
+        val watchCounts = countBy(titles, draft, progress, now, Axis.Watch, genresOf) { listOf(watchState(it, progress)) }
+        val formCounts = countBy(titles, draft, progress, now, Axis.Form, genresOf) { listOf(if (it.items.size > 1) Form.Series else Form.Single) }
+        val kindCounts = countBy(titles, draft, progress, now, Axis.Kind, genresOf) { t -> t.items.map { it.kind }.distinct() }
+        // The genres keep their places while you pick: the list is the library's,
+        // and only the counts follow the other choices.
+        val genreNames = remember(titles, state.overlays) { genreFacets(titles, Filters(), progress, now, genresOf).map { it.first } }
+        val genreCounts = remember(titles, draft, progress, state.overlays) { genreFacets(titles, draft, progress, now, genresOf).associate { it.first.lowercase() to it.second } }
         var allGenres by remember { mutableStateOf(false) }
         val kinds = remember(titles) { titles.flatMap { t -> t.items.map { it.kind } }.distinct().filter { it.isNotEmpty() }.sorted() }
+        val changed = draft.active > 0 || draft.sort != Sort.Title
         Sheet(
             stringResource(R.string.filters),
             { sheet = false },
             footer = {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    WButton(stringResource(R.string.clear), { filters = filters.cleared() }, Modifier.weight(1f), kind = Btn.Ghost, enabled = filters.active > 0)
-                    WButton(pluralStringResource(R.plurals.show_titles, results.size, results.size), { sheet = false }, Modifier.weight(1f))
+                    WButton(stringResource(R.string.clear), { draft = Filters(q = draft.q) }, Modifier.weight(1f), kind = Btn.Secondary, enabled = changed)
+                    WButton(
+                        pluralStringResource(R.plurals.show_titles, shown, shown),
+                        {
+                            filters = draft
+                            dense = draftDense
+                            prefs.librarySort = draft.sort.id
+                            prefs.smallTiles = draftDense
+                            sheet = false
+                        },
+                        Modifier.weight(1.4f),
+                    )
                 }
             },
         ) {
             SheetHeading(stringResource(R.string.sort))
-            for (pair in Sort.entries.chunked(2)) {
+            val anySeries = remember(titles) { titles.any { it.items.size > 1 } }
+            val sorts = listOfNotNull(Sort.Title, Sort.Recent, Sort.YearDesc, Sort.Year, if (anySeries) Sort.EpisodesDesc else null, Sort.TitleDesc)
+            for (pair in sorts.chunked(2)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (s in pair) {
-                        ChoiceTile(sortLabel(s), filters.sort == s, { filters = filters.copy(sort = s); prefs.librarySort = s.id }, Modifier.weight(1f))
-                    }
+                    for (s in pair) ChoiceTile(sortLabel(s), draft.sort == s, { draft = draft.copy(sort = s) }, Modifier.weight(1f))
+                    if (pair.size == 1) Box(Modifier.weight(1f))
                 }
             }
-            SheetHeading(stringResource(R.string.tiles))
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                ChoiceTile(stringResource(R.string.tiles_large), !dense, { dense = false; prefs.smallTiles = false }, Modifier.weight(1f))
-                ChoiceTile(stringResource(R.string.tiles_small), dense, { dense = true; prefs.smallTiles = true }, Modifier.weight(1f))
+            // Genres sit right under the order: the two are what people combine.
+            if (genreNames.isNotEmpty()) {
+                SheetHeading(stringResource(R.string.genres))
+                for (g in if (allGenres) genreNames else genreNames.take(8)) {
+                    val on = draft.genres.any { it.equals(g, ignoreCase = true) }
+                    val n = genreCounts[g.lowercase()] ?: 0
+                    OptionRow(g, n, on, { draft = draft.copy(genres = if (on) draft.genres.filterNot { it.equals(g, ignoreCase = true) } else draft.genres + g) }, enabled = n > 0)
+                }
+                if (genreNames.size > 8) {
+                    Text(
+                        stringResource(if (allGenres) R.string.show_fewer else R.string.show_all_n, genreNames.size),
+                        Modifier.clip(l.buttonShape).clickable { allGenres = !allGenres }.padding(horizontal = 12.dp, vertical = 12.dp),
+                        color = l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    )
+                }
             }
             SheetHeading(stringResource(R.string.progress))
             for (w in Watch.entries) {
-                OptionRow(watchLabel(w), watchCounts[w] ?: 0, filters.watch == w, { filters = filters.copy(watch = if (filters.watch == w) null else w) }, enabled = (watchCounts[w] ?: 0) > 0)
+                OptionRow(watchLabel(w), watchCounts[w] ?: 0, draft.watch == w, { draft = draft.copy(watch = if (draft.watch == w) null else w) }, enabled = (watchCounts[w] ?: 0) > 0)
             }
             if ((formCounts[Form.Series] ?: 0) > 0 && (formCounts[Form.Single] ?: 0) > 0) {
                 SheetHeading(stringResource(R.string.form))
                 for (s in Form.entries) {
-                    OptionRow(formLabel(s), formCounts[s] ?: 0, filters.form == s, { filters = filters.copy(form = if (filters.form == s) null else s) })
+                    OptionRow(formLabel(s), formCounts[s] ?: 0, draft.form == s, { draft = draft.copy(form = if (draft.form == s) null else s) })
                 }
             }
             if (kinds.size > 1) {
                 SheetHeading(stringResource(R.string.kind))
                 for (k in kinds) {
-                    OptionRow(k, kindCounts[k] ?: 0, filters.kind == k, { filters = filters.copy(kind = if (filters.kind == k) "" else k) }, enabled = (kindCounts[k] ?: 0) > 0)
+                    OptionRow(k, kindCounts[k] ?: 0, draft.kind == k, { draft = draft.copy(kind = if (draft.kind == k) "" else k) }, enabled = (kindCounts[k] ?: 0) > 0)
                 }
             }
             SheetHeading(stringResource(R.string.added))
             for (d in ADDED_DAYS) {
-                val n = remember(titles, filters, d, state.overlays) { applyFilters(titles, filters.copy(added = d), progress, now, genresOf).size }
-                OptionRow(addedLabel(d), n, filters.added == d, { filters = filters.copy(added = if (filters.added == d) 0 else d) }, enabled = n > 0)
+                val n = remember(titles, draft, d, state.overlays) { applyFilters(titles, draft.copy(added = d), progress, now, genresOf).size }
+                OptionRow(addedLabel(d), n, draft.added == d, { draft = draft.copy(added = if (draft.added == d) 0 else d) }, enabled = n > 0)
             }
-            if (genres.isNotEmpty()) {
-                SheetHeading(stringResource(R.string.genres) + " · " + genres.size)
-                for ((g, n) in if (allGenres) genres else genres.take(24)) {
-                    val on = filters.genres.any { it.equals(g, ignoreCase = true) }
-                    OptionRow(g, n, on, { filters = filters.copy(genres = if (on) filters.genres.filterNot { it.equals(g, ignoreCase = true) } else filters.genres + g) })
-                }
-                if (genres.size > 24) {
-                    Text(
-                        stringResource(if (allGenres) R.string.show_fewer else R.string.show_all_n, genres.size),
-                        Modifier.clickable { allGenres = !allGenres }.padding(horizontal = 8.dp, vertical = 12.dp),
-                        color = l.muted, fontSize = 12.sp,
-                    )
-                }
+            SheetHeading(stringResource(R.string.view))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ChoiceTile(stringResource(R.string.tiles_large), !draftDense, { draftDense = false }, Modifier.weight(1f))
+                ChoiceTile(stringResource(R.string.tiles_small), draftDense, { draftDense = true }, Modifier.weight(1f))
             }
         }
     }
@@ -584,9 +641,11 @@ private fun addedLabel(days: Int): String = stringResource(
 )
 
 /**
- * A title: the hero, the main action on arrival, then its episodes or
- * volumes as rows (thumbnail, label, state) and the facts.
+ * A title: the hero, the main action on arrival and what else can be done
+ * with it (start over, mark watched, download), then its episodes or
+ * volumes as rows that say what each is, how long, and where you are.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Item) -> Unit) {
     val l = LocalLain.current
@@ -595,29 +654,83 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         Centered { Text(stringResource(R.string.err_not_found), color = l.muted) }
         return
     }
-    LaunchedEffect(key) { vm.loadProgress(title.items.map { it.id }) }
+    LaunchedEffect(key) {
+        vm.loadProgress(title.items.map { it.id })
+        if (!title.reading) vm.loadDurations(title.items.map { it.id })
+    }
     val next = nextUp(title, state.progress)
     val watched = title.items.count { state.progress[it.id]?.completed == true }
     val series = title.items.size > 1
-    LazyColumn(contentPadding = PaddingValues(bottom = 40.dp)) {
+    val allDone = watched == title.items.size
+    // A book opened at its first page has not been started: page 1 is where everyone begins.
+    val resume = state.progress[next.id]?.takeIf { !it.completed && it.positionSec > (if (title.reading) 1.0 else 0.0) }
+    val total = title.items.sumOf { state.durations[it.id] ?: 0.0 }
+    var menu by remember { mutableStateOf<Item?>(null) }
+    // The copies on this device, read while the screen is up (faster while one is arriving).
+    val graph = LocalContext.current.graph
+    val scope = rememberCoroutineScope()
+    val offline = remember { io.github.enrell.lain.ui.DownloadsModel(graph.core, scope) }
+    val copies by offline.state.collectAsState()
+    val live by graph.downloads.state.collectAsState()
+    LaunchedEffect(live.running) {
+        while (true) {
+            offline.refresh()
+            kotlinx.coroutines.delay(if (live.running) 1_000 else 4_000)
+        }
+    }
+    val copyOf = remember(copies.copies) { copies.copies.associateBy { it.itemId } }
+    val ask: (Item) -> Unit = { item -> onDownload(item); offline.refresh() }
+    LazyColumn(contentPadding = PaddingValues(bottom = 56.dp)) {
         item {
-            HeroFrame(title.art(), title.wide(), back = { vm.back() }, compact = true) {
-                Mono(
-                    listOfNotNull(
-                        title.year.takeIf { it > 0 }?.toString(),
-                        if (series) stringResource(R.string.format_series) else title.kind,
-                        if (series) titleSubtitle(title) else null,
-                    ).joinToString(" · "),
-                    color = l.accent,
-                )
+            HeroFrame(title.art(), 320.dp, back = { vm.back() }) {
                 Text(
-                    title.title.uppercase(),
-                    Modifier.padding(top = 10.dp),
-                    color = l.text, fontSize = 28.sp, lineHeight = 30.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.0).sp,
-                    maxLines = 4, overflow = TextOverflow.Ellipsis,
+                    title.title,
+                    color = l.text, fontSize = 28.sp, lineHeight = 31.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.9).sp,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis,
                 )
-                state.genresOf(title).takeIf { it.isNotEmpty() }?.let { g ->
-                    Mono(g.take(4).joinToString("  /  "), Modifier.padding(top = 10.dp), color = l.text.copy(alpha = 0.75f), size = 11)
+                // One line of what it is: year, size or length, then genres.
+                val facts = listOfNotNull(
+                    title.year.takeIf { it > 0 }?.toString(),
+                    if (series) titleSubtitle(title) else null,
+                    if (!series && total > 0) length(total) else null,
+                ) + state.genresOf(title).take(3)
+                if (facts.isNotEmpty()) {
+                    Text(facts.joinToString("  ·  "), Modifier.padding(top = 8.dp), color = l.text.copy(alpha = 0.8f), fontSize = 13.sp, lineHeight = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = GUTTER)) {
+                WButton(
+                    when {
+                        title.reading && resume != null -> stringResource(R.string.continue_page, resume.positionSec.toInt())
+                        title.reading && allDone -> stringResource(R.string.read_again)
+                        title.reading -> stringResource(R.string.action_read)
+                        resume != null -> stringResource(R.string.resume_left, length((resume.durationSec - resume.positionSec).coerceAtLeast(0.0)))
+                        allDone -> stringResource(R.string.play_again)
+                        else -> stringResource(R.string.action_play)
+                    } + if (series && (next.episode > 0 || next.season > 0)) " · " + rowLabelShort(next, title.reading) else "",
+                    { vm.open(if (allDone) title.items.first() else next) },
+                    Modifier.fillMaxWidth(),
+                    icon = Ic.Play,
+                    large = true,
+                )
+                // What else can be done with the title, at one weight below the main action.
+                // They wrap to a second line on a narrow screen; none is cut at the edge.
+                FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (resume != null) QuietAction(Ic.RotateCcw, stringResource(R.string.start_over)) { vm.markWatched(listOf(next.id), false) }
+                    QuietAction(Ic.Check, stringResource(if (allDone) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
+                        vm.markWatched(title.items.map { it.id }, !allDone)
+                    }
+                    val have = title.items.count { copyOf[it.id]?.state == io.github.enrell.lain.core.CopyState.DONE }
+                    if (have == title.items.size) {
+                        QuietAction(Ic.Check, stringResource(R.string.dl_downloaded)) { vm.go(Screen.Downloads) }
+                    } else {
+                        QuietAction(Ic.Download, stringResource(if (series) R.string.download_all else R.string.action_download)) { title.items.filter { copyOf[it.id] == null }.forEach(ask) }
+                    }
+                }
+                if (series && watched > 0) {
+                    Text(stringResource(if (title.reading) R.string.read_of else R.string.watched_of, watched, title.items.size), Modifier.padding(top = 10.dp), color = l.muted, fontSize = 12.sp)
                 }
             }
         }
@@ -626,67 +739,95 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 var open by remember { mutableStateOf(false) }
                 Text(
                     text,
-                    Modifier.padding(horizontal = GUTTER).padding(bottom = 16.dp).clickable { open = !open },
-                    color = l.text.copy(alpha = 0.7f), fontSize = 14.sp, lineHeight = 22.sp, maxLines = if (open) 40 else 3, overflow = TextOverflow.Ellipsis,
+                    Modifier.padding(horizontal = GUTTER).padding(top = 16.dp).clickable { open = !open },
+                    color = l.text.copy(alpha = 0.72f), fontSize = 14.sp, lineHeight = 22.sp, maxLines = if (open) 40 else 3, overflow = TextOverflow.Ellipsis,
                 )
-            }
-        }
-        item {
-            Column(Modifier.padding(horizontal = GUTTER)) {
-                val resume = state.progress[next.id]?.takeIf { !it.completed && it.positionSec > 0 }
-                WButton(
-                    when {
-                        title.reading && resume != null -> stringResource(R.string.continue_page, resume.positionSec.toInt())
-                        title.reading -> stringResource(R.string.action_read)
-                        resume != null -> stringResource(R.string.resume_from, clock(resume.positionSec))
-                        else -> stringResource(R.string.action_play)
-                    } + if (series && next.episode > 0) " · " + episodeLabel(next.season, next.episode, title.reading) else "",
-                    { vm.open(next) },
-                    Modifier.fillMaxWidth(),
-                    icon = Ic.Play,
-                    large = true,
-                )
-                Text(
-                    when {
-                        watched == title.items.size -> stringResource(R.string.progress_done)
-                        watched > 0 || resume != null -> stringResource(R.string.watched_of, watched, title.items.size)
-                        else -> stringResource(R.string.watch_unwatched)
-                    },
-                    Modifier.fillMaxWidth().padding(top = 8.dp),
-                    color = l.muted, fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-                if (!series) {
-                    Row(Modifier.padding(top = 10.dp)) {
-                        WButton(stringResource(R.string.action_download), { onDownload(next) }, kind = Btn.Ghost, icon = Ic.Download)
-                    }
-                }
             }
         }
         if (series) {
             item {
                 Text(
                     stringResource(if (title.reading) R.string.volumes else R.string.episodes),
-                    Modifier.padding(start = GUTTER, top = 22.dp, bottom = 10.dp),
+                    Modifier.padding(start = GUTTER, top = 24.dp, bottom = 10.dp),
                     color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp,
                 )
             }
-            items(title.items, key = { it.id }) { item -> EpisodeRow(item, title, state, vm, onDownload) }
-        }
-        item {
-            Column(
-                Modifier.padding(horizontal = GUTTER).padding(top = 22.dp).fillMaxWidth().clip(l.panelShape).border(1.dp, l.line.copy(alpha = 0.7f), l.panelShape)
-                    .background(l.surface.copy(alpha = 0.3f)).padding(16.dp),
-            ) {
-                Mono(stringResource(R.string.information))
-                Gap(8.dp)
-                Fact(stringResource(R.string.fact_format), if (series) stringResource(R.string.format_series) else title.kind)
-                if (title.year > 0) Fact(stringResource(R.string.fact_year), title.year.toString())
-                if (series) Fact(stringResource(if (title.reading) R.string.volumes else R.string.episodes), title.items.size.toString())
-                state.libraries.firstOrNull { it.id == title.libraryId }?.let { Fact(stringResource(R.string.nav_library), it.name) }
-                Fact(stringResource(R.string.fact_size), bytes(title.items.sumOf { it.size }))
-                Fact(stringResource(if (title.reading) R.string.fact_read else R.string.fact_watched), stringResource(R.string.n_of_m, watched, title.items.size))
+            items(title.items, key = { it.id }) { item ->
+                val c = copyOf[item.id]
+                val pct = c?.let { live.bytes[it.itemId] ?: (it.bytes to it.size) }?.let { (d, t) -> if (t > 0) (d * 100 / t).toInt().coerceIn(0, 100) else 0 }
+                EpisodeRow(item, title, state, { vm.open(item) }, { menu = item }, c?.state, pct ?: 0)
             }
         }
+        item {
+            Column(Modifier.padding(horizontal = GUTTER).padding(top = 26.dp).fillMaxWidth()) {
+                Mono(stringResource(R.string.details))
+                Gap(8.dp)
+                state.libraries.firstOrNull { it.id == title.libraryId }?.let { Fact(stringResource(R.string.nav_library), it.name) }
+                if (title.year > 0) Fact(stringResource(R.string.fact_year), title.year.toString())
+                if (series) Fact(stringResource(if (title.reading) R.string.volumes else R.string.episodes), title.items.size.toString())
+                if (total > 0) Fact(stringResource(R.string.fact_length), length(total))
+                Fact(stringResource(R.string.fact_size), bytes(title.items.sumOf { it.size }))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.6f)))
+            }
+        }
+    }
+    menu?.let { item ->
+        val p = state.progress[item.id]
+        Sheet(rowLabel(item, title.reading), { menu = null }) {
+            SheetAction(Ic.Play, stringResource(if (title.reading) R.string.action_read else R.string.action_play)) { menu = null; vm.open(item) }
+            if (p != null && !p.completed && p.positionSec > 0) SheetAction(Ic.RotateCcw, stringResource(R.string.start_over)) { menu = null; vm.markWatched(listOf(item.id), false) }
+            SheetAction(Ic.Check, stringResource(if (p?.completed == true) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
+                menu = null
+                vm.markWatched(listOf(item.id), p?.completed != true)
+            }
+            if (copyOf[item.id] == null) {
+                SheetAction(Ic.Download, stringResource(R.string.action_download)) { menu = null; ask(item) }
+            } else {
+                SheetAction(Ic.Trash, stringResource(R.string.remove_download)) { menu = null; offline.remove(item.id) }
+            }
+        }
+    }
+}
+
+/** `Episode 3`, `Volume 1`, or the file's own name when it carries no number. */
+@Composable
+private fun rowLabel(item: Item, reading: Boolean): String = when {
+    reading && item.season > 0 -> stringResource(R.string.volume_long, item.season.toInt()) + if (item.episode > 0) " · #${item.episode}" else ""
+    reading && item.episode > 0 -> stringResource(R.string.volume_long, item.episode.toInt())
+    item.episode > 0 && item.season > 0 -> stringResource(R.string.season_episode, item.season.toInt(), item.episode.toInt())
+    item.episode > 0 -> stringResource(R.string.episode_n, item.episode.toInt())
+    else -> item.fileName.substringBeforeLast('.')
+}
+
+private fun rowLabelShort(item: Item, reading: Boolean): String = when {
+    reading && item.season > 0 -> "Vol. ${item.season}"
+    else -> episodeLabel(item.season, item.episode, reading)
+}
+
+/** A secondary action on a title: an outlined pill with its icon. */
+@Composable
+private fun QuietAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    val l = LocalLain.current
+    Row(
+        Modifier.height(40.dp).clip(CircleShape).border(1.dp, l.line, CircleShape).clickable(onClick = onClick).padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Icon(icon, null, tint = l.muted, modifier = Modifier.size(15.dp))
+        Text(label, color = l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    }
+}
+
+@Composable
+private fun SheetAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    val l = LocalLain.current
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(l.buttonShape).clickable(onClick = onClick).padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Icon(icon, null, tint = l.muted, modifier = Modifier.size(20.dp))
+        Text(label, color = l.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -695,87 +836,164 @@ private fun Fact(label: String, value: String) {
     val l = LocalLain.current
     Column {
         Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.6f)))
-        Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label.uppercase(), Modifier.weight(1f), color = l.muted, fontSize = 12.sp, letterSpacing = 0.6.sp)
-            Text(value, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.fillMaxWidth().padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, Modifier.weight(1f), color = l.muted, fontSize = 14.sp)
+            Text(value, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
-/** An episode or volume as a row: six fit a screen. */
+/**
+ * An episode or volume as a row: its picture with the progress on it, what
+ * it is, and one line that is always the same kind of fact (where you are
+ * in it, or how long it is). A tap plays; the dots open what else it can do.
+ */
 @Composable
-private fun EpisodeRow(item: Item, title: Title, state: AppState, vm: AppViewModel, onDownload: (Item) -> Unit) {
+private fun EpisodeRow(item: Item, title: Title, state: AppState, onOpen: () -> Unit, onMenu: () -> Unit, copy: io.github.enrell.lain.core.CopyState? = null, copyPercent: Int = 0) {
     val l = LocalLain.current
     val p = state.progress[item.id]
+    val dur = state.durations[item.id] ?: p?.durationSec?.takeIf { it > 0 && !title.reading }
     Row(
         Modifier.padding(horizontal = GUTTER, vertical = 4.dp).fillMaxWidth().clip(l.cardShape).border(1.dp, l.line.copy(alpha = 0.6f), l.cardShape)
-            .background(l.surface.copy(alpha = 0.3f)).clickable { vm.open(item) },
+            .background(l.surface.copy(alpha = 0.3f)).clickable(onClickLabel = stringResource(if (title.reading) R.string.action_read else R.string.action_play), onClick = onOpen),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(if (title.reading) 64.dp else 144.dp).aspectRatio(if (title.reading) 3f / 4f else 16f / 9f)) {
+        Box(Modifier.width(if (title.reading) 64.dp else 132.dp).aspectRatio(if (title.reading) 3f / 4f else 16f / 9f)) {
             Art(item.id, Modifier.fillMaxSize())
             val f = if (p?.completed == true) 0f else fraction(p)
             if (f > 0f) {
-                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.5f))) {
+                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.55f))) {
                     Box(Modifier.fillMaxWidth(f).height(4.dp).background(l.accent))
                 }
             }
+            if (p?.completed == true) {
+                Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
+                    Icon(Ic.Check, stringResource(R.string.progress_done), tint = Color.White, modifier = Modifier.size(12.dp))
+                }
+            }
         }
-        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
-            Mono(
-                if (item.episode > 0) stringResource(if (title.reading) R.string.volume_n else R.string.episode_n, item.episode.toInt()) +
-                    (if (item.season > 0 && !title.reading) " · S${item.season}" else "") else item.title,
-                color = l.accent,
-            )
+        Column(Modifier.weight(1f).padding(start = 14.dp)) {
+            Text(rowLabel(item, title.reading), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 when {
+                    p?.completed == true && dur != null -> stringResource(R.string.progress_done) + " · " + length(dur)
                     p?.completed == true -> stringResource(R.string.progress_done)
                     p != null && p.positionSec > 0 && title.reading -> stringResource(R.string.progress_page, p.positionSec.toInt(), p.durationSec.toInt())
-                    p != null && p.positionSec > 0 -> stringResource(R.string.progress_at, clock(p.positionSec))
-                    else -> bytes(item.size)
+                    p != null && p.positionSec > 0 && p.durationSec > 0 -> stringResource(R.string.time_left, length((p.durationSec - p.positionSec).coerceAtLeast(0.0)))
+                    dur != null -> length(dur)
+                    else -> stringResource(R.string.watch_unwatched)
                 },
-                Modifier.padding(top = 5.dp),
-                color = l.muted, fontSize = 12.sp, maxLines = 1,
+                Modifier.padding(top = 4.dp),
+                color = if (p?.completed == true) l.muted.copy(alpha = 0.8f) else l.muted, fontSize = 13.sp, maxLines = 1,
             )
+            // Where its copy on this device is, when it has or is getting one.
+            if (copy != null) {
+                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    val done = copy == io.github.enrell.lain.core.CopyState.DONE
+                    val failed = copy == io.github.enrell.lain.core.CopyState.FAILED
+                    Icon(if (done) Ic.Check else Ic.Download, null, tint = if (done) l.ok else if (failed) l.danger else l.accent, modifier = Modifier.size(12.dp))
+                    Text(
+                        when (copy) {
+                            io.github.enrell.lain.core.CopyState.DONE -> stringResource(R.string.dl_downloaded)
+                            io.github.enrell.lain.core.CopyState.FAILED -> stringResource(R.string.dl_failed)
+                            io.github.enrell.lain.core.CopyState.PAUSED -> stringResource(R.string.dl_queued)
+                            else -> if (copyPercent > 0) stringResource(R.string.dl_downloading, copyPercent) else stringResource(R.string.dl_queued)
+                        },
+                        color = if (done) l.ok else if (failed) l.danger else l.muted, fontSize = 12.sp, maxLines = 1,
+                    )
+                }
+            }
         }
-        IconBtn(Ic.Download, stringResource(R.string.action_download), { onDownload(item) })
+        IconBtn(Ic.Dots, stringResource(R.string.more_actions), onMenu)
     }
 }
 
-/** Search: one field, results as cards by shape. */
+/** Search: one field with the focus; recent searches and the libraries to start from; titles as cards. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(state: AppState, vm: AppViewModel) {
     val l = LocalLain.current
+    val prefs = LocalContext.current.graph.prefs
+    var recents by remember { mutableStateOf(prefs.recentSearches) }
+    // A search that found something and stayed is worth remembering.
+    LaunchedEffect(state.query, state.results.isNotEmpty()) {
+        val q = state.query.trim()
+        if (q.length >= 2 && state.results.isNotEmpty()) {
+            kotlinx.coroutines.delay(1500)
+            recents = (listOf(q) + recents.filterNot { it.equals(q, ignoreCase = true) }).take(8)
+            prefs.recentSearches = recents
+        }
+    }
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { if (state.query.isEmpty()) runCatching { focus.requestFocus() } }
     Column(Modifier.fillMaxSize()) {
-        Text(stringResource(R.string.nav_search), Modifier.padding(start = GUTTER, top = 18.dp), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
-        SearchField(state.query, { vm.search(it) }, stringResource(R.string.search_hint), Modifier.padding(horizontal = GUTTER).padding(top = 12.dp).fillMaxWidth())
+        SearchField(state.query, { vm.search(it) }, stringResource(R.string.search_hint), Modifier.padding(horizontal = GUTTER).padding(top = 14.dp).fillMaxWidth(), focus = focus)
         when {
-            state.query.isBlank() -> Column(Modifier.fillMaxWidth().padding(top = 64.dp, start = 40.dp, end = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(56.dp).clip(CircleShape).border(1.dp, l.line, CircleShape), contentAlignment = Alignment.Center) { Icon(Ic.Search, null, tint = l.muted, modifier = Modifier.size(22.dp)) }
-                Text(stringResource(R.string.search_title), Modifier.padding(top = 18.dp), color = l.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Text(stringResource(R.string.search_body), Modifier.padding(top = 6.dp), color = l.muted, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            state.query.isBlank() -> Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = GUTTER).padding(top = 22.dp, bottom = 32.dp)) {
+                if (recents.isNotEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Mono(stringResource(R.string.recent_searches), Modifier.weight(1f))
+                        Text(stringResource(R.string.clear), Modifier.clip(CircleShape).clickable { recents = emptyList(); prefs.recentSearches = emptyList() }.padding(horizontal = 8.dp, vertical = 6.dp), color = l.muted, fontSize = 12.sp)
+                    }
+                    FlowRow(Modifier.padding(top = 8.dp, bottom = 26.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (q in recents) {
+                            Row(
+                                Modifier.height(40.dp).clip(CircleShape).border(1.dp, l.line, CircleShape).clickable { vm.search(q) }.padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            ) {
+                                Icon(Ic.Search, null, tint = l.muted, modifier = Modifier.size(13.dp))
+                                Text(q, color = l.text, fontSize = 14.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+                val libraries = remember(state.titles, state.libraries) { state.libraries.filter { lib -> state.titles.any { it.libraryId == lib.id } } }
+                if (libraries.isNotEmpty()) {
+                    Mono(stringResource(R.string.browse))
+                    Gap(6.dp)
+                    for (lib in libraries) {
+                        val n = remember(state.titles, lib.id) { state.titles.count { it.libraryId == lib.id } }
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(l.buttonShape).clickable { vm.go(Screen.LibraryDetail(lib.id)) }.padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(lib.name, Modifier.weight(1f), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Text(pluralStringResource(R.plurals.count_titles, n, n), color = l.muted, fontSize = 13.sp)
+                            Icon(Ic.ChevronRight, null, tint = l.muted, modifier = Modifier.padding(start = 8.dp).size(16.dp))
+                        }
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.5f)))
+                    }
+                }
             }
             state.searching && state.results.isEmpty() -> Mono(stringResource(R.string.working), Modifier.padding(GUTTER))
             state.results.isEmpty() -> Text(stringResource(R.string.search_none), Modifier.padding(GUTTER), color = l.muted, fontSize = 14.sp)
             else -> {
-                Text(pluralStringResource(R.plurals.results_for, state.results.size, state.results.size, state.query.trim()), Modifier.padding(start = GUTTER, top = 14.dp), color = l.muted, fontSize = 14.sp)
+                val n = remember(state.results) { state.results.map { titleKey(it) }.distinct().size }
+                Text(pluralStringResource(R.plurals.results_for, n, n, state.query.trim()), Modifier.padding(start = GUTTER, top = 14.dp), color = l.muted, fontSize = 14.sp)
+                // A search answers with titles, not files: twelve episodes of one show
+                // are one card that opens the show.
+                val found = remember(state.results, state.titles) {
+                    val byKey = state.titles.associateBy { it.key }
+                    state.results.map { titleKey(it) }.distinct().mapNotNull { byKey[it] }
+                }
                 // Shapes are read in composition, never in the span lambda (see LibraryBrowser).
-                val results = state.results
-                val wide = results.map { Shapes.landscape(it.id, !it.reading()) }
+                val wide = found.map { it.wide() }
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(6),
                     contentPadding = PaddingValues(start = GUTTER, end = GUTTER, top = 14.dp, bottom = 32.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
-                    items(results.size, key = { results[it].id }, span = { GridItemSpan(if (wide[it]) 6 else 3) }) { i ->
-                        val item = results[i]
+                    items(found.size, key = { found[it].key }, span = { GridItemSpan(if (wide[it]) 6 else 3) }) { i ->
+                        val t = found[i]
                         ShapeCard(
-                            artId = item.id,
-                            title = item.title,
-                            subtitle = episodeText(item),
-                            onClick = { vm.go(Screen.TitleDetail(titleKey(item))) },
+                            artId = t.art(),
+                            title = t.title,
+                            subtitle = titleSubtitle(t),
+                            onClick = { vm.go(Screen.TitleDetail(t.key)) },
                             landscape = wide[i],
+                            badge = if (t.items.size > 1) "${t.items.size} ${if (t.reading) "VOL" else "EP"}" else null,
                         )
                     }
                 }
@@ -807,21 +1025,32 @@ fun UnlockSheet(vm: AppViewModel, onClose: () -> Unit) {
     var secret by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<Throwable?>(null) }
+    val ctx = LocalContext.current
+    val done = stringResource(R.string.private_unlocked)
     fun submit() {
         if (secret.isEmpty() || busy) return
         busy = true
         scope.launch {
             error = vm.unlock(secret, usePin)
             busy = false
-            if (error == null) onClose() else secret = ""
+            if (error == null) {
+                android.widget.Toast.makeText(ctx, done, android.widget.Toast.LENGTH_SHORT).show()
+                onClose()
+            } else {
+                secret = ""
+            }
         }
     }
     Sheet(stringResource(R.string.unlock_title), onClose) {
         Text(stringResource(R.string.unlock_body), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
         Gap(16.dp)
-        Text(stringResource(if (usePin) R.string.unlock_pin else R.string.login_password), color = l.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-        Gap(6.dp)
-        SecretField(secret, { secret = it; error = null }, numeric = usePin, onDone = { submit() }, modifier = Modifier.fillMaxWidth())
+        if (usePin) {
+            PinField(secret, { secret = it; error = null }, { submit() }, Modifier.fillMaxWidth(), stringResource(R.string.unlock_pin))
+        } else {
+            Text(stringResource(R.string.login_password), color = l.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Gap(6.dp)
+            SecretField(secret, { secret = it; error = null }, numeric = false, onDone = { submit() }, modifier = Modifier.fillMaxWidth())
+        }
         error?.let { ErrorLine(it, Modifier.padding(top = 8.dp)) }
         Gap(16.dp)
         WButton(stringResource(if (busy) R.string.working else R.string.unlock_go), { submit() }, Modifier.fillMaxWidth(), enabled = secret.isNotEmpty() && !busy, large = true)
@@ -835,41 +1064,26 @@ fun UnlockSheet(vm: AppViewModel, onClose: () -> Unit) {
 
 
 /**
- * A hero that reads whatever the art is. The art's colours wash the
- * background (a poster's own lettering dissolves in it); the art itself
- * is shown crisp and whole, as a card for a portrait cover or across the
- * top for a landscape still; and the words sit on plain ground under it.
+ * A hero: the art across the whole top, and the words at the bottom on a
+ * gradient that has reached the page's ground by the time the first line
+ * starts, so lettering printed on a poster never sits under them. The
+ * height leaves the next section on screen.
  */
 @Composable
-private fun HeroFrame(artId: String, wide: Boolean, back: (() -> Unit)? = null, compact: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+private fun HeroFrame(artId: String, minHeight: Dp, back: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     val l = LocalLain.current
-    Box(Modifier.fillMaxWidth()) {
+    Box(Modifier.fillMaxWidth().heightIn(min = minHeight)) {
         Ambient(artId, Modifier.matchParentSize())
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to l.bg.copy(alpha = 0.15f), 0.55f to l.bg.copy(alpha = 0.55f), 1f to l.bg)))
-        Column(Modifier.fillMaxWidth()) {
-            if (wide) {
-                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-                    Art(artId, Modifier.fillMaxSize())
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.25f), 0.3f to Color.Transparent, 0.7f to Color.Transparent, 1f to l.bg.copy(alpha = 0.85f))))
-                }
-                Column(Modifier.padding(horizontal = GUTTER).padding(top = 14.dp, bottom = 20.dp), content = content)
-            } else if (compact) {
-                Row(Modifier.padding(start = GUTTER, end = GUTTER, top = 60.dp, bottom = 20.dp), verticalAlignment = Alignment.Bottom) {
-                    Box(Modifier.width(112.dp).aspectRatio(Shapes.PORTRAIT).clip(l.cardShape).border(1.dp, Color.White.copy(alpha = 0.1f), l.cardShape)) { Art(artId, Modifier.fillMaxSize()) }
-                    Column(Modifier.padding(start = 16.dp), content = content)
-                }
-            } else {
-                Column(Modifier.padding(horizontal = GUTTER).padding(top = 28.dp, bottom = 22.dp)) {
-                    Box(Modifier.width(168.dp).aspectRatio(Shapes.PORTRAIT).clip(l.cardShape).border(1.dp, Color.White.copy(alpha = 0.1f), l.cardShape)) { Art(artId, Modifier.fillMaxSize()) }
-                    Gap(20.dp)
-                    content()
-                }
-            }
-        }
-        if (back != null) Box(Modifier.padding(6.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))) { IconBtn(Ic.ArrowLeft, "Back", back, tint = Color.White) }
+        Art(artId, Modifier.matchParentSize(), alignment = Alignment.TopCenter)
+        Box(
+            Modifier.matchParentSize().background(
+                Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.28f), 0.16f to Color.Transparent, 0.36f to Color.Transparent, 0.6f to l.bg.copy(alpha = 0.9f), 0.74f to l.bg, 1f to l.bg),
+            ),
+        )
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = GUTTER).padding(top = minHeight * 0.52f, bottom = 18.dp), content = content)
+        if (back != null) Box(Modifier.padding(8.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f))) { IconBtn(Ic.ArrowLeft, "Back", back, tint = Color.White) }
     }
 }
-
 
 /** Pull down to read the catalog again. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -893,7 +1107,7 @@ private fun Refreshable(refreshing: Boolean, onRefresh: () -> Unit, content: @Co
 @Composable
 private fun HomeSkeleton() {
     Column(Modifier.fillMaxSize().padding(GUTTER), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Skeleton(Modifier.width(168.dp).aspectRatio(Shapes.PORTRAIT))
+        Skeleton(Modifier.fillMaxWidth().height(260.dp))
         Skeleton(Modifier.fillMaxWidth(0.7f).height(34.dp))
         Skeleton(Modifier.fillMaxWidth(0.45f).height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -904,4 +1118,29 @@ private fun HomeSkeleton() {
         Skeleton(Modifier.fillMaxWidth(0.4f).height(20.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) { repeat(3) { Skeleton(Modifier.width(RAIL_H * Shapes.PORTRAIT).height(RAIL_H)) } }
     }
+}
+
+
+/**
+ * Where lists were, by screen: the stack keeps no screen alive, so a list
+ * that is come back to would start at its top. In memory only.
+ */
+private object ListMemory {
+    val at = HashMap<String, Pair<Int, Int>>()
+}
+
+@Composable
+private fun rememberListMemory(key: String): androidx.compose.foundation.lazy.LazyListState {
+    val saved = ListMemory.at[key]
+    val state = androidx.compose.foundation.lazy.rememberLazyListState(saved?.first ?: 0, saved?.second ?: 0)
+    DisposableEffect(key) { onDispose { ListMemory.at[key] = state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset } }
+    return state
+}
+
+@Composable
+private fun rememberGridMemory(key: String): androidx.compose.foundation.lazy.grid.LazyGridState {
+    val saved = ListMemory.at[key]
+    val state = rememberLazyGridState(saved?.first ?: 0, saved?.second ?: 0)
+    DisposableEffect(key) { onDispose { ListMemory.at[key] = state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset } }
+    return state
 }

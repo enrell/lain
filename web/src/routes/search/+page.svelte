@@ -7,12 +7,15 @@
 	import SearchX from '@lucide/svelte/icons/search-x';
 	import type { CatalogItem } from '$lib/api/types';
 	import { api } from '$lib/api';
-	import MediaGrid from '$lib/components/media/MediaGrid.svelte';
+	import MediaCard from '$lib/components/media/MediaCard.svelte';
+	import { FIT } from '$lib/components/media/MediaGrid.svelte';
+	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
-	import { ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { groupItems } from '$lib/utilities/grouping';
 	import { debounce } from '$lib/utilities/debounce';
 	import { errorMessage } from '$lib/utilities/errors';
 
@@ -21,6 +24,7 @@
 	let query = $state(page.url.searchParams.get('q') ?? '');
 	let input = $state<HTMLInputElement | null>(null);
 	let items = $state<CatalogItem[]>([]);
+	const groups = $derived(groupItems(items));
 	let total = $state(0);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
@@ -130,7 +134,7 @@
 		</form>
 		{#if searchedFor !== '' && !loading}
 			<p class="text-sm text-muted" aria-live="polite">
-				{total} {total === 1 ? 'result' : 'results'} for “{searchedFor}”
+				{groups.length} {groups.length === 1 ? 'title' : 'titles'} for “{searchedFor}”
 			</p>
 		{/if}
 	</header>
@@ -158,7 +162,17 @@
 			{#snippet icon()}<SearchX class="size-6 text-muted" />{/snippet}
 		</EmptyState>
 	{:else}
-		<MediaGrid {items} fit />
+		<!-- A search answers with titles, not files: twelve episodes of one
+		     show are one card that opens the show. -->
+		<div class={FIT}>
+			{#each groups as group, i (group.key)}
+				{#if group.count > 1}
+					<ShowCard {group} fit priority={i < 6} />
+				{:else}
+					<MediaCard item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} priority={i < 6} fit />
+				{/if}
+			{/each}
+		</div>
 		{#if items.length < total}
 			<div class="mt-8 flex justify-center">
 				<Button variant="secondary" loading={loading} onclick={() => void run(searchedFor, false)}>

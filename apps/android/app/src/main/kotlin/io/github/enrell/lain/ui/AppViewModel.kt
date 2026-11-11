@@ -50,7 +50,6 @@ data class Dest(val id: String, val screen: Screen)
 private val KNOWN: List<Pair<String, Screen>> = listOf(
     "home" to Screen.Home,
     "library" to Screen.Library,
-    "read" to Screen.Read,
     "search" to Screen.Search,
     "settings" to Screen.Settings,
 )
@@ -85,9 +84,13 @@ data class AppState(
     val continues: List<ProgressInfo> = emptyList(),
     val progress: Map<String, ProgressInfo> = emptyMap(),
     val libraries: List<LibraryInfo> = emptyList(),
+    /** How long each video is, in seconds, for the items asked about so far. */
+    val durations: Map<String, Double> = emptyMap(),
     /** Metadata overlays by item (genres, synopsis), when the server has them. */
     val overlays: Map<String, io.github.enrell.lain.core.Overlay> = emptyMap(),
     val stack: List<Screen> = listOf(Screen.Home),
+    /** The deep place a bar destination was opened from, which Back returns to. */
+    val returnTo: List<Screen>? = null,
     val query: String = "",
     val results: List<Item> = emptyList(),
     val searching: Boolean = false,
@@ -177,14 +180,30 @@ class AppViewModel(
 
     // ---- navigation -----------------------------------------------------
 
+    /**
+     * Opens a screen. A destination of the bar replaces the stack, and
+     * remembers the place it was opened from when that was somewhere deep
+     * (a title, a library), so Back from Settings returns there, not Home.
+     */
     fun go(screen: Screen) = _state.update { s ->
-        if (s.destinations.any { it.screen == screen }) s.copy(stack = listOf(screen)) else s.copy(stack = s.stack + screen)
+        if (s.destinations.none { it.screen == screen }) return@update s.copy(stack = s.stack + screen)
+        val from = if (s.stack.size > 1) s.stack.filterNot { it is Screen.Player || it is Screen.Reader }.takeIf { it.size > 1 } else s.returnTo
+        val clean = if (screen == Screen.Search && s.screen != Screen.Search) s.copy(query = "", results = emptyList(), searching = false) else s
+        // Home is where Back ends: it never leads back into another place.
+        clean.copy(stack = listOf(screen), returnTo = if (screen != Screen.Home && from != null && from.first() != screen) from else null)
     }
+
+    /** Puts [screen] in place of the current one (the next episode takes the player's place). */
+    fun replace(screen: Screen) = _state.update { it.copy(stack = it.stack.dropLast(1) + screen) }
 
     /** Pops a screen; false when the stack is at its root (the system handles back). */
     fun back(): Boolean {
         val s = _state.value
         if (s.stack.size <= 1) {
+            s.returnTo?.let { place ->
+                _state.update { it.copy(stack = place, returnTo = null) }
+                return true
+            }
             if (s.screen != Screen.Home && s.phase == Phase.Main) {
                 _state.update { it.copy(stack = listOf(Screen.Home)) }
                 return true
@@ -292,6 +311,32 @@ class AppViewModel(
                 runCatching { withContext(io) { core.lockLibrary(lib.id) } }
             }
             refresh()
+        }
+    }
+
+    /** Asks how long these videos are (a title page's episodes, the rails' cards). */
+    fun loadDurations(ids: List<String>) {
+        val missing = ids.filter { it !in _state.value.durations }
+        if (missing.isEmpty()) return
+        viewModelScope.launch {
+            val got = runCatching { withContext(io) { core.durations(missing) } }.getOrNull() ?: return@launch
+            _state.update { it.copy(durations = it.durations + got.associate { d -> d.itemId to d.durationSec }) }
+        }
+    }
+
+    /**
+     * Marks items watched (or not): a finished record at the end, or one
+     * back at the start. The length is what is known of the item, so the
+     * mark does not invent one.
+     */
+    fun markWatched(ids: List<String>, watched: Boolean) {
+        viewModelScope.launch {
+            for (id in ids) {
+                val dur = _state.value.durations[id] ?: _state.value.progress[id]?.durationSec ?: 0.0
+                runCatching { withContext(io) { core.saveProgress(id, if (watched) dur else 0.0, dur, watched) } }
+            }
+            loadProgress(ids)
+            refreshProgressNow()
         }
     }
 

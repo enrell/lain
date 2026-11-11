@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Search from '@lucide/svelte/icons/search';
 	import { i18n, t } from '$lib/i18n';
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
@@ -73,8 +74,11 @@
 						href={item.href}
 						aria-current={active(item.href, item.exact) ? 'page' : undefined}
 						class={[
-							'inline-flex min-h-6 items-center text-[13px] tracking-wide transition-colors',
-							active(item.href, item.exact) ? 'text-foreground' : 'text-muted hover:text-foreground'
+							'relative inline-flex h-20 items-center text-[13px] tracking-wide transition-colors',
+							// The page you are on: brighter, heavier, and underlined in the accent.
+							active(item.href, item.exact)
+								? "font-semibold text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent after:content-['']"
+								: 'text-muted hover:text-foreground'
 						].join(' ')}
 					>
 						{item.label}
@@ -94,11 +98,11 @@
 				{/if}
 				<button
 					type="button"
-					class="hidden items-center gap-2 rounded-md px-2 py-1 font-mono text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-foreground lg:flex"
+					class="hidden h-9 items-center gap-2 rounded-full border border-line/70 bg-surface/40 pl-3 pr-2 text-xs text-muted transition-colors hover:bg-surface-hover hover:text-foreground lg:flex"
 					onclick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
 					aria-label={t('nav.palette')}
 				>
-					<kbd>Ctrl K</kbd>
+					<Search class="size-3.5" aria-hidden="true" /> {t('nav.search')} <span class="ml-2 flex gap-1"><kbd>Ctrl</kbd><kbd>K</kbd></span>
 				</button>
 				<UserMenu side="bottom" compact />
 			</div>
