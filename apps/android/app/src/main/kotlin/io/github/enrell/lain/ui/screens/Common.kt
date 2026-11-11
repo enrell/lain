@@ -117,9 +117,11 @@ fun ErrorLine(e: Throwable?, modifier: Modifier = Modifier) {
 fun Art(itemId: String, modifier: Modifier = Modifier, scale: ContentScale = ContentScale.Crop) {
     val l = LocalLain.current
     val ctx = LocalContext.current
-    // What memory already holds paints in the first frame.
-    val bmp: ImageBitmap? by produceState(ctx.graph.artNow(itemId)?.also { Shapes.record(itemId, it.width, it.height) }, itemId) {
-        if (value == null) value = ctx.graph.art(itemId)?.also { Shapes.record(itemId, it.width, it.height) }
+    // What memory already holds paints in the first frame. (The picture's
+    // shape is recorded by the loader, never here: writing state while a
+    // lazy grid composes an item during its own measure pass crashes it.)
+    val bmp: ImageBitmap? by produceState(ctx.graph.artNow(itemId), itemId) {
+        if (value == null) value = ctx.graph.art(itemId)
     }
     Box(modifier.background(l.surface)) {
         bmp?.let { Image(it, contentDescription = null, contentScale = scale, modifier = Modifier.fillMaxSize()) }

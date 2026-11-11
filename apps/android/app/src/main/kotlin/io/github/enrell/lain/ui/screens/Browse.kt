@@ -412,6 +412,12 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                     WButton(stringResource(R.string.clear_all), { filters = filters.cleared() }, kind = Btn.Secondary)
                 }
             } else {
+                // The shapes are read here, in composition, and handed to the grid
+                // as a plain list: a lazy grid caches its rows from the spans, so
+                // a span that changed behind its back (a cover that loaded and
+                // turned a card from landscape to portrait) left an item in two
+                // rows and crashed the layout. A new list rebuilds the rows.
+                val wide = results.map { it.wide() }
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(6),
                     state = grid,
@@ -420,17 +426,18 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
                     items(
-                        results,
-                        key = { it.key },
-                        span = { t -> GridItemSpan(if (t.wide()) (if (dense) 3 else 6) else (if (dense) 2 else 3)) },
-                    ) { t ->
+                        results.size,
+                        key = { results[it].key },
+                        span = { GridItemSpan(if (wide[it]) (if (dense) 3 else 6) else (if (dense) 2 else 3)) },
+                    ) { i ->
+                        val t = results[i]
                         val p = t.items.firstNotNullOfOrNull { progress[it.id]?.takeIf { pr -> !pr.completed && pr.positionSec > 0 } }
                         ShapeCard(
                             artId = t.art(),
                             title = t.title,
                             subtitle = titleSubtitle(t),
                             onClick = { vm.go(Screen.TitleDetail(t.key)) },
-                            landscape = t.wide(),
+                            landscape = wide[i],
                             progress = fraction(p),
                             badge = if (t.items.size > 1) t.items.size.toString() else null,
                         )
@@ -737,19 +744,23 @@ fun SearchScreen(state: AppState, vm: AppViewModel) {
             state.results.isEmpty() -> Text(stringResource(R.string.search_none), Modifier.padding(GUTTER), color = l.muted, fontSize = 14.sp)
             else -> {
                 Text(pluralStringResource(R.plurals.results_for, state.results.size, state.results.size, state.query.trim()), Modifier.padding(start = GUTTER, top = 14.dp), color = l.muted, fontSize = 14.sp)
+                // Shapes are read in composition, never in the span lambda (see LibraryBrowser).
+                val results = state.results
+                val wide = results.map { Shapes.landscape(it.id, !it.reading()) }
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(6),
                     contentPadding = PaddingValues(start = GUTTER, end = GUTTER, top = 14.dp, bottom = 32.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
-                    items(state.results, key = { it.id }, span = { GridItemSpan(if (Shapes.landscape(it.id, !it.reading())) 6 else 3) }) { item ->
+                    items(results.size, key = { results[it].id }, span = { GridItemSpan(if (wide[it]) 6 else 3) }) { i ->
+                        val item = results[i]
                         ShapeCard(
                             artId = item.id,
                             title = item.title,
                             subtitle = episodeText(item),
                             onClick = { vm.go(Screen.TitleDetail(titleKey(item))) },
-                            landscape = Shapes.landscape(item.id, !item.reading()),
+                            landscape = wide[i],
                         )
                     }
                 }

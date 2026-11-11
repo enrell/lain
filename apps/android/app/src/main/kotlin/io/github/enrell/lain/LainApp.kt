@@ -64,6 +64,8 @@ class AppGraph(context: Context) {
             bytes?.let { decode(it, 480) }
         } ?: return null
         art.put(itemId, bmp)
+        // Cards take the shape of their picture; learned here, off composition.
+        io.github.enrell.lain.ui.screens.Shapes.record(itemId, bmp.width, bmp.height)
         return bmp
     }
 
