@@ -182,4 +182,19 @@
         <item quantity="one">%1$d result for “%2$s”</item>
         <item quantity="other">%1$d results for “%2$s”</item>
     </plurals>
+    <string name="genres">Genres</string>
+    <string name="show_fewer">Show fewer</string>
+    <string name="show_all_n">Show all %1$d</string>
+    <string name="unlock_title">Unlock private libraries</string>
+    <string name="unlock_body">Only for this session. Use your library PIN or your password.</string>
+    <string name="unlock_pin">PIN</string>
+    <string name="unlock_go">Unlock</string>
+    <string name="unlock_use_password">Use password instead</string>
+    <string name="unlock_use_pin">Use PIN instead</string>
+    <string name="lock_again">Lock private libraries</string>
+    <string name="player_speed">Speed</string>
+    <string name="player_subtitles">Subtitles</string>
+    <string name="player_off">Off</string>
+    <string name="player_normal">Normal</string>
+    <string name="player_back">Back</string>
 </resources>

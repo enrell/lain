@@ -616,6 +616,16 @@ impl Client {
             .to_vec())
     }
 
+    /// A frame of the item at `at_sec`, `width` pixels wide: what a seek
+    /// bar shows for the place it points at.
+    pub async fn frame(&self, item_id: &str, at_sec: f64, width: u32) -> Result<Vec<u8>, ClientError> {
+        let q = query(&[("t", format!("{}", at_sec.max(0.0).floor() as i64)), ("w", width.to_string())]);
+        Ok(self
+            .raw(Method::GET, &format!("/api/items/{}/thumbnail{q}", encode(item_id)), Body::None, true)
+            .await?
+            .to_vec())
+    }
+
     /// What the player's quality menu offers.
     pub async fn playback_options(&self) -> Result<PlaybackOptions, ClientError> {
         self.call(Method::GET, "/api/playback/options", Body::None).await

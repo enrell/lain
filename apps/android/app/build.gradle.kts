@@ -24,7 +24,14 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // The build to put on a phone: optimized and shrunk (R8), and not
+            // debuggable, which is what makes Compose scroll and start fast.
+            // Signed with the debug key until there is a release one, so it
+            // installs over a debug build.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 

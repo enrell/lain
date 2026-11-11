@@ -85,6 +85,8 @@ data class AppState(
     val continues: List<ProgressInfo> = emptyList(),
     val progress: Map<String, ProgressInfo> = emptyMap(),
     val libraries: List<LibraryInfo> = emptyList(),
+    /** Metadata overlays by item (genres, synopsis), when the server has them. */
+    val overlays: Map<String, io.github.enrell.lain.core.Overlay> = emptyMap(),
     val stack: List<Screen> = listOf(Screen.Home),
     val query: String = "",
     val results: List<Item> = emptyList(),
@@ -251,6 +253,7 @@ class AppViewModel(
                         error = null,
                     )
                 }
+                if (!snap.fromCache) loadOverlays(snap.items.map { it.id })
             } catch (e: LainException) {
                 if (e is LainException.Unauthorized) {
                     _state.update { AppState(phase = Phase.Login, server = it.server) }
@@ -261,6 +264,45 @@ class AppViewModel(
             runCatching { core.libraries() }.onSuccess { l -> _state.update { it.copy(libraries = l) } }
             refreshProgressNow()
             _state.update { it.copy(busy = false) }
+        }
+    }
+
+    /**
+     * Unlocks every locked private library for this session with the
+     * account's PIN or password (D-156), then reads the catalog again.
+     * The error, when one refuses, is the first library's.
+     */
+    suspend fun unlock(secret: String, pin: Boolean): Throwable? {
+        val locked = _state.value.libraries.filter { it.private && it.locked }
+        for (lib in locked) {
+            try {
+                withContext(io) { core.unlockLibrary(lib.id, secret, pin) }
+            } catch (e: LainException) {
+                return e
+            }
+        }
+        refresh()
+        return null
+    }
+
+    /** Locks every private library again. */
+    fun lockAll() {
+        viewModelScope.launch {
+            for (lib in _state.value.libraries.filter { it.private && !it.locked }) {
+                runCatching { withContext(io) { core.lockLibrary(lib.id) } }
+            }
+            refresh()
+        }
+    }
+
+    private var overlayJob: Job? = null
+
+    /** Genres and synopses for the catalog, in the background: the titles are usable before they arrive. */
+    private fun loadOverlays(ids: List<String>) {
+        overlayJob?.cancel()
+        overlayJob = viewModelScope.launch {
+            val got = runCatching { withContext(io) { core.overlays(ids) } }.getOrNull() ?: return@launch
+            _state.update { it.copy(overlays = got.associateBy { o -> o.itemId }) }
         }
     }
 

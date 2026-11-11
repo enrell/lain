@@ -1,5 +1,28 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.layout.layout
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.coerceAtLeast
+import androidx.compose.ui.unit.coerceIn
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import io.github.enrell.lain.graph
 import android.view.View
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -87,14 +110,21 @@ private fun mediaItem(src: PlaySource): MediaItem {
 }
 
 /**
- * Media3/ExoPlayer with hardware decoding (D-246). Keys: Space plays or
- * pauses, ←/→ seek 10 s, B burns typeset subtitles in, Esc closes.
+ * The player, with the web player's chrome and gestures (D-246 for the
+ * decoding): a header with the way back and the title; a seek bar that
+ * shows the frame it points at while dragged; play, 10 s back and forward,
+ * mute, settings (speed, subtitles) and fullscreen underneath. A double
+ * tap on the left or right third seeks 10 s and keeps counting while the
+ * taps continue, without bringing the controls up; one tap shows or hides
+ * them. Keys: Space, ←/→, B burns typeset subtitles in, Esc closes.
  */
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferredLanguage: String) {
     val l = LocalLain.current
     val context = LocalContext.current
+    val graph = context.graph
+    val activity = context as? android.app.Activity
     val scope = remember(itemId) { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
     val model = remember(itemId) { PlayerModel(core, itemId, DeviceCaps.claim, scope) }
     val state by model.state.collectAsState()
@@ -108,24 +138,64 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
     val focus = remember { FocusRequester() }
     val back = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
 
+    // What the chrome shows, read from the player.
+    var playing by remember { mutableStateOf(false) }
+    var buffering by remember { mutableStateOf(true) }
+    var ended by remember { mutableStateOf(false) }
+    var positionMs by remember { mutableStateOf(0L) }
+    var durationMs by remember { mutableStateOf(0L) }
+    var bufferedMs by remember { mutableStateOf(0L) }
+    var muted by remember { mutableStateOf(false) }
+    var speed by remember { mutableStateOf(1f) }
+    var textTracks by remember { mutableStateOf(listOf<TextTrack>()) }
+    var textOff by remember { mutableStateOf(false) }
+
+    var controls by remember { mutableStateOf(true) }
+    var settings by remember { mutableStateOf(false) }
+    var landscape by remember { mutableStateOf(false) }
+    // Dragging the seek bar: the fraction under the finger, or null.
+    var scrub by remember { mutableStateOf<Float?>(null) }
+    var touched by remember { mutableStateOf(0L) }
+    var preview by remember { mutableStateOf<ImageBitmap?>(null) }
+    // The running total of a burst of skips, and its side (-1 back, 1 forward).
+    var flash by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var lastSkip by remember { mutableStateOf(0L) }
+
     // The picture takes the whole screen; a swipe from an edge brings the
     // system bars back for a moment.
     DisposableEffect(Unit) {
-        val window = (context as? android.app.Activity)?.window
+        val window = activity?.window
         val bars = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
         bars?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         bars?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
-        onDispose { bars?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+        window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            bars?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
     }
     LaunchedEffect(itemId) { model.load() }
     DisposableEffect(itemId) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) model.report(player.currentPosition, player.duration, ended = true)
+                buffering = playbackState == Player.STATE_BUFFERING
+                ended = playbackState == Player.STATE_ENDED
+                if (ended) model.report(player.currentPosition, player.duration, ended = true)
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playing = isPlaying
                 if (!isPlaying) model.report(player.currentPosition, player.duration)
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                textTracks = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.flatMap { g ->
+                    (0 until g.length).map { i ->
+                        val f = g.getTrackFormat(i)
+                        TextTrack(g, i, f.label ?: f.language?.uppercase() ?: "#${i + 1}", g.isTrackSelected(i))
+                    }
+                }
             }
         }
         player.addListener(listener)
@@ -147,6 +217,49 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
             if (player.isPlaying) model.report(player.currentPosition, player.duration)
         }
     }
+    // The clock the chrome reads: often enough for a smooth bar.
+    LaunchedEffect(player) {
+        while (true) {
+            positionMs = player.currentPosition
+            durationMs = player.duration.coerceAtLeast(0)
+            bufferedMs = player.bufferedPosition
+            delay(250)
+        }
+    }
+    // The controls leave after a while of playing untouched.
+    val pinned = settings || scrub != null || state.error != null || state.loading
+    LaunchedEffect(controls, playing, pinned, touched) {
+        if (controls && playing && !pinned) {
+            delay(l.tokens.autohideMs.toLong().coerceAtLeast(1500))
+            controls = false
+            settings = false
+        }
+    }
+
+    fun seekBy(deltaMs: Long) {
+        val to = player.currentPosition + deltaMs
+        player.seekTo(if (player.duration > 0) to.coerceIn(0, player.duration) else to.coerceAtLeast(0))
+        positionMs = player.currentPosition
+    }
+    fun skip(side: Int) {
+        seekBy(side * SKIP_MS)
+        flash = side to ((flash?.takeIf { it.first == side }?.second ?: 0) + (SKIP_MS / 1000).toInt())
+        lastSkip = System.currentTimeMillis()
+    }
+    fun togglePlay() {
+        when {
+            ended -> { player.seekTo(0); player.play() }
+            player.isPlaying -> player.pause()
+            else -> player.play()
+        }
+        touched++
+    }
+    LaunchedEffect(flash) {
+        if (flash != null) {
+            delay(700)
+            flash = null
+        }
+    }
 
     Box(
         Modifier
@@ -157,18 +270,9 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
             .onPreviewKeyEvent { e ->
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (e.key) {
-                    Key.Spacebar, Key.MediaPlayPause -> {
-                        if (player.isPlaying) player.pause() else player.play()
-                        true
-                    }
-                    Key.DirectionLeft -> {
-                        player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
-                        true
-                    }
-                    Key.DirectionRight -> {
-                        player.seekTo(player.currentPosition + 10_000)
-                        true
-                    }
+                    Key.Spacebar, Key.MediaPlayPause -> { togglePlay(); true }
+                    Key.DirectionLeft -> { seekBy(-SKIP_MS); true }
+                    Key.DirectionRight -> { seekBy(SKIP_MS); true }
                     Key.B -> {
                         model.burnable().firstOrNull()?.let { model.burnIn(it, player.currentPosition) }
                         true
@@ -177,63 +281,34 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                 }
             },
     ) {
-        var controls by remember { mutableStateOf(true) }
-        var view by remember { mutableStateOf<PlayerView?>(null) }
-        // The running total of a burst of skips, and its side (-1 back, 1 forward).
-        var flash by remember { mutableStateOf<Pair<Int, Int>?>(null) }
-        var lastSkip by remember { mutableStateOf(0L) }
-        LaunchedEffect(flash) {
-            if (flash != null) {
-                delay(700)
-                flash = null
-            }
-        }
-        fun skip(side: Int) {
-            val to = player.currentPosition + side * SKIP_MS
-            player.seekTo(if (player.duration > 0) to.coerceIn(0, player.duration) else to.coerceAtLeast(0))
-            flash = side to ((flash?.takeIf { it.first == side }?.second ?: 0) + (SKIP_MS / 1000).toInt())
-            lastSkip = System.currentTimeMillis()
-        }
-        fun toggleControls() {
-            view?.let { if (it.isControllerFullyVisible) it.hideController() else it.showController() }
-        }
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     this.player = player
-                    useController = true
-                    setShowSubtitleButton(true)
-                    // Skipping is a double tap on the picture; the bar keeps play and seek.
-                    setShowRewindButton(false)
-                    setShowFastForwardButton(false)
-                    setShowPreviousButton(false)
-                    setShowNextButton(false)
-                    controllerAutoShow = true
-                    controllerShowTimeoutMs = l.tokens.autohideMs.toInt()
-                    setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v -> controls = v == View.VISIBLE })
-                    view = this
+                    // The chrome is the app's own, drawn like the web player's.
+                    useController = false
                 }
             },
             modifier = Modifier.fillMaxSize(),
         )
-        /*
-         * The picture's gestures, as in the web player: a double tap on the
-         * left or right third seeks 10 s and keeps counting while the taps
-         * continue, without bringing the controls up; one tap shows or hides
-         * them. The middle third is the bar's own while it is showing.
-         */
-        Row(Modifier.fillMaxSize().padding(top = 72.dp, bottom = 112.dp)) {
+
+        // The picture's gestures.
+        Row(Modifier.fillMaxSize()) {
             for (side in listOf(-1, 0, 1)) {
                 Box(
-                    Modifier.weight(if (side == 0) 0.28f else 0.36f).fillMaxHeight().then(
-                        if (side == 0 && controls) Modifier else Modifier.pointerInput(side) {
-                            detectTapGestures(
-                                onDoubleTap = { if (side == 0) { if (player.isPlaying) player.pause() else player.play() } else skip(side) },
-                                onTap = { if (side != 0 && System.currentTimeMillis() - lastSkip < 700) skip(side) else toggleControls() },
-                            )
-                        },
-                    ),
+                    Modifier.weight(if (side == 0) 0.28f else 0.36f).fillMaxHeight().pointerInput(side) {
+                        detectTapGestures(
+                            onDoubleTap = { if (side == 0) togglePlay() else skip(side) },
+                            onTap = {
+                                when {
+                                    side != 0 && System.currentTimeMillis() - lastSkip < 700 -> skip(side)
+                                    settings -> settings = false
+                                    else -> { controls = !controls; touched++ }
+                                }
+                            },
+                        )
+                    },
                     contentAlignment = Alignment.Center,
                 ) {
                     val f = flash
@@ -249,34 +324,230 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                 }
             }
         }
-        // The header, with the controls: the way back and the title.
-        if (controls || state.loading || state.error != null) {
+
+        if (buffering || state.loading) {
+            CircularProgressIndicator(Modifier.align(Alignment.Center).size(44.dp), color = Color.White, strokeWidth = 3.dp)
+        } else if (controls && (ended || (!playing && positionMs < 500))) {
+            // The big button, before the first frame moves and at the end.
+            Box(
+                Modifier.align(Alignment.Center).size(72.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).clickable { togglePlay() },
+                contentAlignment = Alignment.Center,
+            ) { Icon(Ic.Play, null, tint = Color.White, modifier = Modifier.size(28.dp)) }
+        }
+
+        val shown = controls || pinned
+        // Header: the way back and the title.
+        if (shown) {
             Column(
                 Modifier.align(Alignment.TopStart).fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent))).statusBarsPadding().padding(horizontal = 6.dp, vertical = 6.dp),
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.6f), Color.Transparent))).safeDrawingPadding().padding(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconBtn(Ic.ArrowLeft, "Back", { back?.onBackPressed() }, tint = Color.White)
-                    Text(title, Modifier.weight(1f), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(
+                        Modifier.height(44.dp).clip(l.buttonShape).clickable { back?.onBackPressed() }.padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(Ic.ArrowLeft, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        Text(stringResource(R.string.player_back), color = Color.White, fontSize = 14.sp)
+                    }
+                    Text(title, Modifier.weight(1f).padding(start = 8.dp), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Row(Modifier.padding(start = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.padding(start = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     when {
                         state.loading -> Mono(stringResource(R.string.player_preparing), color = Color.White)
-                        src != null && src.note.isNotBlank() -> Mono(src.note, color = Color.White.copy(alpha = 0.7f))
+                        src != null && src.note.isNotBlank() -> Mono(src.note, color = Color.White.copy(alpha = 0.6f))
                     }
                     if (state.savedLocally) Mono(stringResource(R.string.player_saved_locally), color = l.warn)
                 }
-                val burnable = model.burnable()
-                if (burnable.isNotEmpty()) {
-                    Row(Modifier.padding(start = 14.dp, end = 8.dp, top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.player_ass_note), color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                        WButton(stringResource(R.string.player_burn_in, burnable.first().label), { model.burnIn(burnable.first(), player.currentPosition) }, kind = Btn.Secondary)
+                ErrorLine(state.error, Modifier.padding(start = 16.dp, top = 6.dp))
+            }
+        }
+
+        // Footer: the seek row, then the transport.
+        if (shown) {
+            val total = durationMs.coerceAtLeast(1)
+            val at = scrub?.let { (it * total).toLong() } ?: positionMs
+            Column(
+                Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).safeDrawingPadding().padding(horizontal = 12.dp).padding(bottom = 10.dp, top = 24.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BoxWithConstraints(Modifier.weight(1f)) {
+                        val width = maxWidth
+                        val fraction = (at.toFloat() / total).coerceIn(0f, 1f)
+                        // The frame the bar points at, while dragging it.
+                        scrub?.let { f ->
+                            val sec = model.sourceSec((f * total).toLong())
+                            val step = (model.durationSec(durationMs) / 150).toLong().coerceAtLeast(2)
+                            val quantized = (sec.toLong() / step) * step
+                            // One request at a time, always for where the finger is
+                            // now: a drag fetches a handful of frames, not one per
+                            // step, and the last one that arrived stays up meanwhile.
+                            val wanted by rememberUpdatedState(quantized)
+                            LaunchedEffect(Unit) {
+                                var last = -1L
+                                while (true) {
+                                    val want = wanted
+                                    if (want != last) {
+                                        last = want
+                                        graph.frame(itemId, want)?.let { preview = it }
+                                    } else {
+                                        delay(40)
+                                    }
+                                }
+                            }
+                            val w = 176.dp
+                            val x = (width * f - w / 2).coerceIn(0.dp, (width - w).coerceAtLeast(0.dp))
+                            Column(
+                                // Floats above the bar without taking room in the row.
+                                Modifier.width(w).layout { measurable, constraints ->
+                                    val p = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                                    layout(0, 0) { p.place(x.roundToPx(), -p.height - 6.dp.roundToPx()) }
+                                },
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(Color.Black).border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))) {
+                                    preview?.let { Image(it, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
+                                }
+                                Text(clock(sec), Modifier.padding(top = 4.dp), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        Box(
+                            Modifier.fillMaxWidth().height(36.dp)
+                                .pointerInput(durationMs) {
+                                    detectTapGestures { o ->
+                                        if (durationMs > 0) player.seekTo((o.x / size.width * durationMs).toLong().coerceIn(0, durationMs))
+                                        touched++
+                                    }
+                                }
+                                .pointerInput(durationMs) {
+                                    detectHorizontalDragGestures(
+                                        onDragStart = { o -> if (durationMs > 0) scrub = (o.x / size.width).coerceIn(0f, 1f) },
+                                        onDragEnd = {
+                                            scrub?.let { player.seekTo((it * durationMs).toLong()) }
+                                            positionMs = player.currentPosition
+                                            scrub = null
+                                            touched++
+                                        },
+                                        onDragCancel = { scrub = null },
+                                    ) { change, _ -> if (durationMs > 0) scrub = (change.position.x / size.width).coerceIn(0f, 1f) }
+                                },
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Box(Modifier.fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.25f)))
+                            Box(Modifier.fillMaxWidth((bufferedMs.toFloat() / total).coerceIn(0f, 1f)).height(3.dp).background(Color.White.copy(alpha = 0.25f)))
+                            Box(Modifier.fillMaxWidth(fraction).height(3.dp).background(l.accent))
+                            Box(Modifier.offset(x = (width - 14.dp) * fraction).size(if (scrub != null) 18.dp else 14.dp).clip(CircleShape).background(l.accent))
+                        }
+                    }
+                    Text(
+                        clock(model.sourceSec(at)) + " / " + clock(model.durationSec(durationMs)),
+                        Modifier.padding(start = 12.dp),
+                        color = Color.White, fontSize = 12.sp,
+                    )
+                }
+                Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(
+                        Modifier.size(44.dp).clip(l.buttonShape).background(l.accent).clickable { togglePlay() },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(if (playing) Ic.Pause else Ic.Play, null, tint = l.onAccent, modifier = Modifier.size(20.dp)) }
+                    TenButton(Ic.Back10) { seekBy(-SKIP_MS); touched++ }
+                    TenButton(Ic.Fwd10) { seekBy(SKIP_MS); touched++ }
+                    IconBtn(if (muted) Ic.Muted else Ic.Volume, "Mute", { muted = !muted; player.volume = if (muted) 0f else 1f; touched++ }, tint = Color.White)
+                    Box(Modifier.weight(1f))
+                    IconBtn(Ic.Gear, "Settings", { settings = !settings }, tint = Color.White)
+                    IconBtn(Ic.Maximize, "Fullscreen", {
+                        landscape = !landscape
+                        activity?.requestedOrientation =
+                            if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                        touched++
+                    }, tint = Color.White)
+                }
+            }
+        }
+
+        // Settings: a small list above the gear, as on the web's phone layout.
+        if (settings) {
+            Column(
+                Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, bottom = 104.dp).width(248.dp).clip(RoundedCornerShape(8.dp))
+                    .background(l.bg).border(1.dp, l.line.copy(alpha = 0.6f), RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                PickRow(
+                    stringResource(R.string.player_speed),
+                    if (speed == 1f) stringResource(R.string.player_normal) else "$speed×",
+                    SPEEDS.map { (if (it == 1f) stringResource(R.string.player_normal) else "$it×") to (it == speed) },
+                ) { i ->
+                    speed = SPEEDS[i]
+                    player.setPlaybackSpeed(speed)
+                }
+                if (textTracks.isNotEmpty()) {
+                    val off = stringResource(R.string.player_off)
+                    PickRow(
+                        stringResource(R.string.player_subtitles),
+                        if (textOff) off else textTracks.firstOrNull { it.selected }?.label ?: off,
+                        listOf(off to (textOff || textTracks.none { it.selected })) + textTracks.map { it.label to (!textOff && it.selected) },
+                    ) { i ->
+                        val b = player.trackSelectionParameters.buildUpon()
+                        if (i == 0) {
+                            textOff = true
+                            b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                        } else {
+                            val t = textTracks[i - 1]
+                            textOff = false
+                            b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                                .setOverrideForType(TrackSelectionOverride(t.group.mediaTrackGroup, t.index))
+                        }
+                        player.trackSelectionParameters = b.build()
                     }
                 }
-                ErrorLine(state.error, Modifier.padding(start = 14.dp, top = 6.dp))
+                val burnable = model.burnable()
+                if (burnable.isNotEmpty()) {
+                    Text(stringResource(R.string.player_ass_note), Modifier.padding(top = 6.dp), color = l.muted, fontSize = 12.sp, lineHeight = 16.sp)
+                    WButton(
+                        stringResource(R.string.player_burn_in, burnable.first().label),
+                        { settings = false; model.burnIn(burnable.first(), player.currentPosition) },
+                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                        kind = Btn.Secondary,
+                    )
+                }
             }
         }
     }
 }
 
 private const val SKIP_MS = 10_000L
+private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+private class TextTrack(val group: Tracks.Group, val index: Int, val label: String, val selected: Boolean)
+
+/** The 10 s buttons: the turning arrow with the number inside. */
+@Composable
+private fun TenButton(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    Box(Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = Color.White, modifier = Modifier.size(24.dp))
+        Text("10", Modifier.padding(top = 2.dp), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** One setting: its name, the current value, and the choices when opened. */
+@Composable
+private fun PickRow(label: String, value: String, options: List<Pair<String, Boolean>>, onPick: (Int) -> Unit) {
+    val l = LocalLain.current
+    var open by remember { mutableStateOf(false) }
+    Column {
+        Row(Modifier.fillMaxWidth().height(40.dp).clickable { open = !open }, verticalAlignment = Alignment.CenterVertically) {
+            Text(label, Modifier.weight(1f), color = l.text, fontSize = 13.sp)
+            Text(value, Modifier.clip(l.buttonShape).border(1.dp, l.line, l.buttonShape).padding(horizontal = 8.dp, vertical = 4.dp), color = l.text, fontSize = 13.sp, maxLines = 1)
+        }
+        if (open) {
+            options.forEachIndexed { i, (name, on) ->
+                Row(
+                    Modifier.fillMaxWidth().height(36.dp).clip(l.buttonShape).background(if (on) l.accent.copy(alpha = 0.15f) else Color.Transparent)
+                        .clickable { onPick(i); open = false }.padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { Text(name, color = if (on) l.text else l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }
+        }
+    }
+}

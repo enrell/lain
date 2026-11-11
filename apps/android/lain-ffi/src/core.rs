@@ -411,6 +411,73 @@ impl LainCore {
         }
     }
 
+    /// Unlocks a private library for this session with the account's PIN
+    /// (`pin` true) or its password (D-156). The catalog then holds its
+    /// items: fetch it again.
+    pub async fn unlock_library(
+        &self,
+        library_id: String,
+        secret: String,
+        pin: bool,
+    ) -> Result<LibraryInfo, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let how = if pin { lain_client::Unlock::Pin(secret) } else { lain_client::Unlock::Password(secret) };
+            let l = b.client.unlock_library(&library_id, how).await?;
+            Ok(LibraryInfo {
+                locked: l.locked.unwrap_or(false),
+                id: l.id,
+                name: l.name,
+                kind: l.kind,
+                private: l.private,
+            })
+        })
+        .await
+    }
+
+    /// Locks a private library again for this session.
+    pub async fn lock_library(&self, library_id: String) -> Result<LibraryInfo, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let l = b.client.lock_library(&library_id).await?;
+            Ok(LibraryInfo {
+                locked: l.locked.unwrap_or(true),
+                id: l.id,
+                name: l.name,
+                kind: l.kind,
+                private: l.private,
+            })
+        })
+        .await
+    }
+
+    /// A frame of the item at `at_sec`, for the seek bar's preview.
+    pub async fn frame(&self, item_id: String, at_sec: f64, width: u32) -> Result<Vec<u8>, LainError> {
+        let b = self.backend()?;
+        self.run(async move { Ok(b.client.frame(&item_id, at_sec, width).await?) }).await
+    }
+
+    /// The metadata overlays that exist for these items (genres, synopsis).
+    pub async fn overlays(&self, item_ids: Vec<String>) -> Result<Vec<Overlay>, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let mut out = Vec::new();
+            for chunk in item_ids.chunks(150) {
+                for e in b.client.enrichments(chunk).await? {
+                    out.push(Overlay {
+                        item_id: e.item_id,
+                        title: e.title,
+                        year: e.year,
+                        genres: e.genres,
+                        synopsis: e.synopsis,
+                    });
+                }
+            }
+            Ok(out)
+        })
+        .await
+    }
+
     /// The item's cover or frame; offline, the last one seen.
     pub async fn thumbnail(&self, item_id: String) -> Result<Vec<u8>, LainError> {
         let b = self.backend()?;

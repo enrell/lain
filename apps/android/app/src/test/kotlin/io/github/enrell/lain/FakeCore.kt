@@ -116,6 +116,10 @@ class FakeCore : LainCoreInterface {
         events.trySend(null)
     }
     override suspend fun thumbnail(itemId: String): ByteArray = ByteArray(0)
+    override suspend fun frame(itemId: String, atSec: Double, width: UInt): ByteArray = ByteArray(0)
+    override suspend fun overlays(itemIds: List<String>): List<io.github.enrell.lain.core.Overlay> = emptyList()
+    override suspend fun unlockLibrary(libraryId: String, secret: String, pin: Boolean): LibraryInfo = LibraryInfo(libraryId, "", "", true, false)
+    override suspend fun lockLibrary(libraryId: String): LibraryInfo = LibraryInfo(libraryId, "", "", true, true)
     override suspend fun playBurnedIn(itemId: String, stream: Long, startSec: Double): PlaySource =
         burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=b", "burned", startSec, startSec, null, emptyList(), "sess-b")
     override suspend fun playSource(itemId: String, caps: List<String>): PlaySource {

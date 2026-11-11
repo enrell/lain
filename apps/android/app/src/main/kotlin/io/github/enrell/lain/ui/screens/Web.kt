@@ -1,5 +1,6 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -300,4 +301,32 @@ fun Gap(h: Dp) = Spacer(Modifier.height(h))
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     val l = LocalLain.current
     Text(text, modifier, color = l.text, style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp))
+}
+
+
+/** A masked field for a PIN or a password; it takes the focus when shown. */
+@Composable
+fun SecretField(value: String, onChange: (String) -> Unit, numeric: Boolean, onDone: () -> Unit, modifier: Modifier = Modifier) {
+    val l = LocalLain.current
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(numeric) { runCatching { focus.requestFocus() } }
+    Box(
+        modifier.height(48.dp).clip(l.buttonShape).background(l.field).border(1.dp, l.line, l.buttonShape).padding(horizontal = 14.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = { v -> onChange(if (numeric) v.filter { it.isDigit() }.take(12) else v) },
+            singleLine = true,
+            textStyle = TextStyle(color = l.text, fontSize = 18.sp, letterSpacing = if (numeric) 6.sp else 0.sp),
+            cursorBrush = SolidColor(l.accent),
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = if (numeric) androidx.compose.ui.text.input.KeyboardType.NumberPassword else androidx.compose.ui.text.input.KeyboardType.Password,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onDone() }),
+            modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        )
+    }
 }

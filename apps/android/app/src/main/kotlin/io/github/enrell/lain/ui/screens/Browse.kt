@@ -68,6 +68,7 @@ import io.github.enrell.lain.domain.applyFilters
 import io.github.enrell.lain.domain.buildRails
 import io.github.enrell.lain.domain.countBy
 import io.github.enrell.lain.domain.fraction
+import io.github.enrell.lain.domain.genreFacets
 import io.github.enrell.lain.domain.nextUp
 import io.github.enrell.lain.domain.reading
 import io.github.enrell.lain.domain.titleKey
@@ -84,6 +85,15 @@ private val RAIL_H = 152.dp
 
 private fun Title.art(): String = (items.firstOrNull { it.episode > 0 } ?: items.first()).id
 private fun Title.wide(): Boolean = Shapes.landscape(art(), guess = !reading)
+
+/** A title's genres across its files' overlays, first spelling kept. */
+private fun AppState.genresOf(t: Title): List<String> {
+    val seen = LinkedHashMap<String, String>()
+    for (item in t.items) for (g in overlays[item.id]?.genres.orEmpty()) seen.getOrPut(g.trim().lowercase()) { g.trim() }
+    return seen.values.filter { it.isNotEmpty() }
+}
+
+private fun AppState.synopsisOf(t: Title): String = t.items.firstNotNullOfOrNull { overlays[it.id]?.synopsis?.takeIf { s -> s.isNotBlank() } } ?: ""
 
 /** Every progress record the app holds, by item. */
 private fun AppState.allProgress(): Map<String, ProgressInfo> = continues.associateBy { it.itemId } + progress
@@ -169,7 +179,10 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                             color = l.text, fontSize = 40.sp, lineHeight = 40.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.6).sp,
                             maxLines = 3, overflow = TextOverflow.Ellipsis,
                         )
-                        Mono(heroMeta(hero), Modifier.padding(top = 14.dp), color = l.text.copy(alpha = 0.75f))
+                        Mono(heroMeta(hero) + state.genresOf(hero).take(2).joinToString("") { " · $it" }, Modifier.padding(top = 14.dp), color = l.text.copy(alpha = 0.75f))
+                        state.synopsisOf(hero).takeIf { it.isNotEmpty() }?.let { text ->
+                            Text(text, Modifier.padding(top = 14.dp), color = l.text.copy(alpha = 0.7f), fontSize = 14.sp, lineHeight = 22.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        }
                         Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Row(
                                 Modifier.height(44.dp).clip(CircleShape).background(Color.White).clickable { vm.open(nextUp(hero, state.progress)) }.padding(horizontal = 24.dp),
@@ -256,11 +269,24 @@ fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
     val titles = remember(state.titles, readingOnly) { if (readingOnly) state.titles.filter { it.reading } else state.titles }
     val libraries = remember(titles, state.libraries) { state.libraries.filter { lib -> titles.any { it.libraryId == lib.id } } }
     var shelves by rememberSaveable { mutableStateOf(prefs.libraryShelves) }
+    var unlocking by remember { mutableStateOf(false) }
     val byShelf = libraries.size > 1 && shelves
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(start = GUTTER, end = GUTTER, top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(if (readingOnly) R.string.nav_read else R.string.nav_library), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
+            Text(stringResource(if (readingOnly) R.string.nav_read else R.string.nav_library), Modifier.weight(1f), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
+            // One quiet control for private libraries: it never names them
+            // or says how many there are (D-156).
+            val locked = state.libraries.any { it.private && it.locked }
+            if (state.libraries.any { it.private }) {
+                IconBtn(
+                    if (locked) Ic.Lock else Ic.LockOpen,
+                    stringResource(if (locked) R.string.unlock_title else R.string.lock_again),
+                    { if (locked) unlocking = true else vm.lockAll() },
+                    outlined = true,
+                )
+            }
         }
+        if (unlocking) UnlockSheet(vm) { unlocking = false }
         if (libraries.size > 1) {
             Row(Modifier.padding(horizontal = GUTTER).padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for ((on, label) in listOf(true to R.string.view_by_library, false to R.string.view_all_titles)) {
@@ -338,7 +364,8 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
     var sheet by remember { mutableStateOf(false) }
     val now = remember { System.currentTimeMillis() / 1000 }
     val progress = remember(state.continues, state.progress) { state.allProgress() }
-    val results = remember(titles, filters, progress) { applyFilters(titles, filters, progress, now) }
+    val genresOf: (Title) -> List<String> = remember(state.overlays) { { t: Title -> state.genresOf(t) } }
+    val results = remember(titles, filters, progress, state.overlays) { applyFilters(titles, filters, progress, now, genresOf) }
     val grid = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val far by remember { derivedStateOf { grid.firstVisibleItemIndex > 10 } }
@@ -366,6 +393,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                     Modifier.padding(end = 4.dp).align(Alignment.CenterVertically),
                     color = l.muted, fontSize = 14.sp,
                 )
+                for (g in filters.genres) FilterChip(g) { filters = filters.copy(genres = filters.genres - g) }
                 filters.watch?.let { w -> FilterChip(watchLabel(w)) { filters = filters.copy(watch = null) } }
                 filters.form?.let { s -> FilterChip(formLabel(s)) { filters = filters.copy(form = null) } }
                 if (filters.kind.isNotEmpty()) FilterChip(filters.kind) { filters = filters.copy(kind = "") }
@@ -424,9 +452,11 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
     }
 
     if (sheet) {
-        val watchCounts = countBy(titles, filters, progress, now, Axis.Watch) { listOf(watchState(it, progress)) }
-        val formCounts = countBy(titles, filters, progress, now, Axis.Form) { listOf(if (it.items.size > 1) Form.Series else Form.Single) }
-        val kindCounts = countBy(titles, filters, progress, now, Axis.Kind) { t -> t.items.map { it.kind }.distinct() }
+        val watchCounts = countBy(titles, filters, progress, now, Axis.Watch, genresOf) { listOf(watchState(it, progress)) }
+        val formCounts = countBy(titles, filters, progress, now, Axis.Form, genresOf) { listOf(if (it.items.size > 1) Form.Series else Form.Single) }
+        val kindCounts = countBy(titles, filters, progress, now, Axis.Kind, genresOf) { t -> t.items.map { it.kind }.distinct() }
+        val genres = remember(titles, filters, progress, state.overlays) { genreFacets(titles, filters, progress, now, genresOf) }
+        var allGenres by remember { mutableStateOf(false) }
         val kinds = remember(titles) { titles.flatMap { t -> t.items.map { it.kind } }.distinct().filter { it.isNotEmpty() }.sorted() }
         Sheet(
             stringResource(R.string.filters),
@@ -469,8 +499,22 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
             }
             SheetHeading(stringResource(R.string.added))
             for (d in ADDED_DAYS) {
-                val n = remember(titles, filters, d) { applyFilters(titles, filters.copy(added = d), progress, now).size }
+                val n = remember(titles, filters, d, state.overlays) { applyFilters(titles, filters.copy(added = d), progress, now, genresOf).size }
                 OptionRow(addedLabel(d), n, filters.added == d, { filters = filters.copy(added = if (filters.added == d) 0 else d) }, enabled = n > 0)
+            }
+            if (genres.isNotEmpty()) {
+                SheetHeading(stringResource(R.string.genres) + " · " + genres.size)
+                for ((g, n) in if (allGenres) genres else genres.take(24)) {
+                    val on = filters.genres.any { it.equals(g, ignoreCase = true) }
+                    OptionRow(g, n, on, { filters = filters.copy(genres = if (on) filters.genres.filterNot { it.equals(g, ignoreCase = true) } else filters.genres + g) })
+                }
+                if (genres.size > 24) {
+                    Text(
+                        stringResource(if (allGenres) R.string.show_fewer else R.string.show_all_n, genres.size),
+                        Modifier.clickable { allGenres = !allGenres }.padding(horizontal = 8.dp, vertical = 12.dp),
+                        color = l.muted, fontSize = 12.sp,
+                    )
+                }
             }
         }
     }
@@ -549,7 +593,20 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                         color = l.text, fontSize = 30.sp, lineHeight = 32.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.1).sp,
                         maxLines = 3, overflow = TextOverflow.Ellipsis,
                     )
+                    state.genresOf(title).takeIf { it.isNotEmpty() }?.let { g ->
+                        Mono(g.take(4).joinToString("  /  "), Modifier.padding(top = 12.dp), color = l.text.copy(alpha = 0.75f), size = 11)
+                    }
                 }
+            }
+        }
+        state.synopsisOf(title).takeIf { it.isNotEmpty() }?.let { text ->
+            item {
+                var open by remember { mutableStateOf(false) }
+                Text(
+                    text,
+                    Modifier.padding(horizontal = GUTTER).padding(bottom = 16.dp).clickable { open = !open },
+                    color = l.text.copy(alpha = 0.7f), fontSize = 14.sp, lineHeight = 22.sp, maxLines = if (open) 40 else 3, overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         item {
@@ -708,4 +765,44 @@ fun clock(sec: Double): String {
     val m = (s % 3600) / 60
     val r = s % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, r) else "%d:%02d".format(m, r)
+}
+
+
+/**
+ * Unlocking private libraries for this session: the account's library
+ * PIN, or its password. Nothing here names a library or says how many
+ * there are.
+ */
+@Composable
+fun UnlockSheet(vm: AppViewModel, onClose: () -> Unit) {
+    val l = LocalLain.current
+    val scope = rememberCoroutineScope()
+    var usePin by remember { mutableStateOf(true) }
+    var secret by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<Throwable?>(null) }
+    fun submit() {
+        if (secret.isEmpty() || busy) return
+        busy = true
+        scope.launch {
+            error = vm.unlock(secret, usePin)
+            busy = false
+            if (error == null) onClose() else secret = ""
+        }
+    }
+    Sheet(stringResource(R.string.unlock_title), onClose) {
+        Text(stringResource(R.string.unlock_body), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
+        Gap(16.dp)
+        Text(stringResource(if (usePin) R.string.unlock_pin else R.string.login_password), color = l.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        Gap(6.dp)
+        SecretField(secret, { secret = it; error = null }, numeric = usePin, onDone = { submit() }, modifier = Modifier.fillMaxWidth())
+        error?.let { ErrorLine(it, Modifier.padding(top = 8.dp)) }
+        Gap(16.dp)
+        WButton(stringResource(if (busy) R.string.working else R.string.unlock_go), { submit() }, Modifier.fillMaxWidth(), enabled = secret.isNotEmpty() && !busy, large = true)
+        Text(
+            stringResource(if (usePin) R.string.unlock_use_password else R.string.unlock_use_pin),
+            Modifier.fillMaxWidth().clickable { usePin = !usePin; secret = ""; error = null }.padding(vertical = 14.dp),
+            color = l.muted, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+    }
 }
