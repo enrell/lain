@@ -176,7 +176,7 @@
 				</Button>
 				<Button size="sm" variant="secondary" onclick={() => (shareOpen = true)}>{t('social.title.share')} <Kbd>S</Kbd></Button>
 				<Button size="sm" variant="secondary" onclick={() => (collectOpen = true)}>{t('social.title.collect')} <Kbd>C</Kbd></Button>
-				<Button size="sm" variant="ghost" aria-pressed={favorite} loading={favBusy} onclick={() => void toggleFavorite()}>
+				<Button size="sm" variant="secondary" aria-pressed={favorite} loading={favBusy} onclick={() => void toggleFavorite()}>
 					{favorite ? t('social.title.favorite') : t('social.title.addFavorite')} <Kbd>F</Kbd>
 				</Button>
 			</div>

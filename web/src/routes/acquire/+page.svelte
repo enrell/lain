@@ -1,4 +1,5 @@
 <script lang="ts">
+	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import { nameable } from '$lib/stores/media-cache.svelte';
 	/*
 	 * Acquire (docs/slices/acquisition.md): search indexers, grab a
@@ -260,9 +261,9 @@
 		{#each [{ id: 'search', key: '1', label: t('acquire.tab.search') }, { id: 'queue', key: '2', label: t('acquire.tab.queue') }, { id: 'wanted', key: '3', label: t('acquire.tab.wanted') }, { id: 'blocklist', key: '4', label: t('acquire.tab.blocklist') }, { id: 'subtitles', key: '5', label: t('acquire.tab.subtitles') }] as x (x.id)}
 			<button type="button" role="tab" aria-selected={tab === x.id} onclick={() => setTab(x.id as Tab)}
 				class="-mb-px flex items-center gap-2 border-b-2 pb-2 text-sm transition-colors {tab === x.id ? 'border-accent text-foreground' : 'border-transparent text-muted hover:text-foreground'}">
+				<kbd class="text-muted">{x.key}</kbd>
 				{x.label}
-				{#if x.id === 'queue' && grabs}<span class="font-mono text-[10px] text-muted">{grabs.filter((g) => isActiveGrab(g.state)).length}</span>{/if}
-				<kbd class="rounded border border-hairline px-1 font-mono text-[10px] text-muted">{x.key}</kbd>
+				{#if x.id === 'queue' && grabs && grabs.filter((g) => isActiveGrab(g.state)).length > 0}<span class="rounded-full bg-accent px-1.5 font-mono text-[10px] text-background">{grabs.filter((g) => isActiveGrab(g.state)).length}</span>{/if}
 			</button>
 		{/each}
 	</div>
@@ -291,11 +292,11 @@
 				<span class="text-xs text-muted">{library?.type === 'manga' || library?.type === 'comic' ? t('acquire.search.chapter') : t('acquire.search.episode')}</span>
 				<input bind:value={episode} type="number" min="0" class="{field} w-full font-mono" />
 			</label>
-			<Button type="submit" loading={searching} disabled={!query.trim()}>{t('acquire.search.submit')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
+			<Button type="submit" loading={searching} disabled={!query.trim() || indexers.length === 0} title={indexers.length === 0 ? t('acquire.search.noIndexers') : undefined}>{t('acquire.search.submit')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
 		</form>
 
 		{#if indexers.length === 0}
-			<p class="text-sm text-muted">{t('acquire.search.noIndexers')} <a class="text-accent" href="/settings/indexers">{t('acquire.indexersLink')}</a></p>
+			<p class="flex flex-wrap items-center gap-3 text-sm text-muted">{t('acquire.search.noIndexers')} <LinkButton href="/settings/indexers" variant="secondary" size="sm">{t('acquire.indexersLink')}</LinkButton></p>
 		{:else if results}
 			{#if results.candidates.length === 0}
 				<p class="py-6 text-sm text-muted">{t('acquire.search.empty')}</p>

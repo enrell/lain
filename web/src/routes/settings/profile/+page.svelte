@@ -158,7 +158,8 @@
 					autocomplete="nickname"
 					aria-label="Display name"
 				/>
-				<span class="w-12 text-right font-mono text-[10px] tabular-nums text-muted">{name.length}/{MAX_NAME}</span>
+				<!-- The count appears with the first character: beside a placeholder, "0/40" read as a broken counter. -->
+				<span class="w-12 text-right font-mono text-[10px] tabular-nums text-muted" class:invisible={name.length === 0}>{name.length}/{MAX_NAME}</span>
 			</SettingRow>
 			<SettingRow id="bio" label="Bio" hint="One or two lines.">
 				<textarea
@@ -172,7 +173,7 @@
 						if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit();
 					}}
 				></textarea>
-				<span class="w-12 text-right font-mono text-[10px] tabular-nums text-muted">{bio.length}/{MAX_BIO}</span>
+				<span class="w-12 text-right font-mono text-[10px] tabular-nums text-muted" class:invisible={bio.length === 0}>{bio.length}/{MAX_BIO}</span>
 			</SettingRow>
 			{#if dirty}
 				<div class="flex items-center justify-end gap-3 py-3">

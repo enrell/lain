@@ -118,7 +118,7 @@
 			maxlength="3"
 			autocomplete="off"
 			spellcheck="false"
-			placeholder="Automatic"
+			placeholder="Auto"
 			aria-label="Language code"
 			aria-invalid={languageError ? 'true' : undefined}
 			bind:value={language}

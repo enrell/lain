@@ -116,7 +116,7 @@
 				loading="eager"
 				decoding="async"
 				referrerpolicy="no-referrer"
-				class="mb-6 max-h-60 w-auto max-w-full rounded-xl object-contain shadow-[0_20px_50px_rgba(0,0,0,0.5)] ring-1 ring-white/10 md:hidden"
+				class="mb-5 max-h-40 w-auto max-w-full rounded-xl object-contain shadow-[0_20px_50px_rgba(0,0,0,0.5)] ring-1 ring-white/10 md:hidden"
 			/>
 			<p class="mb-4 font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">
 				{eyebrow}

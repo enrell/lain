@@ -288,8 +288,8 @@
 			<button type="button" class="absolute left-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur md:hidden" aria-label="Back" onclick={() => history.back()}>
 				<ArrowLeft class="size-5" aria-hidden="true" />
 			</button>
-			<div class="relative mx-auto flex w-full max-w-[1800px] flex-col gap-5 px-5 pb-6 pt-16 sm:px-8 md:min-h-[30rem] md:flex-row md:items-end md:gap-10 md:pb-12 md:pt-36 lg:px-10">
-				<div class="w-28 shrink-0 md:w-56">
+			<div class="relative mx-auto flex w-full max-w-[1800px] flex-col gap-5 px-5 pb-6 pt-16 sm:px-8 md:min-h-[26rem] md:flex-row md:items-end md:gap-10 md:pb-10 md:pt-32 lg:px-10">
+				<div class="w-24 shrink-0 md:w-52">
 					<Poster {item} {enrichment} class="aspect-[2/3] rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10" priority />
 				</div>
 				<div class="hero-monolith-copy min-w-0 flex-1">

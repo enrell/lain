@@ -111,7 +111,7 @@
 			<p class="mt-0.5 text-sm text-muted max-md:hidden">Everything Lain has indexed.</p>
 		</div>
 		{#if session.isAdmin || locked.length > 0 || open.length > 0}
-			<div class="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em] max-md:w-full max-md:gap-2 max-md:[&>*]:min-h-10 max-md:[&>*]:rounded-lg max-md:[&>*]:border max-md:[&>*]:border-line max-md:[&>*]:px-3.5 max-md:[&>a]:flex max-md:[&>a]:items-center">
+			<div class="flex items-center gap-1 text-sm max-md:w-full max-md:gap-2 max-md:[&>*]:min-h-10 max-md:[&>*]:rounded-lg max-md:[&>*]:border max-md:[&>*]:border-line max-md:[&>*]:px-3.5 max-md:[&>a]:flex max-md:[&>a]:items-center">
 				{#if locked.length > 0 || open.length > 0}
 					<button
 						type="button"
@@ -135,7 +135,7 @@
 						{scan.running ? 'Scanning…' : 'Scan'} <kbd class="text-muted/70">S</kbd>
 					</button>
 					<a href="/settings/libraries" class="rounded-md px-2.5 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground">
-						Manage ›
+						Manage libraries
 					</a>
 				{/if}
 			</div>

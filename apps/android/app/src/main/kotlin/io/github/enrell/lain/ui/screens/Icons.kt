@@ -77,5 +77,6 @@ object Ic {
     val Dots by lazy { stroke("M12 4a1 1 0 1 0 0 2a1 1 0 1 0 0-2", "M12 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2", "M12 18a1 1 0 1 0 0 2a1 1 0 1 0 0-2", filled = true) }
     val Eye by lazy { stroke("M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0", "M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6") }
     val RotateCcw by lazy { stroke("M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", "M3 3v5h5") }
+    val Swap by lazy { stroke("M8 3 4 7l4 4", "M4 7h16", "m16 21 4-4-4-4", "M20 17H4") }
     val Check by lazy { stroke("M20 6 9 17l-5-5") }
 }

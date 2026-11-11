@@ -253,11 +253,11 @@
 					? 'border-accent text-foreground'
 					: 'border-transparent text-muted hover:text-foreground'}"
 			>
+				<Kbd>{x.key}</Kbd>
 				{x.label()}
 				{#if x.id === 'notifications' && socialBadge.unread > 0}
 					<span class="rounded-full bg-accent px-1.5 font-mono text-[10px] text-background">{socialBadge.unread}</span>
 				{/if}
-				<Kbd>{x.key}</Kbd>
 			</button>
 		{/each}
 	</div>

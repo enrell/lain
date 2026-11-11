@@ -254,7 +254,7 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                         }
                     }
                     // A row half out of view reads as "more below", not as cut by the bar.
-                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(36.dp).background(Brush.verticalGradient(listOf(Color.Transparent, l.bg))))
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(64.dp).background(Brush.verticalGradient(0f to Color.Transparent, 0.55f to l.bg.copy(alpha = 0.82f), 1f to l.bg)))
                     if (s is Screen.TitleDetail) {
                         Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(20.dp).background(Brush.verticalGradient(listOf(l.bg, Color.Transparent))))
                     }
@@ -319,7 +319,11 @@ private fun BottomBar(dests: List<Dest>, current: Screen, vm: AppViewModel) {
     Column(Modifier.background(l.bg)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(l.line))
         Row(Modifier.fillMaxWidth().height(62.dp)) {
-            for (d in bar) Tab(stringResource(labelOf(d.id)), iconOf(d.id), d.screen == root, Modifier.weight(1f)) { vm.go(d.screen) }
+            for (d in bar) Tab(stringResource(labelOf(d.id)), iconOf(d.id), d.screen == root, Modifier.weight(1f)) {
+                // A destination opened from the bar starts at its top; Back is what returns to a place.
+                if (d.screen == Screen.Library) io.github.enrell.lain.ui.screens.ListMemory.forget("library-root")
+                vm.go(d.screen)
+            }
         }
     }
 }

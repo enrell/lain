@@ -94,7 +94,7 @@
     <string name="settings_appearance">Appearance</string>
     <string name="settings_theme_use">Use</string>
     <string name="settings_theme_active">Active</string>
-    <string name="settings_offline">Offline copies</string>
+    <string name="settings_offline">Downloads</string>
     <string name="settings_budget">Storage limit (GB)</string>
     <string name="settings_budget_hint">Copies and partial downloads stay under this; 0 is no cap.</string>
     <string name="settings_floor">Keep free (GB)</string>
@@ -215,7 +215,7 @@
     </plurals>
     <string name="downloads_empty_title">No downloads yet</string>
     <string name="settings_playback">Playback</string>
-    <string name="settings_skip_hint">Auto skips 30 s in titles over an hour and 10 s in shorter ones.</string>
+    <string name="settings_skip_hint">Auto jumps 30 s in videos over an hour and 10 s in shorter ones.</string>
     <string name="settings_auto">Auto</string>
     <string name="settings_tiles_hint">The size of cards in a library.</string>
     <string name="settings_change">Change</string>
@@ -279,7 +279,7 @@
         <item quantity="one">%1$d volume</item>
         <item quantity="other">%1$d volumes</item>
     </plurals>
-    <string name="settings_skip_fixed">A double tap and the skip buttons move %1$d s in every title.</string>
+    <string name="settings_skip_fixed">A double tap or the skip buttons jump %1$d s in any video.</string>
     <string name="settings_sync_none">Everything is synced with the server.</string>
     <plurals name="settings_sync_waiting">
         <item quantity="one">%1$d position is waiting to sync</item>
@@ -293,4 +293,7 @@
     <string name="download_all_q">Download the whole title?</string>
     <string name="download_all_body">It is kept on this device until you remove it in Downloads.</string>
     <string name="watched">Watched</string>
+    <string name="player_skip_back">Back %1$d seconds</string>
+    <string name="player_skip_fwd">Forward %1$d seconds</string>
+    <string name="genres_all_hint">Titles shown have every genre you pick.</string>
 </resources>
