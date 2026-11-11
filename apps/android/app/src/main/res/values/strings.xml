@@ -203,4 +203,30 @@
     <string name="player_effect_failed">Anime4K unavailable: %1$s</string>
     <string name="player_skip">Skip</string>
     <string name="player_skip_auto">Auto (%1$d s)</string>
+    <string name="tagline">Your media. Your machine. Your rules.</string>
+    <string name="downloads_of">of %1$s</string>
+    <plurals name="count_copies">
+        <item quantity="one">%1$d copy</item>
+        <item quantity="other">%1$d copies</item>
+    </plurals>
+    <plurals name="downloads_start_n">
+        <item quantity="one">Download %1$d queued</item>
+        <item quantity="other">Download %1$d queued</item>
+    </plurals>
+    <string name="downloads_empty_title">Nothing kept on this device yet</string>
+    <string name="settings_playback">Playback</string>
+    <string name="settings_skip_hint">How far a double tap or the skip buttons go. Auto is 30 s in a title of an hour or more, 10 s otherwise.</string>
+    <string name="settings_auto">Auto</string>
+    <string name="settings_tiles_hint">The size of cards in a library.</string>
+    <string name="settings_change">Change</string>
+    <string name="settings_session">Session</string>
+    <string name="settings_session_hint">Signs out of this device only.</string>
+    <string name="settings_colours">Colours follow your server\'s theme.</string>
+    <string name="reader_pages">%1$d / %2$d</string>
+    <string name="reader_rtl">Right to left</string>
+    <string name="reader_ltr">Left to right</string>
+    <string name="hero_continue">Continue your story</string>
+    <string name="action_resume_short">Continue</string>
+    <string name="home_empty_title">Nothing here yet</string>
+    <string name="library_empty_title">No titles in this library</string>
 </resources>

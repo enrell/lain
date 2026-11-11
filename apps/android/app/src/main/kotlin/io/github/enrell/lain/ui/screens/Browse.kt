@@ -1,5 +1,6 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -143,10 +144,16 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
         buildRails(state.titles, state.continues, state.items, state.libraries)
     }
     if (rails.isEmpty()) {
-        Centered {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(stringResource(if (state.busy) R.string.working else R.string.home_empty), color = l.muted)
-                ErrorLine(state.error)
+        if (state.busy && state.error == null) {
+            HomeSkeleton()
+        } else {
+            Box(Modifier.fillMaxSize().padding(GUTTER), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    EmptyState(Ic.Library, stringResource(R.string.home_empty_title), stringResource(R.string.home_empty)) {
+                        WButton(stringResource(R.string.action_refresh), { vm.refresh() }, kind = Btn.Secondary, icon = Ic.Refresh)
+                    }
+                    ErrorLine(state.error, Modifier.padding(top = 12.dp))
+                }
             }
         }
         return
@@ -161,46 +168,46 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
             }
         }
     }
-    val heroH = (LocalConfiguration.current.screenHeightDp * 0.66f).dp
+    val resumeHero = remember(rails, hero) { (rails.firstOrNull()?.cards?.firstOrNull() as? Card.Resume)?.takeIf { hero != null && titleKey(it.item) == hero.key } }
+    Refreshable(state.busy, { vm.refresh() }) {
     LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
         if (hero != null) {
             item {
-                Box(Modifier.fillMaxWidth().height(heroH)) {
-                    Art(hero.art(), Modifier.fillMaxSize())
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Transparent, 0.45f to l.bg.copy(alpha = 0.35f), 1f to l.bg)))
-                    Column(Modifier.align(Alignment.BottomStart).padding(horizontal = GUTTER).padding(bottom = 20.dp)) {
-                        Mono(
-                            stringResource(R.string.hero_label) + if (hero.year > 0) " / ${hero.year}" else "",
-                            color = l.accent,
-                        )
-                        Text(
-                            hero.title.uppercase(),
-                            Modifier.padding(top = 14.dp),
-                            color = l.text, fontSize = 40.sp, lineHeight = 40.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.6).sp,
-                            maxLines = 3, overflow = TextOverflow.Ellipsis,
-                        )
-                        Mono(heroMeta(hero) + state.genresOf(hero).take(2).joinToString("") { " · $it" }, Modifier.padding(top = 14.dp), color = l.text.copy(alpha = 0.75f))
-                        state.synopsisOf(hero).takeIf { it.isNotEmpty() }?.let { text ->
-                            Text(text, Modifier.padding(top = 14.dp), color = l.text.copy(alpha = 0.7f), fontSize = 14.sp, lineHeight = 22.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                HeroFrame(hero.art(), hero.wide()) {
+                    Mono(
+                        stringResource(if (resumeHero != null) R.string.hero_continue else R.string.hero_label) + if (hero.year > 0) " / ${hero.year}" else "",
+                        color = l.accent,
+                    )
+                    Text(
+                        hero.title.uppercase(),
+                        Modifier.padding(top = 12.dp),
+                        color = l.text, fontSize = 36.sp, lineHeight = 37.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.4).sp,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis,
+                    )
+                    Mono(heroMeta(hero) + state.genresOf(hero).take(2).joinToString("") { " · $it" }, Modifier.padding(top = 12.dp), color = l.text.copy(alpha = 0.75f))
+                    state.synopsisOf(hero).takeIf { it.isNotEmpty() }?.let { text ->
+                        Text(text, Modifier.padding(top = 12.dp), color = l.text.copy(alpha = 0.7f), fontSize = 14.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            Modifier.height(46.dp).clip(CircleShape).background(Color.White).clickable { vm.open(resumeHero?.item ?: nextUp(hero, state.progress)) }.padding(horizontal = 24.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(Ic.Play, null, tint = Color.Black, modifier = Modifier.size(14.dp))
+                            Text(
+                                stringResource(when { resumeHero != null -> R.string.action_resume_short; hero.reading -> R.string.action_read; else -> R.string.action_play }),
+                                color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            )
                         }
-                        Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(
-                                Modifier.height(44.dp).clip(CircleShape).background(Color.White).clickable { vm.open(nextUp(hero, state.progress)) }.padding(horizontal = 24.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Icon(Ic.Play, null, tint = Color.Black, modifier = Modifier.size(14.dp))
-                                Text(stringResource(if (hero.reading) R.string.action_read else R.string.action_play), color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                            Row(
-                                Modifier.height(44.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)).border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                    .clickable { vm.go(Screen.TitleDetail(hero.key)) }.padding(horizontal = 20.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Icon(Ic.Info, null, tint = l.text, modifier = Modifier.size(16.dp))
-                                Text(stringResource(R.string.action_details), color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            }
+                        Row(
+                            Modifier.height(46.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)).border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                .clickable { vm.go(Screen.TitleDetail(hero.key)) }.padding(horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(Ic.Info, null, tint = l.text, modifier = Modifier.size(16.dp))
+                            Text(stringResource(R.string.action_details), color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -208,7 +215,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
         }
         if (state.fromCache) item { OfflineNote(state) }
         items(rails) { rail ->
-            Column(Modifier.padding(top = 28.dp)) {
+            Column(Modifier.padding(top = 26.dp)) {
                 val lib = (rail.label as? RailLabel.Library)
                 val libId = lib?.let { n -> state.libraries.firstOrNull { it.name == n.name }?.id }
                 RailHeader(
@@ -238,6 +245,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                 }
             }
         }
+    }
     }
 }
 
@@ -299,10 +307,21 @@ fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
         }
         if (state.fromCache) OfflineNote(state)
         if (titles.isEmpty()) {
-            Centered { Text(stringResource(R.string.library_empty), color = l.muted) }
+            if (state.busy) {
+                Column(Modifier.padding(GUTTER), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    repeat(3) { Skeleton(Modifier.fillMaxWidth().height(RAIL_H)) }
+                }
+            } else {
+                Box(Modifier.padding(GUTTER)) {
+                    EmptyState(Ic.Library, stringResource(R.string.library_empty_title), stringResource(R.string.library_empty)) {
+                        WButton(stringResource(R.string.action_refresh), { vm.refresh() }, kind = Btn.Secondary, icon = Ic.Refresh)
+                    }
+                }
+            }
             return
         }
         if (byShelf) {
+            Refreshable(state.busy, { vm.refresh() }) {
             LazyColumn(contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp)) {
                 items(libraries, key = { it.id }) { lib ->
                     val mine = remember(titles, lib.id) { titles.filter { it.libraryId == lib.id }.sortedByDescending { it.latest } }
@@ -323,6 +342,7 @@ fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
                         }
                     }
                 }
+            }
             }
         } else {
             Box(Modifier.padding(top = 10.dp)) { LibraryBrowser(titles, state, vm, searchHint = stringResource(R.string.search_library)) }
@@ -581,28 +601,23 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
     val series = title.items.size > 1
     LazyColumn(contentPadding = PaddingValues(bottom = 40.dp)) {
         item {
-            Box(Modifier.fillMaxWidth().height(272.dp)) {
-                Art(title.art(), Modifier.fillMaxSize())
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to l.bg.copy(alpha = 0.25f), 0.5f to l.bg.copy(alpha = 0.55f), 1f to l.bg)))
-                Box(Modifier.padding(6.dp)) { IconBtn(Ic.ArrowLeft, "Back", { vm.back() }, tint = l.text) }
-                Column(Modifier.align(Alignment.BottomStart).padding(horizontal = GUTTER).padding(bottom = 20.dp)) {
-                    Mono(
-                        listOfNotNull(
-                            title.year.takeIf { it > 0 }?.toString(),
-                            if (series) stringResource(R.string.format_series) else title.kind,
-                            if (series) titleSubtitle(title) else null,
-                        ).joinToString(" · "),
-                        color = l.accent,
-                    )
-                    Text(
-                        title.title.uppercase(),
-                        Modifier.padding(top = 12.dp),
-                        color = l.text, fontSize = 30.sp, lineHeight = 32.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.1).sp,
-                        maxLines = 3, overflow = TextOverflow.Ellipsis,
-                    )
-                    state.genresOf(title).takeIf { it.isNotEmpty() }?.let { g ->
-                        Mono(g.take(4).joinToString("  /  "), Modifier.padding(top = 12.dp), color = l.text.copy(alpha = 0.75f), size = 11)
-                    }
+            HeroFrame(title.art(), title.wide(), back = { vm.back() }, compact = true) {
+                Mono(
+                    listOfNotNull(
+                        title.year.takeIf { it > 0 }?.toString(),
+                        if (series) stringResource(R.string.format_series) else title.kind,
+                        if (series) titleSubtitle(title) else null,
+                    ).joinToString(" · "),
+                    color = l.accent,
+                )
+                Text(
+                    title.title.uppercase(),
+                    Modifier.padding(top = 10.dp),
+                    color = l.text, fontSize = 28.sp, lineHeight = 30.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.0).sp,
+                    maxLines = 4, overflow = TextOverflow.Ellipsis,
+                )
+                state.genresOf(title).takeIf { it.isNotEmpty() }?.let { g ->
+                    Mono(g.take(4).joinToString("  /  "), Modifier.padding(top = 10.dp), color = l.text.copy(alpha = 0.75f), size = 11)
                 }
             }
         }
@@ -815,5 +830,78 @@ fun UnlockSheet(vm: AppViewModel, onClose: () -> Unit) {
             Modifier.fillMaxWidth().clickable { usePin = !usePin; secret = ""; error = null }.padding(vertical = 14.dp),
             color = l.muted, fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
+    }
+}
+
+
+/**
+ * A hero that reads whatever the art is. The art's colours wash the
+ * background (a poster's own lettering dissolves in it); the art itself
+ * is shown crisp and whole, as a card for a portrait cover or across the
+ * top for a landscape still; and the words sit on plain ground under it.
+ */
+@Composable
+private fun HeroFrame(artId: String, wide: Boolean, back: (() -> Unit)? = null, compact: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+    val l = LocalLain.current
+    Box(Modifier.fillMaxWidth()) {
+        Ambient(artId, Modifier.matchParentSize())
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to l.bg.copy(alpha = 0.15f), 0.55f to l.bg.copy(alpha = 0.55f), 1f to l.bg)))
+        Column(Modifier.fillMaxWidth()) {
+            if (wide) {
+                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+                    Art(artId, Modifier.fillMaxSize())
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.25f), 0.3f to Color.Transparent, 0.7f to Color.Transparent, 1f to l.bg.copy(alpha = 0.85f))))
+                }
+                Column(Modifier.padding(horizontal = GUTTER).padding(top = 14.dp, bottom = 20.dp), content = content)
+            } else if (compact) {
+                Row(Modifier.padding(start = GUTTER, end = GUTTER, top = 60.dp, bottom = 20.dp), verticalAlignment = Alignment.Bottom) {
+                    Box(Modifier.width(112.dp).aspectRatio(Shapes.PORTRAIT).clip(l.cardShape).border(1.dp, Color.White.copy(alpha = 0.1f), l.cardShape)) { Art(artId, Modifier.fillMaxSize()) }
+                    Column(Modifier.padding(start = 16.dp), content = content)
+                }
+            } else {
+                Column(Modifier.padding(horizontal = GUTTER).padding(top = 28.dp, bottom = 22.dp)) {
+                    Box(Modifier.width(168.dp).aspectRatio(Shapes.PORTRAIT).clip(l.cardShape).border(1.dp, Color.White.copy(alpha = 0.1f), l.cardShape)) { Art(artId, Modifier.fillMaxSize()) }
+                    Gap(20.dp)
+                    content()
+                }
+            }
+        }
+        if (back != null) Box(Modifier.padding(6.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))) { IconBtn(Ic.ArrowLeft, "Back", back, tint = Color.White) }
+    }
+}
+
+
+/** Pull down to read the catalog again. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun Refreshable(refreshing: Boolean, onRefresh: () -> Unit, content: @Composable () -> Unit) {
+    val l = LocalLain.current
+    val pull = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = onRefresh,
+        state = pull,
+        indicator = {
+            androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator(
+                state = pull, isRefreshing = refreshing, modifier = Modifier.align(Alignment.TopCenter), containerColor = l.raised, color = l.accent,
+            )
+        },
+    ) { content() }
+}
+
+/** Home while the first catalog arrives: the shape of what is coming. */
+@Composable
+private fun HomeSkeleton() {
+    Column(Modifier.fillMaxSize().padding(GUTTER), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Skeleton(Modifier.width(168.dp).aspectRatio(Shapes.PORTRAIT))
+        Skeleton(Modifier.fillMaxWidth(0.7f).height(34.dp))
+        Skeleton(Modifier.fillMaxWidth(0.45f).height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Skeleton(Modifier.width(110.dp).height(46.dp))
+            Skeleton(Modifier.width(120.dp).height(46.dp))
+        }
+        Gap(8.dp)
+        Skeleton(Modifier.fillMaxWidth(0.4f).height(20.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) { repeat(3) { Skeleton(Modifier.width(RAIL_H * Shapes.PORTRAIT).height(RAIL_H)) } }
     }
 }

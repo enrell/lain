@@ -120,11 +120,25 @@ fun Art(itemId: String, modifier: Modifier = Modifier, scale: ContentScale = Con
     // What memory already holds paints in the first frame. (The picture's
     // shape is recorded by the loader, never here: writing state while a
     // lazy grid composes an item during its own measure pass crashes it.)
-    val bmp: ImageBitmap? by produceState(ctx.graph.artNow(itemId), itemId) {
+    val cached = remember(itemId) { ctx.graph.artNow(itemId) }
+    val bmp: ImageBitmap? by produceState(cached, itemId) {
         if (value == null) value = ctx.graph.art(itemId)
     }
+    // A picture that had to be fetched fades in; one from memory is simply there.
+    val alpha by animateFloatAsState(if (bmp != null) 1f else 0f, tween(if (cached != null) 0 else 220), label = "art")
     Box(modifier.background(l.surface)) {
-        bmp?.let { Image(it, contentDescription = null, contentScale = scale, modifier = Modifier.fillMaxSize()) }
+        bmp?.let { Image(it, contentDescription = null, contentScale = scale, alpha = alpha, modifier = Modifier.fillMaxSize()) }
+    }
+}
+
+/** The art's colours as a soft backdrop (see `AppGraph.ambient`). */
+@Composable
+fun Ambient(itemId: String, modifier: Modifier = Modifier, strength: Float = 0.75f) {
+    val ctx = LocalContext.current
+    val bmp: ImageBitmap? by produceState<ImageBitmap?>(null, itemId) { value = ctx.graph.ambient(itemId) }
+    val alpha by animateFloatAsState(if (bmp != null) strength else 0f, tween(420), label = "ambient")
+    Box(modifier) {
+        bmp?.let { Image(it, contentDescription = null, contentScale = ContentScale.FillBounds, alpha = alpha, filterQuality = androidx.compose.ui.graphics.FilterQuality.High, modifier = Modifier.fillMaxSize()) }
     }
 }
 

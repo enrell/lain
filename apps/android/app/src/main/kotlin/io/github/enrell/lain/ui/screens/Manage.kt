@@ -1,5 +1,25 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.enrell.lain.ui.Screen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,7 +58,8 @@ import io.github.enrell.lain.ui.theme.LocalLain
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Offline copies of this server: progress, pause/resume, delete, and the device budget. */
+
+/** Offline copies: what they take, what is queued, and each one with its state. */
 @Composable
 fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
     val l = LocalLain.current
@@ -53,79 +74,100 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
             delay(if (live.running) 1_000 else 5_000)
         }
     }
-    Column(Modifier.fillMaxSize().padding(l.sp(4)), verticalArrangement = Arrangement.spacedBy(l.sp(3))) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(l.sp(2))) {
-            Text(stringResource(R.string.nav_downloads), style = MaterialTheme.typography.headlineLarge)
+    val queued = state.copies.count { it.state == CopyState.QUEUED }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 32.dp)) {
+        item {
+            Text(stringResource(R.string.nav_downloads), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
+            Text(stringResource(R.string.downloads_hint), Modifier.padding(top = 4.dp), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
+            // What the copies take of the room they were given.
             state.usage?.let { u ->
-                Label(
-                    if (u.maxBytes > 0) stringResource(R.string.downloads_usage, bytes(u.usedBytes), bytes(u.maxBytes))
-                    else bytes(u.usedBytes),
-                )
-            }
-        }
-        Text(stringResource(R.string.downloads_hint), color = l.muted, style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(l.sp(2))) {
-            if (live.running) {
-                Action(stringResource(R.string.downloads_stop), null, { DownloadService.stop(context) })
-            } else {
-                Action(stringResource(R.string.downloads_start), null, { DownloadService.start(context) }, primary = state.copies.any { it.state == CopyState.QUEUED })
-            }
-            Action(stringResource(R.string.action_refresh), null, { model.refresh(); vm.refreshProgress() })
-        }
-        live.stopped?.let { Text(stringResource(R.string.downloads_stopped, it), color = l.warn, style = MaterialTheme.typography.bodySmall) }
-        live.evicted.lastOrNull()?.let { Text(stringResource(R.string.downloads_evicted, it), color = l.muted, style = MaterialTheme.typography.bodySmall) }
-        ErrorLine(state.error)
-        if (state.copies.isEmpty()) {
-            Text(stringResource(R.string.downloads_empty), color = l.muted)
-        }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(l.sp(2)), modifier = Modifier.weight(1f)) {
-            items(state.copies, key = { it.itemId }) { c ->
-                val (done, total) = live.bytes[c.itemId] ?: (c.bytes to c.size)
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(l.sp(1))) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(l.sp(2))) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                c.title + episodeLabel(c.season, c.episode, c.kind in io.github.enrell.lain.domain.READING_KINDS).let { if (it.isEmpty()) "" else " · $it" },
-                                style = MaterialTheme.typography.titleSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Label(
-                                when (c.state) {
-                                    CopyState.DONE -> stringResource(R.string.copy_done, bytes(c.bytes))
-                                    CopyState.QUEUED -> stringResource(R.string.copy_queued, bytes(done), if (total > 0) bytes(total) else "?")
-                                    CopyState.PAUSED -> stringResource(R.string.copy_paused, bytes(done))
-                                    CopyState.FAILED -> stringResource(R.string.copy_failed, c.error.ifBlank { c.code })
-                                },
-                                color = when (c.state) {
-                                    CopyState.DONE -> l.ok
-                                    CopyState.FAILED -> l.danger
-                                    else -> l.muted
-                                },
-                            )
-                        }
-                        val item = vm.state.value.items[c.itemId]
-                        if (c.state == CopyState.DONE && item != null) Action(stringResource(R.string.action_open), null, { vm.open(item) })
-                        when (c.state) {
-                            CopyState.QUEUED -> Action(stringResource(R.string.action_pause), null, { model.pause(c.itemId) })
-                            CopyState.PAUSED, CopyState.FAILED -> Action(stringResource(R.string.action_resume), null, {
-                                model.resume(c.itemId)
-                                DownloadService.start(context)
-                            })
-                            CopyState.DONE -> Unit
-                        }
-                        Action(stringResource(R.string.action_delete), null, { model.remove(c.itemId) })
+                Column(Modifier.padding(top = 18.dp).fillMaxWidth().clip(l.panelShape).border(1.dp, l.line.copy(alpha = 0.7f), l.panelShape).background(l.surface.copy(alpha = 0.4f)).padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(bytes(u.usedBytes), color = l.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        if (u.maxBytes > 0) Text(stringResource(R.string.downloads_of, bytes(u.maxBytes)), Modifier.padding(start = 6.dp, bottom = 2.dp), color = l.muted, fontSize = 13.sp)
+                        Box(Modifier.weight(1f))
+                        Mono(pluralStringResource(R.plurals.count_copies, state.copies.size, state.copies.size))
                     }
-                    if (c.state == CopyState.QUEUED && total > 0) {
-                        LinearProgressIndicator(progress = { (done.toFloat() / total).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = l.accent)
+                    if (u.maxBytes > 0) {
+                        Box(Modifier.padding(top = 12.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(l.raised)) {
+                            Box(Modifier.fillMaxWidth((u.usedBytes.toFloat() / u.maxBytes).coerceIn(0f, 1f)).height(4.dp).clip(CircleShape).background(l.accent))
+                        }
                     }
                 }
+            }
+            if (queued > 0 || live.running) {
+                Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (live.running) {
+                        WButton(stringResource(R.string.downloads_stop), { DownloadService.stop(context) }, kind = Btn.Secondary, icon = Ic.Pause)
+                    } else {
+                        WButton(pluralStringResource(R.plurals.downloads_start_n, queued, queued), { DownloadService.start(context) }, icon = Ic.Download)
+                    }
+                }
+            }
+            live.stopped?.let { Text(stringResource(R.string.downloads_stopped, it), Modifier.padding(top = 10.dp), color = l.warn, fontSize = 13.sp) }
+            live.evicted.lastOrNull()?.let { Text(stringResource(R.string.downloads_evicted, it), Modifier.padding(top = 6.dp), color = l.muted, fontSize = 13.sp) }
+            ErrorLine(state.error, Modifier.padding(top = 8.dp))
+            Gap(18.dp)
+            if (state.copies.isEmpty()) {
+                EmptyState(Ic.Download, stringResource(R.string.downloads_empty_title), stringResource(R.string.downloads_empty)) {
+                    WButton(stringResource(R.string.nav_library), { vm.go(Screen.Library) }, kind = Btn.Secondary)
+                }
+            }
+        }
+        items(state.copies, key = { it.itemId }) { c ->
+            val (done, total) = live.bytes[c.itemId] ?: (c.bytes to c.size)
+            val item = vm.state.value.items[c.itemId]
+            val reading = c.kind in io.github.enrell.lain.domain.READING_KINDS
+            Row(
+                Modifier.padding(vertical = 4.dp).fillMaxWidth().clip(l.cardShape).border(1.dp, l.line.copy(alpha = 0.6f), l.cardShape).background(l.surface.copy(alpha = 0.3f))
+                    .then(if (c.state == CopyState.DONE && item != null) Modifier.clickable { vm.open(item) } else Modifier),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.width(if (reading) 56.dp else 116.dp).aspectRatio(if (reading) 3f / 4f else 16f / 9f)) {
+                    Art(c.itemId, Modifier.fillMaxSize())
+                    if (c.state == CopyState.QUEUED && total > 0) {
+                        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.5f))) {
+                            Box(Modifier.fillMaxWidth((done.toFloat() / total).coerceIn(0f, 1f)).height(4.dp).background(l.accent))
+                        }
+                    }
+                }
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Text(c.title, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val ep = episodeLabel(c.season, c.episode, reading)
+                    Text(
+                        listOf(
+                            ep,
+                            when (c.state) {
+                                CopyState.DONE -> stringResource(R.string.copy_done, bytes(c.bytes))
+                                CopyState.QUEUED -> stringResource(R.string.copy_queued, bytes(done), if (total > 0) bytes(total) else "?")
+                                CopyState.PAUSED -> stringResource(R.string.copy_paused, bytes(done))
+                                CopyState.FAILED -> stringResource(R.string.copy_failed, c.error.ifBlank { c.code })
+                            },
+                        ).filter { it.isNotEmpty() }.joinToString(" · "),
+                        Modifier.padding(top = 4.dp),
+                        color = when (c.state) {
+                            CopyState.DONE -> l.ok
+                            CopyState.FAILED -> l.danger
+                            else -> l.muted
+                        },
+                        fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                when (c.state) {
+                    CopyState.QUEUED -> IconBtn(Ic.Pause, stringResource(R.string.action_pause), { model.pause(c.itemId) })
+                    CopyState.PAUSED, CopyState.FAILED -> IconBtn(Ic.Download, stringResource(R.string.action_resume), {
+                        model.resume(c.itemId)
+                        DownloadService.start(context)
+                    })
+                    CopyState.DONE -> Unit
+                }
+                IconBtn(Ic.Trash, stringResource(R.string.action_delete), { model.remove(c.itemId) })
             }
         }
     }
 }
 
-/** Settings (D-087 shape: label + hint left, control right; personal settings apply at once). */
+/** Settings, in the web client's shape: a name and what it does on the left, the control on the right. */
 @Composable
 fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: String, onTheme: (String) -> Unit) {
     val l = LocalLain.current
@@ -134,77 +176,64 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
     var policy by remember { mutableStateOf(graph.core.offlinePolicy()) }
     var budget by remember { mutableStateOf((policy.maxBytes shr 30).toString()) }
     var floor by remember { mutableStateOf((policy.minFreeBytes shr 30).toString()) }
+    var skip by remember { mutableStateOf(graph.prefs.skipSec) }
+    var small by remember { mutableStateOf(graph.prefs.smallTiles) }
     LaunchedEffect(Unit) { queued = vm.queuedProgress() }
-    val themes = remember { graph.themes.list() }
-    LazyColumn(Modifier.fillMaxSize().padding(l.sp(4)), verticalArrangement = Arrangement.spacedBy(l.sp(3))) {
-        item { Text(stringResource(R.string.nav_settings), style = MaterialTheme.typography.headlineLarge) }
-        item { Label(stringResource(R.string.settings_you)) }
-        item {
-            SettingRow(stringResource(R.string.settings_account), state.user?.let { "${it.username} · ${it.role}" } ?: "") {
-                Action(stringResource(R.string.settings_logout), null, { vm.logout() })
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 40.dp)) {
+        Text(stringResource(R.string.nav_settings), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
+        // Who is signed in, where.
+        Row(Modifier.padding(top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(56.dp).clip(CircleShape).background(l.raised), contentAlignment = Alignment.Center) {
+                Text((state.user?.username ?: "?").take(1).uppercase(), color = l.accent, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Column(Modifier.padding(start = 14.dp)) {
+                Text(state.user?.username ?: "", color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Mono(listOf(state.user?.role ?: "", state.server.removePrefix("http://").removePrefix("https://")).filter { it.isNotEmpty() }.joinToString(" · "), Modifier.padding(top = 4.dp))
             }
         }
-        item {
-            SettingRow(stringResource(R.string.settings_server), listOf(state.server, state.serverVersion).filter { it.isNotEmpty() }.joinToString(" · ")) {
-                Action(stringResource(R.string.login_other_server), null, { vm.changeServer() })
+        SettingsGroup(stringResource(R.string.settings_playback)) {
+            SettingRow(stringResource(R.string.player_skip), stringResource(R.string.settings_skip_hint), below = true) {
+                Segmented(io.github.enrell.lain.domain.SKIP_CHOICES.map { it to if (it == 0) stringResource(R.string.settings_auto) else "$it s" }, skip, { skip = it; graph.prefs.skipSec = it })
+            }
+            SettingRow(stringResource(R.string.tiles), stringResource(R.string.settings_tiles_hint)) {
+                Segmented(listOf(false to stringResource(R.string.tiles_large), true to stringResource(R.string.tiles_small)), small, { small = it; graph.prefs.smallTiles = it })
             }
         }
-        item {
+        SettingsGroup(stringResource(R.string.settings_offline)) {
+            SettingRow(stringResource(R.string.settings_budget), stringResource(R.string.settings_budget_hint)) {
+                Field(budget, { v ->
+                    budget = v.filter(Char::isDigit).take(5)
+                    budget.toLongOrNull()?.let { g -> policy = policy.copy(maxBytes = g shl 30); graph.savePolicy(policy) }
+                }, "", Modifier.width(88.dp), keyboardType = KeyboardType.Number)
+            }
+            SettingRow(stringResource(R.string.settings_floor), stringResource(R.string.settings_floor_hint)) {
+                Field(floor, { v ->
+                    floor = v.filter(Char::isDigit).take(4)
+                    floor.toLongOrNull()?.let { g -> policy = policy.copy(minFreeBytes = g shl 30); graph.savePolicy(policy) }
+                }, "", Modifier.width(88.dp), keyboardType = KeyboardType.Number)
+            }
+            SettingRow(stringResource(R.string.settings_evict), stringResource(R.string.settings_evict_hint)) {
+                Toggle(policy.evictWatched, { on -> policy = policy.copy(evictWatched = on); graph.savePolicy(policy) }, stringResource(R.string.settings_evict))
+            }
+        }
+        SettingsGroup(stringResource(R.string.settings_account)) {
             SettingRow(stringResource(R.string.settings_sync), stringResource(R.string.settings_sync_hint, queued)) {
-                Action(stringResource(R.string.settings_sync_now), null, {
+                WButton(stringResource(R.string.settings_sync_now), {
                     scope.launch {
                         runCatching { graph.core.flushProgress() }
                         queued = vm.queuedProgress()
                         vm.refreshProgress()
                     }
-                })
+                }, kind = Btn.Secondary)
+            }
+            SettingRow(stringResource(R.string.settings_server), listOf(state.server, state.serverVersion).filter { it.isNotEmpty() }.joinToString(" · ")) {
+                WButton(stringResource(R.string.settings_change), { vm.changeServer() }, kind = Btn.Secondary)
+            }
+            SettingRow(stringResource(R.string.settings_session), stringResource(R.string.settings_session_hint)) {
+                WButton(stringResource(R.string.settings_logout), { vm.logout() }, kind = Btn.Danger)
             }
         }
-        item { Label(stringResource(R.string.settings_appearance)) }
-        items(themes, key = { it.id }) { t ->
-            SettingRow(t.name, t.problem ?: "${t.id} · ${t.scheme}") {
-                Action(
-                    stringResource(if (t.id == themeId) R.string.settings_theme_active else R.string.settings_theme_use),
-                    null,
-                    { onTheme(t.id) },
-                    primary = t.id == themeId,
-                )
-            }
-        }
-        item { Label(stringResource(R.string.settings_offline)) }
-        item {
-            SettingRow(stringResource(R.string.settings_budget), stringResource(R.string.settings_budget_hint)) {
-                OutlinedTextField(budget, { v ->
-                    budget = v.filter(Char::isDigit).take(5)
-                    budget.toLongOrNull()?.let { g -> policy = policy.copy(maxBytes = g shl 30); graph.savePolicy(policy) }
-                }, singleLine = true, modifier = Modifier.padding(start = l.sp(2)).fillMaxWidth(0.3f))
-            }
-        }
-        item {
-            SettingRow(stringResource(R.string.settings_floor), stringResource(R.string.settings_floor_hint)) {
-                OutlinedTextField(floor, { v ->
-                    floor = v.filter(Char::isDigit).take(4)
-                    floor.toLongOrNull()?.let { g -> policy = policy.copy(minFreeBytes = g shl 30); graph.savePolicy(policy) }
-                }, singleLine = true, modifier = Modifier.padding(start = l.sp(2)).fillMaxWidth(0.3f))
-            }
-        }
-        item {
-            SettingRow(stringResource(R.string.settings_evict), stringResource(R.string.settings_evict_hint)) {
-                Switch(policy.evictWatched, { on -> policy = policy.copy(evictWatched = on); graph.savePolicy(policy) })
-            }
-        }
-        item { Label(stringResource(R.string.settings_about, io.github.enrell.lain.core.coreVersion())) }
-    }
-}
-
-@Composable
-private fun SettingRow(label: String, hint: String, control: @Composable () -> Unit) {
-    val l = LocalLain.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.titleSmall)
-            if (hint.isNotEmpty()) Text(hint, color = l.muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-        control()
+        Mono(stringResource(R.string.settings_about, io.github.enrell.lain.core.coreVersion()), Modifier.padding(top = 28.dp))
+        Text(stringResource(R.string.settings_colours), Modifier.padding(top = 6.dp), color = l.muted.copy(alpha = 0.7f), fontSize = 12.sp)
     }
 }

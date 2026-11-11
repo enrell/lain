@@ -1,5 +1,14 @@
 package io.github.enrell.lain
 
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -140,6 +149,7 @@ private fun labelOf(id: String): Int = when (id) {
  * The shell: a quiet top navigation built from `/api/modules` (D-250)
  * and the current screen. Keys: Ctrl+1..9 destinations, `/` search, Esc back.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (String) -> Unit) {
     val l = LocalLain.current
@@ -147,6 +157,7 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val activity = context as? MainActivity
+    var depth by remember { mutableStateOf(1) }
     val canBack = state.phase == Phase.Main && (state.stack.size > 1 || state.screen != Screen.Home)
     BackHandler(enabled = canBack) { vm.back() }
 
@@ -194,25 +205,40 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                     val title = item?.let { it.title + episodeLabel(it.season, it.episode, false).let { e -> if (e.isEmpty()) "" else " · $e" } } ?: ""
                     PlayerScreen(graph.core, s.itemId, title, state.user?.preferredLanguage ?: "")
                 }
-                is Screen.Reader -> Box(Modifier.safeDrawingPadding()) { ReaderScreen(graph.core, s.itemId) }
+                is Screen.Reader -> {
+                    val item = state.items[s.itemId]
+                    val title = item?.let { it.title + episodeLabel(it.season, it.episode, true).let { e -> if (e.isEmpty()) "" else " · $e" } } ?: ""
+                    ReaderScreen(graph.core, s.itemId, title) { vm.back() }
+                }
                 else -> Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                     // A title page runs its art up under the status bar's edge
                     // and brings its own way back.
                     if (s !is Screen.TitleDetail) TopBar(state, vm)
-                    Box(Modifier.weight(1f)) {
-                        when (s) {
+                    // Screens cross-fade with a short rise; going back falls instead.
+                    AnimatedContent(
+                        targetState = s,
+                        modifier = Modifier.weight(1f),
+                        transitionSpec = {
+                            val forward = state.stack.size >= depth
+                            depth = state.stack.size
+                            (fadeIn(tween(180)) + slideInVertically(tween(220)) { if (forward) it / 24 else -it / 24 }) togetherWith fadeOut(tween(120))
+                        },
+                        label = "screen",
+                    ) { screen ->
+                        when (screen) {
                             Screen.Home -> HomeScreen(state, vm)
                             Screen.Library -> LibraryScreen(state, vm, readingOnly = false)
                             Screen.Read -> LibraryScreen(state, vm, readingOnly = true)
                             Screen.Search -> SearchScreen(state, vm)
                             Screen.Downloads -> DownloadsScreen(graph, vm)
                             Screen.Settings -> SettingsScreen(graph, state, vm, themeId, onTheme)
-                            is Screen.LibraryDetail -> LibraryDetailScreen(state, vm, s.id)
-                            is Screen.TitleDetail -> TitleScreen(state, vm, s.key, download)
+                            is Screen.LibraryDetail -> LibraryDetailScreen(state, vm, screen.id)
+                            is Screen.TitleDetail -> TitleScreen(state, vm, screen.key, download)
                             else -> Unit
                         }
                     }
-                    BottomBar(state.destinations, s, vm)
+                    // While typing, the keyboard takes the bar's place: the results get the room.
+                    if (!WindowInsets.isImeVisible) BottomBar(state.destinations, s, vm)
                 }
             }
         }

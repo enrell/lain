@@ -1,5 +1,28 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -48,7 +71,7 @@ import kotlinx.coroutines.withContext
  * Keys: ←/→ (by direction), Space/PageDown next, PageUp back, Home/End.
  */
 @Composable
-fun ReaderScreen(core: LainCoreInterface, itemId: String) {
+fun ReaderScreen(core: LainCoreInterface, itemId: String, title: String = "", onBack: () -> Unit = {}) {
     val l = LocalLain.current
     val scope = remember(itemId) { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
     val model = remember(itemId) { ReaderModel(core, itemId, scope) }
@@ -78,6 +101,7 @@ fun ReaderScreen(core: LainCoreInterface, itemId: String) {
         if (pager.currentPage != state.page) pager.animateScrollToPage(state.page)
     }
     LaunchedEffect(Unit) { focus.requestFocus() }
+    var chrome by remember { mutableStateOf(true) }
     Box(
         Modifier
             .fillMaxSize()
@@ -105,20 +129,56 @@ fun ReaderScreen(core: LainCoreInterface, itemId: String) {
             }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 bmp?.let { Image(it, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
-                    ?: Text(stringResource(R.string.working), color = l.muted)
+                    ?: CircularProgressIndicator(Modifier.size(36.dp), color = l.muted, strokeWidth = 2.dp)
             }
         }
-        Row(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(l.scrim).padding(l.sp(2)),
-            horizontalArrangement = Arrangement.spacedBy(l.sp(2)),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Label(stringResource(R.string.progress_page, state.page + 1, book.pages.size))
-            if (book.offline) Label(stringResource(R.string.reader_offline), color = l.ok)
-            Label(book.direction)
-            Kbd(if (state.rtl) "←" else "→")
-            Kbd("Space")
-            Kbd("Esc")
+        // A tap on a side turns the page (by reading direction); the middle shows or hides the bars.
+        Row(Modifier.fillMaxSize()) {
+            for (side in listOf(-1, 0, 1)) {
+                Box(
+                    Modifier.weight(if (side == 0) 0.4f else 0.3f).fillMaxHeight().pointerInput(side, state.rtl) {
+                        detectTapGestures {
+                            when {
+                                side == 0 -> chrome = !chrome
+                                (side > 0) != state.rtl -> model.next()
+                                else -> model.previous()
+                            }
+                        }
+                    },
+                )
+            }
+        }
+        // The bars: the web reader's glass panels.
+        AnimatedVisibility(chrome, Modifier.align(Alignment.TopCenter), enter = fadeIn() + slideInVertically { -it / 2 }, exit = fadeOut() + slideOutVertically { -it / 2 }) {
+            Row(
+                Modifier.safeDrawingPadding().padding(12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(l.bg.copy(alpha = 0.88f)).border(1.dp, l.line.copy(alpha = 0.7f), RoundedCornerShape(16.dp)).padding(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconBtn(Ic.ArrowLeft, "Back", onBack, tint = l.text)
+                Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                    Mono(if (book.offline) stringResource(R.string.reader_offline) else stringResource(if (state.rtl) R.string.reader_rtl else R.string.reader_ltr), color = l.accent)
+                    Text(title, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text(stringResource(R.string.reader_pages, state.page + 1, book.pages.size), Modifier.padding(horizontal = 12.dp), style = TextStyle(fontFamily = l.mono, fontSize = 12.sp, color = l.muted))
+            }
+        }
+        AnimatedVisibility(chrome && book.pages.size > 1, Modifier.align(Alignment.BottomCenter), enter = fadeIn() + slideInVertically { it / 2 }, exit = fadeOut() + slideOutVertically { it / 2 }) {
+            Row(
+                Modifier.safeDrawingPadding().padding(12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(l.bg.copy(alpha = 0.88f)).border(1.dp, l.line.copy(alpha = 0.7f), RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val last = book.pages.size - 1
+                Text(if (state.rtl) book.pages.size.toString() else "1", style = TextStyle(fontFamily = l.mono, fontSize = 11.sp, color = l.muted))
+                ThinSlider(
+                    state.page.toFloat() / last,
+                    onChange = {},
+                    onCommit = { f -> model.goTo((f * last).roundToInt().coerceIn(0, last)) },
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    reversed = state.rtl,
+                    label = stringResource(R.string.progress_page, state.page + 1, book.pages.size),
+                )
+                Text(if (state.rtl) "1" else book.pages.size.toString(), style = TextStyle(fontFamily = l.mono, fontSize = 11.sp, color = l.muted))
+            }
         }
     }
 }

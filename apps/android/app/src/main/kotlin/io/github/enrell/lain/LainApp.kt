@@ -1,5 +1,6 @@
 package io.github.enrell.lain
 
+import androidx.compose.ui.graphics.asAndroidBitmap
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -87,6 +88,25 @@ class AppGraph(context: Context) {
             Board(bmp, sheet.intervalSec.coerceAtLeast(1), sheet.count.toInt().coerceAtLeast(1), columns, bmp.width / columns, bmp.height / rows)
                 .also { boards.put(itemId, it) }
         }.await()
+    }
+
+    private val ambient = object : LruCache<String, ImageBitmap>(64) {}
+
+    /**
+     * An item's art as a soft wash of its colours: the picture shrunk to a
+     * few pixels, to be drawn large behind a hero. Text printed on a
+     * poster disappears in it, so a title set over it stays readable; and
+     * it needs no blur support from the system.
+     */
+    suspend fun ambient(itemId: String): ImageBitmap? {
+        ambient.get(itemId)?.let { return it }
+        val full = art(itemId) ?: return null
+        return withContext(Dispatchers.Default) {
+            val src = full.asAndroidBitmap()
+            val w = 12
+            val h = (w.toFloat() * src.height / src.width).toInt().coerceIn(6, 24)
+            android.graphics.Bitmap.createScaledBitmap(src, w, h, true).asImageBitmap()
+        }.also { ambient.put(itemId, it) }
     }
 
     /** A frame of an item at a time, for the seek bar; a few stay in memory. */
