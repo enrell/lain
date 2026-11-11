@@ -253,6 +253,15 @@ reflected without waiting for a manual scan. Watching can be turned
 off with `--watch=false` / `LAIN_WATCH=false` for filesystems inotify
 cannot see.
 
+While a scan runs, `GET /api/library/scan` carries `progress`
+(D-272): `{phase, libraries, libraries_walked, libraries_done, files,
+files_done, enrich_total?, enrich_done?}`. `phase` is the furthest step
+reached and never goes back: `walk` (roots being listed), `identify`
+(`files_done` of `files`; `files` grows until `libraries_walked`
+reaches `libraries`, since roots walk in parallel), `commit`
+(`libraries_done` of `libraries`) and `enrich` (the metadata backfill,
+`enrich_done` of `enrich_total`). It is absent in every other state.
+
 ## lain.playback.transcode@1 (exactly-one)
 
 Input: `{file_path}` → `Transcode{path, method?, cached?}`. The ffmpeg
