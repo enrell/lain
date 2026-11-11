@@ -1075,7 +1075,31 @@
 	 * fullscreen.
 	 */
 	const TAP_GAP_MS = 280;
-	const SKIP_SEC = 10;
+	// How far one skip goes (the double tap, the buttons, the arrow keys):
+	// the viewer's choice, or by the title's length when left to the
+	// player. Ten seconds is a step in an episode and nothing in a two
+	// hour film.
+	const SKIP_KEY = 'lain.player.skip';
+	const SKIP_CHOICES = [0, 5, 10, 30, 60];
+	function savedSkip(): number {
+		try {
+			const n = Number(localStorage.getItem(SKIP_KEY));
+			return SKIP_CHOICES.includes(n) ? n : 0;
+		} catch {
+			return 0;
+		}
+	}
+	let skipChoice = $state(savedSkip());
+	const autoSkip = $derived.by(() => (totalDuration >= 3600 ? 30 : 10));
+	const skipSec = $derived.by(() => (skipChoice > 0 ? skipChoice : autoSkip));
+	function setSkip(next: number): void {
+		skipChoice = next;
+		try {
+			localStorage.setItem(SKIP_KEY, String(next));
+		} catch {
+			/* lasts for this visit */
+		}
+	}
 	let lastTap = { at: 0, side: 0 };
 	let tapTimer: ReturnType<typeof setTimeout> | null = null;
 	let skipFlash = $state<{ side: -1 | 1; total: number; key: number } | null>(null);
@@ -1088,8 +1112,8 @@
 	}
 
 	function skip(side: -1 | 1): void {
-		seekBy(side * SKIP_SEC);
-		const total = skipFlash && skipFlash.side === side ? skipFlash.total + SKIP_SEC : SKIP_SEC;
+		seekBy(side * skipSec);
+		const total = skipFlash && skipFlash.side === side ? skipFlash.total + skipSec : skipSec;
 		skipFlash = { side, total, key: Date.now() };
 		if (skipFlashTimer) clearTimeout(skipFlashTimer);
 		skipFlashTimer = setTimeout(() => (skipFlash = null), 700);
@@ -1373,11 +1397,11 @@
 				break;
 			case 'j':
 			case 'J':
-				seekBy(-10);
+				seekBy(-skipSec);
 				break;
 			case 'l':
 			case 'L':
-				seekBy(10);
+				seekBy(skipSec);
 				break;
 			case 'ArrowUp':
 				consume(event);
@@ -1731,6 +1755,12 @@
 				</select>
 			</label>
 			<label class="chrome-chip">
+				Skip
+				<select class="chrome-select" value={skipChoice} onchange={(event) => setSkip(Number(event.currentTarget.value))} aria-label="Skip step">
+					{#each SKIP_CHOICES as option (option)}<option value={option}>{option === 0 ? `Auto (${autoSkip} s)` : `${option} s`}</option>{/each}
+				</select>
+			</label>
+			<label class="chrome-chip">
 				Effects
 				<select class="chrome-select" bind:value={selectedEffect} aria-label="Video effects" onchange={() => { effectManual = true; effectError = null; }}>
 					{#each EFFECT_PRESETS as preset}<option value={preset.id}>{preset.label}</option>{/each}
@@ -1930,11 +1960,11 @@
 			<IconButton label={playing ? 'Pause' : 'Play'} class="size-11 bg-accent text-accent-fg hover:bg-accent-hover hover:text-accent-fg" onclick={togglePlay}>
 				{#if playing}<Pause class="size-6" />{:else}<Play class="size-6" />{/if}
 			</IconButton>
-			<IconButton label="Back 10 seconds" class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(-10)}>
-				<SkipBack class="size-6" /><span class="absolute text-[9px] font-semibold">10</span>
+			<IconButton label={`Back ${skipSec} seconds`} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(-skipSec)}>
+				<SkipBack class="size-6" /><span class="absolute text-[9px] font-semibold">{skipSec}</span>
 			</IconButton>
-			<IconButton label="Forward 10 seconds" class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(10)}>
-				<SkipForward class="size-6" /><span class="absolute text-[9px] font-semibold">10</span>
+			<IconButton label={`Forward ${skipSec} seconds`} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(skipSec)}>
+				<SkipForward class="size-6" /><span class="absolute text-[9px] font-semibold">{skipSec}</span>
 			</IconButton>
 
 			<div class="flex items-center gap-1">

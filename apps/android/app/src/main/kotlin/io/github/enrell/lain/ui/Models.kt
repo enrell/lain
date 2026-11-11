@@ -11,6 +11,8 @@ import io.github.enrell.lain.core.QualityInfo
 import io.github.enrell.lain.core.SaveOutcome
 import io.github.enrell.lain.core.SourceKind
 import io.github.enrell.lain.core.SubtitleTrack
+import io.github.enrell.lain.domain.MIME_FAMILIES
+import io.github.enrell.lain.domain.withoutFamily
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,9 +57,16 @@ const val SEEK_GRACE_SEC = 3.0
 class PlayerModel(
     private val core: LainCoreInterface,
     val itemId: String,
-    private val caps: List<String>,
+    caps: List<String>,
     private val scope: CoroutineScope,
+    /** Codec families this device already failed to decode for this item. */
+    failedBefore: Set<String> = emptySet(),
+    /** Told when a decoder fails on a family, so the next play skips the attempt. */
+    private val onDecoderFailed: (family: String) -> Unit = {},
 ) {
+    /** The decode claim; narrowed when a decoder fails on something it claimed. */
+    private var claim = failedBefore.fold(caps) { c, family -> withoutFamily(c, family) }
+
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
 
@@ -65,7 +74,7 @@ class PlayerModel(
         _state.update { PlayerState(loading = true) }
         scope.launch {
             try {
-                val src = core.playSource(itemId, caps)
+                val src = core.playSource(itemId, claim)
                 _state.update { it.copy(loading = false, source = src) }
                 if (src.kind == SourceKind.HLS) {
                     runCatching { core.playQualities() }.onSuccess { q -> _state.update { it.copy(qualities = q) } }
@@ -152,6 +161,39 @@ class PlayerModel(
         if (_state.value.source?.kind != SourceKind.HLS) return false
         val held = sessionRange(playerDurationMs)
         return targetSec < held.start - SEEK_GRACE_SEC || targetSec > held.endInclusive + SEEK_GRACE_SEC
+    }
+
+    /**
+     * ExoPlayer could not decode a codec the claim offered (a hardware
+     * HEVC decoder with no Main10, say). Ask the server again without that
+     * codec family, so it transcodes instead of the player stopping on an
+     * error. False when there is nothing to retry.
+     */
+    fun decoderFailed(mime: String?, positionMs: Long, playerDurationMs: Long): Boolean {
+        val src = _state.value.source ?: return false
+        val family = mime?.let { MIME_FAMILIES[it] } ?: return false
+        if (src.kind == SourceKind.HLS || claim.none { it.endsWith("/$family") }) return false
+        claim = withoutFamily(claim, family)
+        onDecoderFailed(family)
+        _state.update { it.copy(loading = true, error = null) }
+        scope.launch {
+            report(positionMs, playerDurationMs)?.join()
+            try {
+                val next = core.playSource(itemId, claim)
+                _state.update { it.copy(loading = false, source = next) }
+                if (next.kind == SourceKind.HLS) {
+                    runCatching { core.playQualities() }.onSuccess { q -> _state.update { it.copy(qualities = q) } }
+                }
+            } catch (e: LainException) {
+                _state.update { it.copy(loading = false, error = e) }
+            }
+        }
+        return true
+    }
+
+    /** A playback error with no fallback: shown in the player. */
+    fun playerFailed(e: Throwable) {
+        _state.update { it.copy(loading = false, error = e) }
     }
 
     private suspend fun stopSession(src: PlaySource?) {

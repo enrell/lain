@@ -191,6 +191,54 @@ class ModelsTest {
         assertEquals("the plan's length is kept", 1440.0, src.durationSec!!, 0.001)
     }
 
+    @Test
+    fun aDecoderFailureRetriesWithoutThatCodec() = runTest(main) {
+        val core = FakeCore()
+        val claim = listOf("mkv", "mkv/aac", "mkv/hevc", "mp4", "mp4/hevc")
+        val told = mutableListOf<String>()
+        val m = PlayerModel(core, "e1", claim, this, onDecoderFailed = { told += it })
+        m.load()
+        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 0.0, 0.0, 1440.0, emptyList(), "sess-1")
+
+        assertTrue(m.decoderFailed("video/hevc", 0, 0))
+        advanceUntilIdle()
+        assertEquals(listOf("mkv", "mkv/aac"), core.playCaps.last())
+        assertEquals(SourceKind.HLS, m.state.value.source!!.kind)
+        assertEquals(listOf("hevc"), told)
+
+        // Already transcoding, or a codec it never claimed: nothing to retry.
+        assertFalse(m.decoderFailed("video/hevc", 0, 0))
+        assertFalse(m.decoderFailed("video/x-unknown", 0, 0))
+    }
+
+    @Test
+    fun aCodecThatFailedBeforeIsNotClaimedAgain() = runTest(main) {
+        val core = FakeCore()
+        val m = PlayerModel(core, "e1", listOf("mkv", "mkv/aac", "mkv/hevc"), this, failedBefore = setOf("hevc"))
+        m.load()
+        advanceUntilIdle()
+        assertEquals(listOf("mkv", "mkv/aac"), core.playCaps.last())
+    }
+
+    @Test
+    fun aSeekOutsideTheSessionNeedsANewOne() = runTest(main) {
+        val core = FakeCore()
+        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 600.0, 600.0, 7200.0, emptyList(), "sess-1")
+        val m = PlayerModel(core, "e1", emptyList(), this)
+        m.load()
+        advanceUntilIdle()
+        // The session holds 600 s .. 660 s of the title.
+        assertFalse(m.needsRebuild(630.0, 60_000))
+        assertFalse(m.needsRebuild(598.0, 60_000))
+        assertTrue(m.needsRebuild(100.0, 60_000))
+        assertTrue(m.needsRebuild(3000.0, 60_000))
+        m.rebuild(3000.0, quality = "720p")
+        advanceUntilIdle()
+        assertEquals(Triple(3000.0, "720p", null), core.transcodes.last())
+        assertEquals("the title's length is kept", 7200.0, m.state.value.source!!.durationSec!!, 0.001)
+        assertEquals("720p", m.state.value.quality)
+    }
+
     // ---- the reader ----------------------------------------------------------
 
     @Test

@@ -32,6 +32,26 @@ class Prefs(private val sp: SharedPreferences) {
         get() = sp.getString("video_effect", "off") ?: "off"
         set(v) = sp.edit().putString("video_effect", v).apply()
 
+    /** How far a skip goes, in seconds; 0 leaves it to the title's length. */
+    var skipSec: Int
+        get() = sp.getInt("skip_sec", 0)
+        set(v) = sp.edit().putInt("skip_sec", v).apply()
+
+    /**
+     * Items whose codec the device's decoder failed on, as `item=family`
+     * (the newest few hundred): their next play asks for a transcode at
+     * once instead of failing first.
+     */
+    fun failedFamilies(itemId: String): Set<String> =
+        (sp.getStringSet("decode_failed", emptySet()) ?: emptySet()).filter { it.startsWith("$itemId=") }.map { it.substringAfter('=') }.toSet()
+
+    fun rememberFailed(itemId: String, family: String) {
+        val all = (sp.getStringSet("decode_failed", emptySet()) ?: emptySet()).toMutableList()
+        all.remove("$itemId=$family")
+        all.add("$itemId=$family")
+        sp.edit().putStringSet("decode_failed", all.takeLast(400).toSet()).apply()
+    }
+
     var theme: String
         get() = sp.getString("theme", "lain-dark") ?: "lain-dark"
         set(v) = sp.edit().putString("theme", v).apply()

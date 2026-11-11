@@ -46,6 +46,7 @@ class FakeCore : LainCoreInterface {
     val stopped = mutableListOf<String>()
     var source = PlaySource(SourceKind.DIRECT, "http://s/api/items/e1/stream?token=t", "direct play", 0.0, 0.0, 1440.0, emptyList(), "")
     var burned: PlaySource? = null
+    val playCaps = mutableListOf<List<String>>()
     var book = ComicBook("m1", "rtl", List(5) { io.github.enrell.lain.core.PageInfo(it.toLong(), 16, 24, "image/png") }, false)
     val events = Channel<CoreEvent?>(Channel.UNLIMITED)
 
@@ -130,6 +131,7 @@ class FakeCore : LainCoreInterface {
     override suspend fun playBurnedIn(itemId: String, stream: Long, startSec: Double): PlaySource =
         burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=b", "burned", startSec, startSec, null, emptyList(), "sess-b")
     override suspend fun playSource(itemId: String, caps: List<String>): PlaySource {
+        playCaps += caps
         val start = progress[itemId]?.takeIf { !it.completed && it.positionSec > 3 }?.positionSec ?: 0.0
         return source.copy(startSec = start)
     }

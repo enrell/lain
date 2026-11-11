@@ -7,6 +7,8 @@ import io.github.enrell.lain.domain.decodeClaim
 import io.github.enrell.lain.domain.fraction
 import io.github.enrell.lain.domain.groupTitles
 import io.github.enrell.lain.domain.nextUp
+import io.github.enrell.lain.domain.skipSeconds
+import io.github.enrell.lain.domain.withoutFamily
 import io.github.enrell.lain.ui.destinations
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -73,5 +75,24 @@ class DomainTest {
         assertEquals(listOf("home", "library", "read", "search", "downloads", "settings"), destinations(withRead).map { it.id })
         // /api/modules unavailable: the core destinations.
         assertEquals(listOf("home", "library", "search", "downloads", "settings"), destinations(null).map { it.id })
+    }
+
+    @Test
+    fun withoutFamilyDropsTheCodecAndEmptyContainers() {
+        val claim = decodeClaim(setOf("hevc", "aac", "vp9"))
+        val out = withoutFamily(claim, "hevc")
+        assertFalse(out.any { it.endsWith("/hevc") })
+        assertTrue("mkv/aac" in out && "webm/vp9" in out)
+        assertEquals(listOf("webm", "webm/vp9"), withoutFamily(decodeClaim(setOf("vp9", "hevc")), "hevc").filter { it.startsWith("webm") })
+        assertTrue(withoutFamily(decodeClaim(setOf("hevc")), "hevc").isEmpty())
+    }
+
+    @Test
+    fun aSkipIsLongerInALongTitleUnlessChosen() {
+        assertEquals(10, skipSeconds(0, 24 * 60.0))
+        assertEquals(30, skipSeconds(0, 2 * 3600.0 + 10))
+        assertEquals(10, skipSeconds(0, 0.0))
+        assertEquals(60, skipSeconds(60, 24 * 60.0))
+        assertEquals(5, skipSeconds(5, 3 * 3600.0))
     }
 }

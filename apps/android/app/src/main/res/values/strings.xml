@@ -201,4 +201,6 @@
     <string name="player_auto">Auto</string>
     <string name="player_effects">Effects</string>
     <string name="player_effect_failed">Anime4K unavailable: %1$s</string>
+    <string name="player_skip">Skip</string>
+    <string name="player_skip_auto">Auto (%1$d s)</string>
 </resources>

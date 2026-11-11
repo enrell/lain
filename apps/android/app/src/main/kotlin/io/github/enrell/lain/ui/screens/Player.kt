@@ -1,5 +1,9 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.media3.common.PlaybackException
+import androidx.media3.exoplayer.ExoPlaybackException
+import io.github.enrell.lain.domain.SKIP_CHOICES
+import io.github.enrell.lain.domain.skipSeconds
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
@@ -136,7 +140,9 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
     val graph = context.graph
     val activity = context as? android.app.Activity
     val scope = remember(itemId) { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
-    val model = remember(itemId) { PlayerModel(core, itemId, DeviceCaps.claim, scope) }
+    val model = remember(itemId) {
+        PlayerModel(core, itemId, DeviceCaps.claim, scope, graph.prefs.failedFamilies(itemId)) { family -> graph.prefs.rememberFailed(itemId, family) }
+    }
     val state by model.state.collectAsState()
     val player = remember(itemId) {
         ExoPlayer.Builder(context).build().apply {
@@ -174,6 +180,7 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
     var effect by remember { mutableStateOf(VideoEffect.of(graph.prefs.videoEffect)) }
     var effectError by remember { mutableStateOf<String?>(null) }
     var effectsOn by remember { mutableStateOf(false) }
+    var skipChoice by remember { mutableStateOf(graph.prefs.skipSec) }
     // The size the picture is shown at, read by the effect on the GL thread.
     val shownAt = remember { java.util.concurrent.atomic.AtomicReference(0 to 0) }
     // The running total of a burst of skips, and its side (-1 back, 1 forward).
@@ -206,6 +213,14 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
                 if (!isPlaying) model.report(player.currentPosition, player.duration)
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                // The device's decoder gave up on a codec it claimed: the server
+                // transcodes from here instead. Anything else is shown.
+                val mime = (error as? ExoPlaybackException)?.rendererFormat?.sampleMimeType
+                val retried = error.errorCode in DECODER_ERRORS && model.decoderFailed(mime, player.currentPosition, player.duration)
+                if (!retried) model.playerFailed(error)
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -301,9 +316,11 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
         positionMs = player.currentPosition
     }
     fun seekBy(deltaMs: Long) = seekToSec(nowSec() + deltaMs / 1000.0)
+    fun skipSec(): Int = skipSeconds(skipChoice, totalSec())
+    fun skipMs(): Long = skipSec() * 1000L
     fun skip(side: Int) {
-        seekBy(side * SKIP_MS)
-        flash = side to ((flash?.takeIf { it.first == side }?.second ?: 0) + (SKIP_MS / 1000).toInt())
+        seekBy(side * skipMs())
+        flash = side to ((flash?.takeIf { it.first == side }?.second ?: 0) + skipSec())
         lastSkip = System.currentTimeMillis()
     }
     fun togglePlay() {
@@ -332,8 +349,8 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (e.key) {
                     Key.Spacebar, Key.MediaPlayPause -> { togglePlay(); true }
-                    Key.DirectionLeft -> { seekBy(-SKIP_MS); true }
-                    Key.DirectionRight -> { seekBy(SKIP_MS); true }
+                    Key.DirectionLeft -> { seekBy(-skipMs()); true }
+                    Key.DirectionRight -> { seekBy(skipMs()); true }
                     Key.B -> {
                         model.burnable().firstOrNull()?.let { model.burnIn(it, player.currentPosition) }
                         true
@@ -533,8 +550,8 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                         Modifier.size(44.dp).clip(l.buttonShape).background(l.accent).clickable { togglePlay() },
                         contentAlignment = Alignment.Center,
                     ) { Icon(if (playing) Ic.Pause else Ic.Play, null, tint = l.onAccent, modifier = Modifier.size(20.dp)) }
-                    TenButton(Ic.Back10) { seekBy(-SKIP_MS); touched++ }
-                    TenButton(Ic.Fwd10) { seekBy(SKIP_MS); touched++ }
+                    SkipButton(Ic.Back10, skipSec()) { seekBy(-skipMs()); touched++ }
+                    SkipButton(Ic.Fwd10, skipSec()) { seekBy(skipMs()); touched++ }
                     IconBtn(if (muted) Ic.Muted else Ic.Volume, "Mute", { muted = !muted; player.volume = if (muted) 0f else 1f; touched++ }, tint = Color.White)
                     Box(Modifier.weight(1f))
                     IconBtn(Ic.Gear, "Settings", { settings = !settings }, tint = Color.White)
@@ -602,6 +619,15 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
                         }
                     }
                 }
+                val byLength = stringResource(R.string.player_skip_auto, skipSeconds(0, totalSec()))
+                PickRow(
+                    stringResource(R.string.player_skip),
+                    if (skipChoice == 0) byLength else "$skipChoice s",
+                    SKIP_CHOICES.map { (if (it == 0) byLength else "$it s") to (it == skipChoice) },
+                ) { i ->
+                    skipChoice = SKIP_CHOICES[i]
+                    graph.prefs.skipSec = skipChoice
+                }
                 PickRow(
                     stringResource(R.string.player_effects),
                     effect.label,
@@ -627,17 +653,24 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
     }
 }
 
-private const val SKIP_MS = 10_000L
+/** Errors where the device's decoder, not the file or network, gave up. */
+private val DECODER_ERRORS = setOf(
+    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+    PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+    PlaybackException.ERROR_CODE_DECODING_FAILED,
+    PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+)
 private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 
 private class TextTrack(val group: Tracks.Group, val index: Int, val label: String, val selected: Boolean)
 
-/** The 10 s buttons: the turning arrow with the number inside. */
+/** The skip buttons: the turning arrow with the step inside. */
 @Composable
-private fun TenButton(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+private fun SkipButton(icon: androidx.compose.ui.graphics.vector.ImageVector, seconds: Int, onClick: () -> Unit) {
     Box(Modifier.size(44.dp).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
         Icon(icon, null, tint = Color.White, modifier = Modifier.size(24.dp))
-        Text("10", Modifier.padding(top = 2.dp), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+        Text(seconds.toString(), Modifier.padding(top = 2.dp), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
     }
 }
 
