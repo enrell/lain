@@ -112,7 +112,7 @@
 		saved={flash.is('language')}
 	>
 		<input
-			class="{field} w-28 font-mono uppercase"
+			class="{field} w-28"
 			type="text"
 			list="common-languages"
 			maxlength="3"

@@ -119,7 +119,7 @@
 			{#snippet icon()}<ListChecks class="size-6 text-muted" />{/snippet}
 			<a
 				href="/settings"
-				class="rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-foreground"
+				class="inline-flex h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg hover:bg-accent-hover"
 				>Open account settings</a
 			>
 		</EmptyState>

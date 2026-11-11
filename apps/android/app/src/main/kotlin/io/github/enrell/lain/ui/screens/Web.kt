@@ -187,9 +187,14 @@ fun ShapeCard(
                     style = TextStyle(fontFamily = l.mono, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color.White),
                 )
             }
-            if (progress > 0f) {
-                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.5f))) {
-                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(4.dp).background(l.accent))
+            // Where you are in it: a bar while in progress, a check once it is done.
+            if (progress >= 0.999f) {
+                Box(Modifier.align(Alignment.TopEnd).padding(8.dp).size(24.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.65f)), contentAlignment = Alignment.Center) {
+                    Icon(Ic.Check, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                }
+            } else if (progress > 0f) {
+                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(5.dp).background(Color.Black.copy(alpha = 0.6f))) {
+                    Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(5.dp).background(l.accent))
                 }
             }
         }
@@ -527,8 +532,8 @@ fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onPick: (T) -> Un
         for ((value, label) in options) {
             val on = value == selected
             Box(
-                Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(5.dp)).background(if (on) l.raised else Color.Transparent)
-                    .border(1.dp, if (on) l.accent.copy(alpha = 0.55f) else Color.Transparent, RoundedCornerShape(5.dp))
+                Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(5.dp)).background(if (on) l.accent.copy(alpha = 0.2f) else Color.Transparent)
+                    .border(1.dp, if (on) l.accent else Color.Transparent, RoundedCornerShape(5.dp))
                     .clickable { onPick(value) }.padding(horizontal = 14.dp)
                     .semantics { stateDescription = if (on) "selected" else "not selected" },
                 contentAlignment = Alignment.Center,

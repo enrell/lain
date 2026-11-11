@@ -1720,17 +1720,6 @@
 		</button>
 	{/if}
 
-	<!-- Resume banner -->
-	{#if showResume && resumedFrom > 0}
-		<div
-			class="absolute bottom-28 left-4 z-20 rounded-md border border-line/40 bg-background/95 px-4 py-3 text-sm text-foreground"
-		>
-			Resuming from {formatTime(resumedFrom)}
-			<button class="ml-3 text-accent hover:text-accent-hover" onclick={skipResumeToStart}>
-				Start over
-			</button>
-		</div>
-	{/if}
 
 	<!-- A refused fullscreen request is a failure the viewer asked for: it is
 	     reported where they are looking, and playback keeps going windowed. -->
@@ -1903,6 +1892,13 @@
 			chromeClass
 		].join(' ')}
 	>
+		<!-- Where playback picked up, in the bar it belongs to. -->
+		{#if showResume && resumedFrom > 0}
+			<p class="mb-1 flex items-center gap-3 text-xs text-white/85">
+				Resuming from {formatTime(resumedFrom)}
+				<button class="rounded-md border border-white/30 px-2 py-0.5 font-medium text-white hover:bg-white/10" onclick={skipResumeToStart}>Start over</button>
+			</p>
+		{/if}
 		<!-- Seek -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div

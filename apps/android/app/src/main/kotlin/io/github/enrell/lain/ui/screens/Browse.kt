@@ -156,7 +156,7 @@ private fun RailHeader(title: String, action: String?, onClick: (() -> Unit)?) {
         SectionTitle(title)
         if (onClick != null) Icon(Ic.ChevronRight, null, tint = l.muted, modifier = Modifier.padding(start = 4.dp).size(16.dp))
         Box(Modifier.weight(1f))
-        if (action != null) Mono(action, color = l.muted, size = 10)
+        if (action != null) Text(action, color = l.muted, fontSize = 13.sp)
     }
 }
 
@@ -199,7 +199,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
             item {
                 HeroFrame(hero.art(), (LocalConfiguration.current.screenHeightDp * 0.44f).dp) {
                     Mono(
-                        stringResource(if (resumeHero != null) R.string.hero_continue else R.string.hero_label),
+                        stringResource(if (resumeHero == null) R.string.hero_label else if (hero.reading) R.string.hero_continue_reading else R.string.hero_continue),
                         color = l.accent,
                     )
                     Text(
@@ -748,7 +748,10 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
     }
     val copyOf = remember(copies.copies) { copies.copies.associateBy { it.itemId } }
     val ask: (Item) -> Unit = { item -> onDownload(item); offline.refresh() }
-    LazyColumn(contentPadding = PaddingValues(bottom = 56.dp)) {
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val pastHero by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+    Box(Modifier.fillMaxSize()) {
+    LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 56.dp)) {
         item {
             HeroFrame(title.art(), 320.dp, back = { vm.back() }) {
                 Text(
@@ -774,13 +777,14 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                         title.reading && resume != null -> stringResource(R.string.continue_page, resume.positionSec.toInt())
                         title.reading && allDone -> stringResource(R.string.read_again)
                         title.reading -> stringResource(R.string.action_read)
+                        resume != null && series -> stringResource(R.string.action_resume_short)
                         resume != null -> stringResource(R.string.resume_left, length((resume.durationSec - resume.positionSec).coerceAtLeast(0.0)))
                         allDone -> stringResource(R.string.play_again)
                         else -> stringResource(R.string.action_play)
                     } + if (series && (next.episode > 0 || next.season > 0)) " · " + rowLabelShort(next, title.reading) else "",
                     { vm.open(if (allDone) title.items.first() else next) },
                     Modifier.fillMaxWidth(),
-                    icon = Ic.Play,
+                    icon = if (title.reading) Ic.Book else Ic.Play,
                     large = true,
                 )
                 // What else can be done with the title, at one weight below the main action.
@@ -788,7 +792,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (resume != null) QuietAction(this, Ic.RotateCcw, stringResource(R.string.start_over)) { vm.markWatched(listOf(next.id), false) }
                     QuietAction(this, 
-                        Ic.Check,
+                        Ic.Eye,
                         stringResource(
                             when {
                                 allDone && series -> R.string.mark_all_unwatched
@@ -809,9 +813,12 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                         }
                     }
                 }
-                if (series && watched > 0) {
-                    Text(stringResource(if (title.reading) R.string.read_of else R.string.watched_of, watched, title.items.size), Modifier.padding(top = 10.dp), color = l.muted, fontSize = 12.sp)
-                }
+                // Under the actions: what is left of the one in progress, and how much of the whole is done.
+                val under = listOfNotNull(
+                    resume?.takeIf { series && !title.reading }?.let { stringResource(R.string.time_left, length((it.durationSec - it.positionSec).coerceAtLeast(0.0))) },
+                    if (series && watched > 0) stringResource(if (title.reading) R.string.read_of else R.string.watched_of, watched, title.items.size) else null,
+                )
+                if (under.isNotEmpty()) Text(under.joinToString("  ·  "), Modifier.padding(top = 10.dp), color = l.muted, fontSize = 13.sp)
             }
         }
         state.synopsisOf(title).takeIf { it.isNotEmpty() }?.let { text ->
@@ -843,13 +850,25 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 Mono(stringResource(R.string.details))
                 Gap(8.dp)
                 state.libraries.firstOrNull { it.id == title.libraryId }?.let { Fact(stringResource(R.string.nav_library), it.name) }
-                if (title.year > 0) Fact(stringResource(R.string.fact_year), title.year.toString())
+                if (series && title.year > 0) Fact(stringResource(R.string.fact_year), title.year.toString())
                 if (series) Fact(stringResource(if (title.reading) R.string.volumes else R.string.episodes), title.items.size.toString())
-                if (total > 0) Fact(stringResource(R.string.fact_length), length(total))
+                if (series && total > 0) Fact(stringResource(R.string.fact_length), length(total))
                 Fact(stringResource(R.string.fact_size), bytes(title.items.sumOf { it.size }))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.6f)))
             }
         }
+    }
+    // Scrolled past the hero, the page keeps a top of its own: the way back and
+    // the name, on solid ground, so nothing runs up into the status bar.
+    androidx.compose.animation.AnimatedVisibility(pastHero, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
+        Column(Modifier.fillMaxWidth().background(l.bg)) {
+            Row(Modifier.fillMaxWidth().height(56.dp).padding(start = 6.dp, end = GUTTER), verticalAlignment = Alignment.CenterVertically) {
+                IconBtn(Ic.ArrowLeft, "Back", { vm.back() }, tint = l.text)
+                Text(title.title, Modifier.padding(start = 4.dp), color = l.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.7f)))
+        }
+    }
     }
     if (confirmAll) {
         // A whole title is a lot of room: say how much before taking it.
@@ -872,7 +891,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         Sheet(rowLabel(item, title.reading), { menu = null }) {
             SheetAction(Ic.Play, stringResource(if (title.reading) R.string.action_read else R.string.action_play)) { menu = null; vm.open(item) }
             if (p != null && !p.completed && p.positionSec > 0) SheetAction(Ic.RotateCcw, stringResource(R.string.start_over)) { menu = null; vm.markWatched(listOf(item.id), false) }
-            SheetAction(Ic.Check, stringResource(if (p?.completed == true) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
+            SheetAction(Ic.Eye, stringResource(if (p?.completed == true) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
                 menu = null
                 vm.markWatched(listOf(item.id), p?.completed != true)
             }

@@ -273,7 +273,7 @@
 		{#if feed.length === 0}
 			<EmptyState title={t('social.feed.emptyTitle')} description={t('social.feed.emptyBody')}>
 				{#snippet icon()}<Users class="size-6 text-muted" />{/snippet}
-				<Button variant="secondary" onclick={() => setTab('friends')}>{t('social.feed.findFriends')} <Kbd>/</Kbd></Button>
+				<Button onclick={() => setTab('friends')}>{t('social.feed.findFriends')} <Kbd>/</Kbd></Button>
 			</EmptyState>
 		{:else}
 			<ul>
