@@ -80,10 +80,10 @@
 			<Play class="size-4 translate-x-px" aria-hidden="true" />
 		</div>
 		<span
-			class="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 font-mono text-[10px] font-semibold text-foreground backdrop-blur"
+			class="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-foreground backdrop-blur"
 			aria-hidden="true"
 		>
-			{group.count}
+			{group.count} {isReadable(group.items[0]?.kind) ? 'vol' : 'ep'}
 		</span>
 		{#if progress && progress.duration_sec > 0}
 			<div class="absolute inset-x-0 bottom-0 h-1 bg-black/40">

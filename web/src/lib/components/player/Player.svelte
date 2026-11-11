@@ -1695,7 +1695,7 @@
 			aria-label={ended ? 'Play again' : 'Play'}
 		>
 			<span
-				class="flex size-20 items-center justify-center rounded-full border border-foreground/25 bg-background/60 text-foreground backdrop-blur transition-transform duration-150 hover:scale-105"
+				class="flex size-20 items-center justify-center rounded-full border border-foreground/25 bg-background/60 text-foreground backdrop-blur transition-transform duration-150 hover:scale-105 max-md:portrait:size-14 max-md:portrait:-translate-y-4"
 			>
 				<Play class="size-9 translate-x-0.5" />
 			</span>
@@ -1935,7 +1935,7 @@
 				}}
 				class="relative flex h-6 w-full touch-none select-none items-center"
 			>
-				<span class="relative h-[3px] w-full grow overflow-hidden bg-line/25">
+				<span class="relative h-1 w-full grow overflow-hidden rounded-full bg-white/25">
 					<!-- The ready range sits where it actually is: a resumed or
 					     re-seeked session begins partway into the episode. -->
 					<span
@@ -1947,7 +1947,7 @@
 				<Slider.Thumb
 					index={0}
 					aria-label="Seek"
-					class="block size-3.5 rounded-full bg-accent transition-transform duration-150 hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+					class="block size-4 rounded-full bg-accent shadow-[0_0_0_3px_rgba(0,0,0,0.25)] transition-transform duration-150 hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 				/>
 			</Slider.Root>
 			<span class="shrink-0 text-xs tabular-nums text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] sm:text-sm">

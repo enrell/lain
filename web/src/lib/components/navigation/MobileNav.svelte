@@ -60,7 +60,7 @@
 {/snippet}
 
 <nav
-	class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-background/95 backdrop-blur md:hidden"
+	class="mobile-nav fixed inset-x-0 bottom-0 z-40 border-t border-line/60 bg-background/95 backdrop-blur md:hidden"
 	aria-label={t('nav.primary')}
 	style="padding-bottom: env(safe-area-inset-bottom);"
 >

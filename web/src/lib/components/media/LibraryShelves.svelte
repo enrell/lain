@@ -61,7 +61,7 @@
 				</h2>
 				{#if shelf && !shelf.failed}
 					<a href={`/library/${lib.id}`} class="shrink-0 font-mono text-[11px] uppercase tracking-[0.14em] text-muted hover:text-foreground">
-						{shelf.total} {shelf.total === 1 ? 'item' : 'items'}
+						View all
 					</a>
 				{/if}
 			</div>

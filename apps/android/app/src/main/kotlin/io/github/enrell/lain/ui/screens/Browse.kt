@@ -185,9 +185,9 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                         color = l.accent,
                     )
                     Text(
-                        hero.title,
+                        hero.title.uppercase(),
                         Modifier.padding(top = 10.dp),
-                        color = l.text, fontSize = 34.sp, lineHeight = 36.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.2).sp,
+                        color = l.text, fontSize = 34.sp, lineHeight = 34.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.5).sp,
                         maxLines = 3, overflow = TextOverflow.Ellipsis,
                     )
                     // What it is, in words: the episode you are on and what is left of it, or the
@@ -244,7 +244,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                         RailLabel.Recent -> stringResource(R.string.rail_recent)
                         is RailLabel.Library -> lab.name
                     },
-                    if (libId != null) stringResource(R.string.view_all) else null,
+                    null,
                     libId?.let { id -> { vm.go(Screen.LibraryDetail(id)) } },
                 )
                 LazyRow(Modifier.padding(top = 8.dp), contentPadding = PaddingValues(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -395,7 +395,7 @@ fun LibraryDetailScreen(state: AppState, vm: AppViewModel, id: String) {
             IconBtn(Ic.ArrowLeft, stringResource(R.string.nav_library), { vm.back() }, tint = l.text)
             Text(lib?.name ?: "", Modifier.padding(start = 4.dp), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Box(Modifier.padding(top = 8.dp)) { LibraryBrowser(titles, state, vm, searchHint = stringResource(R.string.search_library)) }
+        Box(Modifier.padding(top = 8.dp)) { LibraryBrowser(titles, state, vm, searchHint = stringResource(R.string.search_library), sortScope = id) }
     }
 }
 
@@ -407,10 +407,20 @@ fun LibraryDetailScreen(state: AppState, vm: AppViewModel, id: String) {
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searchHint: String) {
+fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searchHint: String, sortScope: String = "") {
     val l = LocalLain.current
     val prefs = LocalContext.current.graph.prefs
-    var filters by remember { mutableStateOf(Filters(sort = Sort.of(prefs.librarySort))) }
+    val anySeries = remember(titles) { titles.any { it.items.size > 1 } }
+    // An order that cannot apply here (most episodes among single films) is not kept.
+    var filters by remember { mutableStateOf(Filters(sort = Sort.of(prefs.sortOf(sortScope)).takeIf { it != Sort.EpisodesDesc || anySeries } ?: Sort.Title)) }
+    // What a closed sheet left unapplied, offered back for a moment.
+    var unapplied by remember { mutableStateOf<Filters?>(null) }
+    LaunchedEffect(unapplied) {
+        if (unapplied != null) {
+            kotlinx.coroutines.delay(6000)
+            unapplied = null
+        }
+    }
     var dense by remember { mutableStateOf(prefs.smallTiles) }
     var sheet by remember { mutableStateOf(false) }
     val now = remember { System.currentTimeMillis() / 1000 }
@@ -446,7 +456,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                     color = l.muted, fontSize = 14.sp,
                 )
                 if (filters.sort != Sort.Title) {
-                    FilterChip(stringResource(R.string.sorted_by, sortLabel(filters.sort))) { filters = filters.copy(sort = Sort.Title); prefs.librarySort = Sort.Title.id }
+                    FilterChip(stringResource(R.string.sorted_by, sortLabel(filters.sort))) { filters = filters.copy(sort = Sort.Title); prefs.setSortOf(sortScope, Sort.Title.id) }
                 }
                 for (g in filters.genres) FilterChip(g) { filters = filters.copy(genres = filters.genres - g) }
                 filters.watch?.let { w -> FilterChip(watchLabel(w)) { filters = filters.copy(watch = null) } }
@@ -454,7 +464,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                 if (filters.kind.isNotEmpty()) FilterChip(filters.kind) { filters = filters.copy(kind = "") }
                 if (filters.added > 0) FilterChip(addedLabel(filters.added)) { filters = filters.copy(added = 0) }
                 if (filters.narrowed) {
-                    Text(stringResource(R.string.clear), Modifier.clip(CircleShape).clickable { filters = filters.cleared(); prefs.librarySort = Sort.Title.id }.padding(horizontal = 8.dp, vertical = 4.dp), color = l.muted, fontSize = 12.sp)
+                    Text(stringResource(R.string.clear), Modifier.clip(CircleShape).clickable { filters = filters.cleared(); prefs.setSortOf(sortScope, Sort.Title.id) }.padding(horizontal = 8.dp, vertical = 4.dp), color = l.muted, fontSize = 12.sp)
                 }
             }
             if (results.isEmpty()) {
@@ -464,7 +474,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                         color = l.text, fontSize = 14.sp,
                     )
                     Gap(16.dp)
-                    WButton(stringResource(R.string.clear_all), { filters = filters.cleared(); prefs.librarySort = Sort.Title.id }, kind = Btn.Secondary)
+                    WButton(stringResource(R.string.clear_all), { filters = filters.cleared(); prefs.setSortOf(sortScope, Sort.Title.id) }, kind = Btn.Secondary)
                 }
             } else {
                 // The shapes are read here, in composition, and handed to the grid
@@ -500,7 +510,20 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                 }
             }
         }
-        if (far) {
+        unapplied?.let { left ->
+            Row(
+                Modifier.align(Alignment.BottomCenter).padding(horizontal = GUTTER, vertical = 16.dp).fillMaxWidth().clip(l.buttonShape).background(l.raised).border(1.dp, l.line, l.buttonShape).padding(start = 14.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.filters_unapplied), Modifier.weight(1f).padding(vertical = 12.dp), color = l.text, fontSize = 14.sp)
+                Text(
+                    stringResource(R.string.apply),
+                    Modifier.clip(l.buttonShape).clickable { filters = left; prefs.setSortOf(sortScope, left.sort.id); unapplied = null }.padding(horizontal = 12.dp, vertical = 12.dp),
+                    color = l.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        if (far && unapplied == null) {
             Row(
                 Modifier.align(Alignment.BottomEnd).padding(20.dp).height(40.dp).clip(CircleShape).background(l.surface.copy(alpha = 0.95f)).border(1.dp, l.line, CircleShape)
                     .clickable { scope.launch { grid.animateScrollToItem(0) } }.padding(horizontal = 14.dp),
@@ -531,7 +554,10 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
         val changed = draft.active > 0 || draft.sort != Sort.Title
         Sheet(
             stringResource(R.string.filters),
-            { sheet = false },
+            {
+                if (draft != filters || draftDense != dense) unapplied = draft
+                sheet = false
+            },
             footer = {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     WButton(stringResource(R.string.clear), { draft = Filters(q = draft.q) }, Modifier.weight(1f), kind = Btn.Secondary, enabled = changed)
@@ -540,7 +566,8 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                         {
                             filters = draft
                             dense = draftDense
-                            prefs.librarySort = draft.sort.id
+                            prefs.setSortOf(sortScope, draft.sort.id)
+                            unapplied = null
                             prefs.smallTiles = draftDense
                             sheet = false
                         },
@@ -550,7 +577,6 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
             },
         ) {
             SheetHeading(stringResource(R.string.sort))
-            val anySeries = remember(titles) { titles.any { it.items.size > 1 } }
             val sorts = listOfNotNull(Sort.Title, Sort.Recent, Sort.YearDesc, Sort.Year, if (anySeries) Sort.EpisodesDesc else null, Sort.TitleDesc)
             for (pair in sorts.chunked(2)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -666,6 +692,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
     val resume = state.progress[next.id]?.takeIf { !it.completed && it.positionSec > (if (title.reading) 1.0 else 0.0) }
     val total = title.items.sumOf { state.durations[it.id] ?: 0.0 }
     var menu by remember { mutableStateOf<Item?>(null) }
+    var confirmAll by remember { mutableStateOf(false) }
     // The copies on this device, read while the screen is up (faster while one is arriving).
     val graph = LocalContext.current.graph
     val scope = rememberCoroutineScope()
@@ -684,8 +711,8 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         item {
             HeroFrame(title.art(), 320.dp, back = { vm.back() }) {
                 Text(
-                    title.title,
-                    color = l.text, fontSize = 28.sp, lineHeight = 31.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.9).sp,
+                    title.title.uppercase(),
+                    color = l.text, fontSize = 30.sp, lineHeight = 31.sp, fontWeight = FontWeight.Black, letterSpacing = (-1.3).sp,
                     maxLines = 3, overflow = TextOverflow.Ellipsis,
                 )
                 // One line of what it is: year, size or length, then genres.
@@ -716,17 +743,29 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                     large = true,
                 )
                 // What else can be done with the title, at one weight below the main action.
-                // They wrap to a second line on a narrow screen; none is cut at the edge.
-                FlowRow(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (resume != null) QuietAction(Ic.RotateCcw, stringResource(R.string.start_over)) { vm.markWatched(listOf(next.id), false) }
-                    QuietAction(Ic.Check, stringResource(if (allDone) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
-                        vm.markWatched(title.items.map { it.id }, !allDone)
-                    }
+                // Equal columns, icon over word: they share one grid whatever their number or wording.
+                Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (resume != null) QuietAction(Modifier.weight(1f), Ic.RotateCcw, stringResource(R.string.start_over)) { vm.markWatched(listOf(next.id), false) }
+                    QuietAction(Modifier.weight(1f), 
+                        Ic.Check,
+                        stringResource(
+                            when {
+                                allDone && series -> R.string.mark_all_unwatched
+                                allDone -> R.string.mark_unwatched
+                                series && title.reading -> R.string.mark_all_read
+                                series -> R.string.mark_all_watched
+                                title.reading -> R.string.mark_read
+                                else -> R.string.mark_watched
+                            },
+                        ),
+                    ) { vm.markWatched(title.items.map { it.id }, !allDone) }
                     val have = title.items.count { copyOf[it.id]?.state == io.github.enrell.lain.core.CopyState.DONE }
                     if (have == title.items.size) {
-                        QuietAction(Ic.Check, stringResource(R.string.dl_downloaded)) { vm.go(Screen.Downloads) }
+                        QuietAction(Modifier.weight(1f), Ic.Check, stringResource(R.string.dl_downloaded)) { vm.go(Screen.Downloads) }
                     } else {
-                        QuietAction(Ic.Download, stringResource(if (series) R.string.download_all else R.string.action_download)) { title.items.filter { copyOf[it.id] == null }.forEach(ask) }
+                        QuietAction(Modifier.weight(1f), Ic.Download, stringResource(if (series) R.string.download_all else R.string.action_download)) {
+                            if (series) confirmAll = true else title.items.filter { copyOf[it.id] == null }.forEach(ask)
+                        }
                     }
                 }
                 if (series && watched > 0) {
@@ -771,6 +810,22 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
             }
         }
     }
+    if (confirmAll) {
+        // A whole title is a lot of room: say how much before taking it.
+        val missing = title.items.filter { copyOf[it.id] == null }
+        Sheet(stringResource(R.string.download_all_q), { confirmAll = false }, footer = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                WButton(stringResource(R.string.player_cancel), { confirmAll = false }, Modifier.weight(1f), kind = Btn.Secondary)
+                WButton(stringResource(R.string.action_download), { confirmAll = false; missing.forEach(ask) }, Modifier.weight(1f), icon = Ic.Download)
+            }
+        }) {
+            Text(
+                (if (title.reading) pluralStringResource(R.plurals.count_volumes, missing.size, missing.size) else pluralStringResource(R.plurals.count_episodes, missing.size, missing.size)) + "  ·  " + bytes(missing.sumOf { it.size }),
+                color = l.text, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+            )
+            Text(stringResource(R.string.download_all_body), Modifier.padding(top = 6.dp), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
+        }
+    }
     menu?.let { item ->
         val p = state.progress[item.id]
         Sheet(rowLabel(item, title.reading), { menu = null }) {
@@ -804,17 +859,18 @@ private fun rowLabelShort(item: Item, reading: Boolean): String = when {
     else -> episodeLabel(item.season, item.episode, reading)
 }
 
-/** A secondary action on a title: an outlined pill with its icon. */
+/** A secondary action on a title: one of a row of equal columns, its icon over its word. */
 @Composable
-private fun QuietAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+private fun QuietAction(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     val l = LocalLain.current
-    Row(
-        Modifier.height(40.dp).clip(CircleShape).border(1.dp, l.line, CircleShape).clickable(onClick = onClick).padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    Column(
+        modifier.heightIn(min = 60.dp).clip(l.buttonShape).background(l.surface.copy(alpha = 0.55f)).border(1.dp, l.line.copy(alpha = 0.7f), l.buttonShape)
+            .clickable(onClickLabel = label, onClick = onClick).padding(horizontal = 6.dp, vertical = 9.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically),
     ) {
-        Icon(icon, null, tint = l.muted, modifier = Modifier.size(15.dp))
-        Text(label, color = l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        Icon(icon, null, tint = l.text, modifier = Modifier.size(18.dp))
+        Text(label, color = l.text.copy(alpha = 0.85f), fontSize = 12.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
 
@@ -876,15 +932,22 @@ private fun EpisodeRow(item: Item, title: Title, state: AppState, onOpen: () -> 
             Text(rowLabel(item, title.reading), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 when {
-                    p?.completed == true && dur != null -> stringResource(R.string.progress_done) + " · " + length(dur)
-                    p?.completed == true -> stringResource(R.string.progress_done)
-                    p != null && p.positionSec > 0 && title.reading -> stringResource(R.string.progress_page, p.positionSec.toInt(), p.durationSec.toInt())
+                    p?.completed == true && dur != null -> stringResource(if (title.reading) R.string.progress_done else R.string.watched) + " · " + length(dur)
+                    p?.completed == true -> stringResource(if (title.reading) R.string.progress_done else R.string.watched)
+                    // Page 1 is where everyone begins: a volume opened and closed has not been started.
+                    p != null && p.positionSec > 1 && title.reading -> stringResource(R.string.progress_page, p.positionSec.toInt(), p.durationSec.toInt())
+                    p != null && title.reading && p.completed != true -> stringResource(R.string.watch_unwatched)
                     p != null && p.positionSec > 0 && p.durationSec > 0 -> stringResource(R.string.time_left, length((p.durationSec - p.positionSec).coerceAtLeast(0.0)))
                     dur != null -> length(dur)
                     else -> stringResource(R.string.watch_unwatched)
                 },
                 Modifier.padding(top = 4.dp),
-                color = if (p?.completed == true) l.muted.copy(alpha = 0.8f) else l.muted, fontSize = 13.sp, maxLines = 1,
+                color = when {
+                    p?.completed == true -> l.muted.copy(alpha = 0.8f)
+                    p != null && p.positionSec > (if (title.reading) 1.0 else 0.0) -> l.accent
+                    else -> l.muted
+                },
+                fontSize = 13.sp, maxLines = 1,
             )
             // Where its copy on this device is, when it has or is getting one.
             if (copy != null) {
@@ -904,7 +967,7 @@ private fun EpisodeRow(item: Item, title: Title, state: AppState, onOpen: () -> 
                 }
             }
         }
-        IconBtn(Ic.Dots, stringResource(R.string.more_actions), onMenu)
+        IconBtn(Ic.Dots, stringResource(R.string.more_actions), onMenu, tint = l.text.copy(alpha = 0.85f))
     }
 }
 
@@ -942,7 +1005,6 @@ fun SearchScreen(state: AppState, vm: AppViewModel) {
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                             ) {
-                                Icon(Ic.Search, null, tint = l.muted, modifier = Modifier.size(13.dp))
                                 Text(q, color = l.text, fontSize = 14.sp, maxLines = 1)
                             }
                         }
@@ -1077,7 +1139,7 @@ private fun HeroFrame(artId: String, minHeight: Dp, back: (() -> Unit)? = null, 
         Art(artId, Modifier.matchParentSize(), alignment = Alignment.TopCenter)
         Box(
             Modifier.matchParentSize().background(
-                Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.28f), 0.16f to Color.Transparent, 0.36f to Color.Transparent, 0.6f to l.bg.copy(alpha = 0.9f), 0.74f to l.bg, 1f to l.bg),
+                Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.28f), 0.14f to Color.Transparent, 0.26f to Color.Transparent, 0.46f to l.bg.copy(alpha = 0.92f), 0.54f to l.bg, 1f to l.bg),
             ),
         )
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = GUTTER).padding(top = minHeight * 0.52f, bottom = 18.dp), content = content)

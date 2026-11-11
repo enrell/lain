@@ -78,8 +78,8 @@
     <string name="downloads_stopped">Stopped: %1$s</string>
     <string name="downloads_evicted">Removed %1$s (watched) to make room</string>
     <string name="downloads_empty">Use Download on a title to keep it here.</string>
-    <string name="copy_done">Ready · %1$s</string>
-    <string name="copy_queued">Queued · %1$s of %2$s</string>
+    <string name="copy_done">Downloaded · %1$s</string>
+    <string name="copy_queued">Downloading · %1$s of %2$s</string>
     <string name="copy_paused">Paused · %1$s</string>
     <string name="copy_failed">Failed · %1$s</string>
 
@@ -101,7 +101,7 @@
     <string name="settings_floor_hint">Downloads stop before the device has less free space than this.</string>
     <string name="settings_evict">Make room automatically</string>
     <string name="settings_evict_hint">Delete watched, synced copies (oldest first) when space runs out.</string>
-    <string name="settings_about">lain for Android · core %1$s</string>
+    <string name="settings_about">Lain for Android · core %1$s</string>
 
     <!-- errors -->
     <string name="err_offline">The server is unreachable.</string>
@@ -226,7 +226,7 @@
     <string name="reader_rtl">Right to left</string>
     <string name="reader_ltr">Left to right</string>
     <string name="hero_continue">Continue your story</string>
-    <string name="action_resume_short">Continue</string>
+    <string name="action_resume_short">Resume</string>
     <string name="home_empty_title">Nothing here yet</string>
     <string name="library_empty_title">No titles in this library</string>
     <string name="time_left">%1$s left</string>
@@ -279,4 +279,18 @@
         <item quantity="one">%1$d volume</item>
         <item quantity="other">%1$d volumes</item>
     </plurals>
+    <string name="settings_skip_fixed">A double tap and the skip buttons move %1$d s in every title.</string>
+    <string name="settings_sync_none">Everything is synced with the server.</string>
+    <plurals name="settings_sync_waiting">
+        <item quantity="one">%1$d position is waiting to sync</item>
+        <item quantity="other">%1$d positions are waiting to sync</item>
+    </plurals>
+    <string name="filters_unapplied">Filter changes were not applied.</string>
+    <string name="apply">Apply</string>
+    <string name="mark_all_watched">Mark all watched</string>
+    <string name="mark_all_read">Mark all read</string>
+    <string name="mark_all_unwatched">Mark all unwatched</string>
+    <string name="download_all_q">Download the whole title?</string>
+    <string name="download_all_body">It is kept on this device until you remove it in Downloads.</string>
+    <string name="watched">Watched</string>
 </resources>

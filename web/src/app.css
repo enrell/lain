@@ -311,6 +311,18 @@ details.settings-section > summary {
 	}
 }
 
+/*
+ * What scrolls under the phone's bar fades into it: a card that is half
+ * out of view reads as "more below", not as cut by the bar.
+ */
+.mobile-nav::before {
+	position: absolute;
+	inset: -2.5rem 0 100% 0;
+	background: linear-gradient(to bottom, transparent, var(--color-background));
+	content: '';
+	pointer-events: none;
+}
+
 /* ---- phones ---------------------------------------------------------- */
 /* Keyboard hints mean nothing without a keyboard. */
 @media (hover: none) and (pointer: coarse) {

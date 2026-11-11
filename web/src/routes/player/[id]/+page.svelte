@@ -153,7 +153,10 @@
 	</div>
 {:else if item && plan}
 	<div class="flex h-dvh flex-col bg-black lg:flex-row">
-		<div class="relative min-h-0 min-w-0 flex-1 bg-black">
+		<!-- A phone held upright: the picture sits at the top with its controls on
+		     it, and what comes next fills the rest, instead of a frame floating in
+		     the middle of a black screen. On its side, or full screen, it is all picture. -->
+		<div class="relative min-h-0 min-w-0 flex-1 bg-black max-md:portrait:aspect-video max-md:portrait:flex-none">
 			{#if plan.available}
 				<!-- A new episode is a new session: keying on the item rebuilds
 				     the player (video element, transcode session, clock) instead
@@ -213,7 +216,7 @@
 
 		{#if episodes.length > 1}
 			<aside
-				class="hidden w-80 shrink-0 flex-col border-l border-line/40 bg-surface/60 lg:flex"
+				class="hidden w-80 shrink-0 flex-col border-l border-line/40 bg-surface/60 lg:flex max-md:portrait:flex max-md:portrait:min-h-0 max-md:portrait:w-full max-md:portrait:flex-1 max-md:portrait:border-l-0 max-md:portrait:bg-background"
 				aria-label="Episodes"
 			>
 				<div class="border-b border-line/40 px-4 py-3">
@@ -268,6 +271,12 @@
 					{/each}
 				</ul>
 			</aside>
+		{:else}
+			<div class="hidden min-h-0 flex-1 overflow-y-auto bg-background px-5 py-5 max-md:portrait:block">
+				<h1 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{item.title}</h1>
+				{#if item.year > 0}<p class="mt-1 text-sm text-muted">{item.year}</p>{/if}
+				<a href={`/item/${item.id}`} class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover"><ArrowLeft class="size-4" aria-hidden="true" /> Details</a>
+			</div>
 		{/if}
 	</div>
 {/if}

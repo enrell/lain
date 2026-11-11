@@ -1,5 +1,6 @@
 package io.github.enrell.lain
 
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -102,6 +103,7 @@ class MainActivity : ComponentActivity() {
         // bars and no light scrim behind the navigation buttons.
         val dark = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         enableEdgeToEdge(statusBarStyle = dark, navigationBarStyle = dark)
+        requestedOrientation = io.github.enrell.lain.ui.screens.restOrientation(this)
         val graph = this.graph
         setContent {
             var themeId by remember { mutableStateOf(graph.prefs.theme) }
@@ -228,9 +230,10 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                     // and brings its own way back.
                     if (s !is Screen.TitleDetail) TopBar(state, vm)
                     // Screens cross-fade with a short rise; going back falls instead.
+                    Box(Modifier.weight(1f)) {
                     AnimatedContent(
                         targetState = s,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxSize(),
                         transitionSpec = {
                             val forward = state.stack.size >= depth
                             depth = state.stack.size
@@ -249,6 +252,12 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                             is Screen.TitleDetail -> TitleScreen(state, vm, screen.key, download)
                             else -> Unit
                         }
+                    }
+                    // A row half out of view reads as "more below", not as cut by the bar.
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(36.dp).background(Brush.verticalGradient(listOf(Color.Transparent, l.bg))))
+                    if (s is Screen.TitleDetail) {
+                        Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(20.dp).background(Brush.verticalGradient(listOf(l.bg, Color.Transparent))))
+                    }
                     }
                     // While typing, the keyboard takes the bar's place: the results get the room.
                     if (!WindowInsets.isImeVisible) BottomBar(state.destinations, s, vm)

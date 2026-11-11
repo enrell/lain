@@ -1,4 +1,5 @@
 <script lang="ts">
+	import X from '@lucide/svelte/icons/x';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -129,8 +130,18 @@
 				aria-label="Search your library"
 				autocapitalize="none"
 				spellcheck={false}
-				class="h-12 w-full rounded-card border border-line bg-surface pl-10 pr-4 text-sm text-foreground placeholder:text-muted/60 focus:border-accent/60 focus:outline-none"
+				class="h-12 w-full rounded-card border border-line bg-surface pl-10 pr-12 text-sm text-foreground placeholder:text-muted/60 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
 			/>
+			{#if query !== ''}
+				<button
+					type="button"
+					class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-muted hover:text-foreground"
+					aria-label="Clear the search"
+					onclick={() => { clear(); input?.focus(); }}
+				>
+					<X class="size-4" aria-hidden="true" />
+				</button>
+			{/if}
 		</form>
 		{#if searchedFor !== '' && !loading}
 			<p class="text-sm text-muted" aria-live="polite">

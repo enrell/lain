@@ -416,7 +416,8 @@
 									<Badge tone="warning">unreadable</Badge>
 								{/if}
 							</div>
-							<p class="mt-0.5 truncate font-mono text-xs text-muted">{lib.path}</p>
+							<!-- A long path is cut at its start: the folder's own name is the part that tells libraries apart. -->
+							<p class="mt-0.5 truncate text-left font-mono text-xs text-muted" style="direction: rtl" title={lib.path}><bdi>{lib.path}</bdi></p>
 						</div>
 						{#if roots !== null}
 							<div class="flex items-center gap-2 text-sm text-muted">

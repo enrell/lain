@@ -102,7 +102,7 @@ fun WButton(
     val shape = if (pill) CircleShape else l.buttonShape
     val (bg, fg, edge) = when (kind) {
         Btn.Primary -> Triple(l.accent, l.onAccent, Color.Transparent)
-        Btn.Secondary -> Triple(l.raised, l.text, l.line)
+        Btn.Secondary -> Triple(l.raised, l.text, l.text.copy(alpha = 0.22f))
         Btn.Ghost -> Triple(Color.Transparent, l.muted, Color.Transparent)
         Btn.Danger -> Triple(l.danger.copy(alpha = 0.15f), l.danger, l.danger.copy(alpha = 0.3f))
     }
@@ -210,6 +210,7 @@ fun Sheet(title: String, onDismiss: () -> Unit, footer: (@Composable () -> Unit)
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = l.surface,
         contentColor = l.text,
+        scrimColor = Color.Black.copy(alpha = 0.62f),
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
         dragHandle = {
             Box(Modifier.padding(top = 12.dp, bottom = 4.dp).width(40.dp).height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)))
@@ -284,7 +285,11 @@ fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enab
         val c = if (on) l.text else l.muted.copy(alpha = if (enabled) 1f else 0.35f)
         Text(label, Modifier.weight(1f).padding(start = 9.dp), color = c, fontSize = 14.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (count != null) Text(count.toString(), style = TextStyle(fontFamily = l.mono, fontSize = 11.sp, color = c.copy(alpha = c.alpha * 0.7f)))
-        Box(Modifier.padding(start = 10.dp, end = 10.dp).size(16.dp)) { if (on) Icon(Ic.Check, null, tint = l.accent, modifier = Modifier.size(16.dp)) }
+        Box(
+            Modifier.padding(start = 10.dp, end = 10.dp).size(20.dp).clip(CircleShape).background(if (on) l.accent else Color.Transparent)
+                .border(1.5.dp, if (on) l.accent else l.muted.copy(alpha = if (enabled) 0.55f else 0.2f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { if (on) Icon(Ic.Check, null, tint = l.onAccent, modifier = Modifier.size(12.dp)) }
     }
 }
 
@@ -362,7 +367,7 @@ fun PinField(value: String, onChange: (String) -> Unit, onDone: () -> Unit, modi
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             repeat(maxOf(4, value.length)) { i ->
                 val filled = i < value.length
-                Box(Modifier.size(if (filled) 16.dp else 14.dp).clip(CircleShape).background(if (filled) l.accent else Color.Transparent).border(1.5.dp, if (filled) l.accent else l.muted.copy(alpha = 0.6f), CircleShape))
+                Box(Modifier.size(16.dp).clip(CircleShape).background(if (filled) l.accent else Color.White.copy(alpha = 0.08f)).border(1.5.dp, if (filled) l.accent else Color.White.copy(alpha = 0.45f), CircleShape))
             }
         }
     }

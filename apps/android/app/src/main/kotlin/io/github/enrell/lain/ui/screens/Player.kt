@@ -215,7 +215,7 @@ fun PlayerScreen(
         onDispose {
             bars?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            activity?.requestedOrientation = restOrientation(activity)
         }
     }
     LaunchedEffect(itemId) { model.load() }
@@ -256,7 +256,7 @@ fun PlayerScreen(
                 // A picture that is taller than wide is watched upright.
                 if (size.width > 0 && size.height > size.width && landscape) {
                     landscape = false
-                    activity?.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                    activity?.requestedOrientation = restOrientation(activity)
                 }
             }
         }
@@ -466,9 +466,10 @@ fun PlayerScreen(
                     Modifier.size(76.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)).border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape).clickable { togglePlay() },
                     contentAlignment = Alignment.Center,
                 ) { Icon(if (ended) Ic.RotateCcw else Ic.Play, null, tint = Color.White, modifier = Modifier.size(30.dp)) }
-                if (ended || positionMs > 500) {
+                // The end says what the button does; a pause needs no caption beside its button.
+                if (ended) {
                     Text(
-                        stringResource(if (ended) R.string.play_again else R.string.player_paused),
+                        stringResource(R.string.play_again),
                         Modifier.padding(top = 10.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 12.dp, vertical = 5.dp),
                         color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                     )
@@ -582,9 +583,8 @@ fun PlayerScreen(
                                     } else {
                                         preview?.let { Image(it, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
                                     }
+                                    Text(clock(sec), Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.75f)).padding(horizontal = 9.dp, vertical = 3.dp), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
-                                // On a ground of its own: over a bright picture bare digits disappear.
-                                Text(clock(sec), Modifier.padding(top = 5.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.72f)).padding(horizontal = 9.dp, vertical = 3.dp), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                         Box(
@@ -608,14 +608,14 @@ fun PlayerScreen(
                                 },
                             contentAlignment = Alignment.CenterStart,
                         ) {
-                            Box(Modifier.fillMaxWidth().height(3.dp).background(Color.White.copy(alpha = 0.25f)))
+                            Box(Modifier.fillMaxWidth().height(5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.25f)))
                             // What is loaded sits where it is: a session that began
                             // partway holds a range inside the title, not its start.
                             val heldFrom = ((state.source?.offsetSec ?: 0.0) / total).toFloat().coerceIn(0f, 1f)
                             val heldTo = (model.sourceSec(bufferedMs) / total).toFloat().coerceIn(heldFrom, 1f)
-                            Box(Modifier.offset(x = width * heldFrom).width(width * (heldTo - heldFrom)).height(3.dp).background(Color.White.copy(alpha = 0.3f)))
-                            Box(Modifier.fillMaxWidth(fraction).height(3.dp).background(l.accent))
-                            Box(Modifier.offset(x = (width - 14.dp) * fraction).size(if (scrub != null) 18.dp else 14.dp).clip(CircleShape).background(l.accent))
+                            Box(Modifier.offset(x = width * heldFrom).width(width * (heldTo - heldFrom)).height(5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.3f)))
+                            Box(Modifier.fillMaxWidth(fraction).height(5.dp).clip(CircleShape).background(l.accent))
+                            Box(Modifier.offset(x = (width - 18.dp) * fraction).size(if (scrub != null) 24.dp else 18.dp).clip(CircleShape).background(l.accent))
                         }
                     }
                     Text(
@@ -652,7 +652,7 @@ fun PlayerScreen(
                     IconBtn(Ic.Maximize, "Fullscreen", {
                         landscape = !landscape
                         activity?.requestedOrientation =
-                            if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                            if (landscape) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else restOrientation(activity)
                         touched++
                     }, tint = Color.White)
                 }
@@ -661,7 +661,7 @@ fun PlayerScreen(
 
         // A list over the picture closes with a tap outside it.
         if (settings || tracksPanel != 0) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).pointerInput(Unit) { detectTapGestures { settings = false; tracksPanel = 0 } })
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).pointerInput(Unit) { detectTapGestures { settings = false; tracksPanel = 0 } })
         }
         if (tracksPanel != 0) {
             val subs = tracksPanel == 1
@@ -806,3 +806,14 @@ private fun PickRow(label: String, value: String, options: List<Pair<String, Boo
         }
     }
 }
+
+
+/**
+ * The orientation outside the player. A phone's screens are laid out
+ * upright, so a phone goes back upright by request instead of being left
+ * to the system (with rotation locked it could stay on its side after a
+ * video); a tablet follows the system.
+ */
+fun restOrientation(activity: android.app.Activity?): Int =
+    if ((activity?.resources?.configuration?.smallestScreenWidthDp ?: 0) < 600) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED

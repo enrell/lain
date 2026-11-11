@@ -12,6 +12,8 @@
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
+	import Grid2x2 from '@lucide/svelte/icons/grid-2x2';
+	import Grid3x3 from '@lucide/svelte/icons/grid-3x3';
 	import Film from '@lucide/svelte/icons/film';
 	import Search from '@lucide/svelte/icons/search';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
@@ -522,15 +524,18 @@
 				</div>
 				<button
 					type="button"
-					class="hidden h-10 shrink-0 rounded-md border border-line px-3 font-mono text-[11px] uppercase tracking-[0.12em] text-muted transition-colors hover:border-white/15 hover:text-foreground sm:block"
+					class="hidden h-10 shrink-0 items-center gap-2 rounded-md border border-line px-3 text-sm text-muted transition-colors hover:border-white/15 hover:text-foreground sm:flex"
 					aria-pressed={dense}
+					aria-label={dense ? 'Tile size: small. Switch to large.' : 'Tile size: large. Switch to small.'}
 					title="Tile size"
 					onclick={() => {
 						dense = !dense;
 						savePrefs();
 					}}
 				>
-					{dense ? 'Small' : 'Large'}
+					<!-- An icon of what it changes beside the word: a bare "LARGE" read as a label. -->
+					{#if dense}<Grid3x3 class="size-4" aria-hidden="true" />{:else}<Grid2x2 class="size-4" aria-hidden="true" />{/if}
+					{dense ? 'Small tiles' : 'Large tiles'}
 				</button>
 				<button
 					type="button"

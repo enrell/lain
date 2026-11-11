@@ -149,7 +149,7 @@
 									<span class="h-3.5 w-0.5 rounded-full {on ? 'bg-accent' : 'bg-transparent'}" aria-hidden="true"></span>
 									{sectionLabel(s)}
 								</span>
-								<kbd class="hidden font-mono text-[10px] {chord ? 'text-accent' : 'text-muted/60'} md:inline">g{s.key}</kbd>
+								<kbd class="hidden {chord ? 'text-accent' : 'text-muted/60'} md:inline-flex">g{s.key}</kbd>
 							</a>
 						</li>
 					{/each}
