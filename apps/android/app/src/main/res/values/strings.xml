@@ -302,4 +302,5 @@
     <string name="continue_page_short">Continue · page %1$d</string>
     <string name="reader_rtl_note">Right to left: the next page is on the left</string>
     <string name="hero_continue_reading">Continue reading</string>
+    <string name="fact_download_size">Download size</string>
 </resources>

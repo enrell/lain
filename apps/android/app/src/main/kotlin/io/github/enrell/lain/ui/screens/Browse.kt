@@ -238,7 +238,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                                 when {
                                     resumeHero != null && hero.reading && resumeHero.progress.positionSec > 1 -> stringResource(R.string.continue_page_short, resumeHero.progress.positionSec.toInt())
                                     hero.reading -> stringResource(R.string.action_read)
-                                    resumeHero != null && resumeHero.item.episode > 0 -> stringResource(R.string.action_resume_short) + " · " + episodeLabel(resumeHero.item.season, resumeHero.item.episode, hero.reading)
+                                    resumeHero != null && resumeHero.item.episode > 0 -> stringResource(R.string.action_resume_short) + " · " + stringResource(R.string.episode_n, resumeHero.item.episode.toInt())
                                     resumeHero != null -> stringResource(R.string.action_resume_short)
                                     hero.reading -> stringResource(R.string.action_read)
                                     else -> stringResource(R.string.action_play)
@@ -471,11 +471,14 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.padding(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 SearchField(filters.q, { filters = filters.copy(q = it) }, searchHint, Modifier.weight(1f))
-                Box {
-                    IconBtn(Ic.Sliders, stringResource(R.string.filters), { sheet = true }, tint = if (filters.active > 0 || filters.sort != Sort.Title) l.text else l.muted, outlined = true)
-                    if (filters.active > 0 || filters.sort != Sort.Title) {
-                        Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(8.dp).clip(CircleShape).background(l.accent))
-                    }
+                val narrowing = filters.active > 0 || filters.sort != Sort.Title
+                Row(
+                    Modifier.height(44.dp).clip(l.buttonShape).border(1.dp, if (narrowing) l.accent.copy(alpha = 0.7f) else l.line, l.buttonShape)
+                        .clickable(onClickLabel = stringResource(R.string.filters)) { sheet = true }.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Icon(Ic.Sliders, null, tint = if (narrowing) l.text else l.muted, modifier = Modifier.size(18.dp))
+                    Text(stringResource(R.string.filters) + if (filters.active > 0) " · ${filters.active}" else "", color = if (narrowing) l.text else l.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
             }
             FlowRow(
@@ -853,7 +856,8 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 if (series && title.year > 0) Fact(stringResource(R.string.fact_year), title.year.toString())
                 if (series) Fact(stringResource(if (title.reading) R.string.volumes else R.string.episodes), title.items.size.toString())
                 if (series && total > 0) Fact(stringResource(R.string.fact_length), length(total))
-                Fact(stringResource(R.string.fact_size), bytes(title.items.sumOf { it.size }))
+                // What a download of it takes on this device.
+                Fact(stringResource(R.string.fact_download_size), bytes(title.items.sumOf { it.size }))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.6f)))
             }
         }
@@ -914,9 +918,12 @@ private fun rowLabel(item: Item, reading: Boolean): String = when {
     else -> item.fileName.substringBeforeLast('.')
 }
 
+@Composable
 private fun rowLabelShort(item: Item, reading: Boolean): String = when {
     reading && item.season > 0 -> "Vol. ${item.season}"
-    else -> episodeLabel(item.season, item.episode, reading)
+    reading -> episodeLabel(item.season, item.episode, true)
+    item.episode > 0 -> stringResource(R.string.episode_n, item.episode.toInt())
+    else -> episodeLabel(item.season, item.episode, false)
 }
 
 /** A secondary action on a title: one of a row of columns, its icon over its word. */

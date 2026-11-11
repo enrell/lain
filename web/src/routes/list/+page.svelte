@@ -114,7 +114,7 @@
 	{:else if entries.length === 0}
 		<EmptyState
 			title="Nothing on your list yet"
-			description="Connect an account in Settings → Account to import what you track. AniList is supported today."
+			description="Connect an account in Settings → Connections to import what you track. AniList is supported today."
 		>
 			{#snippet icon()}<ListChecks class="size-6 text-muted" />{/snippet}
 			<a

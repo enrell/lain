@@ -467,13 +467,13 @@ fun PlayerScreen(
         // The transport, in the middle of the picture where a thumb lands: back,
         // play or pause, forward. It is the one play target; the bar below keeps
         // time and options. Over a paused picture it stays, and the picture dims.
-        if (idle && countdown == null) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)))
+        if ((shown || idle) && countdown == null) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (idle) 0.38f else 0.26f)))
         if (shown && !buffering && !state.loading && countdown == null && scrub == null && !settings && tracksPanel == 0) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(36.dp)) {
                     SkipButton(Ic.Back10, skipSec(), stringResource(R.string.player_skip_back, skipSec())) { seekBy(-skipMs()); touched++ }
                     Box(
-                        Modifier.size(76.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)).border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                        Modifier.size(76.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.72f)).border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape)
                             .clickable(onClickLabel = stringResource(if (playing) R.string.action_pause else R.string.action_play)) { togglePlay() },
                         contentAlignment = Alignment.Center,
                     ) { Icon(if (ended) Ic.RotateCcw else if (playing) Ic.Pause else Ic.Play, stringResource(if (playing) R.string.action_pause else R.string.action_play), tint = Color.White, modifier = Modifier.size(32.dp)) }
@@ -794,7 +794,7 @@ private class TextTrack(val group: Tracks.Group, val index: Int, val label: Stri
 private fun SkipButton(icon: androidx.compose.ui.graphics.vector.ImageVector, seconds: Int, label: String, onClick: () -> Unit) {
     // Each says which way it goes: the two share a number, not a name.
     Box(
-        Modifier.size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.4f)).clickable(onClickLabel = label, onClick = onClick).semantics { contentDescription = label },
+        Modifier.size(56.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.62f)).clickable(onClickLabel = label, onClick = onClick).semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, null, tint = Color.White, modifier = Modifier.size(30.dp))

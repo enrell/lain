@@ -90,7 +90,7 @@
 <svelte:head><title>Playback — Settings — Lain</title></svelte:head>
 
 <SettingsGroup title="Playing">
-	<SettingRow id="player" label="Default player" hint="What Play opens from this browser." saved={flash.is('player')}>
+	<SettingRow id="player" label="Default player" hint="Which player opens when you press Play in this browser." saved={flash.is('player')}>
 		<select class="{field} w-44" value={player} onchange={(e) => changePlayer(e.currentTarget.value)} aria-label="Default player">
 			<option value="browser">Web player</option>
 			<option value="mpv">mpv</option>
