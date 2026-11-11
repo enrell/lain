@@ -62,6 +62,26 @@ import io.github.enrell.lain.ui.screens.TitleScreen
 import io.github.enrell.lain.ui.screens.episodeLabel
 import io.github.enrell.lain.ui.theme.LainTheme
 import io.github.enrell.lain.ui.theme.LocalLain
+import io.github.enrell.lain.ui.theme.WebPalette
+import io.github.enrell.lain.ui.screens.Ic
+import io.github.enrell.lain.ui.screens.LibraryDetailScreen
+import io.github.enrell.lain.ui.screens.Mono
+import io.github.enrell.lain.ui.screens.Sheet
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -72,7 +92,24 @@ class MainActivity : ComponentActivity() {
         setContent {
             var themeId by remember { mutableStateOf(graph.prefs.theme) }
             val tokens = remember(themeId) { graph.themes.load(themeId) }
-            LainTheme(tokens) {
+            // The server's palette, as the web client paints (and the one
+            // kept from last time until it answers).
+            var paletteJson by remember { mutableStateOf(graph.prefs.palette) }
+            val palette = remember(paletteJson) { WebPalette.parse(paletteJson) ?: WebPalette.Default }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    graph.prefs.server?.let { server ->
+                        WebPalette.fetch(server)?.let { json ->
+                            if (json != paletteJson) {
+                                graph.prefs.palette = json
+                                paletteJson = json
+                            }
+                        }
+                    }
+                    delay(30_000)
+                }
+            }
+            LainTheme(tokens, palette) {
                 val vm: AppViewModel = viewModel { AppViewModel(graph.core, rememberServer = { graph.prefs.server = it }) }
                 LaunchedEffect(Unit) { if (vm.state.value.phase == Phase.Starting) vm.start(graph.prefs.server) }
                 Root(graph, vm, themeId) {
@@ -159,7 +196,9 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                 }
                 is Screen.Reader -> Box(Modifier.safeDrawingPadding()) { ReaderScreen(graph.core, s.itemId) }
                 else -> Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                    NavBar(state.destinations, s, state.online, vm)
+                    // A title page runs its art up under the status bar's edge
+                    // and brings its own way back.
+                    if (s !is Screen.TitleDetail) TopBar(state, vm)
                     Box(Modifier.weight(1f)) {
                         when (s) {
                             Screen.Home -> HomeScreen(state, vm)
@@ -168,10 +207,12 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                             Screen.Search -> SearchScreen(state, vm)
                             Screen.Downloads -> DownloadsScreen(graph, vm)
                             Screen.Settings -> SettingsScreen(graph, state, vm, themeId, onTheme)
+                            is Screen.LibraryDetail -> LibraryDetailScreen(state, vm, s.id)
                             is Screen.TitleDetail -> TitleScreen(state, vm, s.key, download)
                             else -> Unit
                         }
                     }
+                    BottomBar(state.destinations, s, vm)
                 }
             }
         }
@@ -180,32 +221,89 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
 
 private val DIGITS = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight, Key.Nine)
 
+/** The slim top bar: the mark and name, the offline note, the account's initial. */
 @Composable
-private fun NavBar(dests: List<Dest>, current: Screen, online: Boolean, vm: AppViewModel) {
+private fun TopBar(state: io.github.enrell.lain.ui.AppState, vm: AppViewModel) {
     val l = LocalLain.current
-    Row(
-        Modifier.fillMaxWidth().background(l.scrim).horizontalScroll(rememberScrollState()).padding(horizontal = l.sp(3), vertical = l.sp(2)),
-        horizontalArrangement = Arrangement.spacedBy(l.sp(3)),
-        verticalAlignment = Alignment.CenterVertically,
+    Column {
+        Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("lain", color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 3.sp)
+            Box(Modifier.weight(1f))
+            if (!state.online) {
+                Row(Modifier.padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Dot(l.warn)
+                    Mono(stringResource(R.string.offline), color = l.warn)
+                }
+            }
+            Box(
+                Modifier.size(34.dp).clip(CircleShape).background(l.raised).clickable { vm.go(Screen.Settings) },
+                contentAlignment = Alignment.Center,
+            ) { Text((state.user?.username ?: "?").take(1).uppercase(), color = l.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line))
+    }
+}
+
+private fun iconOf(id: String) = when (id) {
+    "home" -> Ic.Home
+    "library" -> Ic.Library
+    "read" -> Ic.Book
+    "search" -> Ic.Search
+    "downloads" -> Ic.Download
+    else -> Ic.Sliders
+}
+
+/** The bar's four places; everything else is behind More. */
+private val BAR = listOf("home", "library", "search", "downloads")
+
+@Composable
+private fun BottomBar(dests: List<Dest>, current: Screen, vm: AppViewModel) {
+    val l = LocalLain.current
+    var more by remember { mutableStateOf(false) }
+    val bar = BAR.mapNotNull { id -> dests.firstOrNull { it.id == id } }
+    val rest = dests.filter { it.id !in BAR }
+    // A screen opened from a destination keeps that destination lit.
+    val root = when (current) {
+        is Screen.LibraryDetail, is Screen.TitleDetail -> Screen.Library
+        else -> current
+    }
+    Column(Modifier.background(l.bg)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line))
+        Row(Modifier.fillMaxWidth().height(60.dp)) {
+            for (d in bar) Tab(stringResource(labelOf(d.id)), iconOf(d.id), d.screen == root, Modifier.weight(1f)) { vm.go(d.screen) }
+            Tab(stringResource(R.string.nav_more), Ic.More, rest.any { it.screen == root }, Modifier.weight(1f)) { more = true }
+        }
+    }
+    if (more) {
+        Sheet(stringResource(R.string.nav_more), { more = false }) {
+            for (d in rest) {
+                val on = d.screen == root
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(l.buttonShape).background(if (on) l.raised else Color.Transparent)
+                        .clickable { more = false; vm.go(d.screen) }.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Icon(iconOf(d.id), null, tint = if (on) l.accent else l.muted, modifier = Modifier.size(20.dp))
+                    Text(stringResource(labelOf(d.id)), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Tab(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val l = LocalLain.current
+    val tint = if (on) l.accent else l.muted
+    Column(
+        modifier.fillMaxHeight().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Label("lain", color = l.accent)
-        dests.forEachIndexed { i, d ->
-            val active = d.screen == current
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(l.sp(1))) {
-                io.github.enrell.lain.ui.screens.Action(
-                    stringResource(labelOf(d.id)),
-                    null,
-                    { vm.go(d.screen) },
-                    primary = active,
-                )
-                if (i < 9) Kbd("^${i + 1}")
-            }
+        Box(Modifier.width(56.dp).height(28.dp).clip(CircleShape).background(if (on) l.accent.copy(alpha = 0.15f) else Color.Transparent), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
         }
-        if (!online) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(l.sp(1))) {
-                Dot(l.warn)
-                Text(stringResource(R.string.offline), style = l.label(l.warn))
-            }
-        }
+        Text(label, Modifier.padding(top = 5.dp), color = tint, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
     }
 }

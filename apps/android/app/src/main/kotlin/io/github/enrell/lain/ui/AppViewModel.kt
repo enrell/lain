@@ -34,6 +34,7 @@ sealed interface Screen {
     data object Search : Screen
     data object Downloads : Screen
     data object Settings : Screen
+    data class LibraryDetail(val id: String) : Screen
     data class TitleDetail(val key: String) : Screen
     data class Player(val itemId: String) : Screen
     data class Reader(val itemId: String) : Screen
