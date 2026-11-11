@@ -57,6 +57,8 @@ sealed interface RailLabel {
     data object Continue : RailLabel
     data object Recent : RailLabel
 
+    /** What is being read, apart from what is being watched. */
+    data object ContinueReading : RailLabel
     /** The titles kept as favourites. */
     data object MyList : RailLabel
     data class Library(val name: String) : RailLabel
@@ -79,7 +81,8 @@ fun buildRails(
 ): List<Rail> {
     val rails = mutableListOf<Rail>()
     val resume = continues.filter { !it.completed }.mapNotNull { p -> items[p.itemId]?.let { Card.Resume(it, p) } }
-    rails += Rail(RailLabel.Continue, resume)
+    rails += Rail(RailLabel.Continue, resume.filter { !it.item.reading() })
+    rails += Rail(RailLabel.ContinueReading, resume.filter { it.item.reading() })
     rails += Rail(RailLabel.MyList, favorites.map { Card.Show(it) })
     rails += Rail(RailLabel.Recent, titles.sortedByDescending { it.latest }.take(30).map { Card.Show(it) })
     val byLibrary = titles.groupBy { it.libraryId }

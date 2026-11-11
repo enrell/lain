@@ -136,6 +136,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    fun needsNotificationAsk(): Boolean =
+        Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+
     fun askNotifications() {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
@@ -168,17 +171,38 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
     val canBack = state.phase == Phase.Main && (state.stack.size > 1 || state.screen != Screen.Home || state.returnTo != null)
     BackHandler(enabled = canBack) { vm.back() }
 
-    val download: (Item) -> Unit = { item ->
+    // The first download asks about notifications, with the reason, before it starts.
+    var askFor by remember { mutableStateOf<Item?>(null) }
+    val start: (Item) -> Unit = { item ->
         scope.launch {
             vm.download(item.id).fold(
                 onSuccess = {
-                    activity?.askNotifications()
                     DownloadService.start(context)
                     val what = episodeLabel(item.season, item.episode, item.kind in io.github.enrell.lain.domain.READING_KINDS)
                     Toast.makeText(context, if (what.isEmpty()) context.getString(R.string.download_queued, item.title) else context.getString(R.string.download_queued_ep, item.title, what), Toast.LENGTH_SHORT).show()
                 },
                 onFailure = { Toast.makeText(context, it.message ?: it.toString(), Toast.LENGTH_LONG).show() },
             )
+        }
+    }
+
+    val download: (Item) -> Unit = { item ->
+        if (activity?.needsNotificationAsk() == true && !graph.prefs.notifyAsked) askFor = item else start(item)
+    }
+    askFor?.let { item ->
+        val go = { allow: Boolean ->
+            graph.prefs.notifyAsked = true
+            askFor = null
+            if (allow) activity?.askNotifications()
+            start(item)
+        }
+        io.github.enrell.lain.ui.screens.Sheet(stringResource(R.string.notify_title), { go(false) }, footer = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                io.github.enrell.lain.ui.screens.WButton(stringResource(R.string.notify_later), { go(false) }, Modifier.weight(1f), kind = io.github.enrell.lain.ui.screens.Btn.Secondary)
+                io.github.enrell.lain.ui.screens.WButton(stringResource(R.string.notify_allow), { go(true) }, Modifier.weight(1.4f))
+            }
+        }) {
+            Text(stringResource(R.string.notify_body), Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = l.muted, fontSize = 14.sp, lineHeight = 21.sp)
         }
     }
 

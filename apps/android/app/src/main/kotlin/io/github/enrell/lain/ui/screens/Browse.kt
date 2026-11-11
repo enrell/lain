@@ -263,7 +263,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
         if (state.fromCache) item { OfflineNote(state) }
         // What the hero resumes is not repeated as the first card of Continue.
         val shown = rails.map { r ->
-            if (r.label == RailLabel.Continue && resumeHero != null) r.copy(cards = r.cards.filterNot { c -> c is Card.Resume && c.item.id == resumeHero.item.id }) else r
+            if ((r.label == RailLabel.Continue || r.label == RailLabel.ContinueReading) && resumeHero != null) r.copy(cards = r.cards.filterNot { c -> c is Card.Resume && c.item.id == resumeHero.item.id }) else r
         }.filter { it.cards.isNotEmpty() }
         items(shown) { rail ->
             Column(Modifier.padding(top = 26.dp)) {
@@ -272,6 +272,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                 RailHeader(
                     when (val lab = rail.label) {
                         RailLabel.Continue -> stringResource(R.string.rail_continue)
+                        RailLabel.ContinueReading -> stringResource(R.string.rail_continue_reading)
                         RailLabel.Recent -> stringResource(R.string.rail_recent)
                         RailLabel.MyList -> stringResource(R.string.rail_my_list)
                         is RailLabel.Library -> lab.name
@@ -628,7 +629,11 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                     if (pair.size == 1) Box(Modifier.weight(1f))
                 }
             }
-            // Genres sit right under the order: the two are what people combine.
+            // The short lists first, so nothing hides under a long one: the genres can run past the fold.
+            SheetHeading(stringResource(R.string.progress))
+            for (w in Watch.entries) {
+                OptionRow(watchLabel(w), watchCounts[w] ?: 0, draft.watch == w, { draft = draft.copy(watch = if (draft.watch == w) null else w) }, enabled = (watchCounts[w] ?: 0) > 0)
+            }
             if (genreNames.isNotEmpty()) {
                 SheetHeading(stringResource(R.string.genres))
                 if (draft.genres.isNotEmpty()) {
@@ -646,10 +651,6 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                         color = l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                     )
                 }
-            }
-            SheetHeading(stringResource(R.string.progress))
-            for (w in Watch.entries) {
-                OptionRow(watchLabel(w), watchCounts[w] ?: 0, draft.watch == w, { draft = draft.copy(watch = if (draft.watch == w) null else w) }, enabled = (watchCounts[w] ?: 0) > 0)
             }
             if ((formCounts[Form.Series] ?: 0) > 0 && (formCounts[Form.Single] ?: 0) > 0) {
                 SheetHeading(stringResource(R.string.form))
@@ -1078,7 +1079,7 @@ private fun EpisodeRow(item: Item, title: Title, state: AppState, onOpen: () -> 
             Text(rowLabel(item, title.reading), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 when {
-                    p?.completed == true && dur != null -> stringResource(if (title.reading) R.string.progress_done else R.string.watched) + " · " + length(dur)
+                    p?.completed == true && dur != null -> length(dur) + " · " + stringResource(if (title.reading) R.string.progress_done else R.string.watched)
                     p?.completed == true -> stringResource(if (title.reading) R.string.progress_done else R.string.watched)
                     // Page 1 is where everyone begins: a volume opened and closed has not been started.
                     p != null && p.positionSec > 1 && title.reading -> stringResource(R.string.progress_page, p.positionSec.toInt(), p.durationSec.toInt())

@@ -61,6 +61,16 @@ class Prefs(private val sp: SharedPreferences) {
         get() = (sp.getString("recent_searches", "") ?: "").split('\n').filter { it.isNotBlank() }
         set(v) = sp.edit().putString("recent_searches", v.joinToString("\n")).apply()
 
+    /** The question about download notifications was put once. */
+    var notifyAsked: Boolean
+        get() = sp.getBoolean("notify_asked", false)
+        set(v) = sp.edit().putBoolean("notify_asked", v).apply()
+
+    /** The playback speed last chosen, kept from one video to the next. */
+    var speed: Float
+        get() = sp.getFloat("player_speed", 1f)
+        set(v) = sp.edit().putFloat("player_speed", v).apply()
+
     /** The player's gestures were explained once. */
     var playerHintSeen: Boolean
         get() = sp.getBoolean("player_hint_seen", false)
