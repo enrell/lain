@@ -624,7 +624,10 @@ pub fn parse_ffmpeg_list(out: &str, set: &mut BTreeSet<String>) {
 }
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
-const TESTSRC: &str = "testsrc2=size=128x128:rate=5:duration=0.2";
+/// Large enough for every encoder asked to open on it: NVENC refuses a
+/// frame narrower than 145 px ("Could not open encoder"), which made a
+/// working NVIDIA GPU probe as absent at 128x128.
+const TESTSRC: &str = "testsrc2=size=256x144:rate=5:duration=0.2";
 
 fn ffmpeg_ok(ffmpeg: &str, args: &[&str]) -> bool {
     let mut c = Command::new(ffmpeg);
