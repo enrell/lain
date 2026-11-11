@@ -624,7 +624,10 @@ pub fn parse_ffmpeg_list(out: &str, set: &mut BTreeSet<String>) {
 }
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
-const TESTSRC: &str = "testsrc2=size=128x128:rate=5:duration=0.2";
+/// One small frame for the hardware probes. Not smaller: NVENC refuses
+/// H.264 below 145x49 ("Invalid argument", measured on an RTX 3050 Ti
+/// at 128x128), which read as "no NVENC" on a working card.
+const TESTSRC: &str = "testsrc2=size=256x144:rate=5:duration=0.2";
 
 fn ffmpeg_ok(ffmpeg: &str, args: &[&str]) -> bool {
     let mut c = Command::new(ffmpeg);
