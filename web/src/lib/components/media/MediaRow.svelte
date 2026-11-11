@@ -41,7 +41,7 @@
 	</div>
 	<!-- Scrollable rail keeps the familiar streaming-library scan pattern. -->
 	<div
-		class="-mx-5 flex snap-x gap-3.5 overflow-x-auto px-5 pb-4 no-scrollbar sm:-mx-8 sm:px-8 md:-mx-0 md:gap-4 md:px-0 lg:gap-5"
+		class="-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-4 no-scrollbar sm:scroll-px-8 md:scroll-px-0 sm:-mx-8 sm:px-8 md:-mx-0 md:gap-4 md:px-0 lg:gap-5"
 	>
 		{#each items as item (item.id)}
 			{#if layout === 'landscape'}

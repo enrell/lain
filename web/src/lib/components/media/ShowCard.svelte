@@ -55,14 +55,15 @@
 
 <a
 	href={`/item/${artItem.id}`}
-	style={fit ? `width: calc(var(--card-h) * ${RATIO[shape]})` : undefined}
-	class="group block shrink-0 text-left transition-transform {fit ? '' : 'w-full'} duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+	style={fit ? `--r: ${RATIO[shape]}` : undefined}
+	data-shape={fit ? shape : undefined}
+	class="group block {fit ? 'fit-card' : ''} shrink-0 text-left transition-transform {fit ? '' : 'w-full'} duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 	aria-label={`${group.title}, ${detail}`}
 >
 	<div
 		class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/15"
 	>
-		<div class={fit ? '' : 'aspect-[2/3]'} style={fit ? 'height: var(--card-h)' : undefined}>
+		<div class={fit ? 'fit-frame' : 'aspect-[2/3]'}>
 			<Poster
 				item={artItem}
 				enrichment={enrichmentCache.get(artItem.id) ?? null}
