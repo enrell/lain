@@ -5,7 +5,7 @@
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
 	import { mediaSubtitle } from '$lib/utilities/format';
 	import { progressRatio } from '$lib/utilities/progress';
-	import { RATIO, guessShape, shapeOf, type Shape } from '$lib/stores/shapes.svelte';
+	import type { Shape } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
 	import ProgressBar from './ProgressBar.svelte';
 
@@ -14,26 +14,18 @@
 		enrichment = null,
 		progress = null,
 		priority = false,
-		eager = false,
-		fit = false,
 		frame = undefined
 	}: {
 		item: CatalogItem;
 		enrichment?: Enrichment | null;
 		progress?: Progress | null;
 		priority?: boolean;
-		/** Load the picture now: its shape decides the grid's frame (see `frameOf`). */
-		eager?: boolean;
-		/** Take the shape of the picture: the card sets its own width from
-		 * `--card-h`, for a row of cards of one height (see MediaGrid). */
-		fit?: boolean;
 		/** Fill the container's width in the frame its grid or rail shares
-		 * (see `frameOf`); a picture of the other shape is contained. */
+		 * (see `guessFrame`); a picture of the other shape is contained. */
 		frame?: Shape;
 	} = $props();
 
 	const title = $derived(enrichment?.title || item.title);
-	const shape = $derived(shapeOf(item.id, guessShape(item, enrichment)));
 
 	const subtitle = $derived(
 		[enrichment?.year && item.year === 0 ? String(enrichment.year) : '', mediaSubtitle(item)]
@@ -51,16 +43,14 @@
 
 <a
 	href={`/item/${item.id}`}
-	style={fit ? `--r: ${RATIO[shape]}` : undefined}
-	data-shape={fit ? shape : undefined}
-	class="group block {fit ? 'fit-card' : ''} shrink-0 rounded-card transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+	class="group block shrink-0 rounded-card transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 	aria-label={accessibleName}
 >
 	<div
 		class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/15"
 	>
-		<div class={fit ? 'fit-frame' : frame === 'landscape' ? 'aspect-video' : 'aspect-[2/3]'}>
-			<Poster {item} {enrichment} {priority} {eager} {frame} class="size-full transition-transform duration-500 ease-out group-hover:scale-[1.035]" />
+		<div class={frame === 'landscape' ? 'aspect-video' : 'aspect-[2/3]'}>
+			<Poster {item} {enrichment} {priority} {frame} class="size-full transition-transform duration-500 ease-out group-hover:scale-[1.035]" />
 		</div>
 		<div
 			class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent opacity-15 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100"

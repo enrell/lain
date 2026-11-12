@@ -26,6 +26,19 @@ export interface CatalogItem {
 	/** The file vanished from the library root (D-068): the row is kept
 	 * and the flag clears on its own when the path comes back. */
 	missing?: boolean;
+	/** What the item's thumbnail is (D-282); absent from an older server. */
+	thumbnail?: ThumbnailInfo;
+}
+
+/**
+ * What `GET /api/items/{id}/thumbnail` serves without a time (D-269),
+ * told before it loads (D-282): a still that came with the file, a comic
+ * archive's cover page (upright), or a frame cut from the video.
+ */
+export interface ThumbnailInfo {
+	source: 'sidecar' | 'cover' | 'frame' | (string & {});
+	/** Width over height, when the server read the picture's header. */
+	aspect?: number;
 }
 
 /** internal/contracts.CatalogPage (media.go). */
@@ -127,6 +140,10 @@ export interface TranscodeSelection {
 	/** An effect the server renders into the session (D-274): one of
 	 * `PlaybackOptions.effects`. */
 	video_effect?: string;
+	/** The viewer id of this start (D-281): attaches it to the session it
+	 * starts or joins, so its release stops the session only when it was
+	 * the last viewer. Never changes which session it is. */
+	viewer?: string;
 }
 
 export interface TranscodeStatus {
@@ -346,8 +363,17 @@ export interface Enrichment {
 /** internal/auth.User (auth.go); PassHash is nulled by Public(). */
 export interface User {
 	id: string;
-	/** ISO 639-2 code used to prefer audio, then subtitles (D-071). */
+	/**
+	 * D-071's one language, kept for older clients: since D-280 the
+	 * subtitle language when one is set, else the audio language.
+	 */
 	preferred_language?: string;
+	/** D-280: ISO 639-2; absent plays the file's default audio. */
+	preferred_audio_language?: string;
+	/** D-280: ISO 639-2; absent when none is preferred. */
+	preferred_subtitle_language?: string;
+	/** D-280: absent is `auto`. Read all three with `trackPreferences()`. */
+	preferred_subtitle_mode?: 'auto' | 'always' | 'forced' | 'off';
 	username: string;
 	role: 'admin' | 'user';
 	disabled: boolean;

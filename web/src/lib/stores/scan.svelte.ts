@@ -1,4 +1,4 @@
-import { api } from '$lib/api';
+import { api, ApiError } from '$lib/api';
 import type { ScanStatus } from '$lib/api/types';
 import { i18n, t } from '$lib/i18n';
 import { errorMessage } from '$lib/utilities/errors';
@@ -19,6 +19,13 @@ class ScanStore {
 	error = $state<string | null>(null);
 	/** Wall clock of the last poll, for the elapsed time. */
 	now = $state(Date.now());
+	/**
+	 * A scan was asked for while one ran. The server answers that with a
+	 * 409 and keeps walking only the libraries it started with, so one
+	 * added meanwhile ("Add and scan" on the second of five) was never
+	 * scanned. The store asks again once the running scan ends.
+	 */
+	queued = $state(false);
 
 	#timer: ReturnType<typeof setInterval> | null = null;
 
@@ -28,7 +35,13 @@ class ScanStore {
 			this.status = await api.libraries.scanStatus();
 			this.now = Date.now();
 			this.error = null;
-			if (this.status.state !== 'running') this.stop();
+			if (this.status.state !== 'running') {
+				this.stop();
+				if (this.queued) {
+					this.queued = false;
+					void this.start().catch((err: unknown) => (this.error = errorMessage(err)));
+				}
+			}
 		} catch (err) {
 			this.error = errorMessage(err);
 			this.stop();
@@ -37,11 +50,25 @@ class ScanStore {
 		}
 	}
 
-	async start(): Promise<void> {
+	/**
+	 * Starts a scan, or queues one behind the running scan: 'queued' means
+	 * it starts by itself when the current one ends.
+	 */
+	async start(): Promise<'started' | 'queued'> {
 		this.error = null;
-		await api.libraries.scanStart();
+		try {
+			await api.libraries.scanStart();
+		} catch (err) {
+			if (!(err instanceof ApiError && err.kind === 'conflict')) throw err;
+			this.queued = true;
+			await this.refresh();
+			// The scan may have ended between the 409 and this read.
+			if (this.queued) this.follow();
+			return this.queued ? 'queued' : 'started';
+		}
 		await this.refresh();
 		this.follow();
+		return 'started';
 	}
 
 	/** Read the status once and keep polling if a scan is running. */

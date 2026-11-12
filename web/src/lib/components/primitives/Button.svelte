@@ -21,7 +21,8 @@
 	const classes = $derived(buttonClasses(variant, size, className));
 </script>
 
-<button class={classes} disabled={disabled || loading} {...rest}>
+<!-- data-variant lets a dialog tell its destructive button from the others (Modal's landing). -->
+<button class={classes} disabled={disabled || loading} data-variant={variant} {...rest}>
 	{#if loading}<Spinner class="size-4" />{/if}
 	{@render children?.()}
 </button>

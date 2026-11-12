@@ -109,7 +109,7 @@
 			</dl>
 		{/if}
 		{#if canOffline}
-			<Button size="sm" variant="secondary" loading={!!saving} onclick={() => void toggleOffline()}>
+			<Button size="sm" variant="tonal" loading={!!saving} onclick={() => void toggleOffline()}>
 				{saving
 					? t('offline.saving', { done: saving.done, total: saving.total })
 					: saved

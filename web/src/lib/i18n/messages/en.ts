@@ -17,11 +17,43 @@ const en = {
 		close: 'Close',
 		signOut: 'Sign out'
 	},
+	auth: {
+		username: 'Username',
+		password: 'Password',
+		showPassword: 'Show password',
+		hidePassword: 'Hide password',
+		setup: {
+			pageTitle: 'Welcome — Lain',
+			heading: 'A quiet place for your media.',
+			lead: 'Lain indexes your files, streams them with byte-range seeking, and keeps everyone’s progress separate. Everything runs on this machine.',
+			title: 'Create your account',
+			subtitle: 'The first account is the administrator. You can add more people later.',
+			confirm: 'Confirm password',
+			passwordHint: 'At least 8 characters.',
+			pickUsername: 'Pick a username.',
+			tooShort: 'At least 8 characters.',
+			mismatch: 'Passwords do not match.',
+			submit: 'Create account',
+			failed: 'Could not create the account.',
+			doneTitle: 'You’re in.',
+			doneBody: 'Next, point Lain at a directory on this server so it can index your files.',
+			addLibrary: 'Add a media library',
+			explore: 'Explore Lain'
+		},
+		login: {
+			pageTitle: 'Sign in — Lain',
+			tagline: 'Your media. Your machine. Your rules.',
+			submit: 'Sign in',
+			failed: 'Sign in failed.',
+			mismatch: 'That username and password do not match. Check both and try again.'
+		}
+	},
 	privateLibrary: {
 		badge: 'private',
 		locked: 'locked',
 		unlocked: 'unlocked',
 		makePrivate: 'Private',
+		makePrivateFor: '{name} is private',
 		makePrivateHint: 'Hidden from everyone who has not unlocked it in their session.',
 		madePrivate: '“{name}” is now private.',
 		madePublic: '“{name}” is now visible to everyone.',
@@ -86,7 +118,13 @@ const en = {
 		enrich: 'Fetching metadata · {done}/{total}',
 		enrichStarting: 'Fetching metadata…',
 		elapsed: '{time} elapsed',
-		progress: 'Scan progress'
+		progress: 'Scan progress',
+		queued: 'A scan is running. Another starts when it ends, for what was added meanwhile.',
+		queuedLine: 'Another scan follows this one, for libraries added since it started.',
+		enrichHint: 'The titles are already in the library. This step looks up posters and descriptions, title by title, and can take a while.',
+		libraryAdded: 'Library “{name}” added.',
+		libraryAddedQueued: 'Library “{name}” added. A scan is running; it is scanned when that one ends.',
+		startFailed: 'Could not start the scan.'
 	},
 	boot: {
 		connecting: 'Connecting to your server…',
@@ -122,7 +160,22 @@ const en = {
 			region: 'Unsaved changes',
 			count: { one: '{count} change staged', other: '{count} changes staged' },
 			discard: 'Discard',
-			apply: 'Apply'
+			apply: 'Apply',
+			armed: 'Esc again discards every change',
+			leaveTitle: 'Leave without applying?',
+			leaveBody: {
+				one: '{count} change on this page is staged and not applied yet.',
+				other: '{count} changes on this page are staged and not applied yet.'
+			},
+			stay: 'Stay',
+			discardLeave: 'Discard and leave',
+			applyLeave: 'Apply and leave'
+		},
+		profileLeave: {
+			title: 'Leave without saving?',
+			body: 'Your display name or bio has changed and is not saved yet.',
+			discard: 'Leave without saving',
+			save: 'Save and leave'
 		},
 		section: {
 			profile: { label: 'Profile', hint: 'Name, bio, avatar, account' },
@@ -149,7 +202,9 @@ const en = {
 			language: 'Interface language',
 			signOut: 'Sign out',
 			player: 'Default player',
-			playbackLanguage: 'Audio & subtitle language',
+			audioLanguage: 'Audio language',
+			subtitleLanguage: 'Subtitle language',
+			subtitleMode: 'Subtitles',
 			effects: 'Video effects',
 			skip: 'Skip step',
 			subtitleLook: 'Subtitle size and background',
@@ -226,9 +281,15 @@ const en = {
 			},
 			libraries: {
 				scan: 'Walks every library root and updates the catalog. Safe to run while watching.',
-				libraries: 'Folders on the server that Lain reads in place. Nothing is copied or moved.'
+				libraries: 'Folders on the server that Lain reads in place. Nothing is copied or moved.',
+				removeTitle: 'Remove library?',
+				removeBody: 'The files on disk stay untouched. Its catalog entries are removed with it.',
+				remove: 'Remove library'
 			},
 			users: {
+				activeFor: '{name} can sign in',
+				enabled: '{name} can sign in again.',
+				disabled: '{name} is disabled and signed out.',
 				title: 'Accounts',
 				accounts: {
 					one: '{count} account. Roles and disabling take effect on the next request.',
@@ -249,7 +310,10 @@ const en = {
 				callbackHint:
 					'AniList requires an exact match. Behind a reverse proxy, this is the public URL users reach, not the internal bind address.',
 				clientIdHint: 'The numeric id of the AniList application.',
-				keyNameHint: 'What the program is, so its key can be told apart.'
+				keyNameHint: 'What the program is, so its key can be told apart.',
+				revokeTitle: 'Revoke “{name}”?',
+				revokeBody: 'A program using this key stops working at once. A revoked key cannot be restored; make a new one instead.',
+				revoke: 'Revoke'
 			},
 			plugins: {
 				capabilities: 'One job per row, and the plugin doing it.',
@@ -260,7 +324,9 @@ const en = {
 			},
 			backup: {
 				snapshot: 'One archive of the database, safe to take while the server runs.',
-				restore: 'Deliberately offline: the server is stopped first.'
+				restore: 'Deliberately offline: the server is stopped first.',
+				restoreSteps:
+					'Stop the server, move its data folder aside (lain restore writes only into an empty one), restore the archive, start again. The CLI checks the archive before writing anything; delete the old folder once everything is there.'
 			},
 			downloads: {
 				queue: 'Files the server fetches over HTTP onto its own disk.',
@@ -338,14 +404,81 @@ const en = {
 			clear: 'clear',
 			close: 'close',
 			quickFind: 'quick find'
-		}
+		},
+		newest: 'New in your library'
 	},
 	shortcuts: {
 		title: 'Keyboard shortcuts',
-		search: 'Search titles, or the page’s own filter where it has one',
+		search: 'Search titles',
 		quickFind: 'Quick find: settings, actions and titles',
+		rail: 'Along a row of cards',
 		escape: 'Close a dialog, clear a field',
-		help: 'This list'
+		help: 'This list',
+		here: 'On this page',
+		everywhere: 'Everywhere'
+	},
+	toast: {
+		dismiss: 'Dismiss'
+	},
+	security: {
+		current: 'Current password',
+		new: 'New password',
+		confirm: 'Confirm new password',
+		tooShort: 'At least 8 characters.',
+		mismatch: 'The two new passwords differ.',
+		wrongCurrent: 'That is not your current password.',
+		failed: 'Could not change the password.'
+	},
+	// An address the app does not know, or a page that failed to load (+error.svelte).
+	errorPage: {
+		notFoundTitle: 'Nothing at this address',
+		notFoundBody: '{path} is not a page of Lain. The link may be mistyped, or the page has moved.',
+		failedTitle: 'This page did not load',
+		failedBody: 'Something went wrong while opening it.',
+		home: 'Go to Home',
+		reload: 'Try again',
+		searchHint: 'Looking for a title? Press / to search.'
+	},
+	// What `?` lists for each screen (usePageKeys), beside the actions they press.
+	pageKeys: {
+		gridMove: 'Move between titles',
+		episodesMove: 'Move between episodes (up from the first row: Play)',
+		partsMove: 'Move between volumes (up from the first row: Read)',
+		selectDone: 'Stop selecting',
+		back: 'Back to the previous page',
+		filters: 'Filters and genres',
+		clearFilters: 'Clear the filters',
+		toTop: 'Back to the top',
+		librarySearch: 'Search this library',
+		libraryView: 'By library or all titles',
+		scan: 'Scan every library',
+		unlock: 'Unlock or lock private libraries',
+		titlePlay: 'Play or resume',
+		titleRead: 'Read or continue',
+		favorite: 'Favorite or unfavorite',
+		rate: 'Rate and review',
+		share: 'Share with a friend',
+		collect: 'Add to a collection',
+		comment: 'Write a comment',
+		subtitles: 'Find subtitles',
+		download: 'Download the files',
+		resultsMove: 'From the field into the results',
+		tabs: 'Switch tab',
+		releaseSearch: 'Search releases by title',
+		findPeople: 'Find people',
+		markRead: 'Mark every notification read',
+		newCollection: 'New collection',
+		connect: 'Connect AniList',
+		sync: 'Sync the list again',
+		settingsGo: 'Open a section (the letter beside it)',
+		settingsStep: 'Previous or next section',
+		settingsMove: 'Next or previous control',
+		apply: 'Apply the staged changes',
+		discard: 'Discard the staged changes (twice)',
+		settingsFilter: 'Filter this section',
+		libraryPrivate: 'On a library’s row: private or not',
+		libraryLock: 'On a private library’s row: unlock or lock',
+		libraryRemove: 'On a library’s row: remove it (asks first)'
 	},
 	downloads: {
 		title: 'Downloads — Settings — Lain',
@@ -506,6 +639,7 @@ const en = {
 		},
 		unit: {
 			episode: 'S{season}E{episode}',
+			episodeOnly: 'E{episode}',
 			chapter: 'Ch {n}',
 			volume: 'Vol {n}'
 		},
@@ -533,11 +667,24 @@ const en = {
 			emptyTitle: 'Nothing from your friends yet',
 			emptyBody: 'Add friends to see what they watch, read and rate. Their privacy settings decide what shows here.',
 			findFriends: 'Find people',
-			more: 'Load older'
+			more: 'Load older',
+			titles: 'What your friends watch and read'
+		},
+		firstRun: {
+			eyebrow: 'First step',
+			title: 'Watch alongside the people on this server.',
+			body: 'Friends see what you watch, read and rate, and you see theirs: their activity in the Feed, their ratings on each title, collections they share with you.',
+			privacy: 'Privacy settings',
+			stepAdd: 'Add a friend',
+			stepAddText: 'Open Friends, find them by name and add them; they accept from their notifications.',
+			stepFollow: 'Follow along',
+			stepFollowText: 'What friends watch, read and rate arrives in the Feed, newest first.',
+			stepShare: 'Choose what you share',
+			stepShareText: 'Privacy settings decide who sees your profile, activity and ratings, and who can find you.'
 		},
 		friends: {
 			searchLabel: 'Search people',
-			searchPlaceholder: 'Search people by name — press / from anywhere on this page',
+			searchPlaceholder: 'Search people by name',
 			searchFailed: 'Could not search people.',
 			noResults: 'Nobody matches.',
 			add: 'Add friend',
@@ -565,6 +712,7 @@ const en = {
 			unread: { one: '{count} unread', other: '{count} unread' },
 			markAll: 'Mark all read',
 			empty: 'No notifications.',
+			emptyBody: 'Friend requests, and what friends share with you, arrive here.',
 			failed: 'Could not update notifications.'
 		},
 		title: {
@@ -589,7 +737,7 @@ const en = {
 			title: 'Rate {title}',
 			description: 'Your friends see it unless your privacy settings say otherwise.',
 			score: 'Score',
-			keys: '1–9 pick a score, 0 is 10, Ctrl+Enter saves',
+			keys: '1–9 pick a score, 0 is 10, Enter saves (Ctrl+Enter in the review)',
 			review: 'Review (optional)',
 			reviewPlaceholder: 'What stayed with you?',
 			spoiler: 'Contains spoilers',
@@ -605,6 +753,8 @@ const en = {
 			post: 'Post',
 			reply: 'Reply',
 			delete: 'Delete',
+			deleteTitle: 'Delete this comment?',
+			deleteBody: 'It is gone for everyone, and replies to it lose what they answered.',
 			replyingTo: 'Replying to {name}',
 			focusHint: 'to write',
 			failed: 'Could not post the comment.',
@@ -647,7 +797,8 @@ const en = {
 			visibility: 'Who can see it',
 			create: 'Create',
 			createFailed: 'Could not create the collection.',
-			empty: 'No collections yet — yours and the ones friends share with you appear here.',
+			empty: 'No collections yet.',
+			emptyBody: 'Yours and the ones friends share with you appear here.',
 			sharedBy: 'shared by {name}',
 			edit: 'Edit',
 			save: 'Save',
@@ -710,6 +861,8 @@ const en = {
 			favorites: 'Favorites',
 			favoritesHint: 'Up to 12, shown on your profile. Press F on any title page to add one.',
 			removeFavorite: 'Remove',
+			removeFavoriteNamed: 'Remove {title} from your profile',
+			favoriteRemoved: '{title} is off your profile.',
 			noFavorites: 'No favorites yet.',
 			viewProfile: 'Your public profile',
 			viewProfileHint: 'See it as others do.',
@@ -730,6 +883,7 @@ const en = {
 		failed: 'Could not start local playback.'
 	},
 	title: {
+		refreshFailed: 'Could not refresh this title; reload the page to see the change.',
 		manage: 'Manage',
 		manageHint: 'For administrators: metadata, subtitles and files of this title',
 		more: 'More',
@@ -741,6 +895,8 @@ const en = {
 		deleteFile: 'Delete file',
 		deleteTitle: 'Delete title',
 		startOver: 'Start over',
+		watchProgress: 'Watch progress',
+		readProgress: 'Reading progress',
 		left: '{time} left',
 		watched: 'Watched',
 		watchedLength: 'Watched · {time}',
@@ -749,6 +905,7 @@ const en = {
 		volumes: { one: '{count} volume', other: '{count} volumes' },
 		issues: { one: '{count} issue', other: '{count} issues' },
 		length: 'Length',
+		playPart: 'Play · {part}',
 		continueFromPage: 'Continue from page {page}',
 		continueFromPageIn: 'Continue from page {page} · {part}',
 		readingAt: '{part}: page {page} of {pages}',
@@ -769,7 +926,14 @@ const en = {
 		tilesSmall: 'small',
 		partLeft: '{part} · {time} left',
 		partPage: '{part} · page {page} of {pages}',
-		pageOf: 'Page {page} of {pages}'
+		pageOf: 'Page {page} of {pages}',
+		// A catalog kind as the Kind filter names it.
+		kind: {
+			video: 'Films and clips',
+			episode: 'Episodes',
+			manga: 'Manga',
+			comic: 'Comics'
+		}
 	},
 	library: {
 		view: 'View',
@@ -780,7 +944,11 @@ const en = {
 		viewAll: 'View all',
 		seeAll: 'See all',
 		shelfFailed: 'Could not load this library.',
-		shelfEmpty: 'Nothing indexed here yet.'
+		shelfEmpty: 'Nothing indexed here yet.',
+		lead: 'Everything Lain has indexed.',
+		scan: 'Scan',
+		scanning: 'Scanning…',
+		manage: 'Manage libraries'
 	},
 	favorites: {
 		title: 'Favorites',
@@ -797,22 +965,66 @@ const en = {
 		loadFailed: 'Could not load your favorites.'
 	},
 	home: {
-		browseLibrary: 'Browse library'
+		browseLibrary: 'Browse library',
+		upNext: 'Up next'
 	},
 	tracking: {
 		subtitle: 'Everything your connected accounts track — manga, comics, anime, films and shows in one place.',
 		films: 'Films',
 		shows: 'Shows',
-		emptyTitle: 'Nothing tracked yet',
-		emptyBody: 'Connect an account in Settings → Connections to import what you track. AniList is supported.',
-		openConnections: 'Open Connections',
 		noMatchTitle: 'Nothing tracked of this kind',
 		noMatchBody: 'Your accounts track other things. Clear the filters to see all of it.',
-		showEverything: 'Show everything'
+		showEverything: 'Show everything',
+		firstRun: {
+			eyebrow: 'First step',
+			title: 'Bring the list you keep elsewhere.',
+			body: 'Tracking shows what you follow on AniList (anime, manga, films, shows and comics, with status, progress and score), whether or not the files are on this server.',
+			connect: 'Connect AniList',
+			watch: 'Browse the library',
+			stepConnect: 'Connect',
+			stepConnectText: 'Link your AniList account under Settings → Connections.',
+			stepImport: 'Import',
+			stepImportText: 'Its list arrives here and can be synced again at any time.',
+			stepWatch: 'Watch here',
+			stepWatchText: 'With progress sync on, episodes you finish on Lain count there too.'
+		},
+		linkedEmpty: {
+			eyebrow: 'AniList connected',
+			title: 'Nothing imported yet.',
+			body: 'AniList is linked as {name}, but its list came back empty. Sync to look again, or add titles on AniList first.',
+			sync: 'Sync now',
+			synced: { one: 'Synced: {count} entry.', other: 'Synced: {count} entries.' },
+			syncFailed: 'Could not sync with AniList.',
+			connections: 'Connections'
+		}
 	},
 	player: {
 		nextEpisode: 'Next episode',
-		nextEpisodeNamed: 'Next episode: {name} (Shift+N)'
+		nextEpisodeNamed: 'Next episode: {name} (Shift+N)',
+		keys: {
+			play: 'Play or pause',
+			seek: 'Back or forward {seconds} seconds',
+			volume: 'Volume',
+			mute: 'Mute',
+			fullscreen: 'Full screen',
+			escape: 'Close a panel, leave full screen',
+			subtitles: 'Subtitles on or off',
+			speed: 'Slower or faster',
+			episodes: 'Episode list beside the picture'
+		},
+		episodesHide: 'Hide the episode list (E)',
+		episodesShow: 'Show the episode list (E)',
+		osd: {
+			subtitlesOn: 'Subtitles: {name}',
+			subtitlesOff: 'Subtitles off',
+			noSubtitles: 'No subtitles for this file',
+			speed: 'Speed {rate}',
+			speedNormal: 'Normal speed'
+		},
+		// The quality menu's first choice: the server's pick in a prepared
+		// stream, the file itself in direct play.
+		qualityAuto: 'Auto',
+		qualityOriginal: 'Original'
 	},
 	playerPrefs: {
 		group: 'Skipping and subtitles · this browser',
@@ -828,10 +1040,23 @@ const en = {
 		subtitleBox: 'Subtitles on a dark box',
 		subtitleBoxHint: 'Easier to read over bright pictures.'
 	},
-	playbackLanguage: {
-		label: 'Audio & subtitle language',
-		hint: 'Audio in this language when the file has it; otherwise the file’s audio with subtitles in it. Follows your account on every client.',
-		asFile: 'As the file has it'
+	trackPrefs: {
+		audio: 'Audio language',
+		audioHint: 'Played when the file has it; otherwise the file’s own audio. Follows your account on every client.',
+		asFile: 'As the file has it',
+		subtitle: 'Subtitle language',
+		subtitleHint: 'The language you read subtitles in.',
+		none: 'None',
+		mode: 'Subtitles',
+		modeAuto: 'Auto',
+		modeAlways: 'Always',
+		modeForced: 'Forced only',
+		modeOff: 'Off',
+		hintAuto: 'Shown when the audio is not in your subtitle language.',
+		hintAlways: 'Shown whenever the file has them in your subtitle language.',
+		hintForced: 'Only tracks marked forced: signs and lines in another language.',
+		hintOff: 'Never on by themselves; the player can still turn them on.',
+		saveFailed: 'Could not save the language.'
 	},
 	download: {
 		file: 'Download file',
@@ -846,9 +1071,22 @@ const en = {
 		indexersLink: 'Indexers',
 		settingsLink: 'Acquisition settings',
 		loadFailed: 'Could not load libraries or indexers.',
-		noLibrariesTitle: 'No library to import into',
-		noLibrariesBody: 'Grabs land in a library. Add one first.',
 		noLibrariesAction: 'Add a library',
+		firstRun: {
+			eyebrow: 'First step',
+			title: 'Find a release, grab it into a library.',
+			body: 'Acquire asks your Torznab indexers for releases, downloads them with Lain’s own torrent engine and imports the files into a library. It starts with an indexer.',
+			addIndexer: 'Add an indexer',
+			fromLink: 'Grab from a link',
+			stepIndexer: 'Add an indexer',
+			stepIndexerText: 'Settings → Indexers takes a Torznab address and its key.',
+			stepSearch: 'Search',
+			stepSearchText: 'Search here, then grab a release into the library you pick.',
+			stepFollow: 'Follow',
+			stepFollowText: 'The Queue shows each download until its files are in the library.',
+			noLibraryTitle: 'Add a library first.',
+			noLibraryBody: 'Everything Acquire downloads is imported into a library, and this server has none yet.'
+		},
 		tab: { search: 'Search', queue: 'Queue', wanted: 'Wanted', blocklist: 'Blocklist', subtitles: 'Subtitles' },
 		numbering: {
 			absolute: 'Absolute episodes',
@@ -878,7 +1116,8 @@ const en = {
 		},
 		wanted: {
 			loadFailed: 'Could not load monitored titles.',
-			empty: 'Nothing is monitored. Press m to monitor a title, or m on a search result.',
+			empty: 'Nothing is monitored.',
+			emptyBody: 'Press m to monitor a title, or m on a search result.',
 			keys: 's search now · t subtitles · e edit · Space pause/resume · Delete stop · j/k move · m monitor · r RSS now',
 			subtitles: 'Subtitles',
 			monitor: 'Monitor',
@@ -975,9 +1214,6 @@ const en = {
 			indexerFailed: '{name} did not answer: {error}',
 			empty: 'No releases found.',
 			noIndexers: 'No indexer is configured yet.',
-			noIndexersTitle: 'No indexer yet',
-			noIndexersBody: 'Search asks your indexers for releases. Add one to start.',
-			addIndexer: 'Add an indexer',
 			keys: { one: '{count} release · Enter grabs · j/k move', other: '{count} releases · Enter grabs · j/k move' },
 			seedersPeers: 'Seeders / peers',
 			grab: 'Grab',
@@ -994,6 +1230,7 @@ const en = {
 			addLink: 'Add',
 			loadFailed: 'Could not load the queue.',
 			empty: 'Nothing in the queue.',
+			emptyBody: 'A release grabbed from Search, or a link added above, waits here until its files are in a library.',
 			keys: 'p pause/resume · i retry import · Delete remove · j/k move · / add a link',
 			usage: 'Torrents use {used}; with downloads {shared} of {max}',
 			usageUnlimited: 'Torrents use {used} (no budget set)',

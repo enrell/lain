@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { onMount, tick } from 'svelte';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import { session } from '$lib/auth/session.svelte';
+	import { t } from '$lib/i18n';
 	import { errorMessage } from '$lib/utilities/errors';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
@@ -17,33 +19,59 @@
 	let error = $state<string | null>(null);
 	let busy = $state(false);
 
+	// The first screen of a new install: typing goes straight into the form,
+	// as on the sign-in page.
+	onMount(() => document.getElementById('setup-username')?.focus());
+
 	function validate(): boolean {
 		const next: typeof fieldErrors = {};
-		if (username.trim().length < 1) next.username = 'Pick a username.';
-		if (password.length < 8) next.password = 'At least 8 characters.';
-		if (confirm !== password) next.confirm = 'Passwords do not match.';
+		if (username.trim().length < 1) next.username = t('auth.setup.pickUsername');
+		if (password.length < 8) next.password = t('auth.setup.tooShort');
+		if (confirm !== password) next.confirm = t('auth.setup.mismatch');
 		fieldErrors = next;
-		return Object.keys(next).length === 0;
+		// The cursor goes to the first field to fix, where its message is read out.
+		const first = next.username ? 'setup-username' : next.password ? 'setup-password' : next.confirm ? 'setup-confirm' : null;
+		if (first) document.getElementById(first)?.focus();
+		return first === null;
 	}
+
+	// Keyboard first: the cursor waits in the username on arrival.
+	$effect(() => {
+		document.getElementById('setup-username')?.focus();
+	});
 
 	async function submit(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
 		if (busy) return;
 		error = null;
-		if (!validate()) return;
+		if (!validate()) {
+			// Land on the first field to fix.
+			const first = (['username', 'password', 'confirm'] as const).find((f) => fieldErrors[f]);
+			if (first) document.getElementById(`setup-${first}`)?.focus();
+			return;
+		}
 		busy = true;
 		try {
 			await session.setup(username.trim(), password);
 			step = 'done';
+			// The next step is one key away: Enter adds the first library.
+			await tick();
+			document.getElementById('setup-add-library')?.focus();
 		} catch (err) {
-			error = errorMessage(err, 'Could not create the account.');
+			error = errorMessage(err, t('auth.setup.failed'));
 		} finally {
 			busy = false;
 		}
 	}
+
+	// The sign-in page's fields: with an edge of their own, the card's
+	// surface does not swallow them. The edge overrides the field's own
+	// border, so it carries the focus colour too: without it the focused
+	// field looked like the others (the field has no outline).
+	const FIELD = 'h-11! border-line! focus:border-accent!';
 </script>
 
-<svelte:head><title>Welcome — Lain</title></svelte:head>
+<svelte:head><title>{t('auth.setup.pageTitle')}</title></svelte:head>
 
 <div class="relative flex min-h-dvh items-center justify-center overflow-hidden px-4 py-10">
 	<div class="lattice absolute inset-0 opacity-30" aria-hidden="true"></div>
@@ -59,12 +87,9 @@
 				<span class="text-2xl font-semibold tracking-[0.24em] text-foreground">lain</span>
 			</div>
 			<h1 class="mt-6 text-3xl font-semibold leading-tight tracking-tight text-foreground">
-				A quiet place for your media.
+				{t('auth.setup.heading')}
 			</h1>
-			<p class="mt-3 text-sm leading-relaxed text-muted">
-				Lain indexes your files, streams them with byte-range seeking, and keeps everyone's
-				progress separate. Everything runs on this machine.
-			</p>
+			<p class="mt-3 text-sm leading-relaxed text-muted">{t('auth.setup.lead')}</p>
 		</div>
 
 		<div class="rounded-card border border-line bg-surface/80 p-6">
@@ -75,10 +100,8 @@
 						<span class="font-semibold tracking-[0.24em] text-foreground">lain</span>
 					</div>
 				</div>
-				<h2 class="text-lg font-semibold text-foreground">Create your account</h2>
-				<p class="mt-1 text-sm text-muted">
-					The first account is the administrator. You can add more people later.
-				</p>
+				<h2 class="text-lg font-semibold text-foreground">{t('auth.setup.title')}</h2>
+				<p class="mt-1 text-sm text-muted">{t('auth.setup.subtitle')}</p>
 				<form class="mt-5 space-y-4" onsubmit={submit}>
 					{#if error}
 						<div
@@ -89,43 +112,49 @@
 						</div>
 					{/if}
 					<Input
-						label="Username"
+						id="setup-username"
+						label={t('auth.username')}
 						bind:value={username}
 						error={fieldErrors.username ?? null}
 						autocomplete="username"
 						autocapitalize="none"
 						spellcheck={false}
+						class={fieldErrors.username ? 'h-11!' : FIELD}
 					/>
 					<Input
-						label="Password"
+						id="setup-password"
+						label={t('auth.password')}
 						type="password"
 						bind:value={password}
 						error={fieldErrors.password ?? null}
-						hint="At least 8 characters."
+						hint={t('auth.setup.passwordHint')}
 						autocomplete="new-password"
+						class={fieldErrors.password ? 'h-11!' : FIELD}
 					/>
 					<Input
-						label="Confirm password"
+						id="setup-confirm"
+						label={t('auth.setup.confirm')}
 						type="password"
 						bind:value={confirm}
 						error={fieldErrors.confirm ?? null}
 						autocomplete="new-password"
+						class={fieldErrors.confirm ? 'h-11!' : FIELD}
 					/>
-					<Button type="submit" class="w-full" loading={busy}>Create account</Button>
+					<Button type="submit" size="lg" class="w-full" loading={busy}>{t('auth.setup.submit')}</Button>
 				</form>
 			{:else}
 				<div class="flex flex-col items-center py-4 text-center">
 					<CircleCheck class="size-10 text-success" />
-					<h2 class="mt-4 text-lg font-semibold text-foreground">You're in.</h2>
-					<p class="mt-1 max-w-xs text-sm text-muted">
-						Next, point Lain at a directory on this server so it can index your files.
-					</p>
+					<h2 class="mt-4 text-lg font-semibold text-foreground">{t('auth.setup.doneTitle')}</h2>
+					<p class="mt-1 max-w-xs text-sm text-muted">{t('auth.setup.doneBody')}</p>
 					<div class="mt-6 flex w-full flex-col gap-2">
-						<LinkButton href="/settings/libraries">
-							<FolderPlus class="size-4" /> Add a media library
+						<LinkButton id="setup-add-library" href="/settings/libraries?add">
+							<FolderPlus class="size-4" />
+							{t('auth.setup.addLibrary')}
+							<kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
 						</LinkButton>
 						<LinkButton href="/" variant="ghost">
-							Explore Lain <ArrowRight class="size-4" />
+							{t('auth.setup.explore')} <ArrowRight class="size-4" />
 						</LinkButton>
 					</div>
 				</div>

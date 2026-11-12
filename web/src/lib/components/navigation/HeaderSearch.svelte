@@ -12,13 +12,14 @@
 	import History from '@lucide/svelte/icons/rotate-ccw-clock';
 	import Search from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
-	import { afterNavigate, goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
 	import { t } from '$lib/i18n';
 	import Poster from '$lib/components/media/Poster.svelte';
 	import { isReadable } from '$lib/reader/kinds';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { pageKeys } from '$lib/stores/page-keys.svelte';
 	import { recentSearches } from '$lib/stores/recent-searches.svelte';
 	import { artItem } from '$lib/utilities/browse';
 	import { mediaSubtitle } from '$lib/utilities/format';
@@ -48,6 +49,9 @@
 	let back: HTMLElement | null = null;
 
 	const onSearchPage = $derived(page.url.pathname === '/search');
+	// A page with a filter of its own takes `/` (Library, Favorites, Social, Acquire...):
+	// one key cap per key on screen, so the header's steps aside there.
+	const slashHere = $derived(!pageKeys.has('/'));
 	const term = $derived(text.trim());
 	// Holding a query or focused, the field looks in use. Below lg it opens out over the links
 	// while focused (AppShell hides them meanwhile).
@@ -133,10 +137,21 @@
 	});
 
 	let urlTimer: ReturnType<typeof setTimeout> | undefined;
+	/*
+	 * A navigation away from /search drops the query still waiting to be
+	 * written: fired after a link was followed, it would replace that
+	 * navigation with /search again and pull the viewer back (a link
+	 * clicked, or a result opened, within the debounce of the last key).
+	 */
+	beforeNavigate((nav) => {
+		if (nav.to?.url.pathname !== '/search') clearTimeout(urlTimer);
+	});
+
 	/** On /search: put the typed query in the URL, which the page's results follow. */
 	function follow(now: boolean): void {
 		clearTimeout(urlTimer);
 		const go = (): void => {
+			if (page.url.pathname !== '/search') return;
 			const href = searchHref(text);
 			written = text.trim();
 			if (`${page.url.pathname}${page.url.search}` !== href) {
@@ -248,7 +263,7 @@
 			type="search"
 			role="combobox"
 			aria-label={t('search.field.label')}
-			aria-keyshortcuts="/"
+			aria-keyshortcuts={slashHere ? '/' : undefined}
 			aria-autocomplete="list"
 			aria-expanded={open}
 			aria-controls="header-search-list"
@@ -284,7 +299,7 @@
 			>
 				<X class="size-3.5" aria-hidden="true" />
 			</button>
-		{:else if !focused}
+		{:else if !focused && slashHere}
 			<kbd class="pointer-events-none absolute end-2.5 top-1/2 -translate-y-1/2 text-muted">/</kbd>
 		{/if}
 	</div>

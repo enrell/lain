@@ -3,7 +3,9 @@
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Info from '@lucide/svelte/icons/info';
 	import X from '@lucide/svelte/icons/x';
+	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
+	import { isTypingTarget } from '$lib/utilities/guards';
 
 	const icons = {
 		error: CircleAlert,
@@ -15,7 +17,20 @@
 		success: 'text-success',
 		info: 'text-accent'
 	};
+
+	// The newest toast with an action (an Undo) answers Ctrl+Z from anywhere but a
+	// field, which keeps its own undo: the toast sits far down the Tab order.
+	const actionable = $derived([...toasts.items].reverse().find((toast) => toast.action));
+	function onKey(e: KeyboardEvent): void {
+		if (!actionable || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+		if (isTypingTarget(e.target)) return;
+		e.preventDefault();
+		actionable.action?.run();
+		toasts.dismiss(actionable.id);
+	}
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <!-- Above the mobile bottom nav; polite so it never interrupts playback. -->
 <div
@@ -39,11 +54,12 @@
 					}}
 				>
 					{toast.action.label}
+					{#if toast === actionable}<kbd class="ms-1 font-mono text-[10px] font-normal opacity-70">Ctrl+Z</kbd>{/if}
 				</button>
 			{/if}
 			<button
 				class="text-muted hover:text-foreground"
-				aria-label="Dismiss"
+				aria-label={t('toast.dismiss')}
 				onclick={() => toasts.dismiss(toast.id)}
 			>
 				<X class="size-3.5" />

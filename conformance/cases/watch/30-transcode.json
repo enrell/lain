@@ -1,6 +1,6 @@
 {
   "tier": "v1",
-  "description": "Transcode sessions: progressive MP4 with Range, HLS with signed segment URIs, cancel, the synchronous v1 path, the operator's session list.",
+  "description": "Transcode sessions: progressive MP4 with Range, HLS with signed segment URIs, cancel, viewers sharing one session (D-281), the synchronous v1 path, the operator's session list.",
   "cases": [
     {"name": "a progressive session remuxes and serves a ranged MP4", "requires": ["w_beta"], "steps": [
       {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"delivery": "progressive"}},
@@ -35,6 +35,32 @@
       {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"audio_stream": 2}},
        "expect": {"status": 400, "body": {"error": "audio_stream is not an audio track", "code": "invalid-message"}}},
       {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "body": {}}, "expect": {"status": 401}}
+    ]},
+    {"name": "two viewers share one session: the first to leave does not stop it, and a finished one outlives the last", "requires": ["w_beta"], "steps": [
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"delivery": "progressive", "start_sec": 1, "viewer": "conf-tab-a"}},
+       "expect": {"status_not": 400, "body": {"session": "$nonempty", "$open": true}}, "save": {"shared": "/session"}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"delivery": "progressive", "start_sec": 1, "viewer": "conf-tab-b"}},
+       "expect": {"status_not": 400, "body": {"session": "{{shared}}", "$open": true}}},
+      {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode?session={{shared}}&viewer=conf-tab-a", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"session": "{{shared}}", "state": "$nonempty", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status?session={{shared}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"session": "{{shared}}", "$open": true}}},
+      {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode?session={{shared}}&viewer=conf-tab-a", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"session": "{{shared}}", "$open": true}}},
+      {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode?session={{shared}}&viewer=not%20a%20viewer", "auth": "w_bob"},
+       "expect": {"status": 400, "body": {"error": "viewer must be 1 to 64 letters, digits, '-' or '_'", "code": "invalid-message"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"delivery": "progressive", "start_sec": 1, "viewer": "../x"}},
+       "expect": {"status": 400, "body": {"error": "viewer must be 1 to 64 letters, digits, '-' or '_'", "code": "invalid-message"}}},
+      {"wait_for": {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status?session={{shared}}", "auth": "w_bob"},
+        "expect": {"status": 200, "body": {"state": "ready", "$open": true}}}, "timeout_ms": 30000},
+      {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode?session={{shared}}&viewer=conf-tab-b", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"session": "{{shared}}", "state": "ready", "path": "$absent", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status?session={{shared}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"state": "ready", "$open": true}}},
+      {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode?session={{shared}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"session": "{{shared}}", "state": "idle", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/transcode/status?session={{shared}}", "auth": "w_bob"},
+       "expect": {"status": 404, "body": {"code": "not-found", "$open": true}}}
     ]},
     {"name": "cancelling drops the session", "requires": ["w_beta"], "steps": [
       {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode?session={{prog}}", "auth": "w_bob"},

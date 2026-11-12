@@ -28,7 +28,7 @@ use crate::errf;
 use crate::error::*;
 use crate::importer::{Parser, place, plan_import};
 use crate::store::AcqStore;
-use crate::util::{clean_name, clip, http_url, loose_key, new_id, now, url_host, within_or_equal};
+use crate::util::{clean_name, clip, http_url, loose_key, new_id, now, settle, url_host, within_or_equal, years_agree};
 
 const MAX_TORRENT_FILE: usize = 10 << 20;
 
@@ -641,10 +641,16 @@ impl Manager {
     /// The Phase 1 score: fit to the query first, then swarm health and
     /// quality.
     fn rank(&self, q: &SearchQuery, r: SearchResult) -> Candidate {
-        let rel = (self.d.parse)(&r.title, &q.kind);
+        // The query is the title the user means, and its year the year:
+        // they decide between the parser's readings of a name (D-279).
+        let wanted = loose_key(&q.query);
+        let rel = settle((self.d.parse)(&r.title, &q.kind), |t| loose_key(t) == wanted, q.year);
         let mut rejections = Vec::new();
-        if loose_key(&rel.title) != loose_key(&q.query) {
+        if loose_key(&rel.title) != wanted {
             rejections.push("title does not match".to_string());
+        }
+        if !years_agree(q.year, rel.year) {
+            rejections.push("year does not match".to_string());
         }
         if q.season > 0 && rel.season > 0 && rel.season != q.season {
             rejections.push(format!("season {}, wanted {}", rel.season, q.season));
@@ -770,7 +776,18 @@ impl Manager {
             g.title = "Untitled".into();
         }
         g.title = clip(&g.title, 300);
-        g.release = (self.d.parse)(&g.title, &lib.kind);
+        // A monitored title's names and year decide between the parser's
+        // readings, unless the answer names another monitored title
+        // (D-279); a manual grab names no title, so the answer stands.
+        let rel = (self.d.parse)(&g.title, &lib.kind);
+        let monitored = match g.monitored_id.as_str() {
+            "" => None,
+            id => self.monitored(id).ok(),
+        };
+        g.release = match monitored {
+            Some(m) => crate::monitored::settle_for(&m, rel, &crate::monitored::claimed(&self.st.monitored())),
+            None => settle(rel, |_| false, 0),
+        };
         let (paused, dir, c) = {
             let i = lock(&self.inner);
             let active = self.active();

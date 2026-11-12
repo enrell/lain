@@ -1,6 +1,6 @@
 {
  "tier": "v1",
- "description": "The release parser behind acquisition, and grab validation before anything is fetched: unknown library, nothing to grab, a magnet without a tracker (no DHT), non-http links, usenet, and actions on unknown grabs.",
+ "description": "The release parser behind acquisition (the tokenizer, which offers no alternatives, D-279), and grab validation before anything is fetched: unknown library, nothing to grab, a magnet without a tracker (no DHT), non-http links, usenet, and actions on unknown grabs.",
  "cases": [
   {
    "name": "parse",
@@ -25,6 +25,7 @@
        "group": "Fansub-A",
        "resolution": "1080p",
        "parser": "$string",
+       "alternatives": "$absent",
        "$open": true
       }
      }

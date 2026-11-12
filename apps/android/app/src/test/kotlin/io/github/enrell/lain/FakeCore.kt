@@ -44,9 +44,11 @@ class FakeCore : LainCoreInterface {
     val saved = mutableListOf<ProgressInfo>()
     val progress = mutableMapOf<String, ProgressInfo>()
     val stopped = mutableListOf<String>()
-    var source = PlaySource(SourceKind.DIRECT, "http://s/api/items/e1/stream?token=t", "direct play", 0.0, 0.0, 1440.0, emptyList(), "")
+    var source = PlaySource(SourceKind.DIRECT, "http://s/api/items/e1/stream?token=t", "direct play", 0.0, 0.0, 1440.0, emptyList(), "", emptyList(), null)
     var burned: PlaySource? = null
     val playCaps = mutableListOf<List<String>>()
+    /** The audio language each playSource asked for. */
+    val playLanguages = mutableListOf<String>()
     var book = ComicBook("m1", "rtl", List(5) { io.github.enrell.lain.core.PageInfo(it.toLong(), 16, 24, "image/png") }, false)
     val events = Channel<CoreEvent?>(Channel.UNLIMITED)
 
@@ -84,9 +86,17 @@ class FakeCore : LainCoreInterface {
         sessionInfo = null
     }
     var language = "jpn"
-    override suspend fun me(): UserInfo = UserInfo(sessionInfo?.userId ?: "", sessionInfo?.username ?: "", "user", "", language)
+    var tracks = Triple("jpn", "jpn", "auto")
+    override suspend fun me(): UserInfo =
+        UserInfo(sessionInfo?.userId ?: "", sessionInfo?.username ?: "", "user", "", language, tracks.first, tracks.second, tracks.third)
     override suspend fun setPreferredLanguage(language: String): UserInfo {
         this.language = language
+        tracks = Triple(language, language, tracks.third)
+        return me()
+    }
+    override suspend fun setTrackPreferences(audioLanguage: String, subtitleLanguage: String, subtitleMode: String): UserInfo {
+        tracks = Triple(audioLanguage, subtitleLanguage, subtitleMode.ifEmpty { "auto" })
+        language = subtitleLanguage.ifEmpty { audioLanguage }
         return me()
     }
     override suspend fun modules(): List<ModuleInfo> {
@@ -165,10 +175,12 @@ class FakeCore : LainCoreInterface {
     }
     override suspend fun thumbnail(itemId: String): ByteArray = ByteArray(0)
     override suspend fun frame(itemId: String, atSec: Double, width: UInt): ByteArray = ByteArray(0)
-    var transcodes = mutableListOf<Triple<Double, String, Long?>>()
-    override suspend fun playTranscoded(itemId: String, startSec: Double, quality: String, burnStream: Long?): PlaySource {
-        transcodes += Triple(startSec, quality, burnStream)
-        return burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=b", "burned", startSec, startSec, null, emptyList(), "sess-b")
+    data class Transcode(val startSec: Double, val quality: String, val burnStream: Long?, val audioStream: Long? = null)
+    var transcodes = mutableListOf<Transcode>()
+    override suspend fun playTranscoded(itemId: String, startSec: Double, quality: String, burnStream: Long?, audioStream: Long?): PlaySource {
+        transcodes += Transcode(startSec, quality, burnStream, audioStream)
+        // As the core answers: the session's own audio stream, not the file's list.
+        return burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=t${transcodes.size}", "transcode", startSec, startSec, null, emptyList(), "sess-t${transcodes.size}", emptyList(), audioStream)
     }
     override suspend fun playQualities(): List<io.github.enrell.lain.core.QualityInfo> = listOf(io.github.enrell.lain.core.QualityInfo("720p", 720, 4000))
     override suspend fun storyboard(itemId: String): io.github.enrell.lain.core.StoryboardSheet = throw LainException.NotFound("")
@@ -176,9 +188,10 @@ class FakeCore : LainCoreInterface {
     override suspend fun unlockLibrary(libraryId: String, secret: String, pin: Boolean): LibraryInfo = LibraryInfo(libraryId, "", "", true, false)
     override suspend fun lockLibrary(libraryId: String): LibraryInfo = LibraryInfo(libraryId, "", "", true, true)
     override suspend fun playBurnedIn(itemId: String, stream: Long, startSec: Double): PlaySource =
-        burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=b", "burned", startSec, startSec, null, emptyList(), "sess-b")
-    override suspend fun playSource(itemId: String, caps: List<String>): PlaySource {
+        burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=b", "burned", startSec, startSec, null, emptyList(), "sess-b", emptyList(), null)
+    override suspend fun playSource(itemId: String, caps: List<String>, audioLanguage: String): PlaySource {
         playCaps += caps
+        playLanguages += audioLanguage
         val start = progress[itemId]?.takeIf { !it.completed && it.positionSec > 3 }?.positionSec ?: 0.0
         return source.copy(startSec = start)
     }

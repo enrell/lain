@@ -34,9 +34,17 @@ export function routeRedirect(state: GuardState): string | null {
 		return pathname === '/login' ? null : '/login';
 	}
 	if (pathname === '/login') return '/';
-	if (isAdminRoute(pathname) && !admin) return '/settings';
+	// A section every account has, never /settings itself: /settings
+	// reopens the last section visited in this browser, which can be an
+	// admin's, and bouncing between the two never settled.
+	// Acquire is not a settings page: an account without it lands on Home,
+	// not on its own profile with no word of why.
+	if (isAdminRoute(pathname) && !admin) return pathname.startsWith('/settings') ? ACCOUNT_SETTINGS : '/';
 	return null;
 }
+
+/** A settings section every account has: where a non-admin lands from an admin route. */
+export const ACCOUNT_SETTINGS = '/settings/profile';
 
 export const ADMIN_ROUTES = [
 	'/settings/libraries',

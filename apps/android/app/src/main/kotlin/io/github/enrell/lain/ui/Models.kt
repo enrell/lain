@@ -12,6 +12,9 @@ import io.github.enrell.lain.core.SaveOutcome
 import io.github.enrell.lain.core.SourceKind
 import io.github.enrell.lain.core.SubtitleTrack
 import io.github.enrell.lain.domain.MIME_FAMILIES
+import io.github.enrell.lain.domain.TrackPrefs
+import io.github.enrell.lain.domain.audioIn
+import io.github.enrell.lain.domain.audioNeedsSession
 import io.github.enrell.lain.domain.withoutFamily
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -55,6 +58,9 @@ const val SEEK_GRACE_SEC = 3.0
  * burn-in fallback (D-247). Positions in and out are player
  * milliseconds; an HLS session that starts at the resume point is
  * offset back to source time here.
+ *
+ * An HLS session carries one audio stream (D-280): the title's audio is
+ * asked for as the session starts, and another track is a new session.
  */
 class PlayerModel(
     private val core: LainCoreInterface,
@@ -65,6 +71,14 @@ class PlayerModel(
     failedBefore: Set<String> = emptySet(),
     /** Told when a decoder fails on a family, so the next play skips the attempt. */
     private val onDecoderFailed: (family: String) -> Unit = {},
+    /** The account's track preferences: which audio a session the app named none for plays. */
+    private val trackPrefs: TrackPrefs = TrackPrefs(),
+    /**
+     * The audio language a transcode should carry ([io.github.enrell.lain.domain.transcodeAudioLanguage]:
+     * the title's remembered one), "" for the server's choice; read at each start, so a
+     * pick made while the file played directly holds when a session takes over.
+     */
+    private val audioLanguage: () -> String = { "" },
 ) {
     /** The decode claim; narrowed when a decoder fails on something it claimed. */
     private var claim = failedBefore.fold(caps) { c, family -> withoutFamily(c, family) }
@@ -77,13 +91,19 @@ class PlayerModel(
         _state.update { PlayerState(loading = true) }
         scope.launch {
             try {
-                val first = core.playSource(itemId, claim)
+                val language = audioLanguage()
+                val first = core.playSource(itemId, claim, language)
+                // The title's audio: the stream the core asked for, else the one this side finds
+                // in the title's language (a tag the core did not fold), which then takes a new
+                // session, as a quality asked for from the start does.
+                val audio = first.audioStream ?: audioIn(first.audio, language)
+                val retune = audio != null && audioNeedsSession(first, audio, trackPrefs)
                 // A file kept on the device is never converted; otherwise the chosen quality from the same place.
-                val src = if (quality.isNotEmpty() && first.kind != SourceKind.OFFLINE) {
-                    runCatching { core.playTranscoded(itemId, first.startSec, quality, null) }.getOrNull()?.let {
+                val src = if ((quality.isNotEmpty() || retune) && first.kind != SourceKind.OFFLINE) {
+                    runCatching { core.playTranscoded(itemId, first.startSec, quality, null, audio) }.getOrNull()?.let {
                         if (first.kind == SourceKind.HLS && first.session.isNotEmpty()) runCatching { core.stopTranscode(itemId, first.session) }
                         _state.update { s -> s.copy(quality = quality) }
-                        it.copy(durationSec = it.durationSec ?: first.durationSec, subtitles = first.subtitles)
+                        it.copy(durationSec = it.durationSec ?: first.durationSec, subtitles = first.subtitles, audio = first.audio)
                     } ?: first
                 } else first
                 _state.update { it.copy(loading = false, source = src, directFirst = src.kind == SourceKind.DIRECT) }
@@ -154,7 +174,7 @@ class PlayerModel(
         _state.update { it.copy(loading = true, error = null, quality = "") }
         scope.launch {
             try {
-                val src = core.playSource(itemId, claim)
+                val src = core.playSource(itemId, claim, audioLanguage())
                 stopSession(previous)
                 _state.update { it.copy(loading = false, source = src.copy(startSec = fromSec, offsetSec = 0.0)) }
             } catch (e: LainException) {
@@ -163,12 +183,17 @@ class PlayerModel(
         }
     }
 
-    fun rebuild(fromSec: Double, quality: String = _state.value.quality, burnStream: Long? = _state.value.burnStream) {
+    fun rebuild(
+        fromSec: Double,
+        quality: String = _state.value.quality,
+        burnStream: Long? = _state.value.burnStream,
+        audioStream: Long? = keptAudio(),
+    ) {
         val previous = _state.value.source
         _state.update { it.copy(loading = true, error = null, quality = quality, burnStream = burnStream) }
         scope.launch {
             try {
-                val src = core.playTranscoded(itemId, fromSec.coerceAtLeast(0.0), quality, burnStream)
+                val src = core.playTranscoded(itemId, fromSec.coerceAtLeast(0.0), quality, burnStream, audioStream)
                 stopSession(previous)
                 _state.update {
                     it.copy(
@@ -176,6 +201,7 @@ class PlayerModel(
                         source = src.copy(
                             durationSec = src.durationSec ?: previous?.durationSec,
                             subtitles = if (burnStream == null) previous?.subtitles.orEmpty() else emptyList(),
+                            audio = previous?.audio.orEmpty(),
                         ),
                     )
                 }
@@ -183,6 +209,29 @@ class PlayerModel(
                 _state.update { it.copy(loading = false, error = e) }
             }
         }
+    }
+
+    /**
+     * The audio a new session keeps: the stream this one was asked for, else
+     * the one in the title's language; null leaves the server's choice. A seek,
+     * a quality change and a burn-in must not drop a track the viewer picked.
+     */
+    private fun keptAudio(): Long? {
+        val src = _state.value.source ?: return null
+        return src.audioStream ?: audioIn(src.audio, audioLanguage())
+    }
+
+    /**
+     * The viewer picked the file's audio [stream]. An HLS session carries one,
+     * so another stream is a new session from [fromSec]; a direct or offline
+     * play switches inside the file (Media3), and the stream that already plays
+     * needs nothing. True when a new session was asked for.
+     */
+    fun switchAudio(stream: Long, fromSec: Double): Boolean {
+        val src = _state.value.source ?: return false
+        if (!audioNeedsSession(src, stream, trackPrefs)) return false
+        rebuild(fromSec, audioStream = stream)
+        return true
     }
 
     /** The source seconds the current session holds: from its start to what the player has of it. */
@@ -214,7 +263,7 @@ class PlayerModel(
         scope.launch {
             report(positionMs, playerDurationMs)?.join()
             try {
-                val next = core.playSource(itemId, claim)
+                val next = core.playSource(itemId, claim, audioLanguage())
                 _state.update { it.copy(loading = false, source = next) }
                 if (next.kind == SourceKind.HLS) {
                     runCatching { core.playQualities() }.onSuccess { q -> _state.update { it.copy(qualities = q) } }

@@ -316,10 +316,20 @@ pub fn clean_title(s: &str) -> String {
 /// Parses a release name. `kind` (`anime`, `series`, `movie`, `manga`,
 /// `comic`) picks the reading grammar for archives.
 pub fn tokenize(name: &str, kind: &str) -> Release {
+    tokenize_years(name, kind).0
+}
+
+/// [`tokenize`], and every year it read in the name, in order: the last
+/// is the release's year, and the list is empty when the release has
+/// none. A reader that knows the last belongs to the title (the model
+/// bridge reading "Blade Runner 2049", D-279) falls back to the one
+/// before it.
+pub fn tokenize_years(name: &str, kind: &str) -> (Release, Vec<i64>) {
     let mut r = Release { parser: TOKENIZER_ID.into(), ..Release::default() };
+    let mut years = Vec::new();
     let mut name = strip_ext(name).trim().to_string();
     if name.is_empty() {
-        return r;
+        return (r, years);
     }
 
     // Leading [Group].
@@ -429,6 +439,7 @@ pub fn tokenize(name: &str, kind: &str) -> Release {
         } else if is_year_token(&l) && i > 0 {
             // The last plausible year wins: "1917 2019" is a title then a year.
             r.year = atoi(trim_set(&l, "()"));
+            years.push(r.year);
             mark(i, &mut title_end);
         } else if l == "complete" || l == "batch" {
             if r.episodes.is_empty() {
@@ -496,8 +507,9 @@ pub fn tokenize(name: &str, kind: &str) -> Release {
         // "1917 (2019)": the "year" that ended the title was the title.
         r.title = r.year.to_string();
         r.year = 0;
+        years.clear();
     }
-    r
+    (r, years)
 }
 
 #[cfg(test)]
@@ -570,6 +582,22 @@ mod tests {
         ];
         for (name, kind, want) in cases {
             assert_eq!(tokenize(name, kind), want, "{name}");
+        }
+    }
+
+    #[test]
+    fn years_in_name_order() {
+        for (name, years) in [
+            ("Blade.Runner.2049.1080p.mkv", vec![2049]),
+            ("Blade.Runner.2049.2017.1080p", vec![2049, 2017]),
+            ("1917 (2019) 2160p", vec![2019]),
+            ("Show - 05 [1080p]", vec![]),
+            ("S01E01 2019", vec![]), // the year was the title
+        ] {
+            let (r, got) = tokenize_years(name, "movie");
+            assert_eq!(got, years, "{name}");
+            assert_eq!(r, tokenize(name, "movie"), "{name}");
+            assert_eq!(r.year, years.last().copied().unwrap_or(0), "{name}");
         }
     }
 

@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { onMount, tick } from 'svelte';
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import { goto } from '$app/navigation';
 	import { session } from '$lib/auth/session.svelte';
+	import { t } from '$lib/i18n';
 	import { errorMessage } from '$lib/utilities/errors';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import SignalMark from '$lib/components/primitives/SignalMark.svelte';
@@ -13,10 +15,8 @@
 	 * offers no next step, so the form says something a person can act on.
 	 */
 	function signInError(err: unknown): string {
-		const message = errorMessage(err, 'Sign in failed.');
-		return message === 'invalid credentials'
-			? 'That username and password do not match. Check both and try again.'
-			: message;
+		const message = errorMessage(err, t('auth.login.failed'));
+		return message === 'invalid credentials' ? t('auth.login.mismatch') : message;
 	}
 
 	let username = $state('');
@@ -24,6 +24,10 @@
 	let showPassword = $state(false);
 	let error = $state<string | null>(null);
 	let busy = $state(false);
+	let passwordEl = $state<HTMLInputElement | null>(null);
+
+	// Keyboard-first: the name goes straight into its field.
+	onMount(() => document.getElementById('login-username')?.focus());
 
 	async function submit(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
@@ -35,6 +39,10 @@
 			await goto('/');
 		} catch (err) {
 			error = signInError(err);
+			// Retyping the password is the usual fix: it is selected, ready.
+			await tick();
+			passwordEl?.focus();
+			passwordEl?.select();
 		} finally {
 			busy = false;
 		}
@@ -43,9 +51,14 @@
 	$effect(() => {
 		host = window.location.host;
 	});
+	// Keyboard first: the cursor waits in the username on arrival.
+	let usernameInput = $state<HTMLInputElement>();
+	$effect(() => {
+		usernameInput?.focus();
+	});
 </script>
 
-<svelte:head><title>Sign in — Lain</title></svelte:head>
+<svelte:head><title>{t('auth.login.pageTitle')}</title></svelte:head>
 
 <div class="relative flex min-h-dvh items-center justify-center overflow-hidden px-4">
 	<div class="lattice absolute inset-0 opacity-30" aria-hidden="true"></div>
@@ -58,7 +71,7 @@
 		<div class="mb-8 flex flex-col items-center gap-3 text-center">
 			<SignalMark class="size-10 text-accent" />
 			<h1 class="text-2xl font-semibold tracking-[0.24em] text-foreground">lain</h1>
-			<p class="text-sm text-muted">Your media. Your machine. Your rules.</p>
+			<p class="text-sm text-muted">{t('auth.login.tagline')}</p>
 		</div>
 
 		<form class="space-y-4 rounded-card border border-line bg-surface/80 p-6" onsubmit={submit}>
@@ -73,9 +86,10 @@
 			<!-- Fields with an edge of their own: on the card's surface a
 			     borderless field is hard to find. -->
 			<div class="space-y-1.5">
-				<label for="login-username" class="block text-sm font-medium text-muted">Username</label>
+				<label for="login-username" class="block text-sm font-medium text-muted">{t('auth.username')}</label>
 				<input
 					id="login-username"
+					bind:this={usernameInput}
 					bind:value={username}
 					autocomplete="username"
 					autocapitalize="none"
@@ -85,10 +99,11 @@
 				/>
 			</div>
 			<div class="space-y-1.5">
-				<label for="login-password" class="block text-sm font-medium text-muted">Password</label>
+				<label for="login-password" class="block text-sm font-medium text-muted">{t('auth.password')}</label>
 				<div class="relative">
 					<input
 						id="login-password"
+						bind:this={passwordEl}
 						type={showPassword ? 'text' : 'password'}
 						bind:value={password}
 						autocomplete="current-password"
@@ -100,14 +115,14 @@
 						class="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-md text-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
 						onclick={() => (showPassword = !showPassword)}
 						aria-pressed={showPassword}
-						aria-label={showPassword ? 'Hide password' : 'Show password'}
+						aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
 					>
 						{#if showPassword}<EyeOff class="size-4" aria-hidden="true" />{:else}<Eye class="size-4" aria-hidden="true" />{/if}
 					</button>
 				</div>
 			</div>
 			<Button type="submit" size="lg" class="w-full" loading={busy}>
-				Sign in
+				{t('auth.login.submit')}
 			</Button>
 		</form>
 		<!-- Which server this is: more than one is common among self-hosters. -->

@@ -564,6 +564,198 @@ fn search_skips_units_already_being_grabbed() {
     m.close();
 }
 
+/// A parser that reads the world's release as the title "Show 01" and
+/// offers the right identity only as an alternative (D-279).
+fn misreading(name: &str, kind: &str) -> lain_api::Release {
+    let mut r = lain_identify::tokenize(name, kind);
+    if r.title == "Show" && !r.episodes.is_empty() {
+        r.alternatives = vec![
+            lain_api::ReleaseIdentity { title: "Show 01 02".into(), ..Default::default() },
+            lain_api::ReleaseIdentity {
+                title: "Show".into(),
+                episodes: std::mem::take(&mut r.episodes),
+                absolute: true,
+                ..Default::default()
+            },
+        ];
+        r.title = "Show 01".into();
+    }
+    r
+}
+
+#[test]
+fn a_search_reads_a_release_as_the_title_it_asked_for() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt1"), settings(0.0), |d| d.parse = Arc::new(misreading));
+    add_indexer(&m, &w);
+    let res = m.search(&SearchQuery { query: "Show".into(), kind: "anime".into(), ..Default::default() }).unwrap();
+    let best = &res.candidates[0];
+    assert_eq!((best.release.title.as_str(), best.release.episodes.len()), ("Show", 2), "{:?}", res.candidates);
+    assert!(best.rejections.is_empty() && best.release.alternatives.is_empty(), "{best:?}");
+    assert!(!res.candidates[1].rejections.is_empty(), "another show still does not match");
+    // Asked for another title, no reading fits: the answer stands and is refused.
+    let res =
+        m.search(&SearchQuery { query: "Silver Tide".into(), kind: "anime".into(), ..Default::default() }).unwrap();
+    assert!(res.candidates.iter().all(|c| c.rejections.iter().any(|r| r == "title does not match")));
+    assert!(res.candidates.iter().any(|c| c.release.title == "Show 01"), "{:?}", res.candidates);
+    m.close();
+}
+
+#[test]
+fn a_monitored_title_decides_between_readings() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt2"), settings(0.0), |d| d.parse = Arc::new(misreading));
+    add_indexer(&m, &w);
+    let mo = monitor(&m, &w, mon("Show", 0, 0));
+    let rep = m.rss_sync().unwrap();
+    assert_eq!(rep.grabbed.len(), 1, "{rep:?}");
+    let g = wait_grab(&m, &rep.grabbed[0], &[GRAB_DONE]);
+    assert_eq!(g.release.title, "Show", "the grab is stored as the monitored title");
+    assert!(g.release.alternatives.is_empty());
+    w.assert_imported();
+    assert_eq!(m.wanted_for(&mo.id).unwrap().open_from, Some(Unit { season: 0, number: 3 }));
+    m.close();
+}
+
+/// A grab made by hand names no title (`GrabInput` does not carry the
+/// search query), so the parser's answer stands, its advice is not
+/// stored, and the library's titles do not pull the files into a folder
+/// the release did not name.
+#[test]
+fn a_manual_grab_settles_nothing() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt3"), settings(0.0), |d| d.parse = Arc::new(misreading));
+    add_indexer(&m, &w);
+    let res = m.search(&SearchQuery { query: "Show".into(), kind: "anime".into(), ..Default::default() }).unwrap();
+    let best = res.candidates[0].clone();
+    assert_eq!(best.release.title, "Show", "the search reads it as asked");
+    let g = m
+        .grab(GrabRequest {
+            input: GrabInput { result: Some(best.result), library_id: w.lib.id.clone(), ..Default::default() },
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!((g.release.title.as_str(), g.release.episodes.len()), ("Show 01", 0), "{:?}", g.release);
+    assert!(g.release.alternatives.is_empty(), "advice is not stored");
+    let g = wait_grab(&m, &g.id, &[GRAB_DONE]);
+    assert_eq!(g.release.title, "Show 01");
+    let lib = Path::new(&w.lib.path);
+    assert!(lib.join("Show 01/[Fansub-A] Show - 01 [1080p].mkv").is_file(), "filed under the answer");
+    assert!(!lib.join("SHOW").exists(), "not under the library's title the release did not name");
+    m.close();
+}
+
+/// A parser that reads the world's release as episodes 1-2 of the
+/// sequel "Show 2" (2017), and offers "Show", season 2, as its other
+/// reading (D-279).
+fn sequel_reading(name: &str, kind: &str) -> lain_api::Release {
+    let mut r = lain_identify::tokenize(name, kind);
+    if r.title == "Show" && !r.episodes.is_empty() {
+        r.alternatives = vec![lain_api::ReleaseIdentity {
+            title: "Show".into(),
+            year: 2017,
+            season: 2,
+            episodes: r.episodes.clone(),
+            ..Default::default()
+        }];
+        r.title = "Show 2".into();
+        r.year = 2017;
+    }
+    r
+}
+
+/// "Show" with its second season numbered from 13, so that S2E1-2 is a
+/// unit it wants.
+fn show_with_two_seasons() -> Monitored {
+    let map = vec![SeasonStart { season: 1, first: 1 }, SeasonStart { season: 2, first: 13 }];
+    Monitored { season_map: map, ..mon("Show", 0, 0) }
+}
+
+/// Original and sequel both monitored: the release the parser answers as
+/// the sequel is the sequel's, and the original never reads it as its
+/// season 2 (D-279).
+#[test]
+fn a_monitored_sequel_keeps_its_release() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt4"), settings(0.0), |d| d.parse = Arc::new(sequel_reading));
+    add_indexer(&m, &w);
+    let show = monitor(&m, &w, show_with_two_seasons());
+    let sequel = monitor(&m, &w, mon("Show 2", 0, 0));
+    assert!(m.search_monitored(&show.id).unwrap().grabbed.is_empty(), "the original took the sequel's release");
+    let rep = m.rss_sync().unwrap();
+    assert_eq!(rep.grabbed.len(), 1, "{rep:?}");
+    let g = m.get(&rep.grabbed[0]).unwrap();
+    assert_eq!(g.monitored_id, sequel.id, "grabbed for {:?}", g.monitored_id);
+    let r = &g.release;
+    assert_eq!((r.title.as_str(), r.season, r.episodes.clone()), ("Show 2", 0, vec![1, 2]), "{r:?}");
+    m.close();
+}
+
+/// A paused sequel still names its releases (D-279: any monitored title,
+/// enabled or not). RSS offers the release to the enabled "Show" alone,
+/// which still may not read it as its season 2, so nothing is grabbed.
+#[test]
+fn a_paused_sequel_still_keeps_its_release() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt7"), settings(0.0), |d| d.parse = Arc::new(sequel_reading));
+    add_indexer(&m, &w);
+    monitor(&m, &w, show_with_two_seasons());
+    let sequel = monitor(&m, &w, mon("Show 2", 0, 0));
+    let paused = m.update_monitored(&sequel.id, Monitored { enabled: false, ..sequel.clone() }).unwrap();
+    assert!(!paused.enabled);
+    let rep = m.rss_sync().unwrap();
+    assert!(rep.grabbed.is_empty(), "the original took the paused sequel's release: {rep:?}");
+    m.close();
+}
+
+/// The same rule on the grab path: a grab made for "Show" settles its
+/// release against "Show" only while no monitored title is named by the
+/// parser's answer.
+#[test]
+fn a_grab_for_a_monitored_title_respects_the_others() {
+    for sequel_monitored in [false, true] {
+        let w = World::new();
+        let m = w.manager_with(&tmp("acq-alt5"), settings(0.0), |d| d.parse = Arc::new(sequel_reading));
+        let show = monitor(&m, &w, show_with_two_seasons());
+        if sequel_monitored {
+            monitor(&m, &w, mon("Show 2", 0, 0));
+        }
+        let req = GrabRequest { monitored_id: show.id.clone(), ..url_grab(&w.torrent_url(), &w.lib.id) };
+        let r = m.grab(req).unwrap().release;
+        let want = if sequel_monitored { ("Show 2", 0) } else { ("Show", 2) };
+        assert_eq!((r.title.as_str(), r.season), want, "sequel monitored: {sequel_monitored}");
+        assert_eq!(r.episodes, vec![1, 2]);
+        assert!(r.alternatives.is_empty());
+        m.close();
+    }
+}
+
+/// A search's year decides between readings and rejects another year
+/// (D-279): one either way is the same release, an unknown one never
+/// rejects.
+#[test]
+fn a_search_compares_years() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt6"), settings(0.0), |d| d.parse = Arc::new(sequel_reading));
+    add_indexer(&m, &w);
+    let ours = |query: &str, year: i64| {
+        let q = SearchQuery { query: query.into(), kind: "anime".into(), year, ..Default::default() };
+        let res = m.search(&q).unwrap();
+        let other = res.candidates.iter().find(|c| c.result.title != w.mi.info.name).unwrap();
+        assert!(!other.rejections.iter().any(|r| r.starts_with("year")), "an unknown year: {other:?}");
+        let c = res.candidates.into_iter().find(|c| c.result.title == w.mi.info.name).unwrap();
+        (c.release.title, c.release.season, c.rejections)
+    };
+    let no: Vec<String> = Vec::new();
+    let year = || "year does not match".to_string();
+    assert_eq!(ours("Show", 0), ("Show".into(), 2, no.clone()));
+    assert_eq!(ours("Show", 2016), ("Show".into(), 2, no.clone()));
+    assert_eq!(ours("Show", 2010), ("Show 2".into(), 0, vec!["title does not match".into(), year()]));
+    assert_eq!(ours("Show 2", 2018), ("Show 2".into(), 0, no.clone()));
+    assert_eq!(ours("Show 2", 2010), ("Show 2".into(), 0, vec![year()]));
+    m.close();
+}
+
 #[test]
 fn rss_sync_feeds_monitored_titles() {
     let w = World::new();

@@ -47,8 +47,8 @@
 					detail: t('palette.action.scanDetail'),
 					run: async () => {
 						try {
-							await scan.start();
-							toasts.success(t('palette.action.scanStarted'));
+							const how = await scan.start();
+							toasts.success(t(how === 'queued' ? 'scan.queued' : 'palette.action.scanStarted'));
 						} catch (err) {
 							toasts.error(errorMessage(err, t('palette.action.scanFailed')));
 						}

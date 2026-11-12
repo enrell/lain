@@ -9,6 +9,6 @@
 	let { label, class: className = '', children }: { label: string; class?: string; children: Snippet } = $props();
 </script>
 
-<span role="group" aria-label={label} class="flex shrink-0 items-center gap-0.5 rounded-xl border border-line/60 bg-surface/60 p-0.5 {className}">
+<span role="group" aria-label={label} class="flex shrink-0 items-center gap-1 rounded-xl border border-line/60 bg-surface/60 p-0.5 {className}">
 	{@render children()}
 </span>

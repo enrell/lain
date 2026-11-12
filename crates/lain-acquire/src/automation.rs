@@ -247,8 +247,12 @@ impl Manager {
             replace: Vec<String>,
         }
         let mut opts: Vec<Opt> = Vec::new();
+        // Every monitored title's names, not only this one's: a release
+        // the parser answers as another monitored title is that title's
+        // (D-279).
+        let claimed = monitored::claimed(&self.st.monitored());
         for r in results {
-            let rel = (self.d.parse)(&r.title, &m.kind);
+            let rel = monitored::settle_for(m, (self.d.parse)(&r.title, &m.kind), &claimed);
             let cov = covers(m, &rel);
             if cov.is_empty() {
                 continue;

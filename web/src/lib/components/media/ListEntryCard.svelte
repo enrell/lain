@@ -13,6 +13,9 @@
 
 	let coverFailed = $state(false);
 	const cover = $derived(!coverFailed ? entry.cover || '' : '');
+	// A wide cover is shown whole over a blurred copy, as a still is in a
+	// poster frame elsewhere; cropping it to 2:3 cut its title off.
+	let wide = $state(false);
 
 	const statusLabel: Record<string, string> = {
 		current: 'Current',
@@ -42,15 +45,22 @@
 	<div
 		class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/15"
 	>
-		<div class="aspect-[2/3]">
+		<div class="relative aspect-[2/3]">
 			{#if cover}
+				{#if wide}
+					<img src={cover} alt="" aria-hidden="true" decoding="async" referrerpolicy="no-referrer" class="absolute inset-0 size-full scale-125 object-cover opacity-50 blur-2xl" />
+				{/if}
 				<img
 					src={cover}
 					alt={entry.title}
 					loading={priority ? 'eager' : 'lazy'}
 					decoding="async"
 					referrerpolicy="no-referrer"
-					class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.035]"
+					class={['relative size-full transition-transform duration-500 ease-out group-hover:scale-[1.035]', wide ? 'object-contain' : 'object-cover'].join(' ')}
+					onload={(e) => {
+						const img = e.currentTarget as HTMLImageElement;
+						wide = img.naturalWidth > img.naturalHeight * 1.15;
+					}}
 					onerror={() => (coverFailed = true)}
 				/>
 			{:else}
@@ -73,7 +83,7 @@
 			{entry.title}
 		</p>
 		<p class="mt-1 truncate text-xs text-muted">
-			{entry.media_type} · {status} · {progress}{#if entry.score} · ★ {entry.score}{/if}
+			{entry.media_type} · {status} · {progress}{#if entry.score}{' · ★ '}{entry.score}{/if}
 		</p>
 	</div>
 </div>

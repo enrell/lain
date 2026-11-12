@@ -60,7 +60,29 @@ const SUBTITLE_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_QUEUE_CAPACITY: i64 = 64;
 const MAX_TRACKED_JOBS: usize = 128;
 const RECENT_ACCESS_GRACE: i64 = 60;
-const CAP_TTL: Duration = Duration::from_secs(30);
+/// Named viewers one session tracks; past that, joins count as unnamed.
+const MAX_VIEWERS: usize = 32;
+/// How long a run waits for a stopped run of its session id to wind
+/// down (`Transcoder::settle`): a killed ffmpeg and a directory removal
+/// take milliseconds, so this only bounds a stuck one.
+const SETTLE_WAIT: Duration = Duration::from_secs(30);
+/// A probed capability set is current this long. Past it a caller still
+/// gets it at once while one background probe replaces it: the ffmpeg
+/// build and the GPUs rarely change, and a probe costs seconds on a
+/// machine with a GPU (D-031).
+const CAP_FRESH: Duration = Duration::from_secs(600);
+/// How long an answer in doubt stays current: one where a check timed
+/// out, one that found no ffmpeg, or one that lost something the
+/// previous probe found. A check
+/// can miss its timeout on a busy machine (the libplacebo one takes
+/// seconds even when idle), and the first probe runs while the server
+/// starts, so such an answer is probed again this soon instead of
+/// standing for [`CAP_FRESH`]. A loss the next probe confirms with no
+/// timeout is then current as usual.
+const CAP_RECHECK: Duration = Duration::from_secs(30);
+/// Capability sets kept, one per ffmpeg binary and VA-API device; more
+/// only comes from an operator trying paths.
+const CAP_KEYS: usize = 8;
 
 pub(crate) fn unsupported(msg: &str) -> Error {
     Error::new("unsupported-media", msg)
@@ -111,6 +133,11 @@ pub struct V3Request {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub video_effect: String,
     pub policy: Option<Policy>,
+    /// The client instance asking (D-281): `start` attaches it to the
+    /// session, `cancel` releases its hold. Not part of the session's
+    /// identity; empty is a client that does not name itself.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub viewer: String,
     /// Opaque account reference: per-user stream counts and the admin
     /// list.
     pub user_id: String,
@@ -232,6 +259,44 @@ pub fn valid_session_id(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
 }
 
+/// A client-made viewer id (D-281): 1 to 64 ASCII letters, digits, `-`
+/// or `_` (a UUID or random hex fits).
+pub fn valid_viewer_id(s: &str) -> bool {
+    (1..=64).contains(&s.len()) && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+}
+
+/// Who holds a session while it is produced (D-281). A viewer is its
+/// id under the account that sent it, so one account cannot release
+/// another's viewer. A client that joins without an id, or past
+/// [`MAX_VIEWERS`], is an unnamed hold no viewer's release can end:
+/// only a release without a viewer id or the idle timeout stops the
+/// session then.
+#[derive(Debug, Default)]
+struct Viewers {
+    named: std::collections::HashSet<(String, String)>,
+    unnamed: bool,
+}
+
+impl Viewers {
+    fn attach(&mut self, user: &str, viewer: &str) {
+        let key = (user.to_string(), viewer.to_string());
+        if viewer.is_empty() || (self.named.len() >= MAX_VIEWERS && !self.named.contains(&key)) {
+            self.unnamed = true;
+        } else {
+            self.named.insert(key);
+        }
+    }
+
+    /// Ends one viewer's hold; true when it held the session.
+    fn release(&mut self, user: &str, viewer: &str) -> bool {
+        self.named.remove(&(user.to_string(), viewer.to_string()))
+    }
+
+    fn held(&self) -> bool {
+        self.unnamed || !self.named.is_empty()
+    }
+}
+
 fn file_identity(path: &str) -> Option<(i64, i64)> {
     let m = std::fs::metadata(path).ok().filter(|m| m.is_file())?;
     let mtime = m.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_nanos() as i64;
@@ -351,6 +416,7 @@ struct Job {
     encoder: String,
     hw_backend: String,
     fallback: String,
+    viewers: Viewers,
 }
 
 impl Job {
@@ -384,6 +450,7 @@ impl Job {
             encoder: String::new(),
             hw_backend: String::new(),
             fallback: String::new(),
+            viewers: Viewers::default(),
         }
     }
 
@@ -403,6 +470,28 @@ struct State {
     max_cache_bytes: i64,
     next_gen: u64,
     ffmpeg: String,
+    /// Per session id, the runs not yet ended and the stops still
+    /// removing files. A stop takes a job out of `jobs` under the lock
+    /// but kills its ffmpeg and removes its files after, and the
+    /// stopped run exits after that; a fresh job of the same id (a
+    /// viewer joining as the last one left) writes the same paths, so
+    /// its run waits for both (`Transcoder::settle`).
+    busy: HashMap<String, u32>,
+}
+
+impl State {
+    fn enter(&mut self, session: &str) {
+        *self.busy.entry(session.to_string()).or_default() += 1;
+    }
+
+    fn leave(&mut self, session: &str) {
+        if let Some(n) = self.busy.get_mut(session) {
+            *n -= 1;
+            if *n == 0 {
+                self.busy.remove(session);
+            }
+        }
+    }
 }
 
 /// What a test run hook sees (it replaces the ffmpeg work).
@@ -417,11 +506,15 @@ type CapsFn = Arc<dyn Fn(&TranscodeSettings) -> Capabilities + Send + Sync>;
 type RunFn = Arc<dyn Fn(&RunCtx) -> Result<(), String> + Send + Sync>;
 type ClockFn = Arc<dyn Fn() -> i64 + Send + Sync>;
 type ChangeFn = Box<dyn Fn(&V3Status) + Send + Sync>;
+/// A job taken out of the map: its ffmpeg, its artifacts, its last status.
+type Taken = (Option<process::Handle>, Paths, V3Status);
 
 /// Test seams: a fake probe, capability set, run or clock.
 #[derive(Default, Clone)]
 pub struct Hooks {
     pub probe: Option<ProbeFn>,
+    /// Stands in for the ffmpeg capability probe; its answers are cached
+    /// and shared like the real probe's.
     pub caps: Option<CapsFn>,
     pub run: Option<RunFn>,
     pub clock: Option<ClockFn>,
@@ -431,10 +524,127 @@ struct Inner {
     dir: PathBuf,
     state: Mutex<State>,
     cv: Condvar,
-    caps_cache: Mutex<Option<(String, Instant, Capabilities)>>,
+    /// Held while the server writes a session's client playlist or
+    /// clears an attempt's output, so a playlist built from a failed
+    /// attempt can never be written after that attempt was cleared.
+    /// Taken before `state`, never while holding it.
+    playlist_io: Mutex<()>,
+    caps: Mutex<CapsCache>,
+    /// Signalled whenever a capability probe lands.
+    caps_cv: Condvar,
     hooks: Hooks,
     on_change: Mutex<Option<ChangeFn>>,
     init_err: Option<String>,
+}
+
+/// Probed capability sets by [`caps_key`].
+struct CapsCache {
+    slots: HashMap<String, CapsSlot>,
+    /// [`CAP_FRESH`] and [`CAP_RECHECK`]; tests shorten them.
+    fresh: Duration,
+    recheck: Duration,
+    /// Each ffmpeg run's timeout in a probe ([`policy::PROBE_TIMEOUT`]);
+    /// tests shorten it.
+    limit: Duration,
+}
+
+#[derive(Default)]
+struct CapsSlot {
+    /// The last probe's answer and when it landed.
+    value: Option<(Instant, Capabilities)>,
+    /// The answer is in doubt (a check timed out, it found no ffmpeg, or
+    /// it lost something the one before had): current only for
+    /// [`CAP_RECHECK`].
+    doubtful: bool,
+    /// A probe for this key is running. Other callers keep the last
+    /// answer or wait for this one; none starts a second (single flight).
+    running: bool,
+    /// A forced probe was asked for while one ran. The running one may
+    /// have started before what prompted it (a driver installed, ffmpeg
+    /// replaced in place, then the settings saved), so one more runs
+    /// when it lands.
+    again: bool,
+}
+
+/// Whether the probe `now` lost an execution probe `before` passed (a
+/// tone mapping path, the video effects, a hardware backend).
+fn lost(before: &Capabilities, now: &Capabilities) -> bool {
+    (before.tone_map && !now.tone_map)
+        || (before.tone_map_2390 && !now.tone_map_2390)
+        || (before.effects && !now.effects)
+        || before.hardware.iter().any(|(b, ok)| *ok && !now.hardware.get(b).copied().unwrap_or(false))
+}
+
+/// What publishing a probe's answer found.
+struct Stored {
+    /// It differs from the answer before.
+    changed: bool,
+    /// A check timed out, it found no ffmpeg, or it lost something the
+    /// answer before had.
+    doubtful: bool,
+    /// A forced probe was asked for while this one ran: the key stays
+    /// claimed and the prober probes again.
+    again: bool,
+}
+
+impl CapsCache {
+    /// Whether the caller starts a probe for `key`: none is running, and
+    /// there is no answer yet, a stale one, or `force`. Claiming marks
+    /// the probe running. A forced claim while one runs queues one more
+    /// after it instead.
+    fn claim(&mut self, key: &str, force: bool) -> bool {
+        let (fresh, recheck) = (self.fresh, self.recheck);
+        let slot = self.slots.entry(key.to_string()).or_default();
+        if slot.running {
+            slot.again |= force;
+            return false;
+        }
+        let life = if slot.doubtful { fresh.min(recheck) } else { fresh };
+        slot.running = force || slot.value.as_ref().is_none_or(|(at, _)| at.elapsed() >= life);
+        slot.running
+    }
+
+    fn current(&self, key: &str) -> Option<Capabilities> {
+        self.slots.get(key)?.value.as_ref().map(|(_, c)| c.clone())
+    }
+
+    /// Publishes a probe's answer as probed (D-031: what the page shows is
+    /// what ffmpeg did). `timed_out`: one of its ffmpeg runs was killed at
+    /// its timeout, so a no in it may be a yes on a calmer machine. An
+    /// answer with no encoders (no ffmpeg there yet) is in doubt too: the
+    /// operator may install it any time, and probing for it costs nothing.
+    fn store(&mut self, key: &str, caps: Capabilities, timed_out: bool) -> Stored {
+        let slot = self.slots.entry(key.to_string()).or_default();
+        let mut stored = Stored {
+            changed: slot.value.as_ref().is_none_or(|(_, old)| *old != caps),
+            doubtful: timed_out
+                || caps.encoders.is_empty()
+                || slot.value.as_ref().is_some_and(|(_, old)| lost(old, &caps)),
+            again: false,
+        };
+        slot.value = Some((Instant::now(), caps));
+        slot.doubtful = stored.doubtful;
+        slot.running = std::mem::take(&mut slot.again);
+        stored.again = slot.running;
+        while self.slots.len() > CAP_KEYS {
+            // The idle set probed longest ago goes first.
+            let oldest = self
+                .slots
+                .iter()
+                .filter(|(_, s)| !s.running)
+                .min_by_key(|(_, s)| s.value.as_ref().map(|(at, _)| *at))
+                .map(|(k, _)| k.clone());
+            let Some(oldest) = oldest else { break };
+            self.slots.remove(&oldest);
+        }
+        stored
+    }
+}
+
+/// What a capability probe reads from the settings: the ffmpeg binary
+/// and the VA-API device. Changing any other setting keeps the set.
+fn caps_key(s: &TranscodeSettings) -> String {
+    format!("{}|{}", policy::ffmpeg_binary(s), policy::hardware_device(s))
 }
 
 enum Fail {
@@ -497,9 +707,17 @@ impl Transcoder {
                     max_cache_bytes: d.cache_bytes,
                     next_gen: 1,
                     ffmpeg: "ffmpeg".into(),
+                    busy: HashMap::new(),
                 }),
                 cv: Condvar::new(),
-                caps_cache: Mutex::new(None),
+                playlist_io: Mutex::new(()),
+                caps: Mutex::new(CapsCache {
+                    slots: HashMap::new(),
+                    fresh: CAP_FRESH,
+                    recheck: CAP_RECHECK,
+                    limit: policy::PROBE_TIMEOUT,
+                }),
+                caps_cv: Condvar::new(),
                 hooks,
                 on_change: Mutex::new(None),
                 init_err,
@@ -521,6 +739,10 @@ impl Transcoder {
 
     fn lock(&self) -> MutexGuard<'_, State> {
         self.inner.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn playlist_lock(&self) -> MutexGuard<'_, ()> {
+        self.inner.playlist_io.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     fn now(&self) -> i64 {
@@ -646,22 +868,119 @@ impl Transcoder {
 
     // ---- probing --------------------------------------------------------
 
-    /// The probed ffmpeg surface for these settings (cached 30 s per
-    /// ffmpeg binary and VA-API device).
+    fn caps_lock(&self) -> MutexGuard<'_, CapsCache> {
+        self.inner.caps.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The probed ffmpeg surface for these settings, kept per ffmpeg
+    /// binary and VA-API device. A caller with a set for its key never
+    /// waits for a probe: one older than [`CAP_FRESH`] comes back at once
+    /// while a background probe replaces it. Only a key with no set yet
+    /// (the first boot before the warm-up lands, a new ffmpeg path)
+    /// waits, and then for the one probe in flight.
     pub fn capabilities(&self, s: &TranscodeSettings) -> Capabilities {
-        if let Some(f) = &self.inner.hooks.caps {
-            return f(s);
+        let key = caps_key(s);
+        let mut g = self.caps_lock();
+        loop {
+            if g.claim(&key, false) {
+                let cached = g.current(&key);
+                drop(g);
+                self.launch_probe(&key, s);
+                if let Some(caps) = cached {
+                    return caps;
+                }
+                g = self.caps_lock();
+                continue;
+            }
+            if let Some(caps) = g.current(&key) {
+                return caps;
+            }
+            g = self.inner.caps_cv.wait(g).unwrap_or_else(|e| e.into_inner());
         }
-        let key = format!("{}|{}", s.ffmpeg_path, policy::hardware_device(s));
-        if let Some((k, at, caps)) = self.inner.caps_cache.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
-            && *k == key
-            && at.elapsed() < CAP_TTL
-        {
-            return caps.clone();
+    }
+
+    /// Starts a probe for these settings in the background when there is
+    /// no current set and none is running, and returns at once: the
+    /// server warms the cache when it starts.
+    pub fn warm(&self, s: &TranscodeSettings) {
+        self.start_probe(s, false);
+    }
+
+    /// Starts a fresh probe for these settings in the background even when
+    /// the set is current. One already running may have started before
+    /// what prompted this call, so another runs once it lands. Callers
+    /// keep the last set meanwhile.
+    pub fn reprobe(&self, s: &TranscodeSettings) {
+        self.start_probe(s, true);
+    }
+
+    fn start_probe(&self, s: &TranscodeSettings, force: bool) {
+        let key = caps_key(s);
+        let start = self.caps_lock().claim(&key, force);
+        if start {
+            self.launch_probe(&key, s);
         }
-        let caps = policy::probe_build(s);
-        *self.inner.caps_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some((key, Instant::now(), caps.clone()));
-        caps
+    }
+
+    /// Runs the probe claimed for `key` on a thread of its own, so no
+    /// caller pays for more than waiting on its answer; on this thread
+    /// only when that one cannot start.
+    fn launch_probe(&self, key: &str, s: &TranscodeSettings) {
+        let (t, k, settings) = (self.clone(), key.to_string(), s.clone());
+        let spawned =
+            std::thread::Builder::new().name("transcode-caps".into()).spawn(move || t.run_probe(&k, &settings));
+        if let Err(e) = spawned {
+            tracing::warn!(err = %e, "capability probe thread not started; probing inline");
+            self.run_probe(key, s);
+        }
+    }
+
+    /// Runs the probe claimed for `key`, and again while a forced probe
+    /// was asked for during the last one.
+    fn run_probe(&self, key: &str, s: &TranscodeSettings) {
+        while self.probe_once(key, s) {}
+    }
+
+    /// Probes and hands the answer to every waiter; true when the key
+    /// stays claimed for one more probe. A probe that panics answers what
+    /// an ffmpeg that does not run would, in doubt, so no waiter is left
+    /// behind and the next caller after [`CAP_RECHECK`] probes again.
+    fn probe_once(&self, key: &str, s: &TranscodeSettings) -> bool {
+        let began = Instant::now();
+        let limit = self.caps_lock().limit;
+        let probed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match &self.inner.hooks.caps {
+            Some(f) => (f(s), false),
+            None => {
+                let p = policy::probe_build_within(s, limit);
+                (p.caps, p.timed_out)
+            }
+        }));
+        let (caps, timed_out) = probed.unwrap_or_else(|_| {
+            tracing::error!(ffmpeg = %policy::ffmpeg_binary(s), "transcode capability probe panicked");
+            let caps = Capabilities {
+                ffmpeg: policy::ffmpeg_binary(s),
+                hardware: st::HW_BACKENDS.iter().map(|b| (b.to_string(), false)).collect(),
+                ..Capabilities::default()
+            };
+            (caps, true)
+        });
+        let ms = began.elapsed().as_millis() as u64;
+        let ready: Vec<&str> = caps.hardware.iter().filter(|(_, ok)| **ok).map(|(b, _)| b.as_str()).collect();
+        let (ffmpeg, hardware, tone, effects) = (caps.ffmpeg.clone(), ready.join(","), caps.tone_map, caps.effects);
+        let stored = self.caps_lock().store(key, caps, timed_out);
+        self.inner.caps_cv.notify_all();
+        // What the probe found is visible (D-031): a first or a changed
+        // answer is logged, an unchanged refresh only at debug.
+        // An answer in doubt is probed again every CAP_RECHECK while
+        // requests come: only a changed one is logged at info.
+        if !stored.changed {
+            tracing::debug!(ffmpeg = %ffmpeg, ms, timed_out, "transcode capabilities unchanged");
+        } else if stored.doubtful {
+            tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, timed_out, "transcode capabilities probed, in doubt (a check timed out, no ffmpeg, or lost what the last probe found); probing again soon");
+        } else {
+            tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, "transcode capabilities probed");
+        }
+        stored.again
     }
 
     /// The settings UI's report (D-031: probing is visible).
@@ -709,8 +1028,15 @@ impl Transcoder {
         let need_session = || {
             if req.session.is_empty() { Err(Error::invalid("session required")) } else { Ok(()) }
         };
+        if !req.viewer.is_empty() && !valid_viewer_id(&req.viewer) {
+            return Err(Error::invalid("viewer must be 1 to 64 letters, digits, '-' or '_'"));
+        }
         match req.action.as_str() {
             ACTION_SUBTITLES => return self.subtitles_v3(req),
+            ACTION_CANCEL if !req.viewer.is_empty() => {
+                need_session()?;
+                return Ok(self.release_v3(&req.session, &req.file_path, &req.user_id, &req.viewer));
+            }
             ACTION_CANCEL => {
                 need_session()?;
                 return Ok(self.cancel_v3(&req.session, &req.file_path, &req.user_id));
@@ -813,7 +1139,7 @@ impl Transcoder {
     /// Stops a session and drops its artifacts. Only its owner (or an
     /// admin cancel, which names no user) may.
     fn cancel_v3(&self, session: &str, path: &str, user_id: &str) -> V3Status {
-        let (handle, paths, status) = {
+        let taken = {
             let mut g = self.lock();
             let Some(j) = g.jobs.get(session) else {
                 drop(g);
@@ -825,16 +1151,78 @@ impl Transcoder {
             if refuse {
                 return V3Status::idle(session, "");
             }
-            let mut j = g.jobs.remove(session).unwrap_or_else(|| unreachable!("checked above"));
-            self.inner.cv.notify_all();
-            let paths = self.paths_for(session, &j.settings);
-            let status = V3Status {
-                user_id: j.user_id.clone(),
-                item_id: j.item_id.clone(),
-                ..V3Status::idle(session, &j.spec.profile)
-            };
-            (j.handle.take(), paths, status)
+            self.take_job(&mut g, session)
         };
+        match taken {
+            Some(t) => self.drop_taken(session, t),
+            None => V3Status::idle(session, ""),
+        }
+    }
+
+    /// Ends one viewer's hold on a session (D-281). The session stops
+    /// and is dropped, as a cancel without a viewer drops it, only when
+    /// this viewer held it, nothing holds it any more and it is still
+    /// being produced. Otherwise the answer is the session as it stands:
+    /// another viewer keeps it running, and a finished session stays in
+    /// the cache for a replay (the LRU evicts it), because it no longer
+    /// holds a runner.
+    fn release_v3(&self, session: &str, path: &str, user_id: &str, viewer: &str) -> V3Status {
+        let taken = {
+            let mut g = self.lock();
+            let Some(j) = g.jobs.get_mut(session) else {
+                drop(g);
+                return self.finished_v3(session, path);
+            };
+            if (!path.is_empty() && j.spec.path != path) || !j.v3 {
+                return V3Status::idle(session, "");
+            }
+            let released = j.viewers.release(user_id, viewer);
+            if !released || j.viewers.held() || !j.active() {
+                return self.status_from_job(j);
+            }
+            // Decided and taken under one lock: a viewer joining now
+            // finds no session and starts a new one, whose run waits
+            // until this stop has removed the files (`settle`).
+            self.take_job(&mut g, session)
+        };
+        tracing::info!(session = %session, "last viewer left");
+        match taken {
+            Some(t) => self.drop_taken(session, t),
+            None => V3Status::idle(session, ""),
+        }
+    }
+
+    /// A session no job tracks: its cache record when it has one for
+    /// `path`, else idle. Nothing is removed.
+    fn finished_v3(&self, session: &str, path: &str) -> V3Status {
+        if !valid_session_id(session) {
+            return V3Status::idle(session, "");
+        }
+        match read_entry(&self.meta_path(session)) {
+            Some(e) if path.is_empty() || e.source_path == path => self.status_from_entry(&e),
+            _ => V3Status::idle(session, ""),
+        }
+    }
+
+    /// Removes a job from the map (under the caller's lock) and returns
+    /// what [`Transcoder::drop_taken`] needs to finish the stop.
+    fn take_job(&self, g: &mut State, session: &str) -> Option<Taken> {
+        let mut j = g.jobs.remove(session)?;
+        g.enter(session);
+        self.inner.cv.notify_all();
+        let paths = self.paths_for(session, &j.settings);
+        let status = V3Status {
+            user_id: j.user_id.clone(),
+            item_id: j.item_id.clone(),
+            ..V3Status::idle(session, &j.spec.profile)
+        };
+        Some((j.handle.take(), paths, status))
+    }
+
+    /// Kills a taken job's ffmpeg and drops its artifacts, outside the
+    /// lock.
+    fn drop_taken(&self, session: &str, taken: Taken) -> V3Status {
+        let (handle, paths, status) = taken;
         if let Some(h) = handle {
             h.resume();
             h.kill();
@@ -844,6 +1232,8 @@ impl Transcoder {
         let _ = std::fs::remove_file(&paths.subtitle);
         let _ = std::fs::remove_file(&paths.burn);
         let _ = std::fs::remove_file(self.meta_path(session));
+        self.lock().leave(session);
+        self.inner.cv.notify_all();
         tracing::info!(session = %session, "transcode cancelled");
         self.changed(&status);
         V3Status { user_id: String::new(), item_id: String::new(), ..status }
@@ -952,9 +1342,10 @@ impl Transcoder {
             return Err(unavailable("transcoder stopped"));
         }
         g.ffmpeg = policy::ffmpeg_binary(settings);
-        if let Some(old) = g.jobs.get(&spec.session) {
+        if let Some(old) = g.jobs.get_mut(&spec.session) {
             if old.state != FAILED {
                 policy_allows_method(req.policy.as_ref(), &old.method)?;
+                old.viewers.attach(&req.user_id, &req.viewer);
                 return Ok(self.status_from_job(old));
             }
             g.jobs.remove(&spec.session);
@@ -986,6 +1377,7 @@ impl Transcoder {
         j.fallback = plan.fallback.clone();
         j.method = plan.method.clone();
         j.plan = Some(plan);
+        j.viewers.attach(&req.user_id, &req.viewer);
         let status = self.status_from_job(&j);
         g.jobs.insert(spec.session.clone(), j);
         g.pending += 1;
@@ -1351,6 +1743,20 @@ impl Transcoder {
             return first;
         }
         tracing::warn!(session = %session, err = %e, "hardware transcode failed; retrying in software");
+        // The retry writes into the same directory. Left in place, the
+        // failed attempt's playlist would stay published (and playable)
+        // until the retry's first segment replaced it, and its segments
+        // would stay servable beside the retry's. The retry also writes
+        // under names of its own (`hls::RETRY_PREFIX`), so no URL a
+        // viewer fetched from the failed attempt ever answers with the
+        // retry's bytes.
+        if p.is_hls()
+            && let Some(dir) = output.parent()
+            && let Err(e) = self.clear_attempt(session, epoch, dir)
+        {
+            tracing::warn!(session = %session, err = %e, "failed attempt not cleared; not retrying");
+            return first;
+        }
         let has_svt = self.capabilities(&p.settings).has_encoder("libsvtav1");
         let fb = p.software_fallback(has_svt);
         self.with_job(session, epoch, |j| {
@@ -1359,6 +1765,27 @@ impl Transcoder {
             j.hw_backend.clear();
         });
         self.exec_plan(session, epoch, &fb, output, sub)
+    }
+
+    /// Removes a failed HLS attempt's output and makes the session start
+    /// over: not playable until the retry's first segment, and no client
+    /// position carried over (it counted the old attempt's segments, so
+    /// segment deletion would remove the retry's early ones). A viewer
+    /// that already plays the failed attempt finds the playlist gone
+    /// until the retry's first segment, then the retry's playlist, whose
+    /// segments name their own init segment: a player keeps an init
+    /// segment whose URI did not change (hls.js does), and a browser
+    /// caches the segments it fetched, so reused names would pair one
+    /// encoder's segments with the other's init segment.
+    fn clear_attempt(&self, session: &str, epoch: u64, dir: &Path) -> std::io::Result<()> {
+        let _io = self.playlist_lock();
+        hls::clear_output(dir)?;
+        self.with_job(session, epoch, |j| {
+            j.playable = false;
+            j.client_segment = 0;
+            j.progress = 0.0;
+        });
+        Ok(())
     }
 
     fn run_plan(&self, session: &str, epoch: u64, p: &EncodePlan, paths: &Paths) -> Result<(), Fail> {
@@ -1396,6 +1823,7 @@ impl Transcoder {
             lain_store::ensure_private_dir(&paths.hls_dir).map_err(|e| e.to_string())?;
             let raw = paths.hls_dir.join(hls::RAW_PLAYLIST);
             self.exec_with_fallback(session, epoch, p, &raw, &sub_file)?;
+            let _io = self.playlist_lock();
             hls::write_index(&paths.hls_dir, p.settings.hls_segment_seconds).map_err(|e| e.to_string())?;
             let ok = hls::playable(&paths.hls_dir);
             self.with_job(session, epoch, |j| j.playable = ok);
@@ -1493,9 +1921,32 @@ impl Transcoder {
         let _ = std::fs::remove_file(&paths.burn);
     }
 
+    /// Waits until this run is the only thing working on `session`'s
+    /// paths (`State::busy` counts it too): a stopped run of the same id
+    /// may still be exiting, and its stop may still be removing the
+    /// files, either of which would delete what this run writes. Ends
+    /// early when this job was stopped meanwhile or the transcoder
+    /// closed; after [`SETTLE_WAIT`] it starts anyway.
+    fn settle<'a>(&'a self, mut g: MutexGuard<'a, State>, session: &str, epoch: u64) -> MutexGuard<'a, State> {
+        let until = Instant::now() + SETTLE_WAIT;
+        while !g.closed
+            && g.busy.get(session).is_some_and(|n| *n > 1)
+            && g.jobs.get(session).is_some_and(|j| j.epoch == epoch && j.state == QUEUED)
+        {
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                tracing::warn!(session = %session, "a stopped run of this session is still winding down; starting anyway");
+                break;
+            }
+            g = self.inner.cv.wait_timeout(g, left).map(|(g, _)| g).unwrap_or_else(|e| e.into_inner().0);
+        }
+        g
+    }
+
     fn run_v3(&self, session: &str, epoch: u64) {
         let started = {
-            let mut g = self.lock();
+            let g = self.lock();
+            let mut g = self.settle(g, session, epoch);
             if g.closed {
                 return;
             }
@@ -1521,6 +1972,7 @@ impl Transcoder {
                 .map_err(Fail::Plain)
                 .map(|_| {
                     if delivery == st::DELIVERY_HLS {
+                        let _io = self.playlist_lock();
                         let _ = hls::write_index(&paths.hls_dir, settings.hls_segment_seconds);
                     }
                 }),
@@ -1758,9 +2210,16 @@ impl Transcoder {
                 RUNNING => {
                     // The idle check runs even before ffmpeg wrote a
                     // playlist: a stuck encoder must still time out.
-                    if hls::write_index(&dir, settings.hls_segment_seconds).is_ok() {
-                        let ok = hls::playable(&dir);
-                        self.with_job(&session, epoch, |j| j.playable = ok);
+                    let published = {
+                        let _io = self.playlist_lock();
+                        let ok = hls::write_index(&dir, settings.hls_segment_seconds).is_ok();
+                        if ok {
+                            let playable = hls::playable(&dir);
+                            self.with_job(&session, epoch, |j| j.playable = playable);
+                        }
+                        ok
+                    };
+                    if published {
                         self.apply_throttle(&session);
                         self.delete_consumed_segments(&session);
                     }
@@ -1769,6 +2228,7 @@ impl Transcoder {
                     }
                 }
                 READY => {
+                    let _io = self.playlist_lock();
                     let _ = hls::write_index(&dir, settings.hls_segment_seconds);
                 }
                 _ => {}
@@ -1856,6 +2316,9 @@ impl Transcoder {
     }
 
     fn delete_consumed_segments(&self, session: &str) {
+        // The position is read under the playlist lock too: one read
+        // before an attempt was cleared would count the old segments.
+        let _io = self.playlist_lock();
         let Some((seg, settings)) = ({
             let g = self.lock();
             g.jobs.get(session).and_then(|j| {
@@ -1939,6 +2402,7 @@ fn dispatch(weak: Weak<Inner>) {
                 let v3 = g.jobs.get(&s).filter(|j| j.epoch == epoch && j.state == QUEUED).map(|j| j.v3);
                 if let Some(v3) = v3 {
                     g.active += 1;
+                    g.enter(&s);
                     Some((s, epoch, v3))
                 } else {
                     None
@@ -1950,6 +2414,7 @@ fn dispatch(weak: Weak<Inner>) {
         };
         if let Some((s, epoch, v3)) = next {
             let runner = t.clone();
+            let session = s.clone();
             let spawned = std::thread::Builder::new().name("transcode-run".into()).spawn(move || {
                 if v3 {
                     runner.run_v3(&s, epoch);
@@ -1958,14 +2423,38 @@ fn dispatch(weak: Weak<Inner>) {
                 }
                 let mut g = runner.lock();
                 g.active = (g.active - 1).max(0);
+                g.leave(&s);
                 runner.inner.cv.notify_all();
             });
             if spawned.is_err() {
                 let mut g = t.lock();
                 g.active = (g.active - 1).max(0);
+                g.leave(&session);
             }
         }
     }
+}
+
+/// Writes an executable stub for a test. A file some process holds open
+/// for writing cannot be executed (ETXTBSY), and a child that another
+/// test thread forks while this one writes inherits that descriptor
+/// until it execs, so a stub written by this process can fail to start
+/// on a busy machine (every list of a probe then comes back empty). A
+/// `cat` child writes it instead: no descriptor of this process ever
+/// points at the file.
+#[cfg(all(test, unix))]
+pub(crate) fn write_stub(path: &Path, script: &str) {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    let mut sh = std::process::Command::new("/bin/sh")
+        .args(["-c", "cat > \"$1\"", "sh"])
+        .arg(path)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    sh.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
+    assert!(sh.wait().unwrap().success(), "stub {} not written", path.display());
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 #[cfg(test)]

@@ -7,12 +7,12 @@
 	 * option are exact. What is set lives in the URL: a view can be
 	 * bookmarked, and Back returns to it. The grid lists titles, one card
 	 * per show (it opens the show's page) or per single file, all in one
-	 * frame (see `frameOf`).
+	 * frame (see `guessFrame`).
 	 *
 	 * The titles are a library's, every library's, or whatever `source`
 	 * gives (the favourites), so every list of titles browses the same way.
 	 */
-	import { onMount, tick, type Snippet } from 'svelte';
+	import { onMount, tick, untrack, type Snippet } from 'svelte';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
@@ -24,7 +24,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { api } from '$lib/api';
-	import { framedGrid } from '$lib/components/media/MediaGrid.svelte';
+	import { framedGrid } from '$lib/components/media/grid';
 	import MediaCard from '$lib/components/media/MediaCard.svelte';
 	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
@@ -34,15 +34,18 @@
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
-	import { SAMPLE, frameOf } from '$lib/stores/shapes.svelte';
+	import { frameNow, guessFrame, settleFrame } from '$lib/stores/frames';
+	import { sampleArt, type Shape } from '$lib/stores/shapes.svelte';
 	import {
 		ADDED, LISTED, NO_FILTERS, SHAPES, SORTS, WATCH,
 		activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState,
 		type Context, type Filters, type Sort
 	} from '$lib/utilities/browse';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { gridKeys } from '$lib/utilities/grid-nav';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { groupItems } from '$lib/utilities/grouping';
-	import { t } from '$lib/i18n';
+	import { t, type Key } from '$lib/i18n';
 
 	const FETCH = 500;
 	const ENRICH = 150;
@@ -125,15 +128,18 @@
 	afterNavigate((nav) => {
 		returning = nav.type === 'popstate';
 	});
-	async function restorePlace(): Promise<void> {
+	// The spot to return to, kept until the grid is drawn: before its first
+	// set's frame is guessed the page is only as tall as the skeleton, and a
+	// scroll made then stopped near the top (see `held`).
+	let restoreTo = $state(0);
+	function restorePlace(): void {
 		if (!returning) return;
 		returning = false;
 		try {
 			const saved = JSON.parse(sessionStorage.getItem(placeKey()) ?? 'null');
 			if (!saved || !(saved.y > 0)) return;
 			shown = Math.max(RENDER, Number(saved.shown) || RENDER);
-			await tick();
-			window.scrollTo({ top: saved.y });
+			restoreTo = saved.y;
 		} catch {
 			/* stay at the top */
 		}
@@ -144,6 +150,7 @@
 		window.scrollTo({ top: 0, behavior: calm ? 'auto' : 'smooth' });
 	}
 	let gridTop = $state<HTMLElement | null>(null);
+	let gridEl = $state<HTMLElement | null>(null);
 	/** A new result set starts at its beginning, not mid-scroll. */
 	function toResults(): void {
 		if (!gridTop) return;
@@ -154,6 +161,8 @@
 	async function load(): Promise<void> {
 		const mine = ++run;
 		items = [];
+		held = null;
+		restoreTo = 0;
 		total = 0;
 		error = null;
 		loading = true;
@@ -178,7 +187,7 @@
 				}
 			}
 			loading = false;
-			void restorePlace();
+			restorePlace();
 			// Overlays carry the genres and artwork; the titles are usable
 			// before they arrive.
 			const ids = items.map((i) => i.id);
@@ -276,8 +285,47 @@
 	const results = $derived(apply(all, filters, ctx));
 	let shown = $state(RENDER);
 	const visible = $derived(results.slice(0, shown));
-	// One frame for the whole grid, from its first titles' pictures.
-	const frame = $derived(frameOf(results, (id) => enrichmentCache.get(id)));
+	// One frame for the whole grid, held per set (its first titles). A set
+	// is drawn at once in the frame guessed from what is known before a
+	// picture loads (see `guessFrame`), checked once against its first
+	// pictures and changed only if the guess was wrong: a grid that voted
+	// with its pictures as they came in turned shape under the eye, and one
+	// that waited for them stood empty for seconds on a cold thumbnail cache.
+	// The first set waits for its first titles' overlays only (one request);
+	// a later one (a filter, a search) is guessed from what is known when it
+	// is shown.
+	let held = $state<{ key: string; frame: Shape } | null>(null);
+	const sampleKey = $derived(sampleArt(results).map((i) => i.id).join(' '));
+	const frame = $derived.by<Shape>(() => {
+		const key = sampleKey;
+		const h = held;
+		if (!h) return 'portrait';
+		if (h.key === key) return h.frame;
+		// Read once per set: pictures loading must not move it.
+		return untrack(() => frameNow(results));
+	});
+	let settling = 0;
+	$effect(() => {
+		const key = sampleKey;
+		if ((loading && items.length === 0) || held?.key === key) return;
+		const set = untrack(() => results);
+		const first = untrack(() => held) === null;
+		const mine = ++settling;
+		void (async () => {
+			const guess = first ? await guessFrame(set) : untrack(() => frame);
+			if (mine !== settling) return;
+			held = { key, frame: guess };
+			const settled = await settleFrame(set);
+			if (mine === settling && settled !== guess) held = { key, frame: settled };
+		})();
+	});
+	// Back lands where it left once the grid stands at its full height.
+	$effect(() => {
+		const y = restoreTo;
+		if (y === 0 || !held) return;
+		restoreTo = 0;
+		void tick().then(() => window.scrollTo({ top: y }));
+	});
 	// Loaded, and nothing at all: no tools for an empty list.
 	const bare = $derived(!loading && !error && all.length === 0);
 	let sentinel = $state<HTMLElement | null>(null);
@@ -307,6 +355,9 @@
 	const shapeCounts = $derived(countBy(all, filters, ctx, 'shape', (g) => [g.count > 1 ? 'series' : 'single']));
 	const kindCounts = $derived(countBy(all, filters, ctx, 'kind', (g) => [...new Set(g.items.map((i) => i.kind))]));
 	const kinds = $derived([...new Set(items.map((i) => i.kind))].filter(Boolean).sort());
+	// A kind by name; one the catalog adds later shows as stored until it has one.
+	const KIND_NAMES: Record<string, Key> = { video: 'browse.kind.video', episode: 'browse.kind.episode', manga: 'browse.kind.manga', comic: 'browse.kind.comic' };
+	const kindName = (k: string) => (KIND_NAMES[k] ? t(KIND_NAMES[k]) : k);
 	const addedCounts = $derived(
 		new Map(ADDED.map((a) => [a.value, all.filter((g) => apply([g], { ...filters, added: a.value }, ctx).length > 0).length]))
 	);
@@ -316,7 +367,7 @@
 		...filters.exclude.map((g) => ({ label: `not ${g}`, off: () => genre(g, 'not') })),
 		...(filters.watch ? [{ label: WATCH.find((w) => w.value === filters.watch)!.label, off: () => set({ watch: '' }) }] : []),
 		...(filters.shape ? [{ label: SHAPES.find((s) => s.value === filters.shape)!.label, off: () => set({ shape: '' }) }] : []),
-		...(filters.kind ? [{ label: filters.kind, off: () => set({ kind: '' }) }] : []),
+		...(filters.kind ? [{ label: kindName(filters.kind), off: () => set({ kind: '' }) }] : []),
 		...(filters.added ? [{ label: `Added: ${ADDED.find((a) => a.value === filters.added)!.label.toLowerCase()}`, off: () => set({ added: 0 }) }] : [])
 	]);
 	const narrowed = $derived(active > 0 || filters.q.trim() !== '');
@@ -339,6 +390,16 @@
 		defaultSort = next;
 		savePrefs();
 	}
+
+	// The keys below, for `?`; a key that does nothing right now is not listed.
+	usePageKeys(() => [
+		{ keys: ['/'], label: searchLabel || t('pageKeys.librarySearch') },
+		{ keys: ['↑', '↓', '←', '→'], label: t('pageKeys.gridMove') },
+		{ keys: ['F'], label: t('pageKeys.filters') },
+		...(narrowed ? [{ keys: ['C'], label: t('pageKeys.clearFilters') }] : []),
+		...(scrollY > 400 ? [{ keys: ['T'], label: t('pageKeys.toTop') }] : []),
+		...(backHref ? [{ keys: ['Backspace'], label: t('pageKeys.back') }] : [])
+	]);
 
 	function onKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -395,6 +456,20 @@
 	</button>
 {/snippet}
 
+{#snippet filtersButton(place: string)}
+	<button
+		type="button"
+		class={['h-11 shrink-0 items-center gap-2 rounded-md border bg-field px-3.5 text-sm transition-colors sm:h-10', place, active > 0 ? 'border-accent/60 text-foreground' : 'border-transparent text-muted hover:border-hairline hover:text-foreground'].join(' ')}
+		aria-label={active > 0 ? `Filters (${active} active)` : 'Filters'}
+		onclick={() => (sheet = true)}
+	>
+		<SlidersHorizontal class="size-4" />
+		<!-- Named, as in the app: the sliders alone did not say "filters". Below a
+		     wide screen the sheet also holds the sort. -->
+		Sort &amp; filter{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
+	</button>
+{/snippet}
+
 {#snippet heading(label: string)}
 	<h3 class="mb-1 px-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted/80">{label}</h3>
 {/snippet}
@@ -439,16 +514,19 @@
 		{#if showLibraryFilter}
 			<div>
 				{@render heading('Library')}
-				<Select
-					aria-label="Library"
-					bind:value={selectedLibrary}
-					options={libraryOptions}
-					placeholder="All libraries"
-					onValueChange={() => {
-						clearAll();
-						void load();
-					}}
-				/>
+				<!-- As wide as the rows under it, so the counts and the picker end together. -->
+				<div class="w-[calc(100%-2.875rem)] lg:w-[calc(100%-1.875rem)]">
+					<Select
+						aria-label="Library"
+						bind:value={selectedLibrary}
+						options={libraryOptions}
+						placeholder="All libraries"
+						onValueChange={() => {
+							clearAll();
+							void load();
+						}}
+					/>
+				</div>
 			</div>
 		{/if}
 		<!-- Each choice of one starts with "Any": a ring that was picked had no
@@ -474,7 +552,7 @@
 				{@render heading('Kind')}
 				{@render option(t('browse.any'), anyCount(all, filters, ctx, 'kind'), !filters.kind, () => set({ kind: '' }))}
 				{#each kinds as k (k)}
-					{@render option(k, kindCounts.get(k), filters.kind === k, () => toggle('kind', k))}
+					{@render option(kindName(k), kindCounts.get(k), filters.kind === k, () => toggle('kind', k))}
 				{/each}
 			</div>
 		{/if}
@@ -501,7 +579,7 @@
 						aria-label="Find a genre"
 						autocomplete="off"
 						spellcheck="false"
-						class="mb-1.5 h-8 w-full rounded-md border border-line bg-field px-2 text-sm text-foreground placeholder:text-muted/70 focus:border-accent/60 focus:outline-none"
+						class="mb-1.5 h-8 w-[calc(100%-2.875rem)] rounded-md border border-transparent bg-field px-2 text-sm text-foreground placeholder:text-muted/70 hover:border-hairline focus:border-accent/60 focus:outline-none lg:w-[calc(100%-1.875rem)]"
 					/>
 				{/if}
 				<ul>
@@ -572,8 +650,11 @@
 		     once the grid scrolls under it; at rest it drew a dark seam on the page. -->
 		{#if !bare || view}
 			<div class={['sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 transition-shadow sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-20', scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''].join(' ')}>
-				{#if !bare}
-					<div class="flex items-center gap-2">
+				<!-- The first row is as tall as the shelves' band (LibraryShelves), and the
+				     view switch ends it in both: switching views leaves it where it was.
+				     It sat a row lower here, under the search. -->
+				<div class="flex min-h-11 items-center gap-2 sm:min-h-10">
+					{#if !bare}
 						<div class="relative min-w-0 flex-1">
 							<Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
 							<input
@@ -581,12 +662,28 @@
 								type="search"
 								value={text}
 								oninput={(e) => onSearch(e.currentTarget.value)}
+								onkeydown={(e) => {
+									// Down from the field walks into the titles, as from the header's search.
+									if (e.key !== 'ArrowDown' || e.altKey || e.ctrlKey || e.metaKey) return;
+									const first = gridEl?.querySelector<HTMLElement>('a[href]');
+									if (!first) return;
+									e.preventDefault();
+									first.focus();
+								}}
 								placeholder={searchLabel || 'Search this library'}
 								aria-label={searchLabel || 'Search this library'}
 								autocomplete="off"
 								spellcheck="false"
 								enterkeyhint="search"
-								class="h-11 w-full rounded-md border border-line bg-field pl-9 pr-12 text-sm sm:h-10 text-foreground placeholder:text-muted/70 transition-colors hover:border-white/15 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+								class={[
+									// A filled field like the sort and tile controls beside it (the Select
+									// primitive's look), not a second, outlined kind of control.
+									'h-11 w-full text-ellipsis rounded-md border border-transparent bg-field pl-9 text-sm sm:h-10 md:pr-12 text-foreground placeholder:text-muted/70 transition-colors hover:border-hairline focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden',
+									// Room on the right only for what sits there: the clear button, or
+									// from md up the `/` cap. On a phone, beside the view switch, the
+									// empty field's placeholder lost its last word to that room.
+									text ? 'pr-10' : 'pr-3'
+								].join(' ')}
 							/>
 							{#if text}
 								<button type="button" aria-label="Clear search" class="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-foreground" onclick={() => { onSearch(''); searchBox?.focus(); }}>
@@ -596,7 +693,9 @@
 								<kbd class="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 text-muted/70 md:inline-flex">/</kbd>
 							{/if}
 						</div>
-						<div class="hidden w-44 shrink-0 sm:block">
+						<!-- With the view switch beside them, sort and tile size stay in the
+						     sheet until a wide screen has room for all three. -->
+						<div class={['hidden w-44 shrink-0', view ? 'lg:block' : 'sm:block'].join(' ')}>
 							<Select
 								aria-label="Sort"
 								bind:value={sortValue}
@@ -606,7 +705,7 @@
 						</div>
 						<button
 							type="button"
-							class="hidden h-10 shrink-0 items-center gap-2 rounded-md border border-line px-3 text-sm text-muted transition-colors hover:border-white/15 hover:text-foreground sm:flex"
+							class={['hidden h-10 shrink-0 items-center gap-2 rounded-md border border-transparent bg-field px-3 text-sm text-muted transition-colors hover:border-hairline hover:text-foreground', view ? 'lg:flex' : 'sm:flex'].join(' ')}
 							aria-pressed={dense}
 							aria-label={dense ? 'Tile size: small. Switch to large.' : 'Tile size: large. Switch to small.'}
 							title="Tile size"
@@ -618,20 +717,17 @@
 							<!-- An icon of what it changes beside the word: a bare "LARGE" read as a label. -->
 							{#if dense}<Grid3x3 class="size-4" aria-hidden="true" />{:else}<Grid2x2 class="size-4" aria-hidden="true" />{/if}
 							<!-- Says what is set, as the sheet's "Tiles" does: "Large tiles" read as the size it would switch to. -->
-							{t('browse.tiles', { size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge') })}
+							<!-- Beside the view switch on a laptop's width the icon alone says it; the search keeps the room. -->
+							<span class={view ? 'hidden xl:inline' : ''}>{t('browse.tiles', { size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge') })}</span>
 						</button>
-						<button
-							type="button"
-							class={['flex h-11 shrink-0 items-center gap-2 rounded-md border px-3.5 text-sm sm:h-10 lg:hidden', active > 0 ? 'border-accent/60 text-foreground' : 'border-line text-muted'].join(' ')}
-							aria-label={active > 0 ? `Filters (${active} active)` : 'Filters'}
-							onclick={() => (sheet = true)}
-						>
-							<SlidersHorizontal class="size-4" />
-							<!-- Named, as in the app: the sliders alone did not say "filters". -->
-							<span class="sm:hidden">Sort &amp; filter</span><span class="max-sm:hidden">Filters</span>{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
-						</button>
-					</div>
-				{/if}
+						{#if !view}
+							{@render filtersButton('flex lg:hidden')}
+						{:else}
+							{@render filtersButton('hidden sm:flex lg:hidden')}
+						{/if}
+					{/if}
+					{@render view?.()}
+				</div>
 
 				<div class="flex min-h-7 flex-wrap items-center gap-1.5">
 					{#if backHref && scrollY > 140}
@@ -670,7 +766,10 @@
 							Clear <kbd class="ml-0.5 hidden opacity-70 md:inline-flex">C</kbd>
 						</button>
 					{/if}
-					{@render view?.()}
+					<!-- A phone's first row holds the search and the view switch; sort and filters come here. -->
+					{#if view && !bare}
+						{@render filtersButton('ms-auto flex sm:hidden')}
+					{/if}
 				</div>
 			</div>
 		{/if}
@@ -678,7 +777,7 @@
 		<div bind:this={gridTop}></div>
 		{#if error && items.length === 0}
 			<ErrorState message={error} retry={() => void load()} />
-		{:else if loading && items.length === 0}
+		{:else if (loading && items.length === 0) || (!held && results.length > 0)}
 			<div class={framedGrid('portrait', dense)}>
 				{#each Array(8) as _}
 					<Skeleton class="aspect-[2/3] w-full rounded-xl" />
@@ -702,7 +801,10 @@
 				</div>
 			</div>
 		{:else}
-			<div class={framedGrid(frame, dense)}>
+			<!-- Arrows move between titles; up from the first row returns to the search.
+			     A card scrolled to stops below the header and this sticky bar. -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div bind:this={gridEl} class={[framedGrid(frame, dense), '[&>*]:scroll-mt-48 [&>*]:scroll-mb-24 md:[&>*]:scroll-mt-52'].join(' ')} onkeydown={(e) => gridKeys(e, () => searchBox)}>
 				{#each visible as group, i (group.key)}
 					{#if group.count > 1}
 						<ShowCard
@@ -710,7 +812,6 @@
 							{frame}
 							progressOf={(id) => progressMap.get(id)}
 							priority={i < 6}
-							eager={i < SAMPLE}
 						/>
 					{:else}
 						<MediaCard
@@ -718,7 +819,6 @@
 							enrichment={enrichmentCache.get(group.items[0].id) ?? null}
 							progress={progressMap.get(group.items[0].id) ?? null}
 							priority={i < 6}
-							eager={i < SAMPLE}
 							{frame}
 						/>
 					{/if}

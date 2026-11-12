@@ -125,12 +125,13 @@
 		return user.id === session.user?.id;
 	}
 
-	async function patch(user: User, input: Parameters<typeof api.users.patch>[1], message: string) {
+	async function patch(user: User, input: Parameters<typeof api.users.patch>[1], message: string, undo?: () => void) {
 		rowBusy = user.id;
 		try {
 			const updated = await api.users.patch(user.id, input);
 			users = users.map((u) => (u.id === updated.id ? updated : u));
-			toasts.success(message);
+			if (undo) toasts.undoable(message, undo);
+			else toasts.success(message);
 		} catch (err) {
 			toasts.error(errorMessage(err, 'Could not update the user.'));
 		} finally {
@@ -235,16 +236,19 @@
 						/>
 					</div>
 					<div class="flex h-9 items-center gap-2 text-sm text-muted">
+						<!-- Named per row: a list of switches all called "Active" told a screen reader nothing.
+						     A mis-click locks someone out at once, so the toast can take it back (Ctrl+Z). -->
 						<Switch
 							bare
-							label="Active"
+							label={t('settings.groups.users.activeFor', { name: user.username })}
 							checked={!user.disabled}
 							disabled={isSelf(user)}
 							onCheckedChange={(enabled) =>
 								void patch(
 									user,
 									{ disabled: !enabled },
-									enabled ? `${user.username} enabled.` : `${user.username} disabled.`
+									t(enabled ? 'settings.groups.users.enabled' : 'settings.groups.users.disabled', { name: user.username }),
+									() => void patch(user, { disabled: enabled }, t(enabled ? 'settings.groups.users.disabled' : 'settings.groups.users.enabled', { name: user.username }))
 								)}
 						/>
 						<span>Active</span>

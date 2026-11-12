@@ -831,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "lain-api"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -839,7 +839,7 @@ dependencies = [
 
 [[package]]
 name = "lain-bridge"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "lain-api",
  "lain-component",
@@ -852,7 +852,7 @@ dependencies = [
 
 [[package]]
 name = "lain-component"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "lain-core",
  "notify",
@@ -864,7 +864,7 @@ dependencies = [
 
 [[package]]
 name = "lain-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "lain-api",
  "serde",
@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "lain-identify"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "lain-api",
  "lain-core",

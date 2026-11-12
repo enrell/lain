@@ -37,6 +37,32 @@
        "expect": {"status": 400, "body": {"error": "preferred_language must be a three-letter ISO 639-2 code"}}},
       {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_language": ""}},
        "expect": {"status": 200, "body": {"preferred_language": "$absent", "$open": true}}}
+    ]},
+    {"name": "preferences split audio and subtitle languages and keep the one language for older clients (D-280)", "steps": [
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_audio_language": " JPN ", "preferred_subtitle_language": "por"}},
+       "expect": {"status": 200, "body": {"id": "user-admin", "preferred_language": "por", "preferred_audio_language": "jpn",
+         "preferred_subtitle_language": "por", "preferred_subtitle_mode": "$absent", "$open": true}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_subtitle_mode": "forced"}},
+       "expect": {"status": 200, "body": {"preferred_language": "por", "preferred_audio_language": "jpn",
+         "preferred_subtitle_language": "por", "preferred_subtitle_mode": "forced", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"preferred_language": "por", "preferred_audio_language": "jpn",
+         "preferred_subtitle_language": "por", "preferred_subtitle_mode": "forced", "$open": true}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_language": "eng"}},
+       "expect": {"status": 200, "body": {"preferred_language": "eng", "preferred_audio_language": "eng",
+         "preferred_subtitle_language": "eng", "preferred_subtitle_mode": "forced", "$open": true}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_subtitle_mode": "sometimes"}},
+       "expect": {"status": 400, "body": {"error": "preferred_subtitle_mode must be auto, always, forced or off"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_audio_language": "en", "preferred_subtitle_mode": "off"}},
+       "expect": {"status": 400, "body": {"error": "preferred_audio_language must be a three-letter ISO 639-2 code"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_subtitle_language": "x1z"}},
+       "expect": {"status": 400, "body": {"error": "preferred_subtitle_language must be a three-letter ISO 639-2 code"}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_subtitle_language": "", "preferred_subtitle_mode": "off"}},
+       "expect": {"status": 200, "body": {"preferred_language": "eng", "preferred_audio_language": "eng",
+         "preferred_subtitle_language": "$absent", "preferred_subtitle_mode": "off", "$open": true}}},
+      {"req": {"method": "PATCH", "path": "/api/me/preferences", "auth": "admin_token", "body": {"preferred_language": "", "preferred_subtitle_mode": "auto"}},
+       "expect": {"status": 200, "body": {"preferred_language": "$absent", "preferred_audio_language": "$absent",
+         "preferred_subtitle_language": "$absent", "preferred_subtitle_mode": "$absent", "$open": true}}}
     ]}
   ]
 }

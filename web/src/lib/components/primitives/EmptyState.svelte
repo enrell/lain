@@ -14,8 +14,10 @@
 	} = $props();
 </script>
 
-<!-- A quiet solid panel: a dashed outline reads as a drop target or a wireframe. -->
-<div class="flex flex-col items-center justify-center rounded-card border border-line/50 bg-surface/40 px-6 py-14 text-center">
+<!-- Open on the page, no panel: a dashed outline read as a drop target, and a
+     grey box as a placeholder left in (D-022: no boxed cards). The icon's
+     disc and the space around carry it. -->
+<div class="flex flex-col items-center justify-center px-6 py-16 text-center">
 	<div class="mb-5 flex size-14 items-center justify-center rounded-full bg-surface-active text-foreground">
 		{@render icon?.()}
 	</div>

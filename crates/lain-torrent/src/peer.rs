@@ -519,9 +519,9 @@ impl Torrent {
             }
         }
         if let (Some(info), Some(bf)) = (c.info.clone(), &p.bf) {
-            for i in 0..info.num_pieces() {
+            for (i, avail) in c.avail.iter_mut().enumerate().take(info.num_pieces()) {
                 if bf.has(i) {
-                    c.avail[i] -= 1;
+                    *avail -= 1;
                 }
             }
         }
@@ -591,9 +591,9 @@ impl Torrent {
                     if !bf.valid(n) {
                         return Err(wire(format!("bitfield does not fit {n} pieces")));
                     }
-                    for i in 0..n {
+                    for (i, avail) in c.avail.iter_mut().enumerate().take(n) {
                         if bf.has(i) {
-                            c.avail[i] += 1;
+                            *avail += 1;
                         }
                     }
                 } else if bf.len_bytes() > 1 << 21 {

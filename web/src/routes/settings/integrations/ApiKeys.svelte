@@ -9,6 +9,8 @@
 	import type { ApiKey } from '$lib/api/list';
 	import type { Library } from '$lib/api/types';
 	import Button from '$lib/components/primitives/Button.svelte';
+	import Modal from '$lib/components/primitives/Modal.svelte';
+	import { focusSoon } from '$lib/components/social/focus';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
@@ -61,7 +63,17 @@
 		}
 	}
 
+	// Revoking cannot be undone and breaks whatever uses the key: it is asked first.
+	let revoking = $state<ApiKey | null>(null);
+	let revokeOpen = $state(false);
+	function askRevoke(key: ApiKey): void {
+		revoking = key;
+		revokeOpen = true;
+		focusSoon(() => document.getElementById('confirm-revoke-key'));
+	}
+
 	async function remove(key: ApiKey): Promise<void> {
+		revokeOpen = false;
 		try {
 			await api.apiKeys.remove(key.id);
 			keys = keys.filter((k) => k.id !== key.id);
@@ -111,7 +123,7 @@
 								{key.libraries.map(libraryName).join(', ')}
 							</p>
 						</div>
-						<Button variant="ghost" size="field" class="hover:text-danger!" onclick={() => void remove(key)} aria-label={`Revoke ${key.name}`}>
+						<Button variant="ghost" size="field" class="hover:text-danger!" onclick={() => askRevoke(key)} aria-label={`Revoke ${key.name}`}>
 							<Trash2 class="size-4" /> Revoke
 						</Button>
 					</li>
@@ -167,3 +179,16 @@
 		</form>
 	{/if}
 </SettingsGroup>
+
+<Modal
+	bind:open={revokeOpen}
+	title={t('settings.groups.integrations.revokeTitle', { name: revoking?.name ?? '' })}
+	description={t('settings.groups.integrations.revokeBody')}
+>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (revokeOpen = false)}>{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
+		<Button id="confirm-revoke-key" variant="danger" onclick={() => revoking && void remove(revoking)}>
+			{t('settings.groups.integrations.revoke')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
+		</Button>
+	{/snippet}
+</Modal>

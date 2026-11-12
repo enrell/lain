@@ -11,6 +11,7 @@
 	import type { ButtonSize, ButtonVariant } from '$lib/components/primitives/button-styles';
 	import { downloadable, downloadUrl } from '$lib/download/files';
 	import { t } from '$lib/i18n';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 
 	let {
 		items,
@@ -49,6 +50,8 @@
 			busy = false;
 		}
 	}
+
+	usePageKeys(() => (hotkey && ready.length > 0 ? [{ keys: ['D'], label: t('pageKeys.download') }] : []));
 
 	function onKey(e: KeyboardEvent): void {
 		if (!hotkey || e.key !== 'd' || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;

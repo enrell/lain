@@ -24,6 +24,8 @@
 	import { scan } from '$lib/stores/scan.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { focusSoon } from '$lib/components/social/focus';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { formatRelative } from '$lib/utilities/format';
 
 	let libraries = $state<Library[]>([]);
@@ -105,6 +107,12 @@
 		}
 	}
 
+	usePageKeys(() => [
+		...(roots !== null ? [{ keys: ['P'], label: t('pageKeys.libraryPrivate') }] : []),
+		{ keys: ['U'], label: t('pageKeys.libraryLock') },
+		{ keys: ['Delete'], label: t('pageKeys.libraryRemove') }
+	]);
+
 	// Row keys: P toggles private, U unlocks or locks, Delete removes.
 	function rowKey(e: KeyboardEvent, lib: Library): void {
 		if (e.target !== e.currentTarget || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -140,6 +148,8 @@
 		nameTouched = false;
 		pathDraft = '';
 		void loadBrowse();
+		// The dialog opens on what it asks for first: the folder.
+		focusSoon(() => document.getElementById('library-path'));
 	}
 
 	function folderName(path: string): string {
@@ -158,7 +168,10 @@
 			pathDraft = res.path;
 			form.path = res.path;
 			formError = null;
-			if (!nameTouched) form.name = folderName(res.path);
+			// Named after a folder the viewer went to, not after the one the
+			// picker opens on: that one is the server's starting point, and
+			// the dialog came up with a library already called "media".
+			if (!nameTouched && path !== undefined) form.name = folderName(res.path);
 			// A long path keeps its end, the folder being chosen, in view.
 			requestAnimationFrame(() => {
 				if (pathEl && document.activeElement !== pathEl) pathEl.scrollLeft = pathEl.scrollWidth;
@@ -206,6 +219,7 @@
 	function askRemove(lib: Library): void {
 		deleteTarget = lib;
 		deleteOpen = true;
+		focusSoon(() => document.getElementById('confirm-remove-library'));
 	}
 
 	async function load(): Promise<void> {
@@ -244,8 +258,19 @@
 			rememberLibrary(lib);
 			createOpen = false;
 			form = { name: '', type: 'auto', path: '', private: false };
-			toasts.success(`Library “${lib.name}” added.`);
-			if (scanAfter) await scan.start();
+			if (!scanAfter) {
+				toasts.success(t('scan.libraryAdded', { name: lib.name }));
+				return;
+			}
+			// The dialog is closed by now: a failed scan says so in a toast,
+			// not in the form nobody can see.
+			try {
+				const how = await scan.start();
+				toasts.success(t(how === 'queued' ? 'scan.libraryAddedQueued' : 'scan.libraryAdded', { name: lib.name }));
+			} catch (err) {
+				toasts.success(t('scan.libraryAdded', { name: lib.name }));
+				toasts.error(errorMessage(err, t('scan.startFailed')));
+			}
 		} catch (err) {
 			formError = errorMessage(err);
 		} finally {
@@ -273,9 +298,9 @@
 
 	async function startScan(): Promise<void> {
 		try {
-			await scan.start();
+			if ((await scan.start()) === 'queued') toasts.success(t('scan.queued'));
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not start the scan.'));
+			toasts.error(errorMessage(err, t('scan.startFailed')));
 		}
 	}
 
@@ -296,7 +321,8 @@
 <div>
 	<SettingsGroup id="scan" title="Scan" description={t('settings.groups.libraries.scan')}>
 		{#snippet aside()}
-			<Button size="field" onclick={() => void startScan()} loading={scan.running} disabled={scan.running}>
+			<!-- With no library there is nothing to walk: Add library is the step. -->
+			<Button size="field" onclick={() => void startScan()} loading={scan.running} disabled={scan.running || (!loading && libraries.length === 0)}>
 				<ScanLine class="size-4" /> Scan now
 			</Button>
 		{/snippet}
@@ -312,6 +338,14 @@
 						</span>
 					{/if}
 				</div>
+				{#if scan.status?.progress?.phase === 'enrich'}
+					<!-- This phase asks the network about every title and can take
+					     long; nothing waits on it. -->
+					<p class="mt-2 text-xs text-muted">{t('scan.enrichHint')}</p>
+				{/if}
+				{#if scan.queued}
+					<p class="mt-1 text-xs text-muted">{t('scan.queuedLine')}</p>
+				{/if}
 				<!-- Indeterminate (full, pulsing) until the phase has a total. -->
 				<div
 					class="mt-2 h-0.5 w-full max-w-md overflow-hidden rounded-full bg-hairline"
@@ -388,12 +422,13 @@
 			<!-- One table: name and path, then the Private switch, the Lock/Unlock
 			     slot (empty where there is none, so no switch is pushed out of its
 			     column) and Remove. The keys act on the focused row, so their caps
-			     show on that row only. -->
+			     show on that row only. A table from lg up: beside the settings rail
+			     at tablet width the three control columns left the name none. -->
 			<ul class="settings-items">
 				{#each libraries as lib (lib.id)}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 					<li
-						class="group/row flex flex-wrap items-center gap-x-3 gap-y-2 py-3.5 outline-none focus-visible:bg-surface-active/40 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:gap-x-4"
+						class="group/row flex flex-wrap items-center gap-x-3 gap-y-2 py-3.5 outline-none focus-visible:bg-surface-active/40 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:gap-x-4"
 						tabindex="0"
 						onkeydown={(e) => rowKey(e, lib)}
 					>
@@ -419,12 +454,12 @@
 								</summary>
 							</details>
 						</div>
-						<div class="flex items-center max-sm:empty:hidden">
+						<div class="flex items-center max-lg:empty:hidden">
 							{#if roots !== null}
 								<div class="flex h-9 items-center gap-2 pe-2 text-sm text-muted">
 									<Switch
 										bare
-										label={t('privateLibrary.makePrivate')}
+										label={t('privateLibrary.makePrivateFor', { name: lib.name })}
 										checked={!!lib.private}
 										onCheckedChange={(next) => void setPrivate(lib, next)}
 									/>
@@ -433,7 +468,7 @@
 								</div>
 							{/if}
 						</div>
-						<div class="max-sm:empty:hidden sm:w-28">
+						<div class="max-lg:empty:hidden lg:w-28">
 							{#if lib.private}
 								<Button variant="ghost" size="field" onclick={() => void toggleLock(lib)}>
 									{#if lib.locked}
@@ -572,7 +607,11 @@
 						browseError ? 'border-danger/60' : 'border-transparent'
 					].join(' ')}
 				/>
+				<!-- type="button": the first submit button of a form is what Enter in
+				     any field presses, and this one went up a folder and renamed the
+				     library instead of adding it. -->
 				<Button
+					type="button"
 					variant="secondary"
 					disabled={!browseParent || browseLoading}
 					onclick={goUp}
@@ -589,7 +628,7 @@
 				{:else if browseError}
 					<div class="flex h-56 flex-col items-center justify-center gap-2 px-4 text-center text-sm">
 						<p class="text-danger" role="alert">{browseError}</p>
-						<Button variant="ghost" size="sm" onclick={() => void loadBrowse(browsePath || undefined)}>
+						<Button type="button" variant="ghost" size="sm" onclick={() => void loadBrowse(browsePath || undefined)}>
 							Back to {folderName(browsePath) || 'the start'}
 						</Button>
 					</div>
@@ -682,12 +721,12 @@
 <!-- Delete -->
 <Modal
 	bind:open={deleteOpen}
-	title="Remove library?"
-	description="The files on disk stay untouched. Its catalog entries are removed with it."
+	title={t('settings.groups.libraries.removeTitle')}
+	description={t('settings.groups.libraries.removeBody')}
 >
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (deleteOpen = false)}>Cancel</Button>
-		<Button variant="danger" loading={deleting} onclick={() => void remove()}>Remove library</Button>
+		<Button variant="ghost" onclick={() => (deleteOpen = false)}>{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
+		<Button id="confirm-remove-library" variant="danger" loading={deleting} onclick={() => void remove()}>{t('settings.groups.libraries.remove')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
 	{/snippet}
 	{#if deleteTarget}
 		<p class="text-sm text-muted">

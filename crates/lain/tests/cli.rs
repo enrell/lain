@@ -169,6 +169,16 @@ fn serve_and_the_client_commands() {
     assert_eq!(cli.ok(&["language", "jpn"]).trim(), "preferred language: jpn");
     assert_eq!(cli.ok(&["language"]).trim(), "jpn");
     assert!(cli.fails(&["language", "ja"]).contains("three-letter"));
+    // D-280: audio and subtitles apart; the one language reads as both.
+    assert_eq!(cli.ok(&["language", "--subtitles", "por"]).trim(), "audio: jpn\nsubtitles: por (auto)");
+    assert_eq!(
+        cli.ok(&["language", "--subtitle-mode", "forced", "--audio", "none"]).trim(),
+        "audio: file default\nsubtitles: por (forced)"
+    );
+    assert_eq!(cli.ok(&["language"]).trim(), "audio: file default\nsubtitles: por (forced)");
+    assert!(cli.fails(&["language", "--subtitle-mode", "sometimes"]).contains("auto, always, forced or off"));
+    assert!(cli.fails(&["language", "--audio", "ja"]).contains("three-letter"));
+    assert_eq!(cli.ok(&["language", "--subtitle-mode", "auto", "eng"]).trim(), "preferred language: eng");
     assert_eq!(cli.ok(&["language", "--clear"]).trim(), "preferred language cleared");
     assert_eq!(cli.ok(&["player"]).trim(), "mpv");
     if !cfg!(windows) {

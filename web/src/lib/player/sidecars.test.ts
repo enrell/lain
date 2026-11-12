@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { embeddedChoice, pickSidecar, sidecarIndex, sidecarLabel, sidecarValue, type SidecarTrack } from './sidecars';
+import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, toggledSubtitle, type SidecarTrack } from './sidecars';
 
 const sc = (index: number, language: string, extra: Partial<SidecarTrack> = {}): SidecarTrack => ({
 	index, name: `x.${language}.srt`, language, format: 'srt', ...extra
@@ -20,13 +20,25 @@ describe('sidecar subtitle choices', () => {
 		expect(sidecarLabel(sc(1, 'por', { tag: 'pt-BR', forced: true }))).toBe('pt-BR · file · forced');
 		expect(sidecarLabel(sc(2, 'und', { hi: true }))).toBe('x.und.srt · file · SDH');
 	});
-	it('picks a sidecar only when nothing embedded serves the language (D-071)', () => {
-		const list = [sc(0, 'por', { forced: true }), sc(1, 'jpn'), sc(2, 'por')];
-		expect(pickSidecar(list, 'por', { audioMatches: false, embeddedFound: false })).toBe(2); // not the forced one
-		expect(pickSidecar(list, 'por', { audioMatches: true, embeddedFound: false })).toBeUndefined();
-		expect(pickSidecar(list, 'por', { audioMatches: false, embeddedFound: true })).toBeUndefined();
-		expect(pickSidecar(list, 'fre', { audioMatches: false, embeddedFound: false })).toBeUndefined();
-		expect(pickSidecar([sc(0, 'fra')], 'fre', { audioMatches: false, embeddedFound: false })).toBe(0);
-		expect(pickSidecar(list, '', { audioMatches: false, embeddedFound: false })).toBeUndefined();
+});
+
+describe('toggledSubtitle (the player’s C key)', () => {
+	const choices = ['2', sidecarValue(0), sidecarValue(1)];
+
+	it('turns a track off', () => {
+		expect(toggledSubtitle(sidecarValue(1), '', choices)).toBe('');
+	});
+
+	it('turns the track that was on back on', () => {
+		expect(toggledSubtitle('', sidecarValue(1), choices)).toBe(sidecarValue(1));
+	});
+
+	it('falls back to the first track when none was on or it is gone', () => {
+		expect(toggledSubtitle('', '', choices)).toBe('2');
+		expect(toggledSubtitle('', sidecarValue(7), choices)).toBe('2');
+	});
+
+	it('stays off with nothing to show', () => {
+		expect(toggledSubtitle('', '2', [])).toBe('');
 	});
 });
