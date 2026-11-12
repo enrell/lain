@@ -66,7 +66,8 @@ const RECENT_ACCESS_GRACE: i64 = 60;
 /// machine with a GPU (D-031).
 const CAP_FRESH: Duration = Duration::from_secs(600);
 /// How long an answer in doubt stays current: one where a check timed
-/// out, or one that lost something the previous probe found. A check
+/// out, one that found no ffmpeg, or one that lost something the
+/// previous probe found. A check
 /// can miss its timeout on a busy machine (the libplacebo one takes
 /// seconds even when idle), and the first probe runs while the server
 /// starts, so such an answer is probed again this soon instead of
@@ -471,8 +472,9 @@ struct CapsCache {
 struct CapsSlot {
     /// The last probe's answer and when it landed.
     value: Option<(Instant, Capabilities)>,
-    /// The answer is in doubt (a check timed out, or it lost something
-    /// the one before had): current only for [`CAP_RECHECK`].
+    /// The answer is in doubt (a check timed out, it found no ffmpeg, or
+    /// it lost something the one before had): current only for
+    /// [`CAP_RECHECK`].
     doubtful: bool,
     /// A probe for this key is running. Other callers keep the last
     /// answer or wait for this one; none starts a second (single flight).
@@ -497,7 +499,8 @@ fn lost(before: &Capabilities, now: &Capabilities) -> bool {
 struct Stored {
     /// It differs from the answer before.
     changed: bool,
-    /// A check timed out, or it lost something the answer before had.
+    /// A check timed out, it found no ffmpeg, or it lost something the
+    /// answer before had.
     doubtful: bool,
     /// A forced probe was asked for while this one ran: the key stays
     /// claimed and the prober probes again.
@@ -527,12 +530,16 @@ impl CapsCache {
 
     /// Publishes a probe's answer as probed (D-031: what the page shows is
     /// what ffmpeg did). `timed_out`: one of its ffmpeg runs was killed at
-    /// its timeout, so a no in it may be a yes on a calmer machine.
+    /// its timeout, so a no in it may be a yes on a calmer machine. An
+    /// answer with no encoders (no ffmpeg there yet) is in doubt too: the
+    /// operator may install it any time, and probing for it costs nothing.
     fn store(&mut self, key: &str, caps: Capabilities, timed_out: bool) -> Stored {
         let slot = self.slots.entry(key.to_string()).or_default();
         let mut stored = Stored {
             changed: slot.value.as_ref().is_none_or(|(_, old)| *old != caps),
-            doubtful: timed_out || slot.value.as_ref().is_some_and(|(_, old)| lost(old, &caps)),
+            doubtful: timed_out
+                || caps.encoders.is_empty()
+                || slot.value.as_ref().is_some_and(|(_, old)| lost(old, &caps)),
             again: false,
         };
         slot.value = Some((Instant::now(), caps));
@@ -878,12 +885,14 @@ impl Transcoder {
         self.inner.caps_cv.notify_all();
         // What the probe found is visible (D-031): a first or a changed
         // answer is logged, an unchanged refresh only at debug.
-        if stored.doubtful {
-            tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, timed_out, "transcode capabilities in doubt (a check timed out or lost what the last probe found); probing again soon");
-        } else if stored.changed {
-            tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, "transcode capabilities probed");
+        // An answer in doubt is probed again every CAP_RECHECK while
+        // requests come: only a changed one is logged at info.
+        if !stored.changed {
+            tracing::debug!(ffmpeg = %ffmpeg, ms, timed_out, "transcode capabilities unchanged");
+        } else if stored.doubtful {
+            tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, timed_out, "transcode capabilities probed, in doubt (a check timed out, no ffmpeg, or lost what the last probe found); probing again soon");
         } else {
-            tracing::debug!(ffmpeg = %ffmpeg, ms, "transcode capabilities unchanged");
+            tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, "transcode capabilities probed");
         }
         stored.again
     }
