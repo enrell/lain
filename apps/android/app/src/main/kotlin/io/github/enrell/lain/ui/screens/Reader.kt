@@ -19,6 +19,7 @@ import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.AnimatedVisibility
@@ -96,6 +97,8 @@ fun ReaderScreen(
     core: LainCoreInterface,
     itemId: String,
     title: String = "",
+    /** Which part of the title this is ("Vol 2"), said under the title with the page. */
+    part: String = "",
     onBack: () -> Unit = {},
     /** The volume after this one in its title, if any. */
     next: io.github.enrell.lain.core.Item? = null,
@@ -211,7 +214,7 @@ fun ReaderScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(stringResource(R.string.end_of_volume), color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            Text(title, Modifier.padding(top = 4.dp), color = l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(listOf(title, part).filter { it.isNotEmpty() }.joinToString(" · "), Modifier.padding(top = 4.dp), color = l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             // One under the other, the way on first: side by side on a phone the card had no
             // room for both, and "Next volume" lost its end ("Next vo…"). Both as wide as the wider.
             Column(
@@ -350,42 +353,53 @@ fun ReaderScreen(
         // ground alone. A hairline round each on the black margins drew two
         // empty boxes, a wireframe, not a reader.
         val glass = l.sheet.copy(alpha = 0.92f)
+        val readingMode = stringResource(R.string.reader_direction)
         AnimatedVisibility(chrome, Modifier.align(Alignment.TopCenter), enter = fadeIn() + slideInVertically { -it / 2 }, exit = fadeOut() + slideOutVertically { -it / 2 }) {
-            Row(
+            // Two rows, as the web reader's on a phone: the title and where you are in it get the
+            // whole width (beside the reading-mode control they were cut to "Ink and Thu…" and
+            // the volume was lost), and the control sits under them.
+            Column(
                 Modifier.safeDrawingPadding().padding(12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(glass).padding(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 IconBtn(Ic.ArrowLeft, "Back", onBack, tint = l.text)
                 Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
                     Text(title, color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // Which volume, then which page: "Vol 1 · Page 3 of 8".
                     Text(
-                        stringResource(R.string.progress_page, state.page + 1, book.pages.size) + if (book.offline) " · " + stringResource(R.string.reader_offline) else "",
-                        Modifier.padding(top = 2.dp), color = l.muted, fontSize = 12.sp, maxLines = 1,
+                        listOfNotNull(
+                            part.takeIf { it.isNotEmpty() },
+                            stringResource(R.string.progress_page, state.page + 1, book.pages.size),
+                            if (book.offline) stringResource(R.string.reader_offline) else null,
+                        ).joinToString(" · "),
+                        Modifier.padding(top = 2.dp), color = l.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
-                // The way the pages go (next to the right, next to the left, or down), as the
-                // app's other segmented choices: a tonal track, the one in force filled with the
-                // accent. A faint grey on the chosen arrow left the three looking alike.
-                Column(Modifier.padding(end = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Mono(stringResource(R.string.reader_direction), Modifier.padding(bottom = 4.dp))
-                Row(Modifier.height(34.dp).clip(l.buttonShape).background(l.tonal).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    // Named in words, as the web reader's toggles are: three bare arrows had to be guessed.
-                    for ((way, label) in listOf(0 to stringResource(R.string.reader_way_ltr), 1 to stringResource(R.string.reader_way_rtl), 2 to stringResource(R.string.reader_way_down))) {
+            }
+                // The reading mode (next page to the right, to the left, or the pages one under
+                // the other), as the app's other segmented choices: a tonal track, the one in force
+                // filled with the accent. Said in words, with the web reader's name for the strip.
+                Row(
+                    Modifier.padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 2.dp).widthIn(max = 420.dp).fillMaxWidth().height(36.dp)
+                        .clip(l.buttonShape).background(l.tonal).padding(3.dp)
+                        .semantics { contentDescription = readingMode },
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    for ((way, label) in listOf(0 to stringResource(R.string.reader_ltr), 1 to stringResource(R.string.reader_rtl), 2 to stringResource(R.string.reader_way_down))) {
                         val on = if (way == 2) vertical else !vertical && rtl == (way == 1)
                         val name = stringResource(when (way) { 0 -> R.string.reader_ltr; 1 -> R.string.reader_rtl; else -> R.string.reader_scroll })
                         Box(
-                            Modifier.fillMaxHeight().clip(RoundedCornerShape(5.dp)).background(if (on) l.accent else Color.Transparent)
+                            Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(5.dp)).background(if (on) l.accent else Color.Transparent)
                                 .clickable(onClickLabel = name) {
                                     vertical = way == 2
                                     readerPrefs.setReadingWayOf(title, when (way) { 0 -> "ltr"; 1 -> "rtl"; else -> "down" })
                                     if (way != 2) rtl = way == 1
                                 }
                                 .semantics { contentDescription = name; stateDescription = if (on) "selected" else "not selected" }
-                                .padding(horizontal = 13.dp),
+                                .padding(horizontal = 4.dp),
                             contentAlignment = Alignment.Center,
-                        ) { Text(label, color = if (on) l.onAccent else l.muted, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
+                        ) { Text(label, color = if (on) l.onAccent else l.muted, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
-                }
                 }
             }
         }

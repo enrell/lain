@@ -321,9 +321,9 @@
     <string name="notify_later">Not now</string>
     <string name="player_audio_now">Audio: %1$s</string>
     <string name="player_subtitles_now">Subtitles: %1$s</string>
-    <string name="reader_direction">Direction</string>
+    <string name="reader_direction">Reading mode</string>
     <string name="player_pip">Picture in picture</string>
-    <string name="reader_scroll">Scroll down</string>
+    <string name="reader_scroll">Webtoon: the pages one under the other</string>
     <string name="download_rest">Download the rest</string>
     <string name="action_continue">Continue</string>
     <string name="rate_action">Rate</string>
@@ -377,7 +377,5 @@
     </plurals>
     <string name="mark_all_unread">Mark all unread</string>
     <string name="filter_any">Any</string>
-    <string name="reader_way_ltr">LTR</string>
-    <string name="reader_way_rtl">RTL</string>
-    <string name="reader_way_down">Scroll</string>
+    <string name="reader_way_down">Webtoon</string>
 </resources>
