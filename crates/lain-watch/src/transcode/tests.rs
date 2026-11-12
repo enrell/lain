@@ -664,3 +664,30 @@ fn a_probe_that_panics_answers_nothing_available_and_is_probed_again() {
     t.close();
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// A refresh of the old ffmpeg still running when the operator moves
+/// ffmpeg lands on the old set only: a caller of the new one waits for
+/// the new one's own probe, never takes the old answer.
+#[test]
+fn a_refresh_of_the_old_ffmpeg_never_answers_for_the_new_one() {
+    let r = caps_rig("tc-caps-race");
+    let old = st::defaults();
+    r.let_one();
+    assert_eq!(r.t.capabilities(&old).ffmpeg, "probe-1");
+    r.t.reprobe(&old);
+    r.wait_runs(2);
+    // Let the old refresh reach the gate first, so it lands first.
+    std::thread::sleep(Duration::from_millis(50));
+    let new = TranscodeSettings { ffmpeg_path: "/opt/ffmpeg/bin/ffmpeg".into(), ..old.clone() };
+    let (t, n) = (r.t.clone(), new.clone());
+    let waiting = std::thread::spawn(move || t.capabilities(&n));
+    r.wait_runs(3);
+    r.let_one();
+    r.wait_for(&old, "probe-2");
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(!waiting.is_finished(), "the new ffmpeg's caller waits for its own probe");
+    r.let_one();
+    assert_eq!(waiting.join().unwrap().ffmpeg, "probe-3");
+    assert_eq!(r.caps_now(&old).ffmpeg, "probe-2");
+    assert_eq!(r.runs(), 3);
+}
