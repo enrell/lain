@@ -532,24 +532,25 @@
 			     switch, the Lock/Unlock slot (empty where there is none, so no
 			     switch is pushed out of its column) and the row's two actions.
 			     The keys act on the focused row, so their caps show on that row
-			     only. On a phone the controls take a second line, and the actions
-			     are icons at its end: a worded Remove wrapped under the rest. -->
+			     only. A table from xl up: beside the settings rail a 1024 px window
+			     left the name four letters. Narrower, the controls take a second
+			     line and the actions are icons at its end. -->
 			<ul class="settings-items">
 				{#each libraries as lib, index (lib.id)}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 					<li
 						data-library={lib.id}
-						class="group/row grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 py-3.5 outline-none focus-visible:bg-surface-active/40 lg:grid-cols-[auto_minmax(0,1fr)_auto_7rem_auto] lg:gap-x-4"
+						class="group/row grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 py-3.5 outline-none focus-visible:bg-surface-active/40 xl:grid-cols-[auto_minmax(0,1fr)_auto_7rem_auto] xl:gap-x-4"
 						tabindex="0"
 						aria-label={lib.name}
 						onkeydown={(e) => rowKey(e, lib)}
 					>
 						<!-- The order: Home and the library page list libraries this way. -->
-						<div class="row-span-2 flex flex-col self-center lg:row-span-1">
+						<div class="row-span-2 flex flex-col self-center xl:row-span-1">
 							<button
 								type="button"
 								tabindex="-1"
-								class="flex h-8 w-7 items-center justify-center rounded text-muted/60 transition-colors group-hover/row:text-muted group-focus-within/row:text-muted hover:bg-surface-hover hover:text-foreground! disabled:invisible lg:h-5 lg:w-6"
+								class="flex h-8 w-7 items-center justify-center rounded text-muted/60 transition-colors group-hover/row:text-muted group-focus-within/row:text-muted hover:bg-surface-hover hover:text-foreground! disabled:invisible xl:h-5 xl:w-6"
 								aria-label={t('settings.librariesPage.moveUp', { name: lib.name })}
 								title={t('settings.librariesPage.moveUpKey')}
 								disabled={index === 0}
@@ -560,7 +561,7 @@
 							<button
 								type="button"
 								tabindex="-1"
-								class="flex h-8 w-7 items-center justify-center rounded text-muted/60 transition-colors group-hover/row:text-muted group-focus-within/row:text-muted hover:bg-surface-hover hover:text-foreground! disabled:invisible lg:h-5 lg:w-6"
+								class="flex h-8 w-7 items-center justify-center rounded text-muted/60 transition-colors group-hover/row:text-muted group-focus-within/row:text-muted hover:bg-surface-hover hover:text-foreground! disabled:invisible xl:h-5 xl:w-6"
 								aria-label={t('settings.librariesPage.moveDown', { name: lib.name })}
 								title={t('settings.librariesPage.moveDownKey')}
 								disabled={index === libraries.length - 1}
@@ -596,7 +597,7 @@
 								</summary>
 							</details>
 						</div>
-						<div class="col-start-2 flex min-w-0 items-center gap-1 lg:contents">
+						<div class="col-start-2 flex min-w-0 items-center gap-1 xl:contents">
 							<div class="flex items-center">
 								{#if roots !== null}
 									<div class="flex h-9 items-center gap-2 pe-2 text-sm text-muted">
@@ -607,7 +608,7 @@
 											onCheckedChange={(next) => void setPrivate(lib, next)}
 										/>
 										<span>{t('privateLibrary.makePrivate')}</span>
-										<kbd class="max-lg:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">P</kbd>
+										<kbd class="max-xl:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">P</kbd>
 									</div>
 								{/if}
 							</div>
@@ -619,26 +620,26 @@
 										{:else}
 											<LockIcon class="size-4" /> {t('privateLibrary.lock')}
 										{/if}
-										<kbd class="ms-1 max-lg:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">U</kbd>
+										<kbd class="ms-1 max-xl:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">U</kbd>
 									</Button>
 								{/if}
 							</div>
 							<!-- Quiet until pointed at: a red bin on every row made five
 							     destructive buttons the loudest things on the page. -->
-							<div class="ms-auto flex items-center gap-0.5 lg:ms-0">
-								<Button variant="ghost" size="field" class="max-lg:px-3" aria-label={t('settings.librariesPage.editFor', { name: lib.name })} onclick={() => openEdit(lib)}>
-									<Pencil class="size-4" /> <span class="max-lg:sr-only">{t('settings.librariesPage.edit')}</span>
-									<kbd class="ms-1 max-lg:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">E</kbd>
+							<div class="ms-auto flex items-center gap-0.5 xl:ms-0">
+								<Button variant="ghost" size="field" class="max-xl:px-3" aria-label={t('settings.librariesPage.editFor', { name: lib.name })} onclick={() => openEdit(lib)}>
+									<Pencil class="size-4" /> <span class="max-xl:sr-only">{t('settings.librariesPage.edit')}</span>
+									<kbd class="ms-1 max-xl:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">E</kbd>
 								</Button>
 								<Button
 									variant="ghost"
 									size="field"
-									class="hover:text-danger! focus-visible:text-danger! max-lg:px-3"
+									class="hover:text-danger! focus-visible:text-danger! max-xl:px-3"
 									aria-label={t('settings.librariesPage.removeFor', { name: lib.name })}
 									onclick={() => askRemove(lib)}
 								>
-									<Trash2 class="size-4" /> <span class="max-lg:sr-only">{t('settings.librariesPage.remove')}</span>
-									<kbd class="ms-1 max-lg:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">Del</kbd>
+									<Trash2 class="size-4" /> <span class="max-xl:sr-only">{t('settings.librariesPage.remove')}</span>
+									<kbd class="ms-1 max-xl:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">Del</kbd>
 								</Button>
 							</div>
 						</div>
