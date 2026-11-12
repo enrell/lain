@@ -269,7 +269,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/me/continue", route(GET, Gate::User, me_continue))
         .route("/api/profile/mascots", route(GET, Gate::User, mascots))
         .route("/api/users", route(GET, Gate::Admin, users_list).merge(route(POST, Gate::Admin, users_create)))
-        .route("/api/users/{id}", route(PATCH, Gate::Admin, users_patch))
+        .route("/api/users/{id}", route(PATCH, Gate::Admin, users_patch).merge(route(DELETE, Gate::Admin, users_delete)))
         .route(
             "/api/libraries",
             route(GET, Gate::User, libraries_list).merge(route(POST, Gate::Admin, libraries_create)),
@@ -402,6 +402,9 @@ fn me_password(app: &App, req: &Req, v: &Verified) -> Reply {
     };
     match app.auth().change_password(&v.user_id, &i.old, &i.new) {
         Ok(()) => Reply::ok(json!({"status": "ok"})),
+        // A stable code, so a client tells "wrong current password" from
+        // a rejected new one without reading the message.
+        Err(e @ AuthError::WrongPassword) => Reply::json(400, json!({"error": e.to_string(), "code": "wrong-password"})),
         Err(e) => Reply::err(400, &e.to_string()),
     }
 }
@@ -734,6 +737,68 @@ fn users_patch(app: &App, req: &Req, v: &Verified) -> Reply {
         Some(u) => Reply::ok(json!(u)),
         None => Reply::err(404, "unknown user"),
     }
+}
+
+/// Deletes an account and what it owned: its progress, tracking lists
+/// and linked accounts, social rows (ratings, comments, collections,
+/// friends, notifications) and avatar. A private library it owned
+/// passes to the admin deleting it, so nothing is left without an
+/// owner; its membership elsewhere ends. The account's id derives from
+/// its name, so a row left behind would belong to the next account of
+/// that name: a cleanup that fails is an error, not a warning.
+fn users_delete(app: &App, req: &Req, v: &Verified) -> Reply {
+    let id = req.param("id");
+    if id == v.user_id {
+        return Reply::err(400, "cannot delete yourself");
+    }
+    let gone = match app.auth().delete(id) {
+        Ok(u) => u,
+        Err(AuthError::UnknownUser) => return Reply::err(404, "unknown user"),
+        Err(e) => return Reply::err(400, &e.to_string()),
+    };
+    let mut failed = Vec::new();
+    let mut removed = 0i64;
+    let forget = [
+        (CAP_USER_PROGRESS, "forget-user"),
+        (lain_lists::CAP_LIST_ACCOUNT, "forget-user"),
+        (lain_social::CAP_SOCIAL_GRAPH, "forget-user"),
+    ];
+    for (cap, op) in forget {
+        match app.registry.call_one(cap, op, json!({"user_id": id})) {
+            Ok((out, _)) => removed += out.as_i64().or_else(|| out["removed"].as_i64()).unwrap_or(0),
+            Err(e) => {
+                tracing::error!(user = %id, capability = cap, err = %e, "deleted account's data not removed");
+                failed.push(cap);
+            }
+        }
+    }
+    let auth = app.auth();
+    let mut reassigned = Vec::new();
+    for lib in app.libraries.list().unwrap_or_default() {
+        if !lib.is_member(id) {
+            continue;
+        }
+        let members: Vec<String> = lib.members.iter().filter(|m| *m != id).cloned().collect();
+        let owner = if lib.owner == id { v.user_id.clone() } else { lib.owner.clone() };
+        let patch = LibraryPatch { owner: Some(owner), members: Some(members), ..LibraryPatch::default() };
+        match app.libraries.update(&lib.id, &patch, &v.user_id, &|u| auth.get_public(u).is_some()) {
+            Ok(_) if lib.owner == id => reassigned.push(lib.id.clone()),
+            Ok(_) => {}
+            Err(e) => {
+                tracing::error!(user = %id, library = %lib.id, err = %e, "deleted account's library membership not removed");
+                failed.push("libraries");
+            }
+        }
+    }
+    app.avatars.remove(id);
+    tracing::info!(user = %id, username = %gone.username, rows = removed, "account deleted");
+    if !failed.is_empty() {
+        return Reply::json(
+            500,
+            json!({"error": format!("account deleted, but some of its data was not removed: {}", failed.join(", "))}),
+        );
+    }
+    Reply::ok(json!({"status": "ok", "rows_removed": removed, "libraries_reassigned": reassigned}))
 }
 
 // ---- libraries ------------------------------------------------------------

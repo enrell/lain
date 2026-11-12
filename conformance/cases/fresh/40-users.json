@@ -1,6 +1,6 @@
 {
   "tier": "v1",
-  "description": "Admin user management, roles, liveness and password versions, read live on every request.",
+  "description": "Admin user management, roles, liveness and password versions, read live on every request; deleting an account takes its tokens and data with it.",
   "cases": [
     {"name": "admin lists users", "steps": [
       {"req": {"method": "GET", "path": "/api/users", "auth": "admin_token"},
@@ -84,7 +84,7 @@
     ]},
     {"name": "own password change rotates tokens", "steps": [
       {"req": {"method": "PATCH", "path": "/api/me/password", "auth": "bob_token", "body": {"old": "wrong-password", "new": "bobpassword2"}},
-       "expect": {"status": 400, "body": {"error": "invalid credentials"}}},
+       "expect": {"status": 400, "body": {"error": "invalid credentials", "code": "wrong-password"}}},
       {"req": {"method": "PATCH", "path": "/api/me/password", "auth": "bob_token", "body": {"old": "bobpassword", "new": "short"}},
        "expect": {"status": 400, "body": {"error": "password >= 8 chars"}}},
       {"req": {"method": "PATCH", "path": "/api/me/password", "auth": "bob_token", "raw_body": "x"},
@@ -104,6 +104,23 @@
       {"req": {"method": "GET", "path": "/api/me", "auth": "bob_token"}, "expect": {"status": 401}},
       {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "bob", "password": "bobreset123"}},
        "expect": {"status": 200}, "save": {"bob_token": "/token"}}
+    ]},
+    {"name": "admins delete accounts, never their own", "steps": [
+      {"req": {"method": "DELETE", "path": "/api/users/user-carol", "auth": "bob_token"}, "expect": {"status": 403, "body": {"error": "admin required"}}},
+      {"req": {"method": "DELETE", "path": "/api/users/user-admin", "auth": "admin_token"}, "expect": {"status": 400, "body": {"error": "cannot delete yourself"}}},
+      {"req": {"method": "DELETE", "path": "/api/users/user-nobody", "auth": "admin_token"}, "expect": {"status": 404, "body": {"error": "unknown user"}}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "carol", "password": "carolpassword"}},
+       "expect": {"status": 200}, "save": {"carol_token": "/token"}},
+      {"req": {"method": "DELETE", "path": "/api/users/user-carol", "auth": "admin_token"},
+       "expect": {"status": 200, "body": {"status": "ok", "rows_removed": "$int", "libraries_reassigned": []}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "carol_token"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "carol", "password": "carolpassword"}},
+       "expect": {"status": 401, "body": {"error": "invalid credentials"}}},
+      {"req": {"method": "GET", "path": "/api/users", "auth": "admin_token"},
+       "expect": {"status": 200, "body": [{"username": "admin", "$open": true}, {"username": "bob", "$open": true}]}},
+      {"req": {"method": "POST", "path": "/api/users", "auth": "admin_token", "body": {"username": "carol", "password": "carolpassword", "role": "admin"}},
+       "expect": {"status": 201, "body": {"id": "user-carol", "pwd_ver": 2, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "carol_token"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
     ]}
   ]
 }

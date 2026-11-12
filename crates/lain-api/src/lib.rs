@@ -338,6 +338,17 @@ pub struct LibraryPatch {
     pub members: Option<Vec<String>>,
 }
 
+/// `DELETE /api/users/{id}` (admin).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserDeleted {
+    pub status: String,
+    /// Rows of the account removed from progress, lists and social.
+    pub rows_removed: i64,
+    /// Private libraries it owned, now owned by the admin who deleted it.
+    #[serde(default)]
+    pub libraries_reassigned: Vec<String>,
+}
+
 /// `DELETE /api/libraries/{id}`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LibraryDeleted {
