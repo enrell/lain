@@ -411,12 +411,13 @@
 			<!-- One table: name and path, then the Private switch, the Lock/Unlock
 			     slot (empty where there is none, so no switch is pushed out of its
 			     column) and Remove. The keys act on the focused row, so their caps
-			     show on that row only. -->
+			     show on that row only. A table from lg up: beside the settings rail
+			     at tablet width the three control columns left the name none. -->
 			<ul class="settings-items">
 				{#each libraries as lib (lib.id)}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 					<li
-						class="group/row flex flex-wrap items-center gap-x-3 gap-y-2 py-3.5 outline-none focus-visible:bg-surface-active/40 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:gap-x-4"
+						class="group/row flex flex-wrap items-center gap-x-3 gap-y-2 py-3.5 outline-none focus-visible:bg-surface-active/40 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:gap-x-4"
 						tabindex="0"
 						onkeydown={(e) => rowKey(e, lib)}
 					>
@@ -442,7 +443,7 @@
 								</summary>
 							</details>
 						</div>
-						<div class="flex items-center max-sm:empty:hidden">
+						<div class="flex items-center max-lg:empty:hidden">
 							{#if roots !== null}
 								<div class="flex h-9 items-center gap-2 pe-2 text-sm text-muted">
 									<Switch
@@ -456,7 +457,7 @@
 								</div>
 							{/if}
 						</div>
-						<div class="max-sm:empty:hidden sm:w-28">
+						<div class="max-lg:empty:hidden lg:w-28">
 							{#if lib.private}
 								<Button variant="ghost" size="field" onclick={() => void toggleLock(lib)}>
 									{#if lib.locked}
