@@ -28,6 +28,7 @@
 	import FirstRun from '$lib/components/media/FirstRun.svelte';
 	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
+	import EmptyRow from '$lib/components/primitives/EmptyRow.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
@@ -423,14 +424,10 @@
 						<Button size="sm" variant="ghost" disabled={busyUser === r.user.id} onclick={() => void relate(r.user.id, api.social.unfriend)}>{t('social.friends.remove')}</Button>
 					</li>
 				{:else}
-					<!-- Drawn as the app's empty states are (a disc and two lines), at the
-					     size of a row under its heading: a grey line read as left over. -->
-					<li class="flex items-center gap-4 py-5">
-						<span class="flex size-11 shrink-0 items-center justify-center rounded-full bg-surface-active text-muted" aria-hidden="true"><Users class="size-5" /></span>
-						<span class="min-w-0">
-							<span class="block text-sm font-semibold text-foreground">{t('social.friends.none')}</span>
-							<span class="mt-0.5 block text-sm text-muted">{t('social.friends.noneBody')}</span>
-						</span>
+					<li>
+						<EmptyRow title={t('social.friends.none')} description={t('social.friends.noneBody')}>
+							{#snippet icon()}<Users />{/snippet}
+						</EmptyRow>
 					</li>
 				{/each}
 			</ul>
