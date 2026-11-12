@@ -70,6 +70,8 @@ const en = {
 		acquire: 'Acquire',
 		search: 'Search',
 		settings: 'Settings',
+		// The phone bar's last tab: every place that is not one of its four.
+		more: 'More',
 		accountMenu: 'Account menu',
 		scanning: 'scanning',
 		scanningPercent: 'scanning {percent}',
