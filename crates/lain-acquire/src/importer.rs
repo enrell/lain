@@ -71,7 +71,7 @@ pub fn plan_import(
     }
     let by_key: HashMap<String, &String> = titles.iter().map(|t| (loose_key(t), t)).collect();
     // A file belongs to the release that was grabbed: its title decides
-    // between the parser's readings of the file name (D-275). The
+    // between the parser's readings of the file name (D-279). The
     // library's other titles do not, or a sequel would land in the
     // folder of the show it follows.
     let grabbed = loose_key(&grab.title);

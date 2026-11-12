@@ -184,7 +184,7 @@ fn identity(rec: &ModelRecord) -> (String, i64, Vec<i64>) {
     (clean_title(rec.title.as_deref().unwrap_or("")).to_lowercase(), rec.season.unwrap_or(0), episodes)
 }
 
-/// The model's other identities as `Release.alternatives` (D-275):
+/// The model's other identities as `Release.alternatives` (D-279):
 /// without `own` (the answer's reading), without repeats, at most
 /// `MAX_RELEASE_ALTERNATIVES`. They carry the model's numbers only, never
 /// the tokenizer's: a reading without an episode is a reading. A year
