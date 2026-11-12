@@ -23,7 +23,7 @@ export type Shape = 'portrait' | 'landscape';
 const measured = new SvelteMap<string, Shape>();
 
 /** The file a still belongs to, as far as its library's tally goes (see `stillKey`). */
-export type StillOf = Pick<CatalogItem, 'library_id' | 'episode'>;
+export type StillOf = Pick<CatalogItem, 'library_id' | 'season' | 'episode'>;
 
 /**
  * Records a loaded picture's shape. `still` is given when the picture is
@@ -61,10 +61,13 @@ const stills = readStills();
  * A library's tally, its later episodes apart: a show's first file is
  * the one its card shows and often the one that came with the show's
  * poster, while the episodes after it carry frames. A film, a clip or a
- * first episode counts with the library; episode 2 on counts apart.
+ * show's first episode counts with the library; the rest count apart, a
+ * later season's first episode too: no show's card shows it (a card shows
+ * the first season's), so its frame, met in Continue watching or a
+ * search, must not count against the posters the cards show.
  */
 export function stillKey(item: StillOf): string {
-	return item.episode > 1 ? `${item.library_id}/later` : item.library_id;
+	return item.season > 1 || item.episode > 1 ? `${item.library_id}/later` : item.library_id;
 }
 
 function readStills(): Map<string, Tally> {

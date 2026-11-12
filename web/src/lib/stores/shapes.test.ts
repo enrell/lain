@@ -64,6 +64,9 @@ describe('shapes', () => {
 		expect(stillKey(ep('e1', 1))).toBe('shows');
 		expect(stillKey(item('f', 'F', 'video', 0, 'shows'))).toBe('shows');
 		expect(stillKey(ep('e2', 2))).toBe('shows/later');
+		// A later season's first episode is no show's card.
+		expect(stillKey({ ...ep('s2e1', 1), season: 2 })).toBe('shows/later');
+		expect(stillKey({ ...ep('s1e1', 1), season: 1 })).toBe('shows');
 		// The first episode came with the show's poster; the others are frames.
 		recordShape('s1e1', 600, 900, ep('s1e1', 1));
 		for (let n = 2; n <= 6; n += 1) recordShape(`s1e${n}`, 1280, 720, ep(`s1e${n}`, n));
