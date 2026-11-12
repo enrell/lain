@@ -56,11 +56,17 @@ server=$!
 trap 'kill "$server" 2>/dev/null; wait "$server" 2>/dev/null || true' EXIT
 trap 'exit 130' INT TERM
 
+# Up means this server has bound the port (its banner, printed once the
+# listener is bound, names this run's data dir) and answers there. A
+# health answer alone can come from something else already on the port,
+# an earlier run's server say, and the test would meet a data dir that is
+# not fresh; this server, unable to bind, exits and ends the wait.
 i=0
-until curl -fsS "http://127.0.0.1:$port/health" >/dev/null 2>&1; do
+until grep -qF "on http://127.0.0.1:$port (data $out/data)" "$out/server.log" 2>/dev/null &&
+	curl -fsS "http://127.0.0.1:$port/health" >/dev/null 2>&1; do
 	i=$((i + 1))
-	if [ "$i" -gt 150 ]; then
-		echo "the server did not start" >&2
+	if ! kill -0 "$server" 2>/dev/null || [ "$i" -gt 150 ]; then
+		echo "the server did not start (is port $port in use?)" >&2
 		cat "$out/server.log" >&2
 		exit 1
 	fi
