@@ -219,10 +219,12 @@ const ASPECT_HEAD: usize = 64 << 10;
 /// time, so a replaced still is read again and an unchanged one never.
 const ASPECTS_KEPT: usize = 8192;
 
+/// A still's size and time, which a replaced still changes.
 type Stamp = (u64, Option<std::time::SystemTime>);
+type Aspects = Mutex<HashMap<PathBuf, (Stamp, Option<f64>)>>;
 
-fn aspects() -> &'static Mutex<HashMap<PathBuf, (Stamp, Option<f64>)>> {
-    static CACHE: std::sync::OnceLock<Mutex<HashMap<PathBuf, (Stamp, Option<f64>)>>> = std::sync::OnceLock::new();
+fn aspects() -> &'static Aspects {
+    static CACHE: std::sync::OnceLock<Aspects> = std::sync::OnceLock::new();
     CACHE.get_or_init(Default::default)
 }
 
