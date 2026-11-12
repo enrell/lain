@@ -53,13 +53,15 @@ pub fn loose_key(s: &str) -> String {
 /// for a title, monitors one or imports into a library can. The identity
 /// moves as a whole (title, year, season, episodes, numbering) and every
 /// other field stays. The alternatives are dropped either way: they are
-/// advice for this decision, never part of a stored release.
+/// advice for this decision, never part of a stored release. An
+/// alternative without a word in its title names nothing, so a `known`
+/// that matches loose keys cannot take it for an empty one.
 pub fn settle(mut rel: Release, known: impl Fn(&str) -> bool) -> Release {
     let alternatives = std::mem::take(&mut rel.alternatives);
     if rel.title.is_empty() || known(&rel.title) {
         return rel;
     }
-    if let Some(alt) = alternatives.into_iter().find(|a| !a.title.is_empty() && known(&a.title)) {
+    if let Some(alt) = alternatives.into_iter().find(|a| !loose_key(&a.title).is_empty() && known(&a.title)) {
         if !alt.episodes.is_empty() {
             rel.season_pack = false;
         }
@@ -179,6 +181,16 @@ mod tests {
         assert!(!r.season_pack, "an episode is not a pack");
         assert_eq!((r.group.as_str(), r.resolution.as_str()), ("Fansub-A", "1080p"), "the rest stays");
         assert!(r.alternatives.is_empty());
+
+        // A season without episodes leaves what the name said about a pack.
+        let r = settle(read.clone(), |t| t == "Quiet Harbor");
+        assert_eq!((r.title.as_str(), r.season, r.episodes.len(), r.season_pack), ("Quiet Harbor", 2, 0, true));
+
+        // A reading without a word names nothing, even to a caller whose
+        // own key is empty.
+        let odd = Release { title: "Quiet Harbor 2".into(), alternatives: vec![alt(" - ", 0, &[3])], ..read.clone() };
+        let r = settle(odd, |t| loose_key(t).is_empty());
+        assert_eq!((r.title.as_str(), r.episodes.len()), ("Quiet Harbor 2", 0));
 
         // The stated title is known: nothing moves, even with a known alternative.
         let r = settle(read.clone(), |t| t.starts_with("Quiet Harbor"));

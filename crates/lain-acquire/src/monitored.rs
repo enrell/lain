@@ -362,6 +362,44 @@ mod tests {
         SeasonStart { season, first }
     }
 
+    /// D-279's year rule seen from monitored movies. The bridge gives a
+    /// reading without a year of its own the tokenizer's year, unless the
+    /// reading's title already holds it; settled against each film's
+    /// names, the year then keeps the sequel out of the first film's slot
+    /// and lets the sequel in when "2049" was read as a year.
+    #[test]
+    fn the_year_keeps_a_sequel_out_of_the_first_film() {
+        use crate::util::{loose_key, settle};
+        let first = Monitored { year: 1982, ..mon("movie", "Blade Runner", NUMBER_MOVIE) };
+        let sequel = Monitored { year: 2017, ..mon("movie", "Blade Runner 2049", NUMBER_MOVIE) };
+        let read = |title: &str, year, other: &str, other_year| Release {
+            title: title.into(),
+            year,
+            alternatives: vec![lain_api::ReleaseIdentity {
+                title: other.into(),
+                year: other_year,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let take = |m: &Monitored, r: &Release| {
+            let n = names(m);
+            covers(m, &settle(r.clone(), |t| n.contains(&loose_key(t))))
+        };
+        // "Blade.Runner.2049.2017.1080p": the sequel, and "Blade Runner"
+        // with the tokenizer's 2017.
+        let r = read("Blade Runner 2049", 2017, "Blade Runner", 2017);
+        assert_eq!(take(&first, &r), Vec::<Unit>::new());
+        assert_eq!(take(&sequel, &r), vec![u(0, 1)]);
+        // "Blade.Runner.2049.1080p": "2049" read as the year, and the
+        // sequel's title, which holds it, with no year.
+        let r = read("Blade Runner", 2049, "Blade Runner 2049", 0);
+        assert_eq!(take(&first, &r), Vec::<Unit>::new());
+        assert_eq!(take(&sequel, &r), vec![u(0, 1)]);
+        // Given the tokenizer's 2049, the sequel's reading would be refused.
+        assert_eq!(take(&sequel, &read("Blade Runner", 2049, "Blade Runner 2049", 2049)), Vec::<Unit>::new());
+    }
+
     #[test]
     fn season_map_converts_both_ways() {
         let v = [ss(1, 1), ss(2, 13), ss(3, 25)];

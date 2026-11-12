@@ -617,6 +617,34 @@ fn a_monitored_title_decides_between_readings() {
     m.close();
 }
 
+/// A grab made by hand names no title (`GrabInput` does not carry the
+/// search query), so the parser's answer stands, its advice is not
+/// stored, and the library's titles do not pull the files into a folder
+/// the release did not name.
+#[test]
+fn a_manual_grab_settles_nothing() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt3"), settings(0.0), |d| d.parse = Arc::new(misreading));
+    add_indexer(&m, &w);
+    let res = m.search(&SearchQuery { query: "Show".into(), kind: "anime".into(), ..Default::default() }).unwrap();
+    let best = res.candidates[0].clone();
+    assert_eq!(best.release.title, "Show", "the search reads it as asked");
+    let g = m
+        .grab(GrabRequest {
+            input: GrabInput { result: Some(best.result), library_id: w.lib.id.clone(), ..Default::default() },
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!((g.release.title.as_str(), g.release.episodes.len()), ("Show 01", 0), "{:?}", g.release);
+    assert!(g.release.alternatives.is_empty(), "advice is not stored");
+    let g = wait_grab(&m, &g.id, &[GRAB_DONE]);
+    assert_eq!(g.release.title, "Show 01");
+    let lib = Path::new(&w.lib.path);
+    assert!(lib.join("Show 01/[Fansub-A] Show - 01 [1080p].mkv").is_file(), "filed under the answer");
+    assert!(!lib.join("SHOW").exists(), "not under the library's title the release did not name");
+    m.close();
+}
+
 #[test]
 fn rss_sync_feeds_monitored_titles() {
     let w = World::new();
