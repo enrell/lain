@@ -691,6 +691,23 @@ fn a_monitored_sequel_keeps_its_release() {
     m.close();
 }
 
+/// A paused sequel still names its releases (D-279: any monitored title,
+/// enabled or not). RSS offers the release to the enabled "Show" alone,
+/// which still may not read it as its season 2, so nothing is grabbed.
+#[test]
+fn a_paused_sequel_still_keeps_its_release() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt7"), settings(0.0), |d| d.parse = Arc::new(sequel_reading));
+    add_indexer(&m, &w);
+    monitor(&m, &w, show_with_two_seasons());
+    let sequel = monitor(&m, &w, mon("Show 2", 0, 0));
+    let paused = m.update_monitored(&sequel.id, Monitored { enabled: false, ..sequel.clone() }).unwrap();
+    assert!(!paused.enabled);
+    let rep = m.rss_sync().unwrap();
+    assert!(rep.grabbed.is_empty(), "the original took the paused sequel's release: {rep:?}");
+    m.close();
+}
+
 /// The same rule on the grab path: a grab made for "Show" settles its
 /// release against "Show" only while no monitored title is named by the
 /// parser's answer.
