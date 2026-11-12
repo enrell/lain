@@ -339,11 +339,13 @@
 			<button type="button" class="absolute left-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur md:hidden" aria-label="Back" onclick={() => history.back()}>
 				<ArrowLeft class="size-5" aria-hidden="true" />
 			</button>
-			<div class="relative flex w-full flex-col gap-5 pb-6 pt-16 md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
-				<div class="w-24 shrink-0 md:w-52">
+			<!-- On a phone the cover sits beside the name, as on a series page (TitleView). -->
+			<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-16 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
+				<div class="w-full shrink-0 md:w-52">
 					<Poster {item} {enrichment} class="aspect-[2/3] rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10" priority />
 				</div>
-				<div class="hero-monolith-copy min-w-0 flex-1">
+				<div class="hero-monolith-copy min-w-0 flex-1 max-md:contents">
+					<div class="min-w-0">
 					{#if library}
 						<a href={`/library/${library.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
 							<ChevronLeft class="size-4" aria-hidden="true" /> {library.name}
@@ -361,9 +363,11 @@
 						</ul>
 					{/if}
 
+					</div>
+					<div class="max-md:col-span-2">
 					<!-- The primary action sits directly under the title, above the
 					     optional prose, so it is on screen on arrival at 320x568. -->
-					<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
+					<div class="title-actions flex flex-wrap items-center gap-x-2 gap-y-3 md:mt-6">
 						{#if playable || (!item.missing && preferredPlayer !== 'browser')}
 							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
 								<Play class="size-4 fill-current" />
@@ -400,6 +404,7 @@
 					{#if enrichment?.synopsis}
 						<p class="mt-5 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{enrichment.synopsis}</p>
 					{/if}
+					</div>
 				</div>
 			</div>
 		</header>

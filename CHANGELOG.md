@@ -123,6 +123,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   plugin job's description wraps to two lines instead of stopping mid-word.
 - The reader's toggles keep a gap between them (web): Spread and Cover
   alone, both on, read as one block.
+- **A title page on a phone starts with its episodes in view** (web): the
+  cover sits beside the title's name instead of above it, so the first
+  episodes or volumes show under the actions where the hero filled the
+  whole screen.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a

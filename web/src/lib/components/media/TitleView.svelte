@@ -395,12 +395,16 @@
 		</button>
 		<!-- One template for every kind of title: the cover, then what it is and what it can do.
 		     Both start on one line: aligned at the bottom, the cover floated mid-hero beside a
-		     long synopsis and the copy floated beside a cover taller than it. -->
-		<div class="relative flex w-full flex-col gap-5 pb-6 pt-16 md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
-			<div class="aspect-[2/3] w-24 shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
+		     long synopsis and the copy floated beside a cover taller than it. On a phone the
+		     cover sits beside the name, not above it: stacked, it put every episode below
+		     the fold. -->
+		<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-16 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
+			<div class="aspect-[2/3] w-full shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
-			<div class="hero-monolith-copy min-w-0 max-w-6xl flex-1">
+			<div class="hero-monolith-copy min-w-0 max-w-6xl flex-1 max-md:contents">
+				<!-- The name block: beside the cover on a phone (the parent is `contents` there). -->
+				<div class="min-w-0">
 				{#if homeLibrary}
 					<a href={`/library/${homeLibrary.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
 						<ChevronLeft class="size-4" aria-hidden="true" /> {homeLibrary.name}
@@ -416,12 +420,14 @@
 						{/each}
 					</ul>
 				{/if}
+				</div>
+				<div class="max-md:col-span-2">
 				<!-- The main action and what else the title can do, where the eye
 				     already is; the rail below keeps the cover and the facts. -->
 				<!-- On a phone: the main action and the heart on one line, then the score,
 				     Download and More (as an icon) on the next. Spelled out, More fell onto a
 				     third line of its own. -->
-				<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
+				<div class="title-actions flex flex-wrap items-center gap-x-2 gap-y-3 md:mt-6">
 					{#if resumeTarget}
 						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
@@ -452,6 +458,7 @@
 						<span class={['block text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? '' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
 					</button>
 				{/if}
+				</div>
 			</div>
 		</div>
 	</header>
