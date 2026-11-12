@@ -70,8 +70,8 @@ pub fn plan_import(
         media.truncate(1);
     }
     let by_key: HashMap<String, &String> = titles.iter().map(|t| (loose_key(t), t)).collect();
-    // A file belongs to the release that was grabbed: its title decides
-    // between the parser's readings of the file name (D-279). The
+    // A file belongs to the release that was grabbed: its title and year
+    // decide between the parser's readings of the file name (D-279). The
     // library's other titles do not, or a sequel would land in the
     // folder of the show it follows.
     let grabbed = loose_key(&grab.title);
@@ -81,7 +81,7 @@ pub fn plan_import(
     let mut seen = BTreeSet::new();
     for f in media {
         let name = base_name(&f.path.to_string_lossy());
-        let mut r = settle(parse(&name, &lib.kind), |t| !grabbed.is_empty() && loose_key(t) == grabbed);
+        let mut r = settle(parse(&name, &lib.kind), |t| !grabbed.is_empty() && loose_key(t) == grabbed, grab.year);
         fill(&mut r, grab, single);
         let title = by_key.get(&loose_key(&r.title)).map(|t| t.to_string()).unwrap_or_else(|| r.title.clone());
         let rel = destination(&lib.kind, &title, &r, &name);
@@ -375,13 +375,14 @@ mod tests {
     fn plan_import_reads_a_file_as_the_grabbed_title() {
         use lain_api::ReleaseIdentity;
         // A parser that reads "Show 2 - 03" as the title "Show 2", and
-        // offers "Show", season 2, as its other reading.
+        // offers "Show", season 2 (of 2014), as its other reading.
         let two = |s: &str, kind: &str| {
             let mut r = lain_identify::tokenize(s, kind);
             if s.starts_with("Show 2 - ") {
                 r.alternatives = vec![
                     ReleaseIdentity {
                         title: "Show".into(),
+                        year: 2014,
                         season: 2,
                         episodes: r.episodes.clone(),
                         ..Default::default()
@@ -401,15 +402,18 @@ mod tests {
         };
         let files = [touch(&src.join("Show 2 - 03.mkv"), 10)];
         let titles = ["Other".to_string()];
-        let plan = |grab: &str| {
-            let grab = Release { title: grab.into(), ..Default::default() };
+        let plan_of = |grab: &str, year| {
+            let grab = Release { title: grab.into(), year, ..Default::default() };
             let p = plan_import(&lib, &files, &grab, &two, &titles).unwrap();
             assert!(p[0].release.alternatives.is_empty(), "advice is not stored");
             (p[0].release.title.clone(), p[0].release.season, p[0].release.episodes.clone())
         };
+        let plan = |grab: &str| plan_of(grab, 0);
         assert_eq!(plan("Show"), ("Show".into(), 2, vec![3]), "the grab names the show");
         assert_eq!(plan("Show 2"), ("Show 2".into(), 0, vec![3]), "the answer already is the grab");
         assert_eq!(plan("Silver Tide"), ("Show 2".into(), 0, vec![3]), "a library title alone decides nothing");
+        assert_eq!(plan_of("Show", 2015), ("Show".into(), 2, vec![3]), "a year either way is the grab's");
+        assert_eq!(plan_of("Show", 2009), ("Show 2".into(), 0, vec![3]), "another year is another show");
     }
 
     #[test]

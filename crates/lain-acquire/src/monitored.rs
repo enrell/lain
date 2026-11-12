@@ -362,14 +362,14 @@ mod tests {
         SeasonStart { season, first }
     }
 
-    /// D-279's year rule seen from monitored movies. The bridge gives a
+    /// D-279's year rules seen from monitored movies. The bridge gives a
     /// reading without a year of its own the tokenizer's year, unless the
     /// reading's title already holds it; settled against each film's
-    /// names, the year then keeps the sequel out of the first film's slot
-    /// and lets the sequel in when "2049" was read as a year.
+    /// names and year, the year then keeps the sequel out of the first
+    /// film's slot and lets the sequel in when "2049" was read as a year.
     #[test]
     fn the_year_keeps_a_sequel_out_of_the_first_film() {
-        use crate::util::{loose_key, settle};
+        use crate::util::settle;
         let first = Monitored { year: 1982, ..mon("movie", "Blade Runner", NUMBER_MOVIE) };
         let sequel = Monitored { year: 2017, ..mon("movie", "Blade Runner 2049", NUMBER_MOVIE) };
         let read = |title: &str, year, other: &str, other_year| Release {
@@ -382,22 +382,28 @@ mod tests {
             }],
             ..Default::default()
         };
-        let take = |m: &Monitored, r: &Release| {
+        let settled = |m: &Monitored, r: &Release| {
             let n = names(m);
-            covers(m, &settle(r.clone(), |t| n.contains(&loose_key(t))))
+            settle(r.clone(), |t| n.contains(&loose_key(t)), m.year)
         };
+        let take = |m: &Monitored, r: &Release| covers(m, &settled(m, r));
+        let none = Vec::<Unit>::new();
         // "Blade.Runner.2049.2017.1080p": the sequel, and "Blade Runner"
-        // with the tokenizer's 2017.
+        // with the tokenizer's 2017, which the first film's year refuses.
         let r = read("Blade Runner 2049", 2017, "Blade Runner", 2017);
-        assert_eq!(take(&first, &r), Vec::<Unit>::new());
-        assert_eq!(take(&sequel, &r), vec![u(0, 1)]);
-        // "Blade.Runner.2049.1080p": "2049" read as the year, and the
-        // sequel's title, which holds it, with no year.
+        assert_eq!(settled(&first, &r).title, "Blade Runner 2049");
+        assert_eq!((take(&first, &r), take(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
+        // "Blade.Runner.2049.1080p" answered as the sequel without a year
+        // (the bridge does not take a year the title holds), and "Blade
+        // Runner" with the tokenizer's 2049.
+        let r = read("Blade Runner 2049", 0, "Blade Runner", 2049);
+        assert_eq!((take(&first, &r), take(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
+        // The same name with "2049" read as the year: the sequel takes its
+        // title, which holds it, with no year.
         let r = read("Blade Runner", 2049, "Blade Runner 2049", 0);
-        assert_eq!(take(&first, &r), Vec::<Unit>::new());
-        assert_eq!(take(&sequel, &r), vec![u(0, 1)]);
+        assert_eq!((take(&first, &r), take(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
         // Given the tokenizer's 2049, the sequel's reading would be refused.
-        assert_eq!(take(&sequel, &read("Blade Runner", 2049, "Blade Runner 2049", 2049)), Vec::<Unit>::new());
+        assert_eq!(take(&sequel, &read("Blade Runner", 2049, "Blade Runner 2049", 2049)), none);
     }
 
     #[test]
