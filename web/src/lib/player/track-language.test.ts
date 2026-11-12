@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaStream, User } from '$lib/api/types';
 import {
+	defaultAudioStream,
 	resolveTracks,
 	trackPreferences,
 	type RememberedTracks,
@@ -98,6 +99,17 @@ describe('track preferences (D-280)', () => {
 		expect(pick(anime, p('', ''), { audio: 'jpn', subtitle: 'por' })).toEqual([2, 4]);
 		// A language the file lacks falls back to the account's rule.
 		expect(pick(anime, p('jpn', 'por'), { subtitle: 'kor' })).toEqual([2, 4]);
+	});
+
+	it("names the file's default audio for a Default pick only when the server would pick another", () => {
+		expect(defaultAudioStream(anime, p('jpn', 'por'))).toBe(1);
+		expect(defaultAudioStream(anime, p('', 'por'))).toBeUndefined();
+		const unflagged = [
+			{ type: 'audio', index: 3, codec: 'aac', language: 'jpn' },
+			{ type: 'audio', index: 4, codec: 'aac', language: 'eng' }
+		] satisfies MediaStream[];
+		expect(defaultAudioStream(unflagged, p('eng', ''))).toBe(3);
+		expect(defaultAudioStream([sub(1, 'eng')], p('jpn', ''))).toBeUndefined();
 	});
 
 	it('reads an account from before D-280 as its one language', () => {
