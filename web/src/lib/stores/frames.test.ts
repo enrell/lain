@@ -118,6 +118,20 @@ describe('a set drawn before its pictures', () => {
 		await expect(settled).resolves.toBe('landscape');
 	});
 
+	it('loads only the pictures nothing is known about when the known ones leave it open (D-282)', async () => {
+		// Two told posters and three frames: not decided before a frame answers.
+		const posters = Array.from({ length: 2 }, (_, i) => ({ ...video(`ok${i}`, 'open'), thumbnail: { source: 'sidecar', aspect: 0.667 } }));
+		const frames = Array.from({ length: 3 }, (_, i) => ({ ...video(`of${i}`, 'open'), thumbnail: { source: 'frame' } }));
+		for (const i of [...posters, ...frames]) enrichmentCache.set(i.id, null);
+		const settled = settleFrame(groupItems([...posters, ...frames]));
+		await flush();
+		// A told poster is never fetched to learn what the server already said.
+		expect(FakeImage.made.map((i) => i.src).filter((src) => src.includes('/ok'))).toEqual([]);
+		expect(FakeImage.made).toHaveLength(3);
+		for (const img of FakeImage.made) img.answer(1280, 720);
+		await expect(settled).resolves.toBe('landscape');
+	});
+
 	it('gives a wide slot an episode\'s frame in place of an upright still', () => {
 		const ep = { ...video('ep1', 'shows'), kind: 'episode', episode: 1 };
 		expect(wideStill({ ...ep, thumbnail: { source: 'sidecar', aspect: 0.667 } }, 480)).toContain('t=10');
