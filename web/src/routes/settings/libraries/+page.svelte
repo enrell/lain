@@ -572,7 +572,11 @@
 						browseError ? 'border-danger/60' : 'border-transparent'
 					].join(' ')}
 				/>
+				<!-- type="button": the first submit button of a form is what Enter in
+				     any field presses, and this one went up a folder and renamed the
+				     library instead of adding it. -->
 				<Button
+					type="button"
 					variant="secondary"
 					disabled={!browseParent || browseLoading}
 					onclick={goUp}
@@ -589,7 +593,7 @@
 				{:else if browseError}
 					<div class="flex h-56 flex-col items-center justify-center gap-2 px-4 text-center text-sm">
 						<p class="text-danger" role="alert">{browseError}</p>
-						<Button variant="ghost" size="sm" onclick={() => void loadBrowse(browsePath || undefined)}>
+						<Button type="button" variant="ghost" size="sm" onclick={() => void loadBrowse(browsePath || undefined)}>
 							Back to {folderName(browsePath) || 'the start'}
 						</Button>
 					</div>
