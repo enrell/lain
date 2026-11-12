@@ -1115,7 +1115,11 @@
 		if (!el) return;
 		if (el.paused || el.ended) {
 			ended = false;
-			void el.play().catch(() => {
+			void el.play().catch((err: unknown) => {
+				// A pause before playback could start (K twice while a seek
+				// is still loading) rejects this play with AbortError: that is
+				// the viewer's own pause, not the browser refusing to play.
+				if (err instanceof DOMException && err.name === 'AbortError') return;
 				error = 'The browser blocked playback. Click play to start.';
 			});
 		} else {
