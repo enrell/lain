@@ -13,12 +13,17 @@
 	import { shortcutsDialog } from '$lib/stores/shortcuts.svelte';
 	import { isTypingTarget } from '$lib/utilities/guards';
 
-	const here = $derived(pageKeys.rows);
+	// Left and Right walk a row of cards (RailKeys), so they are listed where the
+	// page has one: looked for each time the list opens.
+	let railHere = $state(false);
+	$effect(() => {
+		if (shortcutsDialog.open) railHere = [...document.querySelectorAll('#main .snap-x')].some((el) => getComputedStyle(el).overflowX === 'auto' && el.childElementCount > 1);
+	});
+	const here = $derived<KeyHint[]>([...pageKeys.rows, ...(railHere ? [{ keys: ['←', '→'], label: t('shortcuts.rail') }] : [])]);
 	// A page with a filter of its own takes `/`; its row says what the key finds there.
 	const everywhere = $derived<KeyHint[]>([
 		...(pageKeys.has('/') ? [] : [{ keys: ['/'], label: t('shortcuts.search') }]),
 		{ keys: ['Ctrl', 'K'], label: t('shortcuts.quickFind') },
-		{ keys: ['←', '→'], label: t('shortcuts.rail') },
 		{ keys: ['Esc'], label: t('shortcuts.escape') },
 		{ keys: ['?'], label: t('shortcuts.help') }
 	]);
