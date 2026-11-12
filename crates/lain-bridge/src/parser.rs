@@ -30,7 +30,7 @@ use serde_json::{Value, json};
 
 use lain_api::{MAX_RELEASE_ALTERNATIVES, Release, ReleaseIdentity};
 use lain_core::{Error, Provider};
-use lain_identify::release::{clean_title, resolution, tokenize};
+use lain_identify::release::{clean_title, resolution, tokenize_years};
 use lain_identify::{CAP_RELEASE_PARSE, MAX_NAME};
 
 use crate::http1::{self, Endpoint, Request};
@@ -161,15 +161,20 @@ struct ParseInput {
 
 /// Go's `merge`: the model is trusted for what it labels (title,
 /// numbers, group, resolution) and the tokenizer for the tags the model
-/// does not label (source, codec, proper, version…).
-fn merge(rec: ModelRecord, tok: Release) -> Release {
+/// does not label (source, codec, proper, version…). A year the model did
+/// not label is the tokenizer's, unless the model's title holds it
+/// (`tokenizer_year`, D-279); Go took the tokenizer's even then, so
+/// "Blade.Runner.2049.1080p" answered "Blade Runner 2049" of 2049.
+/// `years` are the tokenizer's (`tokenize_years`).
+fn merge(rec: ModelRecord, tok: Release, years: &[i64]) -> Release {
     let mut r = tok;
     r.parser = MODEL_ID.into();
     r.title = clean_title(rec.title.as_deref().unwrap_or(""));
     r.episode_title = clean_title(rec.episode_title.as_deref().unwrap_or(""));
-    if let Some(y) = rec.year.filter(|y| *y > 0) {
-        r.year = y;
-    }
+    r.year = match rec.year.filter(|y| *y > 0) {
+        Some(y) => y,
+        None => tokenizer_year(&r.title, years),
+    };
     if let Some(s) = rec.season {
         r.season = s;
     }
@@ -188,6 +193,21 @@ fn merge(rec: ModelRecord, tok: Release) -> Release {
     r
 }
 
+/// Whether `title` holds `year` as a word: "Blade Runner 2049" holds 2049.
+fn holds_year(title: &str, year: i64) -> bool {
+    let y = year.to_string();
+    title.split(|c: char| !c.is_alphanumeric()).any(|w| w == y)
+}
+
+/// The year of a reading titled `title` that states none, from the years
+/// the tokenizer read in the name (`tokenize_years`, the release's year
+/// last): a year the title holds is the title's, not the release's
+/// ("Blade.Runner.2049.1080p" read as "Blade Runner 2049"), so it is the
+/// last year the title does not hold, or none (D-279).
+fn tokenizer_year(title: &str, years: &[i64]) -> i64 {
+    years.iter().rev().copied().find(|y| !holds_year(title, *y)).unwrap_or(0)
+}
+
 /// What a model record says the release is, for telling readings apart.
 fn identity(rec: &ModelRecord) -> (String, i64, Vec<i64>) {
     let mut episodes = rec.episodes.clone().unwrap_or_default();
@@ -199,9 +219,9 @@ fn identity(rec: &ModelRecord) -> (String, i64, Vec<i64>) {
 /// without `own` (the answer's reading), without repeats, at most
 /// `MAX_RELEASE_ALTERNATIVES`. They carry the model's numbers only, never
 /// the tokenizer's: a reading without an episode is a reading. A year
-/// the model did not read is the tokenizer's, unless the alternative's
-/// title holds it.
-fn alternatives(others: Vec<ModelRecord>, own: (String, i64, Vec<i64>), tok_year: i64) -> Vec<ReleaseIdentity> {
+/// the model did not read comes from the tokenizer's `years` as the
+/// answer's does (`tokenizer_year`).
+fn alternatives(others: Vec<ModelRecord>, own: (String, i64, Vec<i64>), years: &[i64]) -> Vec<ReleaseIdentity> {
     let mut seen = vec![own];
     let mut out = Vec::new();
     for rec in others {
@@ -217,8 +237,7 @@ fn alternatives(others: Vec<ModelRecord>, own: (String, i64, Vec<i64>), tok_year
         seen.push(k);
         let year = match rec.year.filter(|y| *y > 0) {
             Some(y) => y,
-            None if tok_year > 0 && !title.contains(&tok_year.to_string()) => tok_year,
-            None => 0,
+            None => tokenizer_year(&title, years),
         };
         let absolute = rec.season.is_none() && !episodes.is_empty();
         out.push(ReleaseIdentity { title, year, season, episodes, absolute });
@@ -276,10 +295,10 @@ impl Provider for ReleaseModel {
         let others = ans.take_alternatives();
         match ans.record {
             Some(rec) if rec.title.as_deref().is_some_and(|t| !t.trim().is_empty()) => {
-                let tok = tokenize(&i.name, &i.kind);
-                let (own, tok_year) = (identity(&rec), tok.year);
-                let mut r = merge(rec, tok);
-                r.alternatives = alternatives(others, own, tok_year);
+                let (tok, years) = tokenize_years(&i.name, &i.kind);
+                let own = identity(&rec);
+                let mut r = merge(rec, tok, &years);
+                r.alternatives = alternatives(others, own, &years);
                 Ok(json!(r))
             }
             // Abstained: the zero Release is a decline.
@@ -291,6 +310,7 @@ impl Provider for ReleaseModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lain_identify::release::tokenize;
 
     #[test]
     fn merge_trusts_the_model_for_its_fields() {
@@ -302,7 +322,7 @@ mod tests {
             resolution: Some("1080i".into()),
             ..ModelRecord::default()
         };
-        let r = merge(rec, tok.clone());
+        let r = merge(rec, tok.clone(), &[]);
         assert_eq!(r.parser, MODEL_ID);
         assert_eq!(r.title, "Show Name");
         assert_eq!(r.episodes, vec![5]);
@@ -312,10 +332,30 @@ mod tests {
         let r = merge(
             ModelRecord { title: Some("X".into()), season: Some(2), episodes: Some(vec![1, 2]), ..Default::default() },
             Release { season_pack: true, year: 2001, ..Release::default() },
+            &[2001],
         );
         assert_eq!((r.season, r.absolute, r.season_pack, r.year), (2, false, false, 2001));
         let many = ModelRecord { title: Some("X".into()), episodes: Some((0..5000).collect()), ..Default::default() };
-        assert_eq!(merge(many, Release::default()).episodes.len(), MAX_EPISODES);
+        assert_eq!(merge(many, Release::default(), &[]).episodes.len(), MAX_EPISODES);
+    }
+
+    /// A year the answer's title holds is the title's (D-279): the
+    /// release's year is then the tokenizer's other one, or none. Go's
+    /// merge gave "Blade Runner 2049" the year 2049, and a monitored
+    /// "Blade Runner 2049 (2017)" refused it.
+    #[test]
+    fn the_answer_never_takes_a_year_its_title_holds() {
+        let read = |name: &str, title: &str, year: Option<i64>| {
+            let (tok, years) = tokenize_years(name, "movie");
+            merge(ModelRecord { title: Some(title.into()), year, ..Default::default() }, tok, &years).year
+        };
+        assert_eq!(read("Blade.Runner.2049.1080p.mkv", "Blade Runner 2049", None), 0);
+        assert_eq!(read("Blade.Runner.2049.2017.1080p", "Blade Runner 2049", None), 2017);
+        assert_eq!(read("Blade.Runner.2017.2049.1080p", "Blade Runner 2049", None), 2017, "the other year");
+        assert_eq!(read("Blade.Runner.2049.1080p", "Blade Runner", None), 2049, "the title does not hold it");
+        assert_eq!(read("Blade.Runner.2049.1080p", "Blade Runner 2049", Some(2017)), 2017, "the model's own");
+        assert_eq!(read("Area.12049.2049.1080p", "Area 12049", None), 2049, "a word, not a substring");
+        assert!(holds_year("Blade.Runner.2049", 2049) && !holds_year("Area 12049", 2049));
     }
 
     #[test]
@@ -336,14 +376,17 @@ mod tests {
                 rec("Blade Runner", Some(1982), Some(0), Some(vec![1])),
             ],
             own(),
-            2049,
+            &[2049],
         );
         assert_eq!(out.len(), 3);
         assert_eq!((out[0].title.as_str(), out[0].year), ("Blade Runner 2049", 0));
         assert_eq!((out[1].year, out[1].episodes.len(), out[1].absolute), (2049, MAX_EPISODES, true));
         assert_eq!((out[2].year, out[2].season, out[2].absolute), (1982, 0, false), "a stated season 0 is seasonal");
         let many = (0..9).map(|i| rec(&format!("Show {i}"), None, None, None)).collect();
-        assert_eq!(alternatives(many, own(), 0).len(), MAX_RELEASE_ALTERNATIVES);
+        assert_eq!(alternatives(many, own(), &[]).len(), MAX_RELEASE_ALTERNATIVES);
+        // The tokenizer's other year for a title that holds its last one.
+        let out = alternatives(vec![rec("Blade Runner 2049", None, None, None)], own(), &[2017, 2049]);
+        assert_eq!((out[0].title.as_str(), out[0].year), ("Blade Runner 2049", 2017));
     }
 
     #[test]

@@ -45,6 +45,9 @@ fn daemon(healthy: Arc<AtomicBool>) -> Handler {
                     json!({"record": {"title": "Blade Runner 2049", "year": 2017},
                     "alternatives": [{"title": "Blade Runner"}]}),
                 )
+            } else if name.starts_with("Blade.Runner.2049.720p") {
+                // The sequel without a year; the other reading drops "2049".
+                (200, json!({"record": {"title": "Blade Runner 2049"}, "alternatives": [{"title": "Blade Runner"}]}))
             } else if name.starts_with("Blade.Runner.2049") {
                 // "2049" read as a year; the other reading keeps it in the title.
                 (
@@ -116,6 +119,10 @@ fn answers_declines_and_failures() {
     let out = m.invoke(CAP_RELEASE_PARSE, "parse", json!({"name": "Blade.Runner.2049.1080p.mkv"})).unwrap();
     assert_eq!(lain_identify::tokenize("Blade.Runner.2049.1080p.mkv", "").year, 2049, "the tokenizer reads a year");
     assert_eq!(out["alternatives"], json!([{"title": "Blade Runner 2049"}]));
+    // The answer follows the same rule (Go's merge gave it the 2049).
+    let out = m.invoke(CAP_RELEASE_PARSE, "parse", json!({"name": "Blade.Runner.2049.720p.mkv"})).unwrap();
+    assert_eq!((&out["title"], out.get("year")), (&json!("Blade Runner 2049"), None), "{out}");
+    assert_eq!(out["alternatives"], json!([{"title": "Blade Runner", "year": 2049}]));
 
     for name in ["Odd Show 03.mkv", "Odd Show 03 list.mkv"] {
         let out = m.invoke(CAP_RELEASE_PARSE, "parse", json!({"name": name})).unwrap();
