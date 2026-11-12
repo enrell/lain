@@ -250,7 +250,9 @@
 			{#each users as user (user.id)}
 				{@const self = isSelf(user)}
 				<li class="group/row flex flex-wrap items-center gap-x-4 gap-y-3 py-3.5 lg:grid lg:grid-cols-[minmax(0,1fr)_8rem_7.5rem_20rem]">
-					<div class="flex min-w-0 basis-full items-center gap-3">
+					<!-- On a phone the actions share the name's line (their icons fit
+					     beside it) and role and access take the second. -->
+					<div class="flex min-w-0 basis-[calc(100%-9.5rem)] items-center gap-3 lg:basis-auto">
 						<Avatar {user} class="size-9 shrink-0" />
 						<div class="min-w-0">
 							<div class="flex flex-wrap items-center gap-2">
@@ -266,12 +268,12 @@
 						</div>
 					</div>
 					{#if self}
-						<p class="flex h-9 w-32 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted" title={t('settings.usersPage.selfRole')}>
+						<p class="flex h-9 w-32 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted max-lg:order-2" title={t('settings.usersPage.selfRole')}>
 							<LockIcon class="size-3" aria-hidden="true" />{user.role === 'admin' ? t('settings.usersPage.roleAdmin') : t('settings.usersPage.roleUser')}
 						</p>
-						<p class="flex h-9 items-center text-[13px] text-muted">{t('settings.usersPage.signedInHere')}</p>
+						<p class="flex h-9 items-center text-[13px] text-muted max-lg:order-2">{t('settings.usersPage.signedInHere')}</p>
 					{:else}
-						<div class="w-32">
+						<div class="w-32 max-lg:order-2">
 							<Select
 								aria-label={t('settings.usersPage.roleFor', { name: user.username })}
 								value={user.role}
@@ -279,7 +281,7 @@
 								onValueChange={(role) => void patch(user, { role: role as 'admin' | 'user' }, t('settings.usersPage.roleSaved', { name: user.username }))}
 							/>
 						</div>
-						<div class="flex h-9 items-center gap-2 text-sm text-muted">
+						<div class="flex h-9 items-center gap-2 text-sm text-muted max-lg:order-2">
 							<!-- Named per row: a list of switches all called "Active" told a screen reader nothing.
 							     A mis-click locks someone out at once, so the toast can take it back (Ctrl+Z). -->
 							<Switch
@@ -300,7 +302,7 @@
 					<!-- A fixed column, filled from its end: every row is its own grid,
 					     so an auto column was as wide as that row's buttons and the
 					     columns before it drifted from row to row. -->
-					<div class="flex flex-nowrap items-center justify-end gap-0.5 max-lg:ms-auto">
+					<div class="flex flex-nowrap items-center justify-end gap-0.5 max-lg:order-1 max-lg:ms-auto">
 						<!-- Icons alone on a phone, as on Libraries: three worded buttons
 						     broke over two lines under the role and the switch. -->
 						<Button variant="ghost" size="field" class="max-lg:px-3" title={t('settings.usersPage.playback')} onclick={() => openPlaybackLimits(user)}>
@@ -318,7 +320,11 @@
 						>
 							<KeyRound class="size-4" /> <span class="max-lg:sr-only">{t('settings.usersPage.resetPassword')}</span>
 						</Button>
-						{#if !self}
+						{#if self}
+							<!-- The delete slot kept empty, so Playback and Reset password
+							     line up with the rows that have one. -->
+							<span class="hidden w-10 lg:block" aria-hidden="true"></span>
+						{:else}
 							<!-- Quiet until pointed at, as Remove is on Libraries. -->
 							<Button
 								variant="ghost"
