@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount, tick, untrack } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import LockOpen from '@lucide/svelte/icons/lock-open';
@@ -22,28 +23,43 @@
 	const open = $derived(libraries.filter((l) => l.private && !l.locked));
 	// What the browser may name: a locked library is not on the page at all.
 	const visible = $derived(nameable(libraries));
-	// Shelves (one row per library) or every title in one grid. The choice
-	// is a per-browser convenience; shelves need more than one library.
+	// Shelves (one row per library) or every title in one grid; shelves need
+	// more than one library. The address says which (?view=all), so a view
+	// can be linked and Back returns to the one that was left; the choice
+	// this browser made last is only the default for a bare /library.
+	type View = 'shelves' | 'all';
 	const VIEW_KEY = 'lain.library.view';
-	let view = $state<'shelves' | 'all'>('shelves');
-	async function setView(next: 'shelves' | 'all', refocus = false): Promise<void> {
-		view = next;
+	const isView = (v: string | null): v is View => v === 'shelves' || v === 'all';
+	let remembered = $state<View>('shelves');
+	try {
+		const kept = localStorage.getItem(VIEW_KEY);
+		if (isView(kept)) remembered = kept;
+	} catch {
+		/* private window: the default view */
+	}
+	const view = $derived.by((): View => {
+		const asked = page.url.searchParams.get('view');
+		return isView(asked) ? asked : remembered;
+	});
+	async function setView(next: View, refocus = false): Promise<void> {
+		remembered = next;
 		try {
 			localStorage.setItem(VIEW_KEY, next);
 		} catch {
 			/* private window: the choice lasts for this visit */
 		}
+		// Replaced, not pushed: Back leaves the library rather than flipping
+		// the view, and lands on the view that was left. The other parameters
+		// (All titles' search and filters) stay for a switch back.
+		const url = new URL(page.url);
+		url.searchParams.set('view', next);
+		await goto(url, { replaceState: true, keepFocus: true, noScroll: true });
 		// The other view brings its own copy of the switch; focus follows it
 		// rather than falling back to the page.
 		if (!refocus) return;
 		await tick();
 		document.querySelector<HTMLElement>('#library-view [aria-pressed="true"]')?.focus();
 	}
-	// A link can ask for a view (/library?view=all): it wins over the one remembered.
-	$effect(() => {
-		const asked = page.url.searchParams.get('view');
-		if ((asked === 'all' || asked === 'shelves') && asked !== untrack(() => view)) void setView(asked);
-	});
 	let unlockOpen = $state(false);
 	// Re-mounts the browser so it refetches once a library unlocks.
 	let generation = $state(0);
@@ -72,11 +88,6 @@
 	}
 
 	onMount(() => {
-		try {
-			if (localStorage.getItem(VIEW_KEY) === 'all' && !page.url.searchParams.has('view')) view = 'all';
-		} catch {
-			/* default view */
-		}
 		void ensureLibraries()
 			.then((libs) => (libraries = libs))
 			.catch(() => {

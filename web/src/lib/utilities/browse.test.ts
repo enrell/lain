@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
-import { NO_FILTERS, activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState, type Context, type Filters } from './browse';
+import { NO_FILTERS, activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState, withFilters, type Context, type Filters } from './browse';
 import { groupItems } from './grouping';
 
 const NOW = 1_000_000;
@@ -79,6 +79,12 @@ describe('URL', () => {
 		expect(filtersFromParams(params)).toEqual({ ...set, q: 'road' });
 		expect(filtersToParams(NO_FILTERS).toString()).toBe('');
 		expect(activeCount(set)).toBe(6);
+	});
+	it('replaces the filters and keeps the page’s own parameters', () => {
+		const current = new URLSearchParams('view=all&q=old&genre=Drama');
+		expect(withFilters(current, f({ q: 'road', sort: 'recent' })).toString()).toBe('view=all&q=road&sort=recent');
+		expect(withFilters(current, NO_FILTERS).toString()).toBe('view=all');
+		expect(current.toString()).toBe('view=all&q=old&genre=Drama');
 	});
 	it('ignores values it does not know', () => {
 		expect(filtersFromParams(new URLSearchParams('sort=bogus&watch=x&added=5&shape=y'))).toEqual(NO_FILTERS);

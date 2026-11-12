@@ -38,7 +38,7 @@
 	import { sampleArt, type Shape } from '$lib/stores/shapes.svelte';
 	import {
 		ADDED, LISTED, NO_FILTERS, SHAPES, SORTS, WATCH,
-		activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState,
+		activeCount, anyCount, apply, countBy, filtersFromParams, genreFacets, watchState, withFilters,
 		type Context, type Filters, type Sort
 	} from '$lib/utilities/browse';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -234,7 +234,7 @@
 	const active = $derived(activeCount(filters));
 
 	function set(patch: Partial<Filters>): void {
-		const query = filtersToParams({ ...filters, ...patch }, defaultSort).toString();
+		const query = withFilters(page.url.searchParams, { ...filters, ...patch }, defaultSort).toString();
 		shown = RENDER;
 		toResults();
 		void goto(query ? `?${query}` : page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
