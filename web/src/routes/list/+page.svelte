@@ -123,7 +123,7 @@
 
 <div class="space-y-6">
 	<header>
-		<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('nav.list')}</h1>
+		<h1 class="page-title">{t('nav.list')}</h1>
 		<!-- The first-run block below says what the page is for, at length. -->
 		{#if !firstRun}<p class="mt-0.5 text-sm text-muted">{t('tracking.subtitle')}</p>{/if}
 	</header>

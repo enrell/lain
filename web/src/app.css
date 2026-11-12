@@ -101,6 +101,36 @@
 	}
 }
 
+/*
+ * One type scale for headings (r19 design review). A page's own name is
+ * the largest text after a hero's title, and a section under it (a rail,
+ * a title's episodes, a search's suggestions) is one step down, as Home's
+ * rails are. Library, Search and Favorites named their page at 20 px over
+ * 24 px rails, Settings at 32 px, and a title page's sections at 18 px.
+ */
+@utility page-title {
+	font-size: 1.75rem;
+	font-weight: 700;
+	line-height: 1.15;
+	letter-spacing: -0.03em;
+	color: var(--color-foreground);
+	@media (width >= 48rem) {
+		font-size: 2rem;
+	}
+}
+
+@utility section-title {
+	font-size: 1.25rem;
+	font-weight: 600;
+	line-height: 1.75rem;
+	letter-spacing: -0.025em;
+	color: var(--color-foreground);
+	@media (width >= 40rem) {
+		font-size: 1.5rem;
+		line-height: 2rem;
+	}
+}
+
 /* The faint node lattice used behind empty states and the player. */
 @utility lattice {
 	background-image: radial-gradient(circle, var(--color-line) 1px, transparent 1px);

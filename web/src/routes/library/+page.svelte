@@ -119,7 +119,7 @@
 <div class="space-y-6">
 	<header class="flex flex-wrap items-end justify-between gap-3">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-foreground">Library</h1>
+			<h1 class="page-title">Library</h1>
 			<p class="mt-0.5 text-sm text-muted max-md:hidden">Everything Lain has indexed.</p>
 		</div>
 		{#if session.isAdmin || locked.length > 0 || open.length > 0}

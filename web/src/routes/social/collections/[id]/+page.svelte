@@ -150,7 +150,7 @@
 		<header class="flex flex-wrap items-end justify-between gap-4">
 			<div class="min-w-0">
 				<p class="font-mono text-[10px] uppercase tracking-[0.26em] text-muted">{t('social.collections.kicker')} · {visLabel(col.visibility)}</p>
-				<h1 class="mt-1 text-3xl font-semibold tracking-tight text-foreground">{col.name}</h1>
+				<h1 class="page-title mt-1">{col.name}</h1>
 				{#if col.description}<p class="mt-2 max-w-prose whitespace-pre-line text-sm text-muted">{col.description}</p>{/if}
 				<div class="mt-3"><UserChip user={users[col.owner_id]} sub={formatRelative(col.updated_at)} /></div>
 			</div>

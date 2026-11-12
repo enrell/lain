@@ -262,9 +262,10 @@
 <div class="space-y-6">
 	<header class="flex flex-wrap items-end justify-between gap-4">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('acquire.heading')}</h1>
-			<!-- The first-run block below says what the page is for, at length. -->
-			{#if !firstRun}<p class="mt-0.5 text-sm text-muted">{t('acquire.subtitle')}</p>{/if}
+			<h1 class="page-title">{t('acquire.heading')}</h1>
+			<!-- Kept on every tab, the first-run one too: hidden there, the tabs
+			     under it jumped a line each time the first tab was left. -->
+			<p class="mt-1 text-sm text-muted">{t('acquire.subtitle')}</p>
 		</div>
 		<div class="flex gap-4 text-sm">
 			<a href="/settings/indexers" class="inline-flex min-h-9 items-center gap-1 text-foreground/70 hover:text-foreground">{t('acquire.indexersLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>

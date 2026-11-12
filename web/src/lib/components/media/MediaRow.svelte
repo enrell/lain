@@ -24,7 +24,7 @@
 
 <section class="space-y-4">
 	<div class="flex items-baseline justify-between gap-4">
-		<h2 class="flex items-center gap-1 text-xl font-semibold tracking-[-0.025em] text-foreground sm:text-2xl">
+		<h2 class="section-title flex items-center gap-1">
 			{title}
 		</h2>
 		{#if href}

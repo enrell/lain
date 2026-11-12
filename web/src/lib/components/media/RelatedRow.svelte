@@ -83,7 +83,7 @@
 
 {#if groups.length > 0}
 	<section class={['space-y-4', className].join(' ')} aria-label={heading}>
-		<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground">{heading}</h2>
+		<h2 class="section-title">{heading}</h2>
 		<!-- Through the gutter to the window's edge, as MediaRow's rails. -->
 		<div class={['-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-4 no-scrollbar sm:-mx-8 sm:scroll-px-8 sm:px-8 md:gap-4 lg:-mx-10 lg:scroll-px-10 lg:px-10', RAIL[frame]].join(' ')}>
 			{#each groups as group (group.key)}

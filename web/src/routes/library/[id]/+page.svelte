@@ -38,7 +38,7 @@
 			{#snippet header()}
 				<header>
 					<a href="/library" class="font-mono text-[11px] uppercase tracking-[0.14em] text-muted hover:text-foreground" title="Back (Backspace)">‹ Library</a>
-					<h1 class="mt-1 text-xl font-semibold tracking-tight text-foreground">{library.name}</h1>
+					<h1 class="page-title mt-1">{library.name}</h1>
 				</header>
 			{/snippet}
 		</LibraryBrowser>
