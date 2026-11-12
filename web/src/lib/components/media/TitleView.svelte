@@ -13,7 +13,6 @@
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { onMount, tick } from 'svelte';
-	import { afterNavigate } from '$app/navigation';
 	import Check from '@lucide/svelte/icons/check';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import Play from '@lucide/svelte/icons/play';
@@ -68,6 +67,7 @@
 		libraries = [],
 		manage = [],
 		about = null,
+		returned = false,
 		onProgressChanged = undefined
 	}: {
 		group: SeriesGroup;
@@ -77,6 +77,8 @@
 		manage?: MenuEntry[];
 		/** What the files say of themselves (a comic's ComicInfo.xml), when no overlay does. */
 		about?: { summary?: string; genres?: string[] } | null;
+		/** The page was come back to (Back): it returns to where it was, not to the current part. */
+		returned?: boolean;
 		/** Called after marks changed, so the page reads progress again. */
 		onProgressChanged?: () => void;
 	} = $props();
@@ -394,12 +396,9 @@
 	 * to where the page was, and never moving the focus.
 	 */
 	let arrived = false;
-	afterNavigate((nav) => {
-		if (nav.type === 'popstate') arrived = true;
-	});
 	$effect(() => {
 		const target = resumeTarget;
-		if (arrived || !target || !progressMap || !(resuming || watched > 0)) return;
+		if (arrived || returned || !target || !progressMap || !(resuming || watched > 0)) return;
 		arrived = true;
 		void tick().then(() => {
 			const card = document.querySelector<HTMLElement>(`[data-episode-grid] [data-part="${CSS.escape(target.id)}"]`);
