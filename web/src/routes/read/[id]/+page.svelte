@@ -72,14 +72,33 @@
 		void load();
 	});
 
+	// The newest page turn not yet known to be saved (see saveOnHide).
+	let unsent: { id: string; snap: ReturnType<typeof progressFor> } | null = null;
+
 	function onPage(pageIndex: number, total: number): void {
 		// Opening a finished volume must not reset it: only a real page turn counts.
 		if (pageIndex === opened) return;
 		const snap = progressFor(pageIndex, total);
+		unsent = { id, snap };
 		void reporter?.update(snap, { force: snap.completed || pageIndex === 0 });
 	}
 
 	onDestroy(() => void reporter?.flush());
+
+	/*
+	 * Closing the tab or reloading never runs onDestroy, and the turns made
+	 * within the reporter's interval were lost with it: page 4 read, page 2
+	 * kept. The newest page goes out with keepalive as the page hides, the
+	 * way the player saves its position.
+	 */
+	function saveOnHide(): void {
+		if (!unsent) return;
+		const { id: target, snap } = unsent;
+		unsent = null;
+		void api.progress.put(target, snap, { keepalive: true }).catch(() => {
+			// The page is going away; there is no UI left to inform.
+		});
+	}
 
 	const ordered = $derived([...siblings].filter((s) => !s.missing).sort(compareEpisodes));
 	const at = $derived(ordered.findIndex((s) => s.id === id));
@@ -91,6 +110,8 @@
 </script>
 
 <svelte:head><title>{item?.title ? `Reading ${item.title} — Lain` : 'Reader — Lain'}</title></svelte:head>
+<svelte:window onpagehide={saveOnHide} />
+<svelte:document onvisibilitychange={() => document.visibilityState === 'hidden' && saveOnHide()} />
 
 {#if loading && !item}
 	<div class="flex h-dvh items-center justify-center bg-background">
