@@ -3,6 +3,8 @@
 	import { displayName } from '$lib/profile/mascots';
 	import { onMount } from 'svelte';
 	import KeyRound from '@lucide/svelte/icons/key-round';
+	import LockIcon from '@lucide/svelte/icons/lock';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import Users from '@lucide/svelte/icons/users';
@@ -33,6 +35,40 @@
 	let formError = $state<string | null>(null);
 	let form = $state({ username: '', password: '', role: 'user' });
 
+	// Deleting asks for the username typed out: it cannot be undone, and a
+	// typed name is a confirmation the keyboard reaches as fast as a button.
+	let deleteTarget = $state<User | null>(null);
+	let deleteOpen = $state(false);
+	let deleteTyped = $state('');
+	let deleting = $state(false);
+
+	function askDelete(user: User): void {
+		deleteTarget = user;
+		deleteTyped = '';
+		deleteOpen = true;
+	}
+
+	async function deleteUser(): Promise<void> {
+		const target = deleteTarget;
+		if (!target || deleteTyped.trim() !== target.username) return;
+		deleting = true;
+		try {
+			const out = await api.users.remove(target.id);
+			users = users.filter((u) => u.id !== target.id);
+			deleteOpen = false;
+			deleteTarget = null;
+			toasts.success(
+				out.libraries_reassigned.length > 0
+					? t('settings.usersPage.deletedLibraries', { name: target.username, count: out.libraries_reassigned.length })
+					: t('settings.usersPage.deleted', { name: target.username })
+			);
+		} catch (err) {
+			toasts.error(errorMessage(err, t('settings.usersPage.deleteFailed')));
+		} finally {
+			deleting = false;
+		}
+	}
+
 	let resetTarget = $state<User | null>(null);
 	let resetOpen = $state(false);
 	let resetPassword = $state('');
@@ -51,13 +87,13 @@
 		subtitleMode: ''
 	});
 
-	const subtitleModeOptions = [
-		{ value: '', label: 'Server default' },
-		{ value: 'auto', label: 'Auto — extract text, burn image tracks' },
-		{ value: 'extract', label: 'Extract only' },
-		{ value: 'burn', label: 'Always burn in' },
-		{ value: 'off', label: 'Off' }
-	];
+	const subtitleModeOptions = $derived([
+		{ value: '', label: t('settings.usersPage.subtitleDefault') },
+		{ value: 'auto', label: t('settings.transcode.audio.subtitleAuto') },
+		{ value: 'extract', label: t('settings.transcode.audio.subtitleExtract') },
+		{ value: 'burn', label: t('settings.transcode.audio.subtitleBurn') },
+		{ value: 'off', label: t('settings.transcode.audio.subtitleOff') }
+	]);
 
 	function openPlaybackLimits(user: User): void {
 		playbackTarget = user;
@@ -95,9 +131,9 @@
 			users = users.map((u) => (u.id === updated.id ? updated : u));
 			playbackOpen = false;
 			playbackTarget = null;
-			toasts.success(`Playback limits updated for ${target.username}.`);
-		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not update the playback limits.'));
+				toasts.success(t('settings.usersPage.limitsSaved', { name: target.username }));
+			} catch (err) {
+				toasts.error(errorMessage(err, t('settings.usersPage.limitsFailed')));
 		} finally {
 			playbackSaving = false;
 		}
@@ -133,7 +169,7 @@
 			if (undo) toasts.undoable(message, undo);
 			else toasts.success(message);
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not update the user.'));
+			toasts.error(errorMessage(err, t('settings.usersPage.updateFailed')));
 		} finally {
 			rowBusy = null;
 		}
@@ -152,7 +188,7 @@
 			users = [...users, user].sort((a, b) => a.username.localeCompare(b.username));
 			createOpen = false;
 			form = { username: '', password: '', role: 'user' };
-			toasts.success(`User “${user.username}” created.`);
+			toasts.success(t('settings.usersPage.created', { name: user.username }));
 		} catch (err) {
 			formError = errorMessage(err);
 		} finally {
@@ -169,21 +205,21 @@
 			resetOpen = false;
 			resetPassword = '';
 			resetTarget = null;
-			toasts.success(`Password reset for “${target.username}”. Their sessions were signed out.`);
-		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not reset the password.'));
+				toasts.success(t('settings.usersPage.passwordReset', { name: target.username }));
+			} catch (err) {
+				toasts.error(errorMessage(err, t('settings.usersPage.resetFailed')));
 		} finally {
 			resetting = false;
 		}
 	}
 
-	const roleOptions = [
-		{ value: 'user', label: 'User' },
-		{ value: 'admin', label: 'Admin' }
-	];
+	const roleOptions = $derived([
+		{ value: 'user', label: t('settings.usersPage.roleUser') },
+		{ value: 'admin', label: t('settings.usersPage.roleAdmin') }
+	]);
 </script>
 
-<svelte:head><title>Users — Settings — Lain</title></svelte:head>
+<svelte:head><title>{t('settings.usersPage.pageTitle')}</title></svelte:head>
 
 <SettingsGroup
 	id="users"
@@ -192,7 +228,7 @@
 >
 	{#snippet aside()}
 		<Button variant="tonal" size="field" onclick={() => (createOpen = true)}>
-			<Users class="size-4" /> Add user
+			<Users class="size-4" /> {t('settings.usersPage.add')}
 		</Button>
 	{/snippet}
 	{#if loading}
@@ -202,71 +238,99 @@
 	{:else if users.length === 0}
 		<div class="flex flex-col items-center px-6 py-10 text-center">
 			<UserRound class="size-6 text-muted" />
-			<p class="mt-3 text-base font-semibold text-foreground">No users</p>
-			<p class="mt-1 text-sm text-muted">This should not happen: setup creates the first admin.</p>
+			<p class="mt-3 text-base font-semibold text-foreground">{t('settings.usersPage.none')}</p>
+			<p class="mt-1 text-sm text-muted">{t('settings.usersPage.noneBody')}</p>
 		</div>
 	{:else}
-		<!-- One table: who, then role, active, and the two per-account actions,
-		     in columns that line up from row to row. -->
+		<!-- One table: who, then role, active, and the per-account actions, in
+		     columns that line up from row to row. Your own row cannot change
+		     your role, switch you off or delete you: it says so in words
+		     instead of drawing controls that look live and do nothing. -->
 		<ul class="settings-items">
 			{#each users as user (user.id)}
-				<li class="flex flex-wrap items-center gap-x-4 gap-y-3 py-3.5 lg:grid lg:grid-cols-[minmax(0,1fr)_8rem_auto_auto]">
+				{@const self = isSelf(user)}
+				<li class="group/row flex flex-wrap items-center gap-x-4 gap-y-3 py-3.5 lg:grid lg:grid-cols-[minmax(0,1fr)_8rem_7.5rem_20rem]">
 					<div class="flex min-w-0 basis-full items-center gap-3">
 						<Avatar {user} class="size-9 shrink-0" />
 						<div class="min-w-0">
 							<div class="flex flex-wrap items-center gap-2">
 								<p class="truncate text-sm font-medium text-foreground">{displayName(user)}</p>
 								{#if user.profile?.display_name}<span class="font-mono text-[11px] text-muted">@{user.username}</span>{/if}
-								{#if isSelf(user)}<Badge tone="accent">you</Badge>{/if}
-								{#if user.disabled}<Badge tone="danger">disabled</Badge>{/if}
+								{#if self}<Badge tone="accent">{t('settings.usersPage.you')}</Badge>{/if}
+								{#if user.disabled}<Badge tone="danger">{t('settings.usersPage.disabledBadge')}</Badge>{/if}
 								{#if rowBusy === user.id}<Spinner class="size-3.5 text-muted" />{/if}
 							</div>
 							<p class="mt-0.5 text-xs text-muted">
-								{user.role} · joined {formatDate(user.created_at)}
+								{t('settings.usersPage.joined', { role: user.role === 'admin' ? t('settings.usersPage.roleAdmin') : t('settings.usersPage.roleUser'), date: formatDate(user.created_at) })}
 							</p>
 						</div>
 					</div>
-					<div class="w-32">
-						<Select
-							aria-label={`Role for ${user.username}`}
-							value={user.role}
-							options={roleOptions}
-							disabled={isSelf(user)}
-							onValueChange={(role) => void patch(user, { role: role as 'admin' | 'user' }, `Role updated for ${user.username}.`)}
-						/>
-					</div>
-					<div class="flex h-9 items-center gap-2 text-sm text-muted">
-						<!-- Named per row: a list of switches all called "Active" told a screen reader nothing.
-						     A mis-click locks someone out at once, so the toast can take it back (Ctrl+Z). -->
-						<Switch
-							bare
-							label={t('settings.groups.users.activeFor', { name: user.username })}
-							checked={!user.disabled}
-							disabled={isSelf(user)}
-							onCheckedChange={(enabled) =>
-								void patch(
-									user,
-									{ disabled: !enabled },
-									t(enabled ? 'settings.groups.users.enabled' : 'settings.groups.users.disabled', { name: user.username }),
-									() => void patch(user, { disabled: enabled }, t(enabled ? 'settings.groups.users.disabled' : 'settings.groups.users.enabled', { name: user.username }))
-								)}
-						/>
-						<span>Active</span>
-					</div>
-					<div class="flex flex-wrap items-center gap-1">
-						<Button variant="ghost" size="field" onclick={() => openPlaybackLimits(user)}>
-							<SlidersHorizontal class="size-4" /> Playback
+					{#if self}
+						<p class="flex h-9 w-32 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted" title={t('settings.usersPage.selfRole')}>
+							<LockIcon class="size-3" aria-hidden="true" />{user.role === 'admin' ? t('settings.usersPage.roleAdmin') : t('settings.usersPage.roleUser')}
+						</p>
+						<p class="flex h-9 items-center text-[13px] text-muted">{t('settings.usersPage.signedInHere')}</p>
+					{:else}
+						<div class="w-32">
+							<Select
+								aria-label={t('settings.usersPage.roleFor', { name: user.username })}
+								value={user.role}
+								options={roleOptions}
+								onValueChange={(role) => void patch(user, { role: role as 'admin' | 'user' }, t('settings.usersPage.roleSaved', { name: user.username }))}
+							/>
+						</div>
+						<div class="flex h-9 items-center gap-2 text-sm text-muted">
+							<!-- Named per row: a list of switches all called "Active" told a screen reader nothing.
+							     A mis-click locks someone out at once, so the toast can take it back (Ctrl+Z). -->
+							<Switch
+								bare
+								label={t('settings.groups.users.activeFor', { name: user.username })}
+								checked={!user.disabled}
+								onCheckedChange={(enabled) =>
+									void patch(
+										user,
+										{ disabled: !enabled },
+										t(enabled ? 'settings.groups.users.enabled' : 'settings.groups.users.disabled', { name: user.username }),
+										() => void patch(user, { disabled: enabled }, t(enabled ? 'settings.groups.users.disabled' : 'settings.groups.users.enabled', { name: user.username }))
+									)}
+							/>
+							<span>{t('settings.usersPage.active')}</span>
+						</div>
+					{/if}
+					<!-- A fixed column, filled from its end: every row is its own grid,
+					     so an auto column was as wide as that row's buttons and the
+					     columns before it drifted from row to row. -->
+					<div class="flex flex-nowrap items-center justify-end gap-0.5 max-lg:ms-auto">
+						<!-- Icons alone on a phone, as on Libraries: three worded buttons
+						     broke over two lines under the role and the switch. -->
+						<Button variant="ghost" size="field" class="max-lg:px-3" title={t('settings.usersPage.playback')} onclick={() => openPlaybackLimits(user)}>
+							<SlidersHorizontal class="size-4" /> <span class="max-lg:sr-only">{t('settings.usersPage.playback')}</span>
 						</Button>
 						<Button
 							variant="ghost"
 							size="field"
+							class="max-lg:px-3"
+							title={t('settings.usersPage.resetPassword')}
 							onclick={() => {
 								resetTarget = user;
 								resetOpen = true;
 							}}
 						>
-							<KeyRound class="size-4" /> Reset password
+							<KeyRound class="size-4" /> <span class="max-lg:sr-only">{t('settings.usersPage.resetPassword')}</span>
 						</Button>
+						{#if !self}
+							<!-- Quiet until pointed at, as Remove is on Libraries. -->
+							<Button
+								variant="ghost"
+								size="field"
+								class="hover:text-danger! focus-visible:text-danger!"
+								aria-label={t('settings.usersPage.deleteFor', { name: user.username })}
+								title={t('settings.usersPage.deleteFor', { name: user.username })}
+								onclick={() => askDelete(user)}
+							>
+								<Trash2 class="size-4" /> <span class="sr-only">{t('settings.usersPage.delete')}</span>
+							</Button>
+						{/if}
 					</div>
 				</li>
 			{/each}
@@ -275,7 +339,7 @@
 </SettingsGroup>
 
 <!-- Create -->
-<Modal bind:open={createOpen} title="Add a user" description="Accounts are local to this server.">
+<Modal bind:open={createOpen} title={t('settings.usersPage.addTitle')} description={t('settings.usersPage.addBody')}>
 	<form class="space-y-4" onsubmit={createUser}>
 		{#if formError}
 			<div
@@ -285,19 +349,19 @@
 				{formError}
 			</div>
 		{/if}
-		<Input label="Username" bind:value={form.username} autocapitalize="none" spellcheck={false} required />
+		<Input label={t('settings.usersPage.username')} bind:value={form.username} autocapitalize="none" spellcheck={false} required />
 		<Input
-			label="Password"
+			label={t('settings.usersPage.password')}
 			type="password"
 			bind:value={form.password}
-			hint="At least 8 characters."
+			hint={t('security.tooShort')}
 			autocomplete="new-password"
 			required
 		/>
-		<Select label="Role" bind:value={form.role} options={roleOptions} />
+		<Select label={t('settings.usersPage.role')} bind:value={form.role} options={roleOptions} />
 		<div class="flex justify-end gap-2 pt-1">
-			<Button type="button" variant="ghost" onclick={() => (createOpen = false)}>Cancel</Button>
-			<Button type="submit" loading={creating}>Create user</Button>
+			<Button type="button" variant="ghost" onclick={() => (createOpen = false)}>{t('common.cancel')}</Button>
+			<Button type="submit" loading={creating}>{t('settings.usersPage.create')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
 		</div>
 	</form>
 </Modal>
@@ -305,8 +369,8 @@
 <!-- Reset password -->
 <Modal
 	bind:open={resetOpen}
-	title="Reset password"
-	description="The user's current sessions are signed out immediately."
+	title={t('settings.usersPage.resetTitle')}
+	description={t('settings.usersPage.resetBody')}
 >
 	<form
 		class="space-y-4"
@@ -315,20 +379,18 @@
 			void resetUserPassword();
 		}}
 	>
-		<p class="text-sm text-muted">
-			New password for <span class="font-medium text-foreground">{resetTarget?.username}</span>
-		</p>
+		<p class="text-sm text-muted">{t('settings.usersPage.resetFor', { name: resetTarget?.username ?? '' })}</p>
 		<Input
-			label="New password"
+			label={t('security.new')}
 			type="password"
 			bind:value={resetPassword}
-			hint="At least 8 characters."
+			hint={t('security.tooShort')}
 			autocomplete="new-password"
 			required
 		/>
 		<div class="flex justify-end gap-2 pt-1">
-			<Button type="button" variant="ghost" onclick={() => (resetOpen = false)}>Cancel</Button>
-			<Button type="submit" loading={resetting} disabled={resetPassword.length < 8}>Reset password</Button>
+			<Button type="button" variant="ghost" onclick={() => (resetOpen = false)}>{t('common.cancel')}</Button>
+			<Button type="submit" loading={resetting} disabled={resetPassword.length < 8}>{t('settings.usersPage.resetPassword')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
 		</div>
 	</form>
 </Modal>
@@ -336,8 +398,8 @@
 <!-- Playback limits (D-042) -->
 <Modal
 	bind:open={playbackOpen}
-	title="Playback limits"
-	description="Per-user transcoding permissions and the output bitrate cap."
+	title={t('settings.usersPage.limitsTitle')}
+	description={t('settings.usersPage.limitsBody')}
 >
 	<form
 		class="space-y-4"
@@ -346,50 +408,84 @@
 			void savePlaybackLimits();
 		}}
 	>
-		<p class="text-sm text-muted">
-			Limits for <span class="font-medium text-foreground">{playbackTarget?.username}</span>
-		</p>
+		<p class="text-sm text-muted">{t('settings.usersPage.limitsFor', { name: playbackTarget?.username ?? '' })}</p>
 		<Switch
-			label="Allow video transcoding"
-			description="A re-encode of the video stream (codec, HDR, quality)."
+			label={t('settings.usersPage.allowVideo')}
+			description={t('settings.usersPage.allowVideoHint')}
 			checked={playbackForm.video}
 			onCheckedChange={(checked) => (playbackForm.video = checked)}
 		/>
 		<Switch
-			label="Allow audio transcoding"
-			description="Audio codec conversion or downmix."
+			label={t('settings.usersPage.allowAudio')}
+			description={t('settings.usersPage.allowAudioHint')}
 			checked={playbackForm.audio}
 			onCheckedChange={(checked) => (playbackForm.audio = checked)}
 		/>
 		<Switch
-			label="Allow remuxing"
-			description="Container-only conversion with stream copy."
+			label={t('settings.usersPage.allowRemux')}
+			description={t('settings.usersPage.allowRemuxHint')}
 			checked={playbackForm.remux}
 			onCheckedChange={(checked) => (playbackForm.remux = checked)}
 		/>
 		<Input
-			label="Maximum bitrate (kbps, 0 = unlimited)"
+			label={t('settings.usersPage.maxBitrate')}
 			type="number"
 			min="0"
 			bind:value={playbackForm.maxBitrate}
 		/>
 		<Input
-			label="Simultaneous stream limit (0 = unlimited)"
+			label={t('settings.usersPage.maxStreams')}
 			type="number"
 			min="0"
 			max="32"
 			bind:value={playbackForm.maxStreams}
-			hint="How many transcodes this account may run at once."
+			hint={t('settings.usersPage.maxStreamsHint')}
 		/>
 		<Select
-			label="Subtitle mode"
+			label={t('settings.usersPage.subtitleMode')}
 			value={playbackForm.subtitleMode}
 			options={subtitleModeOptions}
 			onValueChange={(value) => (playbackForm.subtitleMode = value)}
 		/>
 		<div class="flex justify-end gap-2 pt-1">
-			<Button type="button" variant="ghost" onclick={() => (playbackOpen = false)}>Cancel</Button>
-			<Button type="submit" loading={playbackSaving}>Save limits</Button>
+			<Button type="button" variant="ghost" onclick={() => (playbackOpen = false)}>{t('common.cancel')}</Button>
+			<Button type="submit" loading={playbackSaving}>{t('settings.usersPage.saveLimits')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
+		</div>
+	</form>
+</Modal>
+
+<!-- Delete: names what goes with the account, and asks for its name. -->
+<Modal
+	bind:open={deleteOpen}
+	title={t('settings.usersPage.deleteTitle', { name: deleteTarget?.username ?? '' })}
+	description={t('settings.usersPage.deleteBody')}
+>
+	<form
+		class="space-y-4"
+		onsubmit={(e) => {
+			e.preventDefault();
+			void deleteUser();
+		}}
+	>
+		<ul class="list-disc space-y-1 ps-5 text-sm text-muted marker:text-muted/60">
+			<li>{t('settings.usersPage.loseProgress')}</li>
+			<li>{t('settings.usersPage.loseLists')}</li>
+			<li>{t('settings.usersPage.loseSocial')}</li>
+			<li>{t('settings.usersPage.loseLibraries')}</li>
+		</ul>
+		<p class="text-xs text-muted">{t('settings.usersPage.keeps')}</p>
+		<Input
+			label={t('settings.usersPage.typeName', { name: deleteTarget?.username ?? '' })}
+			bind:value={deleteTyped}
+			autocapitalize="none"
+			autocomplete="off"
+			spellcheck={false}
+		/>
+		<div class="flex justify-end gap-2 pt-1">
+			<Button type="button" variant="ghost" onclick={() => (deleteOpen = false)}>{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
+			<Button type="submit" variant="danger" loading={deleting} disabled={deleteTyped.trim() !== deleteTarget?.username}>
+				{t('settings.usersPage.deleteConfirm', { name: deleteTarget?.username ?? '' })} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
+			</Button>
 		</div>
 	</form>
 </Modal>
