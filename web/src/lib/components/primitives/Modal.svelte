@@ -19,18 +19,24 @@
 	/*
 	 * Keyboard-first: a dialog opens on what it asks for. Left to itself it
 	 * focused its first tabbable, the close button, so Add a library and Add
-	 * a user needed a Tab before the first keystroke landed. The first field
-	 * (or an element marked data-autofocus) takes focus; a dialog with no
-	 * field keeps the default.
+	 * a user needed a Tab before the first keystroke landed. An element marked
+	 * data-autofocus takes focus, else the first control when it is a field.
+	 * A dialog that opens on choices keeps the default (and its own focus
+	 * code): the filters sheet's first field is a genre search far down, and
+	 * the rating dialog's is the review under the scores; focusing those
+	 * scrolled the sheet and opened a phone's keyboard over it.
 	 */
+	const FIELD =
+		'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not(:disabled), textarea:not(:disabled), select:not(:disabled)';
 	let body = $state<HTMLElement | null>(null);
 	function landFocus(event: Event): void {
-		const field = body?.querySelector<HTMLElement>(
-			'[data-autofocus], input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not(:disabled), textarea:not(:disabled), select:not(:disabled)'
-		);
-		if (!field) return;
+		const marked = body?.querySelector<HTMLElement>('[data-autofocus]');
+		const first =
+			marked ??
+			body?.querySelector<HTMLElement>(`${FIELD}, button:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])`);
+		if (!first || (!marked && !first.matches(FIELD))) return;
 		event.preventDefault();
-		field.focus();
+		first.focus();
 	}
 </script>
 
