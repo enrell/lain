@@ -152,30 +152,36 @@
 	<form onsubmit={save}>
 		<SettingsGroup title="Details">
 			<SettingRow id="display-name" label="Display name" hint={`Shown instead of @${user.username}.`} saved={flash.is('details')}>
-				<input
-					class="h-9 w-full rounded-md border px-2.5 text-sm text-foreground outline-none sm:w-72"
-					bind:value={name}
-					maxlength={MAX_NAME}
-					placeholder={user.username}
-					autocomplete="nickname"
-					aria-label="Display name"
-				/>
-				<!-- The count appears with the first character: beside a placeholder, "0/40" read as a broken counter. -->
-				<span class="w-12 text-right font-mono text-[10px] tabular-nums text-muted" class:invisible={name.length === 0}>{name.length}/{MAX_NAME}</span>
+				<!-- The count sits inside its field's end: beside it, it floated in a column of its
+				     own and the field stopped short of every other control's right edge. -->
+				<div class="relative w-full sm:w-72">
+					<input
+						class="h-9 w-full rounded-md border px-2.5 pe-12 text-sm text-foreground outline-none"
+						bind:value={name}
+						maxlength={MAX_NAME}
+						placeholder={user.username}
+						autocomplete="nickname"
+						aria-label="Display name"
+					/>
+					<!-- The count appears with the first character: beside a placeholder, "0/40" read as a broken counter. -->
+					<span class="pointer-events-none absolute inset-y-0 end-2.5 flex items-center font-mono text-[10px] tabular-nums text-muted" class:invisible={name.length === 0}>{name.length}/{MAX_NAME}</span>
+				</div>
 			</SettingRow>
 			<SettingRow id="bio" label="Bio" hint="One or two lines.">
-				<textarea
-					bind:value={bio}
-					maxlength={MAX_BIO}
-					rows="2"
-					aria-label="Bio"
-					class="w-full resize-none rounded-md border px-2.5 py-2 text-sm text-foreground outline-none placeholder:text-muted sm:w-72"
-					placeholder="A line about you."
-					onkeydown={(e) => {
-						if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit();
-					}}
-				></textarea>
-				<span class="w-12 text-right font-mono text-[10px] tabular-nums text-muted" class:invisible={bio.length === 0}>{bio.length}/{MAX_BIO}</span>
+				<div class="relative w-full sm:w-72">
+					<textarea
+						bind:value={bio}
+						maxlength={MAX_BIO}
+						rows="2"
+						aria-label="Bio"
+						class="block w-full resize-none rounded-md border px-2.5 pb-5 pt-2 text-sm text-foreground outline-none placeholder:text-muted"
+						placeholder="A line about you."
+						onkeydown={(e) => {
+							if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit();
+						}}
+					></textarea>
+					<span class="pointer-events-none absolute bottom-1.5 end-2.5 font-mono text-[10px] tabular-nums text-muted" class:invisible={bio.length === 0}>{bio.length}/{MAX_BIO}</span>
+				</div>
 			</SettingRow>
 			{#if dirty}
 				<div class="flex items-center justify-end gap-3 py-3">
