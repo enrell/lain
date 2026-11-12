@@ -67,7 +67,7 @@
 				onclick={() => settings.toggleDual()}
 			>
 				<Columns2 class="size-4" aria-hidden="true" />
-				<span class="hidden xl:inline">Spread</span>
+				<span class="hidden max-md:inline xl:inline">Spread</span>
 			</ReaderToggle>
 			{#if settings.dual}
 				<ReaderToggle
@@ -77,7 +77,7 @@
 				>
 					<!-- An icon like its neighbours, the word where there is room for all the words. -->
 					<BookImage class="size-4" aria-hidden="true" />
-					<span class="hidden xl:inline">Cover</span>
+					<span class="hidden max-md:inline xl:inline">Cover</span>
 				</ReaderToggle>
 			{/if}
 		{/if}
@@ -87,7 +87,7 @@
 			onclick={() => settings.setMode(settings.mode === 'strip' ? 'paged' : 'strip')}
 		>
 			<GalleryVertical class="size-4" aria-hidden="true" />
-			<span class="hidden xl:inline">Webtoon</span>
+			<span class="hidden max-md:inline xl:inline">Webtoon</span>
 		</ReaderToggle>
 	{/snippet}
 </ReaderBase>

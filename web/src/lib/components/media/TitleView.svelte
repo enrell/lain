@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -281,6 +282,21 @@
 		}
 	}
 
+	let restarting = $state(false);
+	async function startOver(): Promise<void> {
+		if (!resumeTarget || restarting) return;
+		restarting = true;
+		try {
+			await api.progress.put(resumeTarget.id, { position_sec: 0, duration_sec: resumeProgress?.duration_sec ?? 0, completed: false });
+			toasts.success('Progress reset.');
+			onProgressChanged?.();
+		} catch (err) {
+			toasts.error(errorMessage(err, 'Could not reset progress.'));
+		} finally {
+			restarting = false;
+		}
+	}
+
 	function stillUrl(id: string): string {
 		return api.thumbnail.url(id, session.token, { width: 480 });
 	}
@@ -310,7 +326,7 @@
 			<div class="aspect-[2/3] w-24 shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
-			<div class="hero-monolith-copy min-w-0 max-w-5xl flex-1">
+			<div class="hero-monolith-copy min-w-0 max-w-6xl flex-1">
 				{#if homeLibrary}
 					<a href={`/library/${homeLibrary.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
 						<ChevronLeft class="size-4" aria-hidden="true" /> {homeLibrary.name}
@@ -327,7 +343,7 @@
 				{/if}
 				<!-- The main action and what else the title can do, where the eye
 				     already is; the rail below keeps the cover and the facts. -->
-				<div class="mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
+				<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
 					{#if resumeTarget}
 						<LinkButton href={playHref(resumeTarget.id)} size="lg" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
@@ -339,6 +355,12 @@
 					{/if}
 					<!-- The heart keeps the main action's row, on a phone too. -->
 					<FavoriteButton />
+					{#if resuming && resumeTarget}
+						<!-- The one under way goes back to its start, as on a film's page and in the app. -->
+						<Button variant="ghost" size="md" loading={restarting} onclick={() => void startOver()}>
+							<RotateCcw class="size-4" aria-hidden="true" /> {t('title.startOver')}
+						</Button>
+					{/if}
 					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} size="md" /></span>{/if}
 					<Button variant="ghost" size="md" onclick={() => (confirmMark = true)}>
 						<CircleCheck class="size-4" aria-hidden="true" /> {allDone ? (reading ? 'Mark all unread' : 'Mark all unwatched') : reading ? 'Mark all read' : 'Mark all watched'}
@@ -361,7 +383,8 @@
 
 	<div>
 		<div class="min-w-0">
-			{#if seasons.length > 1}
+			<!-- Chips narrow a long list; when every chip would be one card of the list under it (three volumes), they only say it twice. -->
+			{#if seasons.length > 1 && seasons.length < group.items.length}
 				<div class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Seasons">
 					<button
 						type="button"
