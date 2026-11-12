@@ -51,6 +51,7 @@ const en = {
 			submit: 'Sign in',
 			failed: 'Sign in failed.',
 			mismatch: 'That username and password do not match. Check both and try again.',
+			disabled: 'This account is disabled. An administrator of this server can turn it back on.',
 			forgot: 'Forgot your password? An administrator of this server can set a new one.'
 		}
 	},
