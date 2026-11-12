@@ -5,6 +5,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **The player's episode list on every screen**: between an upright
+  phone (list under the picture) and a wide screen (list beside it) the
+  bar's list button and E open it as a drawer over the picture's edge;
+  Escape, the button or a click outside close it. Beside the picture the
+  list has its own Hide button with its key, the choice is kept, and the
+  episode playing is scrolled into view.
+- **Reading options on a phone**: the reader's top bar is one row, and
+  its reading toggles open under it from one button.
+
+### Changed
+- **The reader fits a whole page between its bars** while they show,
+  and gives it the full height when they go away; full width, zoom and
+  the strip still scroll under them. The spread's Cover alone is drawn
+  as a check box option of the spread, not a second filled pill.
+- **The player's settings panel fits a phone on its side**, and its
+  menus share one width. The reader's `?` list is the app's dialog, as
+  the player's is.
+- Every string of the player and the reader, their settings panels and
+  their routes, and a readable file's name (Vol, Ch, Issue), goes
+  through `t()`.
+
+### Fixed
+- **Subtitles step above the player's controls in Firefox**: Firefox
+  draws cues where they cannot be moved, so there the player draws them
+  itself (the D-082 overlay), above the controls while they show. The
+  overlay's cues are sized from the player's height, as the browsers'
+  own are.
+- **The player's on-screen messages reach screen readers**: one live
+  region stays mounted and only its text changes.
+- **The reader's newest page is saved when the tab closes**, by rules
+  now covered by tests; going back to the page a volume opened on is
+  saved too.
+- The player and the reader no longer show the page's scrollbar gutter
+  as a grey strip at the right edge, and the Enter key on the reader's
+  end card is readable.
+
 ## [0.3.1] - 2026-11-12
 
 ### Added
