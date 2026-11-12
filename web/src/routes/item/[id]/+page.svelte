@@ -7,7 +7,7 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Clapperboard from '@lucide/svelte/icons/clapperboard';
 	import Play from '@lucide/svelte/icons/play';
@@ -67,6 +67,13 @@
 	// The title's other files. Null means "this is a single-file title"
 	// (a movie or a lone special), which renders the plain item page.
 	let series = $state<SeriesGroup | null>(null);
+	// Come back to with Back: the page returns to where it was. Known here,
+	// where the route is drawn for its navigation; the title view below is
+	// drawn only once the title has loaded, after the navigation is over.
+	let returned = $state(false);
+	afterNavigate((nav) => {
+		returned = nav.type === 'popstate';
+	});
 	// What a comic or manga archive says of itself (ComicInfo.xml): its summary
 	// and genres stand in the hero when no overlay has them.
 	let about = $state<ComicInfo | null>(null);
@@ -355,7 +362,7 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if series}
 	{#key series.key}
-		<TitleView group={series} {progressMap} {libraries} {manage} {about} onProgressChanged={() => void load(true)} />
+		<TitleView group={series} {progressMap} {libraries} {manage} {about} {returned} onProgressChanged={() => void load(true)} />
 	{/key}
 	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} summary={!!enrichment?.synopsis} /></div>{/if}
 {:else if item}
