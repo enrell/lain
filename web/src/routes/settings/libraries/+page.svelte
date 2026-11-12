@@ -693,12 +693,12 @@
 <!-- Delete -->
 <Modal
 	bind:open={deleteOpen}
-	title="Remove library?"
-	description="The files on disk stay untouched. Its catalog entries are removed with it."
+	title={t('settings.groups.libraries.removeTitle')}
+	description={t('settings.groups.libraries.removeBody')}
 >
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (deleteOpen = false)}>Cancel <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
-		<Button id="confirm-remove-library" variant="danger" loading={deleting} onclick={() => void remove()}>Remove library <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
+		<Button variant="ghost" onclick={() => (deleteOpen = false)}>{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
+		<Button id="confirm-remove-library" variant="danger" loading={deleting} onclick={() => void remove()}>{t('settings.groups.libraries.remove')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
 	{/snippet}
 	{#if deleteTarget}
 		<p class="text-sm text-muted">

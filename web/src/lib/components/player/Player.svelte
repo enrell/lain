@@ -2260,9 +2260,9 @@
 	</footer>
 </div>
 
-<Modal bind:open={keysOpen} title="Keyboard shortcuts">
+<Modal bind:open={keysOpen} title={t('shortcuts.title')}>
 	<dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-sm">
-		{#each [[['Space', 'K'], 'Play or pause'], [['←', '→'], 'Back or forward 5 seconds'], [['J', 'L'], `Back or forward ${skipSec} seconds`], [['↑', '↓'], 'Volume'], [['M'], 'Mute'], [['C'], t('player.keys.subtitles')], [['<', '>'], t('player.keys.speed')], [['F'], 'Full screen'], ...(episodes ? [[['E'], t('player.keys.episodes')] as [string[], string]] : []), ...(next ? [[['Shift', 'N'], t('player.nextEpisode')] as [string[], string]] : []), [['Esc'], 'Close a panel, leave full screen'], [['?'], 'This list']] as [keys, what] (what)}
+		{#each [[['Space', 'K'], t('player.keys.play')], [['←', '→'], t('player.keys.seek', { seconds: 5 })], [['J', 'L'], t('player.keys.seek', { seconds: skipSec })], [['↑', '↓'], t('player.keys.volume')], [['M'], t('player.keys.mute')], [['C'], t('player.keys.subtitles')], [['<', '>'], t('player.keys.speed')], [['F'], t('player.keys.fullscreen')], ...(episodes ? [[['E'], t('player.keys.episodes')] as [string[], string]] : []), ...(next ? [[['Shift', 'N'], t('player.nextEpisode')] as [string[], string]] : []), [['Esc'], t('player.keys.escape')], [['?'], t('shortcuts.help')]] as [keys, what] (what)}
 			<dt class="flex gap-1">{#each keys as key (key)}<kbd>{key}</kbd>{/each}</dt>
 			<dd class="text-muted">{what}</dd>
 		{/each}

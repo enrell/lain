@@ -62,16 +62,16 @@
 		{#if error}
 			<p class="py-3 text-sm text-danger" role="alert">{error}</p>
 		{/if}
-		<SettingRow label="Current password">
-			<input bind:this={oldInput} class={field} type="password" bind:value={oldPassword} autocomplete="current-password" required aria-label="Current password" aria-invalid={fieldErrors.old ? 'true' : undefined} aria-describedby={fieldErrors.old ? 'pw-old-error' : undefined} />
+		<SettingRow label={t('security.current')}>
+			<input bind:this={oldInput} class={field} type="password" bind:value={oldPassword} autocomplete="current-password" required aria-label={t('security.current')} aria-invalid={fieldErrors.old ? 'true' : undefined} aria-describedby={fieldErrors.old ? 'pw-old-error' : undefined} />
 			{#snippet below()}{#if fieldErrors.old}<p id="pw-old-error" class="text-xs text-danger sm:text-right">{fieldErrors.old}</p>{/if}{/snippet}
 		</SettingRow>
-		<SettingRow label="New password" hint="At least 8 characters.">
-			<input bind:this={newInput} class={field} type="password" bind:value={newPassword} autocomplete="new-password" required aria-label="New password" aria-invalid={fieldErrors.new ? 'true' : undefined} aria-describedby={fieldErrors.new ? 'pw-new-error' : undefined} />
+		<SettingRow label={t('security.new')} hint={t('security.tooShort')}>
+			<input bind:this={newInput} class={field} type="password" bind:value={newPassword} autocomplete="new-password" required aria-label={t('security.new')} aria-invalid={fieldErrors.new ? 'true' : undefined} aria-describedby={fieldErrors.new ? 'pw-new-error' : undefined} />
 			{#snippet below()}{#if fieldErrors.new}<p id="pw-new-error" class="text-xs text-danger sm:text-right">{fieldErrors.new}</p>{/if}{/snippet}
 		</SettingRow>
-		<SettingRow label="Confirm new password">
-			<input bind:this={confirmInput} class={field} type="password" bind:value={confirm} autocomplete="new-password" required aria-label="Confirm new password" aria-invalid={fieldErrors.confirm ? 'true' : undefined} aria-describedby={fieldErrors.confirm ? 'pw-confirm-error' : undefined} />
+		<SettingRow label={t('security.confirm')}>
+			<input bind:this={confirmInput} class={field} type="password" bind:value={confirm} autocomplete="new-password" required aria-label={t('security.confirm')} aria-invalid={fieldErrors.confirm ? 'true' : undefined} aria-describedby={fieldErrors.confirm ? 'pw-confirm-error' : undefined} />
 			{#snippet below()}{#if fieldErrors.confirm}<p id="pw-confirm-error" class="text-xs text-danger sm:text-right">{fieldErrors.confirm}</p>{/if}{/snippet}
 		</SettingRow>
 		<div class="flex items-center justify-between gap-3 py-4">
