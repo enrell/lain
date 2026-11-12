@@ -63,7 +63,7 @@ const en = {
 		primary: 'Primary',
 		home: 'Home',
 		library: 'Library',
-		list: 'My list',
+		list: 'Tracking',
 		social: 'Social',
 		unread: { one: '{count} unread notification', other: '{count} unread notifications' },
 		acquire: 'Acquire',

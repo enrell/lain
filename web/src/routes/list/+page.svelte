@@ -61,11 +61,11 @@
 	onMount(() => void load());
 </script>
 
-<svelte:head><title>My list — Lain</title></svelte:head>
+<svelte:head><title>Tracking — Lain</title></svelte:head>
 
 <div class="space-y-6">
 	<header>
-		<h1 class="text-xl font-semibold tracking-tight text-foreground">My list</h1>
+		<h1 class="text-xl font-semibold tracking-tight text-foreground">Tracking</h1>
 		<p class="mt-0.5 text-sm text-muted">
 			Everything your connected accounts track — manga, comics, anime, movies and series in
 			one place.

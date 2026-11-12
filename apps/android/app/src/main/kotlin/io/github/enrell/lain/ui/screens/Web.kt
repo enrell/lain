@@ -561,16 +561,17 @@ fun SettingRow(label: String, hint: String = "", below: Boolean = false, control
 @Composable
 fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit, modifier: Modifier = Modifier) {
     val l = LocalLain.current
-    Row(modifier.clip(l.buttonShape).background(l.field).padding(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+    // An outlined track, and the chosen one filled with the accent: a grey track with a faint
+    // tint on the choice read the other way round (the grey looked like the selection).
+    Row(modifier.clip(l.buttonShape).border(1.dp, l.line, l.buttonShape).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         for ((value, label) in options) {
             val on = value == selected
             Box(
-                Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(5.dp)).background(if (on) l.accent.copy(alpha = 0.2f) else Color.Transparent)
-                    .border(1.dp, if (on) l.accent else Color.Transparent, RoundedCornerShape(5.dp))
+                Modifier.heightIn(min = 38.dp).clip(RoundedCornerShape(5.dp)).background(if (on) l.accent else Color.Transparent)
                     .clickable { onPick(value) }.padding(horizontal = 14.dp)
                     .semantics { stateDescription = if (on) "selected" else "not selected" },
                 contentAlignment = Alignment.Center,
-            ) { Text(label, color = if (on) l.text else l.muted, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
+            ) { Text(label, color = if (on) l.onAccent else l.muted, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
         }
     }
 }
