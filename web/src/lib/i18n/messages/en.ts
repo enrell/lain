@@ -260,7 +260,10 @@ const en = {
 				callbackHint:
 					'AniList requires an exact match. Behind a reverse proxy, this is the public URL users reach, not the internal bind address.',
 				clientIdHint: 'The numeric id of the AniList application.',
-				keyNameHint: 'What the program is, so its key can be told apart.'
+				keyNameHint: 'What the program is, so its key can be told apart.',
+				revokeTitle: 'Revoke “{name}”?',
+				revokeBody: 'A program using this key stops working at once. A revoked key cannot be restored; make a new one instead.',
+				revoke: 'Revoke'
 			},
 			plugins: {
 				capabilities: 'One job per row, and the plugin doing it.',
@@ -667,6 +670,8 @@ const en = {
 			post: 'Post',
 			reply: 'Reply',
 			delete: 'Delete',
+			deleteTitle: 'Delete this comment?',
+			deleteBody: 'It is gone for everyone, and replies to it lose what they answered.',
 			replyingTo: 'Replying to {name}',
 			focusHint: 'to write',
 			failed: 'Could not post the comment.',
