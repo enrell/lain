@@ -3,7 +3,7 @@
 	import { isReadable } from '$lib/reader/kinds';
 	import Play from '@lucide/svelte/icons/play';
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
-	import { formatLength, mediaSubtitle } from '$lib/utilities/format';
+	import { formatLength, mediaSubtitle, timeLeft } from '$lib/utilities/format';
 	import { lengthOf, wantLength } from '$lib/stores/lengths.svelte';
 	import { progressRatio } from '$lib/utilities/progress';
 	import type { Shape } from '$lib/stores/shapes.svelte';
@@ -38,7 +38,9 @@
 	$effect(() => {
 		if (bare) wantLength(item.id);
 	});
-	const subtitle = $derived(said || (bare ? formatLength(lengthOf(item.id)) : ''));
+	// Under way, the line says what is left, as a show's card and the hero do.
+	const left = $derived(progress && !progress.completed && !isReadable(item.kind) && progressRatio(progress) > 0 ? timeLeft(progress.position_sec, progress.duration_sec) : '');
+	const subtitle = $derived([said || (bare && !left ? formatLength(lengthOf(item.id)) : ''), left].filter(Boolean).join(' · '));
 	const reading = $derived(isReadable(item.kind));
 	const ratio = $derived(progress && !progress.completed ? progressRatio(progress) : 0);
 	// The link's aria-label replaces its inner text, so the visual 'Watching'

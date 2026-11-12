@@ -192,8 +192,10 @@
 		e.preventDefault();
 		subtitlesOpen = true;
 	}
+	// P where the hero has something to open: a title whose files are gone has nothing.
+	const canPlay = $derived(series ? series.items.some((i) => !i.missing) : playable || (!item?.missing && preferredPlayer !== 'browser'));
 	usePageKeys(() => [
-		{ keys: ['P'], label: t(reading ? 'pageKeys.titleRead' : 'pageKeys.titlePlay') },
+		...(canPlay ? [{ keys: ['P'], label: t(reading ? 'pageKeys.titleRead' : 'pageKeys.titlePlay') }] : []),
 		...(session.isAdmin && subtitleItems.length > 0 ? [{ keys: ['T'], label: t('pageKeys.subtitles') }] : [])
 	]);
 	const ratio = $derived(progress ? progressRatio(progress) : 0);
@@ -412,12 +414,12 @@
 										? t('title.continueFromPage', { page: Math.floor(resumeAt) })
 										: progress?.completed
 											? t('title.readAgain')
-											: 'Read'
+											: t('title.read')
 									: resumeAt > 0
 										? `Resume from ${formatTime(resumeAt)}`
 										: progress?.completed
 											? t('title.watchAgain')
-											: 'Play'}
+											: t('title.play')}
 							</LinkButton>
 						{:else}
 							<Button size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>

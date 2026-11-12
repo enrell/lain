@@ -913,6 +913,8 @@ const en = {
 		issues: { one: '{count} issue', other: '{count} issues' },
 		length: 'Length',
 		playPart: 'Play · {part}',
+		readPart: 'Read · {part}',
+		play: 'Play',
 		continueFromPage: 'Continue from page {page}',
 		continueFromPageIn: 'Continue from page {page} · {part}',
 		readingAt: '{part}: page {page} of {pages}',
