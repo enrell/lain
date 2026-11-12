@@ -110,6 +110,7 @@ impl Composition {
                 mode: b.mode.as_str().to_string(),
                 providers: b.providers.clone(),
                 generation: b.generation,
+                summary: crate::capabilities::summary(cap).to_string(),
             })
             .collect()
     }

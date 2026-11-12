@@ -1077,7 +1077,7 @@ fn progress_put(app: &App, req: &Req, v: &Verified) -> Reply {
 fn plugins(app: &App, _: &Req, _: &Verified) -> Reply {
     let reg = &app.registry;
     Reply::ok(json!({
-        "composition": reg.composition().view(),
+        "composition": reg.composition_view(),
         "providers": reg.providers(),
         "provider_info": reg.provider_infos(),
         "events": reg.events(),
@@ -1103,7 +1103,7 @@ fn plugins_swap(app: &App, req: &Req, _: &Verified) -> Reply {
             if let Err(e) = app.save_composition() {
                 return Reply::err(500, &e);
             }
-            Reply::ok(json!({"generation": generation, "composition": app.registry.composition().view()}))
+            Reply::ok(json!({"generation": generation, "composition": app.registry.composition_view()}))
         }
         Err((e, generation)) => {
             let status = match e.code.as_str() {
@@ -1135,7 +1135,7 @@ fn plugins_withdraw(app: &App, req: &Req, _: &Verified) -> Reply {
     if let Err(e) = app.save_composition() {
         return Reply::err(500, &e);
     }
-    Reply::ok(json!({"composition": app.registry.composition().view()}))
+    Reply::ok(json!({"composition": app.registry.composition_view()}))
 }
 
 fn modules_list(app: &App, _: &Req, _: &Verified) -> Reply {

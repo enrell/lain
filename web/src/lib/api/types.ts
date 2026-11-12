@@ -424,6 +424,8 @@ export interface BindingView {
 	mode: 'exactly-one' | 'ordered-many' | 'first-accepted' | 'merge-many' | 'fan-out' | string;
 	providers: string[];
 	generation: number;
+	/** D-285: what the job is, in one sentence, when the server can say. */
+	summary?: string;
 }
 
 /** core.Event (registry.go). */
