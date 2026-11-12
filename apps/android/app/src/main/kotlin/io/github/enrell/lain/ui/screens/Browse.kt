@@ -839,7 +839,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
     }
     val copyOf = remember(copies.copies) { copies.copies.associateBy { it.itemId } }
     val ask: (Item) -> Unit = { item -> onDownload(item); offline.refresh() }
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listState = rememberPageListMemory("title-$key", Screen.TitleDetail(key), vm)
     val pastHero by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
     Box(Modifier.fillMaxSize()) {
     LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 56.dp)) {
@@ -1553,6 +1553,26 @@ private fun rememberListMemory(key: String): androidx.compose.foundation.lazy.La
     val state = androidx.compose.foundation.lazy.rememberLazyListState(saved?.first ?: 0, saved?.second ?: 0)
     DisposableEffect(key) { onDispose { ListMemory.at[key] = state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset } }
     LaunchedEffect(key) { ListMemory.tops.collect { if (it == key) state.animateScrollToItem(0) } }
+    return state
+}
+
+/**
+ * The list of a page that keeps its place while the page can be returned to (under the
+ * player an episode row opened, or in a destination left for another). Without it a show's
+ * page came back at its top after every episode, far from the next one. A page closed with
+ * Back forgets its place: opened again, it starts at its top.
+ */
+@Composable
+private fun rememberPageListMemory(key: String, page: Screen, vm: AppViewModel): androidx.compose.foundation.lazy.LazyListState {
+    val saved = ListMemory.at[key]
+    val state = androidx.compose.foundation.lazy.rememberLazyListState(saved?.first ?: 0, saved?.second ?: 0)
+    DisposableEffect(key) {
+        onDispose {
+            // Read after the navigation that removed the page, so it says where the page went.
+            if (vm.state.value.keeps(page)) ListMemory.at[key] = state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset
+            else ListMemory.at.remove(key)
+        }
+    }
     return state
 }
 

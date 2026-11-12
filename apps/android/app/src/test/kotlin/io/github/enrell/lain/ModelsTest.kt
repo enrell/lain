@@ -139,6 +139,30 @@ class ModelsTest {
         core.stopEvents()
     }
 
+    @Test
+    fun aPageIsKeptWhileBackOrTheBarCanReturnToIt() = runTest(main) {
+        val core = FakeCore().apply { sessionInfo = io.github.enrell.lain.core.SessionInfo("http://s", "u", "bob") }
+        val vm = AppViewModel(core, io = main)
+        vm.start("http://s")
+        val title = Screen.TitleDetail(vm.state.value.titles.first { it.title == "Frieren" }.key)
+        vm.go(title)
+        assertTrue(vm.state.value.keeps(title))
+        // Under the player that an episode row opened.
+        vm.open(core.items.first { it.id == "e1" })
+        assertTrue(vm.state.value.keeps(title))
+        assertTrue(vm.back())
+        // In Home's stack while another destination is open, and back on screen with it.
+        vm.go(Screen.Downloads)
+        assertTrue(vm.state.value.keeps(title))
+        vm.go(Screen.Home)
+        assertEquals(title, vm.state.value.screen)
+        // Closed with Back: the stack Home was left with earlier no longer counts.
+        assertTrue(vm.back())
+        assertEquals(Screen.Home, vm.state.value.screen)
+        assertFalse(vm.state.value.keeps(title))
+        core.stopEvents()
+    }
+
     // ---- the player ----------------------------------------------------------
 
     @Test
