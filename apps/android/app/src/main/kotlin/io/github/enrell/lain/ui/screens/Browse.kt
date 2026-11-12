@@ -1526,6 +1526,19 @@ object ListMemory {
     fun forget(prefix: String) {
         at.keys.removeAll { it.startsWith(prefix) }
     }
+
+    /**
+     * Lists asked to go back to their top, by key. An event, not a state: forgetting the
+     * place only helps a list composed later, while the bar's tab tapped again is about the
+     * list already on screen; one that is not on screen hears nothing and keeps its place.
+     */
+    val tops = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    /** Takes the list under [key] to its top, the one on screen now included. */
+    fun toTop(key: String) {
+        forget(key)
+        tops.tryEmit(key)
+    }
 }
 
 /** Opens a library at its top (only Back returns to where a list was). */
@@ -1539,6 +1552,7 @@ private fun rememberListMemory(key: String): androidx.compose.foundation.lazy.La
     val saved = ListMemory.at[key]
     val state = androidx.compose.foundation.lazy.rememberLazyListState(saved?.first ?: 0, saved?.second ?: 0)
     DisposableEffect(key) { onDispose { ListMemory.at[key] = state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset } }
+    LaunchedEffect(key) { ListMemory.tops.collect { if (it == key) state.animateScrollToItem(0) } }
     return state
 }
 
