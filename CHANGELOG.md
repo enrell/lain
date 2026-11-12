@@ -46,6 +46,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Acquire's forms on a phone** (web): the link field of the Queue had
   shrunk beside the library picker to a few letters; the form stacks, and
   the labels of both forms line up whether or not they carry a key.
+- **`/` finds people on Social again** (web): the header's search had taken
+  the key since it became a field; the page now moves focus on to its
+  people search once the Friends tab has drawn it, as other pages do.
 - **Empty states sit open on the page** (web), an icon and a line or two
   with no grey panel around them (no search match, an empty library, a
   missing title or profile).
