@@ -121,6 +121,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   passed, software), where a mono word sat beside two bare "Use …" buttons;
   Playback's Render on is as wide as every other picker in its column; a
   plugin job's description wraps to two lines instead of stopping mid-word.
+- The reader's toggles keep a gap between them (web): Spread and Cover
+  alone, both on, read as one block.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a
