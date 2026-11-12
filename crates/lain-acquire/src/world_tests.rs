@@ -565,7 +565,7 @@ fn search_skips_units_already_being_grabbed() {
 }
 
 /// A parser that reads the world's release as the title "Show 01" and
-/// offers the right identity only as an alternative (D-275).
+/// offers the right identity only as an alternative (D-279).
 fn misreading(name: &str, kind: &str) -> lain_api::Release {
     let mut r = lain_identify::tokenize(name, kind);
     if r.title == "Show" && !r.episodes.is_empty() {

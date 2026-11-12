@@ -898,7 +898,7 @@ are core code (`internal/torrent`, `internal/acquire`), not plugins
 
 | Capability | Mode | Built-ins | Input → output |
 |---|---|---|---|
-| `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides; in lain-rs a component, see "P4 components"), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain; optional `alternatives`, D-275) |
+| `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides; in lain-rs a component, see "P4 components"), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain; optional `alternatives`, D-279) |
 | `lain.indexer@1` | ordered-many; `unsupported-protocol` declines | `lain-indexer-torznab` (Torznab + Newznab) | `IndexerCapsInput` → `IndexerCaps`; `IndexerSearchInput` → `IndexerSearchOutput` |
 | `lain.subtitle@1` | ordered-many; `unsupported-provider` declines | `lain-subtitle-opensubtitles` (OpenSubtitles.com REST v1) | `SubtitleSearchInput` → `SubtitleSearchOutput`; `SubtitleDownloadInput` → `SubtitleDownloadOutput` (a link; the core fetches it, D-150). In lain-rs the ops are `search` and `download` (D-202) |
 
@@ -963,7 +963,7 @@ tag (Go's `merge`); `parser` is `lain-release-model`. Default binding:
 `[lain-release-model, lain-release-tokenizer]` (V-5,
 `docs/benchmarks/parser-v5.md`, D-226).
 
-### Release.alternatives (D-275)
+### Release.alternatives (D-279)
 
 A name can be read more than one way and nothing in it says which is
 right: "Show 2 - 03" is episode 3 of the sequel "Show 2", or of season 2

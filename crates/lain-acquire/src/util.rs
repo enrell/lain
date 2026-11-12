@@ -48,7 +48,7 @@ pub fn loose_key(s: &str) -> String {
 }
 
 /// Reads `rel` as the first of its alternatives whose title `known`
-/// accepts, when its own title is not one (D-275). A parser cannot tell
+/// accepts, when its own title is not one (D-279). A parser cannot tell
 /// "Show 2" the sequel from episode 2 of "Show"; the caller that searched
 /// for a title, monitors one or imports into a library can. The identity
 /// moves as a whole (title, year, season, episodes, numbering) and every

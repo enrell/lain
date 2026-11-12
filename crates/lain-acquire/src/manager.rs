@@ -642,7 +642,7 @@ impl Manager {
     /// quality.
     fn rank(&self, q: &SearchQuery, r: SearchResult) -> Candidate {
         // The query is the title the user means: it decides between the
-        // parser's readings of a name (D-275).
+        // parser's readings of a name (D-279).
         let wanted = loose_key(&q.query);
         let rel = settle((self.d.parse)(&r.title, &q.kind), |t| loose_key(t) == wanted);
         let mut rejections = Vec::new();
@@ -774,7 +774,7 @@ impl Manager {
         }
         g.title = clip(&g.title, 300);
         // A monitored title's names decide between the parser's readings
-        // (D-275); a manual grab names no title, so the answer stands.
+        // (D-279); a manual grab names no title, so the answer stands.
         let known = match g.monitored_id.as_str() {
             "" => Default::default(),
             id => self.st.monitored().iter().find(|m| m.id == id).map(crate::monitored::names).unwrap_or_default(),

@@ -909,7 +909,7 @@ pub struct ExtractJob {
     pub error: Option<JobError>,
 }
 
-/// Another reading of who a release is (`Release.alternatives`, D-275):
+/// Another reading of who a release is (`Release.alternatives`, D-279):
 /// the fields that name it, with `Release`'s meanings and zeros.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReleaseIdentity {
@@ -961,7 +961,7 @@ pub struct Release {
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub version: i64,
     /// Other identities the provider considered, best first, at most
-    /// `MAX_RELEASE_ALTERNATIVES` (D-275). Advice for a caller that knows
+    /// `MAX_RELEASE_ALTERNATIVES` (D-279). Advice for a caller that knows
     /// which titles it expects; a provider that has none omits them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub alternatives: Vec<ReleaseIdentity>,
