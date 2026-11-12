@@ -185,16 +185,19 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                     }
                 }
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(c.title, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val ep = when {
                         c.episode <= 0L && c.season <= 0L -> ""
                         reading -> stringResource(R.string.volume_long, (if (c.season > 0) c.season else c.episode).toInt())
                         c.season > 0 -> stringResource(R.string.season_episode, c.season.toInt(), c.episode.toInt())
                         else -> stringResource(R.string.episode_n, c.episode.toInt())
                     }
+                    // Under its title's heading a row is named by its part ("Episode 3"):
+                    // the title again on every row pushed the part into the wrapped line below.
+                    val underHeading = group.size > 1 && ep.isNotEmpty()
+                    Text(if (underHeading) ep else c.title, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
                         listOf(
-                            ep,
+                            if (underHeading) "" else ep,
                             when (c.state) {
                                 CopyState.DONE -> stringResource(R.string.copy_done, bytes(c.bytes))
                                 CopyState.QUEUED -> stringResource(R.string.copy_queued, bytes(done), if (total > 0) bytes(total) else "?")

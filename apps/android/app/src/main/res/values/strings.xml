@@ -204,7 +204,7 @@
     <string name="player_skip">Skip</string>
     <string name="player_skip_auto">Auto (%1$d s)</string>
     <string name="tagline">Your media. Your machine. Your rules.</string>
-    <string name="downloads_of">of %1$s</string>
+    <string name="downloads_of">of your %1$s limit</string>
     <plurals name="count_copies">
         <item quantity="one">%1$d download</item>
         <item quantity="other">%1$d downloads</item>
@@ -352,8 +352,8 @@
     <string name="player_fill">Fill the screen</string>
     <string name="up_next">Up next</string>
     <string name="download_wait_wifi">Waiting for Wi-Fi to download</string>
-    <string name="settings_language">Audio and subtitles</string>
-    <string name="settings_language_hint">Audio in this language when the file has it, otherwise subtitles in it. Shared with the web client.</string>
+    <string name="settings_language">Audio and subtitle language</string>
+    <string name="settings_language_hint">Audio in this language when the file has it; otherwise the file’s audio with subtitles in it. Follows your account on every client.</string>
     <string name="settings_language_auto">As the file has it</string>
     <string name="settings_sub_size">Subtitle size</string>
     <string name="settings_sub_box">Subtitles on a dark box</string>
@@ -376,4 +376,8 @@
         <item quantity="other">%1$d downloads</item>
     </plurals>
     <string name="mark_all_unread">Mark all unread</string>
+    <string name="filter_any">Any</string>
+    <string name="reader_way_ltr">LTR</string>
+    <string name="reader_way_rtl">RTL</string>
+    <string name="reader_way_down">Scroll</string>
 </resources>

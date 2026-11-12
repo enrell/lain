@@ -246,8 +246,8 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                     val fresh = resumeHero != null && resumeHero.progress.positionSec < 1
                     val left = resumeHero?.progress?.takeIf { !hero.reading && !fresh }?.let { p -> (p.durationSec - p.positionSec).takeIf { it > 0 && p.durationSec > 0 } }
                     val facts = listOfNotNull(
+                        resumeHero?.item?.takeIf { it.episode > 0 || (hero.reading && it.season > 0) }?.let { rowLabelShort(it, hero.reading) },
                         resumeHero?.takeIf { hero.reading && it.progress.durationSec > 0 }?.let { stringResource(R.string.progress_page, it.progress.positionSec.toInt().coerceAtLeast(1), it.progress.durationSec.toInt()) },
-                        resumeHero?.item?.takeIf { it.episode > 0 && !hero.reading }?.let { stringResource(R.string.episode_n, it.episode.toInt()) },
                         left?.let { stringResource(R.string.time_left, length(it)) },
                         if (fresh && !hero.reading) stringResource(R.string.up_next) else null,
                         if (resumeHero == null && hero.items.size > 1) titleSubtitle(hero) else null,
@@ -323,7 +323,11 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                                 artId = card.item.id,
                                 title = card.item.title,
                                 subtitle = if (card.item.reading() && card.progress.durationSec > 0) {
-                                    stringResource(R.string.progress_page, card.progress.positionSec.toInt().coerceAtLeast(1), card.progress.durationSec.toInt())
+                                    // Which book as well as which page: "Page 3 of 8" alone fits any volume of the title.
+                                    listOfNotNull(
+                                        card.item.takeIf { it.episode > 0 || it.season > 0 }?.let { rowLabelShort(it, true) },
+                                        stringResource(R.string.progress_page, card.progress.positionSec.toInt().coerceAtLeast(1), card.progress.durationSec.toInt()),
+                                    ).joinToString(" · ")
                                 } else {
                                     listOfNotNull(
                                         card.item.takeIf { it.episode > 0 }?.let { episodeText(it) },
@@ -669,7 +673,10 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                 }
             }
             // The short lists first, so nothing hides under a long one: the genres can run past the fold.
+            // Each choice of one starts with "Any": a ring that was picked had no
+            // visible way back to everything short of Clear, which also drops the genres.
             SheetHeading(stringResource(R.string.progress))
+            OptionRow(stringResource(R.string.filter_any), remember(titles, draft, progress, state.overlays) { applyFilters(titles, draft.copy(watch = null), progress, now, genresOf).size }, draft.watch == null, { draft = draft.copy(watch = null) })
             for (w in Watch.entries) {
                 OptionRow(watchLabel(w), watchCounts[w] ?: 0, draft.watch == w, { draft = draft.copy(watch = if (draft.watch == w) null else w) }, enabled = (watchCounts[w] ?: 0) > 0)
             }
@@ -692,12 +699,14 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
             }
             if ((formCounts[Form.Series] ?: 0) > 0 && (formCounts[Form.Single] ?: 0) > 0) {
                 SheetHeading(stringResource(R.string.form))
+                OptionRow(stringResource(R.string.filter_any), remember(titles, draft, progress, state.overlays) { applyFilters(titles, draft.copy(form = null), progress, now, genresOf).size }, draft.form == null, { draft = draft.copy(form = null) })
                 for (s in Form.entries) {
                     OptionRow(formLabel(s), formCounts[s] ?: 0, draft.form == s, { draft = draft.copy(form = if (draft.form == s) null else s) })
                 }
             }
             if (kinds.size > 1) {
                 SheetHeading(stringResource(R.string.kind))
+                OptionRow(stringResource(R.string.filter_any), remember(titles, draft, progress, state.overlays) { applyFilters(titles, draft.copy(kind = ""), progress, now, genresOf).size }, draft.kind.isEmpty(), { draft = draft.copy(kind = "") })
                 for (k in kinds) {
                     OptionRow(k, kindCounts[k] ?: 0, draft.kind == k, { draft = draft.copy(kind = if (draft.kind == k) "" else k) }, enabled = (kindCounts[k] ?: 0) > 0)
                 }
@@ -707,6 +716,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
             val everything = remember(titles, draft, state.overlays) { applyFilters(titles, draft.copy(added = 0), progress, now, genresOf).size }
             if (draft.added > 0 || addedCounts.any { it != everything }) {
                 SheetHeading(stringResource(R.string.added))
+                OptionRow(stringResource(R.string.filter_any), everything, draft.added == 0, { draft = draft.copy(added = 0) })
                 ADDED_DAYS.forEachIndexed { i, d ->
                     val n = addedCounts[i]
                     OptionRow(addedLabel(d), n, draft.added == d, { draft = draft.copy(added = if (draft.added == d) 0 else d) }, enabled = n > 0)
@@ -885,8 +895,9 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 // One row of columns, icon over word; each takes room by the length of its word, so none wraps alone.
                 Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (resume != null) QuietAction(this, Ic.RotateCcw, stringResource(R.string.start_over)) { undone = resume; vm.markWatched(listOf(next.id), false) }
-                    QuietAction(this, 
-                        Ic.CheckCircle,
+                    // The icon is what the tap leaves: a tick to mark, an empty ring to unmark.
+                    QuietAction(this,
+                        if (allDone) Ic.Circle else Ic.CheckCircle,
                         stringResource(
                             when {
                                 allDone && series && title.reading -> R.string.mark_all_unread
@@ -925,7 +936,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                                 .clickable(onClickLabel = stringResource(R.string.rate_title)) { rateSheet = true }.padding(horizontal = 14.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp),
                         ) {
-                            Icon(Ic.Star, null, tint = if (mine > 0) l.accent else l.text, modifier = Modifier.size(15.dp))
+                            Icon(if (mine > 0) Ic.StarFilled else Ic.Star, null, tint = if (mine > 0) l.accent else l.text, modifier = Modifier.size(15.dp))
                             Text(if (mine > 0) stringResource(R.string.rate_yours, mine) else stringResource(R.string.rate_action), color = l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         }
                         // An average of one, when the one is yours, would say your score twice.
@@ -1085,7 +1096,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         Sheet(rowLabel(item, title.reading), { menu = null }) {
             SheetAction(Ic.Play, stringResource(if (title.reading) R.string.action_read else R.string.action_play)) { menu = null; vm.open(item) }
             if (p != null && !p.completed && p.positionSec > 0) SheetAction(Ic.RotateCcw, stringResource(R.string.start_over)) { menu = null; undone = p; vm.markWatched(listOf(item.id), false) }
-            SheetAction(Ic.CheckCircle, stringResource(if (p?.completed == true) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
+            SheetAction(if (p?.completed == true) Ic.Circle else Ic.CheckCircle, stringResource(if (p?.completed == true) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
                 menu = null
                 vm.markWatched(listOf(item.id), p?.completed != true)
             }

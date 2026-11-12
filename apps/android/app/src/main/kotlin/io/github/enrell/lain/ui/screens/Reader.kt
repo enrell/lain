@@ -341,7 +341,8 @@ fun ReaderScreen(
                 Row(Modifier.height(32.dp).clip(l.buttonShape).border(1.dp, l.line, l.buttonShape)) {
                     // Left to right, right to left, or down the page.
                     // The way the pages go: next to the right, next to the left, or down.
-                    for ((way, label) in listOf(0 to "\u2192", 1 to "\u2190", 2 to "\u2193")) {
+                    // Named in words, as the web reader's toggles are: three bare arrows had to be guessed.
+                    for ((way, label) in listOf(0 to stringResource(R.string.reader_way_ltr), 1 to stringResource(R.string.reader_way_rtl), 2 to stringResource(R.string.reader_way_down))) {
                         val on = if (way == 2) vertical else !vertical && rtl == (way == 1)
                         val name = stringResource(when (way) { 0 -> R.string.reader_ltr; 1 -> R.string.reader_rtl; else -> R.string.reader_scroll })
                         Box(
@@ -354,7 +355,7 @@ fun ReaderScreen(
                                 .semantics { contentDescription = name; stateDescription = if (on) "selected" else "not selected" }
                                 .padding(horizontal = 16.dp),
                             contentAlignment = Alignment.Center,
-                        ) { Text(label, color = if (on) l.text else l.muted, fontSize = 16.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
+                        ) { Text(label, color = if (on) l.text else l.muted, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
                     }
                 }
                 }

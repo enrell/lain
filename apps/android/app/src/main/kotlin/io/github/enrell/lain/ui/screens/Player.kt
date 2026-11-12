@@ -301,13 +301,11 @@ fun PlayerScreen(
                 // A track is named by its title and language; codec names and bare
                 // language codes beside a full name are noise. A language offered twice
                 // (in the file and again converted by the server) is listed once.
-                val noise = setOf("subrip", "srt", "ass", "ssa", "webvtt", "vtt", "mov_text", "pgs", "aac", "ac3", "eac3", "opus", "flac")
                 fun of(type: Int, once: Boolean) = tracks.groups.filter { it.type == type }.flatMap { g ->
                     (0 until g.length).map { i ->
                         val f = g.getTrackFormat(i)
                         val lang = f.language?.takeIf { it != "und" }
-                        val words = (f.label ?: "").split(" · ", " - ").map { it.trim() }.filter { w -> w.isNotEmpty() && w.lowercase() !in noise && !w.equals(lang, ignoreCase = true) && !(w.length == 3 && w == w.lowercase()) }
-                        val name = (words + listOfNotNull(lang?.uppercase())).distinctBy { it.lowercase() }.joinToString(" · ")
+                        val name = io.github.enrell.lain.domain.trackName(f.label, lang)
                         // Two audio tracks in one language are two tracks (a commentary); two subtitles are the same text twice.
                         (if (once) lang ?: name else "${g.hashCode()}:$i") to TextTrack(g, i, name.ifEmpty { "#${i + 1}" }, g.isTrackSelected(i))
                     }
@@ -760,7 +758,9 @@ fun PlayerScreen(
                     }
                     if (audioTracks.size > 1) {
                         val heard = audioTracks.firstOrNull { it.selected }?.label?.substringBefore(" · ")
-                        BarAction(Ic.Audio, stringResource(R.string.player_audio) + (heard?.let { " · $it" } ?: ""), tracksPanel == 2) { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }
+                        // Always at full weight: some track always plays, and the dimmed
+                        // "off" look read as a button that could not be used.
+                        BarAction(Ic.Audio, stringResource(R.string.player_audio) + (heard?.let { " · $it" } ?: ""), on = true) { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }
                     }
                     IconBtn(Ic.Gear, "Settings", { tracksPanel = 0; settings = !settings }, tint = if (settings) l.accent else Color.White)
                     if (canPip) IconBtn(Ic.Pip, stringResource(R.string.player_pip), { enterPip() }, tint = Color.White)
