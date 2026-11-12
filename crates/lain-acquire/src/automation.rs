@@ -21,7 +21,7 @@ use crate::error::*;
 use crate::importer::place;
 use crate::manager::{GrabRequest, Manager, search_kind};
 use crate::monitored::{self, covers, names, needs, upgradable};
-use crate::util::{base_name, clip, loose_key, new_id, now, settle, within};
+use crate::util::{base_name, clip, loose_key, new_id, now, within};
 
 impl Manager {
     // ---- profiles -------------------------------------------------------
@@ -247,9 +247,12 @@ impl Manager {
             replace: Vec<String>,
         }
         let mut opts: Vec<Opt> = Vec::new();
-        let known = names(m);
+        // Every monitored title's names, not only this one's: a release
+        // the parser answers as another monitored title is that title's
+        // (D-279).
+        let claimed = monitored::claimed(&self.st.monitored());
         for r in results {
-            let rel = settle((self.d.parse)(&r.title, &m.kind), |t| known.contains(&loose_key(t)), m.year);
+            let rel = monitored::settle_for(m, (self.d.parse)(&r.title, &m.kind), &claimed);
             let cov = covers(m, &rel);
             if cov.is_empty() {
                 continue;

@@ -12,7 +12,7 @@ use lain_api::{CatalogItem, Release};
 use crate::decide::{meets_cutoff, rank_of};
 use crate::errf;
 use crate::error::{CODE_INVALID, CODE_NO_LIBRARY, Result};
-use crate::util::{clean_name, loose_key};
+use crate::util::{clean_name, loose_key, settle};
 
 /// Converts between absolute and seasonal numbering; split cours are
 /// further seasons (A-24).
@@ -133,6 +133,27 @@ pub fn names(m: &Monitored) -> BTreeSet<String> {
     let mut out = BTreeSet::from([loose_key(&m.title)]);
     out.extend(m.aliases.iter().map(|a| loose_key(a)));
     out
+}
+
+/// Every key some monitored title answers to, in any library, for
+/// [`settle_for`].
+pub fn claimed(all: &[Monitored]) -> BTreeSet<String> {
+    all.iter().flat_map(names).filter(|k| !k.is_empty()).collect()
+}
+
+/// The release as `m` reads it (D-279): settled against its names and
+/// year, unless the parser's own answer names a monitored title
+/// (`claimed`, from [`claimed`]). Such a release is that title's, and no
+/// other monitored title may read it as an alternative: while "Show 2" is
+/// monitored, "Show 2 - 03" answered as "Show 2" never becomes S2E3 of a
+/// monitored "Show".
+pub fn settle_for(m: &Monitored, rel: Release, claimed: &BTreeSet<String>) -> Release {
+    let own = loose_key(&rel.title);
+    if !own.is_empty() && claimed.contains(&own) {
+        return Release { alternatives: Vec::new(), ..rel };
+    }
+    let known = names(m);
+    settle(rel, |t| known.contains(&loose_key(t)), m.year)
 }
 
 /// A present catalog item as a unit of this title.
@@ -369,7 +390,6 @@ mod tests {
     /// film's slot and lets the sequel in when "2049" was read as a year.
     #[test]
     fn the_year_keeps_a_sequel_out_of_the_first_film() {
-        use crate::util::settle;
         let first = Monitored { year: 1982, ..mon("movie", "Blade Runner", NUMBER_MOVIE) };
         let sequel = Monitored { year: 2017, ..mon("movie", "Blade Runner 2049", NUMBER_MOVIE) };
         let read = |title: &str, year, other: &str, other_year| Release {
@@ -382,28 +402,65 @@ mod tests {
             }],
             ..Default::default()
         };
-        let settled = |m: &Monitored, r: &Release| {
-            let n = names(m);
-            settle(r.clone(), |t| n.contains(&loose_key(t)), m.year)
+        // Each film monitored alone, then both.
+        let alone =
+            |m: &Monitored, r: &Release| covers(m, &settle_for(m, r.clone(), &claimed(std::slice::from_ref(m))));
+        let both = |m: &Monitored, r: &Release| {
+            covers(m, &settle_for(m, r.clone(), &claimed(&[first.clone(), sequel.clone()])))
         };
-        let take = |m: &Monitored, r: &Release| covers(m, &settled(m, r));
         let none = Vec::<Unit>::new();
         // "Blade.Runner.2049.2017.1080p": the sequel, and "Blade Runner"
         // with the tokenizer's 2017, which the first film's year refuses.
         let r = read("Blade Runner 2049", 2017, "Blade Runner", 2017);
-        assert_eq!(settled(&first, &r).title, "Blade Runner 2049");
-        assert_eq!((take(&first, &r), take(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
+        assert_eq!(settle_for(&first, r.clone(), &claimed(std::slice::from_ref(&first))).title, "Blade Runner 2049");
+        assert_eq!((alone(&first, &r), alone(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
+        assert_eq!((both(&first, &r), both(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
         // "Blade.Runner.2049.1080p" answered as the sequel without a year
         // (the bridge does not take a year the title holds), and "Blade
         // Runner" with the tokenizer's 2049.
         let r = read("Blade Runner 2049", 0, "Blade Runner", 2049);
-        assert_eq!((take(&first, &r), take(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
-        // The same name with "2049" read as the year: the sequel takes its
-        // title, which holds it, with no year.
+        assert_eq!((alone(&first, &r), alone(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
+        assert_eq!((both(&first, &r), both(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
+        // The same name with "2049" read as the year: alone, the sequel
+        // takes its title, which holds it, with no year. Both monitored,
+        // the answer names the first film, so it is the first film's (whose
+        // year refuses it), and the sequel never reads it as its own.
         let r = read("Blade Runner", 2049, "Blade Runner 2049", 0);
-        assert_eq!((take(&first, &r), take(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
+        assert_eq!((alone(&first, &r), alone(&sequel, &r)), (none.clone(), vec![u(0, 1)]));
+        assert_eq!((both(&first, &r), both(&sequel, &r)), (none.clone(), none.clone()));
         // Given the tokenizer's 2049, the sequel's reading would be refused.
-        assert_eq!(take(&sequel, &read("Blade Runner", 2049, "Blade Runner 2049", 2049)), none);
+        assert_eq!(alone(&sequel, &read("Blade Runner", 2049, "Blade Runner 2049", 2049)), none);
+    }
+
+    /// "Show 2 - 03" is episode 3 of the sequel, or of season 2. While the
+    /// sequel is monitored too, an answer that names it is the sequel's
+    /// (in any library, by title or alias), and "Show" may not read it as
+    /// its season 2; with nobody claiming the answer, "Show" may.
+    #[test]
+    fn a_monitored_sequel_keeps_its_releases() {
+        let show = Monitored { season_map: vec![ss(1, 1), ss(2, 13)], ..mon("anime", "Show", NUMBER_ABSOLUTE) };
+        let sequel = Monitored { aliases: vec!["Show II".into()], ..mon("anime", "Show 2", NUMBER_ABSOLUTE) };
+        let read = |title: &str| Release {
+            title: title.into(),
+            episodes: vec![3],
+            absolute: true,
+            alternatives: vec![lain_api::ReleaseIdentity {
+                title: "Show".into(),
+                season: 2,
+                episodes: vec![3],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let take = |m: &Monitored, r: &Release, all: &[Monitored]| covers(m, &settle_for(m, r.clone(), &claimed(all)));
+        let both = [show.clone(), Monitored { library_id: "elsewhere".into(), ..sequel.clone() }];
+        for title in ["Show 2", "Show II"] {
+            let r = read(title);
+            assert_eq!(take(&show, &r, &both), Vec::<Unit>::new(), "{title} is the sequel's");
+            assert_eq!(take(&sequel, &r, &both), vec![u(0, 3)], "{title}");
+            assert!(settle_for(&show, r, &claimed(&both)).alternatives.is_empty(), "the advice is dropped");
+        }
+        assert_eq!(take(&show, &read("Show 2"), std::slice::from_ref(&show)), vec![u(0, 15)], "nobody claims it");
     }
 
     #[test]
