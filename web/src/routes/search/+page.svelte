@@ -11,15 +11,18 @@
 	import type { CatalogItem } from '$lib/api/types';
 	import { api } from '$lib/api';
 	import MediaCard from '$lib/components/media/MediaCard.svelte';
-	import { FIT } from '$lib/components/media/MediaGrid.svelte';
+	import { framedGrid } from '$lib/components/media/grid';
 	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { t } from '$lib/i18n';
+	import { settleFrame } from '$lib/stores/frames';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { recentSearches } from '$lib/stores/recent-searches.svelte';
+	import { gridKeys } from '$lib/utilities/grid-nav';
 	import { groupItems } from '$lib/utilities/grouping';
 	import { debounce } from '$lib/utilities/debounce';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -32,6 +35,10 @@
 	let input = $state<HTMLInputElement | null>(null);
 	let items = $state<CatalogItem[]>([]);
 	const groups = $derived(groupItems(items));
+	// One frame for the results, as a library grid has: from the first
+	// titles' pictures, measured before the answer is drawn (`settleFrame`).
+	let frame = $state<Shape>('portrait');
+	let grid = $state<HTMLElement | null>(null);
 	let total = $state(0);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
@@ -63,10 +70,16 @@
 				offset,
 				signal: abort.signal
 			});
-			items = reset ? result.items : [...items, ...result.items];
+			const next = reset ? result.items : [...items, ...result.items];
+			// The answer is drawn whole: titles, overlays and the frame together,
+			// so it never opens in one shape and turns to the other.
+			await ensureEnrichments(result.items.map((i) => i.id));
+			const settled = reset ? await settleFrame(groupItems(next)) : frame;
+			if (abort.signal.aborted) return;
+			frame = settled;
+			items = next;
 			total = result.total;
 			searchedFor = term;
-			await ensureEnrichments(result.items.map((i) => i.id));
 		} catch (err) {
 			if (err instanceof DOMException && err.name === 'AbortError') return;
 			error = errorMessage(err);
@@ -179,6 +192,13 @@
 				oninput={onInput}
 				onkeydown={(e) => {
 					if (e.key === 'Escape' && query !== '') clear();
+					else if (e.key === 'ArrowDown' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+						// The results are the page: the arrow walks into them.
+						const first = grid?.querySelector<HTMLElement>('a[href]');
+						if (!first) return;
+						e.preventDefault();
+						first.focus();
+					}
 				}}
 				type="search"
 				placeholder={t('search.placeholder')}
@@ -244,9 +264,9 @@
 			<p class="mt-4 text-sm text-muted">{t('search.matches')}</p>
 		</section>
 	{:else if loading && items.length === 0}
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+		<div class={framedGrid('portrait')}>
 			{#each Array(12) as _}
-				<Skeleton class="h-56" />
+				<Skeleton class="aspect-[2/3] w-full rounded-xl" />
 			{/each}
 		</div>
 	{:else if emptyResults}
@@ -258,14 +278,23 @@
 		</EmptyState>
 	{:else}
 		<!-- A search answers with titles, not files: twelve episodes of one
-		     show are one card that opens the show. -->
+		     show are one card that opens the show. One frame and the library's
+		     sizes, so a result looks as the same title does everywhere else.
+		     Arrows move between results; up from the first row returns to the
+		     field (the header's, or this page's on a phone). -->
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-		<div class={FIT} onclick={() => recentSearches.remember(searchedFor)}>
+		<div
+			id="search-results"
+			bind:this={grid}
+			class={[framedGrid(frame), '[&>*]:scroll-mt-28 [&>*]:scroll-mb-24'].join(' ')}
+			onclick={() => recentSearches.remember(searchedFor)}
+			onkeydown={(e) => gridKeys(e, field)}
+		>
 			{#each groups as group, i (group.key)}
 				{#if group.count > 1}
-					<ShowCard {group} fit priority={i < 6} />
+					<ShowCard {group} {frame} priority={i < 6} />
 				{:else}
-					<MediaCard item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} priority={i < 6} fit />
+					<MediaCard item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} priority={i < 6} {frame} />
 				{/if}
 			{/each}
 		</div>
