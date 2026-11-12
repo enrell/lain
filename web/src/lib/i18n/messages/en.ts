@@ -949,7 +949,8 @@ const en = {
 		},
 		wanted: {
 			loadFailed: 'Could not load monitored titles.',
-			empty: 'Nothing is monitored. Press m to monitor a title, or m on a search result.',
+			empty: 'Nothing is monitored.',
+			emptyBody: 'Press m to monitor a title, or m on a search result.',
 			keys: 's search now · t subtitles · e edit · Space pause/resume · Delete stop · j/k move · m monitor · r RSS now',
 			subtitles: 'Subtitles',
 			monitor: 'Monitor',
@@ -1062,6 +1063,7 @@ const en = {
 			addLink: 'Add',
 			loadFailed: 'Could not load the queue.',
 			empty: 'Nothing in the queue.',
+			emptyBody: 'A release grabbed from Search, or a link added above, waits here until its files are in a library.',
 			keys: 'p pause/resume · i retry import · Delete remove · j/k move · / add a link',
 			usage: 'Torrents use {used}; with downloads {shared} of {max}',
 			usageUnlimited: 'Torrents use {used} (no budget set)',

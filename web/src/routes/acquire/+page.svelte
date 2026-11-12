@@ -1,5 +1,7 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Download from '@lucide/svelte/icons/download';
+	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import { nameable } from '$lib/stores/media-cache.svelte';
 	/*
@@ -392,7 +394,9 @@
 		{#if grabs === null}
 			<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
 		{:else if grabs.length === 0}
-			<p class="py-6 text-sm text-muted">{t('acquire.queue.empty')}</p>
+			<EmptyState title={t('acquire.queue.empty')} description={t('acquire.queue.emptyBody')}>
+				{#snippet icon()}<Download class="size-6 text-muted" aria-hidden="true" />{/snippet}
+			</EmptyState>
 		{:else}
 			<p class="text-xs text-muted">{t('acquire.queue.keys')}</p>
 			<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.tab.queue')}>
