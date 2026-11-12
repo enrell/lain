@@ -29,6 +29,7 @@
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Poster from '$lib/components/media/Poster.svelte';
+	import { framedGrid } from '$lib/components/media/grid';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import { formatLength, formatTime } from '$lib/utilities/format';
@@ -532,7 +533,9 @@
 				{/if}
 			</div>
 			<!-- More, smaller cards on a wide screen: three big ones put every name below the fold. -->
-			<ul class="grid {reading ? 'grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5 xl:grid-cols-6' : 'episode-rows grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'}" data-episode-grid>
+			<!-- Volumes are sized as every poster grid is (two a row on a phone, where
+			     three were cramped); episodes as wide cards, rows on a phone. -->
+			<ul class={reading ? framedGrid('portrait') : 'episode-rows grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'} data-episode-grid>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
@@ -545,16 +548,10 @@
 								type="button"
 								onclick={() => toggleSelect(item.id)}
 								aria-pressed={selected.has(item.id)}
-								class={[
-									'group relative block w-full overflow-hidden rounded-xl border bg-surface/30 text-left transition duration-300',
-									selected.has(item.id)
-										? 'border-accent ring-1 ring-accent'
-										: 'border-line/60 hover:border-white/15',
-									gone ? 'opacity-60' : ''
-								].join(' ')}
+								class={['group relative block w-full rounded-card text-left', gone ? 'opacity-60' : ''].join(' ')}
 								aria-label={`${selected.has(item.id) ? 'Deselect' : 'Select'} ${label(item)}`}
 							>
-								{@render episodeCard(item, progress, ratio, gone)}
+								{@render episodeCard(item, progress, ratio, gone, false, selected.has(item.id))}
 								<span
 									class={[
 										'absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border backdrop-blur transition-colors',
@@ -571,7 +568,7 @@
 							     the card stays for context (progress, titles) but does
 							     not navigate. -->
 							<div
-								class="block overflow-hidden rounded-xl border border-line/60 bg-surface/30 opacity-60"
+								class="block opacity-60"
 								aria-label={`${label(item)}, missing from disk`}
 							>
 								{@render episodeCard(item, progress, ratio, gone)}
@@ -580,7 +577,7 @@
 							<a
 								href={playHref(item.id)}
 								onclick={(e) => playExternalClick(e, item.id, player)}
-								class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
+								class="group block rounded-card transition-transform duration-300 ease-out hover:-translate-y-1"
 								aria-label={`${reading ? 'Read' : 'Play'} ${label(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 							>
 								{@render episodeCard(item, progress, ratio, gone, true)}
@@ -637,15 +634,24 @@
 	</div>
 </article>
 
-{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false)}
-	<div class="episode-thumb relative {reading ? 'aspect-[3/4]' : 'aspect-video'} overflow-hidden bg-surface">
+{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false, chosen = false)}
+	<!-- A card as every other card in the app is drawn: the picture in a rounded
+	     frame with a faint ring, the words under it. A bordered box around both
+	     made the episodes and volumes a second kind of card. -->
+	<div
+		class={[
+			'episode-thumb relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] transition duration-300',
+			reading ? 'aspect-[2/3]' : 'aspect-video',
+			chosen ? 'ring-2 ring-accent' : 'ring-1 ring-white/5 group-hover:ring-white/15'
+		].join(' ')}
+	>
 		<img
 			src={stillUrl(item.id)}
 			alt=""
 			aria-hidden="true"
 			loading="lazy"
 			decoding="async"
-			class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+			class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
 		/>
 		{#if !gone}
 			<span
@@ -660,16 +666,17 @@
 			</span>
 		{/if}
 		{#if ratio > 0}
-			<div class="absolute inset-x-0 bottom-0 h-1.5 bg-black/50">
-				<div class="h-full bg-accent" style={`width: ${ratio}%`}></div>
+			<!-- The bar every card wears: inset and rounded, not a strip on the edge. -->
+			<div class="absolute inset-x-0 bottom-0 p-1.5">
+				<ProgressBar ratio={ratio / 100} label={t(reading ? 'title.readProgress' : 'title.watchProgress')} class="bg-black/50" />
 			</div>
 		{/if}
 	</div>
 	<!-- Room at the end for the card's ⋮, which sits over this corner. -->
-	<div class="episode-text min-w-0 p-3" style:padding-inline-end={menu ? '3rem' : undefined}>
-		<p class="text-xs font-semibold text-accent">{label(item)}</p>
+	<div class="episode-text min-w-0 pt-3" style:padding-inline-end={menu ? '2.75rem' : undefined}>
+		<p class="truncate text-sm font-semibold leading-snug tracking-[-0.015em] text-foreground">{label(item)}</p>
 		{#if item.title !== group.title}
-			<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>
+			<p class="mt-0.5 truncate text-sm text-foreground/80">{item.title}</p>
 		{/if}
 		<p class={['mt-1 truncate text-xs', gone ? 'text-danger' : 'text-muted'].join(' ')}>
 			{gone ? 'Missing from disk' : cardLine(item, progress)}
