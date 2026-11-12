@@ -2192,5 +2192,27 @@ fn dispatch(weak: Weak<Inner>) {
     }
 }
 
+/// Writes an executable stub for a test. A file some process holds open
+/// for writing cannot be executed (ETXTBSY), and a child that another
+/// test thread forks while this one writes inherits that descriptor
+/// until it execs, so a stub written by this process can fail to start
+/// on a busy machine (every list of a probe then comes back empty). A
+/// `cat` child writes it instead: no descriptor of this process ever
+/// points at the file.
+#[cfg(all(test, unix))]
+pub(crate) fn write_stub(path: &Path, script: &str) {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    let mut sh = std::process::Command::new("/bin/sh")
+        .args(["-c", "cat > \"$1\"", "sh"])
+        .arg(path)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    sh.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
+    assert!(sh.wait().unwrap().success(), "stub {} not written", path.display());
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
 #[cfg(test)]
 mod tests;

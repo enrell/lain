@@ -583,7 +583,6 @@ fn an_answer_with_a_timed_out_check_is_probed_again_sooner() {
 #[cfg(unix)]
 #[test]
 fn the_real_probe_marks_a_timed_out_check_in_doubt() {
-    use std::os::unix::fs::PermissionsExt;
     let dir = lain_store::test_dir("tc-caps-timeout");
     std::fs::create_dir_all(&dir).unwrap();
     let (bin, slow) = (dir.join("ffmpeg"), dir.join("slow"));
@@ -599,8 +598,7 @@ esac
 exit 1
 "#
     .replace("SLOW", &slow.to_string_lossy());
-    std::fs::write(&bin, script).unwrap();
-    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    crate::transcode::write_stub(&bin, &script);
     std::fs::write(&slow, b"").unwrap();
     let t = Transcoder::with_hooks(&dir.join("transcodes"), Hooks::default());
     t.inner.caps.lock().unwrap().limit = Duration::from_secs(3);
