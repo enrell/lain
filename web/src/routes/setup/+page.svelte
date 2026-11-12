@@ -57,8 +57,10 @@
 	}
 
 	// The sign-in page's fields: with an edge of their own, the card's
-	// surface does not swallow them.
-	const FIELD = 'h-11! border-line!';
+	// surface does not swallow them. The edge overrides the field's own
+	// border, so it carries the focus colour too: without it the focused
+	// field looked like the others (the field has no outline).
+	const FIELD = 'h-11! border-line! focus:border-accent!';
 </script>
 
 <svelte:head><title>{t('auth.setup.pageTitle')}</title></svelte:head>
