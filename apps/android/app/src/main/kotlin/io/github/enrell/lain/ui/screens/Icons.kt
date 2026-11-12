@@ -51,6 +51,8 @@ object Ic {
     val ChevronLeft by lazy { stroke("m15 18-6-6 6-6") }
     val ArrowLeft by lazy { stroke("m12 19-7-7 7-7", "M19 12H5") }
     val ArrowUp by lazy { stroke("m5 12 7-7 7 7", "M12 19V5") }
+    val ArrowRight by lazy { stroke("M5 12h14", "m12 5 7 7-7 7") }
+    val ArrowDown by lazy { stroke("M12 5v14", "m19 12-7 7-7-7") }
     val Close by lazy { stroke("M18 6 6 18", "m6 6 12 12") }
     val Info by lazy { stroke("M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20", "M12 16v-4", "M12 8h.01") }
     val Lock by lazy { stroke("M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z", "M7 11V7a5 5 0 0 1 10 0v4") }
@@ -66,7 +68,19 @@ object Ic {
             "M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6",
         )
     }
-    val Star by lazy { stroke("M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z") }
+    private const val STAR = "M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"
+    val Star by lazy { stroke(STAR) }
+    /** A score given: the star filled, as the web's rated button draws it. */
+    val StarFilled by lazy { stroke(STAR, filled = true) }
+    /** Undoing "watched": not the same check that marks it. */
+    val EyeOff by lazy {
+        stroke(
+            "M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49",
+            "M14.084 14.158a3 3 0 0 1-4.242-4.242",
+            "M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143",
+            "m2 2 20 20",
+        )
+    }
     val Pip by lazy { stroke("M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h4", "M14 13h6a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2z") }
     val Maximize by lazy { stroke("M8 3H5a2 2 0 0 0-2 2v3", "M21 8V5a2 2 0 0 0-2-2h-3", "M3 16v3a2 2 0 0 0 2 2h3", "M16 21h3a2 2 0 0 0 2-2v-3") }
     val Trash by lazy { stroke("M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", "M10 11v6", "M14 11v6") }

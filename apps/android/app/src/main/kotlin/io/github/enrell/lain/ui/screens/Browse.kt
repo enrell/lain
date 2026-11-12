@@ -564,7 +564,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                 // rows and crashed the layout. A new list rebuilds the rows.
                 val wide = results.map { it.wide() }
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(6),
+                    columns = EvenColumns,
                     state = grid,
                     contentPadding = PaddingValues(start = GUTTER, end = GUTTER, top = 8.dp, bottom = 96.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -663,7 +663,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
             // Each order beside its reverse.
             val sorts = listOfNotNull(Sort.Title, Sort.TitleDesc, Sort.YearDesc, Sort.Year, Sort.Recent, if (anySeries) Sort.EpisodesDesc else null)
             for (pair in sorts.chunked(2)) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (s in pair) ChoiceTile(sortLabel(s), draft.sort == s, { draft = draft.copy(sort = s) }, Modifier.weight(1f))
                     if (pair.size == 1) Box(Modifier.weight(1f))
                 }
@@ -676,7 +676,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
             if (genreNames.isNotEmpty()) {
                 SheetHeading(stringResource(R.string.genres))
                 // Always there, so picking the first genre does not push the list down under the finger.
-                Text(stringResource(R.string.genres_all_hint), Modifier.padding(start = 8.dp, bottom = 6.dp), color = l.muted, fontSize = 12.sp)
+                Text(stringResource(R.string.genres_all_hint), Modifier.padding(bottom = 6.dp), color = l.muted, fontSize = 12.sp)
                 for (g in if (allGenres) genreNames else genreNames.take(8)) {
                     val on = draft.genres.any { it.equals(g, ignoreCase = true) }
                     val n = genreCounts[g.lowercase()] ?: 0
@@ -685,7 +685,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                 if (genreNames.size > 8) {
                     Text(
                         stringResource(if (allGenres) R.string.show_fewer else R.string.show_all_n, genreNames.size),
-                        Modifier.clip(l.buttonShape).clickable { allGenres = !allGenres }.padding(horizontal = 12.dp, vertical = 12.dp),
+                        Modifier.bleed(12.dp).clip(l.buttonShape).clickable { allGenres = !allGenres }.padding(horizontal = 12.dp, vertical = 12.dp),
                         color = l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                     )
                 }
@@ -713,11 +713,24 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                 }
             }
             SheetHeading(stringResource(R.string.view))
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ChoiceTile(stringResource(R.string.tiles_large), !draftDense, { draftDense = false }, Modifier.weight(1f))
                 ChoiceTile(stringResource(R.string.tiles_small), draftDense, { draftDense = true }, Modifier.weight(1f))
             }
         }
+    }
+}
+
+/**
+ * Six equal columns. `GridCells.Fixed` hands the leftover pixels to the
+ * first columns, so the last of three cards came out narrower: its poster
+ * ended higher and its caption sat off the row's line. Here the few pixels
+ * left over stay at the end, where no one sees them.
+ */
+private object EvenColumns : GridCells {
+    override fun androidx.compose.ui.unit.Density.calculateCrossAxisCellSizes(availableSize: Int, spacing: Int): List<Int> {
+        val cell = ((availableSize - spacing * 5) / 6).coerceAtLeast(0)
+        return List(6) { cell }
     }
 }
 
@@ -881,12 +894,20 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                     ) { Icon(if (listed) Ic.HeartFilled else Ic.Heart, stringResource(if (listed) R.string.fav_remove else R.string.fav_add), tint = if (listed) l.accent else l.text, modifier = Modifier.size(20.dp)) }
                 }
                 }
+                // A film or book under way: how far it is, under the button that resumes it
+                // (as the web does). Below the score it sat between unrelated rows and read as a divider.
+                // A series shows the part under way the same way: the button names it, the bar says how far.
+                resume?.takeIf { it.durationSec > 0 }?.let { p ->
+                    Box(Modifier.padding(top = 10.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f))) {
+                        Box(Modifier.fillMaxWidth((p.positionSec / p.durationSec).toFloat().coerceIn(0.02f, 1f)).height(3.dp).background(l.accent))
+                    }
+                }
                 // What else can be done with the title, at one weight below the main action.
                 // One row of columns, icon over word; each takes room by the length of its word, so none wraps alone.
                 Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (resume != null) QuietAction(this, Ic.RotateCcw, stringResource(R.string.start_over)) { undone = resume; vm.markWatched(listOf(next.id), false) }
                     QuietAction(this, 
-                        Ic.CheckCircle,
+                        if (allDone) Ic.EyeOff else Ic.CheckCircle,
                         stringResource(
                             when {
                                 allDone && series && title.reading -> R.string.mark_all_unread
@@ -925,7 +946,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                                 .clickable(onClickLabel = stringResource(R.string.rate_title)) { rateSheet = true }.padding(horizontal = 14.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp),
                         ) {
-                            Icon(Ic.Star, null, tint = if (mine > 0) l.accent else l.text, modifier = Modifier.size(15.dp))
+                            Icon(if (mine > 0) Ic.StarFilled else Ic.Star, null, tint = if (mine > 0) l.accent else l.text, modifier = Modifier.size(15.dp))
                             Text(if (mine > 0) stringResource(R.string.rate_yours, mine) else stringResource(R.string.rate_action), color = l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         }
                         // An average of one, when the one is yours, would say your score twice.
@@ -935,12 +956,6 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                                 color = l.muted, fontSize = 13.sp, maxLines = 1,
                             )
                         }
-                    }
-                }
-                // One film or book under way: how far it is, as Home shows it.
-                resume?.takeIf { !series && it.durationSec > 0 }?.let { p ->
-                    Box(Modifier.padding(top = 14.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f))) {
-                        Box(Modifier.fillMaxWidth((p.positionSec / p.durationSec).toFloat().coerceIn(0.02f, 1f)).height(3.dp).background(l.accent))
                     }
                 }
             }
@@ -1085,7 +1100,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         Sheet(rowLabel(item, title.reading), { menu = null }) {
             SheetAction(Ic.Play, stringResource(if (title.reading) R.string.action_read else R.string.action_play)) { menu = null; vm.open(item) }
             if (p != null && !p.completed && p.positionSec > 0) SheetAction(Ic.RotateCcw, stringResource(R.string.start_over)) { menu = null; undone = p; vm.markWatched(listOf(item.id), false) }
-            SheetAction(Ic.CheckCircle, stringResource(if (p?.completed == true) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
+            SheetAction(if (p?.completed == true) Ic.EyeOff else Ic.CheckCircle, stringResource(if (p?.completed == true) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
                 menu = null
                 vm.markWatched(listOf(item.id), p?.completed != true)
             }
@@ -1183,11 +1198,8 @@ private fun EpisodeRow(item: Item, title: Title, state: AppState, onOpen: () -> 
                     Box(Modifier.fillMaxWidth(f).height(5.dp).clip(CircleShape).background(l.accent))
                 }
             }
-            if (!title.reading) {
-                Box(Modifier.align(Alignment.Center).size(30.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-                    Icon(Ic.Play, null, tint = Color.White, modifier = Modifier.size(13.dp))
-                }
-            }
+            // No play disc on every still: the whole row plays, and a glyph repeated down
+            // the list only buried the marks that differ (watched, under way).
             if (p?.completed == true) {
                 Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
                     Icon(Ic.Check, stringResource(R.string.progress_done), tint = Color.White, modifier = Modifier.size(12.dp))
@@ -1283,7 +1295,8 @@ fun SearchScreen(state: AppState, vm: AppViewModel) {
                     for (lib in libraries) {
                         val n = remember(state.titles, lib.id) { state.titles.count { it.libraryId == lib.id } }
                         Row(
-                            Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(l.buttonShape).clickable { openLibrary(vm, lib.id) }.padding(horizontal = 4.dp),
+                            // On the gutter, as the same rows under a query: the list must not shift as you type.
+                            Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(l.buttonShape).clickable { openLibrary(vm, lib.id) },
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(lib.name, Modifier.weight(1f), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)

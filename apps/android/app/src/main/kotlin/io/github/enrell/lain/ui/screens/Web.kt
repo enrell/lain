@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
@@ -209,7 +210,8 @@ fun ShapeCard(
             Modifier.padding(top = 10.dp),
             color = l.text, fontSize = 14.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
         )
-        if (subtitle.isNotEmpty()) Text(subtitle, Modifier.padding(top = 3.dp), color = l.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Two lines: in three columns "Episode 1 · 11 sec left" was cut to "11 se…".
+        if (subtitle.isNotEmpty()) Text(subtitle, Modifier.padding(top = 3.dp), color = l.muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -229,7 +231,7 @@ fun Sheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         sheetGesturesEnabled = dragToClose,
-        containerColor = l.surface,
+        containerColor = l.sheet,
         contentColor = l.text,
         scrimColor = Color.Black.copy(alpha = 0.62f),
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
@@ -251,7 +253,7 @@ fun Sheet(
             if (footer != null) {
                 // A ground of its own, so the list scrolls under an edge and not under the buttons.
                 Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.7f)))
-                Box(Modifier.fillMaxWidth().background(l.surface).padding(horizontal = 20.dp, vertical = 12.dp)) { footer() }
+                Box(Modifier.fillMaxWidth().background(l.sheet).padding(horizontal = 20.dp, vertical = 12.dp)) { footer() }
             }
         }
     }
@@ -289,12 +291,25 @@ fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String, 
 }
 
 /**
+ * Widens a row by [x] on both sides without moving its neighbours, so its
+ * ground reaches past the gutter while its text stays on it: a sheet's
+ * title, headings and rows then share one left edge.
+ */
+fun Modifier.bleed(x: Dp): Modifier = layout { measurable, c ->
+    val px = x.roundToPx()
+    val wide = if (c.hasBoundedWidth) c.copy(minWidth = c.minWidth + 2 * px, maxWidth = c.maxWidth + 2 * px) else c
+    val p = measurable.measure(wide)
+    layout((p.width - 2 * px).coerceAtLeast(0), p.height) { p.place(-px, 0) }
+}
+
+/**
  * A filter option row: label, the count it would leave, and when it is on
- * a lighter surface, an accent bar and a check. (An accent wash alone
- * turned to mud on a muted theme and read as a statistic, not a choice.)
+ * a lighter ground and a filled mark. (An accent wash turned to mud on a
+ * muted theme; a side bar on top of the fill and the mark said one thing
+ * three times.) [inset] is how far the ground reaches past the text.
  */
 @Composable
-fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enabled: Boolean = true, multi: Boolean = false) {
+fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enabled: Boolean = true, multi: Boolean = false, inset: Dp = 12.dp) {
     val l = LocalLain.current
     // A row just picked comes wholly into view, with room to spare: at the edge
     // of a sheet it was left half under the footer.
@@ -306,11 +321,12 @@ fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enab
     Row(
         Modifier
             .fillMaxWidth()
+            .bleed(inset)
             .heightIn(min = 46.dp)
             .onSizeChanged { size = it }
             .bringIntoViewRequester(reveal)
             .clip(l.buttonShape)
-            .background(if (on) l.raised else Color.Transparent)
+            .background(if (on) l.tonal else Color.Transparent)
             .clickable(enabled = enabled || on) {
                 onClick()
                 scope.launch { reveal.bringIntoView(androidx.compose.ui.geometry.Rect(0f, -room, size.width.toFloat(), size.height + room)) }
@@ -318,14 +334,15 @@ fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enab
             .semantics { stateDescription = if (on) "selected" else "not selected" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(3.dp).height(22.dp).clip(CircleShape).background(if (on) l.accent else Color.Transparent))
         val c = if (on) l.text else l.muted.copy(alpha = if (enabled) 1f else 0.35f)
-        Text(label, Modifier.weight(1f).padding(start = 9.dp), color = c, fontSize = 14.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // At least 12 dp in from the ground's edge, so a row without bleed still has its margin.
+        val pad = maxOf(inset, 12.dp)
+        Text(label, Modifier.weight(1f).padding(start = pad), color = c, fontSize = 14.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (count != null) Text(count.toString(), style = TextStyle(fontFamily = l.mono, fontSize = 11.sp, color = c.copy(alpha = c.alpha * 0.7f)))
         // A square where several can be picked, a ring where one can: the mark says which.
         val mark = if (multi) RoundedCornerShape(5.dp) else CircleShape
         Box(
-            Modifier.padding(start = 10.dp, end = 10.dp).size(20.dp).clip(mark).background(if (on) l.accent else Color.Transparent)
+            Modifier.padding(start = 10.dp, end = pad).size(20.dp).clip(mark).background(if (on) l.accent else Color.Transparent)
                 .border(1.5.dp, if (on) l.accent else l.muted.copy(alpha = if (enabled) 0.55f else 0.2f), mark),
             contentAlignment = Alignment.Center,
         ) { if (on) Icon(Ic.Check, null, tint = l.onAccent, modifier = Modifier.size(12.dp)) }
@@ -369,7 +386,8 @@ fun FilterChip(label: String, onRemove: () -> Unit) {
 
 @Composable
 fun SheetHeading(text: String) {
-    Mono(text, Modifier.padding(start = 8.dp, top = 18.dp, bottom = 6.dp))
+    // On the sheet's gutter, with the title and the rows' text.
+    Mono(text, Modifier.padding(top = 18.dp, bottom = 6.dp))
 }
 
 @Composable
@@ -556,7 +574,7 @@ fun SettingRow(label: String, hint: String = "", below: Boolean = false, control
 
 /** A few choices in a row, one of them on (the web's segmented control). */
 @Composable
-fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit, modifier: Modifier = Modifier) {
+fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit, modifier: Modifier = Modifier, fill: Boolean = false) {
     val l = LocalLain.current
     // An outlined track, and the chosen one filled with the accent: a grey track with a faint
     // tint on the choice read the other way round (the grey looked like the selection).
@@ -564,7 +582,8 @@ fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onPick: (T) -> Un
         for ((value, label) in options) {
             val on = value == selected
             Box(
-                Modifier.heightIn(min = 38.dp).clip(RoundedCornerShape(5.dp)).background(if (on) l.accent else Color.Transparent)
+                // [fill] shares the row's width out, so stacked controls end on one right edge.
+                Modifier.then(if (fill) Modifier.weight(1f) else Modifier).heightIn(min = 38.dp).clip(RoundedCornerShape(5.dp)).background(if (on) l.accent else Color.Transparent)
                     .clickable { onPick(value) }.padding(horizontal = 14.dp)
                     .semantics { stateDescription = if (on) "selected" else "not selected" },
                 contentAlignment = Alignment.Center,

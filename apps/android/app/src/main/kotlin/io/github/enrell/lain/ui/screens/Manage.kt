@@ -171,13 +171,9 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.width(if (reading) 56.dp else 116.dp).aspectRatio(if (reading) 3f / 4f else 16f / 9f), contentAlignment = Alignment.Center) {
+                    // A finished copy plays (or opens) with a tap on its row; no disc on the
+                    // picture, which on every row was noise rather than news.
                     Art(c.itemId, Modifier.fillMaxSize())
-                    // A finished copy plays (or opens) from here.
-                    if (c.state == CopyState.DONE && item != null) {
-                        Box(Modifier.size(30.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
-                            Icon(if (reading) Ic.Book else Ic.Play, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                        }
-                    }
                     if (c.state == CopyState.QUEUED && total > 0) {
                         Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.5f))) {
                             Box(Modifier.fillMaxWidth((done.toFloat() / total).coerceIn(0f, 1f)).height(4.dp).background(l.accent))
@@ -185,16 +181,19 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                     }
                 }
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(c.title, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     val ep = when {
                         c.episode <= 0L && c.season <= 0L -> ""
                         reading -> stringResource(R.string.volume_long, (if (c.season > 0) c.season else c.episode).toInt())
                         c.season > 0 -> stringResource(R.string.season_episode, c.season.toInt(), c.episode.toInt())
                         else -> stringResource(R.string.episode_n, c.episode.toInt())
                     }
+                    // Under its title's heading a row is named by its part: the title again
+                    // on every row said nothing, and pushed the part into the small line.
+                    val grouped = group.size > 1 && ep.isNotEmpty()
+                    Text(if (grouped) ep else c.title, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
                         listOf(
-                            ep,
+                            if (grouped) "" else ep,
                             when (c.state) {
                                 CopyState.DONE -> stringResource(R.string.copy_done, bytes(c.bytes))
                                 CopyState.QUEUED -> stringResource(R.string.copy_queued, bytes(done), if (total > 0) bytes(total) else "?")
@@ -203,8 +202,9 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                             },
                         ).filter { it.isNotEmpty() }.joinToString(" · "),
                         Modifier.padding(top = 4.dp),
+                        // Done is the quiet, normal state ("Downloaded" says it is ready);
+                        // colour is kept for what needs a look, a failure.
                         color = when (c.state) {
-                            CopyState.DONE -> l.ok
                             CopyState.FAILED -> l.danger
                             else -> l.muted
                         },
@@ -257,7 +257,7 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
         }
         SettingsGroup(stringResource(R.string.settings_playback)) {
             SettingRow(stringResource(R.string.player_skip), if (skip == 0) stringResource(R.string.settings_skip_hint) else stringResource(R.string.settings_skip_fixed, skip), below = true) {
-                Segmented(io.github.enrell.lain.domain.SKIP_CHOICES.map { it to if (it == 0) stringResource(R.string.settings_auto) else "$it s" }, skip, { skip = it; graph.prefs.skipSec = it })
+                Segmented(io.github.enrell.lain.domain.SKIP_CHOICES.map { it to if (it == 0) stringResource(R.string.settings_auto) else "$it s" }, skip, { skip = it; graph.prefs.skipSec = it }, Modifier.fillMaxWidth(), fill = true)
             }
             // The account's language: the same setting the web client edits.
             val lang = state.user?.preferredLanguage.orEmpty()
@@ -269,7 +269,7 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
                 lang,
             ) { code -> scope.launch { vm.setPreferredLanguage(code) } }
             SettingRow(stringResource(R.string.settings_sub_size), below = true) {
-                Segmented(listOf(0 to stringResource(R.string.size_small), 1 to stringResource(R.string.size_medium), 2 to stringResource(R.string.size_large)), subSize, { subSize = it; graph.prefs.subtitleSize = it })
+                Segmented(listOf(0 to stringResource(R.string.size_small), 1 to stringResource(R.string.size_medium), 2 to stringResource(R.string.size_large)), subSize, { subSize = it; graph.prefs.subtitleSize = it }, Modifier.fillMaxWidth(), fill = true)
             }
             SettingRow(stringResource(R.string.settings_sub_box), stringResource(R.string.settings_sub_box_hint)) {
                 Toggle(subBox, { on -> subBox = on; graph.prefs.subtitleBox = on }, stringResource(R.string.settings_sub_box))
@@ -340,7 +340,8 @@ private val LANGUAGES = listOf(
 private fun ChoiceRow(label: String, hint: String, shown: String, options: List<Pair<String, String>>, chosen: String, onPick: (String) -> Unit) {
     val l = LocalLain.current
     var open by remember { mutableStateOf(false) }
-    SettingRow(label, hint) {
+    // The list under its hint: beside it, a two-line hint was squeezed to four.
+    SettingRow(label, hint, below = true) {
         Row(
             Modifier.heightIn(min = 40.dp).clip(l.buttonShape).background(l.tonal).clickable(onClickLabel = label) { open = true }.padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

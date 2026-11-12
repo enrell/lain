@@ -321,10 +321,13 @@ fun ReaderScreen(
                 color = Color.White, fontSize = 13.sp, lineHeight = 19.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
-        // The bars: the web reader's glass panels.
+        // The bars: the web reader's glass panels, told from the page by their
+        // ground alone. A hairline round each on the black margins drew two
+        // empty boxes, a wireframe, not a reader.
+        val glass = l.sheet.copy(alpha = 0.92f)
         AnimatedVisibility(chrome, Modifier.align(Alignment.TopCenter), enter = fadeIn() + slideInVertically { -it / 2 }, exit = fadeOut() + slideOutVertically { -it / 2 }) {
             Row(
-                Modifier.safeDrawingPadding().padding(12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(l.bg.copy(alpha = 0.88f)).border(1.dp, l.line.copy(alpha = 0.7f), RoundedCornerShape(16.dp)).padding(6.dp),
+                Modifier.safeDrawingPadding().padding(12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(glass).padding(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconBtn(Ic.ArrowLeft, "Back", onBack, tint = l.text)
@@ -335,26 +338,26 @@ fun ReaderScreen(
                         Modifier.padding(top = 2.dp), color = l.muted, fontSize = 12.sp, maxLines = 1,
                     )
                 }
-                // The direction is a choice between two, the one in force lit.
+                // The way the pages go (next to the right, next to the left, or down), as the
+                // app's other segmented choices: a tonal track, the one in force filled with the
+                // accent. A faint grey on the chosen arrow left the three looking alike.
                 Column(Modifier.padding(end = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Mono(stringResource(R.string.reader_direction), Modifier.padding(bottom = 3.dp), size = 8)
-                Row(Modifier.height(32.dp).clip(l.buttonShape).border(1.dp, l.line, l.buttonShape)) {
-                    // Left to right, right to left, or down the page.
-                    // The way the pages go: next to the right, next to the left, or down.
-                    for ((way, label) in listOf(0 to "\u2192", 1 to "\u2190", 2 to "\u2193")) {
+                Mono(stringResource(R.string.reader_direction), Modifier.padding(bottom = 4.dp))
+                Row(Modifier.height(34.dp).clip(l.buttonShape).background(l.tonal).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    for ((way, icon) in listOf(0 to Ic.ArrowRight, 1 to Ic.ArrowLeft, 2 to Ic.ArrowDown)) {
                         val on = if (way == 2) vertical else !vertical && rtl == (way == 1)
                         val name = stringResource(when (way) { 0 -> R.string.reader_ltr; 1 -> R.string.reader_rtl; else -> R.string.reader_scroll })
                         Box(
-                            Modifier.fillMaxHeight().background(if (on) l.accent.copy(alpha = 0.22f) else Color.Transparent)
+                            Modifier.fillMaxHeight().clip(RoundedCornerShape(5.dp)).background(if (on) l.accent else Color.Transparent)
                                 .clickable(onClickLabel = name) {
                                     vertical = way == 2
                                     readerPrefs.setReadingWayOf(title, when (way) { 0 -> "ltr"; 1 -> "rtl"; else -> "down" })
                                     if (way != 2) rtl = way == 1
                                 }
                                 .semantics { contentDescription = name; stateDescription = if (on) "selected" else "not selected" }
-                                .padding(horizontal = 16.dp),
+                                .padding(horizontal = 13.dp),
                             contentAlignment = Alignment.Center,
-                        ) { Text(label, color = if (on) l.text else l.muted, fontSize = 16.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
+                        ) { Icon(icon, null, tint = if (on) l.onAccent else l.muted, modifier = Modifier.size(18.dp)) }
                     }
                 }
                 }
@@ -364,7 +367,7 @@ fun ReaderScreen(
             Row(
                 // Clear of the system's bottom gesture strip: with the bars hidden the
                 // safe area is the whole screen, and a drag there opened Recents.
-                Modifier.safeDrawingPadding().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 40.dp).fillMaxWidth().systemGestureExclusion().clip(RoundedCornerShape(16.dp)).background(l.bg.copy(alpha = 0.88f)).border(1.dp, l.line.copy(alpha = 0.7f), RoundedCornerShape(16.dp)).padding(horizontal = 16.dp, vertical = 6.dp),
+                Modifier.safeDrawingPadding().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 40.dp).fillMaxWidth().systemGestureExclusion().clip(RoundedCornerShape(16.dp)).background(glass).padding(horizontal = 16.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val last = book.pages.size - 1
