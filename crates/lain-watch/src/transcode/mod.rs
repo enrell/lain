@@ -65,11 +65,13 @@ const RECENT_ACCESS_GRACE: i64 = 60;
 /// build and the GPUs rarely change, and a probe costs seconds on a
 /// machine with a GPU (D-031).
 const CAP_FRESH: Duration = Duration::from_secs(600);
-/// How long an answer that lost something the previous probe found stays
-/// current. A check can miss its timeout on a busy machine (the
-/// libplacebo one takes seconds even when idle), so a loss is probed
-/// again this soon instead of standing for [`CAP_FRESH`]; a loss the
-/// next probe confirms is then current as usual.
+/// How long an answer in doubt stays current: one where a check timed
+/// out, or one that lost something the previous probe found. A check
+/// can miss its timeout on a busy machine (the libplacebo one takes
+/// seconds even when idle), and the first probe runs while the server
+/// starts, so such an answer is probed again this soon instead of
+/// standing for [`CAP_FRESH`]. A loss the next probe confirms with no
+/// timeout is then current as usual.
 const CAP_RECHECK: Duration = Duration::from_secs(30);
 /// Capability sets kept, one per ffmpeg binary and VA-API device; more
 /// only comes from an operator trying paths.
@@ -460,14 +462,17 @@ struct CapsCache {
     /// [`CAP_FRESH`] and [`CAP_RECHECK`]; tests shorten them.
     fresh: Duration,
     recheck: Duration,
+    /// Each ffmpeg run's timeout in a probe ([`policy::PROBE_TIMEOUT`]);
+    /// tests shorten it.
+    limit: Duration,
 }
 
 #[derive(Default)]
 struct CapsSlot {
     /// The last probe's answer and when it landed.
     value: Option<(Instant, Capabilities)>,
-    /// The answer lost something the one before had: current only for
-    /// [`CAP_RECHECK`].
+    /// The answer is in doubt (a check timed out, or it lost something
+    /// the one before had): current only for [`CAP_RECHECK`].
     doubtful: bool,
     /// A probe for this key is running. Other callers keep the last
     /// answer or wait for this one; none starts a second (single flight).
@@ -487,7 +492,7 @@ fn lost(before: &Capabilities, now: &Capabilities) -> bool {
 struct Stored {
     /// It differs from the answer before.
     changed: bool,
-    /// It lost something the answer before had.
+    /// A check timed out, or it lost something the answer before had.
     doubtful: bool,
 }
 
@@ -509,12 +514,13 @@ impl CapsCache {
     }
 
     /// Publishes a probe's answer as probed (D-031: what the page shows is
-    /// what ffmpeg did).
-    fn store(&mut self, key: &str, caps: Capabilities) -> Stored {
+    /// what ffmpeg did). `timed_out`: one of its ffmpeg runs was killed at
+    /// its timeout, so a no in it may be a yes on a calmer machine.
+    fn store(&mut self, key: &str, caps: Capabilities, timed_out: bool) -> Stored {
         let slot = self.slots.entry(key.to_string()).or_default();
         let stored = Stored {
             changed: slot.value.as_ref().is_none_or(|(_, old)| *old != caps),
-            doubtful: slot.value.as_ref().is_some_and(|(_, old)| lost(old, &caps)),
+            doubtful: timed_out || slot.value.as_ref().is_some_and(|(_, old)| lost(old, &caps)),
         };
         slot.value = Some((Instant::now(), caps));
         slot.doubtful = stored.doubtful;
@@ -602,7 +608,12 @@ impl Transcoder {
                     ffmpeg: "ffmpeg".into(),
                 }),
                 cv: Condvar::new(),
-                caps: Mutex::new(CapsCache { slots: HashMap::new(), fresh: CAP_FRESH, recheck: CAP_RECHECK }),
+                caps: Mutex::new(CapsCache {
+                    slots: HashMap::new(),
+                    fresh: CAP_FRESH,
+                    recheck: CAP_RECHECK,
+                    limit: policy::PROBE_TIMEOUT,
+                }),
                 caps_cv: Condvar::new(),
                 hooks,
                 on_change: Mutex::new(None),
@@ -817,31 +828,37 @@ impl Transcoder {
     }
 
     /// Probes and hands the answer to every waiter. A probe that panics
-    /// answers what an ffmpeg that does not run would, so no waiter is
-    /// left behind.
+    /// answers what an ffmpeg that does not run would, in doubt, so no
+    /// waiter is left behind and the next caller after [`CAP_RECHECK`]
+    /// probes again.
     fn run_probe(&self, key: &str, s: &TranscodeSettings) {
         let began = Instant::now();
+        let limit = self.caps_lock().limit;
         let probed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match &self.inner.hooks.caps {
-            Some(f) => f(s),
-            None => policy::probe_build(s),
+            Some(f) => (f(s), false),
+            None => {
+                let p = policy::probe_build_within(s, limit);
+                (p.caps, p.timed_out)
+            }
         }));
-        let caps = probed.unwrap_or_else(|_| {
+        let (caps, timed_out) = probed.unwrap_or_else(|_| {
             tracing::error!(ffmpeg = %policy::ffmpeg_binary(s), "transcode capability probe panicked");
-            Capabilities {
+            let caps = Capabilities {
                 ffmpeg: policy::ffmpeg_binary(s),
                 hardware: st::HW_BACKENDS.iter().map(|b| (b.to_string(), false)).collect(),
                 ..Capabilities::default()
-            }
+            };
+            (caps, true)
         });
         let ms = began.elapsed().as_millis() as u64;
         let ready: Vec<&str> = caps.hardware.iter().filter(|(_, ok)| **ok).map(|(b, _)| b.as_str()).collect();
         let (ffmpeg, hardware, tone, effects) = (caps.ffmpeg.clone(), ready.join(","), caps.tone_map, caps.effects);
-        let stored = self.caps_lock().store(key, caps);
+        let stored = self.caps_lock().store(key, caps, timed_out);
         self.inner.caps_cv.notify_all();
         // What the probe found is visible (D-031): a first or a changed
         // answer is logged, an unchanged refresh only at debug.
         if stored.doubtful {
-            tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, "transcode capabilities lost something since the last probe; probing again soon");
+            tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, timed_out, "transcode capabilities in doubt (a check timed out or lost what the last probe found); probing again soon");
         } else if stored.changed {
             tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, "transcode capabilities probed");
         } else {

@@ -695,26 +695,50 @@ pub fn parse_ffmpeg_list(out: &str, set: &mut BTreeSet<String>) {
     }
 }
 
-const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+pub(crate) const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// One small frame for the hardware probes. Not smaller: NVENC refuses
 /// H.264 below 145x49 ("Invalid argument", measured on an RTX 3050 Ti
 /// at 128x128), which read as "no NVENC" on a working card.
 const TESTSRC: &str = "testsrc2=size=256x144:rate=5:duration=0.2";
 
-fn ffmpeg_ok(ffmpeg: &str, args: &[&str]) -> bool {
-    let mut c = Command::new(ffmpeg);
-    c.args(["-hide_banner", "-loglevel", "error"]).args(args);
-    exec::run(c, None, PROBE_TIMEOUT).is_ok_and(|o| o.status.success())
+/// What one ffmpeg run of the probe answered.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+enum Verdict {
+    /// It failed, or ffmpeg did not start.
+    #[default]
+    No,
+    Yes,
+    /// It outlived its timeout and was killed. Counted as a no, but a
+    /// busy machine or a GPU still waking up can cause it, so the answer
+    /// is only a guess (the cache probes it again sooner, D-031).
+    TimedOut,
 }
 
-fn ffmpeg_list(ffmpeg: &str, flag: &str, set: &mut BTreeSet<String>) {
+impl Verdict {
+    fn of(run: Result<exec::Output, exec::ExecError>, pass: impl FnOnce(&exec::Output) -> bool) -> Verdict {
+        match run {
+            Ok(o) if pass(&o) => Verdict::Yes,
+            Err(exec::ExecError::Timeout) => Verdict::TimedOut,
+            _ => Verdict::No,
+        }
+    }
+}
+
+fn ffmpeg_ok(ffmpeg: &str, args: &[&str], limit: Duration) -> Verdict {
+    let mut c = Command::new(ffmpeg);
+    c.args(["-hide_banner", "-loglevel", "error"]).args(args);
+    Verdict::of(exec::run(c, None, limit), |o| o.status.success())
+}
+
+fn ffmpeg_list(ffmpeg: &str, flag: &str, set: &mut BTreeSet<String>, limit: Duration) -> Verdict {
     let mut c = Command::new(ffmpeg);
     c.args(["-hide_banner", flag]);
-    if let Ok(o) = exec::run(c, None, PROBE_TIMEOUT)
-        && o.status.success()
-    {
-        parse_ffmpeg_list(&String::from_utf8_lossy(&o.stdout), set);
-    }
+    Verdict::of(exec::run(c, None, limit), |o| {
+        o.status.success() && {
+            parse_ffmpeg_list(&String::from_utf8_lossy(&o.stdout), set);
+            true
+        }
+    })
 }
 
 /// The VA-API render node: configured, else the default.
@@ -742,7 +766,7 @@ fn hardware_candidate(backend: &str, caps: &Capabilities) -> bool {
     }
 }
 
-fn probe_hardware(ffmpeg: &str, backend: &str, device: &str) -> bool {
+fn probe_hardware(ffmpeg: &str, backend: &str, device: &str, limit: Duration) -> Verdict {
     let va = format!("vaapi=va:{device}");
     let args: Vec<&str> = match backend {
         st::HW_VAAPI => vec![
@@ -820,7 +844,7 @@ fn probe_hardware(ffmpeg: &str, backend: &str, device: &str) -> bool {
             "null",
             "-",
         ],
-        _ => return false,
+        _ => return Verdict::No,
     };
     // A driver can accept the graph and still encode nothing (seen with
     // VA-API under WSL): the probe must see one frame come out.
@@ -830,8 +854,9 @@ fn probe_hardware(ffmpeg: &str, backend: &str, device: &str) -> bool {
     args.extend(["-f", "framecrc", "-"]);
     let mut c = Command::new(ffmpeg);
     c.args(["-hide_banner", "-loglevel", "error"]).args(&args);
-    exec::run(c, None, PROBE_TIMEOUT)
-        .is_ok_and(|o| o.status.success() && framecrc_has_data(&String::from_utf8_lossy(&o.stdout)))
+    Verdict::of(exec::run(c, None, limit), |o| {
+        o.status.success() && framecrc_has_data(&String::from_utf8_lossy(&o.stdout))
+    })
 }
 
 /// A `framecrc` listing with at least one non-empty packet (the fifth
@@ -842,7 +867,7 @@ fn framecrc_has_data(out: &str) -> bool {
         .any(|l| l.split(',').nth(4).and_then(|n| n.trim().parse::<u64>().ok()).is_some_and(|n| n > 0))
 }
 
-fn probe_tone_map(ffmpeg: &str, bt2390: bool) -> bool {
+fn probe_tone_map(ffmpeg: &str, bt2390: bool, limit: Duration) -> Verdict {
     let src = "testsrc2=size=64x64:rate=5:duration=0.2";
     if bt2390 {
         ffmpeg_ok(
@@ -862,6 +887,7 @@ fn probe_tone_map(ffmpeg: &str, bt2390: bool) -> bool {
                 "null",
                 "-",
             ],
+            limit,
         )
     } else {
         ffmpeg_ok(
@@ -879,13 +905,14 @@ fn probe_tone_map(ffmpeg: &str, bt2390: bool) -> bool {
                 "null",
                 "-",
             ],
+            limit,
         )
     }
 }
 
 /// libplacebo renders one frame: the filter exists in many builds whose
 /// machine has no Vulkan device to run it on.
-fn probe_effects(ffmpeg: &str) -> bool {
+fn probe_effects(ffmpeg: &str, limit: Duration) -> Verdict {
     ffmpeg_ok(
         ffmpeg,
         &[
@@ -901,6 +928,7 @@ fn probe_effects(ffmpeg: &str) -> bool {
             "null",
             "-",
         ],
+        limit,
     )
 }
 
@@ -914,12 +942,12 @@ enum Check {
 }
 
 impl Check {
-    fn run(self, ffmpeg: &str, device: &str) -> bool {
+    fn run(self, ffmpeg: &str, device: &str, limit: Duration) -> Verdict {
         match self {
-            Check::ToneMap => probe_tone_map(ffmpeg, false),
-            Check::ToneMap2390 => probe_tone_map(ffmpeg, true),
-            Check::Effects => probe_effects(ffmpeg),
-            Check::Hardware(backend) => probe_hardware(ffmpeg, backend, device),
+            Check::ToneMap => probe_tone_map(ffmpeg, false, limit),
+            Check::ToneMap2390 => probe_tone_map(ffmpeg, true, limit),
+            Check::Effects => probe_effects(ffmpeg, limit),
+            Check::Hardware(backend) => probe_hardware(ffmpeg, backend, device, limit),
         }
     }
 }
@@ -965,23 +993,43 @@ where
 /// need the lists, not each other); the answer is the one the probes
 /// gave one after another.
 pub fn probe_build(s: &TranscodeSettings) -> Capabilities {
+    probe_build_within(s, PROBE_TIMEOUT).caps
+}
+
+/// A probe's answer, and whether any of its ffmpeg runs timed out.
+pub(crate) struct Probed {
+    pub caps: Capabilities,
+    /// A list or a check was killed at its timeout and counted as a no:
+    /// on a calmer machine it may be a yes.
+    pub timed_out: bool,
+}
+
+/// [`probe_build`] with each ffmpeg run bounded by `limit` (tests
+/// shorten it), telling whether a run timed out.
+pub(crate) fn probe_build_within(s: &TranscodeSettings, limit: Duration) -> Probed {
     let ffmpeg = ffmpeg_binary(s);
     let mut caps = Capabilities { ffmpeg: ffmpeg.clone(), ..Capabilities::default() };
     let mut lists = concurrently(&["-encoders", "-filters", "-hwaccels"], |flag| {
         let mut set = BTreeSet::new();
-        ffmpeg_list(&ffmpeg, flag, &mut set);
-        set
+        let verdict = ffmpeg_list(&ffmpeg, flag, &mut set, limit);
+        (set, verdict)
     })
     .into_iter();
-    caps.encoders = lists.next().unwrap_or_default();
-    caps.filters = lists.next().unwrap_or_default();
-    caps.hwaccels = lists.next().unwrap_or_default();
+    let mut timed_out = false;
+    let mut list = || {
+        let (set, verdict) = lists.next().unwrap_or_default();
+        timed_out |= verdict == Verdict::TimedOut;
+        set
+    };
+    caps.encoders = list();
+    caps.filters = list();
+    caps.hwaccels = list();
     if caps.encoders.is_empty() {
         // No ffmpeg at all: every execution probe would fail too.
         for b in st::HW_BACKENDS {
             caps.hardware.insert(b.to_string(), false);
         }
-        return caps;
+        return Probed { caps, timed_out };
     }
     let mut checks = vec![Check::ToneMap];
     if caps.has_filter("libplacebo") {
@@ -989,15 +1037,16 @@ pub fn probe_build(s: &TranscodeSettings) -> Capabilities {
     }
     checks.extend(st::HW_BACKENDS.into_iter().filter(|b| hardware_candidate(b, &caps)).map(Check::Hardware));
     let device = hardware_device(s);
-    let ok = concurrently(&checks, |c| c.run(&ffmpeg, &device));
-    let passed = |c: Check| checks.iter().zip(&ok).any(|(x, ok)| *x == c && *ok);
+    let verdicts = concurrently(&checks, |c| c.run(&ffmpeg, &device, limit));
+    timed_out |= verdicts.contains(&Verdict::TimedOut);
+    let passed = |c: Check| checks.iter().zip(&verdicts).any(|(x, v)| *x == c && *v == Verdict::Yes);
     caps.tone_map = passed(Check::ToneMap);
     caps.tone_map_2390 = passed(Check::ToneMap2390);
     caps.effects = passed(Check::Effects);
     for b in st::HW_BACKENDS {
         caps.hardware.insert(b.to_string(), passed(Check::Hardware(b)));
     }
-    caps
+    Probed { caps, timed_out }
 }
 
 /// The encoders the settings UI reports, in Go's order.
@@ -1436,6 +1485,44 @@ exit 1
         assert_eq!(caps, want);
         let runs = std::fs::read_dir(&marks).unwrap().count();
         assert_eq!(runs, 5, "tone map, BT.2390, effects, VA-API and NVENC ran once each");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A check killed at its timeout counts as a no, like before, and the
+    /// probe says a run timed out (the cache probes such an answer again
+    /// sooner); an answer whose runs all ended says none did.
+    #[cfg(unix)]
+    #[test]
+    fn a_check_that_times_out_is_a_no_and_says_so() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = lain_store::test_dir("policy-probe-timeout");
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("ffmpeg");
+        let slow = dir.join("slow");
+        let script = r#"#!/bin/sh
+case "$2" in
+  -encoders) printf ' V..... = Video\n V....D libx264 H.264\n'; exit 0 ;;
+  -filters) printf ' ... libplacebo VV->V GPU filters\n'; exit 0 ;;
+  -hwaccels) exit 0 ;;
+esac
+case "$*" in
+  *libplacebo=w=*) [ -e 'SLOW' ] && exec sleep 30; exit 0 ;;
+  *tonemap=hable*) exit 0 ;;
+esac
+exit 1
+"#
+        .replace("SLOW", &slow.to_string_lossy());
+        std::fs::write(&bin, script).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let s = TranscodeSettings { ffmpeg_path: bin.to_string_lossy().into_owned(), ..st::defaults() };
+        let limit = Duration::from_secs(3);
+        let calm = probe_build_within(&s, limit);
+        assert!(calm.caps.tone_map && calm.caps.effects && !calm.caps.tone_map_2390, "{:?}", calm.caps);
+        assert!(!calm.timed_out, "a check that fails at once is a plain no");
+        std::fs::write(&slow, b"").unwrap();
+        let busy = probe_build_within(&s, limit);
+        assert!(busy.timed_out);
+        assert_eq!(busy.caps, Capabilities { effects: false, ..calm.caps }, "only the slow check is a no");
         std::fs::remove_dir_all(&dir).ok();
     }
 }
