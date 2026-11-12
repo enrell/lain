@@ -305,7 +305,8 @@ fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enab
     val reveal = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
-    val room = with(androidx.compose.ui.platform.LocalDensity.current) { 36.dp.toPx() }
+    // Only what the footer's fade covers: more than that moved the list under the finger.
+    val room = with(androidx.compose.ui.platform.LocalDensity.current) { 8.dp.toPx() }
     Row(
         Modifier
             .fillMaxWidth()
