@@ -12,7 +12,7 @@
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
-	import { t } from '$lib/i18n';
+	import { t, type Key } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatRelative } from '$lib/utilities/format';
@@ -63,7 +63,58 @@
 			? (info?.provider_info ?? []).filter((p) => p.capabilities.includes(swapTarget!.capability))
 			: []
 	);
-	const events = $derived(info?.events ?? []);
+	// Swaps, fallbacks and withdrawals: what the group is for. Every
+	// provider registering at start is one line of a count, not twenty rows.
+	const events = $derived((info?.events ?? []).filter((e) => e.kind !== 'register'));
+	const registered = $derived((info?.events ?? []).filter((e) => e.kind === 'register').length);
+
+	/*
+	 * The jobs in families, so a list of thirty-odd reads as a few groups:
+	 * the family is the capability's first word after lain., mapped to a
+	 * heading; an unknown family (a component's) goes under Other.
+	 */
+	const FAMILIES: [string, Key][] = [
+		['library', 'settings.pluginsPage.family.library'],
+		['playback', 'settings.pluginsPage.family.playback'],
+		['metadata', 'settings.pluginsPage.family.metadata'],
+		['acquire', 'settings.pluginsPage.family.acquire'],
+		['people', 'settings.pluginsPage.family.people'],
+		['server', 'settings.pluginsPage.family.server'],
+		['other', 'settings.pluginsPage.family.misc']
+	];
+	function familyOf(cap: string): string {
+		const word = cap.replace(/^lain\./, '').split(/[.@]/)[0];
+		const map: Record<string, string> = {
+			source: 'library',
+			ingest: 'library',
+			catalog: 'library',
+			media: 'library',
+			comic: 'library',
+			search: 'library',
+			playback: 'playback',
+			transform: 'playback',
+			metadata: 'metadata',
+			acquire: 'acquire',
+			indexer: 'acquire',
+			release: 'acquire',
+			subtitle: 'acquire',
+			list: 'people',
+			listlink: 'people',
+			social: 'people',
+			userstate: 'people',
+			backup: 'server',
+			settings: 'server',
+			ui: 'server'
+		};
+		return map[word] ?? 'other';
+	}
+	const families = $derived(
+		FAMILIES.map(([id, title]) => ({
+			id,
+			title,
+			bindings: (info?.composition ?? []).filter((b) => familyOf(b.capability) === id)
+		})).filter((f) => f.bindings.length > 0)
+	);
 	const availableList = $derived(candidateList.filter((p) => !selected.includes(p.id)));
 	const exactlyOne = $derived(swapTarget?.mode === 'exactly-one');
 	const canSwap = $derived(exactlyOne ? selected.length === 1 : selected.length >= 1);
@@ -105,16 +156,16 @@
 			});
 			if (info) info = { ...info, composition: result.composition };
 			swapOpen = false;
-			toasts.success(`${binding.capability} now generation ${result.generation}.`);
+			toasts.success(t('settings.pluginsPage.swapped', { capability: binding.capability, n: result.generation }));
 			await load(true);
 		} catch (err) {
 			if (err instanceof ApiError && err.kind === 'conflict') {
 				// Stale writer: somebody changed the binding first. Reload
 				// the authoritative state instead of retrying blindly.
-				swapError = `${err.message}. Reloading the current composition.`;
+				swapError = t('settings.pluginsPage.stale', { error: err.message });
 				await load(true);
 			} else if (err instanceof ApiError && err.kind === 'unavailable') {
-				swapError = `${err.message}. The candidate failed its health check; the previous generation keeps serving.`;
+				swapError = t('settings.pluginsPage.unhealthyCandidate', { error: err.message });
 				await load(true);
 			} else {
 				swapError = errorMessage(err);
@@ -142,26 +193,30 @@
 	 * The rows are capability ids, binding modes and generation counters:
 	 * the machine's own vocabulary. Plain language first, ids second, so an
 	 * admin looking for 'where do metadata titles come from' can find it.
-	 * Unknown capabilities fall back to the id alone.
+	 * The sentence comes from the server, which describes every job it
+	 * knows and lets a component describe the ones it brings (D-285); a
+	 * server from before that falls back to the few this client knows.
 	 */
-	const PURPOSES: Record<string, string> = {
-		'lain.source.enumerate': 'Reads the library folders and lists the video files it finds.',
-		'lain.media.identify': 'Turns a filename and path into a title, season and episode.',
-		'lain.ingest.scan': 'Walks every library root and updates the catalog.',
-		'lain.search.query': 'Answers searches over this server\u2019s catalog.',
-		'lain.catalog.read': 'Serves the catalog to the app: lists, rails and item pages.',
-		'lain.catalog.write': 'Stores items in the catalog and retires the ones that are gone.',
-		'lain.userstate.progress': 'Remembers where you stopped watching each item.',
-		'lain.media.probe': 'Reads technical stream details: codecs, tracks, dimensions.',
-		'lain.playback.plan': 'Decides whether a file plays directly or has to be converted.',
-		'lain.playback.transcode': 'Converts a file the browser cannot play and serves the stream.',
-		'lain.metadata.search': 'Searches an external metadata source for a matching title.',
-		'lain.metadata.resolve': 'Fetches the posters, synopsis and year shown on item pages.',
-		'lain.transform.thumbnail': 'Extracts the still frames used as thumbnails and placeholders.'
+	const KNOWN: Record<string, Key> = {
+		'lain.source.enumerate': 'settings.pluginsPage.purpose.source_enumerate',
+		'lain.media.identify': 'settings.pluginsPage.purpose.media_identify',
+		'lain.ingest.scan': 'settings.pluginsPage.purpose.ingest_scan',
+		'lain.search.query': 'settings.pluginsPage.purpose.search_query',
+		'lain.catalog.read': 'settings.pluginsPage.purpose.catalog_read',
+		'lain.catalog.write': 'settings.pluginsPage.purpose.catalog_write',
+		'lain.userstate.progress': 'settings.pluginsPage.purpose.userstate_progress',
+		'lain.media.probe': 'settings.pluginsPage.purpose.media_probe',
+		'lain.playback.plan': 'settings.pluginsPage.purpose.playback_plan',
+		'lain.playback.transcode': 'settings.pluginsPage.purpose.playback_transcode',
+		'lain.metadata.search': 'settings.pluginsPage.purpose.metadata_search',
+		'lain.metadata.resolve': 'settings.pluginsPage.purpose.metadata_resolve',
+		'lain.transform.thumbnail': 'settings.pluginsPage.purpose.transform_thumbnail'
 	};
 
-	function purposeOf(cap: string): string {
-		return PURPOSES[shortCapability(cap)] ?? '';
+	function purposeOf(binding: BindingView): string {
+		if (binding.summary) return binding.summary;
+		const key = KNOWN[shortCapability(binding.capability)];
+		return key ? t(key) : '';
 	}
 
 	function modeTone(mode: string): 'neutral' | 'accent' | 'warning' {
@@ -171,7 +226,7 @@
 	}
 </script>
 
-<svelte:head><title>Plugins — Settings — Lain</title></svelte:head>
+<svelte:head><title>{t('settings.pluginsPage.pageTitle')}</title></svelte:head>
 
 <div>
 	{#if loading}
@@ -183,30 +238,28 @@
 	{:else if error}
 		<ErrorState message={error} retry={() => void load()} />
 	{:else if info}
-		<SettingsGroup id="capabilities" title="Capabilities" description={t('settings.groups.plugins.capabilities')}>
-			<p class="settings-note">
-				Each row is one job this server does &mdash; reading folders, identifying files, storing items,
-				serving playback &mdash; and the plugin currently doing it. Replacing a plugin is safe: the
-				change is refused if the new plugin is unhealthy, and a plugin that fails later falls back to
-				the one that worked. Only replace a row if you know what the job is for; the id underneath is
-				the technical name.
-			</p>
+		<SettingsGroup id="capabilities" title={t('settings.pluginsPage.capabilities')} description={t('settings.groups.plugins.capabilities')}>
+			<p class="settings-note">{t('settings.pluginsPage.note')}</p>
 			<!-- A table: the job, who does it, how they are bound, and the swap.
 			     Read across one line per job on a desktop; stacked on a phone. -->
-			<ul class="settings-items" aria-label="Capabilities">
+			<ul class="settings-items" aria-label={t('settings.pluginsPage.capabilities')}>
 				<li class="hidden gap-x-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]" aria-hidden="true">
 					<span>{t('settings.groups.plugins.colJob')}</span>
 					<span>{t('settings.groups.plugins.colProviders')}</span>
 					<span>{t('settings.groups.plugins.colMode')}</span>
 					<span></span>
 				</li>
-				{#each info.composition as binding (binding.capability)}
+				{#each families as family (family.id)}
+				<li class="pb-2 pt-5 font-mono text-[10px] uppercase tracking-[0.2em] text-muted first:pt-3" role="presentation">{t(family.title)}</li>
+				{#each family.bindings as binding (binding.capability)}
 					{@const installed = (info.provider_info ?? []).some((p) => p.capabilities.includes(binding.capability))}
-					{@const purpose = purposeOf(binding.capability)}
+					{@const purpose = purposeOf(binding)}
+					{@const missing = binding.providers.filter((id) => !providerInfo(id))}
 					<li class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 py-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]">
 						<div class="min-w-0">
+							<!-- Wrapped, never clamped: a sentence cut at "item p…" said less than the id. -->
 							{#if purpose}
-								<p class="text-sm text-foreground lg:line-clamp-2" title={purpose}>{purpose}</p>
+								<p class="text-sm leading-5 text-foreground">{purpose}</p>
 							{/if}
 							<p class="truncate font-mono text-xs {purpose ? 'text-muted' : 'text-foreground'}">
 								{shortCapability(binding.capability)}<span>{capabilityVersion(binding.capability)}</span>
@@ -224,39 +277,50 @@
 										<span
 											class={['size-1.5 shrink-0 rounded-full', provider.healthy ? 'bg-success' : 'bg-danger'].join(' ')}
 											role="img"
-											aria-label={provider.healthy ? 'healthy' : 'unhealthy'}
-										></span>
-									{:else}
-										<!-- Bound ahead of its install (a component): named, and said not to be here yet. -->
-										<span class="shrink-0 font-sans text-muted">not installed</span>
-									{/if}
-								</span>
-							{/each}
-						</div>
+																aria-label={provider.healthy ? t('settings.pluginsPage.healthy') : t('settings.pluginsPage.unhealthy')}
+															></span>
+														{:else}
+															<!-- Bound ahead of its install (a component): named, and said not to be here yet. -->
+															<span class="shrink-0 font-sans text-muted">{t('settings.pluginsPage.notInstalled')}</span>
+														{/if}
+													</span>
+												{/each}
+												{#if missing.length > 0}
+													<!-- What to do about it, on the server: the bridges install as components. -->
+													<p class="basis-full text-xs leading-5 text-muted">
+														{t('settings.pluginsPage.installHint')} <code class="font-mono text-[11px] text-foreground">lain component install {missing[0]}</code>
+													</p>
+												{/if}
+											</div>
 						<div class="col-span-2 row-start-3 flex items-center gap-2 lg:col-span-1 lg:row-start-auto lg:flex-col lg:items-start lg:gap-1">
 							<Badge tone={modeTone(binding.mode)}>{binding.mode}</Badge>
-							<span class="text-xs text-muted">generation {binding.generation}</span>
+							<span class="text-xs text-muted">{t('settings.pluginsPage.generation', { n: binding.generation })}</span>
 						</div>
 						<!-- Nothing installed can do this job yet: there is nothing to replace with. -->
+						<!-- Ghost: thirty filled buttons down one column outweighed the jobs. -->
 						<Button
-							variant="tonal"
+							variant="ghost"
 							size="field"
 							class="col-start-2 row-start-1 justify-self-end lg:col-start-auto lg:row-start-auto"
 							disabled={!installed}
-							title={installed ? undefined : 'Install a component that provides this first'}
-							onclick={() => openSwap(binding)}
-							aria-label={`Replace providers for ${binding.capability}`}
-						>
-							Replace
-						</Button>
+								title={installed ? undefined : t('settings.pluginsPage.replaceNone')}
+								onclick={() => openSwap(binding)}
+								aria-label={t('settings.pluginsPage.replaceFor', { capability: binding.capability })}
+							>
+								{t('settings.pluginsPage.replace')}
+							</Button>
 					</li>
+				{/each}
 				{/each}
 			</ul>
 		</SettingsGroup>
 
-		<SettingsGroup id="events" title="Recent composition events" description={t('settings.groups.plugins.events')}>
+		<SettingsGroup id="events" title={t('settings.pluginsPage.events')} description={t('settings.groups.plugins.events')}>
 			{#if events.length === 0}
-				<p class="py-4 text-sm text-muted">No swaps or fallbacks recorded in this process.</p>
+				<p class="py-4 text-sm text-muted">
+					{t('settings.pluginsPage.noEvents')}
+					{#if registered > 0}{t('settings.pluginsPage.registered', { count: registered })}{/if}
+				</p>
 			{:else}
 				<ul class="settings-items">
 					{#each [...events].reverse().slice(0, 20) as event, index (event.at + '-' + index)}
@@ -285,9 +349,9 @@
 <!-- Swap -->
 <Modal
 	bind:open={swapOpen}
-	title="Replace providers"
+	title={t('settings.pluginsPage.swapTitle')}
 	description={swapTarget
-		? `${swapTarget.capability} · ${swapTarget.mode} · generation ${swapTarget.generation}`
+		? `${swapTarget.capability} · ${swapTarget.mode} · ${t('settings.pluginsPage.generation', { n: swapTarget.generation })}`
 		: ''}
 >
 	{#if swapTarget}
@@ -303,11 +367,11 @@
 
 			<div>
 				<p class="mb-2 text-sm font-medium text-muted">
-					{exactlyOne ? 'Choose the single provider' : 'Serving order'}
+					{exactlyOne ? t('settings.pluginsPage.pickOne') : t('settings.pluginsPage.order')}
 				</p>
 				{#if selected.length === 0}
 					<p class="rounded-md border border-dashed border-line px-3 py-4 text-center text-sm text-muted">
-						Pick at least one provider below.
+						{t('settings.pluginsPage.pickAtLeast')}
 					</p>
 				{:else}
 					<ul class="space-y-1.5">
@@ -324,7 +388,7 @@
 											' '
 										)}
 										role="img"
-										aria-label={provider.healthy ? 'healthy' : 'unhealthy'}
+										aria-label={provider.healthy ? t('settings.pluginsPage.healthy') : t('settings.pluginsPage.unhealthy')}
 									></span>
 								{/if}
 								{#if !exactlyOne}
@@ -332,7 +396,7 @@
 										class="rounded p-1 text-muted hover:bg-surface-hover hover:text-foreground disabled:opacity-30"
 										onclick={() => move(index, -1)}
 										disabled={index === 0}
-										aria-label={`Move ${id} up`}
+										aria-label={t('settings.pluginsPage.moveUp', { id })}
 									>
 										<ArrowUp class="size-3.5" />
 									</button>
@@ -340,7 +404,7 @@
 										class="rounded p-1 text-muted hover:bg-surface-hover hover:text-foreground disabled:opacity-30"
 										onclick={() => move(index, 1)}
 										disabled={index === selected.length - 1}
-										aria-label={`Move ${id} down`}
+										aria-label={t('settings.pluginsPage.moveDown', { id })}
 									>
 										<ArrowDown class="size-3.5" />
 									</button>
@@ -348,7 +412,7 @@
 								<button
 									class="rounded p-1 text-muted hover:bg-danger/10 hover:text-danger"
 									onclick={() => removeAt(index)}
-									aria-label={`Remove ${id}`}
+									aria-label={t('settings.pluginsPage.removeProvider', { id })}
 								>
 									<X class="size-3.5" />
 								</button>
@@ -359,9 +423,9 @@
 			</div>
 
 			<div>
-				<p class="mb-2 text-sm font-medium text-muted">Available for this capability</p>
+				<p class="mb-2 text-sm font-medium text-muted">{t('settings.pluginsPage.available')}</p>
 				{#if availableList.length === 0}
-					<p class="text-sm text-muted">Every registered candidate is already selected.</p>
+					<p class="text-sm text-muted">{t('settings.pluginsPage.allPicked')}</p>
 				{:else}
 					<ul class="space-y-1.5">
 						{#each availableList as provider (provider.id)}
@@ -376,12 +440,12 @@
 										' '
 									)}
 									role="img"
-									aria-label={provider.healthy ? 'healthy' : 'unhealthy'}
+									aria-label={provider.healthy ? t('settings.pluginsPage.healthy') : t('settings.pluginsPage.unhealthy')}
 								></span>
 								<button
 									class="rounded p-1 text-muted hover:bg-surface-hover hover:text-accent"
 									onclick={() => add(provider.id)}
-									aria-label={`Add ${provider.id}`}
+									aria-label={t('settings.pluginsPage.addProvider', { id: provider.id })}
 								>
 									<Plus class="size-3.5" />
 								</button>
@@ -394,13 +458,13 @@
 	{/if}
 
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (swapOpen = false)}>Cancel</Button>
+		<Button variant="ghost" onclick={() => (swapOpen = false)}>{t('common.cancel')}</Button>
 		<Button
 			loading={swapping}
 			disabled={!canSwap}
 			onclick={() => void applySwap()}
 		>
-			Apply generation {swapTarget ? swapTarget.generation + 1 : ''}
+			{t('settings.pluginsPage.apply', { n: swapTarget ? swapTarget.generation + 1 : 1 })}
 		</Button>
 	{/snippet}
 </Modal>
