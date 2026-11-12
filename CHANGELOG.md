@@ -88,6 +88,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   hold it at the same place, at the end of the bar's first row; in All
   titles it sat a row lower, under the search. With the switch beside the
   search, sort and tile size join the filters sheet below a wide screen.
+- **Play plays** (web): the player starts once the file is ready instead of
+  waiting paused for a second press, so Autoplay next really plays the next
+  episode. A title's Play goes on from the episode after the last one
+  watched (Play · Episode 4), and Home's hero offers that episode as Up
+  next, or a new title from its first episode rather than whichever file a
+  scan added last.
+- **Audio and quality in direct play** (web): the player's settings offer
+  the file's other audio tracks and a lower quality when the browser plays
+  the file itself; picking one switches to a prepared stream at the same
+  place. Tracks are named by language ("Portuguese", not "por"), and the
+  quality ladder stops at the file's own height.
+- **A scan asked for during a scan runs after it** (web): Add and scan on a
+  second library while the first one scanned did nothing (the server
+  answers 409); the page now queues the scan, says so, and starts it when
+  the running one ends. The slow metadata step says the titles are already
+  browsable.
+- **First run** (web): setup and sign-in focus the name field, a wrong
+  password is selected for retyping, the welcome step's Add a media library
+  (Enter) opens the Add dialog, and both screens go through `t()`. Dialogs
+  open on their first field instead of the close button.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a
@@ -160,6 +180,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   missing title or profile).
 - **The Kind filter names kinds** (web): Films and clips, Episodes, Manga,
   Comics, where it listed the catalog's raw words.
+- **Enter in the Add library dialog adds the library** (web); it went up a
+  folder and renamed the library after the parent. The dialog no longer
+  names a library after the folder the picker opens on.
+- **Rating with the keyboard** (web): a digit then Enter saves that score;
+  Enter used to press the focused 1 instead.
+- **The reader keeps the page reached** (web) when the tab is closed or
+  reloaded; the last turns were lost.
+- **Subtitles stay above the player's controls** (web) while they show.
+- **Counts that disagreed** (web): Search's New in your library said
+  "1 of 21 watched" for a 26-episode show, and a comic in volumes was
+  "3 issues, Seasons 3" on its page under a card saying "3 volumes".
+- **Library rows at tablet width** (web) keep their names; beside the
+  settings rail the controls took the whole row.
+- **An account without Acquire** opening `/acquire` lands on Home, not on
+  its profile settings.
 
 ## [0.3.0] - 2026-11-12
 
