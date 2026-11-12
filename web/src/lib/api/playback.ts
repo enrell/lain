@@ -9,6 +9,17 @@ import type {
 import type { SidecarTrack } from '$lib/player/sidecars';
 
 /**
+ * A viewer id for one player instance (D-281): 128 random bits as hex.
+ * getRandomValues, not randomUUID: a server reached over plain HTTP on the
+ * LAN is not a secure context, and randomUUID exists only in one.
+ */
+export function newViewerId(): string {
+	const bytes = new Uint8Array(16);
+	crypto.getRandomValues(bytes);
+	return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
  * Gateway routes: GET /api/items/{id}/playback (plan),
  * GET /api/items/{id}/stream (bytes, Range-capable),
  * GET /api/items/{id}/transcode (progressive output) and
@@ -76,11 +87,19 @@ export const playback = {
 			signal
 		}),
 
-	/** Stop a session this client started (leaving for good, quality switch). */
-	cancelTranscode: (id: string, session: string) =>
+	/**
+	 * Release this player's hold on a session it started or joined with
+	 * `viewer` (leaving, or a rebuild that replaces it; D-281). The server
+	 * stops the session only when no other viewer holds it and it is
+	 * still being produced; a finished one stays cached for a replay. Sent
+	 * with keepalive, so a release made while the page unloads still
+	 * arrives.
+	 */
+	releaseTranscode: (id: string, session: string, viewer: string) =>
 		request<TranscodeStatus>(`/api/items/${encodeURIComponent(id)}/transcode`, {
 			method: 'DELETE',
-			query: { session }
+			query: { session, viewer },
+			keepalive: true
 		}),
 
 	transcodeUrl: (id: string, token: string | null, session?: string) =>
