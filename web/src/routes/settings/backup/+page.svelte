@@ -33,13 +33,14 @@
 			<div class="min-w-0 flex-1">
 				<h2 class="settings-heading">Database snapshot</h2>
 				<p class="mt-1 text-sm leading-relaxed text-muted">
-					Streams a consistent copy of <span class="font-mono text-xs">lain.db</span> from a
-					single read transaction: accounts, libraries, catalog and watch progress. Safe while
-					scans and streams are running. Media files are never included — they are your files,
-					where they already are.
+					One archive (<span class="font-mono text-xs">.tar</span>) read in a single transaction:
+					accounts, libraries, catalog and watch progress, with the plugin composition, library
+					roots and avatars. Safe while scans and streams are running. Media files are never
+					included — they are your files, where they already are. Restore it into an empty data
+					folder with <span class="font-mono text-xs">lain restore</span>.
 				</p>
 				<Button class="mt-4" loading={busy} onclick={() => void download()}>
-					<Download class="size-4" /> Download lain.db
+					<Download class="size-4" /> Download a backup
 				</Button>
 			</div>
 		</div>

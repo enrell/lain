@@ -44,7 +44,10 @@
 
 	function openSwap(binding: BindingView): void {
 		swapTarget = binding;
-		selected = [...binding.providers];
+		// A component bound before it is installed is not offered again: the
+		// server refuses a provider it does not know, so a swap that kept it
+		// could never be applied.
+		selected = binding.providers.filter((id) => !!providerInfo(id));
 		swapError = null;
 		swapOpen = true;
 	}
@@ -186,6 +189,7 @@
 			<h2 class="settings-heading">Capabilities</h2>
 			<ul class="settings-list">
 				{#each info.composition as binding (binding.capability)}
+					{@const installed = (info.provider_info ?? []).some((p) => p.capabilities.includes(binding.capability))}
 					<li class="py-4">
 						<div class="flex flex-wrap items-center justify-between gap-3">
 							<div class="min-w-0">
@@ -202,9 +206,12 @@
 									<span class="text-xs text-muted">generation {binding.generation}</span>
 								</div>
 							</div>
+							<!-- Nothing installed can do this job yet: there is nothing to replace with. -->
 							<Button
 								variant="secondary"
 								size="sm"
+								disabled={!installed}
+								title={installed ? undefined : 'Install a component that provides this first'}
 								onclick={() => openSwap(binding)}
 								aria-label={`Replace providers for ${binding.capability}`}
 							>
@@ -230,6 +237,9 @@
 											role="img"
 											aria-label={provider.healthy ? 'healthy' : 'unhealthy'}
 										></span>
+									{:else}
+										<!-- Bound ahead of its install (a component): named, and said not to be here yet. -->
+										<span class="font-sans text-muted">not installed</span>
 									{/if}
 								</span>
 							{/each}

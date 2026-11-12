@@ -1713,9 +1713,9 @@
 			aria-label={ended ? 'Play again' : 'Play'}
 		>
 			<span
-				class="flex size-20 items-center justify-center rounded-full border border-foreground/25 bg-background/60 text-foreground backdrop-blur transition-transform duration-150 hover:scale-105 max-md:portrait:size-16"
+				class="flex size-20 items-center justify-center rounded-full border border-white/40 bg-black/65 text-white shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur transition-transform duration-150 hover:scale-105 max-md:portrait:size-16"
 			>
-				<Play class="size-9 translate-x-0.5" />
+				<Play class="size-9 translate-x-0.5 fill-current" />
 			</span>
 		</button>
 	{/if}
@@ -1950,7 +1950,8 @@
 				}}
 				class="relative flex h-6 w-full touch-none select-none items-center"
 			>
-				<span class="relative h-1 w-full grow overflow-hidden rounded-full bg-white/30">
+				<!-- Thick enough to aim at; thicker still under the pointer. -->
+				<span class="relative h-1.5 w-full grow overflow-hidden rounded-full bg-white/30 transition-[height] duration-150 hover:h-2">
 					<!-- The ready range sits where it actually is: a resumed or
 					     re-seeked session begins partway into the episode. -->
 					<span
