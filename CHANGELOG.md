@@ -5,6 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Audio language and subtitle language apart** (D-280): Japanese audio
+  with Portuguese subtitles, and no subtitles over a film dubbed in
+  Portuguese. The account keeps an audio language, a subtitle language
+  and when subtitles show (Auto: when the audio is not in your subtitle
+  language; Always; Forced only; Off). Settings > Playback on the web and
+  Settings in the Android app have the three rows; the web player, the
+  Android player, mpv and VLC opened by the server and `lain watch` pick
+  tracks with them, and a choice made in the player for a title still
+  wins (the web player now remembers it per title too). A transcode
+  started without a track choice plays the preferred audio language, so
+  the Android app hears it in an HLS session. `lain language` gains
+  `--audio`, `--subtitles` and `--subtitle-mode`.
+
+### Changed
+- `preferred_language` stays for older clients: setting it sets both
+  languages, and it now reads as the subtitle language when one is set.
+  Accounts saved before keep exactly their old behaviour.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added

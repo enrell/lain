@@ -22,7 +22,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use lain_admin::{avatars, backup, theme};
-use lain_auth::{AVATAR_UPLOAD, AuthError, MASCOTS, PlaybackPolicy, ProfilePatch, ROLE_ADMIN, ROLE_USER, Verified};
+use lain_auth::{
+    AVATAR_UPLOAD, AuthError, MASCOTS, PlaybackPolicy, PreferencesPatch, ProfilePatch, ROLE_ADMIN, ROLE_USER, Verified,
+};
 use lain_core::codes;
 
 use crate::app::App;
@@ -368,20 +370,22 @@ fn me(app: &App, _: &Req, v: &Verified) -> Reply {
     }
 }
 
+/// D-071's one language or D-280's split preferences, any subset; the
+/// account as it then is.
 fn me_preferences(app: &App, req: &Req, v: &Verified) -> Reply {
-    #[derive(Deserialize)]
-    struct In {
-        preferred_language: Option<String>,
-    }
-    let i: In = match req.decode() {
-        Ok(i) => i,
+    let p: PreferencesPatch = match req.decode() {
+        Ok(p) => p,
         Err(r) => return r,
     };
-    let Some(lang) = i.preferred_language else { return Reply::err(400, "preferred_language is required") };
-    if let Err(e) = app.auth().set_preferred_language(&v.user_id, &lang) {
-        return Reply::err(400, &e.to_string());
+    // An empty patch keeps D-071's answer: older clients read it.
+    if p.is_empty() {
+        return Reply::err(400, "preferred_language is required");
     }
-    me(app, req, v)
+    match app.auth().update_preferences(&v.user_id, &p) {
+        Ok(u) => Reply::ok(json!(u)),
+        Err(AuthError::UnknownUser) => Reply::err(404, "unknown user"),
+        Err(e) => Reply::err(400, &e.to_string()),
+    }
 }
 
 fn me_password(app: &App, req: &Req, v: &Verified) -> Reply {
