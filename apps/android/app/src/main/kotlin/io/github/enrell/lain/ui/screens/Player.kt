@@ -486,6 +486,9 @@ fun PlayerScreen(
             // Subtitles sit above the bar while it is up, and near the edge when it is not.
             update = { view ->
                 view.subtitleView?.setBottomPaddingFraction(if (controls || pinned) 0.24f else 0.08f)
+                // While the bar is dragged its preview card stands where the subtitles are, and
+                // the line showed through under it; they return when the finger lifts.
+                view.subtitleView?.visibility = if (scrub != null) android.view.View.INVISIBLE else android.view.View.VISIBLE
                 // The size and ground chosen in Settings.
                 view.subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitleScale)
                 view.subtitleView?.setStyle(
@@ -760,7 +763,9 @@ fun PlayerScreen(
                     }
                     if (audioTracks.size > 1) {
                         val heard = audioTracks.firstOrNull { it.selected }?.label?.substringBefore(" · ")
-                        BarAction(Ic.Audio, stringResource(R.string.player_audio) + (heard?.let { " · $it" } ?: ""), tracksPanel == 2) { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }
+                        // Audio has no "off": a track being heard is on, lit like "Subtitles · English".
+                        // Dimmed only while the panel was open, it read as a disabled button.
+                        BarAction(Ic.Audio, stringResource(R.string.player_audio) + (heard?.let { " · $it" } ?: ""), tracksPanel == 2 || heard != null) { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }
                     }
                     IconBtn(Ic.Gear, "Settings", { tracksPanel = 0; settings = !settings }, tint = if (settings) l.accent else Color.White)
                     if (canPip) IconBtn(Ic.Pip, stringResource(R.string.player_pip), { enterPip() }, tint = Color.White)
