@@ -342,4 +342,6 @@
     <string name="player_speed_kept">Playing at %1$s</string>
     <string name="reader_leave">Close the book</string>
     <string name="search_or_browse">Or browse</string>
+    <string name="undo">Undo</string>
+    <string name="started_over">Back to the start</string>
 </resources>

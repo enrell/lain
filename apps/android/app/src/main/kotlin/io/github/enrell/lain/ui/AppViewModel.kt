@@ -371,6 +371,15 @@ class AppViewModel(
         }
     }
 
+    /** Puts a position back as it was (the undo of Start over). */
+    fun restoreProgress(p: io.github.enrell.lain.core.ProgressInfo) {
+        viewModelScope.launch {
+            runCatching { withContext(io) { core.saveProgress(p.itemId, p.positionSec, p.durationSec, p.completed) } }
+            loadProgress(listOf(p.itemId))
+            refreshProgressNow()
+        }
+    }
+
     private var overlayJob: Job? = null
 
     /** Genres and synopses for the catalog, in the background: the titles are usable before they arrive. */

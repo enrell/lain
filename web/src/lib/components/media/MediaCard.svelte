@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Check from '@lucide/svelte/icons/check';
 	import { isReadable } from '$lib/reader/kinds';
 	import Play from '@lucide/svelte/icons/play';
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
@@ -70,6 +71,14 @@
 				class="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground backdrop-blur"
 			>
 				{reading ? 'Reading' : 'Watching'}
+			</span>
+		{/if}
+		{#if progress?.completed}
+			<!-- Finished: a check in the corner, as the app and the episode cards mark it. -->
+			<span
+				class="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground backdrop-blur"
+			>
+				<Check class="size-3" aria-hidden="true" />{reading ? 'Read' : 'Watched'}
 			</span>
 		{/if}
 		{#if ratio > 0}
