@@ -31,7 +31,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Favorites with few titles** (web) keep their filters in the toolbar's
   sheet; the filter column comes from 12 titles up.
 - **Login and Setup share one field style** (web), and sign-in says how
-  to get back in after a forgotten password.
+  to get back in after a forgotten password; a disabled account is told
+  so, not that its password is wrong.
 
 ### Fixed
 - **Library on a phone** (web): the shelf names get their own row under
