@@ -30,3 +30,15 @@ fun trackName(label: String?, language: String?, display: Locale = Locale.getDef
     }
     return if (words.any { it.lowercase() in names }) words.joinToString(" · ") else (words + lang.uppercase()).joinToString(" · ")
 }
+
+/** ISO 639-2/T codes and the two-letter tags of the same languages. */
+private val TWO_LETTER: Map<String, String> by lazy {
+    Locale.getISOLanguages().associateBy { runCatching { Locale.forLanguageTag(it).isO3Language }.getOrDefault("") }
+}
+
+/**
+ * A tag as the two-letter one [trackName] and Media3 name a language by:
+ * the server tags streams in ISO 639-2 ("jpn", "fre"), which [Locale] has
+ * no name for. A tag with no two-letter form stays as it is.
+ */
+fun shortLanguage(tag: String): String = TWO_LETTER[languageCode(tag)] ?: tag

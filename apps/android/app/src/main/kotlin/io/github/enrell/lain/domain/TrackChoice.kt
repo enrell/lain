@@ -1,5 +1,8 @@
 package io.github.enrell.lain.domain
 
+import io.github.enrell.lain.core.AudioTrack
+import io.github.enrell.lain.core.PlaySource
+import io.github.enrell.lain.core.SourceKind
 import java.util.Locale
 
 /*
@@ -151,3 +154,41 @@ fun startTracks(prefs: TrackPrefs, remembered: RememberedTracks): StartTracks {
         SubtitleMode.ALWAYS, SubtitleMode.AUTO -> StartTracks(audio, lang, textDisabled = false, forcedOnly = false)
     }
 }
+
+/*
+ * On a transcode (D-280): an HLS session carries one audio stream, so the
+ * audio is chosen when the session is asked for, by stream index; another
+ * track is another session, as another quality is. A direct or offline play
+ * holds every stream and Media3 switches among them itself.
+ */
+
+/**
+ * The audio language a transcode starts in: the one this title remembers,
+ * as an ISO 639-2 code, when the account's audio language would not pick it
+ * anyway; "" leaves the choice to the server (which then also keeps the
+ * session the plan prepared).
+ */
+fun transcodeAudioLanguage(prefs: TrackPrefs, remembered: RememberedTracks): String {
+    val kept = remembered.audio?.takeIf { it.isNotEmpty() } ?: return ""
+    return if (sameLanguage(kept, prefs.audio)) "" else languageCode(kept)
+}
+
+/** The stream of [audio] in [language], or null for none or a language the file lacks. */
+fun audioIn(audio: List<AudioTrack>, language: String): Long? =
+    if (language.isEmpty()) null else audio.firstOrNull { sameLanguage(it.language, language) }?.stream
+
+/**
+ * The audio stream an HLS session plays: the one it was asked for, else the
+ * server's choice by the account's audio language (the rule's [chooseAudio]);
+ * null when the file has no audio.
+ */
+fun sessionAudio(audio: List<AudioTrack>, asked: Long?, prefs: TrackPrefs): Long? =
+    asked ?: chooseAudio(audio.map { TrackInfo(it.language, default = it.default) }, prefs.audio)?.let { audio[it].stream }
+
+/**
+ * Whether playing the file's audio [stream] in [src] takes a new session:
+ * only on an HLS transcode, for a stream of the file the session does not
+ * already play.
+ */
+fun audioNeedsSession(src: PlaySource, stream: Long, prefs: TrackPrefs): Boolean =
+    src.kind == SourceKind.HLS && src.audio.any { it.stream == stream } && stream != sessionAudio(src.audio, src.audioStream, prefs)

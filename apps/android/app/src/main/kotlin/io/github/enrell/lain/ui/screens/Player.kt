@@ -49,7 +49,11 @@ import io.github.enrell.lain.domain.TextPick
 import io.github.enrell.lain.domain.TrackInfo
 import io.github.enrell.lain.domain.TrackPrefs
 import io.github.enrell.lain.domain.decideText
+import io.github.enrell.lain.domain.sessionAudio
+import io.github.enrell.lain.domain.shortLanguage
 import io.github.enrell.lain.domain.startTracks
+import io.github.enrell.lain.domain.trackName
+import io.github.enrell.lain.domain.transcodeAudioLanguage
 import io.github.enrell.lain.graph
 import io.github.enrell.lain.player.Anime4kEffect
 import io.github.enrell.lain.player.DeviceCaps
@@ -182,7 +186,13 @@ fun PlayerScreen(
     val activity = context as? android.app.Activity
     val scope = remember(itemId) { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
     val model = remember(itemId) {
-        PlayerModel(core, itemId, DeviceCaps.claim, scope, graph.prefs.failedFamilies(itemId)) { family -> graph.prefs.rememberFailed(itemId, family) }
+        PlayerModel(
+            core, itemId, DeviceCaps.claim, scope, graph.prefs.failedFamilies(itemId),
+            onDecoderFailed = { family -> graph.prefs.rememberFailed(itemId, family) },
+            trackPrefs = trackPrefs,
+            // A session carries one audio stream: it starts in the title's, not only the account's.
+            audioLanguage = { transcodeAudioLanguage(trackPrefs, rememberedOf(graph.prefs, tracksKey)) },
+        )
     }
     val stateRef = model.state.collectAsState()
     val state by stateRef
@@ -314,6 +324,8 @@ fun PlayerScreen(
     }
     val src = state.source
     LaunchedEffect(src) {
+        // A session's one audio stream is not the file's choice: the list is the file's (D-280).
+        ui.streamAudio = streamAudioOf(src, trackPrefs)
         if (src == null) return@LaunchedEffect
         // A new source (a transcode after the decoder gave up) has its own tracks.
         ui.textDecided = false
@@ -440,8 +452,24 @@ fun PlayerScreen(
         }
         if (shown) PlayerBar(ui, moves, model, state, itemId, player, next, onNext, canPip, enterPip)
         if (ui.settings || ui.tracksPanel != 0) PanelScrim(ui)
-        if (ui.tracksPanel != 0) TracksPanel(ui, player, tracksKey)
+        if (ui.tracksPanel != 0) {
+            TracksPanel(ui, player, tracksKey) { stream ->
+                // Another audio stream is another session, from where the viewer is.
+                val at = moves.nowSec()
+                if (model.switchAudio(stream, at)) ui.pendingSec = at
+            }
+        }
         if (ui.settings) PlaybackPanel(ui, moves, model, state, player)
+    }
+}
+
+/** The audio list an HLS session offers: the file's streams, when there is more than one to choose. */
+internal fun streamAudioOf(src: PlaySource?, prefs: TrackPrefs): List<StreamAudio> {
+    if (src == null || src.kind != SourceKind.HLS || src.audio.size < 2) return emptyList()
+    val playing = sessionAudio(src.audio, src.audioStream, prefs)
+    return src.audio.mapIndexed { i, a ->
+        val lang = a.language.takeIf { it != "und" }
+        StreamAudio(a.stream, trackName(a.label, lang?.let(::shortLanguage)).ifEmpty { "#${i + 1}" }, a.language, a.stream == playing)
     }
 }
 

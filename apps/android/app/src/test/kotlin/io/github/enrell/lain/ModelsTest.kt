@@ -188,7 +188,7 @@ class ModelsTest {
     fun anHlsSessionFromTheResumePointIsOffset() = runTest(main) {
         val core = FakeCore()
         core.progress["e1"] = progress("e1", 600.0)
-        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 0.0, 600.0, 1440.0, emptyList(), "sess-1")
+        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 0.0, 600.0, 1440.0, emptyList(), "sess-1", emptyList(), null)
         val m = PlayerModel(core, "e1", emptyList(), this)
         m.load()
         val src = m.state.value.source!!
@@ -235,7 +235,7 @@ class ModelsTest {
         val told = mutableListOf<String>()
         val m = PlayerModel(core, "e1", claim, this, onDecoderFailed = { told += it })
         m.load()
-        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 0.0, 0.0, 1440.0, emptyList(), "sess-1")
+        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 0.0, 0.0, 1440.0, emptyList(), "sess-1", emptyList(), null)
 
         assertTrue(m.decoderFailed("video/hevc", 0, 0))
         advanceUntilIdle()
@@ -260,7 +260,7 @@ class ModelsTest {
     @Test
     fun aSeekOutsideTheSessionNeedsANewOne() = runTest(main) {
         val core = FakeCore()
-        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 600.0, 600.0, 7200.0, emptyList(), "sess-1")
+        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 600.0, 600.0, 7200.0, emptyList(), "sess-1", emptyList(), null)
         val m = PlayerModel(core, "e1", emptyList(), this)
         m.load()
         advanceUntilIdle()
@@ -271,7 +271,7 @@ class ModelsTest {
         assertTrue(m.needsRebuild(3000.0, 60_000))
         m.rebuild(3000.0, quality = "720p")
         advanceUntilIdle()
-        assertEquals(Triple(3000.0, "720p", null), core.transcodes.last())
+        assertEquals(FakeCore.Transcode(3000.0, "720p", null), core.transcodes.last())
         assertEquals("the title's length is kept", 7200.0, m.state.value.source!!.durationSec!!, 0.001)
         assertEquals("720p", m.state.value.quality)
     }

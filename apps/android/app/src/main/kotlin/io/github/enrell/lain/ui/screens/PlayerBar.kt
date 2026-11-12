@@ -221,8 +221,10 @@ private fun BarActions(ui: PlayerUi, player: ExoPlayer, next: Item?, onNext: (It
             val shown = ui.textTracks.firstOrNull { it.selected }?.takeIf { !ui.textOff }?.label?.substringBefore(" · ")
             BarAction(Ic.Captions, stringResource(R.string.player_subtitles) + (shown?.let { " · $it" } ?: ""), on) { ui.settings = false; ui.tracksPanel = if (ui.tracksPanel == 1) 0 else 1 }
         }
-        if (ui.audioTracks.size > 1) {
-            val heard = ui.audioTracks.firstOrNull { it.selected }?.label?.substringBefore(" · ")
+        // On a transcode the session carries one stream: the file's streams are the choice (D-280).
+        val streams = ui.streamAudio.size > 1
+        if (streams || ui.audioTracks.size > 1) {
+            val heard = (if (streams) ui.streamAudio.firstOrNull { it.selected }?.label else ui.audioTracks.firstOrNull { it.selected }?.label)?.substringBefore(" · ")
             // Always at full weight: some track always plays, and the dimmed
             // "off" look read as a button that could not be used.
             BarAction(Ic.Audio, stringResource(R.string.player_audio) + (heard?.let { " · $it" } ?: ""), on = true) { ui.settings = false; ui.tracksPanel = if (ui.tracksPanel == 2) 0 else 2 }
