@@ -54,8 +54,10 @@
 
 	/* A fullscreen element owns the whole screen: the gutter kept for the
 	   page's scrollbar is given back, or the player sat ten pixels short of
-	   the right edge. */
-	html:has(:fullscreen) {
+	   the right edge. The player and the reader (data-immersive) never
+	   scroll the page either, so the gutter there was a grey strip. */
+	html:has(:fullscreen),
+	html:has([data-immersive]) {
 		scrollbar-gutter: auto;
 		overflow: hidden;
 	}
