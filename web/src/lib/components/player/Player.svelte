@@ -44,6 +44,18 @@
 	import { isTypingTarget } from '$lib/utilities/guards';
 	import { EFFECT_PRESETS, loadEffectsPolicy, resolveEffect, type EffectPreset } from '$lib/player/effects-policy';
 	import { episodeLabel } from '$lib/utilities/grouping';
+	import {
+		SKIP_CHOICES,
+		loadSkip,
+		loadSubtitleBackground,
+		loadSubtitleSize,
+		saveSkip,
+		saveSubtitleBackground,
+		saveSubtitleSize,
+		type SubtitleBackground,
+		type SubtitleSize
+	} from '$lib/player/player-prefs';
+	import { t } from '$lib/i18n';
 	import { detectBrowserProfile, type BrowserProfile, type RendererBackend } from '$lib/player/browser-profile';
 	import { VideoRenderer } from '$lib/player/webgpu/engine';
 	import type { WebGLAnime4KRenderer } from '$lib/player/webgl/engine';
@@ -161,12 +173,8 @@
 	// A sidecar that fails to load makes the renderer yield to native video
 	// (D-059's original degradation, kept for cue-overlay rendering D-082).
 	let trackFailed = $state(false);
-	let subtitleBg = $state<'none' | 'box'>(
-		(prefs.get('player.subtitle_bg') as 'none' | 'box') || 'none'
-	);
-	let subtitleSize = $state<'small' | 'medium' | 'large'>(
-		(prefs.get('player.subtitle_size') as 'small' | 'medium' | 'large') || 'medium'
-	);
+	let subtitleBg = $state<SubtitleBackground>(loadSubtitleBackground());
+	let subtitleSize = $state<SubtitleSize>(loadSubtitleSize());
 	const subtitleBgClass = $derived(subtitleBg === 'box' ? 'subtitles-bg-box' : 'subtitles-bg-none');
 	const subtitleSizeClass = $derived(
 		subtitleSize === 'small'
@@ -176,14 +184,14 @@
 				: 'subtitles-size-medium'
 	);
 
-	function setSubtitleBg(val: 'none' | 'box'): void {
+	function setSubtitleBg(val: SubtitleBackground): void {
 		subtitleBg = val;
-		prefs.set('player.subtitle_bg', val);
+		saveSubtitleBackground(val);
 	}
 
-	function setSubtitleSize(val: 'small' | 'medium' | 'large'): void {
+	function setSubtitleSize(val: SubtitleSize): void {
 		subtitleSize = val;
-		prefs.set('player.subtitle_size', val);
+		saveSubtitleSize(val);
 	}
 	let languageMetadataKnown = $state(false);
 	// v3 session state (D-042): delivery actually used, the quality the
@@ -1096,26 +1104,13 @@
 	// the viewer's choice, or by the title's length when left to the
 	// player. Ten seconds is a step in an episode and nothing in a two
 	// hour film.
-	const SKIP_KEY = 'lain.player.skip';
-	const SKIP_CHOICES = [0, 5, 10, 30, 60];
-	function savedSkip(): number {
-		try {
-			const n = Number(localStorage.getItem(SKIP_KEY));
-			return SKIP_CHOICES.includes(n) ? n : 0;
-		} catch {
-			return 0;
-		}
-	}
-	let skipChoice = $state(savedSkip());
+	// Kept on the keys Settings > Playback edits too (player-prefs).
+	let skipChoice = $state(loadSkip());
 	const autoSkip = $derived.by(() => (totalDuration >= 3600 ? 30 : 10));
 	const skipSec = $derived.by(() => (skipChoice > 0 ? skipChoice : autoSkip));
 	function setSkip(next: number): void {
 		skipChoice = next;
-		try {
-			localStorage.setItem(SKIP_KEY, String(next));
-		} catch {
-			/* lasts for this visit */
-		}
+		saveSkip(next);
 	}
 	let lastTap = { at: 0, side: 0 };
 	let tapTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1855,7 +1850,7 @@
 						aria-label="Subtitle font size"
 					>
 						<option value="small">Small</option>
-						<option value="medium">Normal</option>
+						<option value="medium">Medium</option>
 						<option value="large">Large</option>
 					</select>
 				</label>

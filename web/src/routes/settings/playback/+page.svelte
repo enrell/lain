@@ -19,6 +19,17 @@
 		type EffectRule,
 		type EffectsPolicy
 	} from '$lib/player/effects-policy';
+	import {
+		SKIP_CHOICES,
+		loadSkip,
+		loadSubtitleBackground,
+		loadSubtitleSize,
+		saveSkip,
+		saveSubtitleBackground,
+		saveSubtitleSize,
+		type SubtitleSize
+	} from '$lib/player/player-prefs';
+	import Switch from '$lib/components/primitives/Switch.svelte';
 	import { SavedFlash } from '$lib/settings/flash.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -33,12 +44,19 @@
 	let languageError = $state('');
 	let policy = $state<EffectsPolicy>(defaultEffectsPolicy());
 	let libraries = $state<Library[]>([]);
+	// The player's own choices, kept in this browser: the same keys its menu writes.
+	let skip = $state(0);
+	let subtitleSize = $state<SubtitleSize>('medium');
+	let subtitleBox = $state(false);
 
 	onMount(() => {
 		if (!session.user) return;
 		player = loadPreferredPlayer(session.user.id);
 		language = session.user.preferred_language ?? '';
 		policy = loadEffectsPolicy(session.user.id);
+		skip = loadSkip();
+		subtitleSize = loadSubtitleSize();
+		subtitleBox = loadSubtitleBackground() === 'box';
 		void api.libraries.list().then((v) => (libraries = nameable(v))).catch(() => {});
 	});
 
@@ -47,6 +65,25 @@
 		player = value;
 		savePreferredPlayer(session.user.id, value);
 		flash.mark('player');
+	}
+
+	function changeSkip(value: string): void {
+		const n = Number(value);
+		if (!(SKIP_CHOICES as readonly number[]).includes(n)) return;
+		skip = n;
+		saveSkip(n);
+		flash.mark('skip');
+	}
+	function changeSubtitleSize(value: string): void {
+		if (value !== 'small' && value !== 'medium' && value !== 'large') return;
+		subtitleSize = value;
+		saveSubtitleSize(value);
+		flash.mark('subtitle-size');
+	}
+	function changeSubtitleBox(on: boolean): void {
+		subtitleBox = on;
+		saveSubtitleBackground(on ? 'box' : 'none');
+		flash.mark('subtitle-box');
 	}
 
 	const LANGUAGES: [string, string][] = [
@@ -147,6 +184,38 @@
 		{#snippet below()}
 			{#if languageError}<p class="text-xs text-danger" role="alert">{languageError}</p>{/if}
 		{/snippet}
+	</SettingRow>
+</SettingsGroup>
+
+<!-- What the app keeps in its Settings too; on the web they were only in the player's menu,
+     and the subtitle ones only while a file with subtitles played. -->
+<SettingsGroup id="player-prefs" title={t('playerPrefs.group')}>
+	<SettingRow
+		id="skip"
+		label={t('playerPrefs.skip')}
+		hint={skip === 0 ? t('playerPrefs.skipAutoHint') : t('playerPrefs.skipFixedHint', { seconds: skip })}
+		saved={flash.is('skip')}
+	>
+		<select class="{field} w-56" value={String(skip)} onchange={(e) => changeSkip(e.currentTarget.value)} aria-label={t('playerPrefs.skip')}>
+			{#each SKIP_CHOICES as option (option)}
+				<option value={String(option)}>{option === 0 ? t('playerPrefs.skipAuto') : t('playerPrefs.skipSeconds', { seconds: option })}</option>
+			{/each}
+		</select>
+	</SettingRow>
+	<SettingRow id="subtitle-size" label={t('playerPrefs.subtitleSize')} saved={flash.is('subtitle-size')}>
+		<select
+			class="{field} w-56"
+			value={subtitleSize}
+			onchange={(e) => changeSubtitleSize(e.currentTarget.value)}
+			aria-label={t('playerPrefs.subtitleSize')}
+		>
+			<option value="small">{t('playerPrefs.sizeSmall')}</option>
+			<option value="medium">{t('playerPrefs.sizeMedium')}</option>
+			<option value="large">{t('playerPrefs.sizeLarge')}</option>
+		</select>
+	</SettingRow>
+	<SettingRow id="subtitle-box" label={t('playerPrefs.subtitleBox')} hint={t('playerPrefs.subtitleBoxHint')} saved={flash.is('subtitle-box')}>
+		<Switch bare label={t('playerPrefs.subtitleBox')} checked={subtitleBox} onCheckedChange={changeSubtitleBox} />
 	</SettingRow>
 </SettingsGroup>
 

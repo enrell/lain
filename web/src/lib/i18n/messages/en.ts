@@ -150,6 +150,8 @@ const en = {
 			player: 'Default player',
 			playbackLanguage: 'Audio & subtitle language',
 			effects: 'Video effects',
+			skip: 'Skip step',
+			subtitleLook: 'Subtitle size and background',
 			anilist: 'AniList',
 			password: 'Change password',
 			privacyProfile: 'Profile visibility',
@@ -654,6 +656,20 @@ const en = {
 		emptyTitle: 'Nothing tracked yet',
 		emptyBody: 'Connect an account in Settings → Connections to import what you track. AniList is supported.',
 		openConnections: 'Open Connections'
+	},
+	playerPrefs: {
+		group: 'Skipping and subtitles · this browser',
+		skip: 'Skip step',
+		skipAutoHint: 'Auto jumps 30 s in videos over an hour and 10 s in shorter ones.',
+		skipFixedHint: 'J, L and the skip buttons jump {seconds} s in any video.',
+		skipAuto: 'Auto',
+		skipSeconds: '{seconds} s',
+		subtitleSize: 'Subtitle size',
+		sizeSmall: 'Small',
+		sizeMedium: 'Medium',
+		sizeLarge: 'Large',
+		subtitleBox: 'Subtitles on a dark box',
+		subtitleBoxHint: 'Easier to read over bright pictures.'
 	},
 	playbackLanguage: {
 		label: 'Audio & subtitle language',
