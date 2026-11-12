@@ -1,5 +1,4 @@
 <script lang="ts">
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import { nameable } from '$lib/stores/media-cache.svelte';
@@ -16,7 +15,7 @@
 	import { page } from '$app/state';
 	import { api, ApiError, type AcquireUsage, type Candidate, type Grab, type Indexer, type Library, type SearchResponse } from '$lib/api';
 	import Button from '$lib/components/primitives/Button.svelte';
-	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
+	import FirstRun from '$lib/components/media/FirstRun.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { grabProgress, isActiveGrab, ratio, releaseNumbers, releaseTags } from '$lib/acquire/format';
@@ -37,6 +36,8 @@
 
 	let libraries = $state<Library[]>([]);
 	let indexers = $state<Indexer[]>([]);
+	// Until both lists answer, "no library" and "no indexer" are not known yet.
+	let loaded = $state(false);
 	let libraryId = $state('');
 	const library = $derived(libraries.find((l) => l.id === libraryId));
 
@@ -76,6 +77,7 @@
 		} catch (err) {
 			toasts.error(errorMessage(err, t('acquire.loadFailed')));
 		}
+		loaded = true;
 		await refresh();
 	});
 	onDestroy(() => {
@@ -227,8 +229,17 @@
 		void goto(url, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 
+	// Nothing to search with: the page says what it is for and offers the first step.
+	const noLibrary = $derived(loaded && libraries.length === 0);
+	const firstRun = $derived(noLibrary || (loaded && tab === 'search' && indexers.length === 0));
+
 	async function onKey(e: KeyboardEvent): Promise<void> {
-		if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if (firstRun && e.key === (noLibrary ? 'l' : 'i')) {
+			e.preventDefault();
+			void goto(noLibrary ? '/settings/libraries' : '/settings/indexers');
+			return;
+		}
 		const n = Number(e.key);
 		if (n >= 1 && n <= TABS.length) {
 			e.preventDefault();
@@ -251,7 +262,8 @@
 	<header class="flex flex-wrap items-end justify-between gap-4">
 		<div>
 			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('acquire.heading')}</h1>
-			<p class="mt-0.5 text-sm text-muted">{t('acquire.subtitle')}</p>
+			<!-- The first-run block below says what the page is for, at length. -->
+			{#if !firstRun}<p class="mt-0.5 text-sm text-muted">{t('acquire.subtitle')}</p>{/if}
 		</div>
 		<div class="flex gap-4 text-sm">
 			<a href="/settings/indexers" class="inline-flex min-h-9 items-center gap-1 text-foreground/70 hover:text-foreground">{t('acquire.indexersLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>
@@ -270,15 +282,26 @@
 		{/each}
 	</div>
 
-	{#if libraries.length === 0}
-		<EmptyState title={t('acquire.noLibrariesTitle')} description={t('acquire.noLibrariesBody')}>
-			<a href="/settings/libraries" class="rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-foreground">{t('acquire.noLibrariesAction')}</a>
-		</EmptyState>
+	{#if !loaded}
+		<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
+	{:else if noLibrary}
+		<FirstRun eyebrow={t('acquire.firstRun.eyebrow')} title={t('acquire.firstRun.noLibraryTitle')} body={t('acquire.firstRun.noLibraryBody')}>
+			<LinkButton href="/settings/libraries" size="rowMain">{t('acquire.noLibrariesAction')} <kbd>L</kbd></LinkButton>
+		</FirstRun>
 	{:else if tab === 'search' && indexers.length === 0}
-		<EmptyState title={t('acquire.search.noIndexersTitle')} description={t('acquire.search.noIndexersBody')}>
-			{#snippet icon()}<SearchIcon class="size-6" aria-hidden="true" />{/snippet}
-			<LinkButton href="/settings/indexers">{t('acquire.search.addIndexer')}</LinkButton>
-		</EmptyState>
+		<FirstRun
+			eyebrow={t('acquire.firstRun.eyebrow')}
+			title={t('acquire.firstRun.title')}
+			body={t('acquire.firstRun.body')}
+			steps={[
+				{ label: t('acquire.firstRun.stepIndexer'), text: t('acquire.firstRun.stepIndexerText') },
+				{ label: t('acquire.firstRun.stepSearch'), text: t('acquire.firstRun.stepSearchText') },
+				{ label: t('acquire.firstRun.stepFollow'), text: t('acquire.firstRun.stepFollowText') }
+			]}
+		>
+			<LinkButton href="/settings/indexers" size="rowMain">{t('acquire.firstRun.addIndexer')} <kbd>I</kbd></LinkButton>
+			<Button variant="tonal" size="row" onclick={() => setTab('queue')}>{t('acquire.firstRun.fromLink')} <kbd>2</kbd></Button>
+		</FirstRun>
 	{:else if tab === 'search'}
 		<form class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_6rem_6rem_auto] sm:items-end" onsubmit={search}>
 			<label class="block space-y-1.5">
@@ -302,9 +325,7 @@
 			<Button type="submit" loading={searching} disabled={!query.trim() || indexers.length === 0} title={indexers.length === 0 ? t('acquire.search.noIndexers') : undefined}>{t('acquire.search.submit')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
 		</form>
 
-		{#if indexers.length === 0}
-			<p class="flex flex-wrap items-center gap-3 text-sm text-muted">{t('acquire.search.noIndexers')} <LinkButton href="/settings/indexers" variant="secondary" size="sm">{t('acquire.indexersLink')}</LinkButton></p>
-		{:else if results}
+		{#if results}
 			{#if results.candidates.length === 0}
 				<p class="py-6 text-sm text-muted">{t('acquire.search.empty')}</p>
 			{:else}

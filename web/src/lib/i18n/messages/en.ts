@@ -535,6 +535,18 @@ const en = {
 			findFriends: 'Find people',
 			more: 'Load older'
 		},
+		firstRun: {
+			eyebrow: 'First step',
+			title: 'Watch alongside the people on this server.',
+			body: 'Friends see what you watch, read and rate, and you see theirs: their activity in the Feed, their ratings on each title, collections they share with you.',
+			privacy: 'Privacy settings',
+			stepAdd: 'Add a friend',
+			stepAddText: 'Press / or open Friends, find them by name and add them; they accept from their notifications.',
+			stepFollow: 'Follow along',
+			stepFollowText: 'What friends watch, read and rate arrives in the Feed, newest first.',
+			stepShare: 'Choose what you share',
+			stepShareText: 'Privacy settings decide who sees your profile, activity and ratings, and who can find you.'
+		},
 		friends: {
 			searchLabel: 'Search people',
 			searchPlaceholder: 'Search people by name — press / from anywhere on this page',
@@ -803,12 +815,31 @@ const en = {
 		subtitle: 'Everything your connected accounts track — manga, comics, anime, films and shows in one place.',
 		films: 'Films',
 		shows: 'Shows',
-		emptyTitle: 'Nothing tracked yet',
-		emptyBody: 'Connect an account in Settings → Connections to import what you track. AniList is supported.',
-		openConnections: 'Open Connections',
 		noMatchTitle: 'Nothing tracked of this kind',
 		noMatchBody: 'Your accounts track other things. Clear the filters to see all of it.',
-		showEverything: 'Show everything'
+		showEverything: 'Show everything',
+		firstRun: {
+			eyebrow: 'First step',
+			title: 'Bring the list you keep elsewhere.',
+			body: 'Tracking shows what you follow on AniList (anime, manga, films, shows and comics, with status, progress and score), whether or not the files are on this server.',
+			connect: 'Connect AniList',
+			watch: 'Browse the library',
+			stepConnect: 'Connect',
+			stepConnectText: 'Link your AniList account under Settings → Connections.',
+			stepImport: 'Import',
+			stepImportText: 'Its list arrives here and can be synced again at any time.',
+			stepWatch: 'Watch here',
+			stepWatchText: 'With progress sync on, episodes you finish on Lain count there too.'
+		},
+		linkedEmpty: {
+			eyebrow: 'AniList connected',
+			title: 'Nothing imported yet.',
+			body: 'AniList is linked as {name}, but its list came back empty. Sync to look again, or add titles on AniList first.',
+			sync: 'Sync now',
+			synced: { one: 'Synced: {count} entry.', other: 'Synced: {count} entries.' },
+			syncFailed: 'Could not sync with AniList.',
+			connections: 'Connections'
+		}
 	},
 	player: {
 		nextEpisode: 'Next episode',
@@ -846,9 +877,22 @@ const en = {
 		indexersLink: 'Indexers',
 		settingsLink: 'Acquisition settings',
 		loadFailed: 'Could not load libraries or indexers.',
-		noLibrariesTitle: 'No library to import into',
-		noLibrariesBody: 'Grabs land in a library. Add one first.',
 		noLibrariesAction: 'Add a library',
+		firstRun: {
+			eyebrow: 'First step',
+			title: 'Find a release, grab it into a library.',
+			body: 'Acquire asks your Torznab indexers for releases, downloads them with Lain’s own torrent engine and imports the files into a library. It starts with an indexer.',
+			addIndexer: 'Add an indexer',
+			fromLink: 'Grab from a link',
+			stepIndexer: 'Add an indexer',
+			stepIndexerText: 'Settings → Indexers takes a Torznab address and its key.',
+			stepSearch: 'Search',
+			stepSearchText: 'Search here; Enter grabs a release into the library you pick.',
+			stepFollow: 'Follow',
+			stepFollowText: 'The Queue shows each download until its files are in the library.',
+			noLibraryTitle: 'Add a library first.',
+			noLibraryBody: 'Everything Acquire downloads is imported into a library, and this server has none yet.'
+		},
 		tab: { search: 'Search', queue: 'Queue', wanted: 'Wanted', blocklist: 'Blocklist', subtitles: 'Subtitles' },
 		numbering: {
 			absolute: 'Absolute episodes',
@@ -975,9 +1019,6 @@ const en = {
 			indexerFailed: '{name} did not answer: {error}',
 			empty: 'No releases found.',
 			noIndexers: 'No indexer is configured yet.',
-			noIndexersTitle: 'No indexer yet',
-			noIndexersBody: 'Search asks your indexers for releases. Add one to start.',
-			addIndexer: 'Add an indexer',
 			keys: { one: '{count} release · Enter grabs · j/k move', other: '{count} releases · Enter grabs · j/k move' },
 			seedersPeers: 'Seeders / peers',
 			grab: 'Grab',

@@ -5,12 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **First-run pages for Tracking, Social and Acquire** (web): on a server
+  with nothing of yours there yet, each says in a line or two what it is
+  for and offers the first step as its main action, with a key (connect
+  AniList, or sync a linked account that came back empty; find people and
+  the privacy settings; add an indexer, or a library first), over art from
+  the server's own library, in place of a grey box.
+
 ### Changed
 - **Search results look like a library** (web): one card frame per answer,
   the library's sizes (those of Home's rails) and the same treatment of
   stills and posters, where results were rows of mixed shapes. Arrow keys
   move between results and from the header's field into them; up from the
   first row goes back to the field. The library grid answers the same keys.
+- **Tracking's grid uses the library's card sizes** (web), and a wide
+  cover is shown whole instead of cropped to a poster.
 - **The library's view switch stays put** (web): By library and All titles
   hold it at the same place, at the end of the bar's first row; in All
   titles it sat a row lower, under the search. With the switch beside the
@@ -22,6 +32,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   pictures before they are drawn and keep the frame those decide; a grid
   opened in one shape and turned to the other as its posters came in. A
   provider's cover (a wide banner) is no longer taken for a poster.
+- **Acquire no longer flashes "no library"** (web) while its libraries load.
 
 ## [0.3.0] - 2026-11-12
 
