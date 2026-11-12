@@ -472,14 +472,21 @@ fn reprobe_forces_a_fresh_probe_nobody_waits_for() {
     assert_eq!(r.t.capabilities(&s).ffmpeg, "probe-1");
     r.t.reprobe(&s);
     r.wait_runs(2);
-    // One already running is the fresh probe.
+    // The one running may have started before what prompted these (a
+    // driver installed, then the settings saved): one more runs after
+    // it, however many were asked for, and nobody waits for either.
+    r.t.reprobe(&s);
     r.t.reprobe(&s);
     assert_eq!(r.caps_now(&s).ffmpeg, "probe-1");
     std::thread::sleep(Duration::from_millis(50));
-    assert_eq!(r.runs(), 2);
+    assert_eq!(r.runs(), 2, "single flight");
     r.let_one();
-    r.wait_for(&s, "probe-2");
-    assert_eq!(r.runs(), 2);
+    r.wait_runs(3);
+    assert_eq!(r.caps_now(&s).ffmpeg, "probe-2");
+    r.let_one();
+    r.wait_for(&s, "probe-3");
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(r.runs(), 3);
 }
 
 #[test]
