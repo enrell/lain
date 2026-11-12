@@ -252,8 +252,9 @@
 						onclick={toggleAutoplay}
 					>
 						<!-- A switch that looks like one: as small caps it read as a fact, not a choice. -->
-						<span class={['relative h-4 w-7 rounded-full transition-colors', autoplayNext ? 'bg-accent' : 'bg-white/20'].join(' ')}>
-							<span class={['absolute top-0.5 size-3 rounded-full bg-white transition-all', autoplayNext ? 'left-3.5' : 'left-0.5'].join(' ')}></span>
+						<!-- Drawn as the settings switch: accent track and accent-ink knob when on. -->
+						<span class={['relative h-4 w-7 rounded-full transition-colors', autoplayNext ? 'bg-accent' : 'bg-surface-active'].join(' ')}>
+							<span class={['absolute top-0.5 size-3 rounded-full transition-all', autoplayNext ? 'left-3.5 bg-accent-fg' : 'left-0.5 bg-muted'].join(' ')}></span>
 						</span>
 						Autoplay next
 					</button>

@@ -104,14 +104,15 @@
 		return Number.isInteger(n) && n >= 0 ? n : undefined;
 	}
 
-	const field = 'h-9 rounded-md border px-2.5 text-sm text-foreground outline-none';
+	// The height of the Select trigger beside them (h-10): one row of pickers, one size.
+	const field = 'h-10 rounded-md border px-2.5 text-sm text-foreground outline-none';
 </script>
 
 <svelte:head><title>Playback — Settings — Lain</title></svelte:head>
 
 <SettingsGroup title="Playing">
 	<SettingRow id="player" label="Default player" hint="Which player opens when you press Play in this browser." saved={flash.is('player')}>
-		<select class="{field} w-44" value={player} onchange={(e) => changePlayer(e.currentTarget.value)} aria-label="Default player">
+		<select class="{field} w-56" value={player} onchange={(e) => changePlayer(e.currentTarget.value)} aria-label="Default player">
 			<option value="browser">Web player</option>
 			<option value="mpv">mpv</option>
 			<option value="vlc">VLC</option>
@@ -132,7 +133,8 @@
 		saved={flash.is('language')}
 	>
 		<!-- A language by name, from a list: a three-letter code to type was a thing to know first. -->
-		<div class="w-44">
+		<!-- As wide as the native pickers on this page; the whole column on a phone, as they are. -->
+		<div class="w-full md:w-56">
 			<Select
 				aria-label="Audio and subtitle language"
 				bind:value={language}

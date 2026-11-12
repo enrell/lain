@@ -368,8 +368,13 @@ details.settings-section > summary {
 	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, textarea) {
 		max-width: 100%;
 	}
+	/* A Select's trigger at the type size of the native pickers beside it
+	   (bits-ui marks it with data-select-trigger, not a combobox role). */
+	.settings-body :is(button[role='combobox'], [data-select-trigger]) {
+		font-size: 16px;
+	}
 	/* Thumb-sized fields; text fields and pickers span the column. */
-	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, button[role='combobox']) {
+	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, button[role='combobox'], [data-select-trigger]) {
 		min-height: 2.75rem;
 	}
 	.settings-body :is(input:is([type='text'], [type='password'], [type='url'], [type='search'], [type='email'], :not([type])), select, textarea, button[role='combobox']) {
@@ -382,6 +387,24 @@ details.settings-section > summary {
 	main button.font-mono {
 		min-height: 2.25rem;
 	}
+}
+
+/*
+ * Native selects drawn as the Select primitive's trigger: no OS arrow, the
+ * same muted chevron at the right. Beside a Select, a native one read as a
+ * different control (other arrow, other box). Left unlayered on purpose, so
+ * the chevron's room is kept over a utility's `px-*`; only the image and the
+ * end padding are set, so each select keeps its own fill, border and size.
+ * The player's chrome selects keep their own look.
+ */
+select:not(.chrome-select, [multiple], [size]) {
+	appearance: none;
+	-webkit-appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a90a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 0.75rem center;
+	background-size: 1rem;
+	padding-inline-end: 2.25rem;
 }
 
 /* ---- cards that take the shape of their picture ----------------------- */

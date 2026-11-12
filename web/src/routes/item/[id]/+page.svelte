@@ -432,7 +432,7 @@
 		     business, folded away from the page everyone reads. -->
 		{#if session.isAdmin}
 			<details class="max-w-3xl text-sm text-muted">
-				<summary class="group/sum inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-md px-1 font-mono text-[10px] uppercase tracking-[0.18em] hover:text-foreground [&::-webkit-details-marker]:hidden">
+				<summary class="group/sum inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-md px-1 font-mono text-[11px] uppercase tracking-[0.16em] text-foreground/75 hover:text-foreground [&::-webkit-details-marker]:hidden">
 					<ChevronRight class="size-3.5 transition-transform [details[open]_&]:rotate-90" aria-hidden="true" />{t('title.fileDetails')}
 				</summary>
 				<dl class="mt-2 space-y-1.5 border-l border-line pl-4 text-xs">

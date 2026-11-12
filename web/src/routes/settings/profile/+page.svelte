@@ -142,7 +142,8 @@
 		<div class="min-w-0">
 			<p class="truncate text-2xl font-black uppercase tracking-[-0.04em] text-foreground">{displayName(preview)}</p>
 			<p class="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-				@{user.username} · {user.role}{#if user.created_at} · since {formatDate(user.created_at)}{/if}
+				<!-- The separator as one string: a space opening the {#if} was dropped ("ADMIN· SINCE"). -->
+				@{user.username} · {user.role}{#if user.created_at}{` · since ${formatDate(user.created_at)}`}{/if}
 			</p>
 			{#if bio.trim()}<p class="mt-2 max-w-xl whitespace-pre-line text-sm text-muted">{bio.trim()}</p>{/if}
 		</div>
@@ -225,7 +226,7 @@
 	<SettingsGroup id="interface" title={t('settings.interface.group')}>
 		<SettingRow label={t('settings.interface.language')} hint={t('settings.interface.languageHint')} saved={flash.is('locale')}>
 			<select
-				class="h-9 w-56 rounded-md border px-2.5 text-sm text-foreground outline-none"
+				class="h-10 w-56 rounded-md border px-2.5 text-sm text-foreground outline-none"
 				aria-label={t('settings.interface.language')}
 				value={i18n.choice}
 				onchange={(e) => void changeLocale(e.currentTarget.value)}
