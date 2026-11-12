@@ -9,6 +9,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Users from '@lucide/svelte/icons/users';
+	import type { CatalogItem } from '$lib/api/types';
 	import {
 		api,
 		type Activity,
@@ -23,6 +24,7 @@
 	import { session } from '$lib/auth/session.svelte';
 	import { t } from '$lib/i18n';
 	import FirstRun from '$lib/components/media/FirstRun.svelte';
+	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
@@ -36,6 +38,7 @@
 	import { focusSoon } from '$lib/components/social/focus';
 	import { FIELD } from '$lib/components/social/styles';
 	import { pageKey, socialError } from '$lib/social/format';
+	import { ensureItems } from '$lib/stores/media-cache.svelte';
 	import { socialBadge } from '$lib/stores/social.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { debounce } from '$lib/utilities/debounce';
@@ -244,6 +247,13 @@
 			friends.friends.length + friends.incoming.length + friends.outgoing.length === 0
 	);
 
+	// The titles in the feed, newest first, as cards over the list: the feed
+	// alone was a column of text beside every other page's posters.
+	async function feedTitles(): Promise<CatalogItem[]> {
+		const ids = [...new Set(feed.map((a) => a.work.item_id ?? '').filter((id) => id !== ''))].slice(0, 24);
+		return (await ensureItems(ids)).filter((item): item is CatalogItem => item !== undefined);
+	}
+
 	async function findPeople(): Promise<void> {
 		setTab('friends');
 		await tick();
@@ -311,6 +321,7 @@
 				<Button onclick={() => void findPeople()}>{t('social.feed.findFriends')} <Kbd>/</Kbd></Button>
 			</EmptyState>
 		{:else}
+			<RelatedRow heading={t('social.feed.titles')} source={feedTitles} class="mb-2" />
 			<ul>
 				{#each feed as a (a.id)}
 					<ActivityRow activity={a} user={feedUsers[a.user_id]} />
@@ -322,16 +333,20 @@
 		{/if}
 	{:else if tab === 'friends' && friends}
 		<section class="space-y-3">
-			<label class="block">
+			<!-- The key sits in the field, as the library's search shows its own;
+			     spelled out in the placeholder it ran off a phone's width. -->
+			<label class="relative block">
 				<span class="sr-only">{t('social.friends.searchLabel')}</span>
 				<input
 					bind:this={searchInput}
 					bind:value={query}
 					oninput={searchSoon}
 					onkeydown={(e) => e.key === 'Escape' && searchInput?.blur()}
-					class={FIELD}
+					class="{FIELD} md:pe-10"
 					placeholder={t('social.friends.searchPlaceholder')}
+					aria-keyshortcuts="/"
 				/>
+				<kbd class="pointer-events-none absolute end-3 top-1/2 hidden -translate-y-1/2 text-muted/70 md:inline-flex">/</kbd>
 			</label>
 			<ul>
 				{#each results as r (r.user.id)}
