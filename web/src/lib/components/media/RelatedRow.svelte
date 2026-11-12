@@ -47,11 +47,16 @@
 			.then((list) => (progressMap = new Map(list.map((p) => [p.item_id, p]))))
 			.catch(() => {});
 	});
+	// Only the latest load may draw: measuring takes up to a few seconds, so
+	// moving on to the next title of the same library could otherwise let the
+	// previous title's rail (which lists the new title) land after its own.
+	let run = 0;
 	$effect(() => {
 		const id = libraryId;
 		const skip = new Set(exclude);
 		const newest = recent;
 		const given = source;
+		const mine = ++run;
 		groups = [];
 		if (!id && !newest && !given) return;
 		const files = given
@@ -64,7 +69,7 @@
 					.filter((g) => !g.items.some((i) => skip.has(i.id)))
 					.slice(0, 12);
 				const settled = await settleFrame(found);
-				if (libraryId !== id) return;
+				if (mine !== run) return;
 				frame = settled;
 				groups = found;
 			})
