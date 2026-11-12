@@ -45,6 +45,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   ago") and offers Watch again; a comic shows its ComicInfo.xml summary and
   genres in the hero; volume cards are the size of the rail cards under
   them.
+- **Web, title pages:** a card in a title's "More in" rail opens that
+  title; the page kept the first title on screen under the new address.
 
 ## [0.3.1] - 2026-11-12
 
