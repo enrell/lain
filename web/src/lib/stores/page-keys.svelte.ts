@@ -8,6 +8,7 @@
  */
 
 import { untrack } from 'svelte';
+import { SvelteSet } from 'svelte/reactivity';
 
 export interface KeyHint {
 	/** Key caps as they are pressed together: ['Ctrl', 'S'], or one cap per alternative label like ['j', 'k']. */
@@ -22,13 +23,21 @@ class Group {
 }
 
 class PageKeys {
-	groups = $state<Group[]>([]);
+	/*
+	 * The owners on screen, in the order they mounted. A set changed in
+	 * place, not an array state replaced by a filtered copy: an owner leaves
+	 * in its effect's teardown, where Svelte reads state as it was before the
+	 * update that is unmounting it, so the copy left out an owner that had
+	 * mounted in that same update (a {#key} block re-creating the library
+	 * grid lost its rows, and the header's `/` came back over its filter).
+	 */
+	#groups = new SvelteSet<Group>();
 
 	/** Every row on screen, in the order their owners mounted; a key listed twice keeps its first meaning. */
 	get rows(): KeyHint[] {
 		const seen = new Set<string>();
 		const out: KeyHint[] = [];
-		for (const group of this.groups) {
+		for (const group of this.#groups) {
 			for (const row of group.rows) {
 				const id = row.keys.join('+');
 				if (seen.has(id)) continue;
@@ -41,19 +50,22 @@ class PageKeys {
 
 	/** Whether the page claims a key of its own (the header's `/` steps aside for a page filter). */
 	has(key: string): boolean {
-		return this.groups.some((g) => g.rows.some((r) => r.keys.length === 1 && r.keys[0] === key));
+		for (const group of this.#groups) {
+			if (group.rows.some((r) => r.keys.length === 1 && r.keys[0] === key)) return true;
+		}
+		return false;
 	}
 
-	// Called while components mount and unmount: reading the list there must
-	// not make whatever is rendering depend on it.
+	// Called while components mount and unmount: whatever is rendering must
+	// not come to depend on the set.
 	open(): Group {
 		const group = new Group();
-		untrack(() => (this.groups = [...this.groups, group]));
+		untrack(() => this.#groups.add(group));
 		return group;
 	}
 
 	close(group: Group): void {
-		untrack(() => (this.groups = this.groups.filter((g) => g !== group)));
+		untrack(() => this.#groups.delete(group));
 	}
 }
 
