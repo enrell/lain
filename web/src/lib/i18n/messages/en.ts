@@ -71,10 +71,6 @@ const en = {
 		search: 'Search',
 		settings: 'Settings',
 		accountMenu: 'Account menu',
-		palette: 'Open command palette (Ctrl+K)',
-		// The palette's trigger: it finds settings, actions and titles, so it is
-		// not a second "Search" beside the Search page's link.
-		quickFind: 'Quick find',
 		scanning: 'scanning',
 		scanningPercent: 'scanning {percent}',
 		skip: 'Skip to content'
@@ -222,6 +218,40 @@ const en = {
 			signOut: 'Sign out'
 		},
 		sectionPrefix: 'Settings › {section}'
+	},
+	search: {
+		pageTitle: 'Search — Lain',
+		pageTitleQuery: '{query} — Search — Lain',
+		heading: 'Search',
+		placeholder: 'Titles, not filenames',
+		label: 'Search your library',
+		clear: 'Clear the search',
+		count: { one: '{count} title for “{query}”', other: '{count} titles for “{query}”' },
+		recent: 'Recent',
+		recentLabel: 'Recent searches',
+		forget: 'Clear',
+		browse: 'Browse',
+		browseInstead: 'Browse instead',
+		orBrowse: 'Or browse',
+		matches: 'Search matches titles, whatever their case; it does not look at file names.',
+		emptyTitle: 'No matches for “{query}”',
+		emptyBody: 'Try a shorter title, or check whether a scan has indexed the library.',
+		loadMore: 'Load more',
+		// The header's field: what it finds is titles; settings and actions are Ctrl+K's.
+		field: {
+			label: 'Search titles',
+			placeholder: 'Search titles',
+			results: 'Titles',
+			all: 'All results for “{query}”',
+			searching: 'Searching…',
+			none: 'No title matches “{query}”.',
+			failed: 'Could not search.',
+			move: 'move',
+			open: 'open',
+			clear: 'clear',
+			close: 'close',
+			quickFind: 'quick find'
+		}
 	},
 	downloads: {
 		title: 'Downloads — Settings — Lain',
