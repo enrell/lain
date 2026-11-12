@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.exoplayer.ExoPlayer
 import io.github.enrell.lain.R
 import io.github.enrell.lain.core.SourceKind
@@ -91,8 +92,13 @@ internal fun BoxScope.TracksPanel(ui: PlayerUi, player: ExoPlayer, title: String
             for (a in ui.streamAudio) {
                 OptionRow(a.label, null, a.selected, inset = 0.dp, onClick = {
                     if (!a.selected) onStreamAudio(a.stream)
-                    // Kept for this title as a direct pick is, so its next part opens with it.
-                    a.language.takeIf { it.isNotEmpty() && it != "und" }?.let { graph.prefs.setTrackLanguageOf(title, "audio", it) }
+                    a.language.takeIf { it.isNotEmpty() && it != "und" }?.let { lang ->
+                        // Kept for this title as a direct pick is, so its next part opens with it.
+                        graph.prefs.setTrackLanguageOf(title, "audio", lang)
+                        // And by this player: "Original" plays the file itself again, where Media3
+                        // picks the audio, and it still held the language it opened with.
+                        player.trackSelectionParameters = preferAudio(player.trackSelectionParameters, lang)
+                    }
                     ui.note.value = context.getString(R.string.player_audio_now, a.label)
                     ui.tracksPanel = 0
                 })
@@ -113,6 +119,14 @@ internal fun BoxScope.TracksPanel(ui: PlayerUi, player: ExoPlayer, title: String
         }
     }
 }
+
+/**
+ * Media3's audio choice after a pick among a session's streams (D-280): the
+ * picked [language] first, and no earlier pick among the file's own tracks,
+ * which would otherwise win again when the file plays directly.
+ */
+private fun preferAudio(params: TrackSelectionParameters, language: String): TrackSelectionParameters =
+    params.buildUpon().clearOverridesOfType(C.TRACK_TYPE_AUDIO).setPreferredAudioLanguage(language).build()
 
 /** Playback, behind the gear: picture, speed, quality, skip step, effects, the source and the burn-in. */
 @Composable
