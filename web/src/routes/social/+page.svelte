@@ -43,6 +43,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { debounce } from '$lib/utilities/debounce';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { tabStep } from '$lib/utilities/tabs';
 	import { formatRelative } from '$lib/utilities/format';
 
 	type Tab = 'feed' | 'friends' | 'notifications' | 'collections';
@@ -205,6 +206,14 @@
 		void goto(url, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 
+	function onTabKey(e: KeyboardEvent): void {
+		const next = tabStep(e.key, TABS.map((x) => x.id), tab);
+		if (!next) return;
+		e.preventDefault();
+		setTab(next);
+		document.getElementById(`social-tab-${next}`)?.focus();
+	}
+
 	usePageKeys(() => [
 		{ keys: ['1', '…', '4'], label: t('pageKeys.tabs') },
 		{ keys: ['/'], label: t('pageKeys.findPeople') },
@@ -291,14 +300,16 @@
 		<a href="/settings/privacy" class="inline-flex min-h-9 items-center gap-1 text-sm text-foreground/70 hover:text-foreground">{t('social.privacyLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>
 	</header>
 
-	<div class="flex flex-wrap gap-6 border-b border-hairline" role="tablist" aria-label={t('social.heading')}>
+	<div class="flex flex-wrap gap-6 border-b border-hairline" role="tablist" aria-label={t('social.heading')} tabindex="-1" onkeydown={onTabKey}>
 		{#each TABS as x (x.id)}
 			<button
 				type="button"
 				role="tab"
+				id="social-tab-{x.id}"
 				aria-selected={tab === x.id}
+				tabindex={tab === x.id ? 0 : -1}
 				onclick={() => setTab(x.id)}
-				class="-mb-px flex items-center gap-2 border-b-2 pb-2 text-sm transition-colors {tab === x.id
+				class="-mb-px flex min-h-11 items-center gap-2 border-b-2 pb-2 text-sm transition-colors md:min-h-0 {tab === x.id
 					? 'border-accent text-foreground'
 					: 'border-transparent text-muted hover:text-foreground'}"
 			>
