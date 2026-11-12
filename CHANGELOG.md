@@ -24,6 +24,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   languages, and it now reads as the subtitle language when one is set.
   Accounts saved before keep exactly their old behaviour.
 
+### Fixed
+- Android: the audio and subtitles picked in the player for a title now
+  carry to its next episode; the pick was kept per episode. A forced
+  (signs) subtitle track is listed apart from the full one in its
+  language.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added
