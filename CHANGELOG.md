@@ -195,6 +195,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   settings rail the controls took the whole row.
 - **An account without Acquire** opening `/acquire` lands on Home, not on
   its profile settings.
+- **A prepared stream starts at the viewer's place** (web): one that ran
+  ahead of playback, such as an audio switch that copies the video,
+  started near the end of what it had written, up to an hour on. Leaving
+  direct play no longer shows, and saves, twice the position.
+- **Focus on the first screens** (web): the setup fields show which one
+  has focus, and a dialog that opens on choices (the filters sheet, the
+  rating) no longer focuses a field further down first.
 
 ## [0.3.0] - 2026-11-12
 
