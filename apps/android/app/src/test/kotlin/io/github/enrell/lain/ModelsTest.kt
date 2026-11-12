@@ -45,7 +45,12 @@ class ModelsTest {
         vm.start(null)
         assertEquals(Phase.Connect, vm.state.value.phase)
 
+        // Typed without a scheme, the address goes to the core as is: the core picks it (D-277).
+        vm.connect(" lain.example.org ")
+        assertEquals("lain.example.org", core.setServerRaw)
+        assertEquals("https://lain.example.org", remembered)
         vm.connect("192.168.1.10:9360/")
+        assertEquals("192.168.1.10:9360/", core.setServerRaw)
         assertEquals(Phase.Login, vm.state.value.phase)
         assertEquals("http://192.168.1.10:9360", remembered)
 

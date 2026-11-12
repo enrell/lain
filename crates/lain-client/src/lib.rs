@@ -35,7 +35,7 @@ pub use db::ClientDb;
 pub use discovery::{Discovery, DiscoverySource, ManualDiscovery, ServerCandidate};
 pub use error::ClientError;
 pub use events::{EventStream, ServerEvent, StreamConfig, StreamItem};
-pub use http::{DEFAULT_PORT, ServerUrl, trust_roots};
+pub use http::{DEFAULT_PORT, ServerUrl, local_host, trust_roots};
 pub use offline::{DiskSpace, FetchObserver, GcReport, OfflineConfig, OfflineEntry, OfflineState, OfflineStore};
 pub use sync::{ConflictRule, FlushItem, FlushReport, ProgressSync, QueuedProgress, RecordOutcome, Resolution};
 pub use token::{FileTokenStore, MemoryTokenStore, Session, TokenStore};

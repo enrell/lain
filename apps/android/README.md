@@ -15,9 +15,12 @@ apps/android/
 ## What it does
 
 - **Connect and log in**: a server URL and an account; the session is kept
-  for the next start. `https://` is the default (D-277): public certificates
-  are checked against the root set compiled into the core. A server on your
-  own network is typed as `http://host:9360` or as a bare address.
+  for the next start. An address typed without a scheme (D-277) is `http`
+  on port 9360 when it is local (`192.168.0.10:9360`, `10.0.2.2:9369`,
+  `nas`, `lain.local`) and `https` on port 443 otherwise
+  (`lain.example.org`, checked against the root set compiled into the
+  core); a typed `http://` or `https://` always wins, and a failed `https`
+  is never retried as `http`.
 - **Navigation from `/api/modules`** (D-250): Home, Library, Read, Search and
   Settings appear when their module is on; Downloads is the app's own.
 - **Home**: a title-first hero, Continue, Recently added and one rail per

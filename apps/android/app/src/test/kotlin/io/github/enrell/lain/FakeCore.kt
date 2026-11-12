@@ -145,9 +145,18 @@ class FakeCore : LainCoreInterface {
     override fun server(): String? = serverUrl
     override fun session(): SessionInfo? = sessionInfo
     override fun setOfflinePolicy(policy: OfflinePolicy) = Unit
+    /** The raw text the app handed over, before any scheme is chosen. */
+    var setServerRaw: String? = null
     override fun setServer(url: String): String {
-        if (!url.startsWith("http://")) throw LainException.Unsupported("only http")
-        serverUrl = url.trimEnd('/')
+        setServerRaw = url
+        // The core's scheme rule (D-277) for the addresses these tests use.
+        val full = when {
+            url.startsWith("http://") || url.startsWith("https://") -> url
+            url.startsWith("192.168.") || url.startsWith("10.") -> "http://$url"
+            "://" in url -> throw LainException.Invalid("only http and https")
+            else -> "https://$url"
+        }
+        serverUrl = full.trimEnd('/')
         return serverUrl!!
     }
     override suspend fun setupRequired(): Boolean = false
