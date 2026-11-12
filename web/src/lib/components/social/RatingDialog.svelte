@@ -74,6 +74,15 @@
 		if (/^[0-9]$/.test(e.key)) {
 			e.preventDefault();
 			score = e.key === '0' ? 10 : Number(e.key);
+			// Focus follows the pick. It stayed on the score the dialog opened
+			// on, so "4, Enter" pressed that button and saved a 1 instead.
+			scores?.querySelector<HTMLElement>(`[data-score="${score}"]`)?.focus();
+			return;
+		}
+		// Enter on a score keeps it and saves; a click (or Space) still toggles it.
+		if (e.key === 'Enter' && score > 0 && el.closest('[data-score]')) {
+			e.preventDefault();
+			void save();
 		}
 	}
 </script>
@@ -85,6 +94,7 @@
 			{#each Array.from({ length: 10 }, (_, i) => i + 1) as n (n)}
 				<button
 					type="button"
+					data-score={n}
 					aria-pressed={score === n}
 					aria-label={t('social.score', { score: n })}
 					onclick={() => (score = score === n ? 0 : n)}

@@ -611,7 +611,7 @@ const en = {
 			title: 'Rate {title}',
 			description: 'Your friends see it unless your privacy settings say otherwise.',
 			score: 'Score',
-			keys: '1–9 pick a score, 0 is 10, Ctrl+Enter saves',
+			keys: '1–9 pick a score, 0 is 10, Enter saves (Ctrl+Enter in the review)',
 			review: 'Review (optional)',
 			reviewPlaceholder: 'What stayed with you?',
 			spoiler: 'Contains spoilers',
