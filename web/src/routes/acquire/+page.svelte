@@ -24,6 +24,7 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatBytes, formatRelative } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import BlocklistTab from '$lib/components/acquire/BlocklistTab.svelte';
 	import SubtitlesTab from '$lib/components/acquire/SubtitlesTab.svelte';
 	import WantedTab from '$lib/components/acquire/WantedTab.svelte';
@@ -232,6 +233,13 @@
 	// Nothing to search with: the page says what it is for and offers the first step.
 	const noLibrary = $derived(loaded && libraries.length === 0);
 	const firstRun = $derived(noLibrary || (loaded && tab === 'search' && indexers.length === 0));
+
+	usePageKeys(() => [
+		{ keys: ['1', '…', '5'], label: t('pageKeys.tabs') },
+		...(tab === 'search' && !firstRun ? [{ keys: ['/'], label: t('pageKeys.releaseSearch') }] : []),
+		...(tab === 'queue' ? [{ keys: ['/'], label: t('acquire.queue.link') }] : []),
+		...(firstRun ? [{ keys: [noLibrary ? 'L' : 'I'], label: noLibrary ? t('acquire.noLibrariesAction') : t('acquire.firstRun.addIndexer') }] : [])
+	]);
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
 		if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;

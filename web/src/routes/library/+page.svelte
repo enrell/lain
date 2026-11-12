@@ -10,6 +10,7 @@
 	import { t } from '$lib/i18n';
 	import { api } from '$lib/api';
 	import { ensureLibraries, nameable } from '$lib/stores/media-cache.svelte';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -88,6 +89,12 @@
 			toasts.error(errorMessage(err, 'Could not start the scan.'));
 		}
 	}
+
+	usePageKeys(() => [
+		...(visible.length > 1 ? [{ keys: ['V'], label: t('pageKeys.libraryView') }] : []),
+		...(locked.length > 0 || open.length > 0 ? [{ keys: ['U'], label: t('pageKeys.unlock') }] : []),
+		...(session.isAdmin ? [{ keys: ['S'], label: t('pageKeys.scan') }] : [])
+	]);
 
 	function onKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey || (e.key !== 's' && e.key !== 'u' && e.key !== 'v')) return;
