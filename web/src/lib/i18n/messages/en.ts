@@ -149,7 +149,9 @@ const en = {
 			language: 'Interface language',
 			signOut: 'Sign out',
 			player: 'Default player',
-			playbackLanguage: 'Audio & subtitle language',
+			audioLanguage: 'Audio language',
+			subtitleLanguage: 'Subtitle language',
+			subtitleMode: 'Subtitles',
 			effects: 'Video effects',
 			skip: 'Skip step',
 			subtitleLook: 'Subtitle size and background',
@@ -828,10 +830,23 @@ const en = {
 		subtitleBox: 'Subtitles on a dark box',
 		subtitleBoxHint: 'Easier to read over bright pictures.'
 	},
-	playbackLanguage: {
-		label: 'Audio & subtitle language',
-		hint: 'Audio in this language when the file has it; otherwise the file’s audio with subtitles in it. Follows your account on every client.',
-		asFile: 'As the file has it'
+	trackPrefs: {
+		audio: 'Audio language',
+		audioHint: 'Played when the file has it; otherwise the file’s own audio. Follows your account on every client.',
+		asFile: 'As the file has it',
+		subtitle: 'Subtitle language',
+		subtitleHint: 'The language you read subtitles in.',
+		none: 'None',
+		mode: 'Subtitles',
+		modeAuto: 'Auto',
+		modeAlways: 'Always',
+		modeForced: 'Forced only',
+		modeOff: 'Off',
+		hintAuto: 'Shown when the audio is not in your subtitle language.',
+		hintAlways: 'Shown whenever the file has them in your subtitle language.',
+		hintForced: 'Only tracks marked forced: signs and lines in another language.',
+		hintOff: 'Never on by themselves; the player can still turn them on.',
+		saveFailed: 'Could not save the language.'
 	},
 	download: {
 		file: 'Download file',

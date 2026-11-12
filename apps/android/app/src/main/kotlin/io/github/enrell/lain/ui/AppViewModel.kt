@@ -281,13 +281,14 @@ class AppViewModel(
         _state.update { it.copy(destinations = destinations(modules)) }
     }
 
-    /** Reloads modules, the user, the catalog, libraries and Continue. */
-    /** Sets the account's audio and subtitle language (empty: the file's own choice); false when refused. */
-    suspend fun setPreferredLanguage(code: String): Boolean {
-        val u = runCatching { withContext(io) { core.setPreferredLanguage(code) } }.getOrNull() ?: return false
+    /** Sets the account's audio and subtitle preferences (D-280); false when refused. */
+    suspend fun setTrackPreferences(t: io.github.enrell.lain.domain.TrackPrefs): Boolean {
+        val u = runCatching { withContext(io) { core.setTrackPreferences(t.audio, t.subtitle, t.mode.wire) } }.getOrNull() ?: return false
         _state.update { it.copy(user = u) }
         return true
     }
+
+    /** Reloads modules, the user, the catalog, libraries and Continue. */
 
     fun refresh() {
         viewModelScope.launch {

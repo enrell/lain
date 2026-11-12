@@ -264,6 +264,38 @@ impl LainCore {
         self.run(async move { Ok(b.client.set_preferred_language(language.trim()).await?.into()) }).await
     }
 
+    /// Sets the account's track preferences (D-280): the audio language
+    /// and the subtitle language (ISO 639-2/T, empty for none) and when
+    /// subtitles show (`auto`, `always`, `forced`, `off`); the web
+    /// client's Settings edits the same three. Answers the account as it
+    /// then is.
+    pub async fn set_track_preferences(
+        &self,
+        audio_language: String,
+        subtitle_language: String,
+        subtitle_mode: String,
+    ) -> Result<UserInfo, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let t = lain_api::TrackPreferences {
+                audio_language: audio_language.trim().into(),
+                subtitle_language: subtitle_language.trim().into(),
+                subtitle_mode: subtitle_mode.trim().into(),
+            };
+            // D-071's one language too: a server before D-280 keeps the
+            // closest single answer instead of refusing the patch, and a
+            // newer one applies it first and the three over it.
+            let patch = lain_api::PreferencesPatch {
+                preferred_language: Some(t.legacy_language().to_string()),
+                preferred_audio_language: Some(t.audio_language.clone()),
+                preferred_subtitle_language: Some(t.subtitle_language.clone()),
+                preferred_subtitle_mode: Some(t.subtitle_mode.clone()),
+            };
+            Ok(b.client.update_preferences(&patch).await?.into())
+        })
+        .await
+    }
+
     /// `GET /api/modules`: what the navigation shows.
     pub async fn modules(&self) -> Result<Vec<ModuleInfo>, LainError> {
         let b = self.backend()?;

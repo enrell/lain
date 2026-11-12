@@ -90,12 +90,119 @@ pub struct User {
     pub pwd_ver: u64,
     #[serde(default)]
     pub created_at: i64,
+    /// D-071's one language, kept for older clients: since D-280 the
+    /// subtitle language when one is set, else the audio language.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub preferred_language: String,
+    /// D-280: ISO 639-2; absent plays the file's default audio.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preferred_audio_language: String,
+    /// D-280: ISO 639-2; absent when none is preferred.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preferred_subtitle_language: String,
+    /// D-280: `always`, `forced` or `off`; absent is `auto`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preferred_subtitle_mode: String,
     #[serde(default)]
     pub playback: PlaybackPolicy,
     #[serde(default)]
     pub profile: Profile,
+}
+
+impl User {
+    /// How this account wants tracks chosen. With none of the D-280
+    /// fields (a server before D-280) `preferred_language` is both
+    /// languages with subtitles on `auto`, which is D-071.
+    pub fn track_preferences(&self) -> TrackPreferences {
+        TrackPreferences::read(
+            &self.preferred_language,
+            &self.preferred_audio_language,
+            &self.preferred_subtitle_language,
+            &self.preferred_subtitle_mode,
+        )
+    }
+}
+
+/// The subtitle modes of D-280.
+pub const SUBTITLE_MODES: [&str; 4] = ["auto", "always", "forced", "off"];
+
+/// How a viewer wants audio and subtitle tracks chosen (D-280): the
+/// resolved account values every player applies.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrackPreferences {
+    /// ISO 639-2; empty plays the file's default audio.
+    #[serde(default)]
+    pub audio_language: String,
+    /// ISO 639-2; empty when none is preferred.
+    #[serde(default)]
+    pub subtitle_language: String,
+    /// `auto` (subtitles when the audio is not in the subtitle language),
+    /// `always`, `forced` (forced tracks only) or `off`; empty is `auto`.
+    #[serde(default)]
+    pub subtitle_mode: String,
+}
+
+impl TrackPreferences {
+    /// Reads an account's fields (D-280's wire and stored shape): a
+    /// record without any of the three split fields is one written
+    /// before D-280, and its one language is both; an empty mode is
+    /// `auto`.
+    pub fn read(language: &str, audio: &str, subtitle: &str, mode: &str) -> Self {
+        if audio.is_empty() && subtitle.is_empty() && mode.is_empty() {
+            return TrackPreferences::legacy(language);
+        }
+        TrackPreferences {
+            audio_language: audio.to_string(),
+            subtitle_language: subtitle.to_string(),
+            subtitle_mode: if mode.is_empty() { "auto".into() } else { mode.to_string() },
+        }
+    }
+
+    /// D-071's single language: audio in it, else subtitles in it.
+    pub fn legacy(language: &str) -> Self {
+        TrackPreferences {
+            audio_language: language.to_string(),
+            subtitle_language: language.to_string(),
+            subtitle_mode: "auto".into(),
+        }
+    }
+
+    /// Nothing to apply: the player's own defaults stand.
+    pub fn is_empty(&self) -> bool {
+        self.audio_language.is_empty()
+            && self.subtitle_language.is_empty()
+            && matches!(self.subtitle_mode.as_str(), "" | "auto")
+    }
+
+    /// The one language an older client understands (D-071): the
+    /// subtitle language, the one the viewer reads, else the audio one.
+    pub fn legacy_language(&self) -> &str {
+        if self.subtitle_language.is_empty() { &self.audio_language } else { &self.subtitle_language }
+    }
+}
+
+/// `PATCH /api/me/preferences` (D-071, D-280): only the fields present
+/// apply. `preferred_language` (an older client) sets both languages;
+/// the others then override it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreferencesPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_audio_language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_subtitle_language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_subtitle_mode: Option<String>,
+}
+
+impl PreferencesPatch {
+    pub fn is_empty(&self) -> bool {
+        self.preferred_language.is_none()
+            && self.preferred_audio_language.is_none()
+            && self.preferred_subtitle_language.is_none()
+            && self.preferred_subtitle_mode.is_none()
+    }
 }
 
 /// `PATCH /api/me/profile`: only the fields present apply; `mascot: ""`

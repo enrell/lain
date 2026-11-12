@@ -3,9 +3,11 @@ import {
 	loadSkip,
 	loadSubtitleBackground,
 	loadSubtitleSize,
+	loadTitleTracks,
 	saveSkip,
 	saveSubtitleBackground,
-	saveSubtitleSize
+	saveSubtitleSize,
+	saveTitleTrack
 } from './player-prefs';
 
 function memoryStorage(): Map<string, string> {
@@ -63,5 +65,21 @@ describe('player prefs', () => {
 		});
 		expect(() => saveSkip(10)).not.toThrow();
 		expect(loadSkip()).toBe(0);
+	});
+
+	it('remembers the languages picked for a title, subtitles off included', () => {
+		const values = memoryStorage();
+		expect(loadTitleTracks('Frieren')).toEqual({});
+		saveTitleTrack('Frieren', 'audio', 'JPN');
+		saveTitleTrack('Frieren', 'subtitle', 'por');
+		expect(loadTitleTracks(' frieren ')).toEqual({ audio: 'jpn', subtitle: 'por' });
+		saveTitleTrack('Frieren', 'subtitle', null);
+		expect(loadTitleTracks('Frieren')).toEqual({ audio: 'jpn', subtitle: '' });
+		expect(values.get('lain.player.tracks.subtitle.frieren')).toBe('');
+		// An untagged track is not a language to keep.
+		saveTitleTrack('Frieren', 'subtitle', 'und');
+		saveTitleTrack('Frieren', 'audio', undefined);
+		expect(loadTitleTracks('Frieren')).toEqual({ audio: 'jpn', subtitle: '' });
+		expect(loadTitleTracks('Other')).toEqual({});
 	});
 });

@@ -25,7 +25,8 @@ use axum::routing::{MethodFilter, MethodRouter, on};
 use serde_json::{Value, json};
 
 use lain_api::{
-    AdminTranscodeStatus, CatalogItem, MediaInfo, PlaybackOptions, PlaybackPlan, TranscodeSelection, TranscodeSettings,
+    AdminTranscodeStatus, CatalogItem, MediaInfo, MediaStream, PlaybackOptions, PlaybackPlan, TranscodeSelection,
+    TranscodeSettings,
 };
 use lain_auth::{PlaybackPolicy, Verified};
 use lain_core::Error;
@@ -386,6 +387,8 @@ fn playback(app: &App, w: &WReq, v: &Verified) -> Out {
                 file_path: it.file_path.clone(),
                 delivery: settings.default_delivery.clone(),
                 max_bitrate_kbps: max,
+                // The session a start without a track choice joins (D-280).
+                audio_stream: info.as_ref().and_then(|i| preferred_audio(app, v, &i.streams)),
                 settings: settings.clone(),
                 ..V3Request::default()
             },
@@ -558,6 +561,31 @@ fn storyboard_image(app: &App, w: &WReq, v: &Verified) -> Out {
 
 // ---- transcode ----------------------------------------------------------
 
+/// The audio stream the account's preferred language picks when it is
+/// not the file's default (D-280); `None` keeps the default.
+fn preferred_audio(app: &App, v: &Verified, streams: &[MediaStream]) -> Option<i64> {
+    let prefs = app.auth().track_preferences(&v.user_id);
+    if prefs.audio_language.is_empty() {
+        return None;
+    }
+    lain_watch::tracks::preferred_audio_stream(streams, &prefs)
+}
+
+/// A start that names no audio stream plays the account's preferred
+/// language when the file has it (D-280): a client that cannot switch
+/// audio in a session (one HLS rendition) still hears it. Probing costs
+/// one ffprobe, and only when there is a preference to apply.
+fn default_audio(app: &App, v: &Verified, path: &str) -> Option<i64> {
+    if app.auth().track_preferences(&v.user_id).audio_language.is_empty() {
+        return None;
+    }
+    let ffprobe = settings(app).ffprobe_path;
+    let (out, _) =
+        app.registry.call_one(CAP_MEDIA_PROBE, "probe", json!({"file_path": path, "ffprobe_path": ffprobe})).ok()?;
+    let info: MediaInfo = serde_json::from_value(out).ok()?;
+    preferred_audio(app, v, &info.streams)
+}
+
 /// The plugin request from operator settings, the account's limits and
 /// the client's selection.
 fn transcode_request(app: &App, v: &Verified, path: &str, sel: &TranscodeSelection, item_id: &str) -> V3Request {
@@ -577,7 +605,7 @@ fn transcode_request(app: &App, v: &Verified, path: &str, sel: &TranscodeSelecti
         max_bitrate_kbps: effective_bitrate(policy.max_bitrate_kbps, settings.remote_bitrate_limit_kbps),
         video_codec: sel.video_codec.clone(),
         audio_codec: sel.audio_codec.clone(),
-        audio_stream: sel.audio_stream,
+        audio_stream: sel.audio_stream.or_else(|| default_audio(app, v, path)),
         subtitle_stream: sel.subtitle_stream,
         subtitle_mode: if sel.subtitle_mode.is_empty() {
             policy.subtitle_mode.clone()
@@ -1002,11 +1030,11 @@ fn play_local(app: &App, w: &WReq, v: &Verified) -> Out {
         Ok(it) => it,
         Err(o) => return *o,
     };
-    let language = app.auth().get_public(&v.user_id).map(|u| u.preferred_language).unwrap_or_default();
     let play = localplay::PlayInput {
         player: input.player,
         user_id: v.user_id.clone(),
-        language,
+        language: String::new(),
+        tracks: app.auth().track_preferences(&v.user_id),
         item: it,
         hidden_libraries: app.hidden_libraries(v),
     };
