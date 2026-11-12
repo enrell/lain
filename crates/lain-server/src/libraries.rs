@@ -121,9 +121,22 @@ impl Libraries {
         if !std::fs::metadata(&abs).map(|m| m.is_dir()).unwrap_or(false) {
             return Err("path is not a readable directory".into());
         }
-        let id = if root.is_empty() { short_id(&abs) } else { short_id(&format!("{root}:{root_path}")) };
+        let key = if root.is_empty() { abs.clone() } else { format!("{root}:{root_path}") };
+        // An edited folder keeps its library's id (PATCH `path`), so the
+        // id no longer always names the folder: the library that reads
+        // this folder now is the one "the same location" overwrites, and
+        // a library that moved away keeps the id it was made with, so a
+        // new one here takes the next free id instead of replacing it.
+        let others = self.list().map_err(|e| e.to_string())?;
+        let id = match others.iter().find(|o| o.path == abs) {
+            Some(same) => same.id.clone(),
+            None => std::iter::once(format!("lib-{}", short_id(&key)))
+                .chain((2..).map(|n| format!("lib-{}", short_id(&format!("{key}#{n}")))))
+                .find(|id| !others.iter().any(|o| o.id == *id))
+                .expect("an unbounded sequence of ids has a free one"),
+        };
         let lib = Library {
-            id: format!("lib-{id}"),
+            id,
             name: name.into(),
             kind: if kind.is_empty() { "anime".into() } else { kind.into() },
             path: abs,
@@ -273,6 +286,40 @@ mod tests {
             .update(&by_root.id, &LibraryPatch { private: Some(false), ..Default::default() }, "user-admin", &known)
             .unwrap();
         assert!(!p.private && p.owner.is_empty() && p.members.is_empty());
+        drop(libs);
+        drop(store);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// A library whose folder was edited keeps its id; adding a library
+    /// at its old folder must not overwrite it, and adding one at its new
+    /// folder is the same location again.
+    #[test]
+    fn a_moved_library_keeps_its_id_and_its_record() {
+        let dir = lain_store::test_dir("libs-move");
+        let (old, new) = (dir.join("old"), dir.join("new"));
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        let store = Arc::new(Store::open(&dir.join("data")).unwrap());
+        let libs = Libraries::new(store.clone(), Arc::new(RwLock::new(Roots::default())));
+        let (old_s, new_s) = (old.to_string_lossy().into_owned(), new.to_string_lossy().into_owned());
+        let a = libs.create("Films", "movie", &old_s, "").unwrap();
+        let known = |_: &str| true;
+        let moved = libs
+            .update(&a.id, &LibraryPatch { path: Some(new_s.clone()), ..Default::default() }, "user-admin", &known)
+            .unwrap();
+        assert_eq!((moved.id.as_str(), moved.path.as_str()), (a.id.as_str(), new_s.as_str()));
+        let b = libs.create("Old films", "movie", &old_s, "").unwrap();
+        assert_ne!(b.id, a.id, "a new library at the old folder takes a fresh id");
+        assert_eq!(libs.get(&a.id).unwrap().path, new_s, "the moved library is untouched");
+        let again = libs.create("Films again", "movie", &new_s, "").unwrap();
+        assert_eq!(again.id, a.id, "the folder the moved library reads is its location");
+        assert_eq!(libs.list().unwrap().len(), 2);
+        assert_eq!(
+            libs.update(&b.id, &LibraryPatch { path: Some(new_s), ..Default::default() }, "user-admin", &known)
+                .unwrap_err(),
+            "another library already reads that folder"
+        );
         drop(libs);
         drop(store);
         std::fs::remove_dir_all(dir).ok();
