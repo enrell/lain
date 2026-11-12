@@ -1,7 +1,8 @@
 //! The acquire module end to end in-process: the conformance suite,
 //! a search → grab → import → rescan over a local tracker, a seeding
-//! engine and a fake Torznab indexer (nothing leaves loopback), and the
-//! privacy gate on the acquire item routes (D-156).
+//! engine and a fake Torznab indexer (nothing leaves loopback), release
+//! alternatives from a scripted parser service (D-279), and the privacy
+//! gate on the acquire item routes (D-156).
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -260,6 +261,95 @@ fn search_grab_import_rescan() {
     );
     drop(server);
     seed.close();
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// D-279 end to end on the Rust side: the lain-parser bridge, registered
+/// where its component would be, against a scripted service 1.3.0. The
+/// parse route answers the alternatives as the provider gave them; a
+/// search settles them against its query and returns none; a grab made
+/// by hand keeps the answer and stores none.
+#[test]
+fn release_alternatives_through_the_api() {
+    use lain_bridge::fake::Fake;
+    use lain_bridge::http1::Endpoint;
+    use lain_bridge::parser::{MODEL_ID, ReleaseModel};
+
+    let dir = lain_store::test_dir("rs-acquire-alts");
+    let media = dir.join("media/Anime");
+    std::fs::create_dir_all(&media).unwrap();
+    // "Quiet Harbor 2 - 03": episode 3 of a sequel, or of season 2.
+    const NAME: &str = "[Fansub-A] Quiet Harbor 2 - 03 [1080p]";
+    let files = vec![SourceFile { path: vec![format!("{NAME}.mkv")], data: payload(20_000, 4) }];
+    let (raw, mi) = build(NAME, &files, 16 << 10, &["http://127.0.0.1:9/announce".to_string()]).unwrap();
+    let index = indexer(raw, NAME.to_string(), mi.info.length);
+    let service = Fake::tcp(Arc::new(|r| match (r.method.as_str(), r.path.as_str()) {
+        ("GET", "/health") => (200, json!({"status": "ok", "artifact": "v6-s11"})),
+        ("POST", "/parse") if r.body.as_ref().is_some_and(|b| b["filename"].as_str() == Some(NAME)) => (
+            200,
+            json!({"record": {"title": "Quiet Harbor 2", "episodes": [3], "release_group": "Fansub-A"},
+                "alternatives": [{"title": "Quiet Harbor", "season": 2, "episodes": [3]}, {"title": "Quiet"}]}),
+        ),
+        _ => (200, json!({"record": null})),
+    }));
+
+    let server = Server::start(&dir.join("data"));
+    server.app.registry.register(Arc::new(ReleaseModel::new(Endpoint::parse(&service.url).unwrap())));
+    let base = Base::parse(&server.url).unwrap();
+    let tok = admin(&base);
+    let (_, lib) = call(
+        &base,
+        "POST",
+        "/api/libraries",
+        &tok,
+        Some(json!({"name": "Anime", "type": "anime", "path": media.to_string_lossy()})),
+    );
+
+    let (st, r) = call(
+        &base,
+        "GET",
+        "/api/acquire/parse?name=%5BFansub-A%5D%20Quiet%20Harbor%202%20-%2003%20%5B1080p%5D&kind=anime",
+        &tok,
+        None,
+    );
+    assert_eq!(st, 200, "{r}");
+    assert_eq!((&r["title"], &r["parser"]), (&json!("Quiet Harbor 2"), &json!(MODEL_ID)), "{r}");
+    assert_eq!(
+        r["alternatives"],
+        json!([{"title": "Quiet Harbor", "season": 2, "episodes": [3]}, {"title": "Quiet"}]),
+        "as the provider gave them"
+    );
+
+    let (st, ix) = call(
+        &base,
+        "POST",
+        "/api/acquire/indexers",
+        &tok,
+        Some(
+            json!({"name": "tracker-exemplo", "protocol": "torznab", "url": index, "api_key": "k", "min_interval_ms": 0}),
+        ),
+    );
+    assert_eq!(st, 201, "{ix}");
+    let (st, res) = call(&base, "GET", "/api/acquire/search?q=Quiet%20Harbor&kind=anime", &tok, None);
+    assert_eq!(st, 200, "{res}");
+    let best = res["candidates"][0].clone();
+    let rel = &best["release"];
+    assert_eq!((&rel["title"], &rel["season"], &rel["episodes"]), (&json!("Quiet Harbor"), &json!(2), &json!([3])));
+    assert!(rel.get("alternatives").is_none() && best.get("rejections").is_none(), "{best}");
+    let (_, res) = call(&base, "GET", "/api/acquire/search?q=Quiet%20Harbor%202&kind=anime", &tok, None);
+    let rel = &res["candidates"][0]["release"];
+    assert_eq!((&rel["title"], rel.get("season")), (&json!("Quiet Harbor 2"), None), "{res}");
+    assert!(rel.get("alternatives").is_none(), "{res}");
+
+    let (st, g) =
+        call(&base, "POST", "/api/acquire/grabs", &tok, Some(json!({"result": best, "library_id": lib["id"]})));
+    assert_eq!(st, 201, "{g}");
+    assert_eq!(g["release"]["title"], "Quiet Harbor 2", "a grab by hand names no title: {g}");
+    assert!(g["release"].get("alternatives").is_none(), "{g}");
+    let (_, list) = call(&base, "GET", "/api/acquire/grabs", &tok, None);
+    assert!(list["grabs"][0]["release"].get("alternatives").is_none(), "{list}");
+    drop(server);
+    drop(service);
     std::fs::remove_dir_all(dir).ok();
 }
 

@@ -1,6 +1,6 @@
 {
  "tier": "v1",
- "description": "A magnet grab whose tracker never answers: stored with its parsed release, listed, paused, queued again on resume, refused a retry-import and removed with its data. No peer is ever reached.",
+ "description": "A magnet grab whose tracker never answers: stored with its parsed release (never with alternatives, D-279), listed, paused, queued again on resume, refused a retry-import and removed with its data. No peer is ever reached.",
  "cases": [
   {
    "name": "magnet lifecycle",
@@ -35,6 +35,7 @@
         "group": "Fansub-A",
         "resolution": "1080p",
         "parser": "$string",
+        "alternatives": "$absent",
         "$open": true
        },
        "library_id": "{{lib}}",
