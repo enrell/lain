@@ -1082,20 +1082,20 @@ try {
 
 	await openPlayerSettings();
 	await waitFor(
-		`!!document.querySelector('select[aria-label="Transcode quality"]')`,
+		`!!document.querySelector('select[aria-label="Stream quality"]')`,
 		15000,
 		'quality menu'
 	);
 	// The ladder stops at the file's own size (640x360, the 360p rung): a
 	// larger rung would leave the picture as it is.
 	const rungs = await evalValue(
-		`[...document.querySelector('select[aria-label="Transcode quality"]').options].map((o) => o.value)`
+		`[...document.querySelector('select[aria-label="Stream quality"]').options].map((o) => o.value)`
 	);
 	assert(
 		JSON.stringify(rungs) === JSON.stringify(['', '360p']),
 		`the quality menu of a 360p file offers ${JSON.stringify(rungs)}, want Auto and 360p`
 	);
-	await selectOption('Transcode quality', '360p');
+	await selectOption('Stream quality', '360p');
 	await waitUntil(
 		() => sessionFromStatus() && sessionFromStatus() !== firstSession,
 		TRANSCODE_MS,
@@ -1136,7 +1136,7 @@ try {
 	}
 	// The redesign keeps a compact navigator and makes large settings pages
 	// searchable without removing any control from the underlying contract.
-	const settingsSearch = `document.querySelector('input[aria-label="Find a playback setting"]')`;
+	const settingsSearch = `document.querySelector('input[aria-label="Find a transcoding setting"]')`;
 	await evalValue(`(() => { const input = ${settingsSearch}; input.value = 'hardware'; input.dispatchEvent(new Event('input', { bubbles: true })); })()`);
 	await waitFor(
 		`!!document.getElementById('hardware') && !document.getElementById('delivery')`,
@@ -2184,11 +2184,11 @@ try {
 		return m ? Number(m[1]) : 0;
 	})()`);
 	assert(beforeGen > 0, 'could not read the active generation from the swap dialog');
-	await clickText('Apply generation');
-	await waitText('now generation', 10000);
-	await waitGoneText('Apply generation', 5000);
+	await clickText('Apply as generation');
+	await waitText('now at generation', 10000);
+	await waitGoneText('Apply as generation', 5000);
 	const afterGen = await evalValue(`(() => {
-		const m = document.body.innerText.match(/now generation (\\d+)/);
+		const m = document.body.innerText.match(/now at generation (\\d+)/);
 		return m ? Number(m[1]) : 0;
 	})()`);
 	assert(afterGen > beforeGen, `generation did not advance: ${beforeGen} -> ${afterGen}`);
