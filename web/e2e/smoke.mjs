@@ -2255,7 +2255,7 @@ try {
 			for (let i = 0; i < v.buffered.length; i++) ranges.push([v.buffered.start(i), v.buffered.end(i)]);
 			return {
 				path: location.pathname,
-				src: v.currentSrc.slice(0, 80),
+				src: v.currentSrc.replace(/token=[^&]+/, 'token=…').slice(0, 160),
 				currentTime: v.currentTime,
 				duration: v.duration,
 				readyState: v.readyState,
