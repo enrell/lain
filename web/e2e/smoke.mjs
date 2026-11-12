@@ -4,15 +4,20 @@
  *
  * Drives a real Chromium over the DevTools Protocol using only Node
  * built-ins (global fetch + WebSocket) against a *fresh* Lain data
- * directory. It exercises the actual Go server with a real database
- * and real media files:
+ * directory. It exercises the actual lain server (the release binary
+ * with the web build embedded) with a real database and real media
+ * files:
  *
- *   setup -> libraries -> scan -> browse -> search -> item enrichment
- *   -> playback -> Range -> keyboard seek -> bounded progress writes
- *   -> continue watching -> admin surfaces -> swap fencing
- *   -> backup -> non-admin gating -> deep links -> quality gates
+ *   setup -> libraries -> scan -> browse -> header search -> search
+ *   -> item enrichment -> favorites -> title page -> HLS, progressive,
+ *   far seek, direct Matroska and frame-proof fallback playback
+ *   -> Range -> keyboard seek -> bounded progress writes -> player
+ *   chrome -> subtitles -> continue watching -> admin surfaces
+ *   -> swap fencing -> backup -> non-admin gating -> deep links
+ *   -> responsive layouts -> quality gates
  *
- * Usage:
+ * Usage: web/e2e/run-smoke.sh does all of it (fixtures, a fresh server,
+ * this test, the server stopped); CI runs that. By hand:
  *   web/e2e/fixtures.sh /tmp/lain-fixtures          # synthetic media
  *   lain serve --data-dir /tmp/lain-e2e --port 9360 # fresh dir
  *     (on a machine with network, point LAIN_METADATA_KITSU_URL,
@@ -21,14 +26,21 @@
  *     provider: online answers would win over it)
  *   node web/e2e/smoke.mjs \
  *     --base http://127.0.0.1:9360 \
- *     --media /tmp/lain-fixtures \
- *     --chromium chromium
+ *     --media /tmp/lain-fixtures
+ *
+ * The browser is --chromium PATH, else $CHROME, else the first of
+ * chromium, chromium-browser, google-chrome-stable and google-chrome on
+ * PATH (H.264 and AAC must decode: Google Chrome, or a distribution
+ * Chromium built with them). $CHROME_FLAGS adds browser flags (CI
+ * passes --no-sandbox). --transcode-timeout MS bounds every wait on
+ * ffmpeg (default 90000).
  *
  * Exits non-zero when any assertion fails or the console/network
  * quality gate trips. Requires Node >= 22 (built-in WebSocket).
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { verifyPlayerControls } from './player-controls.mjs';
 
@@ -38,9 +50,20 @@ const arg = (name, fallback) => {
 	return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
 };
 
+/** The first Chromium-family browser on PATH, for when none is named. */
+function findChrome() {
+	const names = ['chromium', 'chromium-browser', 'google-chrome-stable', 'google-chrome'];
+	for (const dir of (process.env.PATH ?? '').split(':').filter(Boolean)) {
+		for (const name of names) {
+			if (existsSync(join(dir, name))) return join(dir, name);
+		}
+	}
+	return 'chromium';
+}
+
 const BASE = arg('base', 'http://127.0.0.1:9360');
 const MEDIA = arg('media', '/tmp/lain-e2e-fixtures');
-const CHROMIUM = arg('chromium', 'chromium');
+const CHROMIUM = arg('chromium', process.env.CHROME || findChrome());
 const PORT = Number(arg('debug-port', '9333'));
 const PROFILE = arg('profile', '/tmp/lain-e2e-chrome');
 const DOWNLOADS = arg('downloads', '/tmp/lain-e2e-downloads');
@@ -50,12 +73,23 @@ const ADMIN_PASS = arg('pass', 'password123');
 const NORMAL_USER = arg('user2', 'ana');
 const NORMAL_PASS = arg('pass2', 'password123');
 
+// The bound on every wait that runs through ffmpeg (a session starting,
+// its playlist, segments, a rebuild, the fallback's first picture). A
+// shared CI runner encodes at a fraction of a workstation's speed; the
+// waits end as soon as their condition holds, so a generous bound costs
+// nothing on a fast machine and only turns a stall into a failure.
+const TRANSCODE_MS = Number(arg('transcode-timeout', '90000'));
+
 function assert(cond, message) {
 	if (!cond) throw new Error(message);
 }
 
+// Each step says when it started: on a slow runner the log alone tells
+// which step ate the time.
+const startedAt = Date.now();
 function step(name) {
-	process.stdout.write(`\n== ${name}\n`);
+	const at = ((Date.now() - startedAt) / 1000).toFixed(1);
+	process.stdout.write(`\n== ${name} (+${at}s)\n`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -76,6 +110,23 @@ const chrome = spawn(
 		'--disable-dev-shm-usage',
 		'--mute-audio',
 		'--autoplay-policy=no-user-gesture-required',
+		// A packaged Chrome loads the extensions its distribution drops in
+		// /usr/share (a fresh profile does not stop them), and one that
+		// opens its own tab sends this one to the background, where
+		// requestAnimationFrame never fires and every settle() hangs.
+		'--disable-extensions',
+		'--disable-component-extensions-with-background-pages',
+		'--disable-default-apps',
+		'--disable-sync',
+		'--disable-background-networking',
+		// The test's tab must keep its timers and frames even if something
+		// else takes the front: the player's idle fade and the frame proof
+		// are timers.
+		'--disable-background-timer-throttling',
+		'--disable-backgrounding-occluded-windows',
+		'--disable-renderer-backgrounding',
+		'--password-store=basic',
+		...(process.env.CHROME_FLAGS ?? '').split(/\s+/).filter(Boolean),
 		`--remote-debugging-port=${PORT}`,
 		`--user-data-dir=${PROFILE}`,
 		'about:blank'
@@ -132,10 +183,28 @@ class CDP {
 		return new CDP(ws);
 	}
 
-	send(method, params = {}) {
+	/**
+	 * Every call is bounded: an evaluation the page never answers (a
+	 * backgrounded tab's requestAnimationFrame, a modal JS dialog) fails
+	 * the run with its name instead of holding it until the job times out.
+	 */
+	send(method, params = {}, timeoutMs = 60000) {
 		const id = ++this.id;
 		return new Promise((resolve, reject) => {
-			this.pending.set(id, { resolve, reject });
+			const timer = setTimeout(() => {
+				this.pending.delete(id);
+				reject(new Error(`CDP ${method} did not answer in ${timeoutMs}ms`));
+			}, timeoutMs);
+			this.pending.set(id, {
+				resolve: (v) => {
+					clearTimeout(timer);
+					resolve(v);
+				},
+				reject: (e) => {
+					clearTimeout(timer);
+					reject(e);
+				}
+			});
 			this.ws.send(JSON.stringify({ id, method, params }));
 		});
 	}
@@ -160,6 +229,7 @@ const requests = []; // {requestId, url, method, headers, status}
 const consoleErrors = [];
 const allConsole = [];
 const seen404 = new Set();
+const playlists = []; // the last HLS playlists served, for a failure report
 const requestCount = new Map();
 
 function waitUntil(condition, timeoutMs = 5000, label = 'condition') {
@@ -189,8 +259,10 @@ async function evalValue(expression) {
 }
 
 async function settle() {
+	// Two frames, or half a second where frames are not being produced
+	// (a tab that lost the front): a settle is a courtesy, never a wait.
 	await evalValue(
-		'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))'
+		'new Promise((resolve) => { requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))); setTimeout(() => resolve(false), 500); })'
 	);
 }
 
@@ -286,6 +358,34 @@ async function clickText(text, selector = 'button, a') {
 		});
 	}
 	console.log(`   click ${text} -> ${info.tag}${info.href ? ' ' + info.href : ''}`);
+}
+
+/** Real trusted click at the centre of the element a selector names. */
+async function clickSelector(selector, label = selector) {
+	await settle();
+	const point = await evalValue(`(() => {
+		const el = document.querySelector(${JSON.stringify(selector)});
+		if (!el) return null;
+		el.scrollIntoView({ block: 'center', inline: 'center' });
+		const r = el.getBoundingClientRect();
+		const x = r.left + r.width / 2;
+		const y = r.top + r.height / 2;
+		const hit = document.elementFromPoint(x, y);
+		return { x, y, hit: !!hit && (hit === el || el.contains(hit)) };
+	})()`);
+	assert(point, `nothing matches ${label}`);
+	assert(point.hit, `the click point of ${label} is covered`);
+	await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y });
+	for (const type of ['mousePressed', 'mouseReleased']) {
+		await page.send('Input.dispatchMouseEvent', {
+			type,
+			x: point.x,
+			y: point.y,
+			button: 'left',
+			clickCount: 1
+		});
+	}
+	console.log(`   click ${label}`);
 }
 
 async function fillLabel(labelText, value) {
@@ -397,7 +497,7 @@ let exitCode = 0;
 try {
 	await waitForDevtools();
 	const version = await (await fetch(`http://127.0.0.1:${PORT}/json/version`)).json();
-	console.log(`browser: ${version['Browser']}`);
+	console.log(`browser: ${version['Browser']} (${CHROMIUM})`);
 
 	const target = await (
 		await fetch(`http://127.0.0.1:${PORT}/json/new?${encodeURIComponent(BASE + '/')}`, {
@@ -408,6 +508,7 @@ try {
 	browser = await CDP.connect(version.webSocketDebuggerUrl);
 
 	await page.send('Page.enable');
+	await page.send('Page.bringToFront');
 	await page.send('Runtime.enable');
 	await page.send('Network.enable');
 	await page.send('Log.enable');
@@ -440,6 +541,20 @@ try {
 		const last = [...requests].reverse().find((r) => r.url === e.response.url && r.status === null);
 		if (last) last.status = e.response.status;
 		if (e.response.status === 404) seen404.add(e.response.url);
+	});
+	// The last few HLS playlists as served: when a transcode step fails,
+	// what the player was handed is the first thing to know.
+	page.on('Network.loadingFinished', (e) => {
+		const r = requests.find((x) => x.requestId === e.requestId);
+		if (!r || !r.url.includes('.m3u8')) return;
+		page
+			.send('Network.getResponseBody', { requestId: e.requestId })
+			.then((b) => {
+				const text = b.base64Encoded ? Buffer.from(b.body, 'base64').toString() : b.body;
+				playlists.push({ at: Date.now(), url: r.url.replace(BASE, '').replace(/token=[^&]+/, 'token=…'), text });
+				if (playlists.length > 4) playlists.shift();
+			})
+			.catch(() => {});
 	});
 	page.on('Page.navigatedWithinDocument', (e) => {
 		allConsole.push(`history: ${e.url.replace(BASE, '')}`);
@@ -510,6 +625,86 @@ try {
 	const cards = await evalValue(`document.querySelectorAll('a[href^="/item/"]').length`);
 	console.log(`   ${cards} media cards on Home`);
 
+	/* ---------------- the header's search field ---------------- */
+	// The header holds the search field itself (no Search link): `/` puts
+	// the cursor in it from anywhere, typing offers the top titles under
+	// it with "All results" first, arrows pick a row and Enter opens it.
+	// Typed with real key events, so the field's own handlers are what
+	// is exercised, not a value set from outside.
+	step('the header search field suggests titles; Enter opens results or a title');
+	{
+		await page.send('Emulation.setDeviceMetricsOverride', {
+			width: 1440,
+			height: 900,
+			deviceScaleFactor: 1,
+			mobile: false
+		});
+		const field = `document.getElementById('header-search')`;
+		const options = `[...document.querySelectorAll('#header-search-list [role="option"]')]`;
+		const typeInHeader = async (text) => {
+			await navigate(`${BASE}/`);
+			await waitText('Recently added');
+			await page.send('Page.bringToFront');
+			await evalValue('document.activeElement?.blur?.()');
+			await pressKey('/', 'Slash', 191);
+			await waitFor(`document.activeElement === ${field}`, 5000, '/ focused the header search field');
+			await page.send('Input.insertText', { text });
+			await waitFor(
+				`${field}.getAttribute('aria-expanded') === 'true' && ${options}.some((o) => o.id.startsWith('header-search-title-') && o.textContent.toLowerCase().includes('frieren'))`,
+				10000,
+				'the suggestion list offers the title'
+			);
+		};
+		await typeInHeader('frie');
+		const rows = await evalValue(
+			`${options}.map((o) => ({ id: o.id, selected: o.getAttribute('aria-selected') }))`
+		);
+		assert(
+			rows[0]?.id === 'header-search-all' && rows[0].selected === 'true',
+			'"All results" is not the first, chosen row: ' + JSON.stringify(rows)
+		);
+		await pressKey('ArrowDown', 'ArrowDown', 40);
+		await waitFor(
+			`${field}.getAttribute('aria-activedescendant')?.startsWith('header-search-title-')`,
+			3000,
+			'ArrowDown picked a title'
+		);
+		await pressKey('ArrowUp', 'ArrowUp', 38);
+		await waitFor(
+			`${field}.getAttribute('aria-activedescendant') === 'header-search-all'`,
+			3000,
+			'ArrowUp went back to every result'
+		);
+		await pressKey('Enter', 'Enter', 13);
+		await waitFor(
+			`location.pathname === '/search' && new URLSearchParams(location.search).get('q') === 'frie'`,
+			10000,
+			'Enter opened /search?q=frie'
+		);
+		await waitFor(`document.body.innerText.includes('1 title for')`, 15000, 'results for the typed query');
+		// On /search the header field is the page's: it keeps the query.
+		assert(
+			(await evalValue(`${field}.value`)) === 'frie',
+			'the header field lost the query on /search'
+		);
+
+		// A title row opens the title page, and the field goes back to rest.
+		await typeInHeader('frie');
+		await pressKey('ArrowDown', 'ArrowDown', 40);
+		await pressKey('Enter', 'Enter', 13);
+		await waitFor(`location.pathname.startsWith('/item/')`, 10000, 'Enter on a title opened it');
+		await waitFor(`${field}.value === '' && document.activeElement !== ${field}`, 5000, 'the field went back to rest');
+
+		// Escape clears a query first, then leaves the field.
+		await typeInHeader('frie');
+		await pressKey('Escape', 'Escape', 27);
+		await waitFor(`${field}.value === '' && document.activeElement === ${field}`, 3000, 'Escape cleared the field');
+		await pressKey('Escape', 'Escape', 27);
+		await waitFor(`document.activeElement !== ${field}`, 3000, 'a second Escape left the field');
+		await page.send('Emulation.clearDeviceMetricsOverride');
+		console.log('   / focuses, titles suggested, Enter opens results and titles, Escape clears then leaves');
+	}
+
 	await navigate(`${BASE}/search`);
 	await waitText('Search', 10000);
 	await fillSearch('frieren');
@@ -522,6 +717,11 @@ try {
 	await fillSearch('zzzz-no-such-title');
 	await waitText('No matches', 15000);
 	await fillSearch('');
+	// Leave the field as a person does. Below lg a focused header field
+	// opens over the links and they step aside until it is left, so a
+	// field still holding the focus would hide Home from the next click.
+	await pressKey('Escape', 'Escape', 27);
+	await waitFor(`document.activeElement?.id !== 'header-search'`, 5000, 'Escape left the search field');
 	console.log('   search results and empty state verified');
 
 	/* ---------------- item + enrichment ---------------- */
@@ -563,6 +763,37 @@ try {
 		'the enriched title is shown'
 	);
 	console.log('   local NFO overlay applied without network providers');
+
+	/* ---------------- favorites ---------------- */
+	// The heart beside a title's main action keeps it on the Favorites page
+	// (the header link), and F on the title page does the same: both write
+	// one state, so the heart turned on by a click is turned off by the key.
+	step('a heart keeps a title on the Favorites page');
+	{
+		const titlePath = await evalValue('location.pathname');
+		const heartOff = 'button[aria-pressed="false"][aria-label="Add to favorites"]';
+		const heartOn = 'button[aria-pressed="true"][aria-label="Favorite"]';
+		await waitFor(`!!document.querySelector('${heartOff}')`, 15000, 'the heart beside the main action');
+		await clickSelector(heartOff, 'the heart');
+		await waitFor(`!!document.querySelector('${heartOn}')`, 10000, 'the heart turned on');
+		await waitText('Added to your favorites.', 5000);
+		await clickText('Favorites', 'header nav a');
+		await waitFor(`location.pathname === '/favorites'`, 10000, 'the Favorites page');
+		await waitFor(
+			`[...document.querySelectorAll('main a[href^="/item/"]')].some((a) => a.textContent.toLowerCase().includes('frieren'))`,
+			15000,
+			'the kept title is listed'
+		);
+		await navigate(`${BASE}${titlePath}`);
+		await waitFor(`!!document.querySelector('${heartOn}')`, 15000, 'the heart remembers the favourite');
+		await page.send('Page.bringToFront');
+		await evalValue('document.activeElement?.blur?.()');
+		await pressKey('f', 'KeyF', 70);
+		await waitFor(`!!document.querySelector('${heartOff}')`, 10000, 'F took the favourite back');
+		await navigate(`${BASE}/favorites`);
+		await waitText('No favorites yet', 15000);
+		console.log('   heart -> listed on /favorites, F -> gone again');
+	}
 
 	/* ---------------- title page + watch sidebar ---------------- */
 	// The detail route is a *title* page, not an episode page: it lists the
@@ -635,6 +866,43 @@ try {
 	console.log(`   sidebar switched to ${grid.hrefs[0]} in place, video loaded`);
 
 	step('mkv container plays through the transcode endpoint (HLS fMP4)');
+	// The operator's transcode policy, read and written as the admin the
+	// way the settings page does; steps that need another policy set it
+	// through here and put the shipped value back.
+	const adminToken = await evalValue(`localStorage.getItem('lain.token')`);
+	assert(adminToken, 'no admin token in localStorage');
+	const readSettings = async () => {
+		const res = await fetch(`${BASE}/api/admin/settings/transcode`, {
+			headers: { Authorization: 'Bearer ' + adminToken }
+		});
+		assert(res.status === 200, `settings get ${res.status}`);
+		return (await res.json()).settings;
+	};
+	const writeTranscodeSettings = async (patch) => {
+		const settings = await readSettings();
+		Object.assign(settings, patch);
+		const res = await fetch(`${BASE}/api/admin/settings/transcode`, {
+			method: 'PUT',
+			headers: { Authorization: 'Bearer ' + adminToken, 'Content-Type': 'application/json' },
+			body: JSON.stringify(settings)
+		});
+		assert(res.status === 200, `settings put ${res.status}`);
+	};
+	const writeDelivery = (delivery) => writeTranscodeSettings({ default_delivery: delivery });
+	const sessionState = async (itemId, session) => {
+		const res = await fetch(
+			`${BASE}/api/items/${itemId}/transcode/status?session=${session}`,
+			{ headers: { Authorization: 'Bearer ' + adminToken } }
+		);
+		assert(res.status === 200, `transcode status ${res.status}`);
+		return (await res.json()).state;
+	};
+	// The replay step below is about a *finished* session. The throttle
+	// keeps the encoder only 30s ahead of a viewer, so with it a session
+	// finishes no sooner than it is watched; without it the two-minute
+	// fixture is done in seconds on any machine. Put back after the replay.
+	const shippedThrottle = (await readSettings()).throttle;
+	await writeTranscodeSettings({ throttle: false });
 	await navigate(`${BASE}/library`);
 	await waitText('Other Show');
 
@@ -668,7 +936,7 @@ try {
 		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
 	);
 	await waitFor(`!!document.querySelector('video')`, 15000, 'video element');
-	await waitFor(`document.querySelector('video').duration > 0`, 20000, 'transcoded metadata');
+	await waitFor(`document.querySelector('video').duration > 0`, TRANSCODE_MS, 'transcoded metadata');
 
 	// The MKV container is not web-safe, so the plan is a transcode and the
 	// shipped delivery is HLS (D-042): the browser must fetch the
@@ -679,7 +947,7 @@ try {
 			requests.some(
 				(r) => r.url.includes('/transcode') && r.method === 'POST' && r.status === 202
 			),
-		20000,
+		TRANSCODE_MS,
 		'transcode start (202)'
 	);
 	const hlsPlaylists = () =>
@@ -687,15 +955,15 @@ try {
 			(r) =>
 				r.url.includes('/transcode/hls/') && r.url.includes('index.m3u8') && r.status === 200
 		);
-	await waitUntil(() => hlsPlaylists().length > 0, 25000, 'HLS playlist');
+	await waitUntil(() => hlsPlaylists().length > 0, TRANSCODE_MS, 'HLS playlist');
 	const hlsSegments = () =>
 		requests.filter(
 			(r) => r.url.includes('/transcode/hls/') && r.url.includes('.m4s') && r.status === 200
 		);
-	await waitUntil(() => hlsSegments().length > 0, 30000, 'HLS media segment');
+	await waitUntil(() => hlsSegments().length > 0, TRANSCODE_MS, 'HLS media segment');
 	evidence.hlsSegments = hlsSegments().length;
 	await evalValue(`document.querySelector('video').play()`);
-	await waitFor(`document.querySelector('video').currentTime > 0.5`, 30000, 'HLS playback advancing');
+	await waitFor(`document.querySelector('video').currentTime > 0.5`, TRANSCODE_MS, 'HLS playback advancing');
 	console.log(
 		`   HLS fMP4: playlist + ${evidence.hlsSegments} segment(s) served, playback advancing`
 	);
@@ -710,6 +978,19 @@ try {
 	};
 	const firstSession = sessionFromStatus();
 	assert(firstSession, 'no transcode session observed before the quality change');
+	const otherShowId = await evalValue(`location.pathname.split('/').pop()`);
+	// Finished before the player is left, so the replay has a cached
+	// session to attach to (the player stops an unfinished one on leaving).
+	{
+		const deadline = Date.now() + TRANSCODE_MS;
+		let state = '';
+		while (Date.now() < deadline) {
+			state = await sessionState(otherShowId, firstSession);
+			if (state === 'ready' || state === 'failed') break;
+			await sleep(500);
+		}
+		assert(state === 'ready', `the first HLS session did not finish: ${state}`);
+	}
 
 	/* ---------------- cached HLS replay ---------------- */
 	step('a cached HLS session replays through hls.js (not progressive)');
@@ -733,12 +1014,12 @@ try {
 	// 409: no playlist, no playback. Assert both halves here.
 	await waitUntil(
 		() => hlsPlaylists().length > playlistsBeforeReplay,
-		25000,
+		TRANSCODE_MS,
 		'cached HLS replay playlist'
 	);
 	await waitFor(
 		`document.querySelector('video').duration > 0`,
-		20000,
+		TRANSCODE_MS,
 		'cached HLS replay metadata'
 	);
 	const progressive409 = requests.filter(
@@ -747,6 +1028,15 @@ try {
 	assert(
 		progressive409.length === 0,
 		'a cached HLS session was requested as progressive (409): ' + progressive409.length
+	);
+	// Attached, not prepared again: no session was started for the replay.
+	assert(
+		!requests.some((r) => r.url.includes('/transcode') && r.method === 'POST'),
+		'the replay started a new session instead of attaching the cached one'
+	);
+	assert(
+		sessionFromStatus() === firstSession,
+		`the replay attached ${sessionFromStatus()}, not the cached ${firstSession}`
 	);
 	console.log('   cached HLS replay re-attached through hls.js');
 
@@ -759,18 +1049,19 @@ try {
 	await selectOption('Transcode quality', '360p');
 	await waitUntil(
 		() => sessionFromStatus() && sessionFromStatus() !== firstSession,
-		30000,
+		TRANSCODE_MS,
 		'quality change rebuilt the session'
 	);
 	await waitFor(
 		`document.querySelector('video').currentTime > 0.5`,
-		30000,
+		TRANSCODE_MS,
 		'playback continued after the quality change'
 	);
 	evidence.qualitySessionChanged = true;
 	console.log(
 		`   quality menu rebuilt the session (${firstSession.slice(0, 8)}… -> ${sessionFromStatus().slice(0, 8)}…)`
 	);
+	await writeTranscodeSettings({ throttle: shippedThrottle });
 
 	/* ---------------- advanced playback settings ---------------- */
 	step('advanced playback settings UI');
@@ -815,7 +1106,7 @@ try {
 		deviceScaleFactor: 1,
 		mobile: true
 	});
-	await sleep(150);
+	await settle();
 	assert(
 		await evalValue(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`),
 		'playback settings overflow horizontally at 390px'
@@ -878,35 +1169,6 @@ try {
 	// The shipped default is HLS, covered above. Flip the operator policy to
 	// progressive and prove the retained path still streams a faststart MP4
 	// with Range in a real browser — the coverage the HLS default replaced.
-	const adminToken = await evalValue(`localStorage.getItem('lain.token')`);
-	assert(adminToken, 'no admin token in localStorage');
-	const readSettings = async () => {
-		const res = await fetch(`${BASE}/api/admin/settings/transcode`, {
-			headers: { Authorization: 'Bearer ' + adminToken }
-		});
-		assert(res.status === 200, `settings get ${res.status}`);
-		return (await res.json()).settings;
-	};
-	const writeDelivery = async (delivery) => {
-		const settings = await readSettings();
-		settings.default_delivery = delivery;
-		const res = await fetch(`${BASE}/api/admin/settings/transcode`, {
-			method: 'PUT',
-			headers: { Authorization: 'Bearer ' + adminToken, 'Content-Type': 'application/json' },
-			body: JSON.stringify(settings)
-		});
-		assert(res.status === 200, `settings put ${res.status}`);
-	};
-	const writeTranscodeSettings = async (patch) => {
-		const settings = await readSettings();
-		Object.assign(settings, patch);
-		const res = await fetch(`${BASE}/api/admin/settings/transcode`, {
-			method: 'PUT',
-			headers: { Authorization: 'Bearer ' + adminToken, 'Content-Type': 'application/json' },
-			body: JSON.stringify(settings)
-		});
-		assert(res.status === 200, `settings put ${res.status}`);
-	};
 	await writeDelivery('progressive');
 	await navigate(`${BASE}/library`);
 	await clickText('Other Show');
@@ -919,11 +1181,11 @@ try {
 		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
 	);
 	await waitFor(`!!document.querySelector('video')`, 15000, 'video element');
-	await waitFor(`document.querySelector('video').duration > 0`, 30000, 'progressive metadata');
+	await waitFor(`document.querySelector('video').duration > 0`, TRANSCODE_MS, 'progressive metadata');
 	await evalValue(`document.querySelector('video').play()`);
 	await waitFor(
 		`document.querySelector('video').currentTime > 0.5`,
-		30000,
+		TRANSCODE_MS,
 		'progressive playback advancing'
 	);
 	const progressiveRange = requests.filter(
@@ -969,8 +1231,8 @@ try {
 		await evalValue(`document.body.innerText.includes('Resume from') ? 'Resume from' : 'Play'`)
 	);
 	const longShowId = await evalValue(`location.pathname.split('/').pop()`);
-	await waitFor(`document.querySelector('video')?.duration > 0`, 30000, 'seek bar video');
-	await waitUntil(() => hlsPlaylists().length > 0, 25000, 'seek bar playlist');
+	await waitFor(`document.querySelector('video')?.duration > 0`, TRANSCODE_MS, 'seek bar video');
+	await waitUntil(() => hlsPlaylists().length > 0, TRANSCODE_MS, 'seek bar playlist');
 
 	const timeline = await evalValue(`(() => {
 		const video = document.querySelector('video');
@@ -1036,7 +1298,6 @@ try {
 	// starts waiting, and the rebuild it triggers can fire before this
 	// line would otherwise run.
 	const seekStartedAt = Date.now();
-	await sleep(300);
 	// The drag has to move the bar before anything else can be true: a
 	// slider that ignores the gesture would make every later assertion
 	// meaningless.
@@ -1059,7 +1320,7 @@ try {
 					/"start_sec":\s*(\d+(\.\d+)?)/.test(r.postData ?? '') &&
 					Number((r.postData.match(/"start_sec":\s*(\d+(\.\d+)?)/) ?? [0, 0])[1]) > 300
 			),
-		45000,
+		TRANSCODE_MS,
 		'a session rebuilt at the seek target'
 	);
 	const rebuild = requests.find(
@@ -1071,14 +1332,14 @@ try {
 	// exist because the session was rebuilt for that position.
 	await waitFor(
 		`Number(document.querySelector('[aria-label="Seek"]')?.getAttribute('aria-valuenow') ?? 0) > ${seekTarget}`,
-		45000,
+		TRANSCODE_MS,
 		'the seek target reached the bar'
 	);
 	// The wait a viewer feels is until pictures are moving again, not until
 	// the bar moves.
 	await waitFor(
 		`document.querySelector('video').currentTime > 0.5`,
-		45000,
+		TRANSCODE_MS,
 		'the rebuilt session plays'
 	);
 	const playingAt = Date.now();
@@ -1292,12 +1553,12 @@ try {
 	// playable version instead of waiting on a black frame forever.
 	await waitUntil(
 		() => requests.some((r) => r.url.includes('/transcode') && r.method === 'POST'),
-		45000,
+		TRANSCODE_MS,
 		'the frame check started a transcode'
 	);
 	await waitFor(
 		`document.querySelector('video').videoWidth > 0 && document.querySelector('video').currentTime > 0.5`,
-		60000,
+		TRANSCODE_MS,
 		'a picture after the fallback'
 	);
 	await waitText('Preparing this video for your browser', 20000);
@@ -1347,15 +1608,22 @@ try {
 	await pressKey(' ', 'Space', 32);
 	await waitFor(`document.querySelector('video').paused === false`, 5000, 'Space resumed');
 
-	// Long enough for the 10s progress interval to fire at least once.
-	await sleep(12000);
-	const progressWrites = requests.filter(
-		(r) => r.url.includes('/progress') && r.method === 'PUT'
+	// The seek and the pause wrote at once (lifecycle writes); playing on,
+	// nothing else forces one, so the next write is the reporter's 10s
+	// interval. Waiting for it proves the periodic write, and the count at
+	// that moment proves the bound: no write per timeupdate.
+	const resumedAt = Date.now();
+	const progressPuts = () =>
+		requests.filter((r) => r.url.includes('/progress') && r.method === 'PUT');
+	await waitUntil(
+		() => progressPuts().some((r) => r.ts > resumedAt),
+		25000,
+		'a periodic progress write while playing'
 	);
-	assert(progressWrites.length >= 1, 'no progress write observed after 12s');
+	const progressWrites = progressPuts();
 	assert(
 		progressWrites.length <= 4,
-		`too many progress writes: ${progressWrites.length} in ~14s`
+		`too many progress writes: ${progressWrites.length} in ~${Math.round((Date.now() - resumedAt) / 1000) + 2}s`
 	);
 	evidence.progressWrites = progressWrites.length;
 	const streamStatuses = requests
@@ -1590,12 +1858,12 @@ try {
 	assert(await evalValue(`getComputedStyle(document.querySelector('footer')).opacity === '1'`), 'settings faded while open');
 	await selectOption('Playback speed', '1');
 	await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-	await sleep(300);
+	await settle();
 	assert(await evalValue(`(() => { const r = document.querySelector('#player-settings').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.top >= 0; })()`), 'settings overflow mobile viewport');
 	const mobileShot = await page.send('Page.captureScreenshot', { format: 'png' });
 	writeFileSync(SCREENSHOT.replace('.png', '-mobile.png'), Buffer.from(mobileShot.data, 'base64'));
 	await page.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-	await sleep(300);
+	await settle();
 	const playerShot = await page.send('Page.captureScreenshot', { format: 'png' });
 	writeFileSync(SCREENSHOT.replace('.png', '-player.png'), Buffer.from(playerShot.data, 'base64'));
 	await pressKey('Escape', 'Escape', 27);
@@ -1772,10 +2040,11 @@ try {
 		5000,
 		'backup request'
 	);
-	await sleep(1500);
-	// A backup is the lain.backup@1 tar (D-238).
-	const downloaded = readdirSync(DOWNLOADS).filter((f) => f.endsWith('.tar'));
-	assert(downloaded.length > 0, 'no backup file reached the download directory');
+	// A backup is the lain.backup@1 tar (D-238). Chrome writes it under a
+	// temporary name and renames it once complete.
+	const backups = () => readdirSync(DOWNLOADS).filter((f) => f.endsWith('.tar'));
+	await waitUntil(() => backups().length > 0, 15000, 'the backup file in the download directory');
+	const downloaded = backups();
 	evidence.backupFile = downloaded[0];
 	console.log(`   ${downloaded[0]} downloaded`);
 
@@ -1793,13 +2062,27 @@ try {
 		!(await evalValue(`document.body.innerText.includes('Plugins')`)),
 		'admin nav visible for normal user'
 	);
+	// The admin left this browser on an admin section, which /settings
+	// reopens: the guard has to land a normal user on their own settings
+	// rather than bounce between the two (it used to, forever).
 	await navigate(`${BASE}/settings/libraries`);
-	await waitText('Your account.', 10000);
+	await waitFor(`location.pathname === '/settings/profile'`, 10000, 'redirected to the account settings');
+	await waitFor(
+		`document.querySelector('h1')?.textContent?.includes('Profile') && document.querySelector('nav[aria-label="Settings sections"]')?.innerText.includes('YOU')`,
+		10000,
+		'the account settings rendered'
+	);
 	assert(
 		!(await evalValue(`document.body.innerText.includes('Media libraries')`)),
 		'normal user reached library admin page'
 	);
-	console.log('   normal user has no admin nav and /settings/libraries redirects');
+	assert(
+		!(await evalValue(`/\\bSERVER\\b/.test(document.querySelector('nav[aria-label="Settings sections"]')?.innerText ?? '')`)),
+		'normal user is offered the server settings'
+	);
+	await navigate(`${BASE}/settings`);
+	await waitFor(`location.pathname === '/settings/profile'`, 10000, '/settings skips the admin section');
+	console.log('   normal user has no admin nav and admin settings redirect to their profile');
 
 	step('logout/login as admin and deep links');
 	await navigate(`${BASE}/settings`);
@@ -1903,10 +2186,44 @@ try {
 	console.error(
 		'last requests:\n' +
 			requests
-				.slice(-20)
-				.map((r) => `${r.method} ${r.url.replace(BASE, '')} -> ${r.status}`)
+				.filter((r) => !r.url.endsWith('/api/theme'))
+				.slice(-30)
+				.map(
+					(r) =>
+						`+${((r.ts - startedAt) / 1000).toFixed(1)}s ${r.method} ${r.url.replace(BASE, '').replace(/token=[^&]+/, 'token=…')} -> ${r.status}`
+				)
 				.join('\n')
 	);
+	for (const pl of playlists) {
+		console.error(`playlist at +${((pl.at - startedAt) / 1000).toFixed(1)}s ${pl.url}:\n${pl.text.replace(/token=[^&"\s]+/g, 'token=…')}`);
+	}
+	try {
+		// The player's element as it stood: a stall reads differently from
+		// an error, and the buffered ranges say whether data ever arrived.
+		const media = await evalValue(`(() => {
+			const v = document.querySelector('video');
+			if (!v) return null;
+			const ranges = [];
+			for (let i = 0; i < v.buffered.length; i++) ranges.push([v.buffered.start(i), v.buffered.end(i)]);
+			return {
+				path: location.pathname,
+				src: v.currentSrc.slice(0, 80),
+				currentTime: v.currentTime,
+				duration: v.duration,
+				readyState: v.readyState,
+				networkState: v.networkState,
+				paused: v.paused,
+				seeking: v.seeking,
+				error: v.error ? v.error.code + ' ' + v.error.message : null,
+				videoWidth: v.videoWidth,
+				buffered: ranges,
+				seekNow: document.querySelector('[aria-label="Seek"]')?.getAttribute('aria-valuenow') ?? null
+			};
+		})()`);
+		console.error('video element: ' + JSON.stringify(media));
+	} catch {
+		/* page gone or not a player */
+	}
 	try {
 		const shot = await page.send('Page.captureScreenshot', { format: 'png' });
 		writeFileSync(SCREENSHOT, Buffer.from(shot.data, 'base64'));
