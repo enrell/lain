@@ -245,13 +245,22 @@
 	async function resetProgress(): Promise<void> {
 		if (!item || resetting) return;
 		resetting = true;
+		const was = progress;
+		const id = item.id;
 		try {
 			progress = await api.progress.put(item.id, {
 				position_sec: 0,
 				duration_sec: progress?.duration_sec ?? 0,
 				completed: false
 			});
-			toasts.success('Progress reset.');
+			toasts.undoable('Back to the start.', () => {
+				if (!was) return;
+				void api.progress
+					.put(id, { position_sec: was.position_sec, duration_sec: was.duration_sec, completed: was.completed })
+					.then((p) => {
+						if (item?.id === id) progress = p;
+					});
+			});
 		} catch (err) {
 			toasts.error(errorMessage(err, 'Could not reset progress.'));
 		} finally {
