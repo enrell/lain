@@ -426,7 +426,11 @@ deletion off.
 backend is probed with a real one-frame encode, hardware decoding
 applies only to the allowed codec list, and a backend that fails its
 probe — or fails at runtime — falls back to software with a visible
-`fallback` string. Software encoders stay the default; there is no
+`fallback` string. An HLS session retried in software after a runtime
+failure starts over: the failed attempt's playlists and segments are
+removed first and `playable` is false again until the retry's first
+segment, so no segment of one encoder is ever served beside the other's
+init segment. Software encoders stay the default; there is no
 silent opportunistic switching. The backend list mirrors Jellyfin's
 documented methods: `vaapi`, `nvenc`, `qsv`, `amf`, `v4l2m2m`,
 `videotoolbox` and `rkmpp` (Rockchip). `hardware_low_power` selects

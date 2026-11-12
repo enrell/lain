@@ -431,6 +431,11 @@ struct Inner {
     dir: PathBuf,
     state: Mutex<State>,
     cv: Condvar,
+    /// Held while the server writes a session's client playlist or
+    /// clears an attempt's output, so a playlist built from a failed
+    /// attempt can never be written after that attempt was cleared.
+    /// Taken before `state`, never while holding it.
+    playlist_io: Mutex<()>,
     caps_cache: Mutex<Option<(String, Instant, Capabilities)>>,
     hooks: Hooks,
     on_change: Mutex<Option<ChangeFn>>,
@@ -499,6 +504,7 @@ impl Transcoder {
                     ffmpeg: "ffmpeg".into(),
                 }),
                 cv: Condvar::new(),
+                playlist_io: Mutex::new(()),
                 caps_cache: Mutex::new(None),
                 hooks,
                 on_change: Mutex::new(None),
@@ -521,6 +527,10 @@ impl Transcoder {
 
     fn lock(&self) -> MutexGuard<'_, State> {
         self.inner.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn playlist_lock(&self) -> MutexGuard<'_, ()> {
+        self.inner.playlist_io.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     fn now(&self) -> i64 {
@@ -1351,6 +1361,18 @@ impl Transcoder {
             return first;
         }
         tracing::warn!(session = %session, err = %e, "hardware transcode failed; retrying in software");
+        // The retry writes the same file names into the same directory.
+        // Left in place, the failed attempt's segments would be served
+        // under the retry's playlist and init segment (a different
+        // encoder's bytes), and its playlist would stay published until
+        // the retry's first segment replaced it.
+        if p.is_hls()
+            && let Some(dir) = output.parent()
+            && let Err(e) = self.clear_attempt(session, epoch, dir)
+        {
+            tracing::warn!(session = %session, err = %e, "failed attempt not cleared; not retrying");
+            return first;
+        }
         let has_svt = self.capabilities(&p.settings).has_encoder("libsvtav1");
         let fb = p.software_fallback(has_svt);
         self.with_job(session, epoch, |j| {
@@ -1359,6 +1381,23 @@ impl Transcoder {
             j.hw_backend.clear();
         });
         self.exec_plan(session, epoch, &fb, output, sub)
+    }
+
+    /// Removes a failed HLS attempt's output and makes the session start
+    /// over: not playable until the retry's first segment, and no client
+    /// position carried over (it counted the old attempt's segments, so
+    /// segment deletion would remove the retry's early ones). A viewer
+    /// that already plays the failed attempt finds its playlist gone
+    /// rather than another encoder's segments behind its init segment.
+    fn clear_attempt(&self, session: &str, epoch: u64, dir: &Path) -> std::io::Result<()> {
+        let _io = self.playlist_lock();
+        hls::clear_output(dir)?;
+        self.with_job(session, epoch, |j| {
+            j.playable = false;
+            j.client_segment = 0;
+            j.progress = 0.0;
+        });
+        Ok(())
     }
 
     fn run_plan(&self, session: &str, epoch: u64, p: &EncodePlan, paths: &Paths) -> Result<(), Fail> {
@@ -1396,6 +1435,7 @@ impl Transcoder {
             lain_store::ensure_private_dir(&paths.hls_dir).map_err(|e| e.to_string())?;
             let raw = paths.hls_dir.join(hls::RAW_PLAYLIST);
             self.exec_with_fallback(session, epoch, p, &raw, &sub_file)?;
+            let _io = self.playlist_lock();
             hls::write_index(&paths.hls_dir, p.settings.hls_segment_seconds).map_err(|e| e.to_string())?;
             let ok = hls::playable(&paths.hls_dir);
             self.with_job(session, epoch, |j| j.playable = ok);
@@ -1521,6 +1561,7 @@ impl Transcoder {
                 .map_err(Fail::Plain)
                 .map(|_| {
                     if delivery == st::DELIVERY_HLS {
+                        let _io = self.playlist_lock();
                         let _ = hls::write_index(&paths.hls_dir, settings.hls_segment_seconds);
                     }
                 }),
@@ -1758,9 +1799,16 @@ impl Transcoder {
                 RUNNING => {
                     // The idle check runs even before ffmpeg wrote a
                     // playlist: a stuck encoder must still time out.
-                    if hls::write_index(&dir, settings.hls_segment_seconds).is_ok() {
-                        let ok = hls::playable(&dir);
-                        self.with_job(&session, epoch, |j| j.playable = ok);
+                    let published = {
+                        let _io = self.playlist_lock();
+                        let ok = hls::write_index(&dir, settings.hls_segment_seconds).is_ok();
+                        if ok {
+                            let playable = hls::playable(&dir);
+                            self.with_job(&session, epoch, |j| j.playable = playable);
+                        }
+                        ok
+                    };
+                    if published {
                         self.apply_throttle(&session);
                         self.delete_consumed_segments(&session);
                     }
@@ -1769,6 +1817,7 @@ impl Transcoder {
                     }
                 }
                 READY => {
+                    let _io = self.playlist_lock();
                     let _ = hls::write_index(&dir, settings.hls_segment_seconds);
                 }
                 _ => {}
@@ -1856,6 +1905,9 @@ impl Transcoder {
     }
 
     fn delete_consumed_segments(&self, session: &str) {
+        // The position is read under the playlist lock too: one read
+        // before an attempt was cleared would count the old segments.
+        let _io = self.playlist_lock();
         let Some((seg, settings)) = ({
             let g = self.lock();
             g.jobs.get(session).and_then(|j| {

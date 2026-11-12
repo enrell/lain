@@ -315,6 +315,136 @@ fn legacy_prepare_waits_for_the_file() {
     assert_eq!(r.t.prepare_sync(&format!("{}.gone", r.src)).unwrap_err().msg, "source file unavailable");
 }
 
+/// A fake ffmpeg for the hardware fallback: a hardware encode writes
+/// three segments and a playlist, then fails when the test says so; the
+/// software retry announces itself, waits for the test, then writes one
+/// segment of its own and ends the playlist. POSIX sh (CI's dash).
+#[cfg(unix)]
+const FALLBACK_FFMPEG: &str = r#"#!/bin/sh
+ctl="$LAIN_TEST_CTL"
+enc=""
+prev=""
+for last; do
+  if [ "$prev" = "-c:v" ]; then enc="$last"; fi
+  prev="$last"
+done
+dir=$(dirname "$last")
+case "$enc" in
+*_nvenc)
+  printf 'hw-init' > "$dir/init.mp4"
+  for n in 0 1 2; do printf 'hw' > "$dir/seg0000$n.m4s"; done
+  printf '#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:2.0,\nseg00000.m4s\n#EXTINF:2.0,\nseg00001.m4s\n#EXTINF:2.0,\nseg00002.m4s\n' > "$dir/raw.m3u8"
+  while [ ! -e "$ctl/fail" ]; do sleep 0.05; done
+  echo "the device went away" >&2
+  exit 1
+  ;;
+*)
+  : > "$ctl/software"
+  while [ ! -e "$ctl/go" ]; do sleep 0.05; done
+  printf 'sw-init' > "$dir/init.mp4"
+  printf 'sw' > "$dir/seg00000.m4s"
+  printf '#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:2.0,\nseg00000.m4s\n#EXT-X-ENDLIST\n' > "$dir/raw.m3u8"
+  ;;
+esac
+"#;
+
+/// The HLS files in a session directory, sorted.
+#[cfg(unix)]
+fn hls_files(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+        .unwrap_or_default();
+    names.retain(|n| !n.ends_with(".tmp"));
+    names.sort();
+    names
+}
+
+#[cfg(unix)]
+#[test]
+fn a_software_retry_starts_from_a_clean_hls_directory() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = lain_store::test_dir("tc-hw-retry");
+    let ctl = dir.join("ctl");
+    std::fs::create_dir_all(&ctl).unwrap();
+    // Whatever happens, the fake's waits end with the test.
+    struct Release(PathBuf);
+    impl Drop for Release {
+        fn drop(&mut self) {
+            for f in ["fail", "go"] {
+                let _ = std::fs::write(self.0.join(f), b"");
+            }
+        }
+    }
+    let _release = Release(ctl.clone());
+    let ffmpeg = dir.join("ffmpeg");
+    std::fs::write(&ffmpeg, FALLBACK_FFMPEG.replace("$LAIN_TEST_CTL", &ctl.to_string_lossy())).unwrap();
+    std::fs::set_permissions(&ffmpeg, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let src = dir.join("Show.mkv");
+    std::fs::write(&src, b"not really media").unwrap();
+    let hooks = Hooks {
+        // MPEG-4 Part 2 is never copied, so the session encodes.
+        probe: Some(Arc::new(|_: &Path| Ok(report("mpeg4")))),
+        caps: Some(Arc::new(|_: &TranscodeSettings| {
+            let mut c = Capabilities::default();
+            c.encoders.extend(["libx264".to_string(), "h264_nvenc".to_string()]);
+            c.hardware.insert(st::HW_NVENC.into(), true);
+            c
+        })),
+        run: None,
+        clock: None,
+    };
+    let t = Transcoder::with_hooks(&dir.join("transcodes"), hooks);
+    let mut settings = st::defaults();
+    settings.ffmpeg_path = ffmpeg.to_string_lossy().into_owned();
+    settings.hardware_acceleration = st::HW_NVENC.into();
+    settings.hardware_encode = true;
+    settings.throttle = false;
+    let start = V3Request {
+        action: ACTION_START.into(),
+        file_path: src.to_string_lossy().into_owned(),
+        settings: settings.clone(),
+        ..V3Request::default()
+    };
+    let a = t.invoke_v3(&start).unwrap();
+    assert_eq!(a.encoder, "h264_nvenc");
+    let hls_dir = t.paths_for(&a.session, &settings).hls_dir;
+    let status = || {
+        t.invoke_v3(&V3Request { action: ACTION_STATUS.into(), session: a.session.clone(), ..start.clone() }).unwrap()
+    };
+    let wait = |what: &str, ok: &dyn Fn() -> bool| {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !ok() {
+            assert!(Instant::now() < deadline, "{what}: {:?}, files {:?}", status(), hls_files(&hls_dir));
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    // The hardware attempt is published (a viewer may be polling it)...
+    wait("the hardware attempt's playlist is served", &|| status().playable);
+    assert!(hls_dir.join(hls::INDEX_PLAYLIST).exists());
+    // ...and then fails.
+    std::fs::write(ctl.join("fail"), b"").unwrap();
+    wait("the software retry starts", &|| ctl.join("software").exists());
+    // Nothing of the failed attempt is left to be served or mixed into
+    // the retry's playlist, and the session is not playable until the
+    // retry has a segment.
+    let between = status();
+    assert_eq!((between.state.as_str(), between.playable), (RUNNING, false));
+    assert_eq!(hls_files(&hls_dir), Vec::<String>::new(), "the failed attempt's files are gone");
+    std::fs::write(ctl.join("go"), b"").unwrap();
+    wait("the retry finishes", &|| status().state == READY);
+    let done = status();
+    assert_eq!((done.encoder.as_str(), done.hardware.as_str()), ("libx264", ""));
+    assert!(done.fallback.contains("hardware encode failed; used software"), "{}", done.fallback);
+    assert_eq!(hls_files(&hls_dir), ["index.m3u8", "init.mp4", "raw.m3u8", "seg00000.m4s"]);
+    assert_eq!(std::fs::read(hls_dir.join("init.mp4")).unwrap(), b"sw-init");
+    let index = std::fs::read_to_string(hls_dir.join(hls::INDEX_PLAYLIST)).unwrap();
+    assert!(index.contains("seg00000.m4s\n#EXT-X-ENDLIST"), "{index}");
+    assert!(!index.contains("seg00001"), "{index}");
+    t.close();
+    drop(_release);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn closing_fails_queued_work() {
     let r = rig("tc-close", true);
