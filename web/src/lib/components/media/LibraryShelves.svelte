@@ -87,7 +87,9 @@
 		scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''
 	].join(' ')}
 >
-	<nav class="-my-2 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-2 no-scrollbar" aria-label={t('library.shelves')}>
+	<!-- On a phone the names run past the view switch: the row scrolls, and its
+	     end fades so the cut name reads as "more this way", not as missing. -->
+	<nav class="-my-2 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-2 no-scrollbar max-sm:pe-6 max-sm:[mask-image:linear-gradient(to_right,black_calc(100%_-_2rem),transparent)]" aria-label={t('library.shelves')}>
 		{#each libraries as lib (lib.id)}
 			<a
 				href={`#shelf-${lib.id}`}

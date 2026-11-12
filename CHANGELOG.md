@@ -109,6 +109,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   picker, where an outlined field, a filled picker and an outlined button
   stood side by side. The genre finder and the library picker in the
   filters end where the rows under them do.
+- **The library's header on a phone** (web): the admin actions keep their
+  words on one line ("Manage libraries" broke inside its chip), and the
+  row of library names fades at its end, so a name scrolled past the view
+  switch reads as more to swipe to rather than missing.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a
