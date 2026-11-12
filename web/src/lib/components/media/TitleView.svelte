@@ -241,15 +241,15 @@
 					? t('title.continueFromPageIn', { page: Math.floor(resumeProgress!.position_sec), part: label(resumeTarget!) })
 					: t('title.continueFromPage', { page: Math.floor(resumeProgress!.position_sec) })
 				: resumeTarget && group.items.length > 1
-					? `Read · ${label(resumeTarget)}`
-					: 'Read'
+					? t('title.readPart', { part: label(resumeTarget) })
+					: t('title.read')
 			: resuming
 				? // The phrase the smoke test keys on, then which episode it is.
 					`Resume from ${formatTime(resumeProgress!.position_sec)} · ${label(resumeTarget!)}`
 				: resumeTarget && resumeTarget.id !== available[0]?.id
 					? // Which episode Play goes on with, once it is not the first.
 						t('title.playPart', { part: label(resumeTarget) })
-					: 'Play'
+					: t('title.play')
 	);
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
@@ -290,7 +290,7 @@
 				? `Page ${Math.floor(progress.position_sec)} of ${Math.floor(progress.duration_sec)}`
 				: timeLeft(progress.position_sec, progress.duration_sec);
 		}
-		if (progress?.completed) return reading ? 'Read' : length ? t('title.watchedLength', { time: length }) : t('title.watched');
+		if (progress?.completed) return reading ? t('title.read') : length ? t('title.watchedLength', { time: length }) : t('title.watched');
 		return length || (reading ? 'Unread' : 'Not watched');
 	}
 
@@ -479,7 +479,7 @@
 						</LinkButton>
 					{:else}
 						<Button size="rowMain" disabled class="max-md:w-[calc(100%-3.25rem)]" title="The files are no longer on disk">
-							<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? 'Read' : 'Play'}
+							<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? t('title.read') : t('title.play')}
 						</Button>
 					{/if}
 					<!-- The heart keeps the main action's row, on a phone too. -->
