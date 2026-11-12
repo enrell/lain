@@ -168,6 +168,16 @@ fun PlayerScreen(
                     .setPreferredTextLanguage(preferredLanguage)
                     .build()
             }
+            // What was chosen last time for this title wins over the account's default:
+            // Japanese audio picked on episode 3 is still Japanese on episode 4.
+            val prefs = context.graph.prefs
+            prefs.trackLanguageOf(title, "audio")?.takeIf { it.isNotEmpty() }?.let { lang ->
+                trackSelectionParameters = trackSelectionParameters.buildUpon().setPreferredAudioLanguage(lang).build()
+            }
+            prefs.trackLanguageOf(title, "text")?.let { lang ->
+                trackSelectionParameters = if (lang.isEmpty()) trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+                else trackSelectionParameters.buildUpon().setPreferredTextLanguage(lang).build()
+            }
         }
     }
     val focus = remember { FocusRequester() }
@@ -796,6 +806,7 @@ fun PlayerScreen(
                     OptionRow(stringResource(R.string.player_off), null, textOff || textTracks.none { it.selected }, inset = 0.dp, onClick = {
                         textOff = true
                         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+                        graph.prefs.setTrackLanguageOf(title, "text", "")
                         tracksPanel = 0
                     })
                 }
@@ -805,6 +816,8 @@ fun PlayerScreen(
                         if (subs) textOff = false
                         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(type, false)
                             .setOverrideForType(TrackSelectionOverride(t.group.mediaTrackGroup, t.index)).build()
+                        // Kept for this title, so its next part opens with the same choice.
+                        t.group.getTrackFormat(t.index).language?.let { graph.prefs.setTrackLanguageOf(title, if (subs) "text" else "audio", it) }
                         // Said, since nothing on the picture shows which track plays.
                         android.widget.Toast.makeText(context, context.getString(if (subs) R.string.player_subtitles_now else R.string.player_audio_now, t.label), android.widget.Toast.LENGTH_SHORT).show()
                         tracksPanel = 0

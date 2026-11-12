@@ -62,6 +62,10 @@ class Prefs(private val sp: SharedPreferences) {
         get() = (sp.getString("recent_searches", "") ?: "").split('\n').filter { it.isNotBlank() }
         set(v) = sp.edit().putString("recent_searches", v.joinToString("\n")).apply()
 
+    /** The audio and subtitle languages last chosen in the player for a title ("" for subtitles off). */
+    fun trackLanguageOf(title: String, kind: String): String? = sp.getString("track_lang:$kind:" + title.trim().lowercase(), null)
+    fun setTrackLanguageOf(title: String, kind: String, language: String) = sp.edit().putString("track_lang:$kind:" + title.trim().lowercase(), language).apply()
+
     /** Downloads wait for a network that is not metered (Wi-Fi). */
     var wifiOnly: Boolean
         get() = sp.getBoolean("wifi_only", false)
