@@ -438,7 +438,8 @@ providers pointed at a closed port, runs it and stops the server; CI's
 `browser smoke` job runs the same script) covers setup, libraries,
 scan, browse, the header search field and the search page, NFO
 enrichment, favorites, thumbnails, playback (HLS, progressive, a far
-seek, direct Matroska, the frame-proof fallback, Range, keyboard seek,
+seek, a session shared with a second viewer and released by the last,
+direct Matroska, the frame-proof fallback, Range, keyboard seek,
 bounded progress writes, the player's chrome and controls, subtitles),
 Continue Watching resume, users, composition swap with generation
 fencing, backup download, non-admin gating, deep-link refresh,
