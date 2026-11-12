@@ -366,4 +366,13 @@
     <string name="size_small">Small</string>
     <string name="size_medium">Medium</string>
     <string name="size_large">Large</string>
+    <string name="remove_all">Remove all</string>
+    <plurals name="remove_downloads_q">
+        <item quantity="one">Remove %1$d download?</item>
+        <item quantity="other">Remove %1$d downloads?</item>
+    </plurals>
+    <plurals name="count_downloads">
+        <item quantity="one">%1$d download</item>
+        <item quantity="other">%1$d downloads</item>
+    </plurals>
 </resources>

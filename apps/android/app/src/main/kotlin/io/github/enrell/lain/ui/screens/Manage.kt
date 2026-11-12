@@ -78,6 +78,18 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
     }
     val queued = state.copies.count { it.state == CopyState.QUEUED }
     var removing by remember { mutableStateOf<String?>(null) }
+    // A whole title's copies at once (its header's Remove all), asked first like one.
+    var removingAll by remember { mutableStateOf<List<String>?>(null) }
+    removingAll?.let { ids ->
+        Sheet(pluralStringResource(R.plurals.remove_downloads_q, ids.size, ids.size), { removingAll = null }, footer = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                WButton(stringResource(R.string.player_cancel), { removingAll = null }, Modifier.weight(1f), kind = Btn.Secondary)
+                WButton(stringResource(R.string.remove_all), { ids.forEach { model.remove(it) }; removingAll = null }, Modifier.weight(1f), kind = Btn.Danger)
+            }
+        }) {
+            Text(stringResource(R.string.remove_download_body), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
+        }
+    }
     removing?.let { id ->
         Sheet(stringResource(R.string.remove_download_q), { removing = null }, footer = {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -128,7 +140,28 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                 }
             }
         }
-        items(state.copies, key = { it.itemId }) { c ->
+        // One group per title, its parts in order: a series reads as a series, not as a list of strays.
+        val groups = state.copies.groupBy { it.title.trim().lowercase() }.values
+            .map { g -> g.sortedWith(compareBy({ it.season }, { it.episode })) }
+            .sortedBy { it.first().title.lowercase() }
+        for (group in groups) {
+            if (group.size > 1) item(key = "@" + group.first().title) {
+                Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(group.first().title, color = l.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            pluralStringResource(R.plurals.count_downloads, group.size, group.size) + " · " + bytes(group.sumOf { it.bytes }),
+                            color = l.muted, fontSize = 12.sp,
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.remove_all),
+                        Modifier.clip(l.buttonShape).clickable { removingAll = group.map { it.itemId } }.padding(horizontal = 10.dp, vertical = 8.dp),
+                        color = l.text.copy(alpha = 0.85f), fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        items(group, key = { it.itemId }) { c ->
             val (done, total) = live.bytes[c.itemId] ?: (c.bytes to c.size)
             val item = vm.state.value.items[c.itemId]
             val reading = c.kind in io.github.enrell.lain.domain.READING_KINDS
@@ -137,8 +170,14 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                     .then(if (c.state == CopyState.DONE && item != null) Modifier.clickable { vm.open(item) } else Modifier),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.width(if (reading) 56.dp else 116.dp).aspectRatio(if (reading) 3f / 4f else 16f / 9f)) {
+                Box(Modifier.width(if (reading) 56.dp else 116.dp).aspectRatio(if (reading) 3f / 4f else 16f / 9f), contentAlignment = Alignment.Center) {
                     Art(c.itemId, Modifier.fillMaxSize())
+                    // A finished copy plays (or opens) from here.
+                    if (c.state == CopyState.DONE && item != null) {
+                        Box(Modifier.size(30.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+                            Icon(if (reading) Ic.Book else Ic.Play, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        }
+                    }
                     if (c.state == CopyState.QUEUED && total > 0) {
                         Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.5f))) {
                             Box(Modifier.fillMaxWidth((done.toFloat() / total).coerceIn(0f, 1f)).height(4.dp).background(l.accent))
@@ -182,6 +221,7 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                 }
                 IconBtn(Ic.Trash, stringResource(R.string.remove_download), { removing = c.itemId }, tint = l.text.copy(alpha = 0.85f))
             }
+        }
         }
     }
 }
