@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A lain server is self-hosted, usually on the LAN, and lain-client has
-     no TLS yet (Q-045): cleartext is allowed for every host (D-252). -->
+<!-- A lain server is self-hosted, usually on the LAN and without a
+     certificate, so cleartext stays allowed for every host: the app cannot
+     know ahead which addresses are local. The core picks http only for a
+     local address typed without a scheme, or when http:// is typed
+     (D-252, D-277). -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

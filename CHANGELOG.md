@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`https` servers in every native client** (D-277): `lain-client` speaks
+  TLS through `lain-http`'s rustls setup, so `lain login --server
+  https://...`, the desktop app and Android reach a server behind a reverse
+  proxy. A failed handshake is `ClientError::Tls` (its own message on
+  Android).
+- **Signed Android releases** (D-278): a `v*` tag attaches
+  `lain_<version>_android.apk` and its `.sha256` to the release, signed
+  with the project's key; the version code comes from the tag
+  (`v0.3.1` is 3001), so every release installs over the one before.
+
+### Changed
+- **A server address typed without `http://` or `https://`** (D-277) is
+  `http` on port 9360 when it is local (a private, loopback, link-local
+  or tailnet address, a one-word name, or a `.local`, `.lan`,
+  `.home.arpa`, `.internal` or `.localhost` name) and `https` on port 443
+  otherwise; an `https` that fails is never retried as `http`. This holds
+  in the CLI, the desktop app and Android, whose connect field no longer
+  starts at `http://`.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added

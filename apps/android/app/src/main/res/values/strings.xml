@@ -7,7 +7,7 @@
 
     <!-- connect and login -->
     <string name="connect_title">Connect to a server</string>
-    <string name="connect_hint">The address of your lain server, for example http://192.168.1.10:9360.</string>
+    <string name="connect_hint">The address of your lain server, like 192.168.1.10:9360 on your own network or lain.example.org behind TLS. Without http:// or https://, a local address uses http and any other https.</string>
     <string name="connect_url">Server URL</string>
     <string name="connect_go">Connect</string>
     <string name="login_title">Log in</string>
@@ -105,6 +105,7 @@
 
     <!-- errors -->
     <string name="err_offline">The server is unreachable.</string>
+    <string name="err_tls">No secure connection to the server (%1$s). A server without TLS needs http:// typed in front.</string>
     <string name="err_unauthorized">Your session ended; log in again.</string>
     <string name="err_login">Login refused: %1$s</string>
     <string name="err_forbidden">Not allowed.</string>

@@ -676,6 +676,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "lain-api",
+ "lain-http",
  "libc",
  "redb",
  "serde",

@@ -143,8 +143,9 @@ class AppViewModel(
         if (session != null) enterMain()
     }
 
+    /** Connects to [url] as typed: without a scheme, the core picks http or https by the host (D-277). */
     fun connect(url: String) {
-        val raw = url.trim().let { if ("://" in it) it else "http://$it" }
+        val raw = url.trim()
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             try {
@@ -480,4 +481,5 @@ class AppViewModel(
     }
 }
 
-fun offline(e: Throwable): Boolean = e is LainException.Offline || e is LainException.Timeout
+/** Whether [e] means the server is unreachable; a failed TLS handshake counts, as in the core (D-277). */
+fun offline(e: Throwable): Boolean = e is LainException.Offline || e is LainException.Timeout || e is LainException.Tls

@@ -17,11 +17,17 @@ serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 lain-api.workspace = true
+# D-277: TLS for `https` servers, the rustls setup of D-200.
+lain-http.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
 
 [dev-dependencies]
+# The TLS-terminating front of the https test; both already in the
+# tree under lain-http.
+rustls.workspace = true
+tokio-rustls.workspace = true
 lain-conformance = { path = "../../conformance/runner" }
 lain-metadata.workspace = true
 lain-lists.workspace = true
