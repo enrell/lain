@@ -1078,6 +1078,15 @@ try {
 		15000,
 		'quality menu'
 	);
+	// The ladder stops at the file's own height (360 lines): a taller rung
+	// has nothing to take off it.
+	const rungs = await evalValue(
+		`[...document.querySelector('select[aria-label="Transcode quality"]').options].map((o) => o.value)`
+	);
+	assert(
+		JSON.stringify(rungs) === JSON.stringify(['', '360p']),
+		`the quality menu of a 360p file offers ${JSON.stringify(rungs)}, want Auto and 360p`
+	);
 	await selectOption('Transcode quality', '360p');
 	await waitUntil(
 		() => sessionFromStatus() && sessionFromStatus() !== firstSession,
