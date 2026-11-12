@@ -12,7 +12,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   proxy. A failed handshake is `ClientError::Tls` (its own message on
   Android).
 - **Signed Android releases** (D-278): a `v*` tag attaches
-  `lain_<version>_android.apk` when the signing secrets are set.
+  `lain_<version>_android.apk` and its `.sha256` to the release, signed
+  with the project's key; the version code comes from the tag
+  (`v0.3.1` is 3001), so every release installs over the one before.
 
 ### Changed
 - **A server address typed without `http://` or `https://`** (D-277) is
