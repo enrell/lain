@@ -488,7 +488,7 @@
 			{/if}
 
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-				<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground capitalize">
+				<h2 class="section-title capitalize">
 					{reading ? unitPlural : 'Episodes'}
 					{#if selecting}
 						<span class="ml-2 align-middle font-mono text-[11px] font-normal uppercase tracking-[0.14em] text-muted">

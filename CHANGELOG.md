@@ -88,6 +88,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   hold it at the same place, at the end of the bar's first row; in All
   titles it sat a row lower, under the search. With the switch beside the
   search, sort and tile size join the filters sheet below a wide screen.
+- **One heading scale** (web): a page's own name (Library, a library,
+  Favorites, Search, Tracking, Social, Acquire, Settings, a collection, a
+  profile) is set at Settings' size, and a section under it (a rail, a
+  title's episodes or volumes, More in, a search's suggestions) at Home's
+  rail size. Library named its page at 20 px over 24 px rails, and a
+  title page's sections were 18 px. Acquire and Social keep their one-line
+  lead on every tab: hidden on the first-run tab only, it made the tabs
+  under it jump each time that tab was left.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a

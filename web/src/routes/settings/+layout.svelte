@@ -180,7 +180,7 @@
 				<p class="font-mono text-[10px] uppercase tracking-[0.26em] text-muted">
 					{t('settings.eyebrow', { scope: t(current.scope === 'you' ? 'settings.scope.you' : 'settings.scope.server') })}
 				</p>
-				<h1 class="mt-2 text-[1.75rem] font-bold leading-tight tracking-[-0.03em] text-foreground md:text-[2rem]">
+				<h1 class="page-title mt-2">
 					<button
 						type="button"
 						class="-mx-1 inline-flex max-w-full items-center gap-2 rounded-md px-1 text-left md:hidden"

@@ -110,7 +110,7 @@
 				<h2 id={`shelf-title-${lib.id}`} class="min-w-0">
 					<a
 						href={`/library/${lib.id}`}
-						class="group/title flex items-center gap-1 text-xl font-semibold tracking-[-0.025em] text-foreground hover:text-accent sm:text-2xl"
+						class="section-title group/title flex items-center gap-1 hover:text-accent"
 					>
 						<span class="truncate">{lib.name}</span>
 						<ChevronRight class="size-4 shrink-0 text-muted transition-transform group-hover/title:translate-x-0.5" aria-hidden="true" />

@@ -66,7 +66,7 @@
 >
 	{#snippet header()}
 		<header class="space-y-1">
-			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('favorites.title')}</h1>
+			<h1 class="page-title">{t('favorites.title')}</h1>
 			<p class="text-sm text-muted">
 				{t('favorites.lead')}{#if gone > 0}{' '}{t('favorites.gone', { count: gone })}{/if}
 			</p>

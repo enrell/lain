@@ -204,7 +204,7 @@
 
 <div class="space-y-6">
 	<header class="space-y-3">
-		<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('search.heading')}</h1>
+		<h1 class="page-title">{t('search.heading')}</h1>
 		<!-- A phone's field: from md up the header holds the search bar (HeaderSearch). -->
 		<form class="relative md:hidden" onsubmit={submit} role="search">
 			<Search
