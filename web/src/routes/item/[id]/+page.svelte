@@ -335,7 +335,7 @@
 
 					<!-- The primary action sits directly under the title, above the
 					     optional prose, so it is on screen on arrival at 320x568. -->
-					<div class="mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
+					<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
 						{#if playable || (!item.missing && preferredPlayer !== 'browser')}
 							<LinkButton href={playHref(item.id)} size="lg" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
 								<Play class="size-4 fill-current" />

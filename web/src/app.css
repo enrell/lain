@@ -437,3 +437,11 @@ details.settings-section > summary {
 	color: inherit;
 	opacity: 0.8;
 }
+
+/* On a phone a title's quiet actions are outlined, as the app's are: bare
+   words in two columns were weak targets. */
+@media (max-width: 767px) {
+	.title-actions > button {
+		border: 1px solid var(--color-line);
+	}
+}

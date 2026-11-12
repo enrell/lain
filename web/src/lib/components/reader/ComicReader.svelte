@@ -80,7 +80,7 @@
 				onclick={() => settings.toggleDual()}
 			>
 				<Columns2 class="size-4" aria-hidden="true" />
-				<span class="hidden xl:inline">Spread</span>
+				<span class="hidden max-md:inline xl:inline">Spread</span>
 			</ReaderToggle>
 		{/if}
 		<ReaderToggle
@@ -89,7 +89,7 @@
 			onclick={() => settings.setMode(settings.mode === 'strip' ? 'paged' : 'strip')}
 		>
 			<GalleryVertical class="size-4" aria-hidden="true" />
-			<span class="hidden xl:inline">Scroll</span>
+			<span class="hidden max-md:inline xl:inline">Scroll</span>
 		</ReaderToggle>
 	{/snippet}
 </ReaderBase>
