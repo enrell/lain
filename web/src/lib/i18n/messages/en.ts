@@ -17,6 +17,37 @@ const en = {
 		close: 'Close',
 		signOut: 'Sign out'
 	},
+	auth: {
+		username: 'Username',
+		password: 'Password',
+		showPassword: 'Show password',
+		hidePassword: 'Hide password',
+		setup: {
+			pageTitle: 'Welcome — Lain',
+			heading: 'A quiet place for your media.',
+			lead: 'Lain indexes your files, streams them with byte-range seeking, and keeps everyone’s progress separate. Everything runs on this machine.',
+			title: 'Create your account',
+			subtitle: 'The first account is the administrator. You can add more people later.',
+			confirm: 'Confirm password',
+			passwordHint: 'At least 8 characters.',
+			pickUsername: 'Pick a username.',
+			tooShort: 'At least 8 characters.',
+			mismatch: 'Passwords do not match.',
+			submit: 'Create account',
+			failed: 'Could not create the account.',
+			doneTitle: 'You’re in.',
+			doneBody: 'Next, point Lain at a directory on this server so it can index your files.',
+			addLibrary: 'Add a media library',
+			explore: 'Explore Lain'
+		},
+		login: {
+			pageTitle: 'Sign in — Lain',
+			tagline: 'Your media. Your machine. Your rules.',
+			submit: 'Sign in',
+			failed: 'Sign in failed.',
+			mismatch: 'That username and password do not match. Check both and try again.'
+		}
+	},
 	privateLibrary: {
 		badge: 'private',
 		locked: 'locked',
