@@ -127,6 +127,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   cover sits beside the title's name instead of above it, so the first
   episodes or volumes show under the actions where the hero filled the
   whole screen.
+- **First-run pages on a tablet** (web): Tracking, Social and Acquire set
+  their poster fan beside the copy from 1024 px; at 768 px it left the
+  headline one or two words a line.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a

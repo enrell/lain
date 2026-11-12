@@ -71,7 +71,9 @@
 		</div>
 	{/if}
 
-	<div class="grid items-center gap-10 md:grid-cols-[minmax(0,1fr)_auto] lg:gap-16">
+	<!-- Copy and fan side by side from lg: at a tablet's width the fan left the
+	     headline a column of one or two words a line. -->
+	<div class="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-16">
 		<div class="min-w-0 py-2 md:py-8">
 			<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">{eyebrow}</p>
 			<h2 class="mt-4 max-w-[18ch] text-[2rem] font-semibold leading-[1.04] tracking-[-0.035em] text-balance text-foreground sm:text-5xl sm:leading-[1.02]">
@@ -87,7 +89,7 @@
 
 		{#if fan.length > 0}
 			<!-- A fan of the library's own posters, as the reading hero shows a cover. -->
-			<div class="relative mx-auto hidden h-72 w-[24rem] md:block lg:h-80 lg:w-[28rem]" aria-hidden="true">
+			<div class="relative mx-auto hidden h-80 w-[28rem] lg:block" aria-hidden="true">
 				{#each fan as item, i (item.id)}
 					{@const centre = i === 1 || fan.length === 1}
 					<div
