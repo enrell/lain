@@ -1610,17 +1610,32 @@ try {
 
 	// The seek and the pause wrote at once (lifecycle writes); playing on,
 	// nothing else forces one, so the next write is the reporter's 10s
-	// interval. Waiting for it proves the periodic write, and the count at
-	// that moment proves the bound: no write per timeupdate.
+	// interval. The browser reports the lifecycle writes a moment late, often
+	// after the resume, so "any write after the resume" is met by them and
+	// proves nothing: the periodic write is the first one well after it.
+	// Its distance from the write before it proves the interval (a reporter
+	// writing every second, or on every timeupdate, answers far sooner), and
+	// the count at that moment proves the bound.
 	const resumedAt = Date.now();
 	const progressPuts = () =>
 		requests.filter((r) => r.url.includes('/progress') && r.method === 'PUT');
+	const isPeriodic = (r) => r.ts > resumedAt + 5000;
 	await waitUntil(
-		() => progressPuts().some((r) => r.ts > resumedAt),
+		() => progressPuts().some(isPeriodic),
 		25000,
 		'a periodic progress write while playing'
 	);
 	const progressWrites = progressPuts();
+	{
+		const at = progressWrites.findIndex(isPeriodic);
+		const previous = progressWrites[at - 1];
+		assert(previous, 'no lifecycle progress write (seek, pause) before the periodic one');
+		const gap = progressWrites[at].ts - previous.ts;
+		// Timestamps are taken as the browser reports each request: some
+		// slack under the 10s interval.
+		assert(gap >= 7500, `the periodic progress write came ${gap}ms after the previous write, want the 10s interval`);
+		evidence.progressIntervalMs = gap;
+	}
 	assert(
 		progressWrites.length <= 4,
 		`too many progress writes: ${progressWrites.length} in ~${Math.round((Date.now() - resumedAt) / 1000) + 2}s`
@@ -1635,8 +1650,18 @@ try {
 	);
 	evidence.streamStatuses = [...new Set(streamStatuses)];
 	console.log(
-		`   ${evidence.rangeRequests} Range requests, ${evidence.progressWrites} bounded progress writes`
+		`   ${evidence.rangeRequests} Range requests, ${evidence.progressWrites} bounded progress writes, ${evidence.progressIntervalMs}ms apart`
 	);
+	// That wait played ten seconds of a thirty-second episode, and the steps
+	// below need it still playing (and Continue watching needs it unfinished):
+	// back near the start from the keyboard, five seconds a press.
+	for (let press = 0; press < 6; press++) {
+		const now = await evalValue(`document.querySelector('video').currentTime`);
+		if (now < 4) break;
+		await pressKey('ArrowLeft', 'ArrowLeft', 37);
+		await waitFor(`document.querySelector('video').currentTime < ${now} - 3`, 5000, 'ArrowLeft seeked back');
+	}
+	await waitFor(`document.querySelector('video').paused === false`, 5000, 'playing on after the rewind');
 
 	/* ---------------- player chrome idle (D-063) ---------------- */
 	step('the player chrome fades while playing and wakes on the pointer or a click');
