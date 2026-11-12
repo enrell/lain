@@ -293,7 +293,7 @@
 					<thead>
 						<tr class="text-left font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
 							<th class="pb-2 text-start font-normal">{t('settings.playbackPage.colEffect')}</th><th class="pb-2 text-start font-normal">{t('settings.playbackPage.colType')}</th><th class="pb-2 text-start font-normal">{t('settings.playbackPage.colLibrary')}</th>
-														<th class="pb-2 text-start font-normal">{t('settings.playbackPage.colMin')}</th><th class="pb-2 text-start font-normal">{t('settings.playbackPage.colMax')}</th><th class="pb-2 text-start font-normal">{t('settings.playbackPage.colTrack')}</th><th><span class="sr-only">{t('settings.transcode.encoding.colRemove')}</span></th>
+							<th class="pb-2 text-start font-normal">{t('settings.playbackPage.colMin')}</th><th class="pb-2 text-start font-normal">{t('settings.playbackPage.colMax')}</th><th class="pb-2 text-start font-normal">{t('settings.playbackPage.colTrack')}</th><th><span class="sr-only">{t('settings.transcode.encoding.colRemove')}</span></th>
 						</tr>
 					</thead>
 					<tbody>
