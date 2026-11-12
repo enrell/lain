@@ -66,6 +66,8 @@ export interface Library {
 	/** lain-rs (D-157): the named root and the path inside it. */
 	root?: string;
 	root_path?: string;
+	/** The admin's order, 1 first; absent for a library never ordered. */
+	position?: number;
 }
 
 /** GET /api/roots (lain-rs): this machine's root mapping. */

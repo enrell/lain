@@ -1,9 +1,13 @@
 import { request } from './client';
 import type { BrowseResult, Library, LibraryRoot, ScanStatus } from './types';
 
-/** An admin change (lain-rs): rename, privacy, owner and members. */
+/** An admin change (lain-rs): rename, type, folder, privacy, owner and members. */
 export interface LibraryPatch {
 	name?: string;
+	/** Which files the next scan reads (`auto`, `anime`, `movie`, `manga`...). */
+	type?: string;
+	/** A new folder on the server; the id, progress and overlays stay. */
+	path?: string;
 	private?: boolean;
 	owner?: string;
 	members?: string[];
@@ -39,6 +43,9 @@ export const libraries = {
 
 	/** Starts a scan; while one runs the server queues one follow-up (D-286). */
 	scanStart: () => request<{ state: string; queued?: boolean }>('/api/library/scan', { method: 'POST' }),
+
+	/** The admin's order: every library id, first to last. */
+	order: (ids: string[]) => request<Library[]>('/api/libraries/order', { method: 'PUT', body: { ids } }),
 
 	scanStatus: () => request<ScanStatus>('/api/library/scan'),
 

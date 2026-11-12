@@ -278,6 +278,7 @@ pub fn router(app: Arc<App>) -> Router {
             "/api/libraries/{id}",
             route(DELETE, Gate::Admin, libraries_delete).merge(route(PATCH, Gate::Admin, libraries_patch)),
         )
+        .route("/api/libraries/order", route(PUT, Gate::Admin, libraries_order))
         .route("/api/libraries/{id}/unlock", route(POST, Gate::User, libraries_unlock))
         .route("/api/libraries/{id}/lock", route(POST, Gate::User, libraries_lock))
         .route(
@@ -848,6 +849,25 @@ fn libraries_patch(app: &App, req: &Req, v: &Verified) -> Reply {
             Reply::ok(library_view(app, &lib, v))
         }
         Err(e) if e == "unknown library" => Reply::err(404, &e),
+        Err(e) => Reply::err(400, &e),
+    }
+}
+
+/// The admin's order of the libraries (every id, first to last): Home,
+/// the library page and every client list them in it.
+fn libraries_order(app: &App, req: &Req, v: &Verified) -> Reply {
+    let i: lain_api::LibraryOrder = match req.decode() {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    match app.libraries.reorder(&i.ids) {
+        Ok(list) => {
+            for lib in &list {
+                app.publish_library(lib, json!({"library_id": lib.id, "action": "updated"}));
+            }
+            Reply::ok(json!(list.iter().map(|lib| library_view(app, lib, v)).collect::<Vec<_>>()))
+        }
+        Err(e) if e.starts_with("unknown library") => Reply::err(404, &e),
         Err(e) => Reply::err(400, &e),
     }
 }
