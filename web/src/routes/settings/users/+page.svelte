@@ -467,7 +467,8 @@
 			void deleteUser();
 		}}
 	>
-		<ul class="list-disc space-y-1 ps-5 text-sm text-muted marker:text-muted/60">
+		<p class="font-mono text-[10px] uppercase tracking-[0.16em] text-muted">{t('settings.usersPage.goesWith')}</p>
+		<ul class="-mt-2 list-disc space-y-1 ps-5 text-sm text-muted marker:text-muted/60">
 			<li>{t('settings.usersPage.loseProgress')}</li>
 			<li>{t('settings.usersPage.loseLists')}</li>
 			<li>{t('settings.usersPage.loseSocial')}</li>
