@@ -306,11 +306,12 @@
 	{#if !loaded}
 		<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
 	{:else if noLibrary}
-		<FirstRun eyebrow={t('acquire.firstRun.eyebrow')} title={t('acquire.firstRun.noLibraryTitle')} body={t('acquire.firstRun.noLibraryBody')}>
+		<FirstRun art={false} eyebrow={t('acquire.firstRun.eyebrow')} title={t('acquire.firstRun.noLibraryTitle')} body={t('acquire.firstRun.noLibraryBody')}>
 			<LinkButton href="/settings/libraries" size="rowMain">{t('acquire.noLibrariesAction')} <kbd>L</kbd></LinkButton>
 		</FirstRun>
 	{:else if tab === 'search' && indexers.length === 0}
 		<FirstRun
+			art="queue"
 			eyebrow={t('acquire.firstRun.eyebrow')}
 			title={t('acquire.firstRun.title')}
 			body={t('acquire.firstRun.body')}
