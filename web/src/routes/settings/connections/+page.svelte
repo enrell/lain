@@ -45,7 +45,7 @@
 				pinUrl = null;
 			}
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not load connected accounts.'));
+			toasts.error(errorMessage(err, t('settings.connectionsPage.loadFailed')));
 		} finally {
 			linksReady = true;
 		}
@@ -62,12 +62,12 @@
 				err instanceof Error && 'code' in err && (err as { code?: string }).code === 'not-configured';
 			if (configured && pinUrl) {
 				pinOpen = true;
-				toasts.error('Redirect sign-in needs the administrator app — use the code flow below.');
+				toasts.error(t('settings.connectionsPage.needsApp'));
 			} else {
 				toasts.error(
 					configured
-						? `${platform} is not configured on this server — ask the administrator.`
-						: errorMessage(err, `Could not start the ${platform} connection.`)
+						? t('settings.connectionsPage.notConfigured', { platform })
+						: errorMessage(err, t('settings.connectionsPage.startFailed', { platform }))
 				);
 			}
 			linkBusy = '';
@@ -81,14 +81,14 @@
 	async function submitPin(platform: string): Promise<void> {
 		const code = pinCode.trim();
 		if (!code) {
-			pinErr = 'Paste the code the AniList page shows.';
+			pinErr = t('settings.connectionsPage.pasteCode');
 			return;
 		}
 		pinBusy = true;
 		pinErr = '';
 		try {
 			await api.links.code(platform, code);
-			toasts.success(`${platform} connected — importing your list.`);
+			toasts.success(t('settings.connectionsPage.connected', { platform }));
 			pinOpen = false;
 			pinCode = '';
 			await loadLinks();
@@ -96,8 +96,8 @@
 			const code = err instanceof Error && 'code' in err ? (err as { code?: string }).code : '';
 			pinErr =
 				code === 'invalid-grant'
-					? 'AniList rejected that code — authorize again and copy the whole code.'
-					: errorMessage(err, 'Could not link the account.');
+					? t('settings.connectionsPage.badCode')
+					: errorMessage(err, t('settings.connectionsPage.linkFailed'));
 		} finally {
 			pinBusy = false;
 		}
@@ -107,10 +107,10 @@
 		linkBusy = platform;
 		try {
 			const res = await api.links.sync(platform);
-			toasts.success(`Synced: ${res.stats.upserted} entries, ${res.stats.removed} removed.`);
+			toasts.success(t('settings.connectionsPage.synced', { count: res.stats.upserted, removed: res.stats.removed }));
 			await loadLinks();
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Sync failed.'));
+			toasts.error(errorMessage(err, t('settings.connectionsPage.syncFailed')));
 		} finally {
 			linkBusy = '';
 		}
@@ -122,7 +122,7 @@
 			await api.links.setScrobble(link.platform, !link.scrobble);
 			await loadLinks();
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not change the setting.'));
+			toasts.error(errorMessage(err, t('settings.connectionsPage.settingFailed')));
 		} finally {
 			linkBusy = '';
 		}
@@ -132,10 +132,10 @@
 		linkBusy = platform;
 		try {
 			await api.links.unlink(platform);
-			toasts.success(`${platform} disconnected; imported entries removed.`);
+			toasts.success(t('settings.connectionsPage.disconnected', { platform }));
 			await loadLinks();
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not disconnect.'));
+			toasts.error(errorMessage(err, t('settings.connectionsPage.disconnectFailed')));
 		} finally {
 			linkBusy = '';
 		}
@@ -145,8 +145,8 @@
 		// The OAuth callback lands back here with a result flag.
 		const linked = page.url.searchParams.get('linked');
 		const linkError = page.url.searchParams.get('link_error');
-		if (linked) toasts.success(`${linked} connected — importing your list.`);
-		if (linkError) toasts.error(`The connection did not complete (${linkError}).`);
+		if (linked) toasts.success(t('settings.connectionsPage.connected', { platform: linked }));
+		if (linkError) toasts.error(t('settings.connectionsPage.incomplete', { error: linkError }));
 		if (linked || linkError) {
 			const url = new URL(page.url);
 			url.searchParams.delete('linked');
@@ -157,9 +157,9 @@
 	});
 </script>
 
-<svelte:head><title>Connections — Settings — Lain</title></svelte:head>
+<svelte:head><title>{t('settings.connectionsPage.pageTitle')}</title></svelte:head>
 
-<SettingsGroup title="Lists" description={t('settings.groups.connections.lists')}>
+<SettingsGroup title={t('settings.connectionsPage.lists')} description={t('settings.groups.connections.lists')}>
 	{#if !linksReady}
 		<div class="flex justify-center py-8"><Spinner class="size-5 text-muted" /></div>
 	{:else}
@@ -169,52 +169,62 @@
 				id={p.id}
 				label={p.name}
 				hint={link
-					? `${link.remote_username || link.remote_user_id} · ${link.entry_count} ${link.entry_count === 1 ? 'entry' : 'entries'}${link.last_sync_at ? ` · synced ${formatRelative(link.last_sync_at)}` : link.last_sync_error ? ` · sync failed (${link.last_sync_error})` : ''}`
-					: 'Import your list. The remote stays the source of truth; disconnecting removes its entries.'}
+					? [
+							link.remote_username || link.remote_user_id,
+							t('settings.connectionsPage.entries', { count: link.entry_count }),
+							link.last_sync_at
+								? t('settings.connectionsPage.syncedAt', { when: formatRelative(link.last_sync_at) })
+								: link.last_sync_error
+									? t('settings.connectionsPage.syncError', { error: link.last_sync_error })
+									: ''
+						]
+							.filter(Boolean)
+							.join(' · ')
+					: t('settings.connectionsPage.importHint')}
 			>
 				{#if link}
 					<span class="mr-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] {linkNeedsReconnect(link) ? 'text-danger' : 'text-accent'}">
 						<span class="size-1.5 rounded-full {linkNeedsReconnect(link) ? 'bg-danger' : 'bg-accent'}" aria-hidden="true"></span>
-						{linkNeedsReconnect(link) ? 'reconnect' : 'connected'}
+						{linkNeedsReconnect(link) ? t('settings.connectionsPage.stateReconnect') : t('settings.connectionsPage.stateConnected')}
 					</span>
 					{#if linkNeedsReconnect(link)}
-						<Button variant="secondary" size="field" loading={linkBusy === p.id} onclick={() => void connect(p.id)}>Reconnect</Button>
+						<Button variant="secondary" size="field" loading={linkBusy === p.id} onclick={() => void connect(p.id)}>{t('settings.connectionsPage.reconnect')}</Button>
 					{:else}
 						<Button variant="ghost" size="field" loading={linkBusy === p.id} onclick={() => void syncNow(p.id)}>
-							<RefreshCw class="size-3.5" /> Sync
+							<RefreshCw class="size-3.5" /> {t('settings.connectionsPage.sync')}
 						</Button>
 					{/if}
 					<Button variant="ghost" size="field" disabled={linkBusy === p.id} onclick={() => void disconnect(p.id)}>
-						<Unlink class="size-3.5" /> Disconnect
+						<Unlink class="size-3.5" /> {t('settings.connectionsPage.disconnect')}
 					</Button>
 				{:else}
-					<Button size="field" loading={linkBusy === p.id} onclick={() => void connect(p.id)}>Connect</Button>
+					<Button size="field" loading={linkBusy === p.id} onclick={() => void connect(p.id)}>{t('settings.connectionsPage.connect')}</Button>
 					{#if pinUrl && !pinOpen}
-						<Button variant="ghost" size="field" onclick={() => (pinOpen = true)}>Use a code</Button>
+						<Button variant="ghost" size="field" onclick={() => (pinOpen = true)}>{t('settings.connectionsPage.useCode')}</Button>
 					{/if}
 				{/if}
 				{#snippet below()}
 					{#if !link && pinOpen && pinUrl}
 						<div class="flex flex-wrap items-start gap-2 pt-1">
-							<Button variant="secondary" size="field" onclick={openPin}>1 · Open AniList</Button>
+							<Button variant="secondary" size="field" onclick={openPin}>{t('settings.connectionsPage.step1')}</Button>
 							<div class="min-w-48 flex-1">
-								<Input type="password" placeholder="2 · Paste the code" aria-label="AniList code" bind:value={pinCode} error={pinErr || null}
+								<Input type="password" placeholder={t('settings.connectionsPage.step2')} aria-label={t('settings.connectionsPage.codeLabel')} bind:value={pinCode} error={pinErr || null}
 									onkeydown={(e) => e.key === 'Enter' && void submitPin(p.id)} />
 							</div>
-							<Button size="field" loading={pinBusy} onclick={() => void submitPin(p.id)}>3 · Link</Button>
+							<Button size="field" loading={pinBusy} onclick={() => void submitPin(p.id)}>{t('settings.connectionsPage.step3')}</Button>
 						</div>
 					{/if}
 				{/snippet}
 			</SettingRow>
 			{#if link}
 				<SettingRow
-					label="Update {p.name} when I finish an episode"
-					hint="Advances entries you already track. Never lowers progress or reopens completed titles."
+					label={t('settings.connectionsPage.scrobble', { platform: p.name })}
+					hint={t('settings.connectionsPage.scrobbleHint')}
 				>
 					<Switch
 						checked={link.scrobble}
 						disabled={linkBusy === p.id}
-						label="Scrobble to {p.name}"
+						label={t('settings.connectionsPage.scrobbleTo', { platform: p.name })}
 						bare
 						onCheckedChange={() => void toggleScrobble(link)}
 					/>
