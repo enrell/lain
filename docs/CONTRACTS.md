@@ -727,6 +727,13 @@ spawned by the provider with a 20s timeout and at most 2 concurrent
 processes; absence degrades this capability, never the boot. Without `t`
 the gateway serves a still that came with the file instead (D-269), and
 catalog answers say which it will be (`CatalogItem.thumbnail`, D-282).
+That still is the cover that stands for the item's title, which beside a
+show's first episode is the show's poster. `art=still` (D-284, additive)
+asks for the file's own picture instead, for a slot that stands for that
+one file (an episode's row, a continue card): `<name>-thumb.*` next to it,
+else the frame at `t` (10 s by default; a comic archive's cover page),
+never `<name>-poster.*` or the folder's `.metadata/thumbs/` still. An
+older server ignores it and answers the cover.
 
 `GET /api/items/{id}/storyboard` (D-275) is how a seek bar previews
 without a request per position: `{interval_sec, count, columns, rows,

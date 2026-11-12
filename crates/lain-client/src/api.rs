@@ -633,6 +633,17 @@ impl Client {
             .to_vec())
     }
 
+    /// The item's own picture (D-284), for a slot that stands for that one
+    /// file (an episode's row): its `-thumb` still, else its frame; never
+    /// the show's poster kept beside a first episode, which `thumbnail`
+    /// serves as the title's cover. An older server answers as `thumbnail`.
+    pub async fn still(&self, item_id: &str) -> Result<Vec<u8>, ClientError> {
+        Ok(self
+            .raw(Method::GET, &format!("/api/items/{}/thumbnail?art=still", encode(item_id)), Body::None, true)
+            .await?
+            .to_vec())
+    }
+
     /// A frame of the item at `at_sec`, `width` pixels wide: what a seek
     /// bar shows for the place it points at.
     pub async fn frame(&self, item_id: &str, at_sec: f64, width: u32) -> Result<Vec<u8>, ClientError> {

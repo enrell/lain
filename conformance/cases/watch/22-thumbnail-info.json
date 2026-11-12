@@ -1,6 +1,6 @@
 {
   "tier": "v2",
-  "description": "D-282: catalog and search answers say what each item's thumbnail is before it is fetched: a still that came with the file (D-269, `sidecar`, with its width over height when its header reads) or a frame the server cuts (`frame`, shape unknown). Filled on every read, so a still added or removed next to a file counts at once. The still here is a WebP header written as text (600x896). lain-rs only.",
+  "description": "D-282: catalog and search answers say what each item's thumbnail is before it is fetched: a still that came with the file (D-269, `sidecar`, with its width over height when its header reads) or a frame the server cuts (`frame`, shape unknown). Filled on every read, so a still added or removed next to a file counts at once. The still here is a WebP header written as text (600x896). D-284: `art=still` asks for the file's own picture (`<name>-thumb.*`, else its frame), never the poster beside it. lain-rs only.",
   "cases": [
     {"name": "a still next to the file is told, with its aspect, and served", "requires": ["w_alpha", "media_root"], "steps": [
       {"write_file": {"path": "{{media_root}}/Clips/Alpha-poster.webp",
@@ -19,6 +19,16 @@
        "expect": {"status": 200, "headers": {"content-type": "image/webp"}}},
       {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail?t=1&w=96", "auth": "query:w_bob"},
        "expect": {"status": 200, "headers": {"content-type": "image/jpeg"}}}
+    ]},
+    {"name": "D-284: art=still is the file's own picture, never its poster", "requires": ["w_alpha", "media_root"], "steps": [
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail?art=still&w=96", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "image/jpeg"}}},
+      {"write_file": {"path": "{{media_root}}/Clips/Alpha-thumb.png", "text": "GIF89a\u0001\u0000\u0001\u0000\u0000\u0000\u0000;"}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail?art=still", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "image/gif"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "image/webp"}}},
+      {"remove_file": "{{media_root}}/Clips/Alpha-thumb.png"}
     ]},
     {"name": "a still taken away is a frame again", "requires": ["w_alpha", "media_root"], "steps": [
       {"remove_file": "{{media_root}}/Clips/Alpha-poster.webp"},
