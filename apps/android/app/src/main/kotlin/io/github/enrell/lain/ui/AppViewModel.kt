@@ -481,4 +481,5 @@ class AppViewModel(
     }
 }
 
-fun offline(e: Throwable): Boolean = e is LainException.Offline || e is LainException.Timeout
+/** Whether [e] means the server is unreachable; a failed TLS handshake counts, as in the core (D-277). */
+fun offline(e: Throwable): Boolean = e is LainException.Offline || e is LainException.Timeout || e is LainException.Tls

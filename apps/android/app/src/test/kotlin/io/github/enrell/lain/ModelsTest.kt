@@ -10,6 +10,7 @@ import io.github.enrell.lain.ui.Phase
 import io.github.enrell.lain.ui.PlayerModel
 import io.github.enrell.lain.ui.ReaderModel
 import io.github.enrell.lain.ui.Screen
+import io.github.enrell.lain.ui.offline
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -94,6 +95,15 @@ class ModelsTest {
         assertTrue(vm.state.value.online)
         assertFalse(vm.state.value.fromCache)
         core.stopEvents()
+    }
+
+    @Test
+    fun aFailedTlsHandshakeCountsAsUnreachable() {
+        // The core's rule (D-277): the top bar says offline, as it does for a refused connection.
+        assertTrue(offline(LainException.Tls("unknown issuer")))
+        assertTrue(offline(LainException.Offline("connection refused")))
+        assertTrue(offline(LainException.Timeout()))
+        assertFalse(offline(LainException.Unsupported("x")))
     }
 
     @Test
