@@ -1094,7 +1094,8 @@ const en = {
 			escape: 'Close a panel, leave full screen',
 			subtitles: 'Subtitles on or off',
 			speed: 'Slower or faster',
-			episodes: 'Episode list beside the picture'
+			// Beside the picture on a wide screen, a drawer over it on a narrower one.
+			episodes: 'Show or hide the episode list'
 		},
 		episodesHide: 'Hide the episode list (E)',
 		episodesShow: 'Show the episode list (E)',
