@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { formatLength } from '$lib/utilities/format';
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Check from '@lucide/svelte/icons/check';
 	import MonitorPlay from '@lucide/svelte/icons/monitor-play';
+	import PanelRightClose from '@lucide/svelte/icons/panel-right-close';
 	import type { CatalogItem, PlaybackPlan, Progress } from '$lib/api/types';
 	import { api, ApiError } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
@@ -57,17 +58,83 @@
 	let notFound = $state(false);
 	const AUTOPLAY_SECONDS = 8;
 	let autoplayNext = $state(prefs.getBool('player.autoplay_next', true));
-	// The episode list beside the picture (lg and up), kept out of the way when asked: a per-browser choice.
+	/*
+	 * Where the episode list goes. Beside the picture on a wide screen (lg and
+	 * up), shown or put away by the viewer, a choice this browser keeps. Under
+	 * the picture on an upright phone, always there. In between (a tablet, a
+	 * phone on its side) there is no room beside the picture, so the same
+	 * button and E open it as a drawer over the picture's edge, closed again
+	 * by Escape, the button or a click outside; it starts closed, since it
+	 * covers what is playing.
+	 */
+	let wide = $state(false);
+	let upright = $state(false);
+	onMount(() => {
+		const wideQuery = window.matchMedia('(min-width: 1024px)');
+		const uprightQuery = window.matchMedia('(max-width: 767px) and (orientation: portrait)');
+		const sync = (): void => {
+			wide = wideQuery.matches;
+			upright = uprightQuery.matches;
+		};
+		sync();
+		wideQuery.addEventListener('change', sync);
+		uprightQuery.addEventListener('change', sync);
+		return () => {
+			wideQuery.removeEventListener('change', sync);
+			uprightQuery.removeEventListener('change', sync);
+		};
+	});
+	const overlay = $derived(!wide && !upright);
 	let listShown = $state(prefs.getBool('player.episode_list', true));
+	let drawerOpen = $state(false);
+	let listEl = $state<HTMLElement | null>(null);
 	const episodesToggle = {
 		get shown() {
-			return listShown;
+			return overlay ? drawerOpen : listShown;
+		},
+		get overlay() {
+			return overlay;
 		},
 		toggle: () => {
+			if (overlay) {
+				drawerOpen = !drawerOpen;
+				// A drawer is entered: the keyboard lands on the episode playing.
+				// Closed, the keyboard goes back to the button that opened it.
+				if (drawerOpen)
+					void tick().then(() => (listEl?.querySelector<HTMLElement>('[aria-current="true"]') ?? listEl?.querySelector<HTMLElement>('a[href]'))?.focus());
+				else document.querySelector<HTMLElement>('[data-episodes-toggle] button')?.focus();
+				return;
+			}
 			listShown = !listShown;
 			prefs.set('player.episode_list', String(listShown));
 		}
 	};
+	/*
+	 * The episode playing is in view in the list: playing episode 12 of 12,
+	 * the list opened on 1 to 11 with 12 cut off at the bottom. Scrolled only
+	 * when it is not already in view, and only the list, never the page.
+	 */
+	let listScroller = $state<HTMLElement | null>(null);
+	$effect(() => {
+		const scroller = listScroller;
+		const current = item?.id;
+		if (!scroller || !current || episodes.length === 0) return;
+		void tick().then(() => {
+			const row = scroller.querySelector<HTMLElement>('[aria-current="true"]')?.closest('li');
+			if (!row) return;
+			const top = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+			const bottom = top + row.offsetHeight;
+			if (top >= scroller.scrollTop && bottom <= scroller.scrollTop + scroller.clientHeight) return;
+			scroller.scrollTop = Math.max(0, top - (scroller.clientHeight - row.offsetHeight) / 2);
+		});
+	});
+
+	// Another episode, or a screen that changes where the list goes, closes the drawer.
+	$effect(() => {
+		void id;
+		void overlay;
+		drawerOpen = false;
+	});
 	// Seconds left before the next episode starts; null while nothing is queued.
 	let countdown = $state<number | null>(null);
 	let upNext = $state<CatalogItem | null>(null);
@@ -187,7 +254,7 @@
 		<ErrorState message={error} retry={() => void load()} />
 	</div>
 {:else if item && plan}
-	<div class="flex h-dvh flex-col bg-black lg:flex-row">
+	<div class="relative flex h-dvh flex-col bg-black lg:flex-row" data-immersive>
 		<!-- A phone held upright: a square stage at the top, the picture in its
 		     middle and the controls in the bands above and below it (on a 16:9
 		     frame that small they would cover the picture), and what comes next
@@ -198,7 +265,7 @@
 				     the player (video element, transcode session, clock) instead
 				     of leaving the previous episode's state behind. -->
 				{#key item.id}
-					<Player {item} {plan} initialProgress={progress} {onFinished} {next} episodes={episodes.length > 1 ? episodesToggle : null} />
+					<Player {item} {plan} initialProgress={progress} {onFinished} {next} episodes={episodes.length > 1 && !upright ? episodesToggle : null} />
 				{/key}
 				{#if upNext && countdown !== null}
 					<div
@@ -244,13 +311,40 @@
 		</div>
 
 		{#if episodes.length > 1}
+			{#if overlay && drawerOpen}
+				<!-- Outside the drawer: a click there puts it away (Escape and E do too). -->
+				<button type="button" tabindex="-1" aria-hidden="true" class="absolute inset-0 z-30 cursor-default bg-black/40" onclick={episodesToggle.toggle}></button>
+			{/if}
 			<aside
-				class="hidden w-80 shrink-0 flex-col border-l border-line/40 bg-surface/60 {listShown ? 'lg:flex' : ''} max-md:portrait:flex max-md:portrait:min-h-0 max-md:portrait:w-full max-md:portrait:flex-1 max-md:portrait:border-l-0 max-md:portrait:bg-background"
-				aria-label="Episodes"
+				bind:this={listEl}
+				class={[
+					'w-80 shrink-0 flex-col border-l border-line/40',
+					overlay && drawerOpen
+						? 'absolute inset-y-0 right-0 z-40 flex max-w-[85vw] bg-surface/95 shadow-[-18px_0_45px_rgba(0,0,0,0.45)] backdrop-blur-xl'
+						: `hidden bg-surface/60 ${listShown ? 'lg:flex' : ''}`,
+					'max-md:portrait:flex max-md:portrait:min-h-0 max-md:portrait:w-full max-md:portrait:flex-1 max-md:portrait:border-l-0 max-md:portrait:bg-background'
+				].join(' ')}
+				aria-label={t('player.list.label')}
 			>
-				<div class="border-b border-line/40 px-4 py-3">
-					<p class="truncate text-sm font-semibold text-foreground">{item.title}</p>
-					<p class="mt-0.5 text-xs text-muted">{episodes.length} episodes</p>
+				<div class="relative border-b border-line/40 px-4 py-3">
+					<!-- Put away from the list itself, with the key that does it: the bar's
+					     button alone was easy to miss. Not on an upright phone, where the
+					     list is the page under the picture. -->
+					{#if !upright}
+						<button
+							type="button"
+							class="absolute right-2 top-2 inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-xs text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+							aria-label={overlay ? t('player.list.close') : t('player.episodesHide')}
+							title={overlay ? t('player.list.close') : t('player.episodesHide')}
+							onclick={episodesToggle.toggle}
+						>
+							<PanelRightClose class="size-4" aria-hidden="true" />
+							<span>{t('player.list.hide')}</span>
+							<kbd>E</kbd>
+						</button>
+					{/if}
+					<p class="truncate pr-24 text-sm font-semibold text-foreground">{item.title}</p>
+					<p class="mt-0.5 text-xs text-muted">{t('player.list.count', { count: episodes.length })}</p>
 					<button
 						type="button"
 						class="mt-2 inline-flex min-h-8 items-center gap-2 text-xs text-foreground/80 hover:text-foreground"
@@ -263,10 +357,10 @@
 						<span class={['relative h-4 w-7 rounded-full transition-colors', autoplayNext ? 'bg-accent' : 'bg-surface-active'].join(' ')}>
 							<span class={['absolute rounded-full transition-all', autoplayNext ? 'left-3.5 top-0.5 size-3 bg-accent-fg' : 'left-[3px] top-[3px] size-2.5 bg-muted/60'].join(' ')}></span>
 						</span>
-						Autoplay next
+						{t('player.list.autoplay')}
 					</button>
 				</div>
-				<ul class="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+				<ul bind:this={listScroller} class="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
 					{#each episodes as episode (episode.id)}
 						{@const current = episode.id === item.id}
 						{@const p = progressMap.get(episode.id)}
