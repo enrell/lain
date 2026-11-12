@@ -412,7 +412,32 @@
 		if (frameCheck) clearTimeout(frameCheck);
 		transcodeAbort?.abort();
 		destroyHLS();
+		releaseSession();
 	});
+
+	/*
+	 * Leaving the player for good stops a session still being produced.
+	 * Nobody can use it: coming back starts a new session at the saved
+	 * position, and only a finished session is replayed. Left running,
+	 * the throttle pauses it once it is ahead of a viewer who is gone,
+	 * and it holds one of the server's few runners (max_concurrent) until
+	 * the idle timeout, two minutes, while the next title waits queued
+	 * behind it. A finished session stays: it is the cache a replay
+	 * attaches to.
+	 */
+	function releaseSession(): void {
+		const sid = transcodeSession;
+		if (!sid) return;
+		const id = item.id;
+		void api.playback
+			.transcodeStatus(id, sid)
+			.then((status) => {
+				if (status.state === 'queued' || status.state === 'running') {
+					return api.playback.cancelTranscode(id, sid);
+				}
+			})
+			.catch(() => undefined);
+	}
 
 	/* ---------------------------------------------------------------- */
 	/* optional WebGPU presentation layer                                */

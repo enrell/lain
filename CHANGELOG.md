@@ -13,6 +13,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   settings page lands on its own Profile settings; when an admin had last
   used Settings in the same browser it used to bounce between two pages
   forever.
+- **Web**: leaving the player stops its transcode session if it is still
+  being prepared, so the next title starts at once instead of waiting
+  behind it for up to two minutes; a finished session stays cached.
 
 ## [0.3.0] - 2026-11-12
 
