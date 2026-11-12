@@ -275,6 +275,75 @@ jobs:
           curl -fsSI http://127.0.0.1:19470/ | grep -qi '^cache-control: no-cache'
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:19470/api/nope)" = 404
 
+  smoke:
+    # The browser smoke test (web/e2e/smoke.mjs): the release binary with
+    # the web build embedded, a fresh data dir, the synthetic media and a
+    # headless Chrome through every user flow, real ffmpeg transcodes
+    # included. web/e2e/run-smoke.sh is the whole run, the same one a
+    # developer runs locally. It lives here rather than in a workflow of
+    # its own so it reuses the web job's build instead of making another.
+    name: browser smoke
+    needs: web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: "4"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Embed the web build
+        uses: actions/download-artifact@v8
+        with:
+          name: web-build
+          path: crates/lain/webui
+      # Node >= 22 for the built-in WebSocket; the test uses no packages.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal && rustc --version
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: smoke-${{ hashFiles('Cargo.lock') }}-${{ hashFiles('crates/**/*.rs', 'crates/**/Cargo.toml') }}
+          restore-keys: |
+            smoke-${{ hashFiles('Cargo.lock') }}-
+            smoke-
+      - name: ffmpeg (fixtures and transcodes)
+        run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends ffmpeg
+      - name: Lint the runner scripts
+        run: |
+          sh -n web/e2e/run-smoke.sh && bash -n web/e2e/fixtures.sh
+          shellcheck web/e2e/run-smoke.sh web/e2e/fixtures.sh
+      - name: Server (release, web embedded)
+        run: cargo build --release --locked -p lain
+      # The runner image's Google Chrome: it decodes H.264 and AAC, which
+      # the direct-play steps need (the image's Chromium build does not).
+      - name: Browser
+        run: |
+          echo "CHROME=$(command -v google-chrome)" >>"$GITHUB_ENV"
+          google-chrome --version
+      - name: Smoke test
+        timeout-minutes: 15
+        env:
+          # A throwaway VM whose only page is the local server.
+          CHROME_FLAGS: --no-sandbox
+        run: web/e2e/run-smoke.sh "$RUNNER_TEMP/smoke"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: smoke-failure
+          path: |
+            ${{ runner.temp }}/smoke/server.log
+            ${{ runner.temp }}/smoke/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
   installer:
     name: installer script
     runs-on: ubuntu-24.04

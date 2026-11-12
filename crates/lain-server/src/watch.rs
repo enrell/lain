@@ -618,6 +618,7 @@ fn transcode_request(app: &App, v: &Verified, path: &str, sel: &TranscodeSelecti
         video_copy_codecs: sel.video_copy_codecs.clone(),
         video_effect: sel.video_effect.clone(),
         policy: limits,
+        viewer: sel.viewer.clone(),
         user_id: v.user_id.clone(),
         item_id: item_id.into(),
         settings,
@@ -674,23 +675,31 @@ fn transcode_status(app: &App, w: &WReq, v: &Verified) -> Out {
     }
 }
 
-/// Stops a session the caller owns, for the item it names.
+/// Stops a session the caller owns, for the item it names. With
+/// `viewer` (D-281) it releases that viewer's hold instead, and the
+/// session stops only when it was the last one.
 fn transcode_cancel(app: &App, w: &WReq, v: &Verified) -> Out {
     let session = w.req.query("session");
     if session.is_empty() {
         return session_required("session required");
     }
+    let viewer = w.req.query("viewer");
     let file_path = app.visible_item(v, w.req.param("id")).map(|i| i.file_path).unwrap_or_default();
     let req = V3Request {
         action: transcode::ACTION_CANCEL.into(),
         session: session.into(),
         file_path,
+        viewer: viewer.into(),
         user_id: v.user_id.clone(),
         ..V3Request::default()
     };
     match v3(app, req) {
         Ok(s) => {
-            tracing::info!(session = %session, "transcode cancelled");
+            if viewer.is_empty() {
+                tracing::info!(session = %session, "transcode cancelled");
+            } else {
+                tracing::info!(session = %session, state = %s.state, "transcode viewer released");
+            }
             Reply::ok(public(&s)).into()
         }
         Err(e) => transcode_error(&e),
@@ -862,7 +871,7 @@ fn transcode_hls(app: &App, w: &WReq, v: &Verified) -> Out {
             tracing::debug!(err = %e, "transcode position update failed");
         }
     }
-    let ct = if name == "init.mp4" { "video/mp4" } else { "video/iso.segment" };
+    let ct = if transcode::hls::is_init(name) { "video/mp4" } else { "video/iso.segment" };
     file(path, ct, vec![("cache-control", "private, max-age=3600".into())], "unknown hls file")
 }
 

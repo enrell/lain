@@ -240,21 +240,22 @@ impl EncodePlan {
             s("-hls_list_size"),
             s("0"),
         ];
+        let prefix = if self.software_retry { super::hls::RETRY_PREFIX } else { "" };
         if self.settings.hls_segment_container == st::HLS_TS {
             a.extend([
                 s("-hls_segment_type"),
                 s("mpegts"),
                 s("-hls_segment_filename"),
-                ff_path(&dir.join("seg%05d.ts")),
+                ff_path(&dir.join(format!("{prefix}seg%05d.ts"))),
             ]);
         } else {
             a.extend([
                 s("-hls_segment_type"),
                 s("fmp4"),
                 s("-hls_fmp4_init_filename"),
-                s("init.mp4"),
+                super::hls::init_name(self.software_retry),
                 s("-hls_segment_filename"),
-                ff_path(&dir.join("seg%05d.m4s")),
+                ff_path(&dir.join(format!("{prefix}seg%05d.m4s"))),
             ]);
         }
         a.extend([s("-hls_flags"), s("independent_segments+temp_file")]);
@@ -362,6 +363,7 @@ impl EncodePlan {
         out.complex_filter =
             out.complex_filter.replace(",format=nv12,hwupload", "").replace("format=nv12,hwupload", "");
         out.fallback = join_notes(&out.fallback, "hardware encode failed; used software");
+        out.software_retry = true;
         out
     }
 }
@@ -566,6 +568,18 @@ mod tests {
         assert_eq!(f.filters, vec!["yadif".to_string()]);
         assert!(!f.complex_filter.contains("hwupload"));
         assert!(f.fallback.contains("hardware encode failed"));
+        // As HLS the retry writes under its own names, never the failed
+        // attempt's URLs.
+        let mut f = f;
+        f.delivery = "hls".into();
+        let a = f.ffmpeg_args(Path::new("/c/s/raw.m3u8"), Path::new(""), false).join(" ");
+        assert!(a.contains("-hls_fmp4_init_filename sw-init.mp4 -hls_segment_filename /c/s/sw-seg%05d.m4s"), "{a}");
+        f.settings.hls_segment_container = "mpegts".into();
+        let a = f.ffmpeg_args(Path::new("/c/s/raw.m3u8"), Path::new(""), false).join(" ");
+        assert!(a.contains("-hls_segment_filename /c/s/sw-seg%05d.ts"), "{a}");
+        p.delivery = "hls".into();
+        let a = p.ffmpeg_args(Path::new("/c/s/raw.m3u8"), Path::new(""), false).join(" ");
+        assert!(a.contains("-hls_fmp4_init_filename init.mp4 -hls_segment_filename /c/s/seg%05d.m4s"), "{a}");
     }
 
     #[test]

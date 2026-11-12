@@ -188,6 +188,164 @@ fn cancel_stops_and_only_the_owner_may() {
     assert_eq!(after.state, IDLE);
 }
 
+fn as_viewer(r: &Rig, action: &str, user: &str, viewer: &str, session: &str) -> V3Request {
+    V3Request { user_id: user.into(), viewer: viewer.into(), session: session.into(), ..req(r, action) }
+}
+
+#[test]
+fn a_shared_session_stops_when_its_last_viewer_leaves() {
+    let r = rig("tc-viewers", true);
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-a", "")).unwrap();
+    let b = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-b", "")).unwrap();
+    assert_eq!(a.session, b.session, "same options, one session");
+    // Another account joins it too.
+    r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u2", "phone", "")).unwrap();
+    let release =
+        |user: &str, viewer: &str| r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, user, viewer, &a.session)).unwrap();
+    let left = release("u1", "tab-a");
+    assert!(left.state == QUEUED || left.state == RUNNING, "{}", left.state);
+    assert_eq!(left.session, a.session);
+    // A release that held nothing changes nothing: twice, or another
+    // account naming the same viewer id.
+    release("u1", "tab-a");
+    release("u2", "tab-b");
+    release("u1", "phone");
+    assert_eq!(r.t.list_v3().len(), 1);
+    release("u2", "phone");
+    assert_eq!(r.t.list_v3().len(), 1, "tab-b of u1 still holds it");
+    let last = release("u1", "tab-b");
+    assert_eq!((last.state.as_str(), last.user_id.as_str()), (IDLE, ""));
+    assert!(r.t.list_v3().is_empty());
+    r.gate.as_ref().unwrap().send(true).unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    // The stopped run never becomes a record.
+    assert_eq!(r.t.invoke_v3(&req(&r, ACTION_INSPECT)).unwrap().state, IDLE);
+}
+
+#[test]
+fn a_client_without_a_viewer_id_holds_the_session_as_before() {
+    let r = rig("tc-unnamed", true);
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-a", "")).unwrap();
+    // An older client joins without naming itself.
+    r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "", "")).unwrap();
+    let left = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "tab-a", &a.session)).unwrap();
+    assert_ne!(left.state, IDLE, "a viewer's release never ends an unnamed hold");
+    assert_eq!(r.t.list_v3().len(), 1);
+    // Its own release (no viewer) stops the session as it always did.
+    let stopped = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "", &a.session)).unwrap();
+    assert_eq!(stopped.state, IDLE);
+    assert!(r.t.list_v3().is_empty());
+    r.gate.as_ref().unwrap().send(true).unwrap();
+}
+
+#[test]
+fn a_finished_session_outlives_its_last_viewer() {
+    let r = rig("tc-viewer-ready", false);
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-a", "")).unwrap();
+    wait_state(&r, &a.session, READY);
+    let left = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "tab-a", &a.session)).unwrap();
+    assert_eq!(left.state, READY, "nothing to stop; the replay cache stays");
+    assert!(r.t.meta_path(&a.session).exists());
+    // Once no job tracks it (pruned, or a restart), a viewer's release
+    // answers the cached session and still removes nothing.
+    r.t.lock().jobs.clear();
+    let left = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "tab-b", &a.session)).unwrap();
+    assert!(left.state == READY && left.cached);
+    assert!(r.t.meta_path(&a.session).exists());
+    let gone = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "tab-b", &"f".repeat(64))).unwrap();
+    assert_eq!(gone.state, IDLE);
+    // A release without a viewer still drops it.
+    assert_eq!(r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "", &a.session)).unwrap().state, IDLE);
+    assert!(!r.t.meta_path(&a.session).exists());
+}
+
+#[test]
+fn viewer_ids_are_checked_and_bounded() {
+    let r = rig("tc-viewer-ids", true);
+    for bad in ["has space", "../x", "ü", &"v".repeat(65)] {
+        let e = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", bad, "")).unwrap_err();
+        assert_eq!(e.code, "invalid-message", "{bad}");
+        let e = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", bad, &"f".repeat(64))).unwrap_err();
+        assert_eq!(e.code, "invalid-message", "{bad}");
+    }
+    assert!(valid_viewer_id("0f3c-AB_9") && valid_viewer_id(&"a".repeat(64)) && !valid_viewer_id(""));
+    // Past the bound, joins hold the session unnamed: releasing every
+    // named viewer no longer stops it.
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "v0", "")).unwrap();
+    for n in 1..=MAX_VIEWERS {
+        r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", &format!("v{n}"), "")).unwrap();
+    }
+    for n in 0..=MAX_VIEWERS {
+        r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", &format!("v{n}"), &a.session)).unwrap();
+    }
+    assert_eq!(r.t.list_v3().len(), 1);
+    r.gate.as_ref().unwrap().send(true).unwrap();
+}
+
+/// The session's state, unwrapped.
+fn state_of(r: &Rig, session: &str) -> String {
+    r.t.invoke_v3(&V3Request { session: session.into(), ..req(r, ACTION_STATUS) }).unwrap().state
+}
+
+/// Waits until `n` runs and stops are working on `session`'s files.
+fn wait_busy(r: &Rig, session: &str, n: u32) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while r.t.lock().busy.get(session).copied().unwrap_or(0) != n {
+        assert!(Instant::now() < deadline, "{session} never had {n} runs and stops at work");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// A viewer joining just as the last one left gets a fresh job with the
+/// same id and paths. Its run must not start while the stopped run is
+/// still exiting: that run deletes what it leaves behind, which would
+/// be the fresh run's files.
+#[test]
+fn a_fresh_run_waits_for_the_stopped_run_of_its_session() {
+    let r = rig("tc-settle-run", true);
+    let gate = r.gate.as_ref().unwrap();
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-a", "")).unwrap();
+    wait_state(&r, &a.session, RUNNING);
+    // The run is held in the gate, as a killed ffmpeg is held until it exits.
+    assert_eq!(r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "tab-a", &a.session)).unwrap().state, IDLE);
+    let b = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-b", "")).unwrap();
+    assert_eq!(b.session, a.session);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(state_of(&r, &b.session), QUEUED, "the fresh run started beside the stopped one");
+    // The stopped run exits; only then does the fresh one start.
+    gate.send(true).unwrap();
+    wait_state(&r, &b.session, RUNNING);
+    gate.send(true).unwrap();
+    wait_state(&r, &b.session, READY);
+    assert!(r.t.meta_path(&b.session).exists());
+}
+
+/// The same for the stop itself: it removes the session's files after it
+/// took the job out of the map, outside the lock.
+#[test]
+fn a_fresh_run_waits_for_a_stop_still_removing_files() {
+    let r = rig("tc-settle-drop", true);
+    let gate = r.gate.as_ref().unwrap();
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-a", "")).unwrap();
+    wait_state(&r, &a.session, RUNNING);
+    // A stop between taking the job and removing its files.
+    let taken = r.t.take_job(&mut r.t.lock(), &a.session).unwrap();
+    gate.send(true).unwrap();
+    // The stopped run has exited; only the stop is left at work.
+    wait_busy(&r, &a.session, 1);
+    let b = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-b", "")).unwrap();
+    assert_eq!(b.session, a.session);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(state_of(&r, &b.session), QUEUED, "the fresh run started before the stop removed the files");
+    r.t.drop_taken(&a.session, taken);
+    wait_state(&r, &b.session, RUNNING);
+    gate.send(true).unwrap();
+    wait_state(&r, &b.session, READY);
+    let hls_dir = r.t.paths_for(&b.session, &st::defaults()).hls_dir;
+    assert!(hls::playable(&hls_dir), "the fresh run's files are in place");
+    wait_busy(&r, &b.session, 0);
+}
+
 #[test]
 fn queue_and_stream_limits() {
     let r = rig("tc-limits", true);
@@ -313,6 +471,150 @@ fn legacy_prepare_waits_for_the_file() {
     assert!(r.t.prepare_sync(&r.src).unwrap().cached);
     assert_eq!(r.t.prepare_sync("").unwrap_err().code, "invalid-message");
     assert_eq!(r.t.prepare_sync(&format!("{}.gone", r.src)).unwrap_err().msg, "source file unavailable");
+}
+
+/// A fake ffmpeg for the hardware fallback: a hardware encode writes
+/// three segments and a playlist, then fails when the test says so; the
+/// software retry announces itself, waits for the test, then writes one
+/// segment of its own and ends the playlist. Both write under the init
+/// and segment names they are given. POSIX sh (CI's dash).
+#[cfg(unix)]
+const FALLBACK_FFMPEG: &str = r#"#!/bin/sh
+ctl="$LAIN_TEST_CTL"
+enc=""
+init=""
+seg=""
+prev=""
+for last; do
+  case "$prev" in
+  -c:v) enc="$last" ;;
+  -hls_fmp4_init_filename) init="$last" ;;
+  -hls_segment_filename) seg=$(basename "$last") ;;
+  esac
+  prev="$last"
+done
+dir=$(dirname "$last")
+seg0=$(printf '%s' "$seg" | sed 's/%05d/00000/')
+seg1=$(printf '%s' "$seg" | sed 's/%05d/00001/')
+seg2=$(printf '%s' "$seg" | sed 's/%05d/00002/')
+case "$enc" in
+*_nvenc)
+  printf 'hw-init' > "$dir/$init"
+  for f in "$seg0" "$seg1" "$seg2"; do printf 'hw' > "$dir/$f"; done
+  printf '#EXTM3U\n#EXT-X-MAP:URI="%s"\n#EXTINF:2.0,\n%s\n#EXTINF:2.0,\n%s\n#EXTINF:2.0,\n%s\n' "$init" "$seg0" "$seg1" "$seg2" > "$dir/raw.m3u8"
+  while [ ! -e "$ctl/fail" ]; do sleep 0.05; done
+  echo "the device went away" >&2
+  exit 1
+  ;;
+*)
+  : > "$ctl/software"
+  while [ ! -e "$ctl/go" ]; do sleep 0.05; done
+  printf 'sw-init' > "$dir/$init"
+  printf 'sw' > "$dir/$seg0"
+  printf '#EXTM3U\n#EXT-X-MAP:URI="%s"\n#EXTINF:2.0,\n%s\n#EXT-X-ENDLIST\n' "$init" "$seg0" > "$dir/raw.m3u8"
+  ;;
+esac
+"#;
+
+/// The HLS files in a session directory, sorted.
+#[cfg(unix)]
+fn hls_files(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+        .unwrap_or_default();
+    names.retain(|n| !n.ends_with(".tmp"));
+    names.sort();
+    names
+}
+
+#[cfg(unix)]
+#[test]
+fn a_software_retry_starts_from_a_clean_hls_directory() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = lain_store::test_dir("tc-hw-retry");
+    let ctl = dir.join("ctl");
+    std::fs::create_dir_all(&ctl).unwrap();
+    // Whatever happens, the fake's waits end with the test.
+    struct Release(PathBuf);
+    impl Drop for Release {
+        fn drop(&mut self) {
+            for f in ["fail", "go"] {
+                let _ = std::fs::write(self.0.join(f), b"");
+            }
+        }
+    }
+    let _release = Release(ctl.clone());
+    let ffmpeg = dir.join("ffmpeg");
+    std::fs::write(&ffmpeg, FALLBACK_FFMPEG.replace("$LAIN_TEST_CTL", &ctl.to_string_lossy())).unwrap();
+    std::fs::set_permissions(&ffmpeg, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let src = dir.join("Show.mkv");
+    std::fs::write(&src, b"not really media").unwrap();
+    let hooks = Hooks {
+        // MPEG-4 Part 2 is never copied, so the session encodes.
+        probe: Some(Arc::new(|_: &Path| Ok(report("mpeg4")))),
+        caps: Some(Arc::new(|_: &TranscodeSettings| {
+            let mut c = Capabilities::default();
+            c.encoders.extend(["libx264".to_string(), "h264_nvenc".to_string()]);
+            c.hardware.insert(st::HW_NVENC.into(), true);
+            c
+        })),
+        run: None,
+        clock: None,
+    };
+    let t = Transcoder::with_hooks(&dir.join("transcodes"), hooks);
+    let mut settings = st::defaults();
+    settings.ffmpeg_path = ffmpeg.to_string_lossy().into_owned();
+    settings.hardware_acceleration = st::HW_NVENC.into();
+    settings.hardware_encode = true;
+    settings.throttle = false;
+    let start = V3Request {
+        action: ACTION_START.into(),
+        file_path: src.to_string_lossy().into_owned(),
+        settings: settings.clone(),
+        ..V3Request::default()
+    };
+    let a = t.invoke_v3(&start).unwrap();
+    assert_eq!(a.encoder, "h264_nvenc");
+    let hls_dir = t.paths_for(&a.session, &settings).hls_dir;
+    let status = || {
+        t.invoke_v3(&V3Request { action: ACTION_STATUS.into(), session: a.session.clone(), ..start.clone() }).unwrap()
+    };
+    let wait = |what: &str, ok: &dyn Fn() -> bool| {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !ok() {
+            assert!(Instant::now() < deadline, "{what}: {:?}, files {:?}", status(), hls_files(&hls_dir));
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    // The hardware attempt is published (a viewer may be polling it)...
+    wait("the hardware attempt's playlist is served", &|| status().playable);
+    assert!(hls_dir.join(hls::INDEX_PLAYLIST).exists());
+    // ...and then fails.
+    std::fs::write(ctl.join("fail"), b"").unwrap();
+    wait("the software retry starts", &|| ctl.join("software").exists());
+    // Nothing of the failed attempt is left to be served or mixed into
+    // the retry's playlist, and the session is not playable until the
+    // retry has a segment.
+    let between = status();
+    assert_eq!((between.state.as_str(), between.playable), (RUNNING, false));
+    assert_eq!(hls_files(&hls_dir), Vec::<String>::new(), "the failed attempt's files are gone");
+    std::fs::write(ctl.join("go"), b"").unwrap();
+    wait("the retry finishes", &|| status().state == READY);
+    let done = status();
+    assert_eq!((done.encoder.as_str(), done.hardware.as_str()), ("libx264", ""));
+    assert!(done.fallback.contains("hardware encode failed; used software"), "{}", done.fallback);
+    // The retry's init segment and segments have names (so URLs) of
+    // their own: a viewer of the failed attempt keeps that attempt's
+    // init segment, and its browser caches the segments it fetched.
+    assert_eq!(hls_files(&hls_dir), ["index.m3u8", "raw.m3u8", "sw-init.mp4", "sw-seg00000.m4s"]);
+    assert_eq!(std::fs::read(hls_dir.join("sw-init.mp4")).unwrap(), b"sw-init");
+    let index = std::fs::read_to_string(hls_dir.join(hls::INDEX_PLAYLIST)).unwrap();
+    assert!(index.contains("#EXT-X-MAP:URI=\"sw-init.mp4\""), "{index}");
+    assert!(index.contains("\nsw-seg00000.m4s\n#EXT-X-ENDLIST"), "{index}");
+    assert!(!index.contains("\nseg0000") && !index.contains("\"init.mp4\""), "{index}");
+    t.close();
+    drop(_release);
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
