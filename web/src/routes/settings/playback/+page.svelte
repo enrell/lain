@@ -6,6 +6,7 @@
 	import { api } from '$lib/api';
 	import type { Library } from '$lib/api/types';
 	import { session } from '$lib/auth/session.svelte';
+	import Select from '$lib/components/primitives/Select.svelte';
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
 	import { loadPreferredPlayer, savePreferredPlayer, type PreferredPlayer } from '$lib/player/external-player';
@@ -46,6 +47,25 @@
 		savePreferredPlayer(session.user.id, value);
 		flash.mark('player');
 	}
+
+	const LANGUAGES: [string, string][] = [
+		['', 'Automatic'],
+		['eng', 'English'],
+		['por', 'Portuguese'],
+		['spa', 'Spanish'],
+		['fra', 'French'],
+		['deu', 'German'],
+		['ita', 'Italian'],
+		['jpn', 'Japanese'],
+		['kor', 'Korean'],
+		['zho', 'Chinese']
+	];
+	// A code set elsewhere that the list does not name stays choosable.
+	const languageOptions = $derived(
+		[...LANGUAGES, ...(language && !LANGUAGES.some(([c]) => c === language) ? [[language, language] as [string, string]] : [])].map(
+			([value, label]) => ({ value, label })
+		)
+	);
 
 	async function commitLanguage(): Promise<void> {
 		const next = language.trim().toLowerCase();
@@ -111,25 +131,15 @@
 		hint="Audio in this language keeps subtitles off; otherwise subtitles in it. Follows your account."
 		saved={flash.is('language')}
 	>
-		<input
-			class="{field} w-28"
-			type="text"
-			list="common-languages"
-			maxlength="3"
-			autocomplete="off"
-			spellcheck="false"
-			placeholder="Auto"
-			aria-label="Language code"
-			aria-invalid={languageError ? 'true' : undefined}
-			bind:value={language}
-			onchange={() => void commitLanguage()}
-			onkeydown={(e) => e.key === 'Enter' && void commitLanguage()}
-		/>
-		<datalist id="common-languages">
-			<option value="por">Portuguese</option><option value="eng">English</option><option value="jpn">Japanese</option>
-			<option value="spa">Spanish</option><option value="fra">French</option><option value="deu">German</option>
-			<option value="ita">Italian</option><option value="kor">Korean</option><option value="zho">Chinese</option>
-		</datalist>
+		<!-- A language by name, from a list: a three-letter code to type was a thing to know first. -->
+		<div class="w-44">
+			<Select
+				aria-label="Audio and subtitle language"
+				bind:value={language}
+				options={languageOptions}
+				onValueChange={() => void commitLanguage()}
+			/>
+		</div>
 		{#snippet below()}
 			{#if languageError}<p class="text-xs text-danger" role="alert">{languageError}</p>{/if}
 		{/snippet}

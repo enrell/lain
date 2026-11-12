@@ -138,8 +138,15 @@ private fun RailCard(t: Title, vm: AppViewModel, height: Dp = RAIL_H, seen: Floa
 @Composable
 private fun progressSubtitle(t: Title, progress: Map<String, io.github.enrell.lain.core.ProgressInfo>): String? {
     val done = t.items.count { progress[it.id]?.completed == true }
-    val current = t.items.firstNotNullOfOrNull { item -> progress[item.id]?.takeIf { !it.completed && it.positionSec > 0 } }
+    val currentItem = t.items.firstOrNull { item -> progress[item.id]?.let { !it.completed && it.positionSec > 0 } == true }
+    val current = currentItem?.let { progress[it.id] }
     return when {
+        // Finished: said, not left to the count of parts.
+        t.items.size > 1 && done == t.items.size ->
+            stringResource(if (t.reading) R.string.all_read else R.string.all_watched, t.items.size)
+        // A book opened but none finished: where in it, not "0 of 3 read".
+        t.items.size > 1 && t.reading && done == 0 && currentItem != null && current != null && current.durationSec > 0 ->
+            rowLabelShort(currentItem, true) + " · " + stringResource(R.string.progress_page, current.positionSec.toInt().coerceAtLeast(1), current.durationSec.toInt())
         t.items.size > 1 && (done > 0 || current != null) && done < t.items.size ->
             stringResource(if (t.reading) R.string.read_of else R.string.watched_of, done, t.items.size)
         t.items.size == 1 && current != null && current.durationSec > 0 ->
@@ -1322,14 +1329,18 @@ fun SearchScreen(state: AppState, vm: AppViewModel) {
                         item(key = "@browse") {
                             Column(Modifier.padding(top = 18.dp)) {
                                 Mono(stringResource(R.string.search_or_browse), Modifier.padding(horizontal = GUTTER, vertical = 6.dp))
+                                // The same rows as before a query: name, count, a divider.
                                 for (lib in state.libraries.filter { !it.locked }) {
+                                    val n = state.titles.count { it.libraryId == lib.id }
                                     Row(
                                         Modifier.fillMaxWidth().clickable { keyboard?.hide(); openLibrary(vm, lib.id) }.padding(horizontal = GUTTER, vertical = 13.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Text(lib.name, Modifier.weight(1f), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                                        Icon(Ic.ChevronRight, null, tint = l.muted, modifier = Modifier.size(16.dp))
+                                        Text(pluralStringResource(R.plurals.count_titles, n, n), color = l.muted, fontSize = 13.sp)
+                                        Icon(Ic.ChevronRight, null, tint = l.muted, modifier = Modifier.padding(start = 8.dp).size(16.dp))
                                     }
+                                    Box(Modifier.padding(horizontal = GUTTER).fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.5f)))
                                 }
                             }
                         }

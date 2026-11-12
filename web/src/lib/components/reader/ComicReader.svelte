@@ -74,14 +74,17 @@
 			>
 				<ZoomIn class="size-4" aria-hidden="true" />
 			</ReaderToggle>
-			<ReaderToggle
-				label="Double-page spreads (D)"
-				active={settings.dual}
-				onclick={() => settings.toggleDual()}
-			>
-				<Columns2 class="size-4" aria-hidden="true" />
-				<span class="hidden max-md:inline xl:inline">Spread</span>
-			</ReaderToggle>
+			<!-- Spreads exist only on a screen wider than tall: an upright one does not offer them. -->
+			<span class="flex items-center portrait:hidden">
+				<ReaderToggle
+					label="Double-page spreads (D)"
+					active={settings.dual}
+					onclick={() => settings.toggleDual()}
+				>
+					<Columns2 class="size-4" aria-hidden="true" />
+					<span class="hidden max-md:inline xl:inline">Spread</span>
+				</ReaderToggle>
+			</span>
 		{/if}
 		<ReaderToggle
 			label="Continuous scroll"

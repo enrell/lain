@@ -46,3 +46,35 @@ class FavoriteState {
 }
 
 export const favoriteState = new FavoriteState();
+
+/*
+ * The work's ratings as the social block last read them, for the score
+ * pill beside a title's main action; asking for the dialog goes through
+ * here, so the pill and the block's own Rate button open the same one.
+ */
+class RatingState {
+	mine = $state(0);
+	average = $state(0);
+	scored = $state(0);
+	ready = $state(false);
+	/** Bumped to ask the social block to open its rating dialog. */
+	asked = $state(0);
+
+	set(mine: number, average: number, scored: number): void {
+		this.mine = mine;
+		this.average = average;
+		this.scored = scored;
+		this.ready = true;
+	}
+
+	clear(): void {
+		this.ready = false;
+		this.mine = 0;
+	}
+
+	ask(): void {
+		this.asked += 1;
+	}
+}
+
+export const ratingState = new RatingState();
