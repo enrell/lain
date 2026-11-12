@@ -7,9 +7,12 @@ import io.github.enrell.lain.core.OfflineCopy
 import io.github.enrell.lain.core.OfflinePolicy
 import io.github.enrell.lain.core.OfflineUsage
 import io.github.enrell.lain.core.PlaySource
+import io.github.enrell.lain.core.QualityInfo
 import io.github.enrell.lain.core.SaveOutcome
 import io.github.enrell.lain.core.SourceKind
 import io.github.enrell.lain.core.SubtitleTrack
+import io.github.enrell.lain.domain.MIME_FAMILIES
+import io.github.enrell.lain.domain.withoutFamily
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,7 +36,18 @@ data class PlayerState(
     /** The last save went to the device queue, not the server. */
     val savedLocally: Boolean = false,
     val completed: Boolean = false,
+    /** The transcode quality asked for; empty is the server's choice. */
+    val quality: String = "",
+    /** The embedded subtitle stream burned into the picture, if any. */
+    val burnStream: Long? = null,
+    /** What the quality menu offers (a transcode only). */
+    val qualities: List<QualityInfo> = emptyList(),
+    /** The server first chose to send the file itself: "Original" goes back to it. */
+    val directFirst: Boolean = false,
 )
+
+/** A seek this close to the range a session holds is still a player seek. */
+const val SEEK_GRACE_SEC = 3.0
 
 /**
  * The player's logic, apart from ExoPlayer: where the play comes from
@@ -45,18 +59,39 @@ data class PlayerState(
 class PlayerModel(
     private val core: LainCoreInterface,
     val itemId: String,
-    private val caps: List<String>,
+    caps: List<String>,
     private val scope: CoroutineScope,
+    /** Codec families this device already failed to decode for this item. */
+    failedBefore: Set<String> = emptySet(),
+    /** Told when a decoder fails on a family, so the next play skips the attempt. */
+    private val onDecoderFailed: (family: String) -> Unit = {},
 ) {
+    /** The decode claim; narrowed when a decoder fails on something it claimed. */
+    private var claim = failedBefore.fold(caps) { c, family -> withoutFamily(c, family) }
+
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
 
-    fun load() {
+    /** [quality]: asked for from the start (on mobile data); empty plays as the server chooses. */
+    fun load(quality: String = "") {
         _state.update { PlayerState(loading = true) }
         scope.launch {
             try {
-                val src = core.playSource(itemId, caps)
-                _state.update { it.copy(loading = false, source = src) }
+                val first = core.playSource(itemId, claim)
+                // A file kept on the device is never converted; otherwise the chosen quality from the same place.
+                val src = if (quality.isNotEmpty() && first.kind != SourceKind.OFFLINE) {
+                    runCatching { core.playTranscoded(itemId, first.startSec, quality, null) }.getOrNull()?.let {
+                        if (first.kind == SourceKind.HLS && first.session.isNotEmpty()) runCatching { core.stopTranscode(itemId, first.session) }
+                        _state.update { s -> s.copy(quality = quality) }
+                        it.copy(durationSec = it.durationSec ?: first.durationSec, subtitles = first.subtitles)
+                    } ?: first
+                } else first
+                _state.update { it.copy(loading = false, source = src, directFirst = src.kind == SourceKind.DIRECT) }
+                // Offered whatever the first delivery: a file played as it is can still be
+                // asked for at a lower quality (a slow network, a data plan).
+                if (src.kind != SourceKind.OFFLINE) {
+                    runCatching { core.playQualities() }.onSuccess { q -> _state.update { it.copy(qualities = q) } }
+                }
             } catch (e: LainException) {
                 _state.update { it.copy(loading = false, error = e) }
             }
@@ -78,11 +113,18 @@ class PlayerModel(
     }
 
     /** Saves the position (every few seconds, on pause, at the end). */
+    /**
+     * Set when the item was already watched as it opened: a second look keeps
+     * it watched (a few seconds of a finished episode used to un-mark it and
+     * send Resume back to it); only Mark unwatched takes the mark away.
+     */
+    var rewatch = false
+
     fun report(positionMs: Long, playerDurationMs: Long, ended: Boolean = false): Job? {
         if (_state.value.source == null) return null
         val pos = sourceSec(positionMs)
         val dur = durationSec(playerDurationMs)
-        val done = ended || (dur > 0 && pos / dur >= WATCHED_AT)
+        val done = rewatch || ended || (dur > 0 && pos / dur >= WATCHED_AT)
         if (pos < 1 && !done) return null
         return scope.launch {
             try {
@@ -98,19 +140,95 @@ class PlayerModel(
     fun burnable(): List<SubtitleTrack> = _state.value.source?.subtitles?.filter { it.typeset && it.stream >= 0 }.orEmpty()
 
     /** Switches to an HLS session with [track] burned in, from the current position. */
-    fun burnIn(track: SubtitleTrack, positionMs: Long) {
-        val from = sourceSec(positionMs)
+    fun burnIn(track: SubtitleTrack, positionMs: Long) = rebuild(sourceSec(positionMs), burnStream = track.stream)
+
+    /**
+     * A new HLS session whose timeline begins at [fromSec]: how a seek
+     * outside the range the current session holds, a quality change and a
+     * burn-in all keep the viewer where they were (the web player's
+     * `rebuildAt`). The length and the subtitle list carry over.
+     */
+    /** Back to the delivery the server first chose (the file itself, when the device plays it), from [fromSec]. */
+    fun original(fromSec: Double) {
         val previous = _state.value.source
-        _state.update { it.copy(loading = true, error = null) }
+        _state.update { it.copy(loading = true, error = null, quality = "") }
         scope.launch {
             try {
-                val src = core.playBurnedIn(itemId, track.stream, from)
+                val src = core.playSource(itemId, claim)
                 stopSession(previous)
-                _state.update { it.copy(loading = false, source = src.copy(durationSec = src.durationSec ?: previous?.durationSec)) }
+                _state.update { it.copy(loading = false, source = src.copy(startSec = fromSec, offsetSec = 0.0)) }
             } catch (e: LainException) {
                 _state.update { it.copy(loading = false, error = e) }
             }
         }
+    }
+
+    fun rebuild(fromSec: Double, quality: String = _state.value.quality, burnStream: Long? = _state.value.burnStream) {
+        val previous = _state.value.source
+        _state.update { it.copy(loading = true, error = null, quality = quality, burnStream = burnStream) }
+        scope.launch {
+            try {
+                val src = core.playTranscoded(itemId, fromSec.coerceAtLeast(0.0), quality, burnStream)
+                stopSession(previous)
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        source = src.copy(
+                            durationSec = src.durationSec ?: previous?.durationSec,
+                            subtitles = if (burnStream == null) previous?.subtitles.orEmpty() else emptyList(),
+                        ),
+                    )
+                }
+            } catch (e: LainException) {
+                _state.update { it.copy(loading = false, error = e) }
+            }
+        }
+    }
+
+    /** The source seconds the current session holds: from its start to what the player has of it. */
+    fun sessionRange(playerDurationMs: Long): ClosedFloatingPointRange<Double> {
+        val offset = _state.value.source?.offsetSec ?: 0.0
+        return offset..(offset + playerDurationMs.coerceAtLeast(0) / 1000.0)
+    }
+
+    /** Whether a seek to [targetSec] needs a new session instead of a player seek. */
+    fun needsRebuild(targetSec: Double, playerDurationMs: Long): Boolean {
+        if (_state.value.source?.kind != SourceKind.HLS) return false
+        val held = sessionRange(playerDurationMs)
+        return targetSec < held.start - SEEK_GRACE_SEC || targetSec > held.endInclusive + SEEK_GRACE_SEC
+    }
+
+    /**
+     * ExoPlayer could not decode a codec the claim offered (a hardware
+     * HEVC decoder with no Main10, say). Ask the server again without that
+     * codec family, so it transcodes instead of the player stopping on an
+     * error. False when there is nothing to retry.
+     */
+    fun decoderFailed(mime: String?, positionMs: Long, playerDurationMs: Long): Boolean {
+        val src = _state.value.source ?: return false
+        val family = mime?.let { MIME_FAMILIES[it] } ?: return false
+        if (src.kind == SourceKind.HLS || claim.none { it.endsWith("/$family") }) return false
+        claim = withoutFamily(claim, family)
+        onDecoderFailed(family)
+        _state.update { it.copy(loading = true, error = null) }
+        scope.launch {
+            report(positionMs, playerDurationMs)?.join()
+            try {
+                val next = core.playSource(itemId, claim)
+                _state.update { it.copy(loading = false, source = next) }
+                if (next.kind == SourceKind.HLS) {
+                    runCatching { core.playQualities() }.onSuccess { q -> _state.update { it.copy(qualities = q) } }
+                }
+            } catch (e: LainException) {
+                _state.update { it.copy(loading = false, error = e) }
+            }
+        }
+        return true
+    }
+
+    /** A playback error with no fallback: shown in the player. */
+    fun playerFailed(e: Throwable) {
+        _state.update { it.copy(loading = false, error = e) }
     }
 
     private suspend fun stopSession(src: PlaySource?) {

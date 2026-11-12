@@ -603,7 +603,7 @@ dependencies = [
 
 [[package]]
 name = "lain-acquire"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "getrandom 0.4.3",
  "lain-api",
@@ -621,7 +621,7 @@ dependencies = [
 
 [[package]]
 name = "lain-admin"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "lain-core",
@@ -634,7 +634,7 @@ dependencies = [
 
 [[package]]
 name = "lain-api"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "lain-auth"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "argon2",
  "getrandom 0.4.3",
@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "lain-bridge"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "lain-component",
@@ -670,7 +670,7 @@ dependencies = [
 
 [[package]]
 name = "lain-client"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "http-body-util",
  "hyper",
@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "lain-component"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-core",
  "notify",
@@ -698,14 +698,14 @@ dependencies = [
 
 [[package]]
 name = "lain-conformance"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "lain-core"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "serde",
@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "lain-downloads"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "getrandom 0.4.3",
  "lain-api",
@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "lain-ffi"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "lain-client",
@@ -745,7 +745,7 @@ dependencies = [
 
 [[package]]
 name = "lain-http"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "http-body-util",
  "hyper",
@@ -761,7 +761,7 @@ dependencies = [
 
 [[package]]
 name = "lain-identify"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "lain-core",
@@ -771,7 +771,7 @@ dependencies = [
 
 [[package]]
 name = "lain-ingest"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "lain-core",
@@ -785,7 +785,7 @@ dependencies = [
 
 [[package]]
 name = "lain-lists"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-admin",
  "lain-api",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "lain-metadata"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "lain-core",
@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "lain-probe"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "serde",
@@ -822,7 +822,7 @@ dependencies = [
 
 [[package]]
 name = "lain-read"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "lain-core",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "lain-server"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "axum",
  "getrandom 0.4.3",
@@ -869,7 +869,7 @@ dependencies = [
 
 [[package]]
 name = "lain-social"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "getrandom 0.4.3",
  "lain-api",
@@ -882,7 +882,7 @@ dependencies = [
 
 [[package]]
 name = "lain-store"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "redb",
  "serde",
@@ -891,7 +891,7 @@ dependencies = [
 
 [[package]]
 name = "lain-subtitle"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "lain-core",
@@ -902,7 +902,7 @@ dependencies = [
 
 [[package]]
 name = "lain-torrent"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "getrandom 0.4.3",
  "sha1",
@@ -912,7 +912,7 @@ dependencies = [
 
 [[package]]
 name = "lain-watch"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "lain-api",
  "lain-core",

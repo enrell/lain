@@ -114,6 +114,16 @@ pub struct LibraryInfo {
     pub locked: bool,
 }
 
+/// An item's metadata overlay: what the catalog entry does not carry.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Overlay {
+    pub item_id: String,
+    pub title: String,
+    pub year: i64,
+    pub genres: Vec<String>,
+    pub synopsis: String,
+}
+
 /// One progress record. For reading, `position_sec` is the 1-based
 /// page and `duration_sec` the page count.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -208,6 +218,52 @@ pub struct PlaySource {
     pub subtitles: Vec<SubtitleTrack>,
     /// The transcode session, empty for direct and offline plays.
     pub session: String,
+}
+
+/// A work kept as a favourite: its kind and title, and the catalog item it
+/// points at (empty when that item is no longer visible).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct FavoriteInfo {
+    pub item_id: String,
+    pub kind: String,
+    pub title: String,
+}
+
+/// How a work is rated: this account's own score (0 when it gave none),
+/// the average of everyone's and how many scored it. Scores run 1 to 10.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct RatingInfo {
+    pub mine: u32,
+    pub average: f64,
+    pub scored: u32,
+}
+
+/// One video's length, in seconds.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DurationInfo {
+    pub item_id: String,
+    pub duration_sec: f64,
+}
+
+/// A quality the server can transcode to (the player's quality menu).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct QualityInfo {
+    pub name: String,
+    pub max_height: i64,
+    pub bitrate_kbps: i64,
+}
+
+/// One picture of small frames of a video, for the seek bar's preview:
+/// tile `i` (row by row, `columns` a row) is the frame near
+/// `i * interval_sec`.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct StoryboardSheet {
+    pub image: Vec<u8>,
+    pub interval_sec: i64,
+    pub count: i64,
+    pub columns: i64,
+    pub tile_width: i64,
+    pub tile_height: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
