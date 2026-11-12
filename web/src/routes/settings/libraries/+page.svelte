@@ -435,7 +435,7 @@
 								<div class="flex h-9 items-center gap-2 pe-2 text-sm text-muted">
 									<Switch
 										bare
-										label={t('privateLibrary.makePrivate')}
+										label={t('privateLibrary.makePrivateFor', { name: lib.name })}
 										checked={!!lib.private}
 										onCheckedChange={(next) => void setPrivate(lib, next)}
 									/>

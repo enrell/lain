@@ -22,6 +22,7 @@ const en = {
 		locked: 'locked',
 		unlocked: 'unlocked',
 		makePrivate: 'Private',
+		makePrivateFor: '{name} is private',
 		makePrivateHint: 'Hidden from everyone who has not unlocked it in their session.',
 		madePrivate: '“{name}” is now private.',
 		madePublic: '“{name}” is now visible to everyone.',
@@ -240,6 +241,9 @@ const en = {
 				libraries: 'Folders on the server that Lain reads in place. Nothing is copied or moved.'
 			},
 			users: {
+				activeFor: '{name} can sign in',
+				enabled: '{name} can sign in again.',
+				disabled: '{name} is disabled and signed out.',
 				title: 'Accounts',
 				accounts: {
 					one: '{count} account. Roles and disabling take effect on the next request.',
