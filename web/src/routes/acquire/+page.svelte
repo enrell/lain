@@ -1,5 +1,7 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Download from '@lucide/svelte/icons/download';
+	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import { nameable } from '$lib/stores/media-cache.svelte';
 	/*
@@ -262,9 +264,10 @@
 <div class="space-y-6">
 	<header class="flex flex-wrap items-end justify-between gap-4">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('acquire.heading')}</h1>
-			<!-- The first-run block below says what the page is for, at length. -->
-			{#if !firstRun}<p class="mt-0.5 text-sm text-muted">{t('acquire.subtitle')}</p>{/if}
+			<h1 class="page-title">{t('acquire.heading')}</h1>
+			<!-- Kept on every tab, the first-run one too: hidden there, the tabs
+			     under it jumped a line each time the first tab was left. -->
+			<p class="mt-1 text-sm text-muted">{t('acquire.subtitle')}</p>
 		</div>
 		<div class="flex gap-4 text-sm">
 			<a href="/settings/indexers" class="inline-flex min-h-9 items-center gap-1 text-foreground/70 hover:text-foreground">{t('acquire.indexersLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>
@@ -391,7 +394,9 @@
 		{#if grabs === null}
 			<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
 		{:else if grabs.length === 0}
-			<p class="py-6 text-sm text-muted">{t('acquire.queue.empty')}</p>
+			<EmptyState title={t('acquire.queue.empty')} description={t('acquire.queue.emptyBody')}>
+				{#snippet icon()}<Download class="size-6 text-muted" aria-hidden="true" />{/snippet}
+			</EmptyState>
 		{:else}
 			<p class="text-xs text-muted">{t('acquire.queue.keys')}</p>
 			<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.tab.queue')}>
