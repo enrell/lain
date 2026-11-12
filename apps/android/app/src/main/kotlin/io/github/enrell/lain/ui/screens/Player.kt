@@ -157,8 +157,13 @@ fun PlayerScreen(
     val state by model.state.collectAsState()
     val player = remember(itemId) {
         ExoPlayer.Builder(context).build().apply {
+            // The account's language: audio in it when the file has it, subtitles in it otherwise
+            // (the rule the web player follows).
             if (preferredLanguage.isNotEmpty()) {
-                trackSelectionParameters = trackSelectionParameters.buildUpon().setPreferredTextLanguage(preferredLanguage).build()
+                trackSelectionParameters = trackSelectionParameters.buildUpon()
+                    .setPreferredAudioLanguage(preferredLanguage)
+                    .setPreferredTextLanguage(preferredLanguage)
+                    .build()
             }
         }
     }
@@ -175,6 +180,8 @@ fun PlayerScreen(
     var muted by remember { mutableStateOf(false) }
     var speed by remember { mutableStateOf(graph.prefs.speed) }
     var fill by remember { mutableStateOf(false) }
+    val subtitleScale = remember { listOf(0.8f, 1f, 1.3f)[graph.prefs.subtitleSize.coerceIn(0, 2)] }
+    val subtitleBox = remember { graph.prefs.subtitleBox }
     LaunchedEffect(player) {
         if (speed != 1f) {
             player.setPlaybackSpeed(speed)
@@ -261,7 +268,11 @@ fun PlayerScreen(
         }
     }
     androidx.compose.runtime.SideEffect { main?.leaveToPip = if (canPip && playing) enterPip else null }
-    LaunchedEffect(itemId) { model.load() }
+    LaunchedEffect(itemId) {
+        // On mobile data, the quality chosen for it in Settings from the start.
+        val metered = (context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager)?.isActiveNetworkMetered == true
+        model.load(if (metered) graph.prefs.meteredQuality else "")
+    }
     DisposableEffect(itemId) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -472,6 +483,18 @@ fun PlayerScreen(
             // Subtitles sit above the bar while it is up, and near the edge when it is not.
             update = { view ->
                 view.subtitleView?.setBottomPaddingFraction(if (controls || pinned) 0.36f else 0.08f)
+                // The size and ground chosen in Settings.
+                view.subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitleScale)
+                view.subtitleView?.setStyle(
+                    androidx.media3.ui.CaptionStyleCompat(
+                        android.graphics.Color.WHITE,
+                        if (subtitleBox) android.graphics.Color.argb(170, 0, 0, 0) else android.graphics.Color.TRANSPARENT,
+                        android.graphics.Color.TRANSPARENT,
+                        if (subtitleBox) androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE else androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                        android.graphics.Color.BLACK,
+                        null,
+                    ),
+                )
                 // Fill crops the picture to the screen; Fit shows it whole with bars.
                 view.resizeMode = if (fill) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
             },

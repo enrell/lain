@@ -47,6 +47,7 @@ object Ic {
     val Play by lazy { stroke("M6 4l14 8-14 8z", filled = true) }
     val Pause by lazy { stroke("M7 4v16", "M17 4v16") }
     val ChevronRight by lazy { stroke("m9 18 6-6-6-6") }
+    val ChevronDown by lazy { stroke("m6 9 6 6 6-6") }
     val ChevronLeft by lazy { stroke("m15 18-6-6 6-6") }
     val ArrowLeft by lazy { stroke("m12 19-7-7 7-7", "M19 12H5") }
     val ArrowUp by lazy { stroke("m5 12 7-7 7 7", "M12 19V5") }

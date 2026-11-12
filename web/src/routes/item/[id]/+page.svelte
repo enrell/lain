@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
 	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
@@ -178,6 +179,23 @@
 			? [...manage, { label: t('title.deleteFile'), icon: Trash2, danger: true, separated: true, onSelect: () => (confirmDeleteFile = true) }]
 			: manage
 	);
+	/*
+	 * One "More" holds what is done now and then: starting over and the
+	 * marks, then (for administrators, below a line) the file's own
+	 * management. The row keeps the main action, the heart, the score,
+	 * Open with and Download: eight controls in four styles wrapped.
+	 */
+	const moreSingle = $derived<MenuEntry[]>([
+		...(progress && (progress.position_sec > 0 || progress.completed)
+			? [{ label: t('title.startOver'), icon: RotateCcw, onSelect: () => void resetProgress() }]
+			: []),
+		{
+			label: progress?.completed ? (reading ? 'Mark unread' : 'Mark unwatched') : reading ? 'Mark read' : 'Mark watched',
+			icon: CircleCheck,
+			onSelect: () => void markWatched(!progress?.completed)
+		},
+		...manageSingle.map((e, i) => (i === 0 ? { ...e, separated: true } : e))
+	]);
 
 	async function fetchMetadata(): Promise<void> {
 		if (!item || enriching) return;
@@ -359,18 +377,10 @@
 						<!-- The heart keeps the main action's row, on a phone too. -->
 						<FavoriteButton />
 						<RatingPill />
-						{#if progress && (progress.position_sec > 0 || progress.completed)}
-							<Button variant="ghost" size="md" loading={resetting} onclick={() => void resetProgress()}>
-								<RotateCcw class="size-4" /> {t('title.startOver')}
-							</Button>
-						{/if}
-						<Button variant="ghost" size="md" loading={marking} onclick={() => void markWatched(!progress?.completed)}>
-							<CircleCheck class="size-4" /> {progress?.completed ? (reading ? 'Mark unread' : 'Mark unwatched') : reading ? 'Mark read' : 'Mark watched'}
-						</Button>
 						{#if !item.missing && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={item.id} size="md" /></span>{/if}
 						{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="ghost" size="md" label={t('download.one')} />{/if}
-						<Menu label={t('title.manage')} hint={t('title.manageHint')} entries={manageSingle} variant="ghost" size="md">
-							{#snippet icon()}<Settings2 class="size-4" aria-hidden="true" />{/snippet}
+						<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreSingle} variant="ghost" size="md">
+							{#snippet icon()}<Ellipsis class="size-4" aria-hidden="true" />{/snippet}
 						</Menu>
 					</div>
 
@@ -381,7 +391,7 @@
 								{#if reading}
 									Page {Math.floor(progress.position_sec)} of {Math.floor(progress.duration_sec)}
 								{:else}
-									{t('title.left', { time: formatLength(Math.max(60, progress.duration_sec - progress.position_sec)) })}
+									{t('title.left', { time: formatLength(Math.max(1, progress.duration_sec - progress.position_sec)) })}
 								{/if}
 							</p>
 						</div>

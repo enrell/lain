@@ -256,6 +256,14 @@ impl LainCore {
         self.run(async move { Ok(b.client.me().await?.into()) }).await
     }
 
+    /// Sets the account's language for audio and subtitles (ISO 639-2/T,
+    /// empty for the file's own choice), the one the web client's Settings
+    /// edits too; answers the account as it then is.
+    pub async fn set_preferred_language(&self, language: String) -> Result<UserInfo, LainError> {
+        let b = self.backend()?;
+        self.run(async move { Ok(b.client.set_preferred_language(language.trim()).await?.into()) }).await
+    }
+
     /// `GET /api/modules`: what the navigation shows.
     pub async fn modules(&self) -> Result<Vec<ModuleInfo>, LainError> {
         let b = self.backend()?;

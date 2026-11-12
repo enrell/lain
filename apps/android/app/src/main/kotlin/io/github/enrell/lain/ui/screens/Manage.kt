@@ -1,5 +1,7 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -194,6 +196,12 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
     var budget by remember { mutableStateOf((policy.maxBytes shr 30).toString()) }
     var floor by remember { mutableStateOf((policy.minFreeBytes shr 30).toString()) }
     var skip by remember { mutableStateOf(graph.prefs.skipSec) }
+    var subSize by remember { mutableStateOf(graph.prefs.subtitleSize) }
+    var subBox by remember { mutableStateOf(graph.prefs.subtitleBox) }
+    var metered by remember { mutableStateOf(graph.prefs.meteredQuality) }
+    var wifiOnly by remember { mutableStateOf(graph.prefs.wifiOnly) }
+    var qualities by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(Unit) { qualities = runCatching { graph.core.playQualities().map { it.name } }.getOrDefault(emptyList()) }
     LaunchedEffect(Unit) { queued = vm.queuedProgress() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 40.dp)) {
         Text(stringResource(R.string.nav_settings), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
@@ -211,6 +219,30 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
             SettingRow(stringResource(R.string.player_skip), if (skip == 0) stringResource(R.string.settings_skip_hint) else stringResource(R.string.settings_skip_fixed, skip), below = true) {
                 Segmented(io.github.enrell.lain.domain.SKIP_CHOICES.map { it to if (it == 0) stringResource(R.string.settings_auto) else "$it s" }, skip, { skip = it; graph.prefs.skipSec = it })
             }
+            // The account's language: the same setting the web client edits.
+            val lang = state.user?.preferredLanguage.orEmpty()
+            val auto = stringResource(R.string.settings_language_auto)
+            ChoiceRow(
+                stringResource(R.string.settings_language), stringResource(R.string.settings_language_hint),
+                LANGUAGES.firstOrNull { it.first == lang }?.second ?: lang.ifEmpty { auto },
+                listOf("" to auto) + LANGUAGES,
+                lang,
+            ) { code -> scope.launch { vm.setPreferredLanguage(code) } }
+            SettingRow(stringResource(R.string.settings_sub_size), below = true) {
+                Segmented(listOf(0 to stringResource(R.string.size_small), 1 to stringResource(R.string.size_medium), 2 to stringResource(R.string.size_large)), subSize, { subSize = it; graph.prefs.subtitleSize = it })
+            }
+            SettingRow(stringResource(R.string.settings_sub_box), stringResource(R.string.settings_sub_box_hint)) {
+                Toggle(subBox, { on -> subBox = on; graph.prefs.subtitleBox = on }, stringResource(R.string.settings_sub_box))
+            }
+            if (qualities.isNotEmpty()) {
+                val original = stringResource(R.string.settings_metered_original)
+                ChoiceRow(
+                    stringResource(R.string.settings_metered), stringResource(R.string.settings_metered_hint),
+                    metered.ifEmpty { original },
+                    listOf("" to original) + qualities.map { it to it },
+                    metered,
+                ) { q -> metered = q; graph.prefs.meteredQuality = q }
+            }
         }
         SettingsGroup(stringResource(R.string.settings_offline)) {
             SettingRow(stringResource(R.string.settings_budget), stringResource(R.string.settings_budget_hint)) {
@@ -224,6 +256,9 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
                     floor = v.filter(Char::isDigit).take(4)
                     floor.toLongOrNull()?.let { g -> policy = policy.copy(minFreeBytes = g shl 30); graph.savePolicy(policy) }
                 }, "", Modifier.width(88.dp), keyboardType = KeyboardType.Number)
+            }
+            SettingRow(stringResource(R.string.settings_wifi_only), stringResource(R.string.settings_wifi_only_hint)) {
+                Toggle(wifiOnly, { on -> wifiOnly = on; graph.prefs.wifiOnly = on }, stringResource(R.string.settings_wifi_only))
             }
             SettingRow(stringResource(R.string.settings_evict), stringResource(R.string.settings_evict_hint)) {
                 Toggle(policy.evictWatched, { on -> policy = policy.copy(evictWatched = on); graph.savePolicy(policy) }, stringResource(R.string.settings_evict))
@@ -251,5 +286,33 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
         }
         if (queued.toInt() == 0) Text(stringResource(R.string.settings_sync_none), Modifier.padding(top = 28.dp), color = l.muted, fontSize = 12.sp)
         Text(stringResource(R.string.settings_about, io.github.enrell.lain.core.coreVersion()), Modifier.padding(top = if (queued.toInt() == 0) 6.dp else 28.dp), color = l.muted, fontSize = 12.sp)
+    }
+}
+
+/** Languages offered for audio and subtitles: ISO 639-2/T, as the server keeps them. */
+private val LANGUAGES = listOf(
+    "eng" to "English", "por" to "Português", "spa" to "Español", "fra" to "Français", "deu" to "Deutsch",
+    "ita" to "Italiano", "jpn" to "日本語", "kor" to "한국어", "zho" to "中文",
+)
+
+/** A setting chosen from a list: the row shows the choice, a tap opens the list in a sheet. */
+@Composable
+private fun ChoiceRow(label: String, hint: String, shown: String, options: List<Pair<String, String>>, chosen: String, onPick: (String) -> Unit) {
+    val l = LocalLain.current
+    var open by remember { mutableStateOf(false) }
+    SettingRow(label, hint) {
+        Row(
+            Modifier.heightIn(min = 40.dp).clip(l.buttonShape).background(l.tonal).clickable(onClickLabel = label) { open = true }.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(shown, color = l.text, fontSize = 14.sp, maxLines = 1)
+            Icon(Ic.ChevronDown, null, tint = l.muted, modifier = Modifier.size(14.dp))
+        }
+    }
+    if (open) {
+        Sheet(label, { open = false }) {
+            for ((value, name) in options) OptionRow(name, null, value == chosen, { open = false; onPick(value) })
+        }
     }
 }

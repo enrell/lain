@@ -72,11 +72,20 @@ class PlayerModel(
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
 
-    fun load() {
+    /** [quality]: asked for from the start (on mobile data); empty plays as the server chooses. */
+    fun load(quality: String = "") {
         _state.update { PlayerState(loading = true) }
         scope.launch {
             try {
-                val src = core.playSource(itemId, claim)
+                val first = core.playSource(itemId, claim)
+                // A file kept on the device is never converted; otherwise the chosen quality from the same place.
+                val src = if (quality.isNotEmpty() && first.kind != SourceKind.OFFLINE) {
+                    runCatching { core.playTranscoded(itemId, first.startSec, quality, null) }.getOrNull()?.let {
+                        if (first.kind == SourceKind.HLS && first.session.isNotEmpty()) runCatching { core.stopTranscode(itemId, first.session) }
+                        _state.update { s -> s.copy(quality = quality) }
+                        it.copy(durationSec = it.durationSec ?: first.durationSec, subtitles = first.subtitles)
+                    } ?: first
+                } else first
                 _state.update { it.copy(loading = false, source = src, directFirst = src.kind == SourceKind.DIRECT) }
                 // Offered whatever the first delivery: a file played as it is can still be
                 // asked for at a lower quality (a slow network, a data plan).

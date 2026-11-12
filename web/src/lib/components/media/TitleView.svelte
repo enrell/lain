@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
 	import RatingPill from '$lib/components/social/RatingPill.svelte';
@@ -249,6 +250,7 @@
 			: []
 	);
 
+
 	function cardLine(item: CatalogItem, progress: Progress | null): string {
 		const length = formatLength(durations.get(item.id));
 		if (progress && !progress.completed && progress.duration_sec > 0 && progress.position_sec > 0) {
@@ -264,6 +266,18 @@
 	let confirmMark = $state(false);
 	let marking = $state(false);
 	const allDone = $derived(group.count > 0 && watched === group.count);
+
+	// One "More": the one under way back to its start, the marks of the whole title (asked first),
+	// then, for administrators below a line, the title's management.
+	const moreEntries = $derived<MenuEntry[]>([
+		...(resuming && resumeTarget ? [{ label: t('title.startOver'), icon: RotateCcw, onSelect: () => void startOver() }] : []),
+		{
+			label: allDone ? (reading ? 'Mark all unread' : 'Mark all unwatched') : reading ? 'Mark all read' : 'Mark all watched',
+			icon: CircleCheck,
+			onSelect: () => (confirmMark = true)
+		},
+		...manageEntries.map((e, i) => (i === 0 ? { ...e, separated: true } : e))
+	]);
 	async function markAll(): Promise<void> {
 		if (marking) return;
 		marking = true;
@@ -365,19 +379,10 @@
 					<!-- The heart keeps the main action's row, on a phone too. -->
 					<FavoriteButton />
 					<RatingPill />
-					{#if resuming && resumeTarget}
-						<!-- The one under way goes back to its start, as on a film's page and in the app. -->
-						<Button variant="ghost" size="md" loading={restarting} onclick={() => void startOver()}>
-							<RotateCcw class="size-4" aria-hidden="true" /> {t('title.startOver')}
-						</Button>
-					{/if}
 					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} size="md" /></span>{/if}
-					<Button variant="ghost" size="md" onclick={() => (confirmMark = true)}>
-						<CircleCheck class="size-4" aria-hidden="true" /> {allDone ? (reading ? 'Mark all unread' : 'Mark all unwatched') : reading ? 'Mark all read' : 'Mark all watched'}
-					</Button>
 					<DownloadFileButton items={group.items} variant="ghost" size="md" label={t('download.all')} />
-					<Menu label={t('title.manage')} hint={t('title.manageHint')} entries={manageEntries} variant="ghost" size="md">
-						{#snippet icon()}<Settings2 class="size-4" aria-hidden="true" />{/snippet}
+					<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreEntries} variant="ghost" size="md">
+						{#snippet icon()}<Ellipsis class="size-4" aria-hidden="true" />{/snippet}
 					</Menu>
 				</div>
 				<p class="mt-3 text-sm text-muted" aria-live="polite">{watchedLine}</p>
@@ -467,7 +472,8 @@
 					</div>
 				{/if}
 			</div>
-			<ul class="grid {reading ? 'grid-cols-3 gap-2.5 sm:gap-4 xl:grid-cols-4' : 'episode-rows grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3'}" data-episode-grid>
+			<!-- More, smaller cards on a wide screen: three big ones put every name below the fold. -->
+			<ul class="grid {reading ? 'grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5 xl:grid-cols-6' : 'episode-rows grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'}" data-episode-grid>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}

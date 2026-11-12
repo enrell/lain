@@ -148,7 +148,8 @@
 	// The libraries, to browse from before anything is typed.
 	let browse = $state<{ id: string; name: string }[]>([]);
 	$effect(() => {
-		void ensureLibraries().then((libs) => (browse = libs.map((l) => ({ id: l.id, name: l.name }))));
+		// A private library still locked is not offered: it would open onto nothing.
+		void ensureLibraries().then((libs) => (browse = libs.filter((l) => !l.locked).map((l) => ({ id: l.id, name: l.name }))));
 	});
 </script>
 
