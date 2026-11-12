@@ -7,17 +7,20 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
 	import type { Progress } from '$lib/api/types';
-	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
-	import { frameOf } from '$lib/stores/shapes.svelte';
-	import { artItem } from '$lib/utilities/browse';
+	import { settleFrame } from '$lib/stores/frames';
+	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
+	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { groupItems, type SeriesGroup } from '$lib/utilities/grouping';
 	import MediaCard from './MediaCard.svelte';
-	import { RAIL } from './MediaGrid.svelte';
+	import { RAIL } from './grid';
 	import ShowCard from './ShowCard.svelte';
 
 	let { libraryId, exclude, heading }: { libraryId: string; exclude: string[]; heading: string } = $props();
 
 	let groups = $state<SeriesGroup[]>([]);
+	// One frame for the rail and Home's sizes for it, as the library's shelf
+	// has: decided from its pictures before it is drawn (see `settleFrame`).
+	let frame = $state<Shape>('portrait');
 	// The account's positions, so these cards say watched or under way as the
 	// same titles do on the library's shelves; without them a rail of bare
 	// posters read as titles never opened.
@@ -39,15 +42,13 @@
 				const found = groupItems(page.items)
 					.filter((g) => !g.items.some((i) => skip.has(i.id)))
 					.slice(0, 12);
-				await ensureEnrichments(found.map((g) => artItem(g).id));
-				if (libraryId === id) groups = found;
+				const settled = await settleFrame(found);
+				if (libraryId !== id) return;
+				frame = settled;
+				groups = found;
 			})
 			.catch(() => {});
 	});
-
-	// One frame for the rail and Home's sizes for it, as the library's shelf
-	// has: a still was drawn at its own small 16:9 beside 2:3 posters.
-	const frame = $derived(frameOf(groups, (id) => enrichmentCache.get(id)));
 </script>
 
 {#if groups.length > 0}
@@ -58,14 +59,13 @@
 			{#each groups as group (group.key)}
 				<div class="w-[var(--card-w)] shrink-0 snap-start">
 					{#if group.count > 1}
-						<ShowCard {group} {frame} eager progressOf={(id) => progressMap.get(id)} />
+						<ShowCard {group} {frame} progressOf={(id) => progressMap.get(id)} />
 					{:else}
 						<MediaCard
 							item={group.items[0]}
 							enrichment={enrichmentCache.get(group.items[0].id) ?? null}
 							progress={progressMap.get(group.items[0].id) ?? null}
 							{frame}
-							eager
 						/>
 					{/if}
 				</div>

@@ -7,12 +7,12 @@
 	 * option are exact. What is set lives in the URL: a view can be
 	 * bookmarked, and Back returns to it. The grid lists titles, one card
 	 * per show (it opens the show's page) or per single file, all in one
-	 * frame (see `frameOf`).
+	 * frame (see `settleFrame`).
 	 *
 	 * The titles are a library's, every library's, or whatever `source`
 	 * gives (the favourites), so every list of titles browses the same way.
 	 */
-	import { onMount, tick, type Snippet } from 'svelte';
+	import { onMount, tick, untrack, type Snippet } from 'svelte';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
@@ -24,7 +24,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { api } from '$lib/api';
-	import { framedGrid } from '$lib/components/media/MediaGrid.svelte';
+	import { framedGrid } from '$lib/components/media/grid';
 	import MediaCard from '$lib/components/media/MediaCard.svelte';
 	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
@@ -34,13 +34,15 @@
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
-	import { SAMPLE, frameOf } from '$lib/stores/shapes.svelte';
+	import { settleFrame } from '$lib/stores/frames';
+	import { sampleArt, type Shape } from '$lib/stores/shapes.svelte';
 	import {
 		ADDED, LISTED, NO_FILTERS, SHAPES, SORTS, WATCH,
 		activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState,
 		type Context, type Filters, type Sort
 	} from '$lib/utilities/browse';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { gridKeys } from '$lib/utilities/grid-nav';
 	import { groupItems } from '$lib/utilities/grouping';
 	import { t } from '$lib/i18n';
 
@@ -144,6 +146,7 @@
 		window.scrollTo({ top: 0, behavior: calm ? 'auto' : 'smooth' });
 	}
 	let gridTop = $state<HTMLElement | null>(null);
+	let gridEl = $state<HTMLElement | null>(null);
 	/** A new result set starts at its beginning, not mid-scroll. */
 	function toResults(): void {
 		if (!gridTop) return;
@@ -154,6 +157,7 @@
 	async function load(): Promise<void> {
 		const mine = ++run;
 		items = [];
+		held = null;
 		total = 0;
 		error = null;
 		loading = true;
@@ -276,8 +280,23 @@
 	const results = $derived(apply(all, filters, ctx));
 	let shown = $state(RENDER);
 	const visible = $derived(results.slice(0, shown));
-	// One frame for the whole grid, from its first titles' pictures.
-	const frame = $derived(frameOf(results, (id) => enrichmentCache.get(id)));
+	// One frame for the whole grid, from its first titles' pictures, measured
+	// before the grid is drawn and then held (see `settleFrame`): it opened
+	// in one shape and turned to the other as the first posters came in. A
+	// later set (a filter, a search) is drawn at once in the frame held, and
+	// takes its own once its pictures are measured.
+	let held = $state<{ key: string; frame: Shape } | null>(null);
+	const sampleKey = $derived(sampleArt(results).map((i) => i.id).join(' '));
+	const frame = $derived<Shape>(held?.frame ?? 'portrait');
+	let settling = 0;
+	$effect(() => {
+		const key = sampleKey;
+		if ((loading && items.length === 0) || held?.key === key) return;
+		const mine = ++settling;
+		void settleFrame(untrack(() => results)).then((f) => {
+			if (mine === settling) held = { key, frame: f };
+		});
+	});
 	// Loaded, and nothing at all: no tools for an empty list.
 	const bare = $derived(!loading && !error && all.length === 0);
 	let sentinel = $state<HTMLElement | null>(null);
@@ -678,7 +697,7 @@
 		<div bind:this={gridTop}></div>
 		{#if error && items.length === 0}
 			<ErrorState message={error} retry={() => void load()} />
-		{:else if loading && items.length === 0}
+		{:else if (loading && items.length === 0) || (!held && results.length > 0)}
 			<div class={framedGrid('portrait', dense)}>
 				{#each Array(8) as _}
 					<Skeleton class="aspect-[2/3] w-full rounded-xl" />
@@ -702,7 +721,10 @@
 				</div>
 			</div>
 		{:else}
-			<div class={framedGrid(frame, dense)}>
+			<!-- Arrows move between titles; up from the first row returns to the search.
+			     A card scrolled to stops below the header and this sticky bar. -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div bind:this={gridEl} class={[framedGrid(frame, dense), '[&>*]:scroll-mt-48 [&>*]:scroll-mb-24 md:[&>*]:scroll-mt-52'].join(' ')} onkeydown={(e) => gridKeys(e, () => searchBox)}>
 				{#each visible as group, i (group.key)}
 					{#if group.count > 1}
 						<ShowCard
@@ -710,7 +732,6 @@
 							{frame}
 							progressOf={(id) => progressMap.get(id)}
 							priority={i < 6}
-							eager={i < SAMPLE}
 						/>
 					{:else}
 						<MediaCard
@@ -718,7 +739,6 @@
 							enrichment={enrichmentCache.get(group.items[0].id) ?? null}
 							progress={progressMap.get(group.items[0].id) ?? null}
 							priority={i < 6}
-							eager={i < SAMPLE}
 							{frame}
 						/>
 					{/if}

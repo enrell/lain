@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Search results look like a library** (web): one card frame per answer,
+  the library's sizes (those of Home's rails) and the same treatment of
+  stills and posters, where results were rows of mixed shapes. Arrow keys
+  move between results and from the header's field into them; up from the
+  first row goes back to the field. The library grid answers the same keys.
+
+### Fixed
+- **Grids no longer change shape while they load** (web): a library grid,
+  a shelf, the rail under a title and search results measure their first
+  pictures before they are drawn and keep the frame those decide; a grid
+  opened in one shape and turned to the other as its posters came in. A
+  provider's cover (a wide banner) is no longer taken for a poster.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Enrichment } from '$lib/api/types';
 import { groupItems } from '$lib/utilities/grouping';
-import { SAMPLE, frameFor, frameOf, guessShape, recordShape, shapeOf } from './shapes.svelte';
+import { SAMPLE, frameFor, frameOf, guessShape, measure, recordShape, sampleArt, shapeOf } from './shapes.svelte';
 
 function item(id: string, title: string, kind = 'video', episode = 0): CatalogItem {
 	return {
@@ -10,6 +10,7 @@ function item(id: string, title: string, kind = 'video', episode = 0): CatalogIt
 	};
 }
 const art = (id: string): Enrichment => ({ item_id: id, provider: 'p', remote_id: '', title: '', fetched_at: 0, poster: 'p.jpg' });
+const banner = (id: string): Enrichment => ({ item_id: id, provider: 'p', remote_id: '', title: '', fetched_at: 0, cover: 'b.jpg' });
 
 describe('shapes', () => {
 	it('uses the guess until the picture is measured', () => {
@@ -25,10 +26,14 @@ describe('shapes', () => {
 		recordShape('d', 0, 0);
 		expect(shapeOf('d', 'landscape')).toBe('landscape');
 	});
-	it('guesses art and reading files upright and a video still wide', () => {
+	it('guesses posters and reading files upright, a banner and a video still wide', () => {
 		expect(guessShape(item('x', 'X'), null)).toBe('landscape');
 		expect(guessShape(item('x', 'X'), art('x'))).toBe('portrait');
 		expect(guessShape(item('x', 'X', 'manga'), null)).toBe('portrait');
+		// A cover is the provider's banner: the card shows it when there is no poster.
+		expect(guessShape(item('x', 'X'), banner('x'))).toBe('landscape');
+		expect(guessShape(item('x', 'X', 'manga'), banner('x'))).toBe('landscape');
+		expect(guessShape(item('x', 'X'), { ...banner('x'), poster: 'p.jpg' })).toBe('portrait');
 	});
 });
 
@@ -50,8 +55,17 @@ describe('frames', () => {
 		const none = () => null;
 		// Three stills (Show, Film, Clip) against one page.
 		expect(frameOf(groups, none)).toBe('landscape');
-		// The film has a poster and the show's first episode loads upright.
+		// The film has a poster and the show's first episode came with an upright still.
 		recordShape('s1', 600, 900);
 		expect(frameOf(groups, (id) => (id === 'f' ? art(id) : null))).toBe('portrait');
+	});
+	it('samples the art of the first titles only', () => {
+		const groups = groupItems([item('s1', 'Show', 'episode', 1), item('s2', 'Show', 'episode', 2), item('f', 'Film')]);
+		expect(sampleArt(groups).map((i) => i.id).sort()).toEqual(['f', 's1']);
+		const many = groupItems(Array.from({ length: SAMPLE + 10 }, (_, i) => item(`i${i}`, `Title ${i}`)));
+		expect(sampleArt(many)).toHaveLength(SAMPLE);
+	});
+	it('measures nothing outside a browser and nothing already known', async () => {
+		await expect(measure([{ id: 's1', src: 'x.jpg' }, { id: 'new', src: '' }])).resolves.toBeUndefined();
 	});
 });

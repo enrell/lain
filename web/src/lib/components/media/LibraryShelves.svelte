@@ -7,13 +7,13 @@
 	import { api } from '$lib/api';
 	import type { Library, Progress } from '$lib/api/types';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
-	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
-	import { frameOf } from '$lib/stores/shapes.svelte';
-	import { artItem } from '$lib/utilities/browse';
+	import { settleFrame } from '$lib/stores/frames';
+	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
+	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
 	import { t } from '$lib/i18n';
 	import MediaCard from './MediaCard.svelte';
-	import { RAIL } from './MediaGrid.svelte';
+	import { RAIL } from './grid';
 	import ShowCard from './ShowCard.svelte';
 
 	const FETCH = 60;
@@ -25,6 +25,8 @@
 		groups: SeriesGroup[];
 		total: number;
 		failed: boolean;
+		/** Decided from the shelf's pictures before it is drawn, and kept (see `settleFrame`). */
+		frame: Shape;
 	}
 	let shelves = $state<Record<string, Shelf>>({});
 	let progressMap = $state<Map<string, Progress>>(new Map());
@@ -51,10 +53,10 @@
 			const groups = await Promise.all(recent.map(whole));
 			// A card needs its picture's overlay only; a long show's every episode
 			// would not fit in one request.
-			await ensureEnrichments(groups.map((g) => artItem(g).id));
-			shelves[lib.id] = { groups, total: page.total, failed: false };
+			const frame = await settleFrame(groups);
+			shelves[lib.id] = { groups, total: page.total, failed: false, frame };
 		} catch {
-			shelves[lib.id] = { groups: [], total: 0, failed: true };
+			shelves[lib.id] = { groups: [], total: 0, failed: true, frame: 'portrait' };
 		}
 	}
 
@@ -65,8 +67,6 @@
 			.then((list) => (progressMap = new Map(list.map((p) => [p.item_id, p]))))
 			.catch(() => {});
 	});
-
-	const lookup = (id: string) => enrichmentCache.get(id);
 
 	let scrollY = $state(0);
 </script>
@@ -97,7 +97,7 @@
 <div class="space-y-12 md:space-y-14">
 	{#each libraries as lib (lib.id)}
 		{@const shelf = shelves[lib.id]}
-		{@const frame = shelf ? frameOf(shelf.groups, lookup) : 'portrait'}
+		{@const frame = shelf?.frame ?? 'portrait'}
 		<!-- Lands below the header and the band when jumped to. -->
 		<section id={`shelf-${lib.id}`} class="scroll-mt-28 space-y-4 md:scroll-mt-40" aria-labelledby={`shelf-title-${lib.id}`}>
 			<div class="flex items-baseline justify-between gap-4">
@@ -138,7 +138,6 @@
 								<ShowCard
 									{group}
 									{frame}
-									eager
 									progressOf={(id) => progressMap.get(id)}
 									priority={i < 4}
 								/>
@@ -148,7 +147,6 @@
 									enrichment={enrichmentCache.get(group.items[0].id) ?? null}
 									progress={progressMap.get(group.items[0].id) ?? null}
 									{frame}
-									eager
 								/>
 							{/if}
 						</div>
