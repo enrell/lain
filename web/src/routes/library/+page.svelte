@@ -123,7 +123,9 @@
 			<p class="mt-0.5 text-sm text-muted max-md:hidden">Everything Lain has indexed.</p>
 		</div>
 		{#if session.isAdmin || locked.length > 0 || open.length > 0}
-			<div class="flex items-center gap-1 text-sm max-md:w-full max-md:gap-2 max-md:[&>*]:min-h-10 max-md:[&>*]:rounded-lg max-md:[&>*]:border max-md:[&>*]:border-line max-md:[&>*]:px-3.5 max-md:[&>a]:flex max-md:[&>a]:items-center">
+			<!-- On a phone each action is a chip on one line of its own words: "Manage
+			     libraries" broke over two lines inside its box. -->
+			<div class="flex items-center gap-1 whitespace-nowrap text-sm max-md:w-full max-md:flex-wrap max-md:gap-2 max-md:[&>*]:min-h-10 max-md:[&>*]:rounded-lg max-md:[&>*]:border max-md:[&>*]:border-line max-md:[&>*]:px-3.5 max-md:[&>a]:flex max-md:[&>a]:items-center">
 				{#if locked.length > 0 || open.length > 0}
 					<button
 						type="button"
