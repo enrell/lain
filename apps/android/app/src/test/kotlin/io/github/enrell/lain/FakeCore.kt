@@ -168,7 +168,6 @@ class FakeCore : LainCoreInterface {
     override suspend fun lockLibrary(libraryId: String): LibraryInfo = LibraryInfo(libraryId, "", "", true, true)
     override suspend fun playBurnedIn(itemId: String, stream: Long, startSec: Double): PlaySource =
         burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=b", "burned", startSec, startSec, null, emptyList(), "sess-b")
-    val playCaps = mutableListOf<List<String>>()
     override suspend fun playSource(itemId: String, caps: List<String>): PlaySource {
         playCaps += caps
         val start = progress[itemId]?.takeIf { !it.completed && it.positionSec > 3 }?.positionSec ?: 0.0
