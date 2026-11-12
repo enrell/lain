@@ -633,7 +633,13 @@
 								autocomplete="off"
 								spellcheck="false"
 								enterkeyhint="search"
-								class="h-11 w-full text-ellipsis rounded-md border border-line bg-field pl-9 pr-10 text-sm sm:h-10 md:pr-12 text-foreground placeholder:text-muted/70 transition-colors hover:border-white/15 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+								class={[
+									'h-11 w-full text-ellipsis rounded-md border border-line bg-field pl-9 text-sm sm:h-10 md:pr-12 text-foreground placeholder:text-muted/70 transition-colors hover:border-white/15 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden',
+									// Room on the right only for what sits there: the clear button, or
+									// from md up the `/` cap. On a phone, beside the view switch, the
+									// empty field's placeholder lost its last word to that room.
+									text ? 'pr-10' : 'pr-3'
+								].join(' ')}
 							/>
 							{#if text}
 								<button type="button" aria-label="Clear search" class="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-foreground" onclick={() => { onSearch(''); searchBox?.focus(); }}>
