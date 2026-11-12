@@ -32,6 +32,7 @@
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import { formatLength, formatTime } from '$lib/utilities/format';
+	import { playTarget } from '$lib/utilities/progress';
 	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
 	import Settings2 from '@lucide/svelte/icons/settings-2';
 	import { t } from '$lib/i18n';
@@ -205,12 +206,7 @@
 	// A book left on its first page is being read, as Home and the library already say.
 	const minResume = $derived(reading ? 1 : 5);
 	const available = $derived(group.items.filter((i) => !isGone(i)));
-	const resumeTarget = $derived(
-		available.find((i) => {
-			const p = progressMap?.get(i.id);
-			return p && !p.completed && p.position_sec >= minResume;
-		}) ?? available[0]
-	);
+	const resumeTarget = $derived(playTarget(available, progressMap, minResume));
 	const resumeProgress = $derived(
 		resumeTarget ? (progressMap?.get(resumeTarget.id) ?? null) : null
 	);
@@ -233,7 +229,10 @@
 			: resuming
 				? // The phrase the smoke test keys on, then which episode it is.
 					`Resume from ${formatTime(resumeProgress!.position_sec)} · ${label(resumeTarget!)}`
-				: 'Play'
+				: resumeTarget && resumeTarget.id !== available[0]?.id
+					? // Which episode Play goes on with, once it is not the first.
+						t('title.playPart', { part: label(resumeTarget) })
+					: 'Play'
 	);
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
