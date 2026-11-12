@@ -1432,7 +1432,6 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn probe_build_reads_the_lists_and_runs_the_checks_at_once() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = lain_store::test_dir("policy-probe-build");
         let marks = dir.join("marks");
         std::fs::create_dir_all(&marks).unwrap();
@@ -1463,8 +1462,7 @@ esac
 exit 1
 "#
         .replace("MARKS", &marks.to_string_lossy());
-        std::fs::write(&bin, script).unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::transcode::write_stub(&bin, &script);
         let s = TranscodeSettings { ffmpeg_path: bin.to_string_lossy().into_owned(), ..st::defaults() };
         let caps = probe_build(&s);
         let set = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<BTreeSet<String>>();
@@ -1494,7 +1492,6 @@ exit 1
     #[cfg(unix)]
     #[test]
     fn a_check_that_times_out_is_a_no_and_says_so() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = lain_store::test_dir("policy-probe-timeout");
         std::fs::create_dir_all(&dir).unwrap();
         let bin = dir.join("ffmpeg");
@@ -1512,8 +1509,7 @@ esac
 exit 1
 "#
         .replace("SLOW", &slow.to_string_lossy());
-        std::fs::write(&bin, script).unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::transcode::write_stub(&bin, &script);
         let s = TranscodeSettings { ffmpeg_path: bin.to_string_lossy().into_owned(), ..st::defaults() };
         let limit = Duration::from_secs(3);
         let calm = probe_build_within(&s, limit);
