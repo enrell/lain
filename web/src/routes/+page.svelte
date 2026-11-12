@@ -169,7 +169,9 @@
 				...continueItems.map((i) => i.id),
 				...nextUpItems.map((i) => i.id),
 				...favoriteTitles.map((g) => artItem(g).id),
-				...recent.map((i) => i.id),
+				// The newest title's first file, not all of it: a long show's every
+				// episode went past what one overlay read takes.
+				...recent.slice(0, 1).map((i) => i.id),
 				// A card's picture is its title's first episode's (see `artItem`).
 				...shown.flatMap((r) => r.groups.map((g) => artItem(g).id))
 			];
