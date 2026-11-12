@@ -629,14 +629,22 @@ try {
 	await waitFor(`document.body.innerText.includes('identified')`, 20000, 'second scan finished');
 	console.log('   two libraries scanned');
 
+	// Home has drawn its rows: one per library, its newest titles (D-283).
+	const homeRows = () =>
+		waitFor(
+			`[...document.querySelectorAll('section h2')].some((h) => h.textContent.trim() === 'Movies')`,
+			15000,
+			'Home\'s row for the Movies library'
+		);
+
 	/* ---------------- browse ---------------- */
 	step('home, catalog and search');
 	await clickText('Home');
-	await waitText('Recently added');
+	await homeRows();
 	await waitFor(
 		`[...document.querySelectorAll('a[href^="/item/"]')].length >= 3`,
 		15000,
-		'recently added grid'
+		'the libraries\' rows of titles'
 	);
 	const cards = await evalValue(`document.querySelectorAll('a[href^="/item/"]').length`);
 	console.log(`   ${cards} media cards on Home`);
@@ -659,7 +667,7 @@ try {
 		const options = `[...document.querySelectorAll('#header-search-list [role="option"]')]`;
 		const typeInHeader = async (text) => {
 			await navigate(`${BASE}/`);
-			await waitText('Recently added');
+			await homeRows();
 			await page.send('Page.bringToFront');
 			await evalValue('document.activeElement?.blur?.()');
 			await pressKey('/', 'Slash', 191);
@@ -759,7 +767,7 @@ try {
 	/* ---------------- item + enrichment ---------------- */
 	step('item detail and NFO enrichment');
 	await clickText('Home');
-	await waitText('Recently added');
+	await homeRows();
 	await clickText('Frieren');
 	// Scans auto-enrich now, so strip any existing overlay first: the
 	// manual fetch below must exercise the full NFO path. Either button

@@ -66,10 +66,15 @@ export function gridStep(boxes: Box[], from: number, key: string): number | 'out
  * first row hands focus to `above` (the field the results came from).
  * Enter is the link's own.
  */
-export function gridKeys(e: KeyboardEvent, above?: () => HTMLElement | null | undefined): void {
+export function gridKeys(
+	e: KeyboardEvent,
+	above?: () => HTMLElement | null | undefined,
+	/** The cards, when they are not the grid's children (a grid in parts, see `splitByShape`). */
+	cardsOf: (grid: HTMLElement) => HTMLElement[] = (grid) => [...grid.children] as HTMLElement[]
+): void {
 	if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
 	const grid = e.currentTarget as HTMLElement;
-	const cards = [...grid.children] as HTMLElement[];
+	const cards = cardsOf(grid);
 	const from = cards.findIndex((card) => card === e.target || card.contains(e.target as Node));
 	if (from < 0) return;
 	const step = gridStep(

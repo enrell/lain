@@ -12,7 +12,7 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import Play from '@lucide/svelte/icons/play';
@@ -30,10 +30,10 @@
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Poster from '$lib/components/media/Poster.svelte';
-	import { framedGrid } from '$lib/components/media/grid';
+	import { RAIL } from '$lib/components/media/grid';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
-	import { formatLength, formatTime } from '$lib/utilities/format';
+	import { formatLength, formatTime, timeLeft } from '$lib/utilities/format';
 	import { playTarget } from '$lib/utilities/progress';
 	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
 	import Settings2 from '@lucide/svelte/icons/settings-2';
@@ -66,6 +66,8 @@
 		progressMap = null,
 		libraries = [],
 		manage = [],
+		about = null,
+		returned = false,
 		onProgressChanged = undefined
 	}: {
 		group: SeriesGroup;
@@ -73,6 +75,10 @@
 		libraries?: Library[];
 		/** What an admin can do with the title, from the page that owns it. */
 		manage?: MenuEntry[];
+		/** What the files say of themselves (a comic's ComicInfo.xml), when no overlay does. */
+		about?: { summary?: string; genres?: string[] } | null;
+		/** The page was come back to (Back): it returns to where it was, not to the current part. */
+		returned?: boolean;
 		/** Called after marks changed, so the page reads progress again. */
 		onProgressChanged?: () => void;
 	} = $props();
@@ -103,10 +109,10 @@
 	const artItem = $derived(group.items.find((i) => i.episode > 0) ?? first);
 	const enrichments = $derived(group.items.map((i) => enrichmentCache.get(i.id)));
 	const synopsis = $derived(
-		enrichments.map((e) => e?.synopsis).find((s) => s && s.length > 0) ?? ''
+		enrichments.map((e) => e?.synopsis).find((s) => s && s.length > 0) ?? about?.summary ?? ''
 	);
 	const genres = $derived(
-		enrichments.map((e) => e?.genres ?? []).find((g) => g.length > 0)?.slice(0, 3) ?? []
+		(enrichments.map((e) => e?.genres ?? []).find((g) => g.length > 0) ?? about?.genres ?? []).slice(0, 3)
 	);
 	const backdrop = $derived(enrichments.map((e) => e?.cover).find((c) => c) ?? '');
 	const posterEnrichment = $derived(enrichmentCache.get(artItem.id) ?? null);
@@ -237,15 +243,15 @@
 					? t('title.continueFromPageIn', { page: Math.floor(resumeProgress!.position_sec), part: label(resumeTarget!) })
 					: t('title.continueFromPage', { page: Math.floor(resumeProgress!.position_sec) })
 				: resumeTarget && group.items.length > 1
-					? `Read · ${label(resumeTarget)}`
-					: 'Read'
+					? t('title.readPart', { part: label(resumeTarget) })
+					: t('title.read')
 			: resuming
 				? // The phrase the smoke test keys on, then which episode it is.
 					`Resume from ${formatTime(resumeProgress!.position_sec)} · ${label(resumeTarget!)}`
 				: resumeTarget && resumeTarget.id !== available[0]?.id
 					? // Which episode Play goes on with, once it is not the first.
 						t('title.playPart', { part: label(resumeTarget) })
-					: 'Play'
+					: t('title.play')
 	);
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
@@ -257,12 +263,14 @@
 					]
 						.filter(Boolean)
 						.join(' · ')
-				: `${t('title.left', { time: formatLength(Math.max(1, resumeProgress!.duration_sec - resumeProgress!.position_sec)) })} · ${watched} of ${group.count} watched`
+				: [timeLeft(resumeProgress!.position_sec, resumeProgress!.duration_sec), watched > 0 ? t('title.watchedOf', { done: watched, count: group.count }) : '']
+						.filter(Boolean)
+						.join(' · ')
 			: available.length === 0
-				? 'All files missing'
+				? t('title.allMissing')
 				: watched > 0
-					? `${watched} of ${group.count} ${reading ? 'read' : 'watched'}`
-					: 'Not started'
+					? t(reading ? 'title.readOf' : 'title.watchedOf', { done: watched, count: group.count })
+					: t('title.notStarted')
 	);
 
 	// The title's own management joins what the page passed in.
@@ -281,11 +289,11 @@
 		const length = formatLength(durations.get(item.id));
 		if (progress && !progress.completed && progress.duration_sec > 0 && progress.position_sec > 0) {
 			return reading
-				? `Page ${Math.floor(progress.position_sec)} of ${Math.floor(progress.duration_sec)}`
-				: t('title.left', { time: formatLength(Math.max(60, progress.duration_sec - progress.position_sec)) });
+				? t('browse.pageOf', { page: Math.floor(progress.position_sec), pages: Math.floor(progress.duration_sec) })
+				: timeLeft(progress.position_sec, progress.duration_sec);
 		}
-		if (progress?.completed) return reading ? 'Read' : length ? t('title.watchedLength', { time: length }) : t('title.watched');
-		return length || (reading ? 'Unread' : 'Not watched');
+		if (progress?.completed) return reading ? t('title.read') : length ? t('title.watchedLength', { time: length }) : t('title.watched');
+		return length || t(reading ? 'title.unread' : 'title.notWatched');
 	}
 
 	// One part's own actions, as the app's ⋮ on each row: its mark, its start
@@ -380,6 +388,30 @@
 		}
 	}
 
+	/*
+	 * On arrival the part the main button opens is brought into view, when
+	 * the title is under way and it is below the fold: a viewer on Episode 8
+	 * landed on Episodes 1 to 4, and on a phone on none at all. Only as far
+	 * as needed, so as much of the hero stays; never on Back, which returns
+	 * to where the page was, and never moving the focus.
+	 */
+	let arrived = false;
+	$effect(() => {
+		const target = resumeTarget;
+		if (arrived || returned || !target || !progressMap || !(resuming || watched > 0)) return;
+		arrived = true;
+		void tick().then(() => {
+			const card = document.querySelector<HTMLElement>(`[data-episode-grid] [data-part="${CSS.escape(target.id)}"]`);
+			if (!card) return;
+			// Clear of the phone's bottom bar.
+			const floor = window.innerHeight - (window.matchMedia('(min-width: 768px)').matches ? 24 : 96);
+			const below = card.getBoundingClientRect().bottom - floor;
+			if (below <= 0) return;
+			const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+			window.scrollBy({ top: below, behavior: calm ? 'auto' : 'smooth' });
+		});
+	});
+
 	function stillUrl(id: string): string {
 		return api.thumbnail.url(id, session.token, { width: 480 });
 	}
@@ -391,7 +423,8 @@
 	}
 </script>
 
-<article class="space-y-8">
+<!-- Closer under the hero on a phone, where every row above the episodes pushes them down. -->
+<article class="space-y-4 md:space-y-8">
 	<!-- Full-bleed title hero in the home hero's language: no box, no
 	     border; the art runs under the navigation and fades into the page. -->
 	<header class="title-hero relative -mx-5 -mt-5 overflow-hidden sm:-mx-8 md:mx-0 md:-mt-28">
@@ -409,7 +442,7 @@
 		     long synopsis and the copy floated beside a cover taller than it. On a phone the
 		     cover sits beside the name, not above it: stacked, it put every episode below
 		     the fold. -->
-		<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-16 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
+		<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-14 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
 			<div class="aspect-[2/3] w-full shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
@@ -445,7 +478,7 @@
 						</LinkButton>
 					{:else}
 						<Button size="rowMain" disabled class="max-md:w-[calc(100%-3.25rem)]" title="The files are no longer on disk">
-							<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? 'Read' : 'Play'}
+							<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? t('title.read') : t('title.play')}
 						</Button>
 					{/if}
 					<!-- The heart keeps the main action's row, on a phone too. -->
@@ -466,7 +499,8 @@
 				{#if synopsis}
 					<!-- A cut synopsis opens on a tap: an ellipsis with no way past it is a dead end. -->
 					<button type="button" class="mt-4 block max-w-2xl text-left" aria-expanded={synopsisOpen} onclick={() => (synopsisOpen = !synopsisOpen)}>
-						<span class={['block text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? '' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
+						<!-- Clamped, it is not a block: `block` overrode the clamp's box and three lines showed on a phone. -->
+						<span class={['text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? 'block' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
 					</button>
 				{/if}
 				</div>
@@ -551,17 +585,19 @@
 				{/if}
 			</div>
 			<!-- More, smaller cards on a wide screen: three big ones put every name below the fold. -->
-			<!-- Volumes are sized as every poster grid is (two a row on a phone, where
-			     three were cramped); episodes as wide cards, rows on a phone. Arrows
-			     move between the parts as in a library grid; up from the first row
-			     returns to Play. -->
+			<!-- Volumes are the cover cards of the "More in" rail under them, at its
+			     width from sm up (a fluid grid drew them 182 px wide over 192 px rail
+			     cards); two a row on a phone, as every poster grid there. Episodes
+			     as wide cards, rows on a phone. Arrows move between the parts as in a
+			     library grid; up from the first row returns to Play. -->
 			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-			<ul class={reading ? framedGrid('portrait') : 'episode-rows grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'} data-episode-grid onkeydown={(e) => gridKeys(e, () => document.querySelector<HTMLElement>('a[data-title-play]'))}>
+			<ul class={reading ? `grid grid-cols-2 items-start gap-x-3.5 gap-y-6 sm:grid-cols-[repeat(auto-fill,var(--card-w))] md:gap-x-4 ${RAIL.portrait}` : 'episode-rows grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'} data-episode-grid onkeydown={(e) => gridKeys(e, () => document.querySelector<HTMLElement>('a[data-title-play]'))}>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
 					{@const gone = isGone(item)}
-					<li class="relative">
+					{@const current = item.id === resumeTarget?.id && (resuming || watched > 0)}
+					<li class="relative" data-part={item.id}>
 						{#if selecting}
 							<!-- Selection mode turns the card into a toggle so the
 							     click never reaches a play link. -->
@@ -572,7 +608,7 @@
 								class={['group relative block w-full rounded-card text-left', gone ? 'opacity-60' : ''].join(' ')}
 								aria-label={`${selected.has(item.id) ? 'Deselect' : 'Select'} ${label(item)}`}
 							>
-								{@render episodeCard(item, progress, ratio, gone, false, selected.has(item.id))}
+								{@render episodeCard(item, progress, ratio, gone, false, selected.has(item.id), false, true)}
 								<span
 									class={[
 										'absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border backdrop-blur transition-colors',
@@ -601,7 +637,7 @@
 								class="group block rounded-card transition-transform duration-300 ease-out hover:-translate-y-1"
 								aria-label={`${reading ? 'Read' : 'Play'} ${label(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 							>
-								{@render episodeCard(item, progress, ratio, gone, true)}
+								{@render episodeCard(item, progress, ratio, gone, true, false, current)}
 							</a>
 							<!-- Beside the link, not in it: a button inside a link is not a button. -->
 							<span class="absolute bottom-1.5 end-1.5">
@@ -656,7 +692,7 @@
 	</div>
 </article>
 
-{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false, chosen = false)}
+{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false, chosen = false, current = false, choosing = false)}
 	<!-- A card as every other card in the app is drawn: the picture in a rounded
 	     frame with a faint ring, the words under it. A bordered box around both
 	     made the episodes and volumes a second kind of card. -->
@@ -664,7 +700,8 @@
 		class={[
 			'episode-thumb relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] transition duration-300',
 			reading ? 'aspect-[2/3]' : 'aspect-video',
-			chosen ? 'ring-2 ring-accent' : 'ring-1 ring-white/5 group-hover:ring-white/15'
+			// The part the main button opens wears the accent, so it is found at a glance.
+			chosen ? 'ring-2 ring-accent' : current ? 'ring-2 ring-accent/70' : 'ring-1 ring-white/5 group-hover:ring-white/15'
 		].join(' ')}
 	>
 		<img
@@ -675,7 +712,8 @@
 			decoding="async"
 			class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
 		/>
-		{#if !gone}
+		<!-- No play badge while choosing: the card then toggles, it does not play. -->
+		{#if !gone && !choosing}
 			<span
 				class="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-black/65 text-white opacity-0 backdrop-blur transition-opacity duration-200 group-hover:opacity-100"
 			>

@@ -6,7 +6,7 @@
 	import { t } from '$lib/i18n';
 	import { wideStill } from '$lib/stores/frames';
 	import { toldShape } from '$lib/stores/shapes.svelte';
-	import { formatLength, mediaSubtitle } from '$lib/utilities/format';
+	import { mediaSubtitle, timeLeft } from '$lib/utilities/format';
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	import { progressRatio } from '$lib/utilities/progress';
 	import ProgressBar from './ProgressBar.svelte';
@@ -25,11 +25,19 @@
 	// episode label over the series title.
 	const series = $derived(enrichment?.title || item.title);
 	const reading = $derived(isReadable(item.kind));
-	// An episode whose own picture is the show's poster shows its frame, as
-	// the other episodes do (see `wideStill`); a film keeps its poster and a
-	// book its cover.
-	const framed = $derived(!reading && item.episode > 0 && toldShape(item) === 'portrait');
-	const still = $derived(framed ? wideStill(item, 640) : api.thumbnail.url(item.id, session.token, { width: 640 }));
+	// A video shows a wide picture of itself in this wide card: an episode
+	// its own still, never the show's poster kept beside its first episode
+	// (see `wideStill`), and a film its overlay's backdrop or else its own
+	// still, where its poster stood pillarboxed between blurred bars. A book
+	// keeps its cover.
+	const framed = $derived(!reading);
+	const still = $derived(
+		reading
+			? api.thumbnail.url(item.id, session.token, { width: 640 })
+			: item.episode <= 0 && enrichment?.cover
+				? enrichment.cover
+				: wideStill(item, 640)
+	);
 	const epLabel = $derived(
 		reading
 			? readingLabel(item)
@@ -46,7 +54,7 @@
 		progress && !progress.completed && progress.duration_sec - progress.position_sec > 0
 			? reading
 				? `Page ${Math.max(1, Math.floor(progress.position_sec))} of ${Math.floor(progress.duration_sec)}`
-				: t('title.left', { time: formatLength(progress.duration_sec - progress.position_sec) })
+				: timeLeft(progress.position_sec, progress.duration_sec)
 			: ''
 	);
 	const title = $derived(series);

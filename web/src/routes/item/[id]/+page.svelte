@@ -5,9 +5,9 @@
 	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
 	import RatingPill from '$lib/components/social/RatingPill.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import Clapperboard from '@lucide/svelte/icons/clapperboard';
 	import Play from '@lucide/svelte/icons/play';
@@ -15,7 +15,7 @@
 	import Captions from '@lucide/svelte/icons/captions';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import type { CatalogItem, Enrichment, Library, PlaybackPlan, Progress } from '$lib/api/types';
+	import type { CatalogItem, ComicInfo, Enrichment, Library, PlaybackPlan, Progress } from '$lib/api/types';
 	import { api, ApiError } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
@@ -44,7 +44,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { groupFromEpisodes, type SeriesGroup } from '$lib/utilities/grouping';
-	import { formatBytes, formatDate, formatLength, formatTime } from '$lib/utilities/format';
+	import { formatBytes, formatDate, formatLength, formatRelative, formatTime, timeLeft } from '$lib/utilities/format';
 	import { progressRatio } from '$lib/utilities/progress';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable } from '$lib/reader/kinds';
@@ -67,6 +67,16 @@
 	// The title's other files. Null means "this is a single-file title"
 	// (a movie or a lone special), which renders the plain item page.
 	let series = $state<SeriesGroup | null>(null);
+	// Come back to with Back: the page returns to where it was. Known here,
+	// where the route is drawn for its navigation; the title view below is
+	// drawn only once the title has loaded, after the navigation is over.
+	let returned = $state(false);
+	afterNavigate((nav) => {
+		returned = nav.type === 'popstate';
+	});
+	// What a comic or manga archive says of itself (ComicInfo.xml): its summary
+	// and genres stand in the hero when no overlay has them.
+	let about = $state<ComicInfo | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let notFound = $state(false);
@@ -105,22 +115,28 @@
 	 * position and the menu that was used stay where they were, and a
 	 * failed refresh says so without replacing the page.
 	 */
+	let loads = 0;
 	async function load(quiet = false): Promise<void> {
+		// An answer for a title left meanwhile (another card was opened) is dropped.
+		const mine = ++loads;
+		const want = id;
 		if (!quiet) {
 			loading = true;
 			error = null;
 			notFound = false;
+			about = null;
 		}
 		try {
 			const [it, pl, enr, libs, eps, allProgress] = await Promise.all([
-				api.catalog.get(id),
+				api.catalog.get(want),
 				// A comic or manga has no playback plan; the read never blocks the page.
-				api.playback.plan(id).catch(() => null),
-				api.enrich.get(id),
+				api.playback.plan(want).catch(() => null),
+				api.enrich.get(want),
 				ensureLibraries(),
-				api.catalog.episodes(id),
+				api.catalog.episodes(want),
 				api.me.continueWatching()
 			]);
+			if (mine !== loads) return;
 			item = it;
 			itemCache.set(it.id, it);
 			plan = pl;
@@ -131,8 +147,17 @@
 			progressMap = new Map(allProgress.map((p) => [p.item_id, p]));
 			progress = progressMap.get(it.id) ?? null;
 			series = eps.items.length > 1 ? groupFromEpisodes(eps.items) : null;
+			if (isReadable(it.kind) && !quiet) {
+				void api.reader
+					.pages(it.id)
+					.then((view) => {
+						if (item?.id === it.id) about = view.info ?? null;
+					})
+					.catch(() => {});
+			}
 			if (series) await ensureEnrichments(series.items.map((episode) => episode.id));
 		} catch (err) {
+			if (mine !== loads) return;
 			if (quiet) {
 				toasts.error(errorMessage(err, t('title.refreshFailed')));
 			} else if (err instanceof ApiError && err.kind === 'not-found') {
@@ -141,14 +166,21 @@
 				error = errorMessage(err);
 			}
 		} finally {
-			loading = false;
+			if (mine === loads) loading = false;
 		}
 	}
 
 	onMount(() => {
 		origin = window.location.origin;
 		if (session.user) preferredPlayer = loadPreferredPlayer(session.user.id);
-		void load();
+	});
+	// The page follows its id, not its mount: a link from one title to another
+	// (a "More in" card, Back between two titles) keeps this route, and loading
+	// only on mount left the first title on screen under the second's address.
+	// Another route's id (the player's, while this page is left) is not asked for.
+	const shownId = $derived(page.route.id === '/item/[id]' ? id : '');
+	$effect(() => {
+		if (shownId) untrack(() => void load());
 	});
 
 	// Comics and manga open in the reader: no plan, no external player (D-085).
@@ -180,8 +212,10 @@
 		e.preventDefault();
 		subtitlesOpen = true;
 	}
+	// P where the hero has something to open: a title whose files are gone has nothing.
+	const canPlay = $derived(series ? series.items.some((i) => !i.missing) : playable || (!item?.missing && preferredPlayer !== 'browser'));
 	usePageKeys(() => [
-		{ keys: ['P'], label: t(reading ? 'pageKeys.titleRead' : 'pageKeys.titlePlay') },
+		...(canPlay ? [{ keys: ['P'], label: t(reading ? 'pageKeys.titleRead' : 'pageKeys.titlePlay') }] : []),
 		...(session.isAdmin && subtitleItems.length > 0 ? [{ keys: ['T'], label: t('pageKeys.subtitles') }] : [])
 	]);
 	const ratio = $derived(progress ? progressRatio(progress) : 0);
@@ -341,9 +375,9 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if series}
 	{#key series.key}
-		<TitleView group={series} {progressMap} {libraries} {manage} onProgressChanged={() => void load(true)} />
+		<TitleView group={series} {progressMap} {libraries} {manage} {about} {returned} onProgressChanged={() => void load(true)} />
 	{/key}
-	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} /></div>{/if}
+	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} summary={!!enrichment?.synopsis} /></div>{/if}
 {:else if item}
 	<article class="space-y-6">
 		<!-- The same hero as a series: the art across the top, fading into
@@ -379,9 +413,9 @@
 						<p class="text-sm font-medium text-foreground/80">{metaSegments.join(' · ')}</p>
 					{/if}
 					<h1 class="title-hero-name mt-3 text-foreground">{title}</h1>
-					{#if enrichment?.genres?.length}
+					{#if (enrichment?.genres ?? about?.genres)?.length}
 						<ul class="mt-4 flex flex-wrap gap-x-2 gap-y-1 text-sm text-foreground/70" aria-label="Genres">
-							{#each enrichment.genres.slice(0, 4) as genre, i (genre)}
+							{#each (enrichment?.genres ?? about?.genres ?? []).slice(0, 4) as genre, i (genre)}
 								<li>{#if i > 0}<span class="mr-2 text-muted" aria-hidden="true">·</span>{/if}{genre}</li>
 							{/each}
 						</ul>
@@ -394,8 +428,18 @@
 					<div class="title-actions flex flex-wrap items-center gap-x-2 gap-y-3 md:mt-6">
 						{#if playable || (!item.missing && preferredPlayer !== 'browser')}
 							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
-								<Play class="size-4 fill-current" />
-								{reading ? (resumeAt > 0 ? `Continue from page ${Math.floor(resumeAt)}` : 'Read') : resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
+								{#if progress?.completed}<RotateCcw class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" />{/if}
+								{reading
+									? resumeAt > 0
+										? t('title.continueFromPage', { page: Math.floor(resumeAt) })
+										: progress?.completed
+											? t('title.readAgain')
+											: t('title.read')
+									: resumeAt > 0
+										? `Resume from ${formatTime(resumeAt)}`
+										: progress?.completed
+											? t('title.watchAgain')
+											: t('title.play')}
 							</LinkButton>
 						{:else}
 							<Button size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
@@ -417,16 +461,24 @@
 							<ProgressBar {ratio} class="bg-surface-active" />
 							<p class="text-xs text-muted">
 								{#if reading}
-									Page {Math.floor(progress.position_sec)} of {Math.floor(progress.duration_sec)}
+									{t('browse.pageOf', { page: Math.floor(progress.position_sec), pages: Math.floor(progress.duration_sec) })}
 								{:else}
-									{t('title.left', { time: formatLength(Math.max(1, progress.duration_sec - progress.position_sec)) })}
+									{timeLeft(progress.position_sec, progress.duration_sec)}
 								{/if}
 							</p>
 						</div>
+					{:else if progress?.completed}
+						<!-- Finished: said where the eye is, as the library's card marks it; the button above starts it again. -->
+						<p class="mt-3 flex items-center gap-1.5 text-sm text-muted">
+							<CircleCheck class="size-4 text-foreground/80" aria-hidden="true" />
+							{progress.updated_at
+								? t(reading ? 'title.readWhen' : 'title.watchedWhen', { when: formatRelative(progress.updated_at) })
+								: t(reading ? 'title.read' : 'title.watched')}
+						</p>
 					{/if}
 
-					{#if enrichment?.synopsis}
-						<p class="mt-5 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{enrichment.synopsis}</p>
+					{#if enrichment?.synopsis || about?.summary}
+						<p class="mt-5 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{enrichment?.synopsis || about?.summary}</p>
 					{/if}
 					</div>
 				</div>
@@ -455,7 +507,7 @@
 			</div>
 		{/if}
 
-		{#if reading}<ComicInfoPanel {item} />{/if}
+		{#if reading}<ComicInfoPanel {item} summary={!!enrichment?.synopsis} />{/if}
 
 		<!-- Where the file is and where its metadata came from: an admin's
 		     business, folded away from the page everyone reads. -->

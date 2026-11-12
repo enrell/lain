@@ -47,6 +47,12 @@ export interface CatalogPage {
 	total: number;
 	limit: number;
 	offset: number;
+	/**
+	 * `title` when the page counts titles (D-283): `total`, `limit` and
+	 * `offset` are titles and `items` holds every file of each. Absent on
+	 * a page of files (an older server).
+	 */
+	group?: 'title' | (string & {});
 }
 
 /** internal/contracts.Library (media.go). */
