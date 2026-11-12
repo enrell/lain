@@ -92,6 +92,19 @@ export function noPreference(p: TrackPreferences): boolean {
 	return !p.audio && !p.subtitle && p.mode === 'auto';
 }
 
+/**
+ * The stream a player's "Default" audio choice names. A transcode start
+ * without `audio_stream` plays the account's preferred language (D-280),
+ * so an account with one names the file's default track (flagged
+ * default, else first) to get it; without one, nothing is sent and the
+ * server keeps the default by itself.
+ */
+export function defaultAudioStream(streams: MediaStream[], prefs: TrackPreferences): number | undefined {
+	if (!prefs.audio) return undefined;
+	const audios = streams.filter((s) => s.type === 'audio');
+	return (audios.find((s) => s.default) ?? audios[0])?.index;
+}
+
 const untagged = (l: string | undefined) => !l || l === 'und';
 
 /**

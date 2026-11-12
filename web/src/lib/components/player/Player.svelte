@@ -34,7 +34,7 @@
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
-	import { resolveTracks, trackPreferences } from '$lib/player/track-language';
+	import { defaultAudioStream, resolveTracks, trackPreferences } from '$lib/player/track-language';
 	import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, type SidecarTrack } from '$lib/player/sidecars';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
@@ -745,6 +745,12 @@
 	}
 
 	function onAudioChoice(): void {
+		// "Default" means the file's default track, which a start without
+		// audio_stream no longer gets when the account prefers a language.
+		if (selectedAudio === '') {
+			const index = defaultAudioStream(plan.streams ?? [], trackPreferences(session.user));
+			if (index !== undefined) selectedAudio = String(index);
+		}
 		saveTitleTrack(item.title, 'audio', audioTracks.find((s) => String(s.index) === selectedAudio)?.language);
 		void changeTracks();
 	}
