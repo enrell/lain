@@ -351,41 +351,41 @@ fun ReaderScreen(
         // empty boxes, a wireframe, not a reader.
         val glass = l.sheet.copy(alpha = 0.92f)
         AnimatedVisibility(chrome, Modifier.align(Alignment.TopCenter), enter = fadeIn() + slideInVertically { -it / 2 }, exit = fadeOut() + slideOutVertically { -it / 2 }) {
-            Row(
-                Modifier.safeDrawingPadding().padding(12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(glass).padding(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconBtn(Ic.ArrowLeft, "Back", onBack, tint = l.text)
-                Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
-                    Text(title, color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        stringResource(R.string.progress_page, state.page + 1, book.pages.size) + if (book.offline) " · " + stringResource(R.string.reader_offline) else "",
-                        Modifier.padding(top = 2.dp), color = l.muted, fontSize = 12.sp, maxLines = 1,
-                    )
+            // Two rows: the title has the first to itself, the way the pages go the second.
+            // Sharing one row, the direction control left "Ink and Thu…" of the title.
+            Column(Modifier.safeDrawingPadding().padding(12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(glass).padding(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBtn(Ic.ArrowLeft, "Back", onBack, tint = l.text)
+                    Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                        Text(title, color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            stringResource(R.string.progress_page, state.page + 1, book.pages.size) + if (book.offline) " · " + stringResource(R.string.reader_offline) else "",
+                            Modifier.padding(top = 2.dp), color = l.muted, fontSize = 12.sp, maxLines = 1,
+                        )
+                    }
                 }
                 // The way the pages go (next to the right, next to the left, or down), as the
                 // app's other segmented choices: a tonal track, the one in force filled with the
                 // accent. A faint grey on the chosen arrow left the three looking alike.
-                Column(Modifier.padding(end = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Mono(stringResource(R.string.reader_direction), Modifier.padding(bottom = 4.dp))
-                Row(Modifier.height(34.dp).clip(l.buttonShape).background(l.tonal).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    // Named in words, as the web reader's toggles are: three bare arrows had to be guessed.
-                    for ((way, label) in listOf(0 to stringResource(R.string.reader_way_ltr), 1 to stringResource(R.string.reader_way_rtl), 2 to stringResource(R.string.reader_way_down))) {
-                        val on = if (way == 2) vertical else !vertical && rtl == (way == 1)
-                        val name = stringResource(when (way) { 0 -> R.string.reader_ltr; 1 -> R.string.reader_rtl; else -> R.string.reader_scroll })
-                        Box(
-                            Modifier.fillMaxHeight().clip(RoundedCornerShape(5.dp)).background(if (on) l.accent else Color.Transparent)
-                                .clickable(onClickLabel = name) {
-                                    vertical = way == 2
-                                    readerPrefs.setReadingWayOf(title, when (way) { 0 -> "ltr"; 1 -> "rtl"; else -> "down" })
-                                    if (way != 2) rtl = way == 1
-                                }
-                                .semantics { contentDescription = name; stateDescription = if (on) "selected" else "not selected" }
-                                .padding(horizontal = 13.dp),
-                            contentAlignment = Alignment.Center,
-                        ) { Text(label, color = if (on) l.onAccent else l.muted, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
+                Row(Modifier.padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Mono(stringResource(R.string.reader_direction), Modifier.padding(end = 12.dp))
+                    Row(Modifier.weight(1f).height(36.dp).clip(l.buttonShape).background(l.tonal).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        // Named in words, as the web reader's toggles are: three bare arrows had to be guessed.
+                        for ((way, label) in listOf(0 to stringResource(R.string.reader_way_ltr), 1 to stringResource(R.string.reader_way_rtl), 2 to stringResource(R.string.reader_way_down))) {
+                            val on = if (way == 2) vertical else !vertical && rtl == (way == 1)
+                            val name = stringResource(when (way) { 0 -> R.string.reader_ltr; 1 -> R.string.reader_rtl; else -> R.string.reader_scroll })
+                            Box(
+                                Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(5.dp)).background(if (on) l.accent else Color.Transparent)
+                                    .clickable(onClickLabel = name) {
+                                        vertical = way == 2
+                                        readerPrefs.setReadingWayOf(title, when (way) { 0 -> "ltr"; 1 -> "rtl"; else -> "down" })
+                                        if (way != 2) rtl = way == 1
+                                    }
+                                    .semantics { contentDescription = name; stateDescription = if (on) "selected" else "not selected" },
+                                contentAlignment = Alignment.Center,
+                            ) { Text(label, color = if (on) l.onAccent else l.muted, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
+                        }
                     }
-                }
                 }
             }
         }
