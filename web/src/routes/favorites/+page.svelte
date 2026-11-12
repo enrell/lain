@@ -58,7 +58,6 @@
 
 <div class="space-y-6">
 	<header class="space-y-1">
-		<a href="/" class="font-mono text-[11px] uppercase tracking-[0.16em] text-muted hover:text-foreground"><span aria-hidden="true">‹</span> Home</a>
 		<h1 class="text-xl font-semibold tracking-tight text-foreground">Favorites</h1>
 		<p class="text-sm text-muted">
 			{#if loading}

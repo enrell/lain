@@ -18,6 +18,7 @@
 	const links = $derived([
 		{ href: '/', label: t('nav.home'), exact: true },
 		{ href: '/library', label: t('nav.library'), exact: false },
+		{ href: '/favorites', label: t('nav.favorites'), exact: false },
 		{ href: '/list', label: t('nav.list'), exact: false },
 		{ href: '/social', label: t('nav.social'), exact: false },
 		{ href: '/search', label: t('nav.search'), exact: false },

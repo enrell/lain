@@ -115,6 +115,11 @@ async fn watch_offline_and_sync_back() {
     assert_eq!(core.set_favorite(ep2, true).await.unwrap().len(), 1, "one work, whichever episode named it");
     assert!(core.set_favorite(ITEM1.into(), false).await.unwrap().is_empty());
 
+    // The account's language: set, read back, cleared.
+    assert_eq!(core.set_preferred_language("jpn".into()).await.unwrap().preferred_language, "jpn");
+    assert_eq!(core.me().await.unwrap().preferred_language, "jpn");
+    assert_eq!(core.set_preferred_language(String::new()).await.unwrap().preferred_language, "");
+
     // A score: given, seen in the average, changed, and taken back.
     let unrated = core.rating(ITEM1.into()).await.unwrap();
     assert_eq!((unrated.mine, unrated.scored), (0, 0));

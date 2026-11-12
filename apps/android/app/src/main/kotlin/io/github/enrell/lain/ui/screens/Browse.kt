@@ -148,6 +148,9 @@ private fun progressSubtitle(t: Title, progress: Map<String, io.github.enrell.la
         // A book opened but none finished: where in it, not "0 of 3 read".
         t.items.size > 1 && t.reading && done == 0 && currentItem != null && current != null && current.durationSec > 0 ->
             rowLabelShort(currentItem, true) + " · " + stringResource(R.string.progress_page, current.positionSec.toInt().coerceAtLeast(1), current.durationSec.toInt())
+        // An episode begun and none finished: which one and what is left, not "0 of 12 watched".
+        t.items.size > 1 && done == 0 && currentItem != null && current != null && current.durationSec > 0 ->
+            rowLabelShort(currentItem, false) + " · " + stringResource(R.string.time_left, length((current.durationSec - current.positionSec).coerceAtLeast(1.0)))
         t.items.size > 1 && (done > 0 || current != null) && done < t.items.size ->
             stringResource(if (t.reading) R.string.read_of else R.string.watched_of, done, t.items.size)
         t.items.size == 1 && current != null && current.durationSec > 0 ->
@@ -670,9 +673,8 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
             }
             if (genreNames.isNotEmpty()) {
                 SheetHeading(stringResource(R.string.genres))
-                if (draft.genres.isNotEmpty()) {
-                    Text(stringResource(R.string.genres_all_hint), Modifier.padding(start = 8.dp, bottom = 6.dp), color = l.muted, fontSize = 12.sp)
-                }
+                // Always there, so picking the first genre does not push the list down under the finger.
+                Text(stringResource(R.string.genres_all_hint), Modifier.padding(start = 8.dp, bottom = 6.dp), color = l.muted, fontSize = 12.sp)
                 for (g in if (allGenres) genreNames else genreNames.take(8)) {
                     val on = draft.genres.any { it.equals(g, ignoreCase = true) }
                     val n = genreCounts[g.lowercase()] ?: 0

@@ -83,7 +83,12 @@ class FakeCore : LainCoreInterface {
     override fun logout() {
         sessionInfo = null
     }
-    override suspend fun me(): UserInfo = UserInfo(sessionInfo?.userId ?: "", sessionInfo?.username ?: "", "user", "", "jpn")
+    var language = "jpn"
+    override suspend fun me(): UserInfo = UserInfo(sessionInfo?.userId ?: "", sessionInfo?.username ?: "", "user", "", language)
+    override suspend fun setPreferredLanguage(language: String): UserInfo {
+        this.language = language
+        return me()
+    }
     override suspend fun modules(): List<ModuleInfo> {
         reachable()
         return modules

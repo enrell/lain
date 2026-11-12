@@ -127,7 +127,7 @@
     </plurals>
     <string name="episode_n">Episode %1$d</string>
     <string name="volume_n">Vol %1$d</string>
-    <string name="search_library">Search this library</string>
+    <string name="search_library">Search</string>
     <string name="filters">Sort &amp; filter</string>
     <string name="count_of">%1$d of %2$d titles</string>
     <string name="clear">Clear</string>
@@ -351,4 +351,19 @@
     <string name="player_fit">Fit</string>
     <string name="player_fill">Fill the screen</string>
     <string name="up_next">Up next</string>
+    <string name="download_wait_wifi">Waiting for Wi-Fi to download</string>
+    <string name="settings_language">Audio and subtitles</string>
+    <string name="settings_language_hint">Audio in this language when the file has it, otherwise subtitles in it. Shared with the web client.</string>
+    <string name="settings_language_auto">As the file has it</string>
+    <string name="settings_sub_size">Subtitle size</string>
+    <string name="settings_sub_box">Subtitles on a dark box</string>
+    <string name="settings_sub_box_hint">Easier to read over bright pictures.</string>
+    <string name="settings_metered">On mobile data</string>
+    <string name="settings_metered_hint">The quality videos start at when the network is metered.</string>
+    <string name="settings_metered_original">As the server chooses</string>
+    <string name="settings_wifi_only">Only on Wi-Fi</string>
+    <string name="settings_wifi_only_hint">On mobile data, downloads wait for Wi-Fi.</string>
+    <string name="size_small">Small</string>
+    <string name="size_medium">Medium</string>
+    <string name="size_large">Large</string>
 </resources>

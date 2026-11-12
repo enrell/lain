@@ -6,6 +6,7 @@
 	import { t } from '$lib/i18n';
 	import Download from '@lucide/svelte/icons/download';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import Heart from '@lucide/svelte/icons/heart';
 	import House from '@lucide/svelte/icons/house';
 	// The same glyph as the app's bar: the books-on-a-shelf icon read as a bar chart at this size.
 	import Library from '@lucide/svelte/icons/layout-grid';
@@ -23,12 +24,14 @@
 		'/': House,
 		'/library': Library,
 		'/list': ListChecks,
+		'/favorites': Heart,
 		'/social': Users,
 		'/search': Search,
 		'/acquire': Download,
 		'/settings': Settings
 	};
-	const BAR = ['/', '/library', '/search', '/list'];
+	// The heart's list is used every day; an imported tracking list sits under More.
+	const BAR = ['/', '/library', '/search', '/favorites'];
 	const all = $derived(
 		visibleNav(MOBILE_NAV, session.isAdmin).map((e) => ({ ...e, label: t(e.label), icon: icons[e.href] ?? House }))
 	);

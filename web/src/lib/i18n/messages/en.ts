@@ -64,6 +64,7 @@ const en = {
 		home: 'Home',
 		library: 'Library',
 		list: 'Tracking',
+		favorites: 'Favorites',
 		social: 'Social',
 		unread: { one: '{count} unread notification', other: '{count} unread notifications' },
 		acquire: 'Acquire',
@@ -600,6 +601,8 @@ const en = {
 	title: {
 		manage: 'Manage',
 		manageHint: 'For administrators: metadata, subtitles and files of this title',
+		more: 'More',
+		moreHint: 'Start over, marks and, for administrators, the title\'s files and metadata',
 		fetchMetadata: 'Fetch metadata',
 		refetchMetadata: 'Refetch metadata',
 		removeMetadata: 'Remove metadata',

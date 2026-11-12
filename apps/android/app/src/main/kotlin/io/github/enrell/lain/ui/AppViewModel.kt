@@ -270,6 +270,13 @@ class AppViewModel(
     }
 
     /** Reloads modules, the user, the catalog, libraries and Continue. */
+    /** Sets the account's audio and subtitle language (empty: the file's own choice); false when refused. */
+    suspend fun setPreferredLanguage(code: String): Boolean {
+        val u = runCatching { withContext(io) { core.setPreferredLanguage(code) } }.getOrNull() ?: return false
+        _state.update { it.copy(user = u) }
+        return true
+    }
+
     fun refresh() {
         viewModelScope.launch {
             _state.update { it.copy(busy = true) }

@@ -516,8 +516,8 @@ try {
 	// The admin controls sit behind the title's Manage menu.
 	const menuHas = (text) =>
 		evalValue(`[...document.querySelectorAll('[role="menuitem"]')].some((e) => (e.textContent || '').includes(${JSON.stringify(text)}))`);
-	await waitText('Manage', 15000);
-	await clickText('Manage');
+	await waitText('More', 15000);
+	await clickText('More');
 	await waitFor(`document.querySelectorAll('[role="menuitem"]').length > 0`, 5000, 'manage menu');
 	// The overlay arrives after the item, and the entry turns from "Fetch"
 	// into "Refetch" under the pointer when it does: give it a moment to say
@@ -531,7 +531,7 @@ try {
 		await clickText('Remove metadata', '[role="menuitem"]');
 		await clickText('Remove overlay');
 		await waitText('Metadata overlay removed', 10000);
-		await clickText('Manage');
+		await clickText('More');
 		await waitFor(`document.querySelectorAll('[role="menuitem"]').length > 0`, 5000, 'manage menu');
 	}
 	await clickText('Fetch metadata', '[role="menuitem"]');

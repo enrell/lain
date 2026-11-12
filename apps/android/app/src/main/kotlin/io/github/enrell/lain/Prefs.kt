@@ -62,6 +62,26 @@ class Prefs(private val sp: SharedPreferences) {
         get() = (sp.getString("recent_searches", "") ?: "").split('\n').filter { it.isNotBlank() }
         set(v) = sp.edit().putString("recent_searches", v.joinToString("\n")).apply()
 
+    /** Downloads wait for a network that is not metered (Wi-Fi). */
+    var wifiOnly: Boolean
+        get() = sp.getBoolean("wifi_only", false)
+        set(v) = sp.edit().putBoolean("wifi_only", v).apply()
+
+    /** The quality asked for on a metered network (mobile data); empty plays the file as the server chooses. */
+    var meteredQuality: String
+        get() = sp.getString("metered_quality", "") ?: ""
+        set(v) = sp.edit().putString("metered_quality", v).apply()
+
+    /** Subtitle text size: 0 small, 1 medium, 2 large. */
+    var subtitleSize: Int
+        get() = sp.getInt("subtitle_size", 1)
+        set(v) = sp.edit().putInt("subtitle_size", v).apply()
+
+    /** Subtitles on a dark box instead of an outline alone. */
+    var subtitleBox: Boolean
+        get() = sp.getBoolean("subtitle_box", false)
+        set(v) = sp.edit().putBoolean("subtitle_box", v).apply()
+
     /** The question about download notifications was put once. */
     var notifyAsked: Boolean
         get() = sp.getBoolean("notify_asked", false)

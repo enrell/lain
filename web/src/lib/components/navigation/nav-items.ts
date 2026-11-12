@@ -12,6 +12,7 @@ export interface NavEntry {
 export const MOBILE_NAV: NavEntry[] = [
 	{ href: '/', label: 'nav.home', exact: true },
 	{ href: '/library', label: 'nav.library', exact: false },
+	{ href: '/favorites', label: 'nav.favorites', exact: false },
 	{ href: '/list', label: 'nav.list', exact: false },
 	{ href: '/social', label: 'nav.social', exact: false },
 	{ href: '/search', label: 'nav.search', exact: false },
