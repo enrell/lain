@@ -429,14 +429,22 @@ cargo test --workspace        # every crate, the conformance suites in-process, 
 cargo clippy --workspace --all-targets -- -D warnings
 conformance/run.sh            # the API spec against a throwaway `lain serve`
 just web                      # frontend build + embed
-web/e2e/smoke.mjs             # Chromium/CDP end-to-end against a fresh data dir
+web/e2e/run-smoke.sh          # Chromium/CDP end-to-end against a fresh data dir
 ```
 
-The e2e smoke covers setup, libraries, scan, browse, search, NFO
-enrichment, thumbnails, playback (Range, keyboard seek, bounded
-progress writes), Continue Watching resume, users, composition swap
-with generation fencing, backup download, non-admin gating, deep-link
-refresh, responsive layouts and a console/network quality gate.
+The e2e smoke (`web/e2e/smoke.mjs`; `run-smoke.sh` makes the synthetic
+media, starts `target/release/lain` on a fresh data dir with the network
+providers pointed at a closed port, runs it and stops the server; CI's
+`browser smoke` job runs the same script) covers setup, libraries,
+scan, browse, the header search field and the search page, NFO
+enrichment, favorites, thumbnails, playback (HLS, progressive, a far
+seek, direct Matroska, the frame-proof fallback, Range, keyboard seek,
+bounded progress writes, the player's chrome and controls, subtitles),
+Continue Watching resume, users, composition swap with generation
+fencing, backup download, non-admin gating, deep-link refresh,
+responsive layouts and a console/network quality gate. It needs Node
+22+, ffmpeg and a Chrome that decodes H.264 and AAC (`CHROME=` names
+one).
 
 ## Releases
 
