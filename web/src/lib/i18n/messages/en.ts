@@ -682,7 +682,6 @@ const en = {
 			eyebrow: 'First step',
 			title: 'Watch alongside the people on this server.',
 			body: 'Friends see what you watch, read and rate, and you see theirs: their activity in the Feed, their ratings on each title, collections they share with you.',
-			privacy: 'Privacy settings',
 			stepAdd: 'Add a friend',
 			stepAddText: 'Open Friends, find them by name and add them; they accept from their notifications.',
 			stepFollow: 'Follow along',
@@ -707,7 +706,8 @@ const en = {
 			outgoing: 'Sent requests',
 			blocked: 'Blocked',
 			list: { one: '{count} friend', other: '{count} friends' },
-			none: 'No friends yet.',
+			none: 'No friends yet',
+			noneBody: 'Find someone by name above and add them; they accept from their notifications.',
 			since: 'friends since {when}'
 		},
 		notify: {
