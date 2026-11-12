@@ -468,7 +468,7 @@ fn duration_cache() -> &'static std::sync::Mutex<std::collections::HashMap<Strin
     CACHE.get_or_init(Default::default)
 }
 
-/// `GET /api/durations?ids=a,b,c` (D-274): how long each video is, so a
+/// `GET /api/durations?ids=a,b,c` (D-276): how long each video is, so a
 /// list of episodes can say "24 min" where the catalog only knows a file.
 /// Items that are not videos, are not visible, or cannot be probed are
 /// left out; nothing here fails the request.
@@ -514,7 +514,7 @@ fn durations_get(app: &App, w: &WReq, v: &Verified) -> Out {
     Reply::ok(json!({"items": items})).into()
 }
 
-/// How the item's storyboard is laid out (D-273). Cheap: it probes the
+/// How the item's storyboard is laid out (D-275). Cheap: it probes the
 /// length and makes nothing; a client asks this, then the image.
 fn storyboard_get(app: &App, w: &WReq, v: &Verified) -> Out {
     let it = match item(app, w, v) {
@@ -587,6 +587,8 @@ fn transcode_request(app: &App, v: &Verified, path: &str, sel: &TranscodeSelecti
         start_sec: sel.start_sec,
         allow_video_stream_copy: sel.allow_video_stream_copy,
         allow_audio_stream_copy: sel.allow_audio_stream_copy,
+        video_copy_codecs: sel.video_copy_codecs.clone(),
+        video_effect: sel.video_effect.clone(),
         policy: limits,
         user_id: v.user_id.clone(),
         item_id: item_id.into(),
@@ -878,9 +880,15 @@ fn subtitles(app: &App, w: &WReq, v: &Verified) -> Out {
 
 fn playback_options(app: &App, _: &WReq, _: &Verified) -> Out {
     let s = settings(app);
+    let effects = if app.media.transcoder.probe(&s).video_effects {
+        transcode::effects::PRESETS.iter().map(|p| p.to_string()).collect()
+    } else {
+        Vec::new()
+    };
     Reply::ok(json!(PlaybackOptions {
         default_delivery: s.default_delivery,
         deliveries: vec![st::DELIVERY_HLS.into(), st::DELIVERY_PROGRESSIVE.into()],
+        effects,
         qualities: s.qualities,
     }))
     .into()

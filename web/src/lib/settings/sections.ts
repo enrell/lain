@@ -71,7 +71,7 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'signOut', href: '/settings/profile', anchor: 'account', keywords: 'logout log out session' },
 	{ id: 'player', href: '/settings/playback', anchor: 'player', keywords: 'mpv vlc browser external play' },
 	{ id: 'playbackLanguage', href: '/settings/playback', anchor: 'language', keywords: 'idioma audio subtitle captions language dub' },
-	{ id: 'effects', href: '/settings/playback', anchor: 'effects', keywords: 'anime4k upscale shader webgpu effect' },
+	{ id: 'effects', href: '/settings/playback', anchor: 'effects', keywords: 'anime4k upscale shader webgpu effect server render gpu' },
 	{ id: 'skip', href: '/settings/playback', anchor: 'skip', keywords: 'skip seek jump seconds forward back double tap' },
 	{ id: 'subtitleLook', href: '/settings/playback', anchor: 'subtitle-size', keywords: 'subtitle captions size font background box readability' },
 	{ id: 'anilist', href: '/settings/connections', anchor: 'anilist', keywords: 'anilist list sync scrobble tracker connect' },

@@ -253,6 +253,15 @@ reflected without waiting for a manual scan. Watching can be turned
 off with `--watch=false` / `LAIN_WATCH=false` for filesystems inotify
 cannot see.
 
+While a scan runs, `GET /api/library/scan` carries `progress`
+(D-272): `{phase, libraries, libraries_walked, libraries_done, files,
+files_done, enrich_total?, enrich_done?}`. `phase` is the furthest step
+reached and never goes back: `walk` (roots being listed), `identify`
+(`files_done` of `files`; `files` grows until `libraries_walked`
+reaches `libraries`, since roots walk in parallel), `commit`
+(`libraries_done` of `libraries`) and `enrich` (the metadata backfill,
+`enrich_done` of `enrich_total`). It is absent in every other state.
+
 ## lain.playback.transcode@1 (exactly-one)
 
 Input: `{file_path}` → `Transcode{path, method?, cached?}`. The ffmpeg
@@ -329,6 +338,33 @@ Request fields: `delivery` (`hls` default, or `progressive`),
 allows them), `audio_codec`, `audio_stream`, `subtitle_stream`,
 `subtitle_mode` (`auto|extract|burn|off`), `segment_index`, `policy`
 (the requesting user's limits) and `settings`.
+
+`video_copy_codecs` (D-273, optional) lists the codecs beyond H.264 the
+client decodes in fragmented MP4. Only `hevc` is known; other values
+are ignored. With it, an SDR HEVC source (4:2:0, 8 or 10 bit) is stream
+copied under the rules H.264 already copies by (no burn-in, no
+downscale, inside the bitrate limit, stream copy not refused) and
+tagged `hvc1`; the status then reports `video_codec: "hevc"`,
+`video_direct: true`. It is not `video_codec`, which names the encoder
+target and stays behind `allow_hevc`: a copy encodes nothing, so the
+operator setting does not gate it. HDR sources are still tone-mapped,
+and the MPEG-TS segment container never carries the copy. The claim is
+part of the profile key only when it names `hevc`.
+
+`video_effect` (D-274, optional) asks the server to render a video
+effect into the session: `anime4k-a`, `anime4k-aa` or `anime4k-lite`,
+the web player's presets, run by ffmpeg's `libplacebo` filter with the
+player's own shader files. `GET /api/playback/options` lists what this
+server renders in `effects` (empty when libplacebo cannot run here; the
+admin capabilities say the same in `video_effects`). With an effect the
+video is always encoded, the two upscaling presets produce twice the
+source up to 1920x1080 (never past a `quality` box, never below the
+source), `width`/`height` report that frame and `reasons` gains
+`video effect (<preset>)`. An unknown preset is `invalid-message`. A
+known one this session cannot carry — no libplacebo, an HDR source, an
+image subtitle burned in, a VA-API encode — is not an error: the
+session is the plain one and `fallback` says why. The preset is part of
+the profile key when set.
 
 Status fields: `delivery`, `playable` (HLS: a playlist with at least
 one segment exists), `encoder`, `hardware`, `fallback` (why software
@@ -562,7 +598,7 @@ accepts `?token=` (image elements cannot attach headers). ffmpeg is
 spawned by the provider with a 20s timeout and at most 2 concurrent
 processes; absence degrades this capability, never the boot.
 
-`GET /api/items/{id}/storyboard` (D-273) is how a seek bar previews
+`GET /api/items/{id}/storyboard` (D-275) is how a seek bar previews
 without a request per position: `{interval_sec, count, columns, rows,
 tile_width, tile_height}` for a video whose length is known (404
 otherwise), and `GET /api/items/{id}/storyboard/image` is one JPEG of
@@ -571,7 +607,7 @@ near `i * interval_sec`. At most 120 tiles of 160x90, at least 2 s apart.
 The image is made on its first request, which waits for it (keyframes
 only, one pass over the file), and is cached like a thumbnail.
 
-`GET /api/durations?ids=a,b,c` (D-274) answers how long several videos
+`GET /api/durations?ids=a,b,c` (D-276) answers how long several videos
 are in one request, so a list of episodes can say "24 min" where the
 catalog only knows a file: `{items: [{item_id, duration_sec}]}`. Ids that
 are unknown, not visible to the caller, not videos or not probeable are

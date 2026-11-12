@@ -124,6 +124,9 @@ export interface TranscodeSelection {
 	/** Codecs beyond H.264 this client decodes in fMP4; a source in one
 	 * of them is copied instead of re-encoded (D-273). */
 	video_copy_codecs?: string[];
+	/** An effect the server renders into the session (D-274): one of
+	 * `PlaybackOptions.effects`. */
+	video_effect?: string;
 }
 
 export interface TranscodeStatus {
@@ -177,6 +180,8 @@ export interface PlaybackOptions {
 	default_delivery: TranscodeDelivery;
 	deliveries: string[];
 	qualities: TranscodeQuality[];
+	/** Effects this server can render into a session; empty when none. */
+	effects?: string[];
 }
 
 /** internal/contracts.TranscodeSettings (transcode.go). */
@@ -237,6 +242,8 @@ export interface TranscodeSettings {
 
 /** transcode.Transcoder.Probe (v3.go). */
 export interface TranscodeCapabilities {
+	/** The server can render video effects (libplacebo executes). */
+	video_effects?: boolean;
 	ffmpeg: string;
 	encoders: string[];
 	tone_mapping: boolean;

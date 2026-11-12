@@ -185,6 +185,24 @@ class ModelsTest {
     }
 
     @Test
+    fun aDecoderFailureRetriesWithoutThatCodec() = runTest(main) {
+        val core = FakeCore()
+        val claim = listOf("mkv", "mkv/aac", "mkv/hevc", "mp4", "mp4/hevc")
+        val m = PlayerModel(core, "e1", claim, this)
+        m.load()
+        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 0.0, 0.0, 1440.0, emptyList(), "sess-1")
+
+        assertTrue(m.decoderFailed("video/hevc", 0, 0))
+        advanceUntilIdle()
+        assertEquals(listOf("mkv", "mkv/aac"), core.playCaps.last())
+        assertEquals(SourceKind.HLS, m.state.value.source!!.kind)
+
+        // Already transcoding, or a codec it never claimed: nothing to retry.
+        assertFalse(m.decoderFailed("video/hevc", 0, 0))
+        assertFalse(m.decoderFailed("video/x-unknown", 0, 0))
+    }
+
+    @Test
     fun anHlsSessionFromTheResumePointIsOffset() = runTest(main) {
         val core = FakeCore()
         core.progress["e1"] = progress("e1", 600.0)

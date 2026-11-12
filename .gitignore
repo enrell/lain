@@ -33,3 +33,6 @@ __pycache__/
 
 # Rust workspace (crates/, conformance/runner)
 /target/
+
+# Claude Code local state (worktrees, settings)
+/.claude/

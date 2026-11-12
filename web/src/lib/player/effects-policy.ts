@@ -19,9 +19,15 @@ export interface EffectRule {
 	preset: EffectPreset;
 }
 
+/** Who runs the shaders: this device's GPU, or the server inside the
+ * transcode (D-274), for a device whose GPU cannot carry them. */
+export type EffectRenderer = 'client' | 'server';
+
 export interface EffectsPolicy {
 	default: EffectPreset;
 	rules: EffectRule[];
+	/** Absent in policies saved before D-274: the device renders. */
+	renderOn?: EffectRenderer;
 }
 
 export interface EffectContext {
@@ -43,6 +49,7 @@ export function validateEffectsPolicy(value: unknown): EffectsPolicy | null {
 	if (!value || typeof value !== 'object') return null;
 	const policy = value as Record<string, unknown>;
 	if (!isPreset(policy.default) || !Array.isArray(policy.rules) || policy.rules.length > 128) return null;
+	if (policy.renderOn !== undefined && policy.renderOn !== 'client' && policy.renderOn !== 'server') return null;
 	const rules: EffectRule[] = [];
 	for (const raw of policy.rules) {
 		if (!raw || typeof raw !== 'object') return null;
@@ -65,7 +72,22 @@ export function validateEffectsPolicy(value: unknown): EffectsPolicy | null {
 			maxHeight: rule.maxHeight as number | undefined
 		});
 	}
-	return { default: policy.default, rules };
+	return policy.renderOn === 'server'
+		? { default: policy.default, rules, renderOn: 'server' }
+		: { default: policy.default, rules };
+}
+
+/**
+ * The effect the server renders for this choice: the chosen preset when
+ * the viewer asked for server rendering and the server offers it
+ * (`PlaybackOptions.effects`), otherwise none — the device renders.
+ */
+export function serverEffectFor(
+	renderOn: EffectRenderer,
+	preset: EffectPreset,
+	offered: readonly string[] | undefined
+): EffectPreset | '' {
+	return renderOn === 'server' && preset !== 'off' && (offered ?? []).includes(preset) ? preset : '';
 }
 
 /** Track, resolution, library, type, global; later rows win ties. */
