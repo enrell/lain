@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 
 use lain_auth::Verified;
 use lain_core::{Error, codes};
+use lain_ingest::scanner::ScanRequest;
 use lain_metadata::CAP_METADATA_ENRICH;
 
 use crate::app::App;
@@ -39,11 +40,14 @@ pub fn routes() -> Router<Arc<App>> {
 
 // ---- scans ----------------------------------------------------------------
 
+/// Starts a scan of every library; while one runs, queues one follow-up
+/// behind it (D-286) and says so. Asked again while queued, it stays
+/// one follow-up.
 fn scan_start(app: &App, _: &Req, _: &Verified) -> Reply {
-    if !app.scanner.start_all("manual") {
-        return Reply::err(409, "scan already running");
+    match app.scanner.request_all("manual") {
+        ScanRequest::Started => Reply::json(202, json!({"state": "running"})),
+        ScanRequest::Queued => Reply::json(202, json!({"state": "running", "queued": true})),
     }
-    Reply::json(202, json!({"state": "running"}))
 }
 
 fn scan_status(app: &App, _: &Req, v: &Verified) -> Reply {

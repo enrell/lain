@@ -35,10 +35,21 @@ pub type Sink = Arc<dyn Fn(ScanEvent) + Send + Sync>;
 pub type LibrarySource = Arc<dyn Fn() -> Vec<Library> + Send + Sync>;
 
 /// The running scan's `status.progress` is its live position; a
-/// finished scan has none.
+/// finished scan has none. `queued`: a manual scan was asked for while
+/// this one ran (D-286); one follow-up of every library starts when it
+/// ends, however many times it was asked for.
 #[derive(Default)]
 struct Run {
     status: ScanStatus,
+    queued: bool,
+}
+
+/// What [`Scanner::request_all`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanRequest {
+    Started,
+    /// A scan was running: one follow-up is queued behind it.
+    Queued,
 }
 
 /// Phases only move forward: roots walk in parallel, so a late walk
@@ -66,7 +77,10 @@ impl Scanner {
         Arc::new(Scanner {
             registry: Arc::downgrade(registry),
             libraries,
-            run: Mutex::new(Run { status: ScanStatus { state: "idle".into(), ..ScanStatus::default() } }),
+            run: Mutex::new(Run {
+                status: ScanStatus { state: "idle".into(), ..ScanStatus::default() },
+                queued: false,
+            }),
             sink: RwLock::new(None),
             auto_enrich: AtomicBool::new(auto_enrich),
             stopping: Arc::new(AtomicBool::new(false)),
@@ -94,7 +108,8 @@ impl Scanner {
     }
 
     pub fn status(&self) -> ScanStatus {
-        self.lock().status.clone()
+        let r = self.lock();
+        ScanStatus { queued: r.queued, ..r.status.clone() }
     }
 
     pub fn running(&self) -> bool {
@@ -181,12 +196,43 @@ impl Scanner {
         self.start(libs, trigger)
     }
 
-    fn finish(&self, status: ScanStatus) {
-        self.lock().status = status.clone();
-        self.emit(ScanEvent::Finished(Box::new(status)));
+    /// A manual scan of every library, or, while one runs, one follow-up
+    /// queued behind it (D-286): the running scan walks only the
+    /// libraries it started with, so a library added meanwhile would
+    /// otherwise wait for the next scan someone asks for.
+    pub fn request_all(self: &Arc<Self>, trigger: &str) -> ScanRequest {
+        if self.start_all(trigger) {
+            return ScanRequest::Started;
+        }
+        loop {
+            {
+                let mut r = self.lock();
+                if r.status.state == "running" {
+                    r.queued = true;
+                    return ScanRequest::Queued;
+                }
+            }
+            // The scan ended between the two looks: start this one now.
+            if self.start_all(trigger) {
+                return ScanRequest::Started;
+            }
+        }
     }
 
-    fn run(&self, libs: Vec<Library>, trigger: &str) {
+    fn finish(self: &Arc<Self>, status: ScanStatus) {
+        let again = {
+            let mut r = self.lock();
+            r.status = ScanStatus { queued: false, ..status.clone() };
+            std::mem::take(&mut r.queued)
+        };
+        self.emit(ScanEvent::Finished(Box::new(status)));
+        if again {
+            tracing::info!("starting the queued scan");
+            self.start_all("manual");
+        }
+    }
+
+    fn run(self: &Arc<Self>, libs: Vec<Library>, trigger: &str) {
         tracing::info!(libraries = libs.len(), trigger, "scan started");
         let started_at = self.status().started_at;
         let Some(reg) = self.registry.upgrade() else { return };

@@ -344,6 +344,8 @@ export interface ScanStatus {
 	error?: string;
 	/** What started this scan: a button press or the filesystem watcher. */
 	trigger?: 'manual' | 'watch';
+	/** D-286: a scan asked for while this one runs; it starts by itself after. */
+	queued?: boolean;
 }
 
 /** internal/contracts.Enrichment (media.go). */
