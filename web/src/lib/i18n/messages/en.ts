@@ -122,7 +122,16 @@ const en = {
 			region: 'Unsaved changes',
 			count: { one: '{count} change staged', other: '{count} changes staged' },
 			discard: 'Discard',
-			apply: 'Apply'
+			apply: 'Apply',
+			armed: 'Esc again discards every change',
+			leaveTitle: 'Leave without applying?',
+			leaveBody: {
+				one: '{count} change on this page is staged and not applied yet.',
+				other: '{count} changes on this page are staged and not applied yet.'
+			},
+			stay: 'Stay',
+			discardLeave: 'Discard and leave',
+			applyLeave: 'Apply and leave'
 		},
 		section: {
 			profile: { label: 'Profile', hint: 'Name, bio, avatar, account' },
