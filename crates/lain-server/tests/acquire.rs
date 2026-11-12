@@ -353,6 +353,98 @@ fn release_alternatives_through_the_api() {
     std::fs::remove_dir_all(dir).ok();
 }
 
+/// D-279's years end to end: the model reads "Blade.Runner.2049.1080p"
+/// as "Blade Runner 2049" and offers "Blade Runner". The answer does not
+/// take the 2049 its title holds, so the monitored sequel (2017) grabs the
+/// release while the first film (1982), monitored too, leaves it; a
+/// search with a year never reads it as a film of another year.
+#[test]
+fn release_years_through_the_api() {
+    use lain_bridge::fake::Fake;
+    use lain_bridge::http1::Endpoint;
+    use lain_bridge::parser::ReleaseModel;
+
+    let dir = lain_store::test_dir("rs-acquire-years");
+    let media = dir.join("media/Films");
+    std::fs::create_dir_all(&media).unwrap();
+    const NAME: &str = "Blade.Runner.2049.1080p";
+    let files = vec![SourceFile { path: vec![format!("{NAME}.mkv")], data: payload(20_000, 5) }];
+    let (raw, mi) = build(NAME, &files, 16 << 10, &["http://127.0.0.1:9/announce".to_string()]).unwrap();
+    let index = indexer(raw, NAME.to_string(), mi.info.length);
+    let service = Fake::tcp(Arc::new(|r| match (r.method.as_str(), r.path.as_str()) {
+        ("GET", "/health") => (200, json!({"status": "ok", "artifact": "v6-s11"})),
+        ("POST", "/parse") if r.body.as_ref().is_some_and(|b| b["filename"].as_str() == Some(NAME)) => (
+            200,
+            json!({"record": {"title": "Blade Runner 2049", "resolution": "1080p"},
+                "alternatives": [{"title": "Blade Runner"}]}),
+        ),
+        _ => (200, json!({"record": null})),
+    }));
+
+    let server = Server::start(&dir.join("data"));
+    server.app.registry.register(Arc::new(ReleaseModel::new(Endpoint::parse(&service.url).unwrap())));
+    let base = Base::parse(&server.url).unwrap();
+    let tok = admin(&base);
+    let (_, lib) = call(
+        &base,
+        "POST",
+        "/api/libraries",
+        &tok,
+        Some(json!({"name": "Films", "type": "movie", "path": media.to_string_lossy()})),
+    );
+
+    let (st, r) = call(&base, "GET", &format!("/api/acquire/parse?name={NAME}&kind=movie"), &tok, None);
+    assert_eq!(st, 200, "{r}");
+    assert_eq!((&r["title"], r.get("year")), (&json!("Blade Runner 2049"), None), "the title holds 2049: {r}");
+    assert_eq!(r["alternatives"], json!([{"title": "Blade Runner", "year": 2049}]), "{r}");
+
+    let (st, ix) = call(
+        &base,
+        "POST",
+        "/api/acquire/indexers",
+        &tok,
+        Some(
+            json!({"name": "tracker-exemplo", "protocol": "torznab", "url": index, "api_key": "k", "min_interval_ms": 0}),
+        ),
+    );
+    assert_eq!(st, 201, "{ix}");
+    let search = |q: &str| {
+        let (st, res) = call(&base, "GET", &format!("/api/acquire/search?kind=movie&{q}"), &tok, None);
+        assert_eq!(st, 200, "{res}");
+        res["candidates"][0].clone()
+    };
+    let c = search("q=Blade%20Runner%202049&year=2017");
+    assert_eq!(c["release"]["title"], "Blade Runner 2049", "{c}");
+    assert!(c.get("rejections").is_none(), "{c}");
+    let c = search("q=Blade%20Runner&year=1982");
+    assert_eq!(c["release"]["title"], "Blade Runner 2049", "not the 1982 film: {c}");
+    assert_eq!(c["rejections"], json!(["title does not match"]), "{c}");
+    let c = search("q=Blade%20Runner");
+    assert_eq!((&c["release"]["title"], &c["release"]["year"]), (&json!("Blade Runner"), &json!(2049)), "{c}");
+
+    let monitor = |title: &str, year: i64| {
+        let body = json!({"library_id": lib["id"], "kind": "movie", "title": title, "year": year});
+        let (st, m) = call(&base, "POST", "/api/acquire/monitored", &tok, Some(body));
+        assert_eq!(st, 201, "{m}");
+        m["id"].as_str().unwrap().to_string()
+    };
+    let first = monitor("Blade Runner", 1982);
+    let sequel = monitor("Blade Runner 2049", 2017);
+    let (st, rep) = call(&base, "POST", &format!("/api/acquire/monitored/{first}/search"), &tok, None);
+    assert_eq!(st, 200, "{rep}");
+    assert_eq!(rep["grabbed"], json!([]), "{rep}");
+    let (st, rep) = call(&base, "POST", &format!("/api/acquire/monitored/{sequel}/search"), &tok, None);
+    assert_eq!(st, 200, "{rep}");
+    assert_eq!(rep["grabbed"].as_array().map(Vec::len), Some(1), "{rep}");
+    let (_, list) = call(&base, "GET", "/api/acquire/grabs", &tok, None);
+    let g = &list["grabs"][0];
+    assert_eq!((&g["monitored_id"], &g["release"]["title"]), (&json!(sequel), &json!("Blade Runner 2049")), "{g}");
+    assert!(g["release"].get("year").is_none() && g["release"].get("alternatives").is_none(), "{g}");
+    drop(server);
+    drop(service);
+    std::fs::remove_dir_all(dir).ok();
+}
+
 /// D-156: the acquire item routes answer 404 for an item of a locked
 /// private library, admin included, as for one that does not exist.
 #[test]

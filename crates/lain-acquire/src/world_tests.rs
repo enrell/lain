@@ -645,6 +645,51 @@ fn a_manual_grab_settles_nothing() {
     m.close();
 }
 
+/// A parser that reads the world's release as episodes 1-2 of the
+/// sequel "Show 2" (2017), and offers "Show", season 2, as its other
+/// reading (D-279).
+fn sequel_reading(name: &str, kind: &str) -> lain_api::Release {
+    let mut r = lain_identify::tokenize(name, kind);
+    if r.title == "Show" && !r.episodes.is_empty() {
+        r.alternatives = vec![lain_api::ReleaseIdentity {
+            title: "Show".into(),
+            year: 2017,
+            season: 2,
+            episodes: r.episodes.clone(),
+            ..Default::default()
+        }];
+        r.title = "Show 2".into();
+        r.year = 2017;
+    }
+    r
+}
+
+/// A search's year decides between readings and rejects another year
+/// (D-279): one either way is the same release, an unknown one never
+/// rejects.
+#[test]
+fn a_search_compares_years() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt6"), settings(0.0), |d| d.parse = Arc::new(sequel_reading));
+    add_indexer(&m, &w);
+    let ours = |query: &str, year: i64| {
+        let q = SearchQuery { query: query.into(), kind: "anime".into(), year, ..Default::default() };
+        let res = m.search(&q).unwrap();
+        let other = res.candidates.iter().find(|c| c.result.title != w.mi.info.name).unwrap();
+        assert!(!other.rejections.iter().any(|r| r.starts_with("year")), "an unknown year: {other:?}");
+        let c = res.candidates.into_iter().find(|c| c.result.title == w.mi.info.name).unwrap();
+        (c.release.title, c.release.season, c.rejections)
+    };
+    let no: Vec<String> = Vec::new();
+    let year = || "year does not match".to_string();
+    assert_eq!(ours("Show", 0), ("Show".into(), 2, no.clone()));
+    assert_eq!(ours("Show", 2016), ("Show".into(), 2, no.clone()));
+    assert_eq!(ours("Show", 2010), ("Show 2".into(), 0, vec!["title does not match".into(), year()]));
+    assert_eq!(ours("Show 2", 2018), ("Show 2".into(), 0, no.clone()));
+    assert_eq!(ours("Show 2", 2010), ("Show 2".into(), 0, vec![year()]));
+    m.close();
+}
+
 #[test]
 fn rss_sync_feeds_monitored_titles() {
     let w = World::new();

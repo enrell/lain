@@ -249,7 +249,7 @@ impl Manager {
         let mut opts: Vec<Opt> = Vec::new();
         let known = names(m);
         for r in results {
-            let rel = settle((self.d.parse)(&r.title, &m.kind), |t| known.contains(&loose_key(t)));
+            let rel = settle((self.d.parse)(&r.title, &m.kind), |t| known.contains(&loose_key(t)), m.year);
             let cov = covers(m, &rel);
             if cov.is_empty() {
                 continue;
