@@ -11,11 +11,12 @@ import type { SeriesGroup } from '$lib/utilities/grouping';
  * frame over a blurred copy of itself, so nothing is cropped or
  * stretched and one row never mixes a poster with a widescreen card.
  *
- * The metadata cannot say it alone: a video's still is a poster when the
- * file came with one beside it (the server serves that instead of a
- * frame). So a set's first pictures are measured before it is drawn
- * (`measure`, `settleFrame`), and the frame is then held: a grid that
- * voted with its pictures as they arrived changed shape under the eye.
+ * A set is drawn as soon as its titles are known, in the frame guessed
+ * from what is known before a picture loads (`guessShape`, `guessFrame`);
+ * its first pictures are then measured (`measure`, `settleFrame`) and the
+ * frame corrected once if the guess was wrong, then held: a grid that
+ * voted with its pictures as they arrived changed shape under the eye,
+ * and one that waited for them showed nothing for seconds on a cold cache.
  */
 export type Shape = 'portrait' | 'landscape';
 
@@ -77,30 +78,59 @@ export function sampleArt(groups: SeriesGroup[]): CatalogItem[] {
 	return groups.slice(0, SAMPLE).map(artItem);
 }
 
-/** How long a set waits for its first pictures before it is drawn with what is known. */
+/**
+ * Whether the pictures measured so far decide a set's frame, whatever the
+ * others turn out to be: more than half of its first titles measured wide,
+ * or too few left to make them so. A check need not wait for the rest.
+ */
+export function frameDecided(groups: SeriesGroup[]): boolean {
+	const art = sampleArt(groups);
+	let wide = 0;
+	let open = 0;
+	for (const item of art) {
+		const shape = measured.get(item.id);
+		if (shape === undefined) open += 1;
+		else if (shape === 'landscape') wide += 1;
+	}
+	return wide * 2 > art.length || (wide + open) * 2 <= art.length;
+}
+
+/** How long a set's check waits for its first pictures before it settles on what is known. */
 export const MEASURE_WAIT_MS = 2500;
 
 /**
  * Loads pictures not measured yet and records their shapes; resolves when
- * all have answered or after `wait` ms. The browser keeps them, so the
- * cards that show them next load from its cache.
+ * all have answered, when `enough` says the answers so far suffice, or
+ * after `wait` ms. The rest still load and are recorded, and the browser
+ * keeps them, so the cards that show them next load from its cache.
  */
-export function measure(pictures: { id: string; src: string }[], wait = MEASURE_WAIT_MS): Promise<void> {
+export function measure(
+	pictures: { id: string; src: string }[],
+	wait = MEASURE_WAIT_MS,
+	enough: () => boolean = () => false
+): Promise<void> {
 	const todo = pictures.filter((p) => p.src !== '' && !measured.has(p.id));
-	if (todo.length === 0 || typeof Image === 'undefined') return Promise.resolve();
-	const loads = todo.map(
-		(p) =>
-			new Promise<void>((done) => {
-				const img = new Image();
-				img.decoding = 'async';
-				img.referrerPolicy = 'no-referrer';
-				img.onload = () => {
-					recordShape(p.id, img.naturalWidth, img.naturalHeight);
-					done();
-				};
-				img.onerror = () => done();
-				img.src = p.src;
-			})
-	);
-	return Promise.race([Promise.all(loads).then(() => undefined), new Promise<void>((done) => setTimeout(done, wait))]);
+	if (todo.length === 0 || typeof Image === 'undefined' || enough()) return Promise.resolve();
+	return new Promise<void>((resolve) => {
+		let left = todo.length;
+		const timer = setTimeout(resolve, wait);
+		const answered = () => {
+			left -= 1;
+			if (left === 0 || enough()) {
+				clearTimeout(timer);
+				resolve();
+			}
+		};
+		for (const p of todo) {
+			const img = new Image();
+			img.decoding = 'async';
+			img.referrerPolicy = 'no-referrer';
+			img.onload = () => {
+				recordShape(p.id, img.naturalWidth, img.naturalHeight);
+				answered();
+			};
+			img.onerror = answered;
+			img.src = p.src;
+		}
+	});
 }

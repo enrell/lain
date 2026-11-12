@@ -7,7 +7,7 @@
 	 * option are exact. What is set lives in the URL: a view can be
 	 * bookmarked, and Back returns to it. The grid lists titles, one card
 	 * per show (it opens the show's page) or per single file, all in one
-	 * frame (see `settleFrame`).
+	 * frame (see `guessFrame`).
 	 *
 	 * The titles are a library's, every library's, or whatever `source`
 	 * gives (the favourites), so every list of titles browses the same way.
@@ -34,7 +34,7 @@
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
-	import { settleFrame } from '$lib/stores/frames';
+	import { frameNow, guessFrame, settleFrame } from '$lib/stores/frames';
 	import { sampleArt, type Shape } from '$lib/stores/shapes.svelte';
 	import {
 		ADDED, LISTED, NO_FILTERS, SHAPES, SORTS, WATCH,
@@ -280,22 +280,39 @@
 	const results = $derived(apply(all, filters, ctx));
 	let shown = $state(RENDER);
 	const visible = $derived(results.slice(0, shown));
-	// One frame for the whole grid, from its first titles' pictures, measured
-	// before the grid is drawn and then held (see `settleFrame`): it opened
-	// in one shape and turned to the other as the first posters came in. A
-	// later set (a filter, a search) is drawn at once in the frame held, and
-	// takes its own once its pictures are measured.
+	// One frame for the whole grid, held per set (its first titles). A set
+	// is drawn at once in the frame guessed from what is known before a
+	// picture loads (see `guessFrame`), checked once against its first
+	// pictures and changed only if the guess was wrong: a grid that voted
+	// with its pictures as they came in turned shape under the eye, and one
+	// that waited for them stood empty for seconds on a cold thumbnail cache.
+	// The first set waits for its first titles' overlays only (one request);
+	// a later one (a filter, a search) is guessed from what is known when it
+	// is shown.
 	let held = $state<{ key: string; frame: Shape } | null>(null);
 	const sampleKey = $derived(sampleArt(results).map((i) => i.id).join(' '));
-	const frame = $derived<Shape>(held?.frame ?? 'portrait');
+	const frame = $derived.by<Shape>(() => {
+		const key = sampleKey;
+		const h = held;
+		if (!h) return 'portrait';
+		if (h.key === key) return h.frame;
+		// Read once per set: pictures loading must not move it.
+		return untrack(() => frameNow(results));
+	});
 	let settling = 0;
 	$effect(() => {
 		const key = sampleKey;
 		if ((loading && items.length === 0) || held?.key === key) return;
+		const set = untrack(() => results);
+		const first = untrack(() => held) === null;
 		const mine = ++settling;
-		void settleFrame(untrack(() => results)).then((f) => {
-			if (mine === settling) held = { key, frame: f };
-		});
+		void (async () => {
+			const guess = first ? await guessFrame(set) : untrack(() => frame);
+			if (mine !== settling) return;
+			held = { key, frame: guess };
+			const settled = await settleFrame(set);
+			if (mine === settling && settled !== guess) held = { key, frame: settled };
+		})();
 	});
 	// Loaded, and nothing at all: no tools for an empty list.
 	const bare = $derived(!loading && !error && all.length === 0);

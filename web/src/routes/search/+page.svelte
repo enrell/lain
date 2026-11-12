@@ -19,7 +19,7 @@
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { t } from '$lib/i18n';
-	import { settleFrame } from '$lib/stores/frames';
+	import { frameNow, settleFrame } from '$lib/stores/frames';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { recentSearches } from '$lib/stores/recent-searches.svelte';
@@ -36,9 +36,10 @@
 	let input = $state<HTMLInputElement | null>(null);
 	let items = $state<CatalogItem[]>([]);
 	const groups = $derived(groupItems(items));
-	// One frame for the results, as a library grid has: from the first
-	// titles' pictures, measured before the answer is drawn (`settleFrame`).
+	// One frame for the results, as a library grid has: guessed when the
+	// answer is drawn, checked once against its first pictures and held.
 	let frame = $state<Shape>('portrait');
+	let checking = 0;
 	let grid = $state<HTMLElement | null>(null);
 	let total = $state(0);
 	let loading = $state(false);
@@ -53,6 +54,7 @@
 		controller = abort;
 
 		if (term === '') {
+			checking += 1;
 			items = [];
 			total = 0;
 			searchedFor = '';
@@ -72,15 +74,26 @@
 				signal: abort.signal
 			});
 			const next = reset ? result.items : [...items, ...result.items];
-			// The answer is drawn whole: titles, overlays and the frame together,
-			// so it never opens in one shape and turns to the other.
+			// The overlays carry the titles' names and say which pictures are
+			// posters: one request, no picture.
 			await ensureEnrichments(result.items.map((i) => i.id));
-			const settled = reset ? await settleFrame(groupItems(next)) : frame;
 			if (abort.signal.aborted) return;
-			frame = settled;
+			// Drawn at once, in the frame guessed from what is known before a
+			// picture loads: waiting for the pictures left the page blank for
+			// seconds on a cold cache. More of the same answer keeps the frame.
+			const shown = groupItems(next);
+			if (reset) frame = frameNow(shown);
 			items = next;
 			total = result.total;
 			searchedFor = term;
+			if (reset) {
+				// Then checked once against its first pictures: the frame changes
+				// only if the guess was wrong, and is held after that.
+				const mine = ++checking;
+				void settleFrame(shown).then((settled) => {
+					if (mine === checking) frame = settled;
+				});
+			}
 		} catch (err) {
 			if (err instanceof DOMException && err.name === 'AbortError') return;
 			error = errorMessage(err);

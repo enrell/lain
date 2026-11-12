@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Enrichment } from '$lib/api/types';
 import { groupItems } from '$lib/utilities/grouping';
-import { SAMPLE, frameFor, frameOf, guessShape, measure, recordShape, sampleArt, shapeOf } from './shapes.svelte';
+import { SAMPLE, frameDecided, frameFor, frameOf, guessShape, measure, recordShape, sampleArt, shapeOf } from './shapes.svelte';
 
-function item(id: string, title: string, kind = 'video', episode = 0): CatalogItem {
+function item(id: string, title: string, kind = 'video', episode = 0, library = 'lib'): CatalogItem {
 	return {
-		id, library_id: 'lib', kind, title, season: 0, episode, year: 0,
+		id, library_id: library, kind, title, season: 0, episode, year: 0,
 		file_path: `${id}.mkv`, size: 1, confidence: 1, origin: '', provenance: '', updated_at: 0
 	};
 }
@@ -64,6 +64,22 @@ describe('frames', () => {
 		expect(sampleArt(groups).map((i) => i.id).sort()).toEqual(['f', 's1']);
 		const many = groupItems(Array.from({ length: SAMPLE + 10 }, (_, i) => item(`i${i}`, `Title ${i}`)));
 		expect(sampleArt(many)).toHaveLength(SAMPLE);
+	});
+	it('is decided once the measured pictures settle the majority', () => {
+		const groups = groupItems(Array.from({ length: 5 }, (_, i) => item(`d${i}`, `D${i}`, 'video', 0, 'dec')));
+		expect(frameDecided(groups)).toBe(false);
+		recordShape('d0', 1280, 720);
+		recordShape('d1', 1280, 720);
+		expect(frameDecided(groups)).toBe(false);
+		recordShape('d2', 1280, 720);
+		// Three of five wide: the other two cannot turn it.
+		expect(frameDecided(groups)).toBe(true);
+		const upright = groupItems(Array.from({ length: 4 }, (_, i) => item(`u${i}`, `U${i}`, 'video', 0, 'dec')));
+		recordShape('u0', 600, 900);
+		expect(frameDecided(upright)).toBe(false);
+		recordShape('u1', 600, 900);
+		// Two of four upright: a tie at worst, and a tie is portrait.
+		expect(frameDecided(upright)).toBe(true);
 	});
 	it('measures nothing outside a browser and nothing already known', async () => {
 		await expect(measure([{ id: 's1', src: 'x.jpg' }, { id: 'new', src: '' }])).resolves.toBeUndefined();

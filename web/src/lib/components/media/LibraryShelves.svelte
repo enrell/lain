@@ -7,7 +7,7 @@
 	import { api } from '$lib/api';
 	import type { Library, Progress } from '$lib/api/types';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
-	import { settleFrame } from '$lib/stores/frames';
+	import { guessFrame, settleFrame } from '$lib/stores/frames';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
@@ -25,7 +25,7 @@
 		groups: SeriesGroup[];
 		total: number;
 		failed: boolean;
-		/** Decided from the shelf's pictures before it is drawn, and kept (see `settleFrame`). */
+		/** Guessed when the shelf is drawn, checked once against its pictures, then kept (see `guessFrame`). */
 		frame: Shape;
 	}
 	let shelves = $state<Record<string, Shelf>>({});
@@ -52,9 +52,13 @@
 			const recent = sortGroups(groupItems(page.items), 'recent').slice(0, SHOWN);
 			const groups = await Promise.all(recent.map(whole));
 			// A card needs its picture's overlay only; a long show's every episode
-			// would not fit in one request.
-			const frame = await settleFrame(groups);
+			// would not fit in one request. Drawn without waiting for a picture,
+			// then checked once: the frame changes only if the guess was wrong.
+			const frame = await guessFrame(groups);
 			shelves[lib.id] = { groups, total: page.total, failed: false, frame };
+			void settleFrame(groups).then((settled) => {
+				if (settled !== frame) shelves[lib.id].frame = settled;
+			});
 		} catch {
 			shelves[lib.id] = { groups: [], total: 0, failed: true, frame: 'portrait' };
 		}

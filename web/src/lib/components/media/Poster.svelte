@@ -26,7 +26,7 @@
 
 	// poster -> cover -> still frame (extracted and cached by the server).
 	const artwork = $derived(!artworkFailed ? enrichment?.poster || enrichment?.cover || '' : '');
-	// The same address the grids measure ahead of drawing (`settleFrame`), so this load is a cache hit.
+	// The same address a grid's check measures (`settleFrame`), so one load serves both.
 	const thumb = $derived(!thumbFailed ? cardThumb(item) : '');
 	const src = $derived(artwork || thumb);
 	const alt = $derived(enrichment?.title || item.title);
@@ -44,6 +44,11 @@
 		frame ? shapeOf(item.id, guessShape(item, artwork ? enrichment : null)) !== frame : isStill
 	);
 
+	// A card is drawn before its picture has loaded (see `guessFrame`): until
+	// it has, the frame pulses as a skeleton does instead of standing empty.
+	let loadedSrc = $state('');
+	const waiting = $derived(src !== '' && loadedSrc !== src);
+
 	function handleError(): void {
 		if (artwork) artworkFailed = true;
 		else thumbFailed = true;
@@ -52,6 +57,9 @@
 
 <div class={['relative overflow-hidden bg-surface', className].join(' ')}>
 	{#if src}
+		{#if waiting}
+			<div class="absolute inset-0 animate-pulse bg-surface-active/70" aria-hidden="true"></div>
+		{/if}
 		{#if contained}
 			<!-- Fills the bars of a picture that does not match the frame. -->
 			<img
@@ -74,6 +82,7 @@
 			class={['relative size-full', contained ? 'object-contain' : 'object-cover'].join(' ')}
 			onload={(e) => {
 				const img = e.currentTarget as HTMLImageElement;
+				loadedSrc = src;
 				recordShape(item.id, img.naturalWidth, img.naturalHeight);
 			}}
 			onerror={handleError}

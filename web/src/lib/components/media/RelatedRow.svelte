@@ -9,7 +9,7 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
 	import type { CatalogItem, Progress } from '$lib/api/types';
-	import { settleFrame } from '$lib/stores/frames';
+	import { guessFrame, settleFrame } from '$lib/stores/frames';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
@@ -35,7 +35,8 @@
 
 	let groups = $state<SeriesGroup[]>([]);
 	// One frame for the rail and Home's sizes for it, as the library's shelf
-	// has: decided from its pictures before it is drawn (see `settleFrame`).
+	// has: guessed when it is drawn, checked once against its pictures and
+	// then kept (see `guessFrame`).
 	let frame = $state<Shape>('portrait');
 	// The account's positions, so these cards say watched or under way as the
 	// same titles do on the library's shelves; without them a rail of bare
@@ -47,9 +48,10 @@
 			.then((list) => (progressMap = new Map(list.map((p) => [p.item_id, p]))))
 			.catch(() => {});
 	});
-	// Only the latest load may draw: measuring takes up to a few seconds, so
-	// moving on to the next title of the same library could otherwise let the
-	// previous title's rail (which lists the new title) land after its own.
+	// Only the latest load may draw or correct: measuring takes up to a few
+	// seconds, so moving on to the next title of the same library could
+	// otherwise let the previous title's rail (which lists the new title)
+	// land after its own.
 	let run = 0;
 	$effect(() => {
 		const id = libraryId;
@@ -68,10 +70,12 @@
 				const found = (newest ? sortGroups(all, 'recent') : all)
 					.filter((g) => !g.items.some((i) => skip.has(i.id)))
 					.slice(0, 12);
-				const settled = await settleFrame(found);
+				const guess = await guessFrame(found);
 				if (mine !== run) return;
-				frame = settled;
+				frame = guess;
 				groups = found;
+				const settled = await settleFrame(found);
+				if (mine === run) frame = settled;
 			})
 			.catch(() => {});
 	});

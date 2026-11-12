@@ -34,7 +34,7 @@
 		progressOf?: (id: string) => Progress | undefined;
 		priority?: boolean;
 		/** Fill the container's width in the frame its grid or rail shares
-		 * (see `settleFrame`); a picture of the other shape is contained. */
+		 * (see `guessFrame`); a picture of the other shape is contained. */
 		frame?: Shape;
 	} = $props();
 
