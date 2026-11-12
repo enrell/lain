@@ -104,6 +104,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **One main action on a title page** (web): Rate, Share and Add to
   collection under Community, and a comic's Save offline, are the quiet
   buttons of the hero's row; an accent Rate competed with Play.
+- **The library's toolbar is one kind of control** (web): the search,
+  sort, tile size and Sort & filter are filled fields like the sort
+  picker, where an outlined field, a filled picker and an outlined button
+  stood side by side. The genre finder and the library picker in the
+  filters end where the rows under them do.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a
