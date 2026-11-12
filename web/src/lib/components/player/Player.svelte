@@ -1104,6 +1104,109 @@
 		seekTo(currentTime + seconds, false);
 	}
 
+	/*
+	 * Touch and double-click on the picture. A double tap on the left or
+	 * right third seeks 10 s back or forward and keeps counting while the
+	 * taps continue; it never brings the controls up, so the picture stays
+	 * clear while skipping. One tap shows or hides the controls. With a
+	 * mouse, a double click seeks the same way and, in the middle, toggles
+	 * fullscreen.
+	 */
+	const TAP_GAP_MS = 280;
+	const SKIP_SEC = 10;
+	let lastTap = { at: 0, side: 0 };
+	let tapTimer: ReturnType<typeof setTimeout> | null = null;
+	let skipFlash = $state<{ side: -1 | 1; total: number; key: number } | null>(null);
+	let skipFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function sideOf(event: MouseEvent): -1 | 0 | 1 {
+		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const x = (event.clientX - box.left) / box.width;
+		return x < 0.36 ? -1 : x > 0.64 ? 1 : 0;
+	}
+
+	function skip(side: -1 | 1): void {
+		seekBy(side * SKIP_SEC);
+		const total = skipFlash && skipFlash.side === side ? skipFlash.total + SKIP_SEC : SKIP_SEC;
+		skipFlash = { side, total, key: Date.now() };
+		if (skipFlashTimer) clearTimeout(skipFlashTimer);
+		skipFlashTimer = setTimeout(() => (skipFlash = null), 700);
+	}
+
+	function onSurfacePointerDown(event: PointerEvent): void {
+		if (event.pointerType === 'mouse') return; // the stage handles the mouse
+		// A touch on the picture must not bring the controls up by itself.
+		event.stopPropagation();
+		if (settingsOpen) settingsOpen = false;
+	}
+
+	function onSurfacePointerUp(event: PointerEvent): void {
+		if (event.pointerType === 'mouse') return;
+		const side = sideOf(event);
+		const now = performance.now();
+		const again = now - lastTap.at < TAP_GAP_MS && lastTap.side === side;
+		lastTap = { at: now, side };
+		if (tapTimer) clearTimeout(tapTimer);
+		tapTimer = null;
+		if (side !== 0 && (again || skipFlash?.side === side)) {
+			skip(side);
+			return;
+		}
+		if (side === 0 && again) {
+			togglePlay();
+			return;
+		}
+		tapTimer = setTimeout(() => {
+			tapTimer = null;
+			if (controlsVisible) hideChrome();
+			else revealControls();
+		}, TAP_GAP_MS);
+	}
+
+	function onSurfaceDoubleClick(event: MouseEvent): void {
+		// A double tap also arrives as a double click; the taps were counted.
+		if (performance.now() - lastTap.at < 800) return;
+		const side = sideOf(event);
+		if (side === 0) void toggleFullscreen();
+		else skip(side);
+	}
+
+	/*
+	 * A frame of where the seek bar points, while dragging it or hovering
+	 * it. Frames are asked for on a coarse grid (about 150 a title) so a
+	 * drag fetches a handful, and the last one that loaded stays up while
+	 * the next arrives.
+	 */
+	let hoverAt = $state<number | null>(null);
+	let seekRow = $state<HTMLElement | null>(null);
+	let previewSrc = $state('');
+	const previewAt = $derived(scrubbing ? scrubValue : hoverAt);
+	const previewStep = $derived(Math.max(2, Math.round(totalDuration / 150)));
+	const previewWanted = $derived.by(() => {
+		if (previewAt === null || totalDuration <= 0) return '';
+		const at = Math.min(Math.max(0, totalDuration - 1), Math.round(previewAt / previewStep) * previewStep);
+		return api.thumbnail.url(item.id, session.token, { at, width: 320 });
+	});
+	$effect(() => {
+		const url = previewWanted;
+		if (!url) return;
+		const img = new Image();
+		img.onload = () => {
+			if (previewWanted === url) previewSrc = url;
+		};
+		img.src = url;
+	});
+	const previewLeft = $derived.by(() =>
+		previewAt === null || seekMax <= 0 ? 0 : Math.min(100, Math.max(0, (previewAt / seekMax) * 100))
+	);
+	function onSeekHover(event: PointerEvent): void {
+		if (event.pointerType !== 'mouse' || !seekRow || seekMax <= 0) return;
+		const bar = seekRow.querySelector<HTMLElement>('[data-player-seek]');
+		if (!bar) return;
+		const box = bar.getBoundingClientRect();
+		hoverAt = Math.min(seekMax, Math.max(0, ((event.clientX - box.left) / box.width) * seekMax));
+	}
+
 	function seekTo(seconds: number, reveal = false): void {
 		const el = video;
 		if (!el) return;
@@ -1370,6 +1473,28 @@
 	}}
 	onfocusin={revealControls}
 >
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="absolute inset-0 z-10 touch-manipulation select-none"
+		onpointerdown={onSurfacePointerDown}
+		onpointerup={onSurfacePointerUp}
+		ondblclick={onSurfaceDoubleClick}
+	></div>
+	{#if skipFlash}
+		{#key skipFlash.key}
+			<div
+				class={[
+					'skip-flash pointer-events-none absolute inset-y-0 z-10 flex w-[36%] items-center justify-center',
+					skipFlash.side < 0 ? 'left-0 rounded-r-[50%]' : 'right-0 rounded-l-[50%]'
+				].join(' ')}
+				aria-live="polite"
+			>
+				<span class="rounded-full bg-black/55 px-3.5 py-1.5 text-sm font-semibold tabular-nums text-white backdrop-blur">
+					{skipFlash.side < 0 ? '−' : '+'}{skipFlash.total}s
+				</span>
+			</div>
+		{/key}
+	{/if}
 	<header
 		bind:this={headerEl}
 		class={[
@@ -1599,13 +1724,13 @@
 			id="player-settings"
 			role="region"
 			aria-label="Playback settings"
-			class="player-settings absolute bottom-28 right-3 z-30 max-h-[calc(100%-12rem)] w-[min(22rem,calc(100%-1.5rem))] overflow-y-auto rounded-lg border border-line/60 bg-background p-4 text-foreground shadow-xl sm:right-6"
+			class="player-settings absolute bottom-24 right-3 z-30 max-h-[calc(100%-8rem)] w-[min(15.5rem,calc(100%-1.5rem))] overflow-y-auto rounded-lg border border-line/60 bg-background px-3 py-1.5 text-foreground shadow-xl md:bottom-28 md:max-h-[calc(100%-12rem)] md:w-[min(22rem,calc(100%-1.5rem))] md:p-4 sm:right-6"
 		>
-			<div class="mb-3 flex items-center justify-between">
+			<div class="mb-3 flex items-center justify-between max-md:hidden">
 				<h2 class="text-base font-semibold">Playback settings</h2>
 				<IconButton label="Close settings" onclick={() => { settingsOpen = false; settingsButton?.focus(); }}><X class="size-5" /></IconButton>
 			</div>
-			<div class="mb-4 border-b border-line/60 pb-4"><ExternalPlayers itemId={item.id} onOpen={() => video?.pause()} /></div>
+			<div class="mb-4 border-b border-line/60 pb-4 max-md:hidden"><ExternalPlayers itemId={item.id} onOpen={() => video?.pause()} /></div>
 			<label class="chrome-chip">
 				Speed
 				<select class="chrome-select" value={rate} onchange={(event) => setRate(Number(event.currentTarget.value))} aria-label="Playback speed">
@@ -1746,7 +1871,27 @@
 		].join(' ')}
 	>
 		<!-- Seek -->
-		<div class="group/seek flex items-center gap-3">
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			bind:this={seekRow}
+			class="group/seek relative flex items-center gap-3"
+			onpointermove={onSeekHover}
+			onpointerleave={() => (hoverAt = null)}
+		>
+			{#if previewAt !== null && totalDuration > 0}
+				<div class="pointer-events-none absolute bottom-full left-0 right-[6.5rem] mb-2 sm:right-[7.5rem]" aria-hidden="true">
+					<div class="absolute bottom-0 w-44 -translate-x-1/2 sm:w-56" style={`left: clamp(5.5rem, ${previewLeft}%, calc(100% - 5.5rem))`}>
+						<div class="overflow-hidden rounded-lg border border-white/20 bg-black shadow-[0_10px_30px_rgba(0,0,0,0.6)]">
+							{#if previewSrc}
+								<img src={previewSrc} alt="" class="aspect-video w-full object-contain" />
+							{:else}
+								<div class="aspect-video w-full bg-black"></div>
+							{/if}
+						</div>
+						<p class="mt-1 text-center text-xs font-semibold tabular-nums text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">{formatTime(previewAt)}</p>
+					</div>
+				</div>
+			{/if}
 			<Slider.Root
 				type="single"
 				value={scrubbing ? scrubValue : currentTime}
@@ -1868,6 +2013,32 @@
 		border: 1px solid var(--color-line);
 		border-radius: 0.375rem;
 		background: var(--color-background);
+	}
+	@media (max-width: 767px) {
+		.player-settings .chrome-chip {
+			align-items: center;
+			padding: 0.3rem 0;
+			font-size: 0.8125rem;
+		}
+		.player-settings .chrome-select {
+			min-height: 2rem;
+			max-width: 60%;
+			padding: 0.125rem 0.375rem;
+			font-size: 0.8125rem;
+		}
+		.player-settings :global(a) {
+			display: none;
+		}
+	}
+	.skip-flash {
+		background: rgba(255, 255, 255, 0.1);
+		animation: skip-flash 0.7s ease-out forwards;
+	}
+	@keyframes skip-flash {
+		0% { opacity: 0; }
+		15% { opacity: 1; }
+		70% { opacity: 1; }
+		100% { opacity: 0; }
 	}
 	@media (max-width: 420px) {
 		footer > div:last-child { gap: 0; }

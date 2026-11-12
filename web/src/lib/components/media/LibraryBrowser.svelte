@@ -116,7 +116,7 @@
 	/** A new result set starts at its beginning, not mid-scroll. */
 	function toResults(): void {
 		if (!gridTop) return;
-		const top = gridTop.getBoundingClientRect().top + window.scrollY - 190;
+		const top = gridTop.getBoundingClientRect().top + window.scrollY - (window.innerWidth < 768 ? 150 : 190);
 		if (window.scrollY > top) window.scrollTo({ top: Math.max(0, top) });
 	}
 
@@ -279,6 +279,13 @@
 	});
 
 	let sheet = $state(false);
+	function pickSort(next: Sort): void {
+		// Ask for it while it is not yet the default, so the URL keeps
+		// it, then remember it for next time.
+		set({ sort: next });
+		defaultSort = next;
+		savePrefs();
+	}
 
 	function onKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -319,7 +326,7 @@
 		aria-pressed={on}
 		disabled={!on && !count}
 		class={[
-			'flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition-colors disabled:opacity-35',
+			'flex min-h-11 w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition-colors disabled:opacity-35 lg:min-h-0',
 			on ? 'bg-accent/15 text-foreground' : 'text-muted hover:bg-surface-hover hover:text-foreground'
 		].join(' ')}
 		onclick={pick}
@@ -333,8 +340,43 @@
 	<h3 class="mb-1 px-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted/80">{label}</h3>
 {/snippet}
 
-{#snippet panel(findId: string)}
+{#snippet panel(findId: string, sheet: boolean)}
 	<div class="space-y-5">
+		{#if sheet}
+			<div>
+				{@render heading('Sort')}
+				<div class="grid grid-cols-2 gap-1.5 px-2">
+					{#each SORTS as s (s.value)}
+						<button
+							type="button"
+							aria-pressed={filters.sort === s.value}
+							class={['min-h-11 rounded-md border px-3 text-left text-sm', filters.sort === s.value ? 'border-accent/60 bg-accent/15 text-foreground' : 'border-line text-muted'].join(' ')}
+							onclick={() => pickSort(s.value)}
+						>
+							{s.label}
+						</button>
+					{/each}
+				</div>
+			</div>
+			<div>
+				{@render heading('Tiles')}
+				<div class="grid grid-cols-2 gap-1.5 px-2">
+					{#each [[false, 'Large'], [true, 'Small']] as const as [value, label] (label)}
+						<button
+							type="button"
+							aria-pressed={dense === value}
+							class={['min-h-11 rounded-md border px-3 text-left text-sm', dense === value ? 'border-accent/60 bg-accent/15 text-foreground' : 'border-line text-muted'].join(' ')}
+							onclick={() => {
+								dense = value;
+								savePrefs();
+							}}
+						>
+							{label}
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
 		{#if showLibraryFilter}
 			<div>
 				{@render heading('Library')}
@@ -402,7 +444,7 @@
 								type="button"
 								aria-pressed={want}
 								class={[
-									'flex min-w-0 flex-1 items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+									'flex min-h-11 min-w-0 flex-1 items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition-colors lg:min-h-0',
 									want ? 'bg-accent/15 text-foreground' : not ? 'text-muted/60 line-through' : 'text-muted hover:bg-surface-hover hover:text-foreground'
 								].join(' ')}
 								onclick={() => genre(g.value, 'want')}
@@ -416,8 +458,8 @@
 								aria-label={not ? `Stop hiding ${g.value}` : `Hide ${g.value}`}
 								title={not ? 'Stop hiding' : 'Hide titles with this genre'}
 								class={[
-									'flex size-7 shrink-0 items-center justify-center rounded-md text-sm transition-opacity hover:bg-surface-hover hover:text-foreground',
-									not ? 'text-danger opacity-100' : 'text-muted opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100'
+									'flex size-11 shrink-0 items-center justify-center rounded-md text-base transition-opacity hover:bg-surface-hover hover:text-foreground lg:size-7 lg:text-sm',
+									not ? 'text-danger opacity-100' : 'text-muted opacity-60 focus-visible:opacity-100 lg:opacity-0 lg:group-hover/row:opacity-100'
 								].join(' ')}
 								onclick={() => genre(g.value, 'not')}
 							>
@@ -441,12 +483,12 @@
 <div class="lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)] lg:gap-8">
 	<aside class="hidden lg:block" aria-label="Filters">
 		<div class="sticky top-24 -ml-2 max-h-[calc(100vh-7rem)] overflow-y-auto pb-6 pr-1">
-			{@render panel('genre-find')}
+			{@render panel('genre-find', false)}
 		</div>
 	</aside>
 
 	<div class="min-w-0 space-y-4">
-		<div class="z-20 -mx-3 space-y-3 bg-background px-3 pb-3 pt-2 md:sticky md:top-16 md:pt-6 md:shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]">
+		<div class="sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)] sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-16 md:pt-6">
 			<div class="flex items-center gap-2">
 				<div class="relative min-w-0 flex-1">
 					<Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
@@ -460,7 +502,7 @@
 						autocomplete="off"
 						spellcheck="false"
 						enterkeyhint="search"
-						class="h-10 w-full rounded-md border border-line bg-field pl-9 pr-12 text-sm text-foreground placeholder:text-muted/70 transition-colors hover:border-white/15 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+						class="h-11 w-full rounded-md border border-line bg-field pl-9 pr-12 text-sm sm:h-10 text-foreground placeholder:text-muted/70 transition-colors hover:border-white/15 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
 					/>
 					{#if text}
 						<button type="button" aria-label="Clear search" class="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-foreground" onclick={() => { onSearch(''); searchBox?.focus(); }}>
@@ -470,19 +512,12 @@
 						<kbd class="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 font-mono text-[11px] text-muted/70 md:block">/</kbd>
 					{/if}
 				</div>
-				<div class="w-36 shrink-0 sm:w-44">
+				<div class="hidden w-44 shrink-0 sm:block">
 					<Select
 						aria-label="Sort"
 						bind:value={sortValue}
 						options={SORTS.map((s) => ({ value: s.value, label: s.label }))}
-						onValueChange={() => {
-							const next = sortValue as Sort;
-							// Ask for it while it is not yet the default, so the
-							// URL keeps it, then remember it for next time.
-							set({ sort: next });
-							defaultSort = next;
-							savePrefs();
-						}}
+						onValueChange={() => pickSort(sortValue as Sort)}
 					/>
 				</div>
 				<button
@@ -499,7 +534,7 @@
 				</button>
 				<button
 					type="button"
-					class={['flex h-10 shrink-0 items-center gap-2 rounded-md border px-3 text-sm lg:hidden', active > 0 ? 'border-accent/60 text-foreground' : 'border-line text-muted'].join(' ')}
+					class={['flex h-11 shrink-0 items-center gap-2 rounded-md border px-3.5 text-sm sm:h-10 lg:hidden', active > 0 ? 'border-accent/60 text-foreground' : 'border-line text-muted'].join(' ')}
 					aria-label={active > 0 ? `Filters (${active} active)` : 'Filters'}
 					onclick={() => (sheet = true)}
 				>
@@ -554,7 +589,7 @@
 		{:else if loading && items.length === 0}
 			<div class={dense ? FIT_DENSE : FIT}>
 				{#each Array(8) as _}
-					<Skeleton class="aspect-video h-[var(--card-h)]" />
+					<div class="fit-card" data-shape="landscape" style="--r: 1.7778"><Skeleton class="fit-frame w-full" /></div>
 				{/each}
 			</div>
 		{:else if all.length === 0}
@@ -621,7 +656,7 @@
 
 <Modal bind:open={sheet} title="Filters">
 	<div class="mt-4">
-		{@render panel('genre-find-sheet')}
+		{@render panel('genre-find-sheet', true)}
 	</div>
 	<div class="mt-5 flex items-center justify-between gap-3">
 		<Button variant="ghost" disabled={active === 0} onclick={clearAll}>Clear</Button>

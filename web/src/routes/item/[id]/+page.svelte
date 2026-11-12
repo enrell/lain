@@ -301,13 +301,15 @@
 			<div class="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent"></div>
 		</div>
 
-		<div class="relative flex flex-col gap-4 md:-mt-36 md:flex-row md:gap-8">
-			<div class="w-24 shrink-0 sm:w-36 md:w-52">
+		<!-- Phone: the poster beside the title, then everything else full
+		     width below (the text column joins the grid). -->
+		<div class="relative grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-4 gap-y-3.5 md:-mt-36 md:flex md:flex-row md:gap-8">
+			<div class="row-span-2 md:w-52 md:shrink-0">
 				<Poster {item} {enrichment} class="aspect-[2/3] rounded-card border border-line shadow-2xl" priority />
 			</div>
 
-			<div class="min-w-0 flex-1 space-y-3 pt-1 md:space-y-4 md:pt-16">
-				<div>
+			<div class="max-md:contents max-md:[&>*:nth-child(n+3)]:col-span-2 md:min-w-0 md:flex-1 md:space-y-4 md:pt-16">
+				<div class="min-w-0 max-md:self-end">
 					<h1 class="text-2xl font-semibold leading-tight tracking-tight text-foreground md:text-3xl">
 						{title}
 					</h1>
@@ -316,7 +318,7 @@
 					{/if}
 				</div>
 
-				<div class="flex flex-wrap items-center gap-2 text-sm text-muted">
+				<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted max-md:self-start">
 					{#each metaSegments as segment, i (i)}
 						{#if i > 0}<span aria-hidden="true">·</span>{/if}
 						<span>{segment}</span>
@@ -330,12 +332,12 @@
 				     bounded content. -->
 				<div class="flex flex-wrap items-center gap-3 pt-1">
 					{#if playable || (!item.missing && preferredPlayer !== 'browser')}
-						<LinkButton href={playHref(item.id)} size="lg" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
+						<LinkButton href={playHref(item.id)} size="lg" class="max-md:w-full" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
 							<Play class="size-4" />
 							{reading ? (resumeAt > 0 ? `Continue from page ${Math.floor(resumeAt)}` : 'Read') : resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
 						</LinkButton>
 					{:else}
-						<Button size="lg" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
+						<Button size="lg" class="max-md:w-full" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
 							<Play class="size-4" /> Play
 						</Button>
 					{/if}
@@ -346,12 +348,12 @@
 					{/if}
 					{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="ghost" />{/if}
 					{#if session.isAdmin}
-						<div class="flex items-center gap-2 md:ml-auto">
+						<div class="no-scrollbar flex items-center gap-2 max-md:-mx-5 max-md:w-screen max-md:overflow-x-auto max-md:px-5 md:ml-auto">
 							{@render adminActions()}
 						</div>
 					{/if}
 				</div>
-				{#if !item.missing && !reading}<ExternalPlayers itemId={item.id} />{/if}
+				{#if !item.missing && !reading}<div class="max-md:hidden"><ExternalPlayers itemId={item.id} /></div>{/if}
 
 				{#if item.missing}
 					<div class="max-w-2xl rounded-card border border-danger/25 bg-danger/5 px-4 py-3 text-sm">

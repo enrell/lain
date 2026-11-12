@@ -398,12 +398,12 @@
 				{#each libraries as lib (lib.id)}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 					<li
-						class="flex flex-wrap items-center gap-3 bg-surface/40 px-4 py-3.5 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
+						class="flex flex-wrap items-center gap-x-3 gap-y-2 bg-surface/40 px-4 py-3.5 max-sm:[&>*:first-child]:basis-full focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
 						tabindex="0"
 						onkeydown={(e) => rowKey(e, lib)}
 					>
 						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-2">
+							<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 								<p class="truncate font-medium text-foreground">{lib.name}</p>
 								<Badge>{lib.type}</Badge>
 								{#if lib.private}

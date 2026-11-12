@@ -283,3 +283,111 @@ details.settings-section > summary {
 		line-height: 1;
 	}
 }
+
+/* ---- phones ---------------------------------------------------------- */
+/* Keyboard hints mean nothing without a keyboard. */
+@media (hover: none) and (pointer: coarse) {
+	kbd,
+	.key-hint {
+		display: none !important;
+	}
+}
+
+@media (max-width: 767px) {
+	html {
+		-webkit-tap-highlight-color: transparent;
+		-webkit-text-size-adjust: 100%;
+	}
+	/* Below 16px a focused field makes mobile Safari zoom the page. */
+	input:not([type='checkbox'], [type='radio'], [type='range']),
+	select,
+	textarea {
+		font-size: 16px;
+	}
+	/* A row of tabs scrolls sideways instead of wrapping or being cut. */
+	[role='tablist'] {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		scrollbar-width: none;
+		margin-inline: -1.25rem;
+		padding-inline: 1.25rem;
+	}
+	[role='tablist']::-webkit-scrollbar {
+		display: none;
+	}
+	[role='tablist'] > * {
+		flex-shrink: 0;
+	}
+	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, textarea) {
+		max-width: 100%;
+	}
+	/* Thumb-sized fields; text fields and pickers span the column. */
+	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, button[role='combobox']) {
+		min-height: 2.75rem;
+	}
+	.settings-body :is(input:is([type='text'], [type='password'], [type='url'], [type='search'], [type='email'], :not([type])), select, textarea, button[role='combobox']) {
+		width: 100%;
+	}
+	/* Small mono links under a page title (sub-pages) become tappable. */
+	main a.font-mono {
+		padding-block: 0.5rem;
+	}
+	main button.font-mono {
+		min-height: 2.25rem;
+	}
+}
+
+/* ---- cards that take the shape of their picture ----------------------- */
+/* One height per row; a card is as wide as its picture's shape (--r).     */
+.fit-card {
+	width: calc(var(--card-h) * var(--r));
+}
+.fit-frame {
+	height: var(--card-h);
+}
+/* A phone has no room for rows of free widths. Six columns: a portrait
+   takes three (two a row) and a landscape all six; the small tile size
+   gives three portraits or two landscapes a row. */
+@media (max-width: 639px) {
+	.fit-grid {
+		display: grid;
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+		grid-auto-flow: dense;
+		align-items: start;
+		gap: 1.25rem 0.75rem;
+	}
+	.fit-grid .fit-card {
+		width: auto;
+		grid-column: span 3;
+	}
+	.fit-grid .fit-card[data-shape='landscape'] {
+		grid-column: span 6;
+	}
+	.fit-grid.fit-dense .fit-card {
+		grid-column: span 2;
+	}
+	.fit-grid.fit-dense .fit-card[data-shape='landscape'] {
+		grid-column: span 3;
+	}
+	.fit-grid .fit-frame {
+		height: auto;
+		aspect-ratio: var(--r);
+	}
+}
+
+/* A phone lists episodes as rows (thumbnail, then text): six fit a screen
+   where one card each took most of it. */
+@media (max-width: 639px) {
+	.episode-rows > li > :is(a, button, div) {
+		display: flex;
+		align-items: center;
+	}
+	.episode-rows .episode-thumb {
+		width: 9rem;
+		flex-shrink: 0;
+	}
+	.episode-rows .episode-text {
+		flex: 1;
+		padding: 0.5rem 0.875rem;
+	}
+}
