@@ -48,7 +48,7 @@ vi.mock('$lib/api', () => ({
 	}
 }));
 
-const { listTitles } = await import('./titles');
+const { listTitles, titlesOf } = await import('./titles');
 
 beforeEach(() => {
 	state.asked = [];
@@ -74,5 +74,16 @@ describe('listTitles', () => {
 		expect(state.asked.map((o) => o.limit)).toEqual([2, 20]);
 		// Every file was on that page, so no show had to be asked for again.
 		expect(state.episodes).toBe(0);
+	});
+});
+
+describe('titlesOf', () => {
+	it('makes each kept file its whole title, once, and asks only for the ones it keeps', async () => {
+		const kept = [all[4], all[5], all[3], all[0]];
+		expect((await titlesOf(kept)).map((g) => [g.title, g.count])).toEqual([['Beta', 3], ['Film', 1], ['Alpha', 3]]);
+		state.episodes = 0;
+		// A rail's worth: the show past it is never asked for.
+		expect((await titlesOf(kept, 2)).map((g) => g.title)).toEqual(['Beta', 'Film']);
+		expect(state.episodes).toBe(1);
 	});
 });

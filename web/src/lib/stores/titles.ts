@@ -50,18 +50,21 @@ export async function listTitles(opts: Omit<CatalogListOptions, 'group' | 'offse
 
 /**
  * The titles some files belong to, whole and in the files' order, each
- * once: a favourite kept on an episode is its show, two episodes of one
- * show kept apart are one title. A part of a series is asked for its
- * title's files; a lookup that fails keeps the file alone.
+ * once, the first `limit` of them: a favourite kept on an episode is its
+ * show, two episodes of one show kept apart are one title. A part of a
+ * series is asked for its title's files; a lookup that fails keeps the
+ * file alone.
  */
-export async function titlesOf(items: CatalogItem[]): Promise<SeriesGroup[]> {
+export async function titlesOf(items: CatalogItem[], limit = Infinity): Promise<SeriesGroup[]> {
 	const seen = new Set<string>();
-	const firsts = items.filter((item) => {
-		const key = normalizeSeriesTitle(item.title);
-		if (seen.has(key)) return false;
-		seen.add(key);
-		return true;
-	});
+	const firsts = items
+		.filter((item) => {
+			const key = normalizeSeriesTitle(item.title);
+			if (seen.has(key)) return false;
+			seen.add(key);
+			return true;
+		})
+		.slice(0, limit);
 	return Promise.all(
 		firsts.map((item) =>
 			item.episode > 0 || item.season > 0 ? wholeTitle(groupItems([item])[0]) : Promise.resolve(groupItems([item])[0])

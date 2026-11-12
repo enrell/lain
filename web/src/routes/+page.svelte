@@ -94,7 +94,8 @@
 	async function loadFavorites(): Promise<SeriesGroup[]> {
 		try {
 			const ids = (await api.social.settings()).favorites.map((f) => f.item_id ?? '').filter((id) => id !== '');
-			return await titlesOf((await ensureItems(ids.reverse())).filter((item): item is CatalogItem => item !== undefined));
+			// A rail's worth: each show among them is asked for its episodes.
+			return await titlesOf((await ensureItems(ids.reverse())).filter((item): item is CatalogItem => item !== undefined), ROW_TITLES);
 		} catch {
 			return [];
 		}
