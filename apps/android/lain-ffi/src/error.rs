@@ -74,9 +74,11 @@ pub enum LainError {
 }
 
 impl LainError {
-    /// Whether the failure means "not reachable right now".
+    /// Whether the failure means "not reachable right now", the same
+    /// answer as [`ClientError::is_offline`]: a failed TLS handshake
+    /// counts too (D-277).
     pub fn is_offline(&self) -> bool {
-        matches!(self, LainError::Offline { .. } | LainError::Timeout)
+        matches!(self, LainError::Offline { .. } | LainError::Timeout | LainError::Tls { .. })
     }
 }
 
@@ -143,4 +145,28 @@ impl From<lain_core::Error> for LainError {
 
 pub(crate) fn io(e: std::io::Error) -> LainError {
     LainError::Store { detail: e.to_string() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The bindings' error says "unreachable" exactly when the client's
+    /// does, a failed TLS handshake included (D-277).
+    #[test]
+    fn offline_matches_the_client() {
+        let m = || "x".to_string();
+        for e in [
+            ClientError::Offline { message: m() },
+            ClientError::Timeout,
+            ClientError::Tls { message: m() },
+            ClientError::Unauthorized,
+            ClientError::Unsupported { message: m() },
+            ClientError::Invalid { message: m() },
+            ClientError::Api { status: 502, code: m(), message: m() },
+        ] {
+            assert_eq!(LainError::from(e.clone()).is_offline(), e.is_offline(), "{e:?}");
+        }
+        assert!(LainError::Tls { detail: m() }.is_offline());
+    }
 }
