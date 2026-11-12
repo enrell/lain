@@ -20,6 +20,7 @@
 	import { itemCache } from '$lib/stores/media-cache.svelte';
 	import { wideStill } from '$lib/stores/frames';
 	import { loadPreferredPlayer, playbackHref, type PreferredPlayer } from '$lib/player/external-player';
+	import { t } from '$lib/i18n';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	onMount(() => {
@@ -154,31 +155,31 @@
 	});
 
 	function progressLine(episode: CatalogItem): string {
-		if (episode.missing) return 'Missing from disk';
+		if (episode.missing) return t('player.list.missing');
 		const p = progressMap.get(episode.id);
 		// Its length, then its state, as the title page's cards say it.
 		const length = formatLength(durations.get(episode.id));
-		const with_ = (state: string): string => (length ? `${length} · ${state}` : state);
-		if (!p) return length || 'Not watched';
-		if (p.completed) return with_('Watched');
+		const with_ = (state: string): string => (length ? t('player.list.lengthAndState', { length, state }) : state);
+		if (!p) return length || t('player.list.notWatched');
+		if (p.completed) return with_(t('player.list.watched'));
 		if (p.duration_sec > 0 && p.position_sec > 0)
 			// What is left, as every other place says it (not a percentage here and a time there).
-			return `${formatLength(Math.max(1, p.duration_sec - p.position_sec))} left`;
-		return length || 'Not watched';
+			return t('player.list.left', { time: formatLength(Math.max(1, p.duration_sec - p.position_sec)) });
+		return length || t('player.list.notWatched');
 	}
 </script>
 
-<svelte:head><title>{item?.title ? `Playing ${item.title} — Lain` : 'Player — Lain'}</title></svelte:head>
+<svelte:head><title>{item?.title ? t('player.pageTitle', { title: item.title }) : t('player.pageTitleEmpty')}</title></svelte:head>
 
 {#if loading && !item}
 	<div class="flex h-dvh items-center justify-center bg-background">
-		<Spinner class="size-8 text-muted" label="Preparing playback" />
+		<Spinner class="size-8 text-muted" label={t('player.prepare.label')} />
 	</div>
 {:else if notFound}
 	<div class="flex h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
-		<p class="text-sm text-muted">That item no longer exists in the catalog.</p>
+		<p class="text-sm text-muted">{t('player.notFound')}</p>
 		<Button variant="secondary" onclick={() => void goto('/library')}>
-			<ArrowLeft class="size-4" /> Back to library
+			<ArrowLeft class="size-4" /> {t('player.backToLibrary')}
 		</Button>
 	</div>
 {:else if error}
@@ -205,14 +206,14 @@
 						role="status"
 					>
 						<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-							Up next · {countdown}s
+							{t('player.upNext.kicker', { seconds: countdown })}
 						</p>
 						<p class="mt-1 truncate text-sm font-semibold text-foreground">
 							{episodeLabel(upNext)}
 						</p>
 						<div class="mt-3 flex gap-2">
-							<Button variant="secondary" onclick={() => upNext && playNext(upNext)}>Play now</Button>
-							<Button variant="ghost" onclick={cancelUpNext}>Cancel</Button>
+							<Button variant="secondary" onclick={() => upNext && playNext(upNext)}>{t('player.upNext.playNow')}</Button>
+							<Button variant="ghost" onclick={cancelUpNext}>{t('common.cancel')}</Button>
 						</div>
 					</div>
 				{/if}
@@ -223,25 +224,18 @@
 						<MonitorPlay class="mx-auto size-10 text-muted" />
 						<h1 class="mt-5 text-xl font-semibold text-foreground">{item.title}</h1>
 						<p class="mt-3 text-sm leading-relaxed text-muted">
-							{plan.reason ?? 'No playback plan is available for this file in the browser.'}
+							{plan.reason ?? t('player.unavailable.reason')}
 						</p>
 						{#if item.missing}
-							<p class="mt-3 text-xs leading-relaxed text-muted/80">
-								The entry stays in the catalog so progress and metadata are preserved. If the file
-								comes back, it becomes playable again on its own.
-							</p>
+							<p class="mt-3 text-xs leading-relaxed text-muted/80">{t('player.unavailable.missing')}</p>
 						{:else}
-							<p class="mt-3 text-xs leading-relaxed text-muted/80">
-								The server only sends bytes it can actually serve: the transcoder is unavailable, so
-								there is no browser-playable version of this container. The desktop/CLI client plays
-								it directly.
-							</p>
+							<p class="mt-3 text-xs leading-relaxed text-muted/80">{t('player.unavailable.noTranscoder')}</p>
 						{/if}
 						<div class="mt-7 flex flex-wrap items-center justify-center gap-2">
 							<Button variant="secondary" onclick={() => void goto(detailHref)}>
-								<ArrowLeft class="size-4" /> Back to details
+								<ArrowLeft class="size-4" /> {t('player.backToDetails')}
 							</Button>
-							<Button variant="ghost" onclick={() => void goto('/library')}>Browse library</Button>
+							<Button variant="ghost" onclick={() => void goto('/library')}>{t('player.browseLibrary')}</Button>
 						</div>
 						{#if !item.missing}<div class="mt-5"><ExternalPlayers itemId={item.id} /></div>{/if}
 					</div>
@@ -282,7 +276,7 @@
 								href={episode.missing ? undefined : playHref(episode.id)}
 								aria-disabled={episode.missing ? 'true' : undefined}
 								aria-current={current ? 'true' : undefined}
-								aria-label={`${episodeLabel(episode)}${current ? ', playing' : ''}`}
+								aria-label={current ? t('player.list.playing', { episode: episodeLabel(episode) }) : episodeLabel(episode)}
 								class={[
 									'flex items-center gap-3 p-2 transition-colors',
 									current ? 'bg-foreground/5' : episode.missing ? 'opacity-50' : 'hover:bg-foreground/8'
@@ -334,7 +328,7 @@
 					{[item.year > 0 ? String(item.year) : '', formatLength(plan?.duration_sec), ...(about?.genres ?? []).slice(0, 2)].filter(Boolean).join('  ·  ')}
 				</p>
 				{#if about?.synopsis}<p class="mt-4 text-sm leading-6 text-foreground/75">{about.synopsis}</p>{/if}
-				<a href={`/item/${item.id}`} class="mt-5 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover">Details</a>
+				<a href={`/item/${item.id}`} class="mt-5 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover">{t('player.details')}</a>
 			</div>
 		{/if}
 	</div>
