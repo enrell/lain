@@ -909,6 +909,21 @@ pub struct ExtractJob {
     pub error: Option<JobError>,
 }
 
+/// Another reading of who a release is (`Release.alternatives`, D-275):
+/// the fields that name it, with `Release`'s meanings and zeros.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReleaseIdentity {
+    pub title: String,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub year: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub season: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub episodes: Vec<i64>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub absolute: bool,
+}
+
 /// A parsed release name (`lain.release.parse@1`). Zero numbers mean
 /// "not stated"; `episodes` lists every episode a pack covers and
 /// `absolute` marks absolute numbering (anime with no season marker).
@@ -945,10 +960,18 @@ pub struct Release {
     pub repack: bool,
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub version: i64,
+    /// Other identities the provider considered, best first, at most
+    /// `MAX_RELEASE_ALTERNATIVES` (D-275). Advice for a caller that knows
+    /// which titles it expects; a provider that has none omits them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<ReleaseIdentity>,
     /// The provider that produced the record.
     #[serde(default)]
     pub parser: String,
 }
+
+/// The most `Release.alternatives` a provider answers.
+pub const MAX_RELEASE_ALTERNATIVES: usize = 5;
 
 // ---- composition and modules ------------------------------------------------
 
@@ -1184,6 +1207,25 @@ mod tests {
         assert!(lib.extra.is_empty());
         let stored = Library { locked: None, ..lib };
         assert!(serde_json::to_value(&stored).unwrap().get("locked").is_none());
+    }
+
+    #[test]
+    fn release_alternatives_are_additive() {
+        let plain = r#"{"title":"Show","season":1,"episodes":[2],"parser":"lain-release-tokenizer"}"#;
+        let r: Release = serde_json::from_str(plain).unwrap();
+        assert!(r.alternatives.is_empty());
+        assert_eq!(serde_json::to_value(&r).unwrap(), serde_json::from_str::<Value>(plain).unwrap());
+        let with = r#"{"title":"Show 2","parser":"p","alternatives":[{"title":"Show","episodes":[2],"absolute":true},{"title":"Show","season":2}]}"#;
+        let r: Release = serde_json::from_str(with).unwrap();
+        assert_eq!(
+            r.alternatives[0],
+            ReleaseIdentity { title: "Show".into(), episodes: vec![2], absolute: true, ..Default::default() }
+        );
+        assert_eq!(r.alternatives[1].season, 2);
+        assert_eq!(
+            serde_json::to_value(&r).unwrap()["alternatives"][1],
+            serde_json::json!({"title": "Show", "season": 2})
+        );
     }
 
     #[test]

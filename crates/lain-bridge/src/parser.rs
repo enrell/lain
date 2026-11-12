@@ -28,7 +28,7 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use lain_api::Release;
+use lain_api::{MAX_RELEASE_ALTERNATIVES, Release, ReleaseIdentity};
 use lain_core::{Error, Provider};
 use lain_identify::release::{clean_title, resolution, tokenize};
 use lain_identify::{CAP_RELEASE_PARSE, MAX_NAME};
@@ -135,6 +135,9 @@ struct ModelRecord {
 struct ParseAnswer {
     #[serde(default)]
     record: Option<ModelRecord>,
+    /// Other identities the model considered (service 1.3.0 and later).
+    #[serde(default)]
+    alternatives: Vec<ModelRecord>,
 }
 
 #[derive(Deserialize)]
@@ -172,6 +175,44 @@ fn merge(rec: ModelRecord, tok: Release) -> Release {
         r.resolution = v.into();
     }
     r
+}
+
+/// What a model record says the release is, for telling readings apart.
+fn identity(rec: &ModelRecord) -> (String, i64, Vec<i64>) {
+    let mut episodes = rec.episodes.clone().unwrap_or_default();
+    episodes.truncate(MAX_EPISODES);
+    (clean_title(rec.title.as_deref().unwrap_or("")).to_lowercase(), rec.season.unwrap_or(0), episodes)
+}
+
+/// The model's other identities as `Release.alternatives` (D-275):
+/// without `own` (the answer's reading), without repeats, at most
+/// `MAX_RELEASE_ALTERNATIVES`. They carry the model's numbers only, never
+/// the tokenizer's: a reading without an episode is a reading. A year
+/// the model did not read is the tokenizer's, unless the alternative's
+/// title holds it.
+fn alternatives(others: Vec<ModelRecord>, own: (String, i64, Vec<i64>), tok_year: i64) -> Vec<ReleaseIdentity> {
+    let mut seen = vec![own];
+    let mut out = Vec::new();
+    for rec in others {
+        if out.len() == MAX_RELEASE_ALTERNATIVES {
+            break;
+        }
+        let k = identity(&rec);
+        if k.0.is_empty() || seen.contains(&k) {
+            continue;
+        }
+        let title = clean_title(rec.title.as_deref().unwrap_or(""));
+        let (season, episodes) = (k.1, k.2.clone());
+        seen.push(k);
+        let year = match rec.year.filter(|y| *y > 0) {
+            Some(y) => y,
+            None if tok_year > 0 && !title.contains(&tok_year.to_string()) => tok_year,
+            None => 0,
+        };
+        let absolute = rec.season.is_none() && !episodes.is_empty();
+        out.push(ReleaseIdentity { title, year, season, episodes, absolute });
+    }
+    out
 }
 
 impl Provider for ReleaseModel {
@@ -212,7 +253,7 @@ impl Provider for ReleaseModel {
         {
             return Err(Self::unavailable("parser socket not found"));
         }
-        let body = json!({"filename": i.name});
+        let body = json!({"filename": i.name, "alternatives": MAX_RELEASE_ALTERNATIVES});
         let req =
             Request { json: Some(&body), timeout: self.timeout, max_body: 256 << 10, ..Request::new("POST", "/parse") };
         let res = http1::send(&self.endpoint, &req).map_err(|_| Self::unavailable("parser not answering"))?;
@@ -223,7 +264,11 @@ impl Provider for ReleaseModel {
             serde_json::from_slice(&res.body).map_err(|_| Self::unavailable("parser sent bad json"))?;
         match ans.record {
             Some(rec) if rec.title.as_deref().is_some_and(|t| !t.trim().is_empty()) => {
-                Ok(json!(merge(rec, tokenize(&i.name, &i.kind))))
+                let tok = tokenize(&i.name, &i.kind);
+                let (own, tok_year) = (identity(&rec), tok.year);
+                let mut r = merge(rec, tok);
+                r.alternatives = alternatives(ans.alternatives, own, tok_year);
+                Ok(json!(r))
             }
             // Abstained: the zero Release is a decline.
             _ => Ok(json!(Release::default())),
@@ -259,6 +304,34 @@ mod tests {
         assert_eq!((r.season, r.absolute, r.season_pack, r.year), (2, false, false, 2001));
         let many = ModelRecord { title: Some("X".into()), episodes: Some((0..5000).collect()), ..Default::default() };
         assert_eq!(merge(many, Release::default()).episodes.len(), MAX_EPISODES);
+    }
+
+    #[test]
+    fn alternatives_follow_the_merge_rules() {
+        let own = || ("blade runner".to_string(), 0, Vec::new());
+        let rec = |title: &str, year: Option<i64>, season: Option<i64>, eps: Option<Vec<i64>>| ModelRecord {
+            title: Some(title.into()),
+            year,
+            season,
+            episodes: eps,
+            ..ModelRecord::default()
+        };
+        let out = alternatives(
+            vec![
+                rec("blade  runner", Some(2049), None, None), // the answer again
+                rec("Blade Runner 2049", None, None, None),   // the year read as title
+                rec("Blade", None, None, Some((0..5000).collect())),
+                rec("Blade Runner", Some(1982), Some(0), Some(vec![1])),
+            ],
+            own(),
+            2049,
+        );
+        assert_eq!(out.len(), 3);
+        assert_eq!((out[0].title.as_str(), out[0].year), ("Blade Runner 2049", 0));
+        assert_eq!((out[1].year, out[1].episodes.len(), out[1].absolute), (2049, MAX_EPISODES, true));
+        assert_eq!((out[2].year, out[2].season, out[2].absolute), (1982, 0, false), "a stated season 0 is seasonal");
+        let many = (0..9).map(|i| rec(&format!("Show {i}"), None, None, None)).collect();
+        assert_eq!(alternatives(many, own(), 0).len(), MAX_RELEASE_ALTERNATIVES);
     }
 
     #[test]

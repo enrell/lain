@@ -11,7 +11,7 @@ use lain_api::{Library, Release};
 
 use crate::errf;
 use crate::error::{CODE_IMPORT, Result};
-use crate::util::{base_name, ext_lower, loose_key, within};
+use crate::util::{base_name, ext_lower, loose_key, settle, within};
 
 pub const VIDEO_EXTS: &[&str] = &[".mkv", ".mp4", ".avi", ".m4v", ".webm", ".mov", ".ts"];
 pub const READING_EXTS: &[&str] = &[".cbz", ".cbr", ".cb7"];
@@ -70,13 +70,18 @@ pub fn plan_import(
         media.truncate(1);
     }
     let by_key: HashMap<String, &String> = titles.iter().map(|t| (loose_key(t), t)).collect();
+    // A file belongs to the release that was grabbed: its title decides
+    // between the parser's readings of the file name (D-275). The
+    // library's other titles do not, or a sequel would land in the
+    // folder of the show it follows.
+    let grabbed = loose_key(&grab.title);
     let single = media.len() == 1;
     let root = Path::new(&lib.path);
     let mut out = Vec::new();
     let mut seen = BTreeSet::new();
     for f in media {
         let name = base_name(&f.path.to_string_lossy());
-        let mut r = parse(&name, &lib.kind);
+        let mut r = settle(parse(&name, &lib.kind), |t| !grabbed.is_empty() && loose_key(t) == grabbed);
         fill(&mut r, grab, single);
         let title = by_key.get(&loose_key(&r.title)).map(|t| t.to_string()).unwrap_or_else(|| r.title.clone());
         let rel = destination(&lib.kind, &title, &r, &name);
@@ -364,6 +369,47 @@ mod tests {
                 .collect();
             assert_eq!(got, want, "case {i}");
         }
+    }
+
+    #[test]
+    fn plan_import_reads_a_file_as_the_grabbed_title() {
+        use lain_api::ReleaseIdentity;
+        // A parser that reads "Show 2 - 03" as the title "Show 2", and
+        // offers "Show", season 2, as its other reading.
+        let two = |s: &str, kind: &str| {
+            let mut r = lain_identify::tokenize(s, kind);
+            if s.starts_with("Show 2 - ") {
+                r.alternatives = vec![
+                    ReleaseIdentity {
+                        title: "Show".into(),
+                        season: 2,
+                        episodes: r.episodes.clone(),
+                        ..Default::default()
+                    },
+                    ReleaseIdentity { title: "Other".into(), ..Default::default() },
+                ];
+                r.title = "Show 2".into();
+            }
+            r
+        };
+        let src = tmp("settle-src");
+        let lib = Library {
+            id: "lib".into(),
+            kind: "anime".into(),
+            path: tmp("settle-lib").to_string_lossy().into(),
+            ..Default::default()
+        };
+        let files = [touch(&src.join("Show 2 - 03.mkv"), 10)];
+        let titles = ["Other".to_string()];
+        let plan = |grab: &str| {
+            let grab = Release { title: grab.into(), ..Default::default() };
+            let p = plan_import(&lib, &files, &grab, &two, &titles).unwrap();
+            assert!(p[0].release.alternatives.is_empty(), "advice is not stored");
+            (p[0].release.title.clone(), p[0].release.season, p[0].release.episodes.clone())
+        };
+        assert_eq!(plan("Show"), ("Show".into(), 2, vec![3]), "the grab names the show");
+        assert_eq!(plan("Show 2"), ("Show 2".into(), 0, vec![3]), "the answer already is the grab");
+        assert_eq!(plan("Silver Tide"), ("Show 2".into(), 0, vec![3]), "a library title alone decides nothing");
     }
 
     #[test]

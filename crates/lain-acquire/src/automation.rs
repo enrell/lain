@@ -21,7 +21,7 @@ use crate::error::*;
 use crate::importer::place;
 use crate::manager::{GrabRequest, Manager, search_kind};
 use crate::monitored::{self, covers, names, needs, upgradable};
-use crate::util::{base_name, clip, loose_key, new_id, now, within};
+use crate::util::{base_name, clip, loose_key, new_id, now, settle, within};
 
 impl Manager {
     // ---- profiles -------------------------------------------------------
@@ -247,8 +247,9 @@ impl Manager {
             replace: Vec<String>,
         }
         let mut opts: Vec<Opt> = Vec::new();
+        let known = names(m);
         for r in results {
-            let rel = (self.d.parse)(&r.title, &m.kind);
+            let rel = settle((self.d.parse)(&r.title, &m.kind), |t| known.contains(&loose_key(t)));
             let cov = covers(m, &rel);
             if cov.is_empty() {
                 continue;

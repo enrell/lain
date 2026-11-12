@@ -22,6 +22,22 @@ fn daemon(healthy: Arc<AtomicBool>) -> Handler {
                 (200, json!({"artifact": "e5-s2", "record": null, "abstain_reason": null}))
             } else if name.contains("boom") {
                 (500, json!({"error": "internal"}))
+            } else if name.contains("Quiet") {
+                // Service 1.3.0: other identities, when the request asks for them.
+                let asked = r.body.as_ref().and_then(|b| b["alternatives"].as_i64()).unwrap_or(0);
+                let mut answer = json!({"artifact": "v6-s11", "record": {"title": "Quiet Harbor 2",
+                    "release_group": "Fansub-A", "resolution": "720p"}});
+                if asked > 0 {
+                    answer["alternatives"] = json!([
+                        {"title": "Quiet Harbor", "episodes": [2]},
+                        {"title": " quiet  harbor 2 "},
+                        {"title": "Quiet Harbor", "season": 2},
+                        {"title": ""},
+                        {"title": "Quiet Harbor", "episodes": [2]},
+                        {"title": "Quiet"}, {"title": "Harbor"}, {"title": "Harbor 2"}, {"title": "Q"}
+                    ]);
+                }
+                (200, answer)
             } else {
                 (
                     200,
@@ -54,6 +70,22 @@ fn answers_declines_and_failures() {
     assert!(!tok.codec.is_empty());
     assert_eq!(out["codec"], json!(tok.codec), "the tokenizer's tag survives the merge");
 
+    assert!(out.get("alternatives").is_none(), "a daemon that sends none (service < 1.3.0) adds none");
+
+    let out = m.invoke(CAP_RELEASE_PARSE, "parse", json!({"name": "[Fansub-A] Quiet Harbor 2 [720p].mkv"})).unwrap();
+    assert_eq!(out["title"], "Quiet Harbor 2");
+    assert_eq!(
+        out["alternatives"],
+        json!([
+            {"title": "Quiet Harbor", "episodes": [2], "absolute": true},
+            {"title": "Quiet Harbor", "season": 2},
+            {"title": "Quiet"},
+            {"title": "Harbor"},
+            {"title": "Harbor 2"}
+        ]),
+        "cleaned like the answer, without it, without repeats, at most five"
+    );
+
     let out = m.invoke(CAP_RELEASE_PARSE, "", json!({"name": "abstain me"})).unwrap();
     assert_eq!(out["title"], "", "an abstention is the zero Release");
 
@@ -63,6 +95,7 @@ fn answers_declines_and_failures() {
     let seen = fake.seen();
     let parse = seen.iter().find(|s| s.path == "/parse").unwrap();
     assert_eq!(parse.body.as_ref().unwrap()["filename"], "[Fansub-A] Frieren - 05 [1080p][HEVC].mkv");
+    assert_eq!(parse.body.as_ref().unwrap()["alternatives"], 5, "every parse asks for the other identities");
     assert_eq!(parse.header("host"), Some("localhost"));
 
     // Unhealthy daemon: health fails (after the cache expires).
