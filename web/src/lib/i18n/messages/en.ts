@@ -364,6 +364,16 @@ const en = {
 		here: 'On this page',
 		everywhere: 'Everywhere'
 	},
+	// An address the app does not know, or a page that failed to load (+error.svelte).
+	errorPage: {
+		notFoundTitle: 'Nothing at this address',
+		notFoundBody: '{path} is not a page of Lain. The link may be mistyped, or the page has moved.',
+		failedTitle: 'This page did not load',
+		failedBody: 'Something went wrong while opening it.',
+		home: 'Go to Home',
+		reload: 'Try again',
+		searchHint: 'Looking for a title? Press / to search.'
+	},
 	// What `?` lists for each screen (usePageKeys), beside the actions they press.
 	pageKeys: {
 		gridMove: 'Move between titles',
