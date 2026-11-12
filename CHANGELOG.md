@@ -181,9 +181,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   key and deleting a comment ask first; disabling a user and taking a
   favorite off the profile offer Undo.
 - **Dialogs open on what they are for** (web): the first field, or the
-  primary action (Cancel when the action destroys something), never the
-  close button; the player's key list closes on Escape and no longer
-  lets keys through to the video; the reader's takes the focus.
+  primary action, never the close button (a confirmation lands on its
+  action with Enter beside it; one that deletes files lands on Cancel);
+  the player's key list closes on Escape and no longer lets keys through
+  to the video; the reader's takes the focus and keeps it.
 - **Marking a title's episodes keeps the page where it was** (web): the
   refresh no longer swaps the page for its skeleton, which jumped to the
   top and dropped the focus; a provider swap on Plugins likewise.
