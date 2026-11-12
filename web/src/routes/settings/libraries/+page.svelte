@@ -307,7 +307,8 @@
 <div>
 	<SettingsGroup id="scan" title="Scan" description={t('settings.groups.libraries.scan')}>
 		{#snippet aside()}
-			<Button size="field" onclick={() => void startScan()} loading={scan.running} disabled={scan.running}>
+			<!-- With no library there is nothing to walk: Add library is the step. -->
+			<Button size="field" onclick={() => void startScan()} loading={scan.running} disabled={scan.running || (!loading && libraries.length === 0)}>
 				<ScanLine class="size-4" /> Scan now
 			</Button>
 		{/snippet}
@@ -323,6 +324,11 @@
 						</span>
 					{/if}
 				</div>
+				{#if scan.status?.progress?.phase === 'enrich'}
+					<!-- This phase asks the network about every title and can take
+					     long; nothing waits on it. -->
+					<p class="mt-2 text-xs text-muted">{t('scan.enrichHint')}</p>
+				{/if}
 				{#if scan.queued}
 					<p class="mt-1 text-xs text-muted">{t('scan.queuedLine')}</p>
 				{/if}
