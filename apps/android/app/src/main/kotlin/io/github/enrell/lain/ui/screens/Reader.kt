@@ -128,7 +128,8 @@ fun ReaderScreen(
     // Scroll mode: the pages one under the other at the screen's width, for
     // strips made to be read downwards. Kept from one book to the next.
     val readerPrefs = androidx.compose.ui.platform.LocalContext.current.graph.prefs
-    var vertical by remember { mutableStateOf(readerPrefs.readerScroll) }
+    val chosenWay = remember(title) { readerPrefs.readingWayOf(title) }
+    var vertical by remember { mutableStateOf(chosenWay == "down") }
     val list = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = state.page)
     LaunchedEffect(pager.settledPage) { if (!vertical && pager.settledPage < book.pages.size) model.goTo(pager.settledPage) }
     LaunchedEffect(list.firstVisibleItemIndex) { if (vertical && list.firstVisibleItemIndex < book.pages.size) model.goTo(list.firstVisibleItemIndex) }
@@ -176,7 +177,7 @@ fun ReaderScreen(
         if (pager.currentPage > 0) turns.launch { pager.animateScrollToPage(pager.currentPage - 1) }
     }
     // The book's own direction, which the reader may turn around.
-    var rtl by remember(book.direction) { mutableStateOf(book.direction == "rtl") }
+    var rtl by remember(book.direction) { mutableStateOf(chosenWay?.let { it == "rtl" } ?: (book.direction == "rtl")) }
     val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
     DisposableEffect(Unit) {
         val bars = activity?.window?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
@@ -346,7 +347,7 @@ fun ReaderScreen(
                             Modifier.fillMaxHeight().background(if (on) l.accent.copy(alpha = 0.22f) else Color.Transparent)
                                 .clickable(onClickLabel = name) {
                                     vertical = way == 2
-                                    readerPrefs.readerScroll = vertical
+                                    readerPrefs.setReadingWayOf(title, when (way) { 0 -> "ltr"; 1 -> "rtl"; else -> "down" })
                                     if (way != 2) rtl = way == 1
                                 }
                                 .semantics { contentDescription = name; stateDescription = if (on) "selected" else "not selected" }

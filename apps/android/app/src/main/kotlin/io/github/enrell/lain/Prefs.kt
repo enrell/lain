@@ -76,10 +76,14 @@ class Prefs(private val sp: SharedPreferences) {
         get() = sp.getBoolean("player_hint_seen", false)
         set(v) = sp.edit().putBoolean("player_hint_seen", v).apply()
 
-    /** The reader shows pages one under the other (scroll mode) instead of turning them. */
-    var readerScroll: Boolean
-        get() = sp.getBoolean("reader_scroll", false)
-        set(v) = sp.edit().putBoolean("reader_scroll", v).apply()
+    /**
+     * How a title is read, as last chosen for it: "ltr", "rtl" or "down"
+     * (pages one under the other); null until a choice is made, when the
+     * book's own direction applies. Kept per title, as the web reader keeps
+     * it, so one book's choice does not follow you into another.
+     */
+    fun readingWayOf(title: String): String? = sp.getString("reader_way:" + title.trim().lowercase(), null)
+    fun setReadingWayOf(title: String, way: String) = sp.edit().putString("reader_way:" + title.trim().lowercase(), way).apply()
 
     /** The reader's gestures were explained once. */
     var readerHintSeen: Boolean
