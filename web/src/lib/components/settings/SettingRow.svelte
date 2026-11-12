@@ -2,11 +2,12 @@
 	import { t } from '$lib/i18n';
 	/*
 	 * The one row pattern of Settings: label and a one-line hint on the
-	 * left, the control on the right, a hairline below. One vertical scan
-	 * line for the eye; `id` is the anchor Ctrl+K jumps to. On a wide
-	 * screen the hint takes the room and the control column is as wide as
-	 * the widest control: a hint held to 17rem wrapped one word onto a
-	 * second line beside 300px of nothing.
+	 * left, the control on the right, inside a group's panel (which gives
+	 * the inner padding and the hairline between rows). The control column
+	 * has one width on every row, so selects and fields share both edges
+	 * down the page and every hint wraps at the same place; switches,
+	 * numbers and buttons sit at its right edge. `id` is the anchor Ctrl+K
+	 * jumps to.
 	 */
 	import type { Snippet } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
@@ -35,9 +36,9 @@
 <div
 	{id}
 	data-setting-row
-	class="setting-row scroll-mt-28 border-b border-hairline py-4 {stack
+	class="setting-row scroll-mt-28 py-4 {stack
 		? 'space-y-3'
-		: 'grid gap-x-8 gap-y-2 sm:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] sm:items-center xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]'}"
+		: 'grid gap-x-8 gap-y-3 sm:min-h-16 sm:grid-cols-[minmax(0,1fr)_minmax(0,16rem)] sm:items-center lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]'}"
 >
 	<div class="min-w-0">
 		<p class="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -48,7 +49,7 @@
 				</span>
 			{/if}
 		</p>
-		{#if hint}<p class="mt-0.5 text-xs leading-5 text-muted">{hint}</p>{/if}
+		{#if hint}<p class="mt-0.5 text-[13px] leading-5 text-muted">{hint}</p>{/if}
 	</div>
 	{#if children}
 		<div class="flex min-w-0 flex-wrap items-center gap-2 {stack ? '' : 'sm:justify-end'}">
@@ -56,6 +57,8 @@
 		</div>
 	{/if}
 	{#if below}
-		<div class="min-w-0 sm:col-span-2">{@render below()}</div>
+		<!-- Hidden while the snippet renders nothing (an error that is not
+		     there): an empty grid row still took the row gap. -->
+		<div class="min-w-0 empty:hidden sm:col-span-2">{@render below()}</div>
 	{/if}
 </div>
