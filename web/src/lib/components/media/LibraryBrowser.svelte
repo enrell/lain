@@ -64,7 +64,8 @@
 		source,
 		listed = '',
 		prefsKey = 'lain.library.prefs',
-		searchLabel = ''
+		searchLabel = '',
+		filtersFrom = 0
 	}: {
 		libraries?: Library[];
 		libraryId?: string;
@@ -89,6 +90,12 @@
 		/** Where this browser keeps its sort and tile size. */
 		prefsKey?: string;
 		searchLabel?: string;
+		/**
+		 * How many titles earn the filter column on a wide screen. Below it the
+		 * filters stay in the toolbar's sheet, as on a phone: beside three
+		 * favourites the column outweighed the cards.
+		 */
+		filtersFrom?: number;
 	} = $props();
 
 	let selectedLibrary = $state('');
@@ -282,6 +289,8 @@
 		now
 	});
 	const all = $derived(groupItems(items));
+	// Until the titles are in, how many there are is not known: the column waits for them.
+	const columned = $derived(filtersFrom === 0 || (!loading && all.length >= filtersFrom));
 	const results = $derived(apply(all, filters, ctx));
 	let shown = $state(RENDER);
 	const visible = $derived(results.slice(0, shown));
@@ -417,7 +426,7 @@
 			searchBox?.select();
 		} else if (e.key === 'f') {
 			e.preventDefault();
-			if (window.matchMedia('(min-width: 1024px)').matches) document.getElementById('genre-find')?.focus();
+			if (columned && window.matchMedia('(min-width: 1024px)').matches) document.getElementById('genre-find')?.focus();
 			else sheet = true;
 		} else if (e.key === 'c' && narrowed) {
 			e.preventDefault();
@@ -634,11 +643,11 @@
 <!-- Two rows on a wide screen: the heading then the filters on the left, the
      toolbar and grid spanning both on the right. The heading's row is sized
      by the heading alone (the grid spans the flexible row). -->
-<div class="lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-x-8">
+<div class={columned ? 'lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-x-8' : ''}>
 	{#if header}
 		<div class="mb-4 lg:col-start-1 lg:row-start-1 lg:mb-6">{@render header()}</div>
 	{/if}
-	<aside class={['hidden lg:col-start-1 lg:row-start-2', bare ? '' : 'lg:block'].join(' ')} aria-label="Filters">
+	<aside class={['hidden lg:col-start-1 lg:row-start-2', bare || !columned ? '' : 'lg:block'].join(' ')} aria-label="Filters">
 		<div class="sticky top-24 -ml-2 max-h-[calc(100vh-7rem)] overflow-y-auto pb-6 pr-1">
 			{@render panel('genre-find', false)}
 		</div>
@@ -721,7 +730,7 @@
 							<span class={view ? 'hidden xl:inline' : ''}>{t('browse.tiles', { size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge') })}</span>
 						</button>
 						{#if !view}
-							{@render filtersButton('flex lg:hidden')}
+							{@render filtersButton(columned ? 'flex lg:hidden' : 'flex')}
 						{:else}
 							{@render filtersButton('hidden sm:flex lg:hidden')}
 						{/if}
