@@ -125,6 +125,65 @@ selected when the client can render it. Missing language metadata
 leaves the native player selection in control. Explicit player track
 changes override the initial automatic selection for that item.
 
+**Audio and subtitles apart (D-280).** The public user object adds three
+optional fields, each absent when empty:
+
+- `preferred_audio_language` — ISO 639-2; absent plays the file's
+  default audio.
+- `preferred_subtitle_language` — ISO 639-2; absent when none is
+  preferred.
+- `preferred_subtitle_mode` — `always`, `forced` or `off`; absent is
+  `auto`.
+
+`PATCH /api/me/preferences` takes any subset of `preferred_language`,
+`preferred_audio_language`, `preferred_subtitle_language` and
+`preferred_subtitle_mode` (`""` resets the mode to `auto`); only the
+fields present change, and a refused value (400, `<field> must be a
+three-letter ISO 639-2 code` or `preferred_subtitle_mode must be auto,
+always, forced or off`) changes nothing. An empty patch is still 400
+`preferred_language is required`. The mode is named apart from
+`playback.subtitle_mode` on the same object, the operator's delivery
+policy (`auto|extract|burn|off`), whose values mean other things.
+
+Compatibility. `preferred_language` stays in requests and responses:
+
+- Written alone (an older client), it sets both languages and leaves
+  the mode as it is.
+- Answered, it is the subtitle language when one is set, else the audio
+  language: the language the viewer reads, so an older client applying
+  D-071 still turns subtitles on for audio in another language.
+- An account saved before D-280 has none of the three fields and reads
+  as its one language for both, mode `auto`, which is D-071 exactly; the
+  server answers it with both split fields filled. A client talking to a
+  server before D-280 sees none of the three and does the same.
+
+How players choose (every client and the server's own players apply
+the same rule, `lain-watch`'s `tracks.rs`):
+
+- **Audio**: a track in the audio language, else the file's default
+  (flagged default, else first).
+- **`auto`**: subtitles in the subtitle language when the audio that
+  plays is not in it, none when it is; a full track before a forced one.
+  With no subtitle language, or no language tag on any audio or
+  subtitle track, the player's default stands.
+- **`always`**: subtitles in the subtitle language even over audio in
+  it; with no subtitle language, the file's default (else first) full
+  subtitle track.
+- **`forced`**: only a track flagged forced, in the subtitle language,
+  else in the language of the audio that plays, else an untagged one.
+- **`off`**: none.
+- A choice made in a player for a title (the web player and the Android
+  app keep one per title on the device) wins over the account.
+
+On the server: local playback hands mpv all three (`lain-audio_language`,
+`lain-subtitle_language`, `lain-subtitle_mode` script options) and VLC
+`--audio-language`, `--sub-language` plus a per-file "subtitles off". A
+transcode start without `audio_stream` takes the preferred-language
+audio track when the file's default is another (one ffprobe, only when
+the account has an audio language), and the plan's `session`/`state`
+describe that same session. A transcode never adds subtitles nobody
+asked for: clients choose them, so they are not delivered twice.
+
 ## lain.userstate.progress@1 (exactly-one)
 
 `PutInput{user_id, progress}` / `GetInput{user_id, item_id}` /
@@ -681,7 +740,9 @@ frontend's CSS defaults keep the UI usable.
 ## lain.playback.local@1 (exactly-one)
 
 Same-machine playback supervision (D-072/D-076). Ops: `players` (nil →
-`{players}`), `play` `{player?, user_id, language?, item}` →
+`{players}`), `play` `{player?, user_id, language?, audio_language?,
+subtitle_language?, subtitle_mode?, item}` (D-280; `language` alone is
+D-071's one language for both) →
 `{status, player, count}`. The provider owns playlist resolution
 (series queue from the episode onward), resume positions (through
 `userstate.progress`), VLC subtitle policy (through `media.probe`),
