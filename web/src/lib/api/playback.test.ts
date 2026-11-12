@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mediaUrl } from './client';
-import { playback } from './playback';
+import { newViewerId, playback } from './playback';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -59,6 +59,31 @@ describe('playback async transcode', () => {
 		expect(fetchMock.mock.calls[0][1].method).toBe('POST');
 		expect(fetchMock.mock.calls[1][0]).toBe('/api/items/id%2Fone/transcode/status?session=s1');
 		expect(fetchMock.mock.calls[1][0]).not.toContain('token');
+	});
+
+	it('joins with a viewer id and releases that viewer, surviving an unload', async () => {
+		const fetchMock = vi.fn()
+			.mockResolvedValueOnce(new Response(JSON.stringify({ session: 's1', state: 'running', profile: 'p1' }), { status: 202 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ session: 's1', state: 'running', profile: 'p1' }), { status: 200 }));
+		vi.stubGlobal('fetch', fetchMock);
+
+		await playback.startTranscode('id/one', { delivery: 'hls', viewer: 'v1' });
+		const left = await playback.releaseTranscode('id/one', 's1', 'v1');
+
+		expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ delivery: 'hls', viewer: 'v1' });
+		expect(fetchMock.mock.calls[1][0]).toBe('/api/items/id%2Fone/transcode?session=s1&viewer=v1');
+		expect(fetchMock.mock.calls[1][1].method).toBe('DELETE');
+		expect(fetchMock.mock.calls[1][1].keepalive).toBe(true);
+		// Another viewer still holds it: the answer is the session, not idle.
+		expect(left.state).toBe('running');
+	});
+});
+
+describe('newViewerId', () => {
+	it('makes a fresh id the server accepts every time', () => {
+		const ids = new Set(Array.from({ length: 50 }, () => newViewerId()));
+		expect(ids.size).toBe(50);
+		for (const id of ids) expect(id).toMatch(/^[0-9a-f]{32}$/);
 	});
 });
 

@@ -43,6 +43,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   started without a track choice plays the preferred audio language, so
   the Android app hears it in an HLS session. `lain language` gains
   `--audio`, `--subtitles` and `--subtitle-mode`.
+- **API**: a player can name itself with a `viewer` id when it starts or
+  joins a transcode session and when it releases it (D-281). Two players
+  with the same options share one session; it now stops only when the
+  last of them leaves, and a finished one stays cached. Requests without
+  a viewer behave as before. The web player sends one; `lain-client` has
+  `release_transcode`.
 
 ### Changed
 - **A server address typed without `http://` or `https://`** (D-277) is
@@ -72,6 +78,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   language; an episode opens in the audio language last picked for its
   title instead of the account's. A converted stream carries one audio
   track, so the pick could not switch inside it.
+- **Web**: a link clicked within a moment of typing in the header's
+  search field on the Search page no longer bounces back to Search with
+  the field focused.
+- **Web**: an account without the admin role that opens an admin
+  settings page lands on its own Profile settings; when an admin had last
+  used Settings in the same browser it used to bounce between two pages
+  forever.
+- **Web**: leaving the player stops its transcode session if it is still
+  being prepared and no other player (another tab or device) is watching
+  it, so the next title starts at once instead of waiting behind it for
+  up to two minutes; a finished session stays cached.
+- **Web**: a session the player started for a seek, track or quality
+  change that a second change replaced before the server answered is
+  released too, instead of running on until the idle timeout.
+- **Web**: pausing (K, Space) before a just-started play has begun no
+  longer shows "The browser blocked playback" and pins the controls.
+- **Server**: an HLS session whose hardware encode fails and is retried
+  in software starts that retry from an empty directory: the failed
+  attempt's playlist is withdrawn and its segments are no longer served
+  next to the retry's init segment. The retry's init segment and
+  segments have names of their own (`sw-init.mp4`, `sw-seg…`), so a
+  player that was watching the failed attempt never decodes the retry's
+  segments with the failed attempt's init segment it kept or cached.
+- **Server**: a transcode session started again just as it was stopped
+  (a viewer joining as the last one leaves, or a play after an idle
+  stop) waits for the stopped one to finish cleaning up, instead of
+  losing its files to that cleanup.
 
 ## [0.3.0] - 2026-11-12
 
