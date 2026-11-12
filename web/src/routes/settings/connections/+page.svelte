@@ -5,6 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api, type LinkedAccountView } from '$lib/api';
+	import { t } from '$lib/i18n';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import Input from '$lib/components/primitives/Input.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
@@ -158,7 +159,7 @@
 
 <svelte:head><title>Connections — Settings — Lain</title></svelte:head>
 
-<SettingsGroup title="Lists">
+<SettingsGroup title="Lists" description={t('settings.groups.connections.lists')}>
 	{#if !linksReady}
 		<div class="flex justify-center py-8"><Spinner class="size-5 text-muted" /></div>
 	{:else}
@@ -177,30 +178,30 @@
 						{linkNeedsReconnect(link) ? 'reconnect' : 'connected'}
 					</span>
 					{#if linkNeedsReconnect(link)}
-						<Button variant="secondary" size="sm" loading={linkBusy === p.id} onclick={() => void connect(p.id)}>Reconnect</Button>
+						<Button variant="secondary" size="field" loading={linkBusy === p.id} onclick={() => void connect(p.id)}>Reconnect</Button>
 					{:else}
-						<Button variant="ghost" size="sm" loading={linkBusy === p.id} onclick={() => void syncNow(p.id)}>
+						<Button variant="ghost" size="field" loading={linkBusy === p.id} onclick={() => void syncNow(p.id)}>
 							<RefreshCw class="size-3.5" /> Sync
 						</Button>
 					{/if}
-					<Button variant="ghost" size="sm" disabled={linkBusy === p.id} onclick={() => void disconnect(p.id)}>
+					<Button variant="ghost" size="field" disabled={linkBusy === p.id} onclick={() => void disconnect(p.id)}>
 						<Unlink class="size-3.5" /> Disconnect
 					</Button>
 				{:else}
-					<Button size="sm" loading={linkBusy === p.id} onclick={() => void connect(p.id)}>Connect</Button>
+					<Button size="field" loading={linkBusy === p.id} onclick={() => void connect(p.id)}>Connect</Button>
 					{#if pinUrl && !pinOpen}
-						<Button variant="ghost" size="sm" onclick={() => (pinOpen = true)}>Use a code</Button>
+						<Button variant="ghost" size="field" onclick={() => (pinOpen = true)}>Use a code</Button>
 					{/if}
 				{/if}
 				{#snippet below()}
 					{#if !link && pinOpen && pinUrl}
 						<div class="flex flex-wrap items-start gap-2 pt-1">
-							<Button variant="secondary" size="sm" onclick={openPin}>1 · Open AniList</Button>
+							<Button variant="secondary" size="field" onclick={openPin}>1 · Open AniList</Button>
 							<div class="min-w-48 flex-1">
 								<Input type="password" placeholder="2 · Paste the code" aria-label="AniList code" bind:value={pinCode} error={pinErr || null}
 									onkeydown={(e) => e.key === 'Enter' && void submitPin(p.id)} />
 							</div>
-							<Button size="sm" loading={pinBusy} onclick={() => void submitPin(p.id)}>3 · Link</Button>
+							<Button size="field" loading={pinBusy} onclick={() => void submitPin(p.id)}>3 · Link</Button>
 						</div>
 					{/if}
 				{/snippet}

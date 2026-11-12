@@ -1,5 +1,5 @@
 export type ButtonVariant = 'primary' | 'secondary' | 'tonal' | 'ghost' | 'danger';
-export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon' | 'row' | 'rowMain';
+export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon' | 'row' | 'rowMain' | 'field';
 
 const base =
 	'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors duration-150 select-none disabled:opacity-50 disabled:pointer-events-none';
@@ -24,7 +24,10 @@ const sizes: Record<ButtonSize, string> = {
 	// A title's action row: the main action and every quiet one beside it
 	// share one height at every width (48/44/40 side by side looked unaligned).
 	row: 'h-11 px-4 text-sm',
-	rowMain: 'h-11 px-5 text-base'
+	rowMain: 'h-11 px-5 text-base',
+	// A settings row: as tall as the fields and selects beside it (44 px on
+	// a phone, 36 px from md up), so a row's controls share one line.
+	field: 'h-11 px-4 text-sm md:h-9 md:px-3'
 };
 
 export function buttonClasses(
