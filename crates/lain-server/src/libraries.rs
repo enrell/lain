@@ -40,13 +40,54 @@ impl Libraries {
         lib
     }
 
-    /// All libraries by name, paths resolved for this machine.
+    /// All libraries in the admin's order, then the never-ordered ones by
+    /// name; paths resolved for this machine.
     pub fn list(&self) -> Result<Vec<Library>, StoreError> {
         let rows = self.store.read(|tx| tx.all(Bucket::Libraries))?;
         let mut out: Vec<Library> =
             rows.iter().filter_map(|(_, v)| serde_json::from_slice(v).ok()).map(|l| self.resolve(l)).collect();
-        out.sort_by(|a, b| a.name.cmp(&b.name));
+        out.sort_by(|a, b| (a.position == 0, a.position, &a.name).cmp(&(b.position == 0, b.position, &b.name)));
         Ok(out)
+    }
+
+    /// Orders the libraries: `ids` is every library, first to last.
+    /// Answers the list in its new order.
+    pub fn reorder(&self, ids: &[String]) -> Result<Vec<Library>, String> {
+        let mut seen = std::collections::BTreeSet::new();
+        if let Some(dup) = ids.iter().find(|id| !seen.insert(id.as_str())) {
+            return Err(format!("{dup} is listed twice"));
+        }
+        self.store
+            .write(|tx| {
+                let mut libs: Vec<Library> =
+                    tx.all(Bucket::Libraries)?.iter().filter_map(|(_, v)| serde_json::from_slice(v).ok()).collect();
+                if let Some(missing) = ids.iter().find(|id| !libs.iter().any(|l| &l.id == *id)) {
+                    return Err(StoreError::Abort(format!("unknown library {missing}")));
+                }
+                if libs.len() != ids.len() {
+                    return Err(StoreError::Abort("every library must be listed".into()));
+                }
+                for lib in libs.iter_mut() {
+                    lib.position = ids.iter().position(|id| *id == lib.id).map_or(0, |i| i as i64 + 1);
+                    tx.put_json(Bucket::Libraries, lib.id.as_bytes(), lib)?;
+                }
+                Ok(())
+            })
+            .map_err(|e| match e {
+                StoreError::Abort(m) => m,
+                e => e.to_string(),
+            })?;
+        self.list().map_err(|e| e.to_string())
+    }
+
+    /// Where a folder lives: `(absolute path, root, path inside it)`;
+    /// the root is empty when no mapped root holds it.
+    fn locate(&self, path: &str) -> (String, String, String) {
+        let roots = self.roots.read().unwrap_or_else(|e| e.into_inner()).clone();
+        match roots.relativize(path) {
+            Some((r, rel)) => (path.to_string(), r, rel),
+            None => (path.to_string(), String::new(), String::new()),
+        }
     }
 
     pub fn get(&self, id: &str) -> Option<Library> {
@@ -116,6 +157,27 @@ impl Libraries {
                 return Err("name required".into());
             }
             lib.name = n.trim().to_string();
+        }
+        if let Some(k) = &p.kind {
+            if k.trim().is_empty() {
+                return Err("type required".into());
+            }
+            lib.kind = k.trim().to_lowercase();
+        }
+        if let Some(path) = &p.path {
+            let path = path.trim();
+            if path.is_empty() {
+                return Err("path required".into());
+            }
+            let (abs, root, root_path) = self.locate(path);
+            if !std::fs::metadata(&abs).map(|m| m.is_dir()).unwrap_or(false) {
+                return Err("path is not a readable directory".into());
+            }
+            let others = self.list().map_err(|e| e.to_string())?;
+            if others.iter().any(|o| o.id != lib.id && o.path == abs) {
+                return Err("another library already reads that folder".into());
+            }
+            (lib.path, lib.root, lib.root_path) = (abs, root, root_path);
         }
         for u in p.owner.iter().chain(p.members.iter().flatten()) {
             if !known_user(u) {

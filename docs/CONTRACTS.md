@@ -1304,9 +1304,19 @@ Served by the Rust server only (P1b); the Go server is unchanged.
 - **Library fields** (additive, omitted when unset): `private`, `owner`,
   `members`, `root`, `root_path`, and in responses `locked` for a
   private library (whether this session has unlocked it).
-- `PATCH /api/libraries/{id}` (admin): `{name?, private?, owner?,
-  members?}`. Making a library private makes the caller its owner unless
-  `owner` is given; making it public clears owner and members.
+- `PATCH /api/libraries/{id}` (admin): `{name?, type?, path?, private?,
+  owner?, members?}`. Making a library private makes the caller its owner
+  unless `owner` is given; making it public clears owner and members.
+  A new `path` (absolute, recorded under a mapped root when inside one)
+  must be a readable directory no other library reads; the id stays, so
+  progress and overlays stay attached, and the next scan reads the new
+  folder and marks what it no longer finds missing (D-068). `type`
+  changes which files the next scan reads.
+- `PUT /api/libraries/order` (admin): `{ids}`, every library id once,
+  first to last; answers the list in that order. Libraries carry
+  `position` (1 first; omitted, 0, for one never ordered), and every
+  list of libraries is in that order, the never-ordered ones last by
+  name. 400 for a missing or repeated id, 404 for an unknown one.
 - `POST /api/libraries/{id}/unlock` `{pin}` or `{password}` and
   `POST /api/libraries/{id}/lock`: per session (per token). Only the
   owner and members can unlock (403 `not a member of this library` for an

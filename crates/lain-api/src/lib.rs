@@ -303,6 +303,11 @@ pub struct Library {
     /// not unlocked it. Stored records never carry it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locked: Option<bool>,
+    /// The admin's order (1 first, `PUT /api/libraries/order`); 0, left
+    /// out, for a library never ordered, which lists after the ordered
+    /// ones by name.
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub position: i64,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -330,12 +335,27 @@ pub struct NewLibrary {
 pub struct LibraryPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// The library type (`auto`, `anime`, `movie`, `manga`, ...): which
+    /// files the next scan reads.
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// A new folder (absolute, or inside a mapped root). The id stays, so
+    /// progress and overlays stay attached; the next scan reads the new
+    /// folder and marks what is no longer found missing (D-068).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub private: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<String>>,
+}
+
+/// `PUT /api/libraries/order` (admin): every library id, first to last.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LibraryOrder {
+    pub ids: Vec<String>,
 }
 
 /// `DELETE /api/users/{id}` (admin).

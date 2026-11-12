@@ -21,7 +21,7 @@ use lain_api::{
 };
 use lain_api::{
     AdminTranscodes, BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health,
-    IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryPatch, LocalPlayers, LoginReply, Mascots,
+    IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryOrder, LibraryPatch, LocalPlayers, LoginReply, Mascots,
     ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions, PlaybackPlan,
     PluginsView, PreferencesPatch, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar,
     Sidecars, StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings, TranscodeSettingsView,
@@ -377,6 +377,11 @@ impl Client {
 
     pub async fn update_library(&self, id: &str, patch: LibraryPatch) -> Result<Library, ClientError> {
         self.call(Method::PATCH, &format!("/api/libraries/{}", encode(id)), json_body(&patch)).await
+    }
+
+    /// Orders the libraries: every id, first to last.
+    pub async fn order_libraries(&self, ids: Vec<String>) -> Result<Vec<Library>, ClientError> {
+        self.call(Method::PUT, "/api/libraries/order", json_body(&LibraryOrder { ids })).await
     }
 
     /// Removes the library and its catalog entries (never files).
