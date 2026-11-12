@@ -111,7 +111,14 @@ gh secret set LAIN_ANDROID_KEY_ALIAS --body lain
 ```
 
 Locally, the same variables without `_BASE64` sign `./gradlew
-:app:assembleRelease` (`LAIN_ANDROID_KEYSTORE` is the keystore's path).
+:app:assembleRelease` (`LAIN_ANDROID_KEYSTORE` is the keystore's path);
+without them the release APK is signed with the debug key. Check which key
+signed an APK with `apksigner verify --print-certs <apk>` (build-tools).
+
+The version name is the tag (`LAIN_VERSION`, `v0.3.1` is `0.3.1`) and the
+version code follows from it, `MAJOR * 1_000_000 + MINOR * 1_000 + PATCH`
+(3001), so it only grows from release to release; `LAIN_ANDROID_VERSION_CODE`
+overrides it. A build without either is `0.3.0`, code 3000.
 
 ## Gaps (v1)
 
