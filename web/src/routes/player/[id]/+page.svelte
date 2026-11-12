@@ -285,7 +285,7 @@
 								<span class="min-w-0 flex-1">
 									<span
 										class={[
-											'block font-mono text-[10px] uppercase tracking-[0.14em]',
+											'block text-xs font-semibold',
 											current ? 'text-accent' : 'text-muted'
 										].join(' ')}
 									>

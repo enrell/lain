@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { isReadable } from '$lib/reader/kinds';
+	import Check from '@lucide/svelte/icons/check';
 	import Play from '@lucide/svelte/icons/play';
 	import type { Progress } from '$lib/api/types';
 	import type { SeriesGroup } from '$lib/utilities/grouping';
@@ -19,11 +20,14 @@
 	let {
 		group,
 		progress = null,
+		progressOf = undefined,
 		priority = false,
 		fit = false
 	}: {
 		group: SeriesGroup;
 		progress?: Progress | null;
+		/** Each part's progress: the card then marks the title as a whole. */
+		progressOf?: (id: string) => Progress | undefined;
 		priority?: boolean;
 		/** Take the shape of the picture: the card sets its own width from
 		 * `--card-h`, for a row of cards of one height (see MediaGrid). */
@@ -35,6 +39,35 @@
 	const shape = $derived(
 		shapeOf(artItem.id, art?.poster || art?.cover || readable(artItem.kind) ? 'portrait' : 'landscape')
 	);
+
+	/*
+	 * One rule for every card: a title under way says Watching (or Reading)
+	 * with a strip of how much of the whole is done; a finished one says
+	 * Watched (or Read) with a check and no strip; an untouched one says
+	 * nothing. One episode's strip used to stand for the whole show.
+	 */
+	const reading = $derived(isReadable(group.items[0]?.kind));
+	const state = $derived.by(() => {
+		if (progressOf) {
+			let done = 0;
+			let part = 0;
+			for (const it of group.items) {
+				const p = progressOf(it.id);
+				if (!p) continue;
+				if (p.completed) done += 1;
+				else if (p.duration_sec > 0 && p.position_sec > 0) part += Math.min(1, p.position_sec / p.duration_sec);
+			}
+			const n = Math.max(1, group.count);
+			return { done, started: done > 0 || part > 0, finished: done >= n, fraction: (done + part) / n };
+		}
+		if (!progress || progress.duration_sec <= 0) return { done: 0, started: false, finished: false, fraction: 0 };
+		return {
+			done: progress.completed ? 1 : 0,
+			started: true,
+			finished: false,
+			fraction: progress.completed ? 1 : progress.position_sec / progress.duration_sec
+		};
+	});
 
 	const seasons = $derived([...new Set(group.items.map((i) => i.season).filter((s) => s > 0))]);
 	const detail = $derived.by(() => {
@@ -49,6 +82,8 @@
 		} else if (seasons.length === 1) parts.push(`Season ${seasons[0]}`);
 		else if (seasons.length > 1) parts.push(`Seasons ${Math.min(...seasons)}–${Math.max(...seasons)}`);
 		if (group.year > 0) parts.push(String(group.year));
+		// Under way, the line says how far: "2 of 12 watched", as the app's cards do.
+		if (progressOf && state.started && !state.finished) return `${state.done} of ${group.count} ${reading ? 'read' : 'watched'}`;
 		return parts.join(' · ');
 	});
 </script>
@@ -79,17 +114,16 @@
 		>
 			<Play class="size-4 translate-x-px" aria-hidden="true" />
 		</div>
-		{#if progress && progress.duration_sec > 0 && !progress.completed}
-			<span class="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground backdrop-blur">
-				{isReadable(group.items[0]?.kind) ? 'Reading' : 'Watching'}
+		{#if state.finished}
+			<span class="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground backdrop-blur">
+				<Check class="size-3" aria-hidden="true" />{reading ? 'Read' : 'Watched'}
 			</span>
-		{/if}
-		{#if progress && progress.duration_sec > 0}
+		{:else if state.started}
+			<span class="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground backdrop-blur">
+				{reading ? 'Reading' : 'Watching'}
+			</span>
 			<div class="absolute inset-x-0 bottom-0 h-1.5 bg-black/50">
-				<div
-					class="h-full bg-accent"
-					style={`width: ${Math.min(100, Math.round((progress.position_sec / progress.duration_sec) * 100))}%`}
-				></div>
+				<div class="h-full bg-accent" style={`width: ${Math.max(3, Math.min(100, Math.round(state.fraction * 100)))}%`}></div>
 			</div>
 		{/if}
 	</div>

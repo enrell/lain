@@ -369,7 +369,7 @@ fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
                 val lockedText = stringResource(R.string.private_locked)
                 // Open is a different picture and a different colour, with its name beside it.
                 Row(
-                    Modifier.height(40.dp).clip(CircleShape).background(if (locked) Color.Transparent else l.accent.copy(alpha = 0.16f)).border(1.dp, if (locked) l.line else l.accent.copy(alpha = 0.6f), CircleShape)
+                    Modifier.height(40.dp).clip(CircleShape).background(if (locked) l.tonal else l.accent.copy(alpha = 0.16f)).border(1.dp, if (locked) Color.Transparent else l.accent.copy(alpha = 0.6f), CircleShape)
                         .clickable(onClickLabel = stringResource(if (locked) R.string.unlock_title else R.string.lock_again)) {
                             if (locked) unlocking = true else {
                                 vm.lockAll()
@@ -427,7 +427,7 @@ fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
                             if (mine.size > 14) {
                                 item {
                                     Box(
-                                        Modifier.height(RAIL_H).width(112.dp).clip(l.cardShape).border(1.dp, l.line, l.cardShape).clickable { openLibrary(vm, lib.id) },
+                                        Modifier.height(RAIL_H).width(112.dp).clip(l.cardShape).background(l.tonal).clickable { openLibrary(vm, lib.id) },
                                         contentAlignment = Alignment.Center,
                                     ) { Text(stringResource(R.string.see_all), color = l.muted, fontSize = 14.sp) }
                                 }
@@ -498,7 +498,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                 SearchField(filters.q, { filters = filters.copy(q = it) }, searchHint, Modifier.weight(1f))
                 val narrowing = filters.active > 0 || filters.sort != Sort.Title
                 Row(
-                    Modifier.height(44.dp).clip(l.buttonShape).border(1.dp, if (narrowing) l.accent.copy(alpha = 0.7f) else l.line, l.buttonShape)
+                    Modifier.height(44.dp).clip(l.buttonShape).background(if (narrowing) l.accent.copy(alpha = 0.16f) else l.tonal).border(1.dp, if (narrowing) l.accent.copy(alpha = 0.7f) else Color.Transparent, l.buttonShape)
                         .clickable(onClickLabel = stringResource(R.string.filters)) { sheet = true }.padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
@@ -853,7 +853,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                     val removed = stringResource(R.string.fav_removed)
                     Box(
                         Modifier.size(48.dp).clip(l.buttonShape).background(if (listed) l.accent.copy(alpha = 0.2f) else l.surface.copy(alpha = 0.55f))
-                            .border(1.dp, if (listed) l.accent else l.line, l.buttonShape)
+                            .background(if (listed) l.accent.copy(alpha = 0.16f) else l.tonal).border(1.dp, if (listed) l.accent else Color.Transparent, l.buttonShape)
                             .clickable(onClickLabel = stringResource(if (listed) R.string.fav_remove else R.string.fav_add)) {
                                 scope.launch {
                                     if (vm.setFavorite(title, !listed)) android.widget.Toast.makeText(ctx, if (listed) removed else added, android.widget.Toast.LENGTH_SHORT).show()
@@ -902,7 +902,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                     val mine = r.mine.toInt()
                     Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(
-                            Modifier.height(36.dp).clip(CircleShape).border(1.dp, if (mine > 0) l.accent.copy(alpha = 0.6f) else l.line, CircleShape)
+                            Modifier.height(36.dp).clip(CircleShape).background(if (mine > 0) l.accent.copy(alpha = 0.16f) else l.tonal)
                                 .clickable(onClickLabel = stringResource(R.string.rate_title)) { rateSheet = true }.padding(horizontal = 14.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp),
                         ) {
@@ -1103,7 +1103,7 @@ private fun QuietAction(row: androidx.compose.foundation.layout.RowScope, icon: 
     val l = LocalLain.current
     with(row) {
         Column(
-            Modifier.weight(label.length.coerceIn(9, 18).toFloat()).height(60.dp).clip(l.buttonShape).background(l.surface.copy(alpha = 0.55f)).border(1.dp, l.line.copy(alpha = 0.7f), l.buttonShape)
+            Modifier.weight(label.length.coerceIn(9, 18).toFloat()).height(60.dp).clip(l.buttonShape).background(l.tonal)
                 .clickable(onClickLabel = label, onClick = onClick).padding(horizontal = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically),
@@ -1150,8 +1150,8 @@ private fun EpisodeRow(item: Item, title: Title, state: AppState, onOpen: () -> 
     val p = state.progress[item.id]
     val dur = state.durations[item.id] ?: p?.durationSec?.takeIf { it > 0 && !title.reading }
     Row(
-        Modifier.padding(horizontal = GUTTER, vertical = 4.dp).fillMaxWidth().clip(l.cardShape).border(1.dp, l.line.copy(alpha = 0.6f), l.cardShape)
-            .background(l.surface.copy(alpha = 0.3f)).clickable(onClickLabel = stringResource(if (title.reading) R.string.action_read else R.string.action_play), onClick = onOpen),
+        Modifier.padding(horizontal = GUTTER, vertical = 4.dp).fillMaxWidth().clip(l.cardShape)
+            .background(l.tonalLow).clickable(onClickLabel = stringResource(if (title.reading) R.string.action_read else R.string.action_play), onClick = onOpen),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // A volume shows its whole cover, at a cover's shape; an episode its still.
@@ -1248,7 +1248,7 @@ fun SearchScreen(state: AppState, vm: AppViewModel) {
                     FlowRow(Modifier.padding(top = 8.dp, bottom = 26.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (q in recents) {
                             Row(
-                                Modifier.height(40.dp).clip(CircleShape).border(1.dp, l.line, CircleShape).clickable { vm.search(q) }.padding(horizontal = 14.dp),
+                                Modifier.height(40.dp).clip(CircleShape).background(l.tonal).clickable { vm.search(q) }.padding(horizontal = 14.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                             ) {

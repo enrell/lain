@@ -630,7 +630,7 @@
 						<ShowCard
 							{group}
 							fit
-							progress={group.items.map((it) => progressMap.get(it.id)).find(Boolean) ?? null}
+							progressOf={(id) => progressMap.get(id)}
 							priority={i < 6}
 						/>
 					{:else}

@@ -108,20 +108,20 @@ fun WButton(
     val shape = if (pill) CircleShape else l.buttonShape
     val (bg, fg, edge) = when (kind) {
         Btn.Primary -> Triple(l.accent, l.onAccent, Color.Transparent)
-        Btn.Secondary -> Triple(l.raised, l.text, l.text.copy(alpha = 0.22f))
+        Btn.Secondary -> Triple(l.tonal, l.text, Color.Transparent)
         Btn.Ghost -> Triple(Color.Transparent, l.muted, Color.Transparent)
         Btn.Danger -> Triple(l.danger.copy(alpha = 0.15f), l.danger, l.danger.copy(alpha = 0.3f))
     }
     // Disabled is a neutral surface, not a faded accent: on a muted theme
     // the two looked alike.
-    val fill = if (enabled) bg else Color.Transparent
+    val fill = if (enabled) bg else l.tonalLow
     val ink = if (enabled) fg else l.muted.copy(alpha = 0.45f)
     Row(
         modifier
             .height(if (large) 48.dp else 44.dp)
             .clip(shape)
             .background(fill)
-            .border(1.dp, if (enabled) edge else l.line.copy(alpha = 0.5f), shape)
+            .border(1.dp, if (enabled) edge else Color.Transparent, shape)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = if (large) 24.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -139,7 +139,7 @@ fun IconBtn(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Mod
         modifier
             .size(44.dp)
             .clip(l.buttonShape)
-            .then(if (outlined) Modifier.border(1.dp, l.line, l.buttonShape) else Modifier)
+            .then(if (outlined) Modifier.background(l.tonal) else Modifier)
             .clickable(onClickLabel = label, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, label, tint = tint ?: l.muted, modifier = Modifier.size(20.dp)) }
@@ -270,7 +270,7 @@ fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String, 
     // The field you are typing in wears the accent.
     var focused by remember { androidx.compose.runtime.mutableStateOf(false) }
     Row(
-        modifier.height(44.dp).clip(l.buttonShape).background(l.field).border(if (focused) 1.5.dp else 1.dp, if (focused) l.accent else l.line, l.buttonShape).padding(start = 12.dp),
+        modifier.height(44.dp).clip(l.buttonShape).background(l.tonal).border(1.5.dp, if (focused) l.accent else Color.Transparent, l.buttonShape).padding(start = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Ic.Search, null, tint = l.muted, modifier = Modifier.size(16.dp))
@@ -344,8 +344,8 @@ fun ChoiceTile(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifi
         modifier
             .heightIn(min = 46.dp)
             .clip(l.buttonShape)
-            .background(if (on) l.raised else Color.Transparent)
-            .border(if (on) 1.5.dp else 1.dp, if (on) l.accent else l.line, l.buttonShape)
+            .background(if (on) l.accent.copy(alpha = 0.18f) else l.tonal)
+            .border(1.5.dp, if (on) l.accent else Color.Transparent, l.buttonShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp)
             .semantics { stateDescription = if (on) "selected" else "not selected" },
@@ -425,7 +425,7 @@ fun SecretField(value: String, onChange: (String) -> Unit, numeric: Boolean, onD
     val focus = remember { androidx.compose.ui.focus.FocusRequester() }
     androidx.compose.runtime.LaunchedEffect(numeric) { runCatching { focus.requestFocus() } }
     Box(
-        modifier.height(48.dp).clip(l.buttonShape).background(l.field).border(1.dp, l.line, l.buttonShape).padding(horizontal = 14.dp),
+        modifier.height(48.dp).clip(l.buttonShape).background(l.tonal).padding(horizontal = 14.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         BasicTextField(
@@ -462,7 +462,7 @@ fun Field(
         if (label.isNotEmpty()) Text(label, Modifier.padding(bottom = 6.dp), color = l.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         Box(
             Modifier.fillMaxWidth().height(48.dp).clip(l.buttonShape).background(l.field)
-                .border(1.dp, if (focused) l.accent.copy(alpha = 0.7f) else l.line, l.buttonShape).padding(horizontal = 14.dp),
+                .border(1.5.dp, if (focused) l.accent.copy(alpha = 0.8f) else Color.Transparent, l.buttonShape).padding(horizontal = 14.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
             if (value.isEmpty() && placeholder.isNotEmpty()) Text(placeholder, color = l.muted.copy(alpha = 0.6f), fontSize = 16.sp, maxLines = 1)
@@ -489,7 +489,7 @@ fun Field(
 fun EmptyState(icon: ImageVector, title: String, body: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
     val l = LocalLain.current
     Column(
-        modifier.fillMaxWidth().clip(l.panelShape).background(l.surface.copy(alpha = 0.55f)).border(1.dp, l.line.copy(alpha = 0.5f), l.panelShape).padding(horizontal = 28.dp, vertical = 40.dp),
+        modifier.fillMaxWidth().clip(l.panelShape).background(l.tonalLow).padding(horizontal = 28.dp, vertical = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(56.dp).clip(CircleShape).background(l.raised), contentAlignment = Alignment.Center) {
@@ -564,7 +564,7 @@ fun <T> Segmented(options: List<Pair<T, String>>, selected: T, onPick: (T) -> Un
     val l = LocalLain.current
     // An outlined track, and the chosen one filled with the accent: a grey track with a faint
     // tint on the choice read the other way round (the grey looked like the selection).
-    Row(modifier.clip(l.buttonShape).border(1.dp, l.line, l.buttonShape).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+    Row(modifier.clip(l.buttonShape).background(l.tonal).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
         for ((value, label) in options) {
             val on = value == selected
             Box(

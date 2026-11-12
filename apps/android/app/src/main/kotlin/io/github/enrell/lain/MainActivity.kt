@@ -259,8 +259,10 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                 }
                 else -> Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                     // A title page runs its art up under the status bar's edge
-                    // and brings its own way back.
-                    if (s !is Screen.TitleDetail) TopBar(state, vm)
+                    // and brings its own way back; a library's page has its own
+                    // header with the way back, so the brand bar would only push
+                    // its grid down.
+                    if (s !is Screen.TitleDetail && s !is Screen.LibraryDetail) TopBar(state, vm)
                     // Screens cross-fade with a short rise; going back falls instead.
                     Box(Modifier.weight(1f)) {
                     AnimatedContent(
@@ -321,7 +323,7 @@ private fun TopBar(state: io.github.enrell.lain.ui.AppState, vm: AppViewModel) {
                 contentAlignment = Alignment.Center,
             ) { Text((state.user?.username ?: "?").take(1).uppercase(), color = l.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.45f)))
     }
 }
 
@@ -350,7 +352,7 @@ private fun BottomBar(dests: List<Dest>, current: Screen, vm: AppViewModel) {
         else -> current
     }
     Column(Modifier.background(l.bg)) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.45f)))
         Row(Modifier.fillMaxWidth().height(62.dp)) {
             for (d in bar) Tab(stringResource(labelOf(d.id)), iconOf(d.id), d.screen == root, Modifier.weight(1f)) {
                 // A destination opened from the bar starts at its top; Back is what returns to a place.
