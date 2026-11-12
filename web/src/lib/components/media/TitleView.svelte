@@ -402,9 +402,9 @@
 			<div class="aspect-[2/3] w-full shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
-			<div class="hero-monolith-copy min-w-0 max-w-6xl flex-1 max-md:contents">
+			<div class="hero-monolith-copy hero-monolith-split min-w-0 max-w-6xl flex-1">
 				<!-- The name block: beside the cover on a phone (the parent is `contents` there). -->
-				<div class="min-w-0">
+				<div class="min-w-0 @container">
 				{#if homeLibrary}
 					<a href={`/library/${homeLibrary.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
 						<ChevronLeft class="size-4" aria-hidden="true" /> {homeLibrary.name}

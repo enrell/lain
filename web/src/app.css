@@ -322,6 +322,27 @@ details.settings-group > summary::-webkit-details-marker {
 	animation: hero-enter 0.8s 0.08s var(--ease-out-quick) both;
 }
 
+/* A title page on a phone (TitleView, the item page) sets the name beside
+   the cover: the copy's box dissolves (`display: contents`) so the name
+   block and the actions become cells of the hero's grid. A box that is not
+   drawn does not animate, so its two parts enter instead. The name gets
+   about two thirds of the screen there, so it is sized to its column (the
+   name block is a container): at the desktop's 36 px a long word
+   (MONOCHROME) ran into the gutter at 390 px and was cut at 360. A word
+   longer still breaks rather than overflow. */
+@media (width < 48rem) {
+	.hero-monolith-split {
+		display: contents;
+	}
+	.hero-monolith-split > * {
+		animation: hero-enter 0.8s 0.08s var(--ease-out-quick) both;
+	}
+	.hero-monolith-split .title-hero-name {
+		font-size: min(2.25rem, 13.5cqi);
+		overflow-wrap: break-word;
+	}
+}
+
 .home-library::before {
 	position: absolute;
 	inset: -5rem 0 auto;

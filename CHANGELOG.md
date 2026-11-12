@@ -126,7 +126,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **A title page on a phone starts with its episodes in view** (web): the
   cover sits beside the title's name instead of above it, so the first
   episodes or volumes show under the actions where the hero filled the
-  whole screen.
+  whole screen. The name is sized to the column beside the cover, so a
+  long word ("Monochrome") fits it instead of running into the edge.
 - **First-run pages on a tablet** (web): Tracking, Social and Acquire set
   their poster fan beside the copy from 1024 px; at 768 px it left the
   headline one or two words a line.
