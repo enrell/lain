@@ -2,7 +2,8 @@
 	/*
 	 * Where to go from a title: the other titles of its library, as one
 	 * rail under the page. Fetched once per title; a failure or an empty
-	 * library shows nothing.
+	 * library shows nothing. With `recent`, the newest titles of every
+	 * library instead (Search before anything is typed).
 	 */
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
@@ -10,12 +11,17 @@
 	import { settleFrame } from '$lib/stores/frames';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import type { Shape } from '$lib/stores/shapes.svelte';
-	import { groupItems, type SeriesGroup } from '$lib/utilities/grouping';
+	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
 	import MediaCard from './MediaCard.svelte';
 	import { RAIL } from './grid';
 	import ShowCard from './ShowCard.svelte';
 
-	let { libraryId, exclude, heading }: { libraryId: string; exclude: string[]; heading: string } = $props();
+	let {
+		libraryId = '',
+		exclude = [],
+		heading,
+		recent = false
+	}: { libraryId?: string; exclude?: string[]; heading: string; recent?: boolean } = $props();
 
 	let groups = $state<SeriesGroup[]>([]);
 	// One frame for the rail and Home's sizes for it, as the library's shelf
@@ -34,12 +40,14 @@
 	$effect(() => {
 		const id = libraryId;
 		const skip = new Set(exclude);
+		const newest = recent;
 		groups = [];
-		if (!id) return;
+		if (!id && !newest) return;
 		void api.catalog
-			.list({ libraryId: id, limit: 120 })
+			.list(newest ? { sort: 'recent', limit: 120 } : { libraryId: id, limit: 120 })
 			.then(async (page) => {
-				const found = groupItems(page.items)
+				const all = groupItems(page.items);
+				const found = (newest ? sortGroups(all, 'recent') : all)
 					.filter((g) => !g.items.some((i) => skip.has(i.id)))
 					.slice(0, 12);
 				const settled = await settleFrame(found);

@@ -11,6 +11,7 @@
 	import type { CatalogItem } from '$lib/api/types';
 	import { api } from '$lib/api';
 	import MediaCard from '$lib/components/media/MediaCard.svelte';
+	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
 	import { framedGrid } from '$lib/components/media/grid';
 	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
@@ -174,6 +175,17 @@
 	});
 </script>
 
+<!-- The libraries as chips, before a query and after a short answer alike. -->
+{#snippet browseChips()}
+	<div class="mt-2 flex flex-wrap gap-2">
+		{#each browse as lib (lib.id)}
+			<a href={`/library/${lib.id}`} class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-sm text-foreground hover:bg-surface-hover">
+				{lib.name} <ChevronRight class="size-3.5 text-muted" aria-hidden="true" />
+			</a>
+		{/each}
+	</div>
+{/snippet}
+
 <svelte:head><title>{query ? t('search.pageTitleQuery', { query }) : t('search.pageTitle')}</title></svelte:head>
 <svelte:window onkeydown={onKey} />
 
@@ -251,18 +263,11 @@
 		{/if}
 		<section aria-label={t('search.browse')}>
 			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t('search.browse')}</h2>
-			<ul class="mt-2 divide-y divide-line/50">
-				{#each browse as lib (lib.id)}
-					<li>
-						<a href={`/library/${lib.id}`} class="-mx-2 flex min-h-12 items-center justify-between gap-3 rounded-md px-2 text-sm font-medium text-foreground hover:bg-surface-hover">
-							{lib.name}
-							<ChevronRight class="size-4 text-muted" aria-hidden="true" />
-						</a>
-					</li>
-				{/each}
-			</ul>
+			{@render browseChips()}
 			<p class="mt-4 text-sm text-muted">{t('search.matches')}</p>
 		</section>
+		<!-- Something to look at before a word is typed, sized as Home's rails. -->
+		<RelatedRow recent heading={t('search.newest')} />
 	{:else if loading && items.length === 0}
 		<div class={framedGrid('portrait')}>
 			{#each Array(12) as _}
@@ -310,13 +315,7 @@
 		<!-- A short answer leaves the page with somewhere to go on to. -->
 		<nav aria-label={t('search.browse')} class="border-t border-line/50 pt-5">
 			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t(emptyResults ? 'search.browseInstead' : 'search.orBrowse')}</h2>
-			<div class="mt-2 flex flex-wrap gap-2">
-				{#each browse as lib (lib.id)}
-					<a href={`/library/${lib.id}`} class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-sm text-foreground hover:bg-surface-hover">
-						{lib.name} <ChevronRight class="size-3.5 text-muted" aria-hidden="true" />
-					</a>
-				{/each}
-			</div>
+			{@render browseChips()}
 		</nav>
 	{/if}
 </div>
