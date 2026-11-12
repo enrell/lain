@@ -693,8 +693,15 @@
 				effectError = status.fallback || 'the server did not render the effect';
 			}
 			hevcCopied = status.video_direct === true && status.video_codec === 'hevc';
+			// A hold this start replaces without a rebuild (Retry after a
+			// status poll failed leaves the earlier one in place) ends here.
+			// The new hold is already placed, so releasing the old one never
+			// stops the session this player goes on to play.
+			const replacedSession = transcodeSession;
+			const replacedViewer = transcodeViewer;
 			transcodeSession = status.session;
 			transcodeViewer = viewer;
+			if (replacedViewer && replacedViewer !== viewer) releaseTranscode(replacedSession, replacedViewer);
 			delivery = status.delivery ?? 'progressive';
 			transcodeReasons = status.reasons ?? transcodeReasons;
 			// A pending extraction reports nothing yet; the poll loop raises
