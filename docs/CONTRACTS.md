@@ -954,7 +954,8 @@ unhealthy provider, so:
 
 ### lain.release.parse@1 from the model (D-225)
 
-`lain-release-model` posts `{filename}` to the daemon's `/parse`. A null
+`lain-release-model` posts `{filename}` to the daemon's `/parse` (with
+`alternatives: 5` since D-279, see "Release.alternatives"). A null
 `record` (the model's gated abstention, or a name over its 254-character
 window) answers the zero `Release`. Otherwise the model is trusted for
 title, episode_title, year, season, episodes (absolute when it states no
