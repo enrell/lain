@@ -1,5 +1,17 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+	import Circle from '@lucide/svelte/icons/circle';
+	import Download from '@lucide/svelte/icons/download';
+	import { downloadUrl } from '$lib/download/files';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
+	import RatingPill from '$lib/components/social/RatingPill.svelte';
+	import ProgressBar from '$lib/components/media/ProgressBar.svelte';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import BookOpen from '@lucide/svelte/icons/book-open';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { onMount } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
@@ -19,14 +31,20 @@
 	import Poster from '$lib/components/media/Poster.svelte';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
-	import { formatTime } from '$lib/utilities/format';
+	import { formatLength, formatTime } from '$lib/utilities/format';
+	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
+	import Settings2 from '@lucide/svelte/icons/settings-2';
+	import { t } from '$lib/i18n';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
+	// How long each episode is, asked once for the whole title (D-276).
+	let durations = $state<Map<string, number>>(new Map());
 	onMount(() => {
 		origin = window.location.origin;
 		if (session.user) preferredPlayer = loadPreferredPlayer(session.user.id);
+		if (!isReadable(group.items[0]?.kind)) void api.playback.durations(group.items.map((i) => i.id)).then((d) => (durations = d));
 	});
 
 	/**
@@ -42,12 +60,16 @@
 		group,
 		progressMap = null,
 		libraries = [],
-		actions = undefined
+		manage = [],
+		onProgressChanged = undefined
 	}: {
 		group: SeriesGroup;
 		progressMap?: Map<string, Progress> | null;
 		libraries?: Library[];
-		actions?: Snippet;
+		/** What an admin can do with the title, from the page that owns it. */
+		manage?: MenuEntry[];
+		/** Called after marks changed, so the page reads progress again. */
+		onProgressChanged?: () => void;
 	} = $props();
 
 	// Comics and manga open in the reader; external players never apply (D-085).
@@ -56,7 +78,7 @@
 	function playHref(id: string): string { return playbackHref(origin, id, player, group.items[0]?.kind); }
 	function label(item: CatalogItem): string { return reading ? readingLabel(item) : episodeLabel(item); }
 	const unitPlural = $derived(
-		!reading ? 'episodes' : group.items[0]?.kind === 'manga' ? 'volumes & chapters' : 'issues'
+		!reading ? 'episodes' : group.items[0]?.kind !== 'manga' ? 'issues' : group.items.some((i) => i.episode > 0) ? 'volumes & chapters' : 'volumes'
 	);
 
 	const seasons = $derived(
@@ -86,15 +108,11 @@
 		enrichments.map((e) => e?.title).find((t) => t && t.length > 0) ?? group.title
 	);
 
-	const meta = $derived(
-		[
-			group.year > 0 ? String(group.year) : '',
-			'Series',
-			reading ? `${group.count} ${group.count === 1 ? 'file' : 'files'}` : `${group.count} ${group.count === 1 ? 'episode' : 'episodes'}`
-		]
-			.filter(Boolean)
-			.join('  ·  ')
+	const countLabel = $derived(
+		t(!reading ? 'title.episodes' : group.items[0]?.kind === 'manga' ? 'title.volumes' : 'title.issues', { count: group.count })
 	);
+	const totalLength = $derived(group.items.reduce((sum, i) => sum + (durations.get(i.id) ?? 0), 0));
+	const meta = $derived([group.year > 0 ? String(group.year) : '', countLabel].filter(Boolean).join('  ·  '));
 
 	const libraryNames = $derived(
 		libraries
@@ -102,6 +120,9 @@
 			.map((lib) => lib.name)
 			.filter((name, index, all) => all.indexOf(name) === index)
 	);
+
+	const homeLibrary = $derived(libraries.find((lib) => group.libraryIds.includes(lib.id)) ?? null);
+	let synopsisOpen = $state(false);
 
 	const watched = $derived(group.items.filter((i) => progressMap?.get(i.id)?.completed).length);
 
@@ -181,7 +202,8 @@
 	// the show from the top like a fresh watch. Missing episodes can never
 	// be the target — the plan refuses them at play time anyway.
 	// Reading progress stores the 1-based page: page 1 is "just opened".
-	const minResume = $derived(reading ? 2 : 5);
+	// A book left on its first page is being read, as Home and the library already say.
+	const minResume = $derived(reading ? 1 : 5);
 	const available = $derived(group.items.filter((i) => !isGone(i)));
 	const resumeTarget = $derived(
 		available.find((i) => {
@@ -201,15 +223,29 @@
 	const resumeLabel = $derived(
 		reading
 			? resuming
-				? `Continue from page ${Math.floor(resumeProgress!.position_sec)}`
-				: 'Read'
+				? // Which book it continues, on a title of several: "page 3" alone did not say.
+					group.items.length > 1
+					? t('title.continueFromPageIn', { page: Math.floor(resumeProgress!.position_sec), part: label(resumeTarget!) })
+					: t('title.continueFromPage', { page: Math.floor(resumeProgress!.position_sec) })
+				: resumeTarget && group.items.length > 1
+					? `Read · ${label(resumeTarget)}`
+					: 'Read'
 			: resuming
-				? `Resume from ${formatTime(resumeProgress!.position_sec)}`
+				? // The phrase the smoke test keys on, then which episode it is.
+					`Resume from ${formatTime(resumeProgress!.position_sec)} · ${label(resumeTarget!)}`
 				: 'Play'
 	);
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
-			? `Up next · ${label(resumeTarget!)} · ${Math.round((resumeProgress!.position_sec / resumeProgress!.duration_sec) * 100)}% ${reading ? 'read' : 'watched'}`
+			? reading
+				? // A book begun is where you are, not "Up next" (the app reads "Vol 1: Page 3 of 8").
+					[
+						t('title.readingAt', { part: label(resumeTarget!), page: Math.floor(resumeProgress!.position_sec), pages: Math.floor(resumeProgress!.duration_sec) }),
+						watched > 0 ? t('title.readOf', { done: watched, count: group.count }) : ''
+					]
+						.filter(Boolean)
+						.join(' · ')
+				: `${t('title.left', { time: formatLength(Math.max(1, resumeProgress!.duration_sec - resumeProgress!.position_sec)) })} · ${watched} of ${group.count} watched`
 			: available.length === 0
 				? 'All files missing'
 				: watched > 0
@@ -217,13 +253,123 @@
 					: 'Not started'
 	);
 
-	function stillUrl(id: string): string {
-		return api.thumbnail.url(id, session.token, { width: 480 });
+	// The title's own management joins what the page passed in.
+	const manageEntries = $derived<MenuEntry[]>(
+		session.isAdmin
+			? [
+					...manage,
+					{ label: t('title.selectEpisodes'), icon: ListChecks, onSelect: () => (selecting = true), separated: manage.length > 0 },
+					{ label: t('title.deleteTitle'), icon: Trash2, danger: true, disabled: group.items.every(isGone), onSelect: deleteAllFiles }
+				]
+			: []
+	);
+
+
+	function cardLine(item: CatalogItem, progress: Progress | null): string {
+		const length = formatLength(durations.get(item.id));
+		if (progress && !progress.completed && progress.duration_sec > 0 && progress.position_sec > 0) {
+			return reading
+				? `Page ${Math.floor(progress.position_sec)} of ${Math.floor(progress.duration_sec)}`
+				: t('title.left', { time: formatLength(Math.max(60, progress.duration_sec - progress.position_sec)) });
+		}
+		if (progress?.completed) return reading ? 'Read' : length ? t('title.watchedLength', { time: length }) : t('title.watched');
+		return length || (reading ? 'Unread' : 'Not watched');
 	}
 
-	function formatSize(bytes: number): string {
-		if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
-		return `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+	// One part's own actions, as the app's ⋮ on each row: its mark, its start
+	// and its file, without selecting it or marking the whole title.
+	async function markOne(item: CatalogItem, done: boolean): Promise<void> {
+		const dur = durations.get(item.id) ?? progressMap?.get(item.id)?.duration_sec ?? 0;
+		try {
+			await api.progress.put(item.id, { position_sec: done ? dur : 0, duration_sec: dur, completed: done });
+			toasts.success(t('title.marked', { part: label(item) }));
+			onProgressChanged?.();
+		} catch (err) {
+			toasts.error(errorMessage(err, t('title.markFailed')));
+		}
+	}
+	function downloadOne(item: CatalogItem): void {
+		const a = document.createElement('a');
+		a.href = downloadUrl(item.id, session.token);
+		a.download = '';
+		a.rel = 'noopener';
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	}
+	function partEntries(item: CatalogItem, progress: Progress | null): MenuEntry[] {
+		const done = !!progress?.completed;
+		const begun = !done && !!progress && progress.position_sec >= minResume;
+		return [
+			...(begun ? [{ label: t('title.startOver'), icon: RotateCcw, onSelect: () => void markOne(item, false) }] : []),
+			{
+				label: t(done ? (reading ? 'title.markUnread' : 'title.markUnwatched') : reading ? 'title.markRead' : 'title.markWatched'),
+				icon: done ? Circle : CircleCheck,
+				onSelect: () => void markOne(item, !done)
+			},
+			{ label: t('download.one'), icon: Download, onSelect: () => downloadOne(item) }
+		];
+	}
+
+	// Marking the whole title watched (or not): asked first, since every part changes at once.
+	let confirmMark = $state(false);
+	let marking = $state(false);
+	const allDone = $derived(group.count > 0 && watched === group.count);
+
+	// One "More": the one under way back to its start, the marks of the whole title (asked first),
+	// then, for administrators below a line, the title's management.
+	const moreEntries = $derived<MenuEntry[]>([
+		...(resuming && resumeTarget ? [{ label: t('title.startOver'), icon: RotateCcw, onSelect: () => void startOver() }] : []),
+		{
+			label: allDone ? (reading ? 'Mark all unread' : 'Mark all unwatched') : reading ? 'Mark all read' : 'Mark all watched',
+			icon: CircleCheck,
+			onSelect: () => (confirmMark = true)
+		},
+		...manageEntries.map((e, i) => (i === 0 ? { ...e, separated: true } : e))
+	]);
+	async function markAll(): Promise<void> {
+		if (marking) return;
+		marking = true;
+		const done = !allDone;
+		try {
+			for (const it of group.items) {
+				const dur = durations.get(it.id) ?? progressMap?.get(it.id)?.duration_sec ?? 0;
+				await api.progress.put(it.id, { position_sec: done ? dur : 0, duration_sec: dur, completed: done });
+			}
+			toasts.success(done ? (reading ? 'All marked as read.' : 'All marked as watched.') : 'Marks removed.');
+			onProgressChanged?.();
+		} catch (err) {
+			toasts.error(errorMessage(err, 'Could not change the marks.'));
+		} finally {
+			marking = false;
+			confirmMark = false;
+		}
+	}
+
+	let restarting = $state(false);
+	async function startOver(): Promise<void> {
+		if (!resumeTarget || restarting) return;
+		restarting = true;
+		const was = resumeProgress;
+		const id = resumeTarget.id;
+		try {
+			await api.progress.put(id, { position_sec: 0, duration_sec: resumeProgress?.duration_sec ?? 0, completed: false });
+			toasts.undoable('Back to the start.', () => {
+				if (!was) return;
+				void api.progress
+					.put(id, { position_sec: was.position_sec, duration_sec: was.duration_sec, completed: was.completed })
+					.then(() => onProgressChanged?.());
+			});
+			onProgressChanged?.();
+		} catch (err) {
+			toasts.error(errorMessage(err, 'Could not reset progress.'));
+		} finally {
+			restarting = false;
+		}
+	}
+
+	function stillUrl(id: string): string {
+		return api.thumbnail.url(id, session.token, { width: 480 });
 	}
 
 	function cardProgress(id: string): number {
@@ -236,96 +382,83 @@
 <article class="space-y-8">
 	<!-- Full-bleed title hero in the home hero's language: no box, no
 	     border; the art runs under the navigation and fades into the page. -->
-	<header class="title-hero relative -mt-6 overflow-hidden md:-mt-28">
+	<header class="title-hero relative -mx-5 -mt-5 overflow-hidden sm:-mx-8 md:mx-0 md:-mt-28">
 		{#if backdrop}
-			<img src={backdrop} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full object-cover object-center md:w-[70%]" referrerpolicy="no-referrer" />
+			<img src={backdrop} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full object-cover object-center max-md:scale-150 max-md:opacity-55 max-md:blur-3xl" referrerpolicy="no-referrer" />
 		{:else}
-			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md md:w-[70%]" />
+			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md" />
 		{/if}
 		<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
-		<div class="relative mx-auto flex min-h-[22rem] w-full max-w-[1800px] flex-col justify-end px-5 pb-10 pt-28 sm:px-8 md:min-h-[30rem] md:pb-14 md:pt-40 lg:px-10">
-			<div class="hero-monolith-copy max-w-5xl">
-				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">{meta}</p>
-				<h1 class="title-hero-name mt-4 text-foreground">{displayTitle}</h1>
-				{#if displayTitle !== group.title}
-					<p class="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">Indexed as “{group.title}”</p>
+		<button type="button" class="absolute left-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur md:hidden" aria-label="Back" onclick={() => history.back()}>
+			<ArrowLeft class="size-5" aria-hidden="true" />
+		</button>
+		<!-- One template for every kind of title: the cover, then what it is and what it can do.
+		     Both start on one line: aligned at the bottom, the cover floated mid-hero beside a
+		     long synopsis and the copy floated beside a cover taller than it. -->
+		<div class="relative flex w-full flex-col gap-5 pb-6 pt-16 md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
+			<div class="aspect-[2/3] w-24 shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
+				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
+			</div>
+			<div class="hero-monolith-copy min-w-0 max-w-6xl flex-1">
+				{#if homeLibrary}
+					<a href={`/library/${homeLibrary.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
+						<ChevronLeft class="size-4" aria-hidden="true" /> {homeLibrary.name}
+					</a>
 				{/if}
+				<!-- The facts a title is chosen by, in type that reads: tiny spaced capitals were the hardest text on the page. -->
+				<p class="text-sm font-medium text-foreground/80">{meta}</p>
+				<h1 class="title-hero-name mt-4 text-foreground">{displayTitle}</h1>
 				{#if genres.length > 0}
-					<ul class="mt-5 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground/75" aria-label="Genres">
+					<ul class="mt-4 flex flex-wrap gap-x-2 gap-y-1 text-sm text-foreground/70" aria-label="Genres">
 						{#each genres as genre, i (genre)}
-							<li>{#if i > 0}<span class="mr-4 text-muted" aria-hidden="true">/</span>{/if}{genre}</li>
+							<li>{#if i > 0}<span class="mr-2 text-muted" aria-hidden="true">·</span>{/if}{genre}</li>
 						{/each}
 					</ul>
 				{/if}
+				<!-- The main action and what else the title can do, where the eye
+				     already is; the rail below keeps the cover and the facts. -->
+				<!-- On a phone: the main action and the heart on one line, then the score,
+				     Download and More (as an icon) on the next. Spelled out, More fell onto a
+				     third line of its own. -->
+				<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
+					{#if resumeTarget}
+						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
+							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
+						</LinkButton>
+					{:else}
+						<Button size="rowMain" disabled class="max-md:w-[calc(100%-3.25rem)]" title="The files are no longer on disk">
+							<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? 'Read' : 'Play'}
+						</Button>
+					{/if}
+					<!-- The heart keeps the main action's row, on a phone too. -->
+					<FavoriteButton />
+					<RatingPill />
+					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} variant="tonal" size="row" /></span>{/if}
+					<!-- D, as on a film's page; while selecting, D saves the selection instead. -->
+					<DownloadFileButton items={group.items} variant="tonal" size="row" label={t('download.all')} hotkey={!selecting} />
+					<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreEntries} variant="tonal" size="row" compact>
+						{#snippet icon()}<Ellipsis class="size-4" aria-hidden="true" />{/snippet}
+					</Menu>
+				</div>
+				<!-- The part under way, as the film page shows it: a bar under the button that resumes it. -->
+				{#if resuming && resumeProgress!.duration_sec > 0}
+					<ProgressBar ratio={resumeProgress!.position_sec / resumeProgress!.duration_sec} class="mt-4 max-w-sm bg-surface-active" />
+				{/if}
+				<p class="mt-3 text-sm text-muted" aria-live="polite">{watchedLine}</p>
 				{#if synopsis}
-					<p class="mt-5 line-clamp-3 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{synopsis}</p>
+					<!-- A cut synopsis opens on a tap: an ellipsis with no way past it is a dead end. -->
+					<button type="button" class="mt-4 block max-w-2xl text-left" aria-expanded={synopsisOpen} onclick={() => (synopsisOpen = !synopsisOpen)}>
+						<span class={['block text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? '' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
+					</button>
 				{/if}
 			</div>
 		</div>
 	</header>
 
-	<div class="grid items-start gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
-		<div class="space-y-5 lg:sticky lg:top-24">
-			<div class="aspect-[2/3] w-44 overflow-hidden rounded-xl bg-surface shadow-2xl ring-1 ring-white/10 lg:w-full">
-				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
-			</div>
-			<div>
-				{#if resumeTarget}
-					<LinkButton href={playHref(resumeTarget.id)} size="lg" class="w-full justify-center" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
-						<Play class="size-4 fill-current" aria-hidden="true" /> {resumeLabel}
-					</LinkButton>
-				{:else}
-					<Button size="lg" disabled class="w-full justify-center" title="The files are no longer on disk">
-						<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? 'Read' : 'Play'}
-					</Button>
-				{/if}
-				{#if resumeTarget && !reading}<div class="mt-3"><ExternalPlayers itemId={resumeTarget.id} /></div>{/if}
-				<p class="mt-2 text-center text-xs text-muted" aria-live="polite">{watchedLine}</p>
-			</div>
-			{#if actions}
-				<div class="flex flex-col gap-2">
-					{@render actions()}
-				</div>
-			{/if}
-			<div class="rounded-xl border border-line/70 bg-surface/30 p-4">
-				<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">Information</h2>
-				<dl class="mt-2 text-sm">
-					<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-						<dt class="text-xs uppercase tracking-wider text-muted">Format</dt>
-						<dd class="font-semibold text-foreground">Series</dd>
-					</div>
-					{#if group.year > 0}
-						<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-							<dt class="text-xs uppercase tracking-wider text-muted">Year</dt>
-							<dd class="font-semibold text-foreground">{group.year}</dd>
-						</div>
-					{/if}
-					{#if seasons.length > 0}
-						<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-							<dt class="text-xs uppercase tracking-wider text-muted">Seasons</dt>
-							<dd class="font-semibold text-foreground">{seasons.length}</dd>
-						</div>
-					{/if}
-					<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? 'Files' : 'Episodes'}</dt>
-						<dd class="font-semibold text-foreground">{group.count}</dd>
-					</div>
-					{#if libraryNames.length > 0}
-						<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
-							<dt class="text-xs uppercase tracking-wider text-muted">Library</dt>
-							<dd class="truncate font-semibold text-foreground">{libraryNames.join(' · ')}</dd>
-						</div>
-					{/if}
-					<div class="flex items-center justify-between gap-3 border-y border-line/60 py-2">
-						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? 'Read' : 'Watched'}</dt>
-						<dd class="font-semibold text-foreground">{watched} of {group.count}</dd>
-					</div>
-				</dl>
-			</div>
-		</div>
-
+	<div>
 		<div class="min-w-0">
-			{#if seasons.length > 1}
+			<!-- Chips narrow a long list; when every chip would be one card of the list under it (three volumes), they only say it twice. -->
+			{#if seasons.length > 1 && seasons.length < group.items.length}
 				<div class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Seasons">
 					<button
 						type="button"
@@ -333,7 +466,7 @@
 						aria-pressed={season === 'all'}
 						class={[
 							'rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors',
-							season === 'all' ? 'bg-foreground text-background' : 'bg-surface text-muted hover:text-foreground'
+							season === 'all' ? 'bg-accent text-accent-fg' : 'bg-surface text-muted hover:text-foreground'
 						].join(' ')}
 					>
 						All
@@ -345,7 +478,7 @@
 							aria-pressed={season === s}
 							class={[
 								'rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors',
-								season === s ? 'bg-foreground text-background' : 'bg-surface text-muted hover:text-foreground'
+								season === s ? 'bg-accent text-accent-fg' : 'bg-surface text-muted hover:text-foreground'
 							].join(' ')}
 						>
 							{reading ? `Vol ${s}` : `Season ${s}`}
@@ -394,28 +527,17 @@
 							<Button variant="ghost" size="sm" onclick={exitSelecting}>
 								<X class="size-3.5" aria-hidden="true" /> Done
 							</Button>
-						{:else}
-							<Button variant="secondary" size="sm" onclick={() => (selecting = true)}>
-								<ListChecks class="size-3.5" aria-hidden="true" /> Select
-							</Button>
-							<Button
-								variant="danger"
-								size="sm"
-								disabled={group.items.every(isGone)}
-								onclick={deleteAllFiles}
-							>
-								<Trash2 class="size-3.5" aria-hidden="true" /> Delete title
-							</Button>
 						{/if}
 					</div>
 				{/if}
 			</div>
-			<ul class="grid {reading ? 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'} gap-4" data-episode-grid>
+			<!-- More, smaller cards on a wide screen: three big ones put every name below the fold. -->
+			<ul class="grid {reading ? 'grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5 xl:grid-cols-6' : 'episode-rows grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'}" data-episode-grid>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
 					{@const gone = isGone(item)}
-					<li>
+					<li class="relative">
 						{#if selecting}
 							<!-- Selection mode turns the card into a toggle so the
 							     click never reaches a play link. -->
@@ -461,18 +583,62 @@
 								class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
 								aria-label={`${reading ? 'Read' : 'Play'} ${label(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 							>
-								{@render episodeCard(item, progress, ratio, gone)}
+								{@render episodeCard(item, progress, ratio, gone, true)}
 							</a>
+							<!-- Beside the link, not in it: a button inside a link is not a button. -->
+							<span class="absolute bottom-1.5 end-1.5">
+								<Menu label={t('title.partActions', { part: label(item) })} entries={partEntries(item, progress)} variant="ghost" size="icon">
+									{#snippet icon()}<EllipsisVertical class="size-4" aria-hidden="true" />{/snippet}
+								</Menu>
+							</span>
 						{/if}
 					</li>
 				{/each}
 			</ul>
 		</div>
+		<!-- What is known of the title, as one quiet strip under its episodes. -->
+		<section class="mt-12" aria-label="Details">
+			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">Details</h2>
+			<dl class="mt-3 grid grid-cols-2 gap-x-8 text-sm sm:grid-cols-3 lg:grid-cols-6">
+					{#if group.year > 0}
+						<div class="border-t border-line/60 py-3">
+							<dt class="text-xs uppercase tracking-wider text-muted">Year</dt>
+							<dd class="mt-1 font-semibold text-foreground">{group.year}</dd>
+						</div>
+					{/if}
+					{#if seasons.length > 0}
+						<div class="border-t border-line/60 py-3">
+							<dt class="text-xs uppercase tracking-wider text-muted">Seasons</dt>
+							<dd class="mt-1 font-semibold text-foreground">{seasons.length}</dd>
+						</div>
+					{/if}
+					<div class="border-t border-line/60 py-3">
+						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? (group.items[0]?.kind === 'manga' ? 'Volumes' : 'Issues') : 'Episodes'}</dt>
+						<dd class="mt-1 font-semibold text-foreground">{group.count}</dd>
+					</div>
+					{#if totalLength > 0}
+						<div class="border-t border-line/60 py-3">
+							<dt class="text-xs uppercase tracking-wider text-muted">{t('title.length')}</dt>
+							<dd class="mt-1 font-semibold text-foreground">{formatLength(totalLength)}</dd>
+						</div>
+					{/if}
+					{#if libraryNames.length > 0}
+						<div class="border-t border-line/60 py-3">
+							<dt class="text-xs uppercase tracking-wider text-muted">Library</dt>
+							<dd class="mt-1 truncate font-semibold text-foreground">{libraryNames.join(' · ')}</dd>
+						</div>
+					{/if}
+					<div class="border-t border-line/60 py-3">
+						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? 'Read' : 'Watched'}</dt>
+						<dd class="mt-1 font-semibold text-foreground">{watched} of {group.count}</dd>
+					</div>
+				</dl>
+		</section>
 	</div>
 </article>
 
-{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean)}
-	<div class="relative {reading ? 'aspect-[3/4]' : 'aspect-video'} overflow-hidden bg-surface">
+{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false)}
+	<div class="episode-thumb relative {reading ? 'aspect-[3/4]' : 'aspect-video'} overflow-hidden bg-surface">
 		<img
 			src={stillUrl(item.id)}
 			alt=""
@@ -488,29 +654,25 @@
 				<Play class="size-3.5 translate-x-px" aria-hidden="true" />
 			</span>
 		{/if}
+		{#if progress?.completed}
+			<span class="absolute left-2 top-2 flex size-6 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur" aria-hidden="true">
+				<Check class="size-3.5" />
+			</span>
+		{/if}
 		{#if ratio > 0}
-			<div class="absolute inset-x-0 bottom-0 h-1 bg-black/50">
+			<div class="absolute inset-x-0 bottom-0 h-1.5 bg-black/50">
 				<div class="h-full bg-accent" style={`width: ${ratio}%`}></div>
 			</div>
 		{/if}
 	</div>
-	<div class="p-3">
-		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">{label(item)}</p>
+	<!-- Room at the end for the card's ⋮, which sits over this corner. -->
+	<div class="episode-text min-w-0 p-3" style:padding-inline-end={menu ? '3rem' : undefined}>
+		<p class="text-xs font-semibold text-accent">{label(item)}</p>
 		{#if item.title !== group.title}
 			<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>
 		{/if}
 		<p class={['mt-1 truncate text-xs', gone ? 'text-danger' : 'text-muted'].join(' ')}>
-			{#if gone}
-				Missing from disk
-			{:else if progress && !progress.completed && progress.duration_sec > 0}
-				{reading ? `Page ${Math.floor(progress.position_sec)} of ${Math.floor(progress.duration_sec)}` : `Resume at ${Math.min(100, Math.round((progress.position_sec / progress.duration_sec) * 100))}%`}
-			{:else if progress?.completed}
-				{reading ? 'Read' : 'Watched'}
-			{:else if item.size > 0}
-				{formatSize(item.size)}
-			{:else}
-				{reading ? 'Unread' : 'Not watched'}
-			{/if}
+			{gone ? 'Missing from disk' : cardLine(item, progress)}
 		</p>
 	</div>
 {/snippet}
@@ -533,4 +695,15 @@
 		</Button>
 	{/snippet}
 	<p class="text-sm text-muted">This cannot be undone — the media bytes are gone.</p>
+</Modal>
+
+<Modal
+	bind:open={confirmMark}
+	title={allDone ? 'Remove every mark?' : reading ? 'Mark all as read?' : 'Mark all as watched?'}
+	description={`${countLabel} of ${displayTitle} change at once. Progress inside each one is replaced.`}
+>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (confirmMark = false)}>Cancel</Button>
+		<Button loading={marking} onclick={() => void markAll()}>{allDone ? 'Remove marks' : 'Mark all'}</Button>
+	{/snippet}
 </Modal>

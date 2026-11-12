@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { nameable } from '$lib/stores/media-cache.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { api, type DownloadJob, type DownloadSettings, type DownloadsView, type Library } from '$lib/api';
 	import { ApiError } from '$lib/api';
@@ -60,7 +61,7 @@
 
 	onMount(async () => {
 		try {
-			libs = await api.libraries.list();
+			libs = nameable(await api.libraries.list());
 		} catch {
 			libs = [];
 		}
@@ -200,11 +201,11 @@
 <svelte:head><title>{t('downloads.title')}</title></svelte:head>
 <svelte:window onkeydown={pageKey} />
 
-<div class="max-w-4xl pb-24">
+<div>
 	{#if !view || !draft}
 		<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
 	{:else}
-		<SettingsGroup id="queue" title={t('downloads.queue.group')}>
+		<SettingsGroup id="queue" title={t('downloads.queue.group')} description={t('settings.groups.downloads.queue')}>
 			<SettingRow label={t('downloads.queue.add')} hint={t('downloads.queue.addHint')} stack>
 				<form
 					class="grid w-full gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"
@@ -232,7 +233,7 @@
 					<Input label={t('downloads.queue.name')} bind:value={name} placeholder={t('downloads.queue.namePlaceholder')} spellcheck={false} autocomplete="off" />
 					<Select label={t('downloads.queue.target')} bind:value={target} options={targetOptions} />
 					<div class="sm:col-span-2">
-						<Button type="submit" loading={adding} disabled={!url.trim()}>
+						<Button type="submit" size="field" loading={adding} disabled={!url.trim()}>
 							{t('downloads.queue.submit')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
 						</Button>
 					</div>
@@ -240,12 +241,12 @@
 			</SettingRow>
 
 			{#if view.jobs.length === 0}
-				<p class="py-6 text-sm text-muted">{t('downloads.queue.empty')}</p>
+				<p class="py-5 text-sm text-muted">{t('downloads.queue.empty')}</p>
 			{:else}
-				<p class="pt-4 text-xs text-muted">
+				<p class="settings-note">
 					{t('downloads.queue.keys', { pause: 'p', cancel: 'c', remove: 'Delete', focus: '/' })}
 				</p>
-				<div class="mt-2 divide-y divide-hairline" role="grid" aria-label={t('downloads.queue.group')}>
+				<div class="settings-items" role="grid" aria-label={t('downloads.queue.group')}>
 					{#each view.jobs as job (job.id)}
 						<div
 							role="row"
@@ -276,22 +277,22 @@
 							</div>
 							<div class="flex flex-wrap items-center gap-1.5" role="gridcell">
 								{#if job.state === 'queued' || job.state === 'running'}
-									<Button size="sm" variant="ghost" tabindex={-1} onclick={() => void act(job, 'pause')}>
+									<Button size="field" variant="ghost" tabindex={-1} onclick={() => void act(job, 'pause')}>
 										{t('downloads.action.pause')} <kbd class="ms-1 font-mono text-[10px] text-muted">p</kbd>
 									</Button>
 								{:else if job.state === 'paused' || job.state === 'failed'}
-									<Button size="sm" variant="ghost" tabindex={-1} onclick={() => void act(job, 'resume')}>
+									<Button size="field" variant="ghost" tabindex={-1} onclick={() => void act(job, 'resume')}>
 										{job.state === 'failed' ? t('downloads.action.retry') : t('downloads.action.resume')}
 										<kbd class="ms-1 font-mono text-[10px] text-muted">p</kbd>
 									</Button>
 								{/if}
 								{#if job.state !== 'done' && job.state !== 'canceled'}
-									<Button size="sm" variant="ghost" tabindex={-1} onclick={() => void act(job, 'cancel')}>
+									<Button size="field" variant="ghost" tabindex={-1} onclick={() => void act(job, 'cancel')}>
 										{t('downloads.action.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">c</kbd>
 									</Button>
 								{/if}
 								{#if !isActive(job.state)}
-									<Button size="sm" variant="ghost" tabindex={-1} onclick={() => void act(job, 'remove')}>
+									<Button size="field" variant="ghost" tabindex={-1} onclick={() => void act(job, 'remove')}>
 										{t('downloads.action.remove')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd>
 									</Button>
 								{/if}
@@ -302,7 +303,7 @@
 			{/if}
 		</SettingsGroup>
 
-		<SettingsGroup id="storage" title={t('downloads.storage.group')}>
+		<SettingsGroup id="storage" title={t('downloads.storage.group')} description={t('settings.groups.downloads.storage')}>
 			<SettingRow label={t('downloads.storage.used')} hint={t('downloads.storage.usedHint')}>
 				<span class="font-mono text-xs text-foreground">
 					{view.usage.max_bytes > 0
@@ -318,16 +319,16 @@
 				</span>
 			</SettingRow>
 			<SettingRow label={t('downloads.storage.cleanup')} hint={t('downloads.storage.cleanupHint')}>
-				<Button variant="secondary" size="sm" loading={cleaning} onclick={() => void cleanup()}>
+				<Button variant="tonal" size="field" loading={cleaning} onclick={() => void cleanup()}>
 					{t('downloads.storage.cleanup')}
 				</Button>
 			</SettingRow>
 		</SettingsGroup>
 
-		<SettingsGroup id="limits" title={t('downloads.limits.group')}>
+		<SettingsGroup id="limits" title={t('downloads.limits.group')} description={t('settings.groups.downloads.limits')}>
 			<SettingRow label={t('downloads.limits.dir')} hint={t('downloads.limits.dirHint')}>
 				<input
-					class="h-9 w-full max-w-sm rounded-md border border-transparent bg-field px-3 font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
+					class="h-9 w-full rounded-md border border-transparent bg-field px-3 font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
 					aria-label={t('downloads.limits.dir')}
 					spellcheck={false}
 					bind:value={draft.dir}
@@ -338,7 +339,7 @@
 					type="number"
 					min="0"
 					step="1"
-					class="h-9 w-32 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
+					class="h-9 w-28 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
 					aria-label={t('downloads.limits.max')}
 					value={toGiB(draft.max_bytes)}
 					oninput={(e) => (draft!.max_bytes = fromGiB(e.currentTarget.value))}
@@ -349,7 +350,7 @@
 					type="number"
 					min="0"
 					step="1"
-					class="h-9 w-32 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
+					class="h-9 w-28 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
 					aria-label={t('downloads.limits.minFree')}
 					value={toGiB(draft.min_free_bytes)}
 					oninput={(e) => (draft!.min_free_bytes = fromGiB(e.currentTarget.value))}
@@ -360,7 +361,7 @@
 					type="number"
 					min="1"
 					max="8"
-					class="h-9 w-24 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
+					class="h-9 w-28 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
 					aria-label={t('downloads.limits.concurrency')}
 					bind:value={draft.concurrency}
 				/>
@@ -369,7 +370,7 @@
 				<input
 					type="number"
 					min="0"
-					class="h-9 w-24 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
+					class="h-9 w-28 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
 					aria-label={t('downloads.limits.keepDays')}
 					bind:value={draft.keep_finished_days}
 				/>
@@ -379,7 +380,7 @@
 					type="number"
 					min="0"
 					max="20"
-					class="h-9 w-24 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
+					class="h-9 w-28 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
 					aria-label={t('downloads.limits.retries')}
 					bind:value={draft.max_retries}
 				/>

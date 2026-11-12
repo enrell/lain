@@ -8,7 +8,7 @@
 //!   [`TokenStore`] ([`FileTokenStore`], [`MemoryTokenStore`]);
 //! - discovery behind [`Discovery`] ([`ManualDiscovery`]);
 //! - `https` servers through rustls, with [`trust_roots`] for a private
-//!   CA (D-274);
+//!   CA (D-277);
 //! - offline copies ([`OfflineStore`]), mirroring D-094's CLI store, on
 //!   redb ([`ClientDb`]);
 //! - progress sync with an offline queue and explicit conflict rules

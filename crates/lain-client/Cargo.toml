@@ -17,7 +17,7 @@ serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 lain-api.workspace = true
-# D-274: TLS for `https` servers, the rustls setup of D-200.
+# D-277: TLS for `https` servers, the rustls setup of D-200.
 lain-http.workspace = true
 
 [target.'cfg(unix)'.dependencies]

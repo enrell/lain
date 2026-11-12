@@ -48,6 +48,8 @@ conformance suite it was checked against stays as the API spec.
     (`lain.ui.theme@1`), backups (`lain.backup.create@1`, tar of a
     consistent store snapshot), integration settings and avatars.
   - `lain-server` — the axum gateway, `/api/modules`, `/api/events`,
+    integrations (API keys other programs feed a library with,
+    D-265..D-267),
     service mode, catalog `export`/`import` (`lain.catalog-export@3`)
     and the web SPA's static serving (`webui.rs`, D-235), on the
     canonical data dir (`lain`) and port 9360 (D-178). A library: the
@@ -68,7 +70,8 @@ conformance suite it was checked against stays as the API spec.
     pipeline, the `commit_scan` plan (moves D-019, missing D-068,
     locations D-157/D-186), the library watcher on `notify`, the scan
     controller and the folder picker.
-  - `lain-metadata` — the metadata module: enrich, the NFO provider,
+  - `lain-metadata` — the metadata module: enrich (local-only for
+    private libraries, D-268), the NFO provider,
     the network providers (Kitsu, AniList, Jikan, TVMaze, in-process,
     D-201), the merge and the overlay and cache tables.
   - `lain-subtitle` — sidecar discovery, naming and the moviehash,
@@ -113,7 +116,7 @@ conformance suite it was checked against stays as the API spec.
     discovery (`Discovery`), the offline store (D-094's limits and LRU
     eviction, on redb), progress sync with an offline queue and conflict
     rules (`sync.rs`), the event stream, and `https` servers through
-    `lain-http`'s rustls setup (`trust_roots` for a private CA, D-274).
+    `lain-http`'s rustls setup (`trust_roots` for a private CA, D-277).
     No GUI code; the public surface stays UniFFI-friendly (owned types,
     object-safe traits).
   - `lain-probe` — ffprobe as an external process (D-190): one
@@ -243,7 +246,7 @@ the server or the app): `wit-bindgen` (=0.63.0, `macros`, `realloc`,
 `std`) for the `lain:extension` world. Extensions and the probe guest
 build for `wasm32-wasip2`; spec in `docs/MODDING.md`.
 
-## Android app (`apps/android`, P5, D-245..D-254, D-274, D-275)
+## Android app (`apps/android`, P5, D-245..D-254, D-277, D-278)
 
 Kotlin + Jetpack Compose + Media3 on `lain-client`. Two builds:
 

@@ -1,6 +1,6 @@
 //! The TLS setup on its own, for clients that drive their own
 //! connection: `lain-client` reaches a remote lain server through it
-//! (D-274), so the trust anchors and protocol versions are the ones of
+//! (D-277), so the trust anchors and protocol versions are the ones of
 //! every other outbound call (D-200).
 
 use std::sync::Arc;

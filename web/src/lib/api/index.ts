@@ -6,7 +6,7 @@ import { downloads } from './downloads';
 import { enrich } from './enrich';
 import { items } from './items';
 import { libraries } from './libraries';
-import { integrations, links, list } from './list';
+import { apiKeys, integrations, links, list } from './list';
 import { localplay } from './localplay';
 import { me } from './me';
 import { playback } from './playback';
@@ -15,7 +15,7 @@ import { progress } from './progress';
 import { reader } from './reader';
 import { search } from './search';
 import { social } from './social';
-import { thumbnail } from './thumbnail';
+import { storyboard, thumbnail } from './thumbnail';
 import { theme } from './theme';
 import { transcodeAdmin } from './transcode-settings';
 import { users } from './users';
@@ -34,6 +34,7 @@ export const api = {
 	enrich,
 	items,
 	libraries,
+	apiKeys,
 	integrations,
 	links,
 	list,
@@ -45,6 +46,7 @@ export const api = {
 	reader,
 	search,
 	social,
+	storyboard,
 	thumbnail,
 	theme,
 	transcodeAdmin,

@@ -29,6 +29,18 @@
 		>
 			<Icon class={['mt-0.5 size-4 shrink-0', tones[toast.kind]]} />
 			<p class="flex-1 text-sm text-foreground">{toast.message}</p>
+			{#if toast.action}
+				<button
+					type="button"
+					class="-my-0.5 shrink-0 rounded-md px-2 py-0.5 text-sm font-semibold text-accent hover:bg-surface-hover"
+					onclick={() => {
+						toast.action?.run();
+						toasts.dismiss(toast.id);
+					}}
+				>
+					{toast.action.label}
+				</button>
+			{/if}
 			<button
 				class="text-muted hover:text-foreground"
 				aria-label="Dismiss"

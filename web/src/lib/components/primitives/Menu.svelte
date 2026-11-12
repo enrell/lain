@@ -1,0 +1,94 @@
+<script lang="ts" module>
+	import type { Component } from 'svelte';
+
+	export type MenuEntry = {
+		label: string;
+		onSelect: () => void;
+		icon?: Component<{ class?: string }>;
+		/** The key that does the same without the menu. */
+		kbd?: string;
+		danger?: boolean;
+		disabled?: boolean;
+		/** A hairline above this entry. */
+		separated?: boolean;
+	};
+</script>
+
+<script lang="ts">
+	/*
+	 * A button that opens a short list of actions: what a page can do
+	 * beyond its main action (manage a title, open it elsewhere) without a
+	 * row of equal-weight buttons beside Play. Arrow keys, Enter and
+	 * Escape work as in any menu; each entry shows its own key.
+	 */
+	import { DropdownMenu } from 'bits-ui';
+	import type { Snippet } from 'svelte';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import { buttonClasses, type ButtonSize, type ButtonVariant } from './button-styles';
+
+	let {
+		label,
+		entries,
+		icon,
+		variant = 'secondary',
+		size = 'sm',
+		align = 'end',
+		hint = undefined,
+		compact = false,
+		class: className = ''
+	}: {
+		label: string;
+		entries: MenuEntry[];
+		icon?: Snippet;
+		variant?: ButtonVariant;
+		size?: ButtonSize;
+		align?: 'start' | 'end';
+		/** What the menu is for, as a tooltip. */
+		hint?: string;
+		/**
+		 * On a phone, the icon alone in a square the size of the icon buttons
+		 * beside it, in the variant's own fill (an outline made it a fifth
+		 * kind of button); the label stays for screen readers. Spelled out,
+		 * it was the word that pushed a row of actions onto a line of its own.
+		 */
+		compact?: boolean;
+		class?: string;
+	} = $props();
+</script>
+
+{#if entries.length > 0}
+	<DropdownMenu.Root>
+		<!-- At icon size the trigger is the icon alone (a card's ⋮), named for
+		     screen readers by its label; compact keeps the word on a wide screen only. -->
+		<DropdownMenu.Trigger
+			class={buttonClasses(variant, size, [compact ? 'max-md:size-11 max-md:px-0' : '', className].join(' '))}
+			title={hint ?? (size === 'icon' ? label : undefined)}
+			aria-label={size === 'icon' ? label : undefined}
+		>
+			{@render icon?.()}
+			{#if size !== 'icon'}
+				{#if compact}<span class="max-md:sr-only">{label}</span>{:else}{label}{/if}
+				<ChevronDown class={['size-3.5 opacity-70', compact ? 'max-md:hidden' : ''].join(' ')} aria-hidden="true" />
+			{/if}
+		</DropdownMenu.Trigger>
+		<DropdownMenu.Portal>
+			<DropdownMenu.Content {align} sideOffset={6} class="z-50 min-w-56 rounded-lg border border-line bg-surface p-1 shadow-2xl">
+				{#each entries as entry (entry.label)}
+					{#if entry.separated}<DropdownMenu.Separator class="my-1 h-px bg-hairline" />{/if}
+					<DropdownMenu.Item
+						disabled={entry.disabled}
+						onSelect={entry.onSelect}
+						class={[
+							'flex min-h-10 cursor-default items-center gap-2.5 rounded-md px-2.5 text-sm outline-none data-[disabled]:opacity-40 data-[highlighted]:bg-surface-hover md:min-h-9',
+							entry.danger ? 'text-danger' : 'text-foreground'
+						].join(' ')}
+					>
+						{#if entry.icon}<entry.icon class="size-4 shrink-0 opacity-80" />{/if}
+						<span class="flex-1">{entry.label}</span>
+						{#if entry.kbd}<kbd class="key-hint">{entry.kbd}</kbd>{/if}
+					</DropdownMenu.Item>
+				{/each}
+			</DropdownMenu.Content>
+		</DropdownMenu.Portal>
+	</DropdownMenu.Root>
+{/if}

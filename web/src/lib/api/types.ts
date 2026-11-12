@@ -121,6 +121,12 @@ export interface TranscodeSelection {
 	/** Client-side permissions, mirroring Jellyfin's PlaybackInfo flags. */
 	allow_video_stream_copy?: boolean;
 	allow_audio_stream_copy?: boolean;
+	/** Codecs beyond H.264 this client decodes in fMP4; a source in one
+	 * of them is copied instead of re-encoded (D-273). */
+	video_copy_codecs?: string[];
+	/** An effect the server renders into the session (D-274): one of
+	 * `PlaybackOptions.effects`. */
+	video_effect?: string;
 }
 
 export interface TranscodeStatus {
@@ -174,6 +180,8 @@ export interface PlaybackOptions {
 	default_delivery: TranscodeDelivery;
 	deliveries: string[];
 	qualities: TranscodeQuality[];
+	/** Effects this server can render into a session; empty when none. */
+	effects?: string[];
 }
 
 /** internal/contracts.TranscodeSettings (transcode.go). */
@@ -234,6 +242,8 @@ export interface TranscodeSettings {
 
 /** transcode.Transcoder.Probe (v3.go). */
 export interface TranscodeCapabilities {
+	/** The server can render video effects (libplacebo executes). */
+	video_effects?: boolean;
 	ffmpeg: string;
 	encoders: string[];
 	tone_mapping: boolean;
@@ -293,11 +303,27 @@ export interface ScanStats {
 /** gateway.ScanStatus (server.go). */
 export type ScanState = 'idle' | 'running' | 'done' | 'error';
 
+/** Where a running scan is; `phase` is the furthest step reached. */
+export interface ScanProgress {
+	phase: 'walk' | 'identify' | 'commit' | 'enrich';
+	libraries: number;
+	/** Roots whose listing finished; `files` grows with it. */
+	libraries_walked: number;
+	/** Roots committed to the catalog. */
+	libraries_done: number;
+	files: number;
+	files_done: number;
+	enrich_total?: number;
+	enrich_done?: number;
+}
+
 export interface ScanStatus {
 	state: ScanState;
 	started_at?: number;
 	finished_at?: number;
 	stats?: ScanStats;
+	/** Present while the scan runs. */
+	progress?: ScanProgress;
 	error?: string;
 	/** What started this scan: a button press or the filesystem watcher. */
 	trigger?: 'manual' | 'watch';

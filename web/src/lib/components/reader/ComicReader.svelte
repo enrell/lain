@@ -15,6 +15,7 @@
 	import { COMIC_PROFILE } from '$lib/reader/profile';
 	import { ReaderSettings } from '$lib/reader/settings.svelte';
 	import ReaderBase from './ReaderBase.svelte';
+	import ReaderGroup from './ReaderGroup.svelte';
 	import ReaderToggle from './ReaderToggle.svelte';
 
 	let {
@@ -53,43 +54,51 @@
 >
 	{#snippet toolbar()}
 		{#if settings.mode === 'paged'}
-			<ReaderToggle
-				label={settings.fit === 'contain' ? 'Fit page to screen (click for full width)' : 'Full width (click to fit page)'}
-				onclick={() => settings.setFit(settings.fit === 'contain' ? 'width' : 'contain')}
-			>
-				{settings.fit === 'contain' ? 'Fit' : 'Width'}
-			</ReaderToggle>
-			<ReaderToggle
-				label="Zoom out (-)"
-				disabled={settings.zoom <= 1}
-				onclick={() => settings.setZoom(settings.zoom - 0.25)}
-			>
-				<ZoomOut class="size-4" aria-hidden="true" />
-			</ReaderToggle>
-			<span class="w-10 text-center font-mono text-[10px] tabular-nums text-muted">{Math.round(settings.zoom * 100)}%</span>
-			<ReaderToggle
-				label="Zoom in (+)"
-				disabled={settings.zoom >= 3}
-				onclick={() => settings.setZoom(settings.zoom + 0.25)}
-			>
-				<ZoomIn class="size-4" aria-hidden="true" />
-			</ReaderToggle>
-			<ReaderToggle
-				label="Double-page spreads (D)"
-				active={settings.dual}
-				onclick={() => settings.toggleDual()}
-			>
-				<Columns2 class="size-4" aria-hidden="true" />
-				<span class="hidden xl:inline">Spread</span>
-			</ReaderToggle>
+			<!-- Fit and zoom, the spread, the strip: one track per question, as the manga reader. -->
+			<ReaderGroup label="Size">
+				<ReaderToggle
+					label={settings.fit === 'contain' ? 'Fit page to screen (click for full width)' : 'Full width (click to fit page)'}
+					onclick={() => settings.setFit(settings.fit === 'contain' ? 'width' : 'contain')}
+				>
+					{settings.fit === 'contain' ? 'Fit' : 'Width'}
+				</ReaderToggle>
+				<ReaderToggle
+					label="Zoom out (-)"
+					disabled={settings.zoom <= 1}
+					onclick={() => settings.setZoom(settings.zoom - 0.25)}
+				>
+					<ZoomOut class="size-4" aria-hidden="true" />
+				</ReaderToggle>
+				<span class="w-10 text-center font-mono text-[11px] tabular-nums text-muted">{Math.round(settings.zoom * 100)}%</span>
+				<ReaderToggle
+					label="Zoom in (+)"
+					disabled={settings.zoom >= 3}
+					onclick={() => settings.setZoom(settings.zoom + 0.25)}
+				>
+					<ZoomIn class="size-4" aria-hidden="true" />
+				</ReaderToggle>
+			</ReaderGroup>
+			<!-- Spreads exist only on a screen wider than tall: an upright one does not offer them. -->
+			<ReaderGroup label="Page layout" class="portrait:hidden">
+				<ReaderToggle
+					label="Double-page spreads (D)"
+					active={settings.dual}
+					onclick={() => settings.toggleDual()}
+				>
+					<Columns2 class="size-4" aria-hidden="true" />
+					<span class="hidden max-md:inline xl:inline">Spread</span>
+				</ReaderToggle>
+			</ReaderGroup>
 		{/if}
-		<ReaderToggle
-			label="Continuous scroll"
-			active={settings.mode === 'strip'}
-			onclick={() => settings.setMode(settings.mode === 'strip' ? 'paged' : 'strip')}
-		>
-			<GalleryVertical class="size-4" aria-hidden="true" />
-			<span class="hidden xl:inline">Scroll</span>
-		</ReaderToggle>
+		<ReaderGroup label="Strip">
+			<ReaderToggle
+				label="Continuous scroll"
+				active={settings.mode === 'strip'}
+				onclick={() => settings.setMode(settings.mode === 'strip' ? 'paged' : 'strip')}
+			>
+				<GalleryVertical class="size-4" aria-hidden="true" />
+				<span class="hidden max-md:inline xl:inline">Scroll</span>
+			</ReaderToggle>
+		</ReaderGroup>
 	{/snippet}
 </ReaderBase>

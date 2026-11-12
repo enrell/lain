@@ -3,7 +3,7 @@
 //! milliseconds; pooling can come later without an API change).
 //!
 //! `https` servers are reached through `lain-http`'s rustls setup
-//! (D-274): the webpki-roots trust anchors, plus the roots given to
+//! (D-277): the webpki-roots trust anchors, plus the roots given to
 //! [`trust_roots`] for a private CA or a self-signed certificate. A
 //! failed handshake is [`ClientError::Tls`].
 

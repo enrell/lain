@@ -15,6 +15,10 @@
  * Usage:
  *   web/e2e/fixtures.sh /tmp/lain-fixtures          # synthetic media
  *   lain serve --data-dir /tmp/lain-e2e --port 9360 # fresh dir
+ *     (on a machine with network, point LAIN_METADATA_KITSU_URL,
+ *     _ANILIST_URL, _JIKAN_URL and _TVMAZE_URL at a closed port, e.g.
+ *     http://127.0.0.1:9, so the metadata step meets the local NFO
+ *     provider: online answers would win over it)
  *   node web/e2e/smoke.mjs \
  *     --base http://127.0.0.1:9360 \
  *     --media /tmp/lain-fixtures \
@@ -237,6 +241,7 @@ async function clickText(text, selector = 'button, a') {
 	await settle();
 	const deadline = Date.now() + 5000;
 	let info = null;
+	let prev = null;
 	while (Date.now() < deadline) {
 		info = await evalValue(`(() => {
 			const els = [...document.querySelectorAll(${JSON.stringify(selector)})];
@@ -247,7 +252,8 @@ async function clickText(text, selector = 'button, a') {
 			const x = rect.left + rect.width / 2;
 			const y = rect.top + rect.height / 2;
 			const hit = document.elementFromPoint(x, y);
-			const hitEl = hit ? hit.closest('a, button') : null;
+			// What is hit must be the element looked for: a link or button, or whatever the selector names (a menu item is neither).
+			const hitEl = hit ? (hit.closest(${JSON.stringify(selector)}) ?? hit.closest('a, button')) : null;
 			return {
 				tag: el.tagName,
 				href: el.getAttribute('href'),
@@ -256,7 +262,12 @@ async function clickText(text, selector = 'button, a') {
 				hit: hitEl ? (hitEl.textContent || '').trim().slice(0, 60) : (hit ? hit.tagName : null)
 			};
 		})()`);
-		if (info && info.hit && info.hit.includes(text)) break;
+		// Twice at the same point: scrolling an element into view moves a
+		// floating menu a frame later, and a click measured in between lands
+		// where the entry no longer is.
+		const steady = info && prev && prev.x === info.x && prev.y === info.y;
+		if (info && info.hit && info.hit.includes(text) && steady) break;
+		prev = info;
 		await sleep(100);
 	}
 	assert(info, `no clickable element with text ${JSON.stringify(text)}`);
@@ -294,6 +305,25 @@ async function fillLabel(labelText, value) {
 	assert(filled, `no input for label ${JSON.stringify(labelText)}`);
 }
 
+// The add-library dialog has one path bar: a typed path is opened when the
+// field is left (or on Enter), and the Add buttons wait for the server to
+// have listed that folder.
+async function openFolder(path) {
+	// The dialog lists its starting folder as it opens, and that answer can
+	// land after the typed path's: the path is typed again until it holds.
+	const opened = `[...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('Add and scan') && !b.disabled) && document.getElementById('library-path').value === ${JSON.stringify(path)}`;
+	const deadline = Date.now() + 10000;
+	while (Date.now() < deadline) {
+		await fillLabel('Folder', path);
+		await evalValue(`document.getElementById('library-path').dispatchEvent(new FocusEvent('blur'))`);
+		for (let i = 0; i < 8; i++) {
+			if (await evalValue(opened)) return;
+			await sleep(120);
+		}
+	}
+	assert(false, 'the typed folder was not opened');
+}
+
 async function fillPlaceholder(placeholder, value) {
 	const filled = await evalValue(`(() => {
 		const el = document.querySelector('input[placeholder=' + ${JSON.stringify(JSON.stringify(placeholder))} + ']');
@@ -306,6 +336,25 @@ async function fillPlaceholder(placeholder, value) {
 		return true;
 	})()`);
 	assert(filled, `no input with placeholder ${JSON.stringify(placeholder)}`);
+}
+
+/**
+ * Type into the search bar the screen shows: the header's field from md
+ * up (it drives /search's results), the page's own field on a phone.
+ */
+async function fillSearch(value) {
+	const filled = await evalValue(`(() => {
+		const shown = (el) => el && el.getClientRects().length > 0;
+		const header = document.getElementById('header-search');
+		const el = shown(header) ? header : document.querySelector('input[placeholder="Titles, not filenames"]');
+		if (!shown(el)) return false;
+		el.focus();
+		const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+		setter.call(el, ${JSON.stringify(value)});
+		el.dispatchEvent(new Event('input', { bubbles: true }));
+		return true;
+	})()`);
+	assert(filled, 'no search field on screen');
 }
 
 /** Set a native <select> (bound with Svelte bind:value) and fire change. */
@@ -436,15 +485,15 @@ try {
 	await waitText('Media libraries', 10000);
 	await clickText('Add your first library');
 	await waitText('Add a media library', 5000);
+	await openFolder(`${MEDIA}/Anime`);
 	await fillLabel('Name', 'Anime');
-	await fillLabel('Server directory path', `${MEDIA}/Anime`);
 	await clickText('Add and scan');
 	await waitFor(`document.body.innerText.includes('identified')`, 20000, 'first scan finished');
 
 	await clickText('Add library');
 	await waitText('Add a media library', 5000);
+	await openFolder(`${MEDIA}/Movies`);
 	await fillLabel('Name', 'Movies');
-	await fillLabel('Server directory path', `${MEDIA}/Movies`);
 	await clickText('Add and scan');
 	await waitFor(`document.body.innerText.includes('identified')`, 20000, 'second scan finished');
 	console.log('   two libraries scanned');
@@ -463,15 +512,16 @@ try {
 
 	await navigate(`${BASE}/search`);
 	await waitText('Search', 10000);
-	await fillPlaceholder('Titles, not filenames', 'frieren');
+	await fillSearch('frieren');
 	await waitFor(
-		`document.body.innerText.includes('2 results') || document.body.innerText.includes('1 result')`,
+		// A search answers with titles: the two episodes of the fixture's show are one title.
+		`document.body.innerText.includes('1 title for')`,
 		15000,
 		'search results'
 	);
-	await fillPlaceholder('Titles, not filenames', 'zzzz-no-such-title');
+	await fillSearch('zzzz-no-such-title');
 	await waitText('No matches', 15000);
-	await fillPlaceholder('Titles, not filenames', '');
+	await fillSearch('');
 	console.log('   search results and empty state verified');
 
 	/* ---------------- item + enrichment ---------------- */
@@ -482,21 +532,36 @@ try {
 	// Scans auto-enrich now, so strip any existing overlay first: the
 	// manual fetch below must exercise the full NFO path. Either button
 	// proves the controls rendered (enrichment loads async after the item).
-	await waitFor(
-		`document.body.innerText.includes('Refetch metadata') || document.body.innerText.includes('Fetch metadata')`,
-		15000,
-		'enrich controls'
-	);
-	const hasOverlay = await evalValue(`document.body.innerText.includes('Refetch metadata')`);
-	if (hasOverlay) {
-		await clickText('Remove');
-		await clickText('Remove overlay');
-		await waitText('Fetch metadata', 10000);
+	// The admin controls sit behind the title's Manage menu.
+	const menuHas = (text) =>
+		evalValue(`[...document.querySelectorAll('[role="menuitem"]')].some((e) => (e.textContent || '').includes(${JSON.stringify(text)}))`);
+	await waitText('More', 15000);
+	await clickText('More');
+	await waitFor(`document.querySelectorAll('[role="menuitem"]').length > 0`, 5000, 'manage menu');
+	// The overlay arrives after the item, and the entry turns from "Fetch"
+	// into "Refetch" under the pointer when it does: give it a moment to say
+	// which one this title has before acting on either.
+	let enriched = false;
+	for (const until = Date.now() + 3000; Date.now() < until && !enriched; ) {
+		enriched = await menuHas('Refetch metadata');
+		if (!enriched) await sleep(150);
 	}
-	await waitText('Fetch metadata');
-	await clickText('Fetch metadata');
+	if (enriched) {
+		await clickText('Remove metadata', '[role="menuitem"]');
+		await clickText('Remove overlay');
+		await waitText('Metadata overlay removed', 10000);
+		await clickText('More');
+		await waitFor(`document.querySelectorAll('[role="menuitem"]').length > 0`, 5000, 'manage menu');
+	}
+	await clickText('Fetch metadata', '[role="menuitem"]');
 	await waitText('Metadata added from', 15000);
-	await waitText("Frieren: Beyond Journey's End", 10000);
+	// The title hero is set in capitals by the stylesheet, and innerText
+	// reports text as styled: the enriched name is looked for in any case.
+	await waitFor(
+		`document.body.innerText.toLowerCase().includes("frieren: beyond journey's end")`,
+		10000,
+		'the enriched title is shown'
+	);
 	console.log('   local NFO overlay applied without network providers');
 
 	/* ---------------- title page + watch sidebar ---------------- */
@@ -768,10 +833,17 @@ try {
 		'switch toggled'
 	);
 	const flippedState = await evalValue(`(${firstSwitch}).getAttribute('data-state')`);
-	const saveSettings = () =>
-		evalValue(
-			`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save').click()`
+	// Settings stage their changes; the bar that appears applies them.
+	const saveSettings = async () => {
+		await waitFor(
+			`[...document.querySelectorAll('button')].some((b) => b.textContent.trim().startsWith('Apply') && !b.disabled)`,
+			5000,
+			'the staged-changes bar offers Apply'
 		);
+		await evalValue(
+			`[...document.querySelectorAll('button')].find((b) => b.textContent.trim().startsWith('Apply')).click()`
+		);
+	};
 	await saveSettings();
 	await waitUntil(
 		() =>
@@ -1256,12 +1328,20 @@ try {
 	assert(ranged.length > 0, 'no Range header observed on stream requests');
 	evidence.rangeRequests = ranged.length;
 
+	// Keys go to the focused page: earlier steps open other targets (downloads,
+	// external players), so this one is brought to the front and nothing in it
+	// holds the focus before the player's keys are pressed.
+	await page.send('Page.bringToFront');
+	await evalValue('document.activeElement?.blur?.()');
+	const beforeSeek = await evalValue(`document.querySelector('video').currentTime`);
 	await pressKey('ArrowRight', 'ArrowRight', 39);
-	await waitFor(`document.querySelector('video').currentTime > 6`, 10000, 'keyboard seek forward');
+	await waitFor(`document.querySelector('video').currentTime > ${beforeSeek} + 4`, 10000, 'keyboard seek forward');
+	// The key changes the player's state and the element follows on the next
+	// update, as the player-controls checks already wait for.
 	await pressKey('m', 'KeyM', 77);
-	assert(await evalValue(`document.querySelector('video').muted === true`), 'M did not mute');
+	await waitFor(`document.querySelector('video').muted === true`, 3000, 'M mutes');
 	await pressKey('m', 'KeyM', 77);
-	assert(await evalValue(`document.querySelector('video').muted === false`), 'M did not unmute');
+	await waitFor(`document.querySelector('video').muted === false`, 3000, 'M unmutes');
 	await pressKey(' ', 'Space', 32);
 	await waitFor(`document.querySelector('video').paused === true`, 5000, 'Space paused');
 	await pressKey(' ', 'Space', 32);
@@ -1663,7 +1743,9 @@ try {
 
 	await navigate(`${BASE}/settings/plugins`);
 	await waitText('Capabilities');
-	await clickText('Replace');
+	// The first capability whose job an installed provider can do (a
+	// component bound before its install offers nothing to replace with).
+	await clickText('Replace', 'button:not([disabled])');
 	await waitText('Replace providers', 5000);
 	const beforeGen = await evalValue(`(() => {
 		const dialog = [...document.querySelectorAll('[role=dialog]')][0];
@@ -1683,15 +1765,16 @@ try {
 	evidence.swap = `${beforeGen} -> ${afterGen}`;
 
 	await navigate(`${BASE}/settings/backup`);
-	await waitText('Download lain.db');
-	await clickText('Download lain.db');
+	await waitText('Download a backup');
+	await clickText('Download a backup');
 	await waitUntil(
 		() => requests.some((r) => r.url.includes('/api/admin/backup')),
 		5000,
 		'backup request'
 	);
 	await sleep(1500);
-	const downloaded = readdirSync(DOWNLOADS).filter((f) => f.endsWith('.db'));
+	// A backup is the lain.backup@1 tar (D-238).
+	const downloaded = readdirSync(DOWNLOADS).filter((f) => f.endsWith('.tar'));
 	assert(downloaded.length > 0, 'no backup file reached the download directory');
 	evidence.backupFile = downloaded[0];
 	console.log(`   ${downloaded[0]} downloaded`);

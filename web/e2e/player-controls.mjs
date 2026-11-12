@@ -3,6 +3,8 @@ export async function verifyPlayerControls({ page, evalValue, pressKey, waitFor,
 	const video = `document.querySelector('video')`;
 	const originalPath = await evalValue('location.pathname');
 	const click = async (selector) => {
+		// A button relabelled by an event (Exit fullscreen back to Fullscreen) is there a frame after the event.
+		await waitFor(`!!document.querySelector(${JSON.stringify(selector)})`, 3000, `something to click: ${selector}`);
 		const p = await evalValue(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`);
 		await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...p });
 		for (const type of ['mousePressed', 'mouseReleased']) {

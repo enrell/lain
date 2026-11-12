@@ -1,13 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import AudioLines from '@lucide/svelte/icons/audio-lines';
-	import Clapperboard from '@lucide/svelte/icons/clapperboard';
-	import Cpu from '@lucide/svelte/icons/cpu';
-	import Gauge from '@lucide/svelte/icons/gauge';
-	import HardDrive from '@lucide/svelte/icons/hard-drive';
+	import Plus from '@lucide/svelte/icons/plus';
 	import Search from '@lucide/svelte/icons/search';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import WandSparkles from '@lucide/svelte/icons/wand-sparkles';
 	import type {
 		TranscodeCapabilities,
 		TranscodeQuality,
@@ -18,7 +13,6 @@
 	import Badge from '$lib/components/primitives/Badge.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
-	import Input from '$lib/components/primitives/Input.svelte';
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import Switch from '$lib/components/primitives/Switch.svelte';
@@ -32,6 +26,7 @@
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
 	import StagedBar from '$lib/components/settings/StagedBar.svelte';
+	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 
@@ -364,17 +359,48 @@
 
 <svelte:window onkeydown={onSlash} />
 
-<svelte:head><title>Playback — Settings — Lain</title></svelte:head>
+<svelte:head><title>Transcoding — Settings — Lain</title></svelte:head>
+
+<!-- Every field on this page is a row (label and hint left, control right)
+     in the group it belongs to; numbers are one width and read right-aligned. -->
+{#snippet numberInput(label: string, value: number, set: (n: number) => void, min?: number, max?: number, step?: number, wide = false)}
+	<input
+		type="number"
+		class="h-9 {wide ? 'w-40' : 'w-28'} rounded-md border px-3 text-end font-mono text-xs text-foreground outline-none"
+		aria-label={label}
+		{min}
+		{max}
+		{step}
+		value={String(value)}
+		oninput={(e) => set(numberValue(e))}
+	/>
+{/snippet}
+
+{#snippet textInput(label: string, value: string, set: (v: string) => void, placeholder = '')}
+	<input
+		class="h-9 w-full rounded-md border px-3 text-sm text-foreground outline-none placeholder:text-muted/60"
+		aria-label={label}
+		{placeholder}
+		{value}
+		oninput={(e) => set((e.currentTarget as HTMLInputElement).value)}
+	/>
+{/snippet}
+
+{#snippet select(label: string, value: string, options: { value: string; label: string; disabled?: boolean }[], set: (v: string) => void)}
+	<div class="w-full">
+		<Select aria-label={label} {value} {options} onValueChange={set} />
+	</div>
+{/snippet}
 
 <div>
 	{#if loading}
 		<div class="space-y-3">
-			{#each [0, 1, 2, 3] as i (i)}<div class="h-12 animate-pulse rounded-md bg-surface/60"></div>{/each}
+			{#each [0, 1, 2, 3] as i (i)}<div class="h-12 animate-pulse rounded-md bg-panel"></div>{/each}
 		</div>
 	{:else if error}
 		<ErrorState message={error} retry={() => void load()} />
 	{:else if settings}
-		<div class="relative mb-8">
+		<div class="relative mb-10">
 			<Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
 			<input
 				bind:this={searchInput}
@@ -383,10 +409,10 @@
 				placeholder="Filter transcoding settings"
 				class="h-10 w-full rounded-md border pl-9 pr-10 text-sm text-foreground placeholder:text-muted/60 focus:outline-none"
 			/>
-			<kbd class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] text-muted">/</kbd>
+			<kbd class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">/</kbd>
 		</div>
 
-		<SettingsGroup id="mode" title="Mode">
+		<SettingsGroup id="mode" title="Mode" description={t('settings.groups.transcoding.mode')}>
 			<SettingRow
 				label="Policy"
 				hint={view === 'auto'
@@ -399,8 +425,8 @@
 							type="button"
 							role="radio"
 							aria-checked={view === id}
-							class="rounded px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors {view === id
-								? 'bg-surface-active text-foreground'
+							class="h-8 rounded px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors {view === id
+								? 'bg-foreground/[0.12] text-foreground'
 								: 'text-muted hover:text-foreground'}"
 							onclick={() => setView(id as 'auto' | 'custom')}
 						>
@@ -414,10 +440,10 @@
 					{hardwareActive ? settings.hardware_acceleration : 'software'}
 				</span>
 				{#each readyHardware.filter((b) => b !== settings?.hardware_acceleration) as backend (backend)}
-					<Button variant="ghost" size="sm" onclick={() => stageHardware(backend)}>Use {backend.toUpperCase()}</Button>
+					<Button variant="ghost" size="field" onclick={() => stageHardware(backend)}>Use {backend.toUpperCase()}</Button>
 				{/each}
 				{#if hardwareActive}
-					<Button variant="ghost" size="sm" onclick={stageSoftware}>Use software</Button>
+					<Button variant="ghost" size="field" onclick={stageSoftware}>Use software</Button>
 				{/if}
 			</SettingRow>
 			<SettingRow label="Delivery">
@@ -435,591 +461,361 @@
 			</SettingRow>
 		</SettingsGroup>
 
-		<div class="mt-8 space-y-2">
-				{#if capabilities && searchMatches('diagnostics', 'capabilities', 'ffmpeg', 'encoder', 'probe')}
-					<details class="settings-panel group" open={!!normalizedSearch}>
-						<summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
-							<div class="flex items-center gap-2">
-								<Cpu class="size-4 text-muted" />
-								<div>
-									<h2 class="settings-heading">Probed capabilities</h2>
-									<p class="text-xs text-muted">Detailed diagnostics from the server's current ffmpeg.</p>
-								</div>
-							</div>
-							<Badge tone={capabilities.tone_mapping ? 'success' : 'warning'}>{capabilities.tone_mapping ? 'ready' : 'limited'}</Badge>
-						</summary>
-						<div class="border-t border-line px-4 py-4">
-							<p class="text-xs text-muted">ffmpeg: {capabilities.ffmpeg || 'system PATH'}</p>
-							<div class="mt-3 flex flex-wrap gap-1.5">
-								<Badge tone={capabilities.tone_mapping ? 'success' : 'danger'}>tone mapping {capabilities.tone_mapping ? 'available' : 'unavailable'}</Badge>
-								<Badge tone={capabilities.tone_mapping_bt2390 ? 'success' : 'neutral'}>BT.2390 {capabilities.tone_mapping_bt2390 ? 'available' : 'fallback to hable'}</Badge>
-								{#each Object.entries(capabilities.hardware) as [backend, ok] (backend)}
-									<Badge tone={ok ? 'success' : 'neutral'}>{backend} {ok ? 'ready' : 'not available'}</Badge>
-								{/each}
-							</div>
-							<p class="mt-4 font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Encoders</p>
-							<div class="mt-2 flex flex-wrap gap-1.5">
-								{#each capabilities.encoders as encoder (encoder)}<Badge>{encoder}</Badge>{/each}
-							</div>
-						</div>
-					</details>
-				{/if}
-
-		<!-- Delivery -->
-		{#if sectionMatches('delivery', 'stream', 'hls', 'segment', 'timeout', 'throttle')}
-		<section id="delivery" class="settings-section scroll-mt-24 space-y-5">
-			<div class="flex items-center gap-2">
-				<Clapperboard class="size-4 text-muted" />
-				<div>
-					<h2 class="settings-heading">Delivery</h2>
-					<p class="mt-0.5 text-xs text-muted">How playback starts, advances and releases work.</p>
-				</div>
-			</div>
-			<Select
-				label="Default delivery"
-				value={settings.default_delivery}
-				options={deliveries}
-				onValueChange={(value) => (settings!.default_delivery = value as TranscodeSettings['default_delivery'])}
-			/>
-			<Select
-				label="HLS segment container"
-				value={settings.hls_segment_container}
-				options={containers}
-				onValueChange={(value) => (settings!.hls_segment_container = value)}
-			/>
-			<div class="grid gap-4 sm:grid-cols-2">
-				<Input
-					label="HLS segment length (seconds)"
-					type="number"
-					min="1"
-					max="30"
-					value={String(settings.hls_segment_seconds)}
-					oninput={(e) => (settings!.hls_segment_seconds = numberValue(e))}
-				/>
-				<Input
-					label="Idle timeout (seconds)"
-					type="number"
-					min="15"
-					max="3600"
-					value={String(settings.idle_timeout_sec)}
-					oninput={(e) => (settings!.idle_timeout_sec = numberValue(e))}
-					hint="Stop sessions nobody is watching anymore."
-				/>
-			</div>
-			<Switch
-				label="Throttle transcodes"
-				description="Pause ffmpeg while the client is far behind the produced segments."
-				checked={settings.throttle}
-				onCheckedChange={(checked) => (settings!.throttle = checked)}
-			/>
-			{#if settings.throttle}
-				<Input
-					label="Throttle delay — produced-ahead budget (seconds)"
-					type="number"
-					min="5"
-					max="600"
-					value={String(settings.throttle_ahead_sec)}
-					oninput={(e) => (settings!.throttle_ahead_sec = numberValue(e))}
-					hint="Jellyfin calls this the throttle delay: how far ahead of the viewer ffmpeg may run."
-				/>
-			{/if}
-			<Switch
-				label="Enable segment deletion"
-				description="Delete HLS segments once the client is done with them; rewinding beyond the kept window needs a fresh session."
-				checked={settings.segment_deletion}
-				onCheckedChange={(checked) => (settings!.segment_deletion = checked)}
-			/>
-			{#if settings.segment_deletion}
-				<Input
-					label="Segment keep window (seconds)"
-					type="number"
-					min="0"
-					max="3600"
-					value={String(settings.segment_keep_sec)}
-					oninput={(e) => (settings!.segment_keep_sec = numberValue(e))}
-				/>
-			{/if}
-		</section>
-		{/if}
-
-		<!-- Encoding -->
-		{#if sectionMatches('encoding', 'quality', 'codec', 'crf', 'preset', 'hevc', 'av1', 'deinterlace')}
-		<section id="encoding" class="settings-section scroll-mt-24 space-y-5">
-			<div class="flex items-center gap-2">
-				<Gauge class="size-4 text-muted" />
-				<div>
-					<h2 class="settings-heading">Encoding</h2>
-					<p class="mt-0.5 text-xs text-muted">Quality defaults and the resolution ladder exposed to viewers.</p>
-				</div>
-			</div>
-			<div class="grid gap-4 sm:grid-cols-2">
-				<Select
-					label="Encoder preset"
-					value={settings.encoder_preset}
-					options={presets.map((p) => ({ value: p, label: p }))}
-					onValueChange={(value) => (settings!.encoder_preset = value)}
-				/>
-				<Input
-					label="Quality (CRF, lower is better)"
-					type="number"
-					min="0"
-					max="51"
-					value={String(settings.crf)}
-					oninput={(e) => (settings!.crf = numberValue(e))}
-				/>
-			</div>
-			<Switch
-				label="Allow HEVC (H.265) output"
-				description="Per-request codec selection can then ask for HEVC; off by default for browser reach."
-				checked={settings.allow_hevc}
-				onCheckedChange={(checked) => (settings!.allow_hevc = checked)}
-			/>
-			<Switch
-				label="Allow AV1 output"
-				description="Requires a local AV1 encoder (libsvtav1/libaom-av1)."
-				checked={settings.allow_av1}
-				onCheckedChange={(checked) => (settings!.allow_av1 = checked)}
-			/>
-			<Switch
-				label="Deinterlace when detected"
-				checked={settings.deinterlace === 'auto'}
-				onCheckedChange={(checked) => (settings!.deinterlace = checked ? 'auto' : 'off')}
-			/>
-			{#if settings.deinterlace === 'auto'}
-				<Select
-					label="Deinterlace method"
-					value={settings.deinterlace_method}
-					options={deinterlaceMethods}
-					onValueChange={(value) => (settings!.deinterlace_method = value)}
-				/>
-				<Switch
-					label="Deinterlace double rate"
-					description="Keep both fields as frames: smoother motion, twice the output frame count."
-					checked={settings.deinterlace_double_rate}
-					onCheckedChange={(checked) => (settings!.deinterlace_double_rate = checked)}
-				/>
-			{/if}
-
-			<div>
-				<h3 class="text-sm font-medium text-muted">Per-codec encoding</h3>
-				<p class="mt-1 text-xs text-muted">
-					Each output codec has its own preset and CRF, like Jellyfin. Leave a preset on “inherit” to use
-					the preset above.
-				</p>
-				<div class="mt-3 space-y-3">
-					{#each codecRows as row (row.key)}
-						<div class="grid items-end gap-2 sm:grid-cols-[6rem_1fr_8rem]">
-							<p class="pb-2 text-sm font-medium text-foreground">{row.label}</p>
-							<Select
-								aria-label={`${row.label} preset`}
-								value={row.preset()}
-								options={[{ value: '', label: 'Inherit' }, ...presets.map((p) => ({ value: p, label: p }))]}
-								onValueChange={(value) => row.setPreset(value)}
-							/>
-							<Input
-								aria-label={`${row.label} CRF`}
-								type="number"
-								min="0"
-								max="51"
-								value={String(row.crf())}
-								oninput={(e) => row.setCRF(numberValue(e))}
-							/>
-						</div>
-					{/each}
-				</div>
-			</div>
-
-			<div>
-				<div class="flex items-center justify-between">
-					<h3 class="text-sm font-medium text-muted">Quality ladder</h3>
-					<Button variant="ghost" size="sm" onclick={addQuality}>+ Add rung</Button>
-				</div>
-				<table class="mt-2 w-full text-sm">
-					<thead>
-						<tr class="text-left font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-							<th class="pb-1.5 font-normal">Name</th>
-							<th class="pb-1.5 font-normal">Max w</th>
-							<th class="pb-1.5 font-normal">Max h</th>
-							<th class="pb-1.5 font-normal">kbps</th>
-							<th class="w-8"></th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each settings.qualities as quality, index (index)}
-							<tr class="border-t border-hairline">
-								<td class="py-1 pr-2"><input class="h-8 w-full rounded border bg-transparent px-2 font-mono text-xs text-foreground outline-none" aria-label="Quality name" value={quality.name} oninput={(e) => setQualityField(index, 'name', e.currentTarget.value)} /></td>
-								<td class="py-1 pr-2"><input class="h-8 w-full rounded border bg-transparent px-2 font-mono text-xs text-foreground outline-none" aria-label="Max width" type="number" value={String(quality.max_width ?? 0)} oninput={(e) => setQualityField(index, 'max_width', numberValue(e))} /></td>
-								<td class="py-1 pr-2"><input class="h-8 w-full rounded border bg-transparent px-2 font-mono text-xs text-foreground outline-none" aria-label="Max height" type="number" value={String(quality.max_height ?? 0)} oninput={(e) => setQualityField(index, 'max_height', numberValue(e))} /></td>
-								<td class="py-1 pr-2"><input class="h-8 w-full rounded border bg-transparent px-2 font-mono text-xs text-foreground outline-none" aria-label="Bitrate kbps" type="number" value={String(quality.bitrate_kbps ?? 0)} oninput={(e) => setQualityField(index, 'bitrate_kbps', numberValue(e))} /></td>
-								<td class="py-1 text-right">
-									<button type="button" class="inline-flex size-7 items-center justify-center rounded text-muted hover:bg-surface-hover hover:text-danger" aria-label="Remove quality {quality.name}" onclick={() => removeQuality(index)}>
-										<Trash2 class="size-3.5" />
-									</button>
-								</td>
-							</tr>
+		{#if capabilities && searchMatches('diagnostics', 'capabilities', 'ffmpeg', 'encoder', 'probe')}
+			<SettingsGroup
+				id="capabilities"
+				title="Probed capabilities"
+				description="Detailed diagnostics from the server's current ffmpeg."
+				open={!!normalizedSearch}
+			>
+				{#snippet aside()}
+					<Badge tone={capabilities?.tone_mapping ? 'success' : 'warning'}>{capabilities?.tone_mapping ? 'ready' : 'limited'}</Badge>
+				{/snippet}
+				<div class="py-4">
+					<p class="text-xs text-muted">ffmpeg: {capabilities.ffmpeg || 'system PATH'}</p>
+					<div class="mt-3 flex flex-wrap gap-1.5">
+						<Badge tone={capabilities.tone_mapping ? 'success' : 'danger'}>tone mapping {capabilities.tone_mapping ? 'available' : 'unavailable'}</Badge>
+						<Badge tone={capabilities.tone_mapping_bt2390 ? 'success' : 'neutral'}>BT.2390 {capabilities.tone_mapping_bt2390 ? 'available' : 'fallback to hable'}</Badge>
+						{#each Object.entries(capabilities.hardware) as [backend, ok] (backend)}
+							<Badge tone={ok ? 'success' : 'neutral'}>{backend} {ok ? 'ready' : 'not available'}</Badge>
 						{/each}
-					</tbody>
-				</table>
-			</div>
-		</section>
-		{/if}
-
-		<!-- Hardware -->
-		{#if sectionMatches('hardware', 'acceleration', 'gpu', 'vaapi', 'nvenc', 'qsv', 'decode')}
-		<details id="hardware" class="settings-section group scroll-mt-24" open={hardwareActive || !!normalizedSearch}>
-			<summary class="flex cursor-pointer list-none items-center justify-between gap-3 p-5">
-				<div class="flex items-center gap-2">
-					<Cpu class="size-4 text-muted" />
-					<div>
-						<h2 class="settings-heading">Hardware acceleration</h2>
-						<p class="mt-0.5 text-xs text-muted">Automatic GPU encode and decode, guarded by the server probe.</p>
+					</div>
+					<p class="mt-4 font-mono text-[10px] uppercase tracking-[0.16em] text-muted">Encoders</p>
+					<div class="mt-2 flex flex-wrap gap-1.5">
+						{#each capabilities.encoders as encoder (encoder)}<Badge>{encoder}</Badge>{/each}
 					</div>
 				</div>
-				<Badge tone={hardwareActive ? 'accent' : 'neutral'}>{hardwareActive ? settings.hardware_acceleration.toUpperCase() : 'software'}</Badge>
-			</summary>
-			<div class="space-y-4 border-t border-line p-5">
-			<Select
-				label="Backend"
-				value={settings.hardware_acceleration}
-				options={probedHardwareOptions}
-				onValueChange={(value) => (settings!.hardware_acceleration = value)}
-			/>
-			{#if settings.hardware_acceleration !== 'none'}
-				<div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent/20 bg-accent/5 p-3">
-					<p class="text-xs leading-5 text-muted">A failed runtime attempt falls back to software and is reported on the session.</p>
-					<Button variant="ghost" size="sm" onclick={stageSoftware}>Use software</Button>
-				</div>
-			{/if}
-			{#if settings.hardware_acceleration === 'vaapi'}
-				<div class="space-y-1.5">
-					<Input
-						aria-label="VA-API device"
-						value={settings.hardware_device}
-						oninput={(e) => (settings!.hardware_device = (e.currentTarget as HTMLInputElement).value)}
-					/>
-					<p class="text-xs text-muted">
-						VA-API render node (default /dev/dri/renderD128). Other backends pick their own device.
-					</p>
-				</div>
-			{/if}
-			<Switch
-				label="Use hardware encoding"
-				description="Encode with the selected backend when its probe passes; a failed attempt falls back to software visibly."
-				checked={settings.hardware_encode}
-				onCheckedChange={(checked) => (settings!.hardware_encode = checked)}
-			/>
-			{#if settings.hardware_acceleration === 'qsv'}
-				<Switch
-					label="Intel low-power encoder"
-					description="Use QSV's low-power H.264/HEVC encoder (experimental; many mfx version and rate-control limitations)."
-					checked={settings.hardware_low_power}
-					onCheckedChange={(checked) => (settings!.hardware_low_power = checked)}
-				/>
-			{/if}
-			<div>
-				<p class="text-sm font-medium text-muted">Hardware decoding</p>
-				<div class="mt-2 flex flex-wrap gap-3">
-					{#each decodeCodecs as codec (codec)}
-						<label class="flex items-center gap-1.5 text-sm text-foreground">
-							<input
-								type="checkbox"
-								checked={settings.hardware_decode_codecs.includes(codec)}
-								onchange={(e) => toggleCodec(codec, (e.currentTarget as HTMLInputElement).checked)}
-							/>
-							{codec}
-						</label>
-					{/each}
-				</div>
-			</div>
-			<Switch
-				label="Decode 10-bit HEVC in hardware"
-				description="Off by default: some backends fail or produce wrong colours on 10-bit HEVC."
-				checked={settings.hardware_decode_10bit_hevc}
-				onCheckedChange={(checked) => (settings!.hardware_decode_10bit_hevc = checked)}
-			/>
-			<Switch
-				label="Decode 10-bit VP9 in hardware"
-				checked={settings.hardware_decode_10bit_vp9}
-				onCheckedChange={(checked) => (settings!.hardware_decode_10bit_vp9 = checked)}
-			/>
-			</div>
-		</details>
+			</SettingsGroup>
 		{/if}
 
-		<!-- HDR -->
-		{#if sectionMatches('hdr', 'processing', 'tone mapping', 'luminance', 'deinterlace')}
-		<section id="processing" class="settings-section scroll-mt-24 space-y-4">
-			<div class="flex items-center gap-2">
-				<WandSparkles class="size-4 text-muted" />
-				<div>
-					<h2 class="settings-heading">HDR & tone mapping</h2>
-					<p class="mt-0.5 text-xs text-muted">Automatic is recommended: process HDR only when the source needs it.</p>
-				</div>
-			</div>
-			<Switch
-				label="Enable tone mapping"
-				description="HDR sources become SDR when the chain executes; without it HDR browser playback stays unavailable."
-				checked={settings.tone_mapping}
-				onCheckedChange={(checked) => (settings!.tone_mapping = checked)}
-			/>
-			{#if settings.tone_mapping}
-				<div class="grid gap-4 sm:grid-cols-2">
-					<Select
-						label="Algorithm"
-						value={settings.tone_mapping_algorithm}
-						options={toneAlgorithms}
-						onValueChange={(value) => (settings!.tone_mapping_algorithm = value)}
-					/>
-					<Select
-						label="When to apply"
-						value={settings.tone_mapping_mode}
-						options={toneModes}
-						onValueChange={(value) => (settings!.tone_mapping_mode = value)}
-					/>
-				</div>
-				<Input
-					label="Nominal peak luminance (nits)"
-					type="number"
-					min="50"
-					max="10000"
-					value={String(settings.tone_mapping_peak_nits)}
-					oninput={(e) => (settings!.tone_mapping_peak_nits = numberValue(e))}
-				/>
-			{/if}
-		</section>
+		{#if sectionMatches('delivery', 'stream', 'hls', 'segment', 'timeout', 'throttle')}
+			<SettingsGroup id="delivery" title="Delivery" description="How playback starts, advances and releases work.">
+				<SettingRow label="Default delivery">
+					{@render select('Default delivery', settings.default_delivery, deliveries, (value) => (settings!.default_delivery = value as TranscodeSettings['default_delivery']))}
+				</SettingRow>
+				<SettingRow label="HLS segment container">
+					{@render select('HLS segment container', settings.hls_segment_container, containers, (value) => (settings!.hls_segment_container = value))}
+				</SettingRow>
+				<SettingRow label="HLS segment length (seconds)">
+					{@render numberInput('HLS segment length (seconds)', settings.hls_segment_seconds, (n) => (settings!.hls_segment_seconds = n), 1, 30)}
+				</SettingRow>
+				<SettingRow label="Idle timeout (seconds)" hint="Stop sessions nobody is watching anymore.">
+					{@render numberInput('Idle timeout (seconds)', settings.idle_timeout_sec, (n) => (settings!.idle_timeout_sec = n), 15, 3600)}
+				</SettingRow>
+				<SettingRow label="Throttle transcodes" hint="Pause ffmpeg while the client is far behind the produced segments.">
+					<Switch bare label="Throttle transcodes" checked={settings.throttle} onCheckedChange={(checked) => (settings!.throttle = checked)} />
+				</SettingRow>
+				{#if settings.throttle}
+					<SettingRow
+						label="Throttle delay — produced-ahead budget (seconds)"
+						hint="Jellyfin calls this the throttle delay: how far ahead of the viewer ffmpeg may run."
+					>
+						{@render numberInput('Throttle delay — produced-ahead budget (seconds)', settings.throttle_ahead_sec, (n) => (settings!.throttle_ahead_sec = n), 5, 600)}
+					</SettingRow>
+				{/if}
+				<SettingRow
+					label="Enable segment deletion"
+					hint="Delete HLS segments once the client is done with them; rewinding beyond the kept window needs a fresh session."
+				>
+					<Switch bare label="Enable segment deletion" checked={settings.segment_deletion} onCheckedChange={(checked) => (settings!.segment_deletion = checked)} />
+				</SettingRow>
+				{#if settings.segment_deletion}
+					<SettingRow label="Segment keep window (seconds)">
+						{@render numberInput('Segment keep window (seconds)', settings.segment_keep_sec, (n) => (settings!.segment_keep_sec = n), 0, 3600)}
+					</SettingRow>
+				{/if}
+			</SettingsGroup>
 		{/if}
 
-		<!-- Audio & subtitles -->
-		{#if sectionMatches('audio', 'subtitle', 'captions', 'downmix', 'font', 'bitrate')}
-		<section id="audio" class="settings-section scroll-mt-24 space-y-4">
-			<div class="flex items-center gap-2">
-				<AudioLines class="size-4 text-muted" />
-				<div>
-					<h2 class="settings-heading">Audio & subtitles</h2>
-					<p class="mt-0.5 text-xs text-muted">Prefer extraction and direct playback; burn only when a track requires it.</p>
-				</div>
-			</div>
-			<div class="grid gap-4 sm:grid-cols-2">
-				<Input
-					label="Audio bitrate (kbps)"
-					type="number"
-					min="32"
-					max="640"
-					value={String(settings.audio_bitrate_kbps)}
-					oninput={(e) => (settings!.audio_bitrate_kbps = numberValue(e))}
-				/>
-				<Select
-					label="Subtitle handling"
-					value={settings.subtitle_mode}
-					options={subtitleModes}
-					onValueChange={(value) => (settings!.subtitle_mode = value as TranscodeSettings['subtitle_mode'])}
-				/>
-			</div>
-			<Switch
-				label="Variable-bitrate audio (AAC VBR)"
-			description="Uses ffmpeg's native VBR quality step mapped from the bitrate above instead of a fixed rate."
-				checked={settings.audio_vbr}
-				onCheckedChange={(checked) => (settings!.audio_vbr = checked)}
-			/>
-			<Switch
-				label="Allow subtitle extraction on the fly"
-				description="Serves WebVTT for a chosen track while a file plays directly, without transcoding it."
-				checked={settings.allow_subtitle_extraction !== false}
-				onCheckedChange={(checked) => (settings!.allow_subtitle_extraction = checked)}
-			/>
-			<Switch
-				label="Downmix multichannel audio"
-				description="More than two channels become stereo AAC."
-				checked={settings.downmix_audio}
-				onCheckedChange={(checked) => (settings!.downmix_audio = checked)}
-			/>
-			{#if settings.downmix_audio}
-				<div class="grid gap-4 sm:grid-cols-2">
-					<Select
-						label="Stereo downmix algorithm"
-						value={settings.downmix_stereo_algorithm}
-						options={downmixAlgorithms}
-						onValueChange={(value) => (settings!.downmix_stereo_algorithm = value)}
-					/>
-					<Input
-						label="Downmix gain (linear)"
-						type="number"
-						min="0.5"
-						max="8"
-						step="0.5"
-						value={String(settings.downmix_audio_boost)}
-						oninput={(e) => (settings!.downmix_audio_boost = numberValue(e))}
-						hint="Applied only when downmixing; 1 leaves the level untouched."
-					/>
-				</div>
-			{/if}
-			<Switch
-				label="Enable fallback fonts"
-				description="Use the font directory and forced family below when a burned-in subtitle needs a font."
-				checked={settings.fallback_font_enabled !== false}
-				onCheckedChange={(checked) => (settings!.fallback_font_enabled = checked)}
-			/>
-			<div class="grid gap-4 sm:grid-cols-2">
-				<Input
-					label="Burn-in font directory"
-					placeholder="system font path"
-					value={settings.fallback_font_path}
-					oninput={(e) => (settings!.fallback_font_path = (e.currentTarget as HTMLInputElement).value)}
-					hint="Searched first when a burned-in subtitle needs a font."
-				/>
-				<Input
-					label="Forced font family"
-					placeholder="e.g. DejaVu Sans"
-					value={settings.fallback_font_name}
-					oninput={(e) => (settings!.fallback_font_name = (e.currentTarget as HTMLInputElement).value)}
-				/>
-			</div>
-		</section>
-		{/if}
-
-		<!-- Resources & paths -->
-		{#if sectionMatches('performance', 'resources', 'storage', 'cache', 'queue', 'path', 'ffmpeg', 'threads', 'bitrate')}
-		<details id="resources" class="settings-section group scroll-mt-24" open={customResourcesActive || !!normalizedSearch}>
-			<summary class="flex cursor-pointer list-none items-center justify-between gap-3 p-5">
-				<div class="flex items-center gap-2">
-					<HardDrive class="size-4 text-muted" />
-					<div>
-						<h2 class="settings-heading">Performance, resources & storage</h2>
-						<p class="mt-0.5 text-xs text-muted">Capacity limits, cache, process paths and temporary storage.</p>
-					</div>
-				</div>
-				<Badge tone={customResourcesActive ? 'accent' : 'neutral'}>{customResourcesActive ? 'configured' : 'automatic'}</Badge>
-			</summary>
-			<div class="space-y-4 border-t border-line p-5">
-			<div class="grid gap-4 sm:grid-cols-2">
-				<Input
-					label="Transcoding thread count (0 = auto)"
-					type="number"
-					min="0"
-					max="64"
-					value={String(settings.thread_count)}
-					oninput={(e) => (settings!.thread_count = numberValue(e))}
-				/>
-				<Input
-					label="Max muxing queue size (packets)"
-					type="number"
-					min="128"
-					max="65536"
-					value={String(settings.max_muxing_queue_size)}
-					oninput={(e) => (settings!.max_muxing_queue_size = numberValue(e))}
-					hint="Buffers output packets so a slow client cannot abort the muxer."
-				/>
-			</div>
-			<Input
-				label="Transcoding temporary path"
-				placeholder="data dir (default)"
-				value={settings.transcode_temp_path}
-				oninput={(e) => (settings!.transcode_temp_path = (e.currentTarget as HTMLInputElement).value)}
-				hint="Artifacts move to <path>/lain-transcode/<session>/; the JSON index stays in the data dir."
-			/>
-			<Input
-				label="Remote client bitrate limit (kbps, 0 = unlimited)"
-				type="number"
-				min="0"
-				max="1000000"
-				value={String(settings.remote_bitrate_limit_kbps)}
-				oninput={(e) => (settings!.remote_bitrate_limit_kbps = numberValue(e))}
-				hint="Server-wide ceiling; the tighter of this and a user's own limit wins."
-			/>
-			<div class="grid gap-4 sm:grid-cols-2">
-				<Input
-					label={`Cache budget (bytes — ${formatBytes(settings.cache_bytes)})`}
-					type="number"
-					value={String(settings.cache_bytes)}
-					oninput={(e) => (settings!.cache_bytes = numberValue(e))}
-				/>
-				<Input
-					label="Queue size"
-					type="number"
-					min="1"
-					max="64"
-					value={String(settings.queue_size)}
-					oninput={(e) => (settings!.queue_size = numberValue(e))}
-				/>
-				<Input
-					label="Max concurrent sessions"
-					type="number"
-					min="1"
-					max="16"
-					value={String(settings.max_concurrent)}
-					oninput={(e) => (settings!.max_concurrent = numberValue(e))}
-				/>
-			</div>
-			<div class="grid gap-4 sm:grid-cols-2">
-				<Input
-					label="ffmpeg path"
-					placeholder="system PATH"
-					value={settings.ffmpeg_path}
-					oninput={(e) => (settings!.ffmpeg_path = (e.currentTarget as HTMLInputElement).value)}
-				/>
-				<Input
-					label="ffprobe path"
-					placeholder="system PATH"
-					value={settings.ffprobe_path}
-					oninput={(e) => (settings!.ffprobe_path = (e.currentTarget as HTMLInputElement).value)}
-				/>
-			</div>
-			</div>
-		</details>
-		{/if}
-
-		<!-- Sessions -->
-		{#if searchMatches('active sessions', 'session', 'running', 'queue', 'fps', 'encoder')}
-		<section id="sessions" class="settings-section scroll-mt-24 space-y-3">
-			<div class="flex items-center justify-between">
-				<h2 class="settings-heading">Active sessions</h2>
-				<Button variant="ghost" size="sm" onclick={() => void refreshSessions()}>Refresh</Button>
-			</div>
-			{#if sessions.length === 0}
-				<p class="text-sm text-muted">Nothing is being prepared right now.</p>
-			{:else}
-				<ul class="divide-y divide-line overflow-hidden rounded-md border border-line">
-					{#each sessions as session (session.session)}
-						<li class="flex flex-wrap items-center gap-3 bg-surface/60 px-3 py-2 text-sm">
-							<Badge tone={session.state === 'failed' ? 'danger' : session.state === 'ready' ? 'success' : 'neutral'}>
-								{session.state}
-							</Badge>
-							<span class="font-mono text-xs text-muted">{session.session.slice(0, 12)}</span>
-							<span class="text-xs text-muted">
-								{session.delivery ?? 'progressive'} · {session.method ?? '—'}
-								{#if session.encoder}· {session.encoder}{/if}
-								{#if session.hardware}· {session.hardware}{/if}
-								{#if session.progress}· {Math.round(session.progress * 100)}%{/if}
-								{#if session.fps}· {session.fps.toFixed(1)} fps{/if}
-								{#if session.output_bitrate_kbps}· {session.output_bitrate_kbps} kbps{/if}
-							</span>
-							{#if session.fallback}
-								<span class="text-xs text-warning">{session.fallback}</span>
-							{/if}
-							<div class="ml-auto">
-								{#if sessionBusy === session.session}
-									<Spinner class="size-4 text-muted" />
-								{:else}
-									<Button variant="ghost" size="sm" onclick={() => void cancelSession(session.session)}>
-										Stop
-									</Button>
-								{/if}
+		{#if sectionMatches('encoding', 'quality', 'codec', 'crf', 'preset', 'hevc', 'av1', 'deinterlace')}
+			<SettingsGroup id="encoding" title="Encoding" description="Quality defaults and the resolution ladder exposed to viewers.">
+				<SettingRow label="Encoder preset">
+					{@render select('Encoder preset', settings.encoder_preset, presets.map((p) => ({ value: p, label: p })), (value) => (settings!.encoder_preset = value))}
+				</SettingRow>
+				<SettingRow label="Quality (CRF, lower is better)">
+					{@render numberInput('Quality (CRF, lower is better)', settings.crf, (n) => (settings!.crf = n), 0, 51)}
+				</SettingRow>
+				<SettingRow label="Allow HEVC (H.265) output" hint="Per-request codec selection can then ask for HEVC; off by default for browser reach.">
+					<Switch bare label="Allow HEVC (H.265) output" checked={settings.allow_hevc} onCheckedChange={(checked) => (settings!.allow_hevc = checked)} />
+				</SettingRow>
+				<SettingRow label="Allow AV1 output" hint="Requires a local AV1 encoder (libsvtav1/libaom-av1).">
+					<Switch bare label="Allow AV1 output" checked={settings.allow_av1} onCheckedChange={(checked) => (settings!.allow_av1 = checked)} />
+				</SettingRow>
+				<SettingRow label="Deinterlace when detected">
+					<Switch bare label="Deinterlace when detected" checked={settings.deinterlace === 'auto'} onCheckedChange={(checked) => (settings!.deinterlace = checked ? 'auto' : 'off')} />
+				</SettingRow>
+				{#if settings.deinterlace === 'auto'}
+					<SettingRow label="Deinterlace method">
+						{@render select('Deinterlace method', settings.deinterlace_method, deinterlaceMethods, (value) => (settings!.deinterlace_method = value))}
+					</SettingRow>
+					<SettingRow label="Deinterlace double rate" hint="Keep both fields as frames: smoother motion, twice the output frame count.">
+						<Switch bare label="Deinterlace double rate" checked={settings.deinterlace_double_rate} onCheckedChange={(checked) => (settings!.deinterlace_double_rate = checked)} />
+					</SettingRow>
+				{/if}
+				<SettingRow
+					label="Per-codec encoding"
+					hint="Each output codec has its own preset and CRF, like Jellyfin. Leave a preset on “inherit” to use the preset above."
+					stack
+				>
+					<div class="w-full space-y-2">
+						{#each codecRows as row (row.key)}
+							<div class="grid grid-cols-[4.5rem_minmax(0,1fr)_7rem] items-center gap-3 sm:grid-cols-[6rem_minmax(0,20rem)_7rem]">
+								<p class="text-sm font-medium text-foreground">{row.label}</p>
+								<Select
+									aria-label={`${row.label} preset`}
+									value={row.preset()}
+									options={[{ value: '', label: 'Inherit' }, ...presets.map((p) => ({ value: p, label: p }))]}
+									onValueChange={(value) => row.setPreset(value)}
+								/>
+								<input
+									type="number"
+									class="h-9 w-full rounded-md border px-3 text-end font-mono text-xs text-foreground outline-none"
+									aria-label={`${row.label} CRF`}
+									min="0"
+									max="51"
+									value={String(row.crf())}
+									oninput={(e) => row.setCRF(numberValue(e))}
+								/>
 							</div>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
+						{/each}
+					</div>
+				</SettingRow>
+				<SettingRow label="Quality ladder" hint={t('settings.groups.transcoding.ladderHint')} stack>
+					<div class="w-full overflow-x-auto">
+						<table class="w-full min-w-[28rem] text-sm">
+							<thead>
+								<tr class="text-left font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+									<th class="pb-2 font-normal">Name</th>
+									<th class="pb-2 font-normal">Max w</th>
+									<th class="pb-2 font-normal">Max h</th>
+									<th class="pb-2 font-normal">kbps</th>
+									<th class="w-9"></th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each settings.qualities as quality, index (index)}
+									<tr class="border-t border-hairline">
+										<td class="py-1.5 pr-2"><input class="h-9 w-full rounded-md border px-3 font-mono text-xs text-foreground outline-none" aria-label="Quality name" value={quality.name} oninput={(e) => setQualityField(index, 'name', e.currentTarget.value)} /></td>
+										<td class="py-1.5 pr-2"><input class="h-9 w-full rounded-md border px-3 text-end font-mono text-xs text-foreground outline-none" aria-label="Max width" type="number" value={String(quality.max_width ?? 0)} oninput={(e) => setQualityField(index, 'max_width', numberValue(e))} /></td>
+										<td class="py-1.5 pr-2"><input class="h-9 w-full rounded-md border px-3 text-end font-mono text-xs text-foreground outline-none" aria-label="Max height" type="number" value={String(quality.max_height ?? 0)} oninput={(e) => setQualityField(index, 'max_height', numberValue(e))} /></td>
+										<td class="py-1.5 pr-2"><input class="h-9 w-full rounded-md border px-3 text-end font-mono text-xs text-foreground outline-none" aria-label="Bitrate kbps" type="number" value={String(quality.bitrate_kbps ?? 0)} oninput={(e) => setQualityField(index, 'bitrate_kbps', numberValue(e))} /></td>
+										<td class="py-1.5 text-right">
+											<button type="button" class="inline-flex size-9 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-danger" aria-label="Remove quality {quality.name}" onclick={() => removeQuality(index)}>
+												<Trash2 class="size-4" />
+											</button>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+					<Button variant="tonal" size="field" onclick={addQuality}><Plus class="size-4" /> Add rung</Button>
+				</SettingRow>
+			</SettingsGroup>
 		{/if}
 
-				{#if normalizedSearch && !hasSearchResults}
-					<div class="rounded-xl border border-dashed border-line/60 p-10 text-center">
-						<Search class="mx-auto size-5 text-muted" />
-						<p class="mt-3 text-sm font-medium text-foreground">No setting matches “{searchQuery.trim()}”</p>
-						<p class="mt-1 text-xs text-muted">Try a feature, codec, resource or delivery term.</p>
+		{#if sectionMatches('hardware', 'acceleration', 'gpu', 'vaapi', 'nvenc', 'qsv', 'decode')}
+			<SettingsGroup
+				id="hardware"
+				title="Hardware acceleration"
+				description="Automatic GPU encode and decode, guarded by the server probe."
+				open={hardwareActive || !!normalizedSearch}
+			>
+				{#snippet aside()}
+					<Badge tone={hardwareActive ? 'accent' : 'neutral'}>{hardwareActive ? settings?.hardware_acceleration.toUpperCase() : 'software'}</Badge>
+				{/snippet}
+				<SettingRow label="Backend">
+					{@render select('Backend', settings.hardware_acceleration, probedHardwareOptions, (value) => (settings!.hardware_acceleration = value))}
+				</SettingRow>
+				{#if settings.hardware_acceleration !== 'none'}
+					<div class="flex flex-wrap items-center justify-between gap-3 bg-accent/5 py-3">
+						<p class="text-xs leading-5 text-muted">A failed runtime attempt falls back to software and is reported on the session.</p>
+						<Button variant="ghost" size="field" onclick={stageSoftware}>Use software</Button>
 					</div>
 				{/if}
-		</div>
+				{#if settings.hardware_acceleration === 'vaapi'}
+					<SettingRow label="VA-API device" hint="VA-API render node (default /dev/dri/renderD128). Other backends pick their own device.">
+						{@render textInput('VA-API device', settings.hardware_device, (v) => (settings!.hardware_device = v))}
+					</SettingRow>
+				{/if}
+				<SettingRow label="Use hardware encoding" hint="Encode with the selected backend when its probe passes; a failed attempt falls back to software visibly.">
+					<Switch bare label="Use hardware encoding" checked={settings.hardware_encode} onCheckedChange={(checked) => (settings!.hardware_encode = checked)} />
+				</SettingRow>
+				{#if settings.hardware_acceleration === 'qsv'}
+					<SettingRow label="Intel low-power encoder" hint="Use QSV's low-power H.264/HEVC encoder (experimental; many mfx version and rate-control limitations).">
+						<Switch bare label="Intel low-power encoder" checked={settings.hardware_low_power} onCheckedChange={(checked) => (settings!.hardware_low_power = checked)} />
+					</SettingRow>
+				{/if}
+				<SettingRow label="Hardware decoding" stack>
+					<div class="flex flex-wrap gap-2" role="group" aria-label="Hardware decoding">
+						{#each decodeCodecs as codec (codec)}
+							{@const on = settings.hardware_decode_codecs.includes(codec)}
+							<label class="flex h-9 cursor-pointer items-center gap-2 rounded-md px-3 font-mono text-xs transition-colors {on ? 'bg-accent/15 text-foreground' : 'bg-field text-muted hover:text-foreground'}">
+								<input
+									type="checkbox"
+									class="accent-current"
+									checked={on}
+									onchange={(e) => toggleCodec(codec, (e.currentTarget as HTMLInputElement).checked)}
+								/>
+								{codec}
+							</label>
+						{/each}
+					</div>
+				</SettingRow>
+				<SettingRow label="Decode 10-bit HEVC in hardware" hint="Off by default: some backends fail or produce wrong colours on 10-bit HEVC.">
+					<Switch bare label="Decode 10-bit HEVC in hardware" checked={settings.hardware_decode_10bit_hevc} onCheckedChange={(checked) => (settings!.hardware_decode_10bit_hevc = checked)} />
+				</SettingRow>
+				<SettingRow label="Decode 10-bit VP9 in hardware">
+					<Switch bare label="Decode 10-bit VP9 in hardware" checked={settings.hardware_decode_10bit_vp9} onCheckedChange={(checked) => (settings!.hardware_decode_10bit_vp9 = checked)} />
+				</SettingRow>
+			</SettingsGroup>
+		{/if}
+
+		{#if sectionMatches('hdr', 'processing', 'tone mapping', 'luminance', 'deinterlace')}
+			<SettingsGroup id="processing" title="HDR & tone mapping" description="Automatic is recommended: process HDR only when the source needs it.">
+				<SettingRow label="Enable tone mapping" hint="HDR sources become SDR when the chain executes; without it HDR browser playback stays unavailable.">
+					<Switch bare label="Enable tone mapping" checked={settings.tone_mapping} onCheckedChange={(checked) => (settings!.tone_mapping = checked)} />
+				</SettingRow>
+				{#if settings.tone_mapping}
+					<SettingRow label="Algorithm">
+						{@render select('Algorithm', settings.tone_mapping_algorithm, toneAlgorithms, (value) => (settings!.tone_mapping_algorithm = value))}
+					</SettingRow>
+					<SettingRow label="When to apply">
+						{@render select('When to apply', settings.tone_mapping_mode, toneModes, (value) => (settings!.tone_mapping_mode = value))}
+					</SettingRow>
+					<SettingRow label="Nominal peak luminance (nits)">
+						{@render numberInput('Nominal peak luminance (nits)', settings.tone_mapping_peak_nits, (n) => (settings!.tone_mapping_peak_nits = n), 50, 10000)}
+					</SettingRow>
+				{/if}
+			</SettingsGroup>
+		{/if}
+
+		{#if sectionMatches('audio', 'subtitle', 'captions', 'downmix', 'font', 'bitrate')}
+			<SettingsGroup id="audio" title="Audio & subtitles" description="Prefer extraction and direct playback; burn only when a track requires it.">
+				<SettingRow label="Audio bitrate (kbps)">
+					{@render numberInput('Audio bitrate (kbps)', settings.audio_bitrate_kbps, (n) => (settings!.audio_bitrate_kbps = n), 32, 640)}
+				</SettingRow>
+				<SettingRow label="Subtitle handling">
+					{@render select('Subtitle handling', settings.subtitle_mode, subtitleModes, (value) => (settings!.subtitle_mode = value as TranscodeSettings['subtitle_mode']))}
+				</SettingRow>
+				<SettingRow label="Variable-bitrate audio (AAC VBR)" hint="Uses ffmpeg's native VBR quality step mapped from the bitrate above instead of a fixed rate.">
+					<Switch bare label="Variable-bitrate audio (AAC VBR)" checked={settings.audio_vbr} onCheckedChange={(checked) => (settings!.audio_vbr = checked)} />
+				</SettingRow>
+				<SettingRow label="Allow subtitle extraction on the fly" hint="Serves WebVTT for a chosen track while a file plays directly, without transcoding it.">
+					<Switch bare label="Allow subtitle extraction on the fly" checked={settings.allow_subtitle_extraction !== false} onCheckedChange={(checked) => (settings!.allow_subtitle_extraction = checked)} />
+				</SettingRow>
+				<SettingRow label="Downmix multichannel audio" hint="More than two channels become stereo AAC.">
+					<Switch bare label="Downmix multichannel audio" checked={settings.downmix_audio} onCheckedChange={(checked) => (settings!.downmix_audio = checked)} />
+				</SettingRow>
+				{#if settings.downmix_audio}
+					<SettingRow label="Stereo downmix algorithm">
+						{@render select('Stereo downmix algorithm', settings.downmix_stereo_algorithm, downmixAlgorithms, (value) => (settings!.downmix_stereo_algorithm = value))}
+					</SettingRow>
+					<SettingRow label="Downmix gain (linear)" hint="Applied only when downmixing; 1 leaves the level untouched.">
+						{@render numberInput('Downmix gain (linear)', settings.downmix_audio_boost, (n) => (settings!.downmix_audio_boost = n), 0.5, 8, 0.5)}
+					</SettingRow>
+				{/if}
+				<SettingRow label="Enable fallback fonts" hint="Use the font directory and forced family below when a burned-in subtitle needs a font.">
+					<Switch bare label="Enable fallback fonts" checked={settings.fallback_font_enabled !== false} onCheckedChange={(checked) => (settings!.fallback_font_enabled = checked)} />
+				</SettingRow>
+				<SettingRow label="Burn-in font directory" hint="Searched first when a burned-in subtitle needs a font.">
+					{@render textInput('Burn-in font directory', settings.fallback_font_path, (v) => (settings!.fallback_font_path = v), 'system font path')}
+				</SettingRow>
+				<SettingRow label="Forced font family">
+					{@render textInput('Forced font family', settings.fallback_font_name, (v) => (settings!.fallback_font_name = v), 'e.g. DejaVu Sans')}
+				</SettingRow>
+			</SettingsGroup>
+		{/if}
+
+		{#if sectionMatches('performance', 'resources', 'storage', 'cache', 'queue', 'path', 'ffmpeg', 'threads', 'bitrate')}
+			<SettingsGroup
+				id="resources"
+				title="Performance, resources & storage"
+				description="Capacity limits, cache, process paths and temporary storage."
+				open={customResourcesActive || !!normalizedSearch}
+			>
+				{#snippet aside()}
+					<Badge tone={customResourcesActive ? 'accent' : 'neutral'}>{customResourcesActive ? 'configured' : 'automatic'}</Badge>
+				{/snippet}
+				<SettingRow label="Transcoding thread count (0 = auto)">
+					{@render numberInput('Transcoding thread count (0 = auto)', settings.thread_count, (n) => (settings!.thread_count = n), 0, 64)}
+				</SettingRow>
+				<SettingRow label="Max muxing queue size (packets)" hint="Buffers output packets so a slow client cannot abort the muxer.">
+					{@render numberInput('Max muxing queue size (packets)', settings.max_muxing_queue_size, (n) => (settings!.max_muxing_queue_size = n), 128, 65536)}
+				</SettingRow>
+				<SettingRow label="Transcoding temporary path" hint="Artifacts move to <path>/lain-transcode/<session>/; the JSON index stays in the data dir.">
+					{@render textInput('Transcoding temporary path', settings.transcode_temp_path, (v) => (settings!.transcode_temp_path = v), 'data dir (default)')}
+				</SettingRow>
+				<SettingRow label="Remote client bitrate limit (kbps, 0 = unlimited)" hint="Server-wide ceiling; the tighter of this and a user's own limit wins.">
+					{@render numberInput('Remote client bitrate limit (kbps, 0 = unlimited)', settings.remote_bitrate_limit_kbps, (n) => (settings!.remote_bitrate_limit_kbps = n), 0, 1000000)}
+				</SettingRow>
+				<SettingRow label={`Cache budget (bytes — ${formatBytes(settings.cache_bytes)})`}>
+					{@render numberInput('Cache budget (bytes)', settings.cache_bytes, (n) => (settings!.cache_bytes = n), undefined, undefined, undefined, true)}
+				</SettingRow>
+				<SettingRow label="Queue size">
+					{@render numberInput('Queue size', settings.queue_size, (n) => (settings!.queue_size = n), 1, 64)}
+				</SettingRow>
+				<SettingRow label="Max concurrent sessions">
+					{@render numberInput('Max concurrent sessions', settings.max_concurrent, (n) => (settings!.max_concurrent = n), 1, 16)}
+				</SettingRow>
+				<SettingRow label="ffmpeg path">
+					{@render textInput('ffmpeg path', settings.ffmpeg_path, (v) => (settings!.ffmpeg_path = v), 'system PATH')}
+				</SettingRow>
+				<SettingRow label="ffprobe path">
+					{@render textInput('ffprobe path', settings.ffprobe_path, (v) => (settings!.ffprobe_path = v), 'system PATH')}
+				</SettingRow>
+			</SettingsGroup>
+		{/if}
+
+		{#if searchMatches('active sessions', 'session', 'running', 'queue', 'fps', 'encoder')}
+			<SettingsGroup id="sessions" title="Active sessions" description={t('settings.groups.transcoding.sessions')}>
+				{#snippet aside()}
+					<Button variant="tonal" size="field" onclick={() => void refreshSessions()}>Refresh</Button>
+				{/snippet}
+				{#if sessions.length === 0}
+					<p class="py-4 text-sm text-muted">Nothing is being prepared right now.</p>
+				{:else}
+					<ul class="settings-items">
+						{#each sessions as session (session.session)}
+							<li class="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+								<Badge tone={session.state === 'failed' ? 'danger' : session.state === 'ready' ? 'success' : 'neutral'}>
+									{session.state}
+								</Badge>
+								<span class="font-mono text-xs text-muted">{session.session.slice(0, 12)}</span>
+								<span class="text-xs text-muted">
+									{session.delivery ?? 'progressive'} · {session.method ?? '—'}
+									{#if session.encoder}· {session.encoder}{/if}
+									{#if session.hardware}· {session.hardware}{/if}
+									{#if session.progress}· {Math.round(session.progress * 100)}%{/if}
+									{#if session.fps}· {session.fps.toFixed(1)} fps{/if}
+									{#if session.output_bitrate_kbps}· {session.output_bitrate_kbps} kbps{/if}
+								</span>
+								{#if session.fallback}
+									<span class="text-xs text-warning">{session.fallback}</span>
+								{/if}
+								<div class="ml-auto">
+									{#if sessionBusy === session.session}
+										<Spinner class="size-4 text-muted" />
+									{:else}
+										<Button variant="ghost" size="field" onclick={() => void cancelSession(session.session)}>
+											Stop
+										</Button>
+									{/if}
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</SettingsGroup>
+		{/if}
+
+		{#if normalizedSearch && !hasSearchResults}
+			<div class="rounded-card bg-panel p-10 text-center">
+				<Search class="mx-auto size-5 text-muted" />
+				<p class="mt-3 text-sm font-medium text-foreground">No setting matches “{searchQuery.trim()}”</p>
+				<p class="mt-1 text-xs text-muted">Try a feature, codec, resource or delivery term.</p>
+			</div>
+		{/if}
 
 		<StagedBar count={changeCount} {saving} onapply={() => void save()} ondiscard={resetChanges} />
 	{/if}
