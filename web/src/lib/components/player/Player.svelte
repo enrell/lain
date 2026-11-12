@@ -2032,13 +2032,15 @@
 			id="player-settings"
 			role="region"
 			aria-label={t('player.settings.title')}
-			class="player-settings absolute bottom-24 right-3 z-30 max-h-[calc(100%-8rem)] w-[min(15.5rem,calc(100%-1.5rem))] overflow-y-auto rounded-lg border border-line/60 bg-background px-3 py-1.5 text-foreground shadow-xl md:bottom-28 md:max-h-[calc(100%-12rem)] md:w-[min(22rem,calc(100%-1.5rem))] md:p-4 sm:right-6"
+			class="player-settings absolute bottom-24 right-3 z-30 max-h-[calc(100%-8rem)] w-[min(15.5rem,calc(100%-1.5rem))] overflow-y-auto rounded-lg border border-line/60 bg-background px-3 py-1.5 text-foreground shadow-xl md:bottom-28 md:max-h-[calc(100%-12rem)] md:w-[min(22rem,calc(100%-1.5rem))] md:p-4 sm:right-6 max-md:portrait:top-3 max-md:portrait:max-h-none [@media(max-height:500px)]:top-3 [@media(max-height:500px)]:bottom-[5.5rem] [@media(max-height:500px)]:max-h-none [@media(max-height:500px)]:py-1.5"
 		>
-			<div class="mb-3 flex items-center justify-between max-md:hidden">
+			<!-- A screen this short (a phone on its side) keeps the panel for the
+			     settings themselves: the heading and Open with took all of it. -->
+			<div class="mb-3 flex items-center justify-between max-md:hidden [@media(max-height:500px)]:hidden">
 				<h2 class="text-base font-semibold">{t('player.settings.title')}</h2>
 				<IconButton label={t('player.settings.close')} onclick={() => { settingsOpen = false; settingsButton?.focus(); }}><X class="size-5" /></IconButton>
 			</div>
-			<div class="mb-4 border-b border-line/60 pb-4 max-md:hidden"><ExternalPlayers itemId={item.id} onOpen={() => video?.pause()} /></div>
+			<div class="mb-4 border-b border-line/60 pb-4 max-md:hidden [@media(max-height:500px)]:hidden"><ExternalPlayers itemId={item.id} onOpen={() => video?.pause()} /></div>
 			<label class="chrome-chip">
 				{t('player.settings.speed')}
 				<select class="chrome-select" value={rate} onchange={(event) => setRate(Number(event.currentTarget.value))} aria-label={t('player.settings.speedLabel')}>
@@ -2366,15 +2368,18 @@
 		text-transform: none;
 		color: var(--color-foreground);
 	}
+	/* One width for every choice, so the controls make one column instead of
+	   a ragged edge that followed each menu's longest option. */
 	.player-settings .chrome-select {
-		max-width: 65%;
+		width: 60%;
+		flex-shrink: 0;
 		min-height: 2.25rem;
 		padding: 0.25rem 0.5rem;
 		border: 1px solid var(--color-line);
 		border-radius: 0.375rem;
 		background: var(--color-background);
 	}
-	@media (max-width: 767px) {
+	@media (max-width: 767px), (max-height: 500px) {
 		.player-settings .chrome-chip {
 			align-items: center;
 			padding: 0.3rem 0;
@@ -2382,7 +2387,6 @@
 		}
 		.player-settings .chrome-select {
 			min-height: 2rem;
-			max-width: 60%;
 			padding: 0.125rem 0.375rem;
 			font-size: 0.8125rem;
 		}
