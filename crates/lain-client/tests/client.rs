@@ -231,6 +231,22 @@ async fn libraries_catalog_and_private() {
     assert!(item.file_path.ends_with("01 [1080p].mkv"));
     assert_eq!(admin.episodes(ITEM2).await.unwrap().iter().map(|i| i.episode).collect::<Vec<_>>(), vec![1, 2]);
     assert_eq!(admin.search(SearchQuery { q: "frieren".into(), ..Default::default() }).await.unwrap().total, 2);
+    // A page of titles (D-283): one title, both of its files.
+    let titles = admin
+        .search(SearchQuery { q: "frieren".into(), group: "title".into(), limit: 1, ..Default::default() })
+        .await
+        .unwrap();
+    assert_eq!((titles.total, titles.items.len(), titles.group.as_str()), (1, 2, "title"));
+    assert_mirrors::<CatalogPage>(&raw_get(&server.url, &token, "/api/catalog?group=title").await);
+    let titles = admin.catalog(CatalogQuery { group: "title".into(), ..Default::default() }).await.unwrap();
+    assert_eq!((titles.total, titles.items.len(), titles.group.as_str()), (1, 2, "title"));
+    // An episode's own picture (D-284): the show's poster kept beside the
+    // first episode is its cover, never its still.
+    let (dir, name) = (root.join("media/Frieren"), "[Fansub-A] Frieren - 01 [1080p]");
+    std::fs::write(dir.join(format!("{name}-poster.png")), b"\x89PNG\r\n\x1a\n").unwrap();
+    std::fs::write(dir.join(format!("{name}-thumb.jpg")), b"GIF89a-thumb").unwrap();
+    assert!(admin.thumbnail(ITEM1).await.unwrap().starts_with(b"\x89PNG"));
+    assert_eq!(admin.still(ITEM1).await.unwrap(), b"GIF89a-thumb");
     assert!(matches!(admin.catalog_item("no-such-item").await.unwrap_err(), ClientError::NotFound { .. }));
 
     // Private: hidden from bob (not a member) and locked for the admin.

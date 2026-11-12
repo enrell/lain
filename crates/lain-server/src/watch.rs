@@ -424,9 +424,13 @@ fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
         Err(o) => return *o,
     };
     // A file that came with its own still shows that one; a frame is
-    // cut only when a time is asked for.
+    // cut only when a time is asked for. `art=still` (D-284) asks for the
+    // file's own picture, not the title's: a show's poster kept next to
+    // its first episode is that episode's cover, never its still.
+    let media = Path::new(&it.file_path);
+    let still = w.req.query("art").trim() == "still";
     if w.req.query("t").trim().is_empty()
-        && let Some(art) = thumbnail::local_cover(Path::new(&it.file_path))
+        && let Some(art) = if still { thumbnail::own_still(media) } else { thumbnail::local_cover(media) }
     {
         let headers = vec![("cache-control", "private, max-age=86400".into())];
         let kind = thumbnail::image_type(&art);

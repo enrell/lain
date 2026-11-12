@@ -390,6 +390,8 @@ const en = {
 		emptyTitle: 'No matches for “{query}”',
 		emptyBody: 'Try a shorter title, or check whether a scan has indexed the library.',
 		loadMore: 'Load more',
+		// The second rail of "New in your library": the newest titles of another shape, by their libraries.
+		newestIn: 'New in {names}',
 		// The header's field: what it finds is titles; settings and actions are Ctrl+K's.
 		field: {
 			label: 'Search titles',
@@ -899,6 +901,11 @@ const en = {
 		readProgress: 'Reading progress',
 		left: '{time} left',
 		watched: 'Watched',
+		read: 'Read',
+		watchedWhen: 'Watched {when}',
+		readWhen: 'Read {when}',
+		watchAgain: 'Watch again',
+		readAgain: 'Read again',
 		watchedLength: 'Watched · {time}',
 		fileDetails: 'File details',
 		episodes: { one: '{count} episode', other: '{count} episodes' },
@@ -906,11 +913,18 @@ const en = {
 		issues: { one: '{count} issue', other: '{count} issues' },
 		length: 'Length',
 		playPart: 'Play · {part}',
+		readPart: 'Read · {part}',
+		play: 'Play',
 		continueFromPage: 'Continue from page {page}',
 		continueFromPageIn: 'Continue from page {page} · {part}',
 		readingAt: '{part}: page {page} of {pages}',
 		readOf: '{done} of {count} read',
 		watchedOf: '{done} of {count} watched',
+		notStarted: 'Not started',
+		// An episode or volume card's line before it is begun, when its length is unknown.
+		notWatched: 'Not watched',
+		unread: 'Unread',
+		allMissing: 'All files missing',
 		partActions: 'More for {part}',
 		markWatched: 'Mark watched',
 		markUnwatched: 'Mark unwatched',
@@ -927,6 +941,9 @@ const en = {
 		partLeft: '{part} · {time} left',
 		partPage: '{part} · page {page} of {pages}',
 		pageOf: 'Page {page} of {pages}',
+		// The parts of a grid whose pictures differ in shape (TitleGrid).
+		partPortrait: 'Posters and covers',
+		partLandscape: 'Widescreen',
 		// A catalog kind as the Kind filter names it.
 		kind: {
 			video: 'Films and clips',

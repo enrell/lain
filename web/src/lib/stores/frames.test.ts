@@ -134,12 +134,17 @@ describe('a set drawn before its pictures', () => {
 
 	it('gives a wide slot an episode\'s frame in place of an upright still', () => {
 		const ep = { ...video('ep1', 'shows'), kind: 'episode', episode: 1 };
-		expect(wideStill({ ...ep, thumbnail: { source: 'sidecar', aspect: 0.667 } }, 480)).toContain('t=10');
-		expect(wideStill({ ...ep, thumbnail: { source: 'sidecar', aspect: 1.778 } }, 480)).not.toContain('t=');
-		expect(wideStill({ ...ep, thumbnail: { source: 'frame' } }, 480)).not.toContain('t=');
-		expect(wideStill(ep, 480)).not.toContain('t=');
+		const asked = (url: string) => new URLSearchParams(url.split('?')[1]);
+		expect(asked(wideStill({ ...ep, thumbnail: { source: 'sidecar', aspect: 0.667 } }, 480)).get('t')).toBe('10');
+		// Otherwise the file's own picture (D-284): a poster whose shape went
+		// unread on a cold disk is never the episode's still.
+		for (const thumbnail of [{ source: 'sidecar', aspect: 1.778 }, { source: 'frame' }, { source: 'sidecar' }, undefined]) {
+			const q = asked(wideStill({ ...ep, thumbnail }, 480));
+			expect([q.has('t'), q.get('art')]).toEqual([false, 'still']);
+		}
 		// A book keeps its cover page.
-		expect(wideStill({ ...ep, kind: 'manga', thumbnail: { source: 'cover' } }, 480)).not.toContain('t=');
+		const book = asked(wideStill({ ...ep, kind: 'manga', thumbnail: { source: 'cover' } }, 480));
+		expect([book.has('t'), book.has('art')]).toEqual([false, false]);
 	});
 
 	it('measures each picture once', async () => {

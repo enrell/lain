@@ -60,6 +60,21 @@ not known). The gateway fills it on `GET /api/catalog`,
 every read; it is never stored or exported, and a catalog provider never
 sets it. An item with no resolved `file_path` has none.
 
+### Pages of titles (D-283)
+
+`GET /api/catalog` and `GET /api/search` take `group=title` (additive;
+any other value pages files as before). The page then counts titles, not
+files: the files that share a title key (the episodes rule below) are one
+title, placed where its first file stands in the sort (`recent`: its
+newest file; `title`: its first by title), and `limit`, `offset` and
+`total` count titles. `items` holds every file of each title on the page,
+in watch order, after the page's own filters (library, query, kind), so a
+title is never split across pages and a card counts all of its episodes.
+The envelope says `group: "title"`; a page without it (an older server, a
+catalog provider that does not group) is a page of files, and a client
+falls back to grouping it itself. `PageParams` carries it to the catalog
+provider as `Group`. Case: `scan/25-titles.json`.
+
 ### Gateway read: one title's files
 
 `GET /api/catalog/{id}/episodes` (auth) → `{items: CatalogItem[]}`, 404
@@ -712,6 +727,13 @@ spawned by the provider with a 20s timeout and at most 2 concurrent
 processes; absence degrades this capability, never the boot. Without `t`
 the gateway serves a still that came with the file instead (D-269), and
 catalog answers say which it will be (`CatalogItem.thumbnail`, D-282).
+That still is the cover that stands for the item's title, which beside a
+show's first episode is the show's poster. `art=still` (D-284, additive)
+asks for the file's own picture instead, for a slot that stands for that
+one file (an episode's row, a continue card): `<name>-thumb.*` next to it,
+else the frame at `t` (10 s by default; a comic archive's cover page),
+never `<name>-poster.*` or the folder's `.metadata/thumbs/` still. An
+older server ignores it and answers the cover.
 
 `GET /api/items/{id}/storyboard` (D-275) is how a seek bar previews
 without a request per position: `{interval_sec, count, columns, rows,
