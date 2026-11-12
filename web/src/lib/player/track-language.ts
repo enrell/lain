@@ -190,3 +190,41 @@ export function resolveTracks(
 	const sub = chooseSubtitle(subs, prefs, audio?.language ?? '', tagged);
 	return typeof sub === 'object' ? take(sub) : choice;
 }
+
+function languageName(code: string, locale: string): string {
+	try {
+		const name = new Intl.DisplayNames([locale], { type: 'language' }).of(code);
+		return name && name !== code && name !== 'root' ? name : '';
+	} catch {
+		return '';
+	}
+}
+
+function nativeName(code: string): string {
+	try {
+		return new Intl.DisplayNames([code], { type: 'language' }).of(code) ?? '';
+	} catch {
+		return '';
+	}
+}
+
+/**
+ * How a track menu names a track: its language in the interface's words
+ * ("Portuguese" for `por`), with the file's own title when that says more
+ * ("English · Commentary"), else the title alone, else `fallback`. The bare
+ * tag ("por") read as a code, not a choice.
+ */
+export function trackName(
+	track: { language?: string; title?: string },
+	locale: string,
+	fallback: string
+): string {
+	const code = (track.language ?? '').trim();
+	const language = code && code !== 'und' ? languageName(code, locale) : '';
+	const title = (track.title ?? '').trim();
+	if (!language) return title || code || fallback;
+	// A title that only names the language again, in either tongue, adds nothing.
+	const same = (a: string) => a !== '' && a.toLocaleLowerCase() === title.toLocaleLowerCase();
+	if (!title || same(language) || same(nativeName(code)) || same(code)) return language;
+	return `${language} · ${title}`;
+}

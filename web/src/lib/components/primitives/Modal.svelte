@@ -19,21 +19,26 @@
 	/*
 	 * Where the focus lands when the dialog opens (keyboard first: on what
 	 * the dialog is for, not its close button): an element marked
-	 * data-autofocus; else the first field to fill; else the footer's
-	 * primary action (its last button), unless that destroys something, then
-	 * the button beside it. A dialog that focuses something itself a moment
-	 * later (focusSoon) still wins.
+	 * data-autofocus; else the body's first control when it is a field; else,
+	 * when the body has no control at all (a question), the footer's primary
+	 * action (its last button) unless that destroys something, then the
+	 * button beside it. A dialog that opens on choices keeps the default and
+	 * its own focus code: the filters sheet's first field is a genre search
+	 * far down and the rating dialog's a review under the scores, and
+	 * focusing those scrolled the sheet and opened a phone's keyboard over
+	 * it. A dialog that focuses something itself a moment later (focusSoon)
+	 * still wins.
 	 */
+	const FIELD =
+		'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not(:disabled):not([readonly]), textarea:not(:disabled):not([readonly]), select:not(:disabled)';
 	let content = $state<HTMLElement | null>(null);
+	let body = $state<HTMLElement | null>(null);
 	let footerEl = $state<HTMLElement | null>(null);
 	function landing(): HTMLElement | null {
-		if (!content) return null;
-		const marked = content.querySelector<HTMLElement>('[data-autofocus]');
+		const marked = content?.querySelector<HTMLElement>('[data-autofocus]');
 		if (marked) return marked;
-		const field = content.querySelector<HTMLElement>(
-			'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly]), select:not([disabled])'
-		);
-		if (field) return field;
+		const first = body?.querySelector<HTMLElement>(`${FIELD}, button:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])`);
+		if (first) return first.matches(FIELD) ? first : null;
 		const buttons = [...(footerEl?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? [])];
 		const last = buttons.at(-1);
 		if (last?.dataset.variant === 'danger') return buttons.at(-2) ?? null;
@@ -73,7 +78,7 @@
 					<X class="size-4" />
 				</Dialog.Close>
 			</div>
-			<div class="mt-4">
+			<div class="mt-4" bind:this={body}>
 				{@render children?.()}
 			</div>
 			{#if footer}

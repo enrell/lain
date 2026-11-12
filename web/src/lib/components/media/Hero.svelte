@@ -27,11 +27,14 @@
 		item,
 		enrichment = null,
 		resume = false,
+		next = false,
 		progress = null
 	}: {
 		item: CatalogItem;
 		enrichment?: Enrichment | null;
 		resume?: boolean;
+		/** The episode after the last one finished (Home's Next up). */
+		next?: boolean;
 		progress?: Progress | null;
 	} = $props();
 
@@ -52,7 +55,7 @@
 	const title = $derived(enrichment?.title || item.title);
 	const eyebrow = $derived(
 		// Not the words of the rail right under it.
-		resume ? 'Where you left off' : 'New in your library'
+		resume ? 'Where you left off' : next ? t('home.upNext') : 'New in your library'
 	);
 	// What it is, in words: the episode you are on and what is left of it,
 	// or the year; then up to two genres.

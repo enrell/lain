@@ -3,6 +3,7 @@ import type { MediaStream, User } from '$lib/api/types';
 import {
 	defaultAudioStream,
 	resolveTracks,
+	trackName,
 	trackPreferences,
 	type RememberedTracks,
 	type SidecarCandidate,
@@ -123,5 +124,24 @@ describe('track preferences (D-280)', () => {
 		expect(trackPreferences(user({ preferred_language: 'jpn', preferred_audio_language: 'jpn', preferred_subtitle_mode: 'off' }))).toEqual(
 			p('jpn', '', 'off')
 		);
+	});
+});
+
+describe('trackName', () => {
+	it('names the language in the interface language, not by its tag', () => {
+		expect(trackName({ language: 'por', title: 'Português' }, 'en', 'Track 4')).toBe('Portuguese');
+		expect(trackName({ language: 'eng', title: 'English' }, 'en', 'Track 3')).toBe('English');
+		expect(trackName({ language: 'jpn' }, 'en', 'Track 2')).toBe('Japanese');
+	});
+
+	it('keeps a title that says more than the language', () => {
+		expect(trackName({ language: 'eng', title: 'Commentary' }, 'en', 'Track 3')).toBe('English · Commentary');
+	});
+
+	it('falls back to the title, the tag, then the fallback', () => {
+		expect(trackName({ language: 'und', title: 'Signs' }, 'en', 'Track 1')).toBe('Signs');
+		expect(trackName({ title: 'Director' }, 'en', 'Track 1')).toBe('Director');
+		expect(trackName({ language: 'qaa' }, 'en', 'Track 1')).toBe('qaa');
+		expect(trackName({}, 'en', 'Track 1')).toBe('Track 1');
 	});
 });

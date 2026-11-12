@@ -50,6 +50,7 @@ describe('routeRedirect', () => {
 		expect(routeRedirect({ ...state, pathname: '/settings/users' })).toBe('/settings/profile');
 		expect(routeRedirect({ ...state, pathname: '/settings/plugins' })).toBe('/settings/profile');
 		expect(routeRedirect({ ...state, pathname: '/settings/backup' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/acquire' })).toBe('/');
 	});
 
 	it('sends normal users from an admin route somewhere that stays put', () => {
