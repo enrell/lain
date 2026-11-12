@@ -142,6 +142,8 @@ fun PlayerScreen(
     itemId: String,
     title: String,
     preferredLanguage: String,
+    /** The item was already watched: playing it again keeps it so. */
+    watchedBefore: Boolean = false,
     /** What plays after this one (the title's next episode), if anything. */
     next: Item? = null,
     onNext: (Item) -> Unit = {},
@@ -155,6 +157,7 @@ fun PlayerScreen(
         PlayerModel(core, itemId, DeviceCaps.claim, scope, graph.prefs.failedFamilies(itemId)) { family -> graph.prefs.rememberFailed(itemId, family) }
     }
     val state by model.state.collectAsState()
+    remember(model) { model.rewatch = watchedBefore; Unit }
     val player = remember(itemId) {
         ExoPlayer.Builder(context).build().apply {
             // The account's language: audio in it when the file has it, subtitles in it otherwise
@@ -482,7 +485,7 @@ fun PlayerScreen(
             },
             // Subtitles sit above the bar while it is up, and near the edge when it is not.
             update = { view ->
-                view.subtitleView?.setBottomPaddingFraction(if (controls || pinned) 0.36f else 0.08f)
+                view.subtitleView?.setBottomPaddingFraction(if (controls || pinned) 0.24f else 0.08f)
                 // The size and ground chosen in Settings.
                 view.subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitleScale)
                 view.subtitleView?.setStyle(
@@ -962,7 +965,8 @@ private fun BarAction(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Icon(icon, null, tint = if (on) l.accent else Color.White, modifier = Modifier.size(20.dp))
-        Text(label, color = if (on) l.accent else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        // On is the bright one (white, bold); off steps back. A rose tint on dark video read as dimmed.
+        Icon(icon, null, tint = if (on) Color.White else Color.White.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
+        Text(label, color = if (on) Color.White else Color.White.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
     }
 }

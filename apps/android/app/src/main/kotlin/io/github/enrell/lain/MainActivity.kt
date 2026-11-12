@@ -247,7 +247,7 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                     val nextItem = item?.let { cur ->
                         state.titles.firstOrNull { t -> t.items.any { it.id == cur.id } }?.items?.let { all -> all.getOrNull(all.indexOfFirst { it.id == cur.id } + 1) }
                     }
-                    PlayerScreen(graph.core, s.itemId, title, state.user?.preferredLanguage ?: "", nextItem) { n -> vm.replace(Screen.Player(n.id)) }
+                    PlayerScreen(graph.core, s.itemId, title, state.user?.preferredLanguage ?: "", state.progress[s.itemId]?.completed == true, nextItem) { n -> vm.replace(Screen.Player(n.id)) }
                 }
                 is Screen.Reader -> {
                     val item = state.items[s.itemId]
@@ -294,7 +294,7 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                     }
                     }
                     // While typing, the keyboard takes the bar's place: the results get the room.
-                    if (!WindowInsets.isImeVisible) BottomBar(state.destinations, s, vm)
+                    if (!WindowInsets.isImeVisible) BottomBar(state.destinations, s, vm, state.stack.firstOrNull()?.takeIf { r -> state.destinations.any { it.screen == r } })
                 }
             }
         }
@@ -342,11 +342,13 @@ private fun iconOf(id: String) = when (id) {
 private val BAR = listOf("home", "library", "search", "downloads", "settings")
 
 @Composable
-private fun BottomBar(dests: List<Dest>, current: Screen, vm: AppViewModel) {
+private fun BottomBar(dests: List<Dest>, current: Screen, vm: AppViewModel, stackRoot: Screen? = null) {
     val l = LocalLain.current
     val bar = BAR.mapNotNull { id -> dests.firstOrNull { it.id == id } }
     // A screen opened from a destination keeps that destination lit.
-    val root = when (current) {
+    // The destination the page was opened from (its stack's first screen): a title opened
+    // from Home keeps Home lit, one opened from Library keeps Library.
+    val root = stackRoot ?: when (current) {
         is Screen.LibraryDetail -> if (current.id == io.github.enrell.lain.ui.FAVORITES) Screen.Home else Screen.Library
         is Screen.TitleDetail, Screen.Read -> Screen.Library
         else -> current

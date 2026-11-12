@@ -375,4 +375,5 @@
         <item quantity="one">%1$d download</item>
         <item quantity="other">%1$d downloads</item>
     </plurals>
+    <string name="mark_all_unread">Mark all unread</string>
 </resources>

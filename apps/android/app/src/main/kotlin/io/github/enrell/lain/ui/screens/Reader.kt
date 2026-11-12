@@ -340,7 +340,8 @@ fun ReaderScreen(
                 Mono(stringResource(R.string.reader_direction), Modifier.padding(bottom = 3.dp), size = 8)
                 Row(Modifier.height(32.dp).clip(l.buttonShape).border(1.dp, l.line, l.buttonShape)) {
                     // Left to right, right to left, or down the page.
-                    for ((way, label) in listOf(0 to "L \u2192 R", 1 to "R \u2190 L", 2 to "\u2193")) {
+                    // The way the pages go: next to the right, next to the left, or down.
+                    for ((way, label) in listOf(0 to "\u2192", 1 to "\u2190", 2 to "\u2193")) {
                         val on = if (way == 2) vertical else !vertical && rtl == (way == 1)
                         val name = stringResource(when (way) { 0 -> R.string.reader_ltr; 1 -> R.string.reader_rtl; else -> R.string.reader_scroll })
                         Box(
@@ -351,9 +352,9 @@ fun ReaderScreen(
                                     if (way != 2) rtl = way == 1
                                 }
                                 .semantics { contentDescription = name; stateDescription = if (on) "selected" else "not selected" }
-                                .padding(horizontal = 11.dp),
+                                .padding(horizontal = 16.dp),
                             contentAlignment = Alignment.Center,
-                        ) { Text(label, color = if (on) l.text else l.muted, fontSize = 12.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
+                        ) { Text(label, color = if (on) l.text else l.muted, fontSize = 16.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
                     }
                 }
                 }

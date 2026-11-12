@@ -224,7 +224,9 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
     val resumeHero = remember(rails, hero) { (rails.firstOrNull()?.cards?.firstOrNull() as? Card.Resume)?.takeIf { hero != null && titleKey(it.item) == hero.key } }
     Refreshable(state.busy, { vm.refresh() }) {
     // Room under the last rail, so its captions end clear of the bar.
-    LazyColumn(contentPadding = PaddingValues(bottom = 56.dp)) {
+    // Back from a title lands where Home was left, not at its top.
+    val homeList = rememberListMemory("home")
+    LazyColumn(state = homeList, contentPadding = PaddingValues(bottom = 56.dp)) {
         if (hero != null) {
             item {
                 HeroFrame(hero.art(), (LocalConfiguration.current.screenHeightDp * 0.44f).dp) {
@@ -887,6 +889,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                         Ic.CheckCircle,
                         stringResource(
                             when {
+                                allDone && series && title.reading -> R.string.mark_all_unread
                                 allDone && series -> R.string.mark_all_unwatched
                                 allDone -> R.string.mark_unwatched
                                 series && title.reading -> R.string.mark_all_read
