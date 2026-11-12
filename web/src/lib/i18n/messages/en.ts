@@ -858,7 +858,8 @@ const en = {
 		loadFailed: 'Could not load your favorites.'
 	},
 	home: {
-		browseLibrary: 'Browse library'
+		browseLibrary: 'Browse library',
+		upNext: 'Up next'
 	},
 	tracking: {
 		subtitle: 'Everything your connected accounts track — manga, comics, anime, films and shows in one place.',
