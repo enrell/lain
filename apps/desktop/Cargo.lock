@@ -3097,7 +3097,7 @@ dependencies = [
 
 [[package]]
 name = "lain-api"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3105,7 +3105,7 @@ dependencies = [
 
 [[package]]
 name = "lain-client"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "http-body-util",
  "hyper",
@@ -3140,7 +3140,7 @@ dependencies = [
 
 [[package]]
 name = "lain-http"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "http-body-util",
  "hyper",

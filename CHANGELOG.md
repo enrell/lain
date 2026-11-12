@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-12
+
 ### Added
 - **Catalog answers say what each thumbnail is** (D-282): `GET
   /api/catalog`, `/api/catalog/{id}`, `/api/catalog/{id}/episodes` and
