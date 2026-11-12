@@ -115,10 +115,20 @@ async fn watch_offline_and_sync_back() {
     assert_eq!(core.set_favorite(ep2, true).await.unwrap().len(), 1, "one work, whichever episode named it");
     assert!(core.set_favorite(ITEM1.into(), false).await.unwrap().is_empty());
 
+    // A score: given, seen in the average, changed, and taken back.
+    let unrated = core.rating(ITEM1.into()).await.unwrap();
+    assert_eq!((unrated.mine, unrated.scored), (0, 0));
+    let rated = core.rate(ITEM1.into(), 8).await.unwrap();
+    assert_eq!((rated.mine, rated.scored, rated.average), (8, 1, 8.0));
+    assert_eq!(core.rate(ITEM1.into(), 10).await.unwrap().mine, 10);
+    let cleared = core.rate(ITEM1.into(), 0).await.unwrap();
+    assert_eq!((cleared.mine, cleared.scored), (0, 0));
+
     // Resume: a position saved online is the next play's start.
     let saved = core.save_progress(ITEM1.into(), 600., 1440., false).await.unwrap();
     assert!(matches!(saved, SaveOutcome::Synced { .. }), "{saved:?}");
     assert_eq!(core.continue_watching().await.unwrap()[0].item_id, ITEM1);
+    assert_eq!(core.all_progress().await.unwrap()[0].item_id, ITEM1);
     // Online, an mkv this server cannot probe needs a transcode, which
     // needs ffmpeg: an honest error, never a panic.
     match core.play_source(ITEM1.into(), vec!["mp4".into(), "mp4/h264".into()]).await {

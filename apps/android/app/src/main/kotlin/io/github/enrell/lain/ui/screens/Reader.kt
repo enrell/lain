@@ -193,7 +193,7 @@ fun ReaderScreen(
             Text(stringResource(R.string.end_of_volume), color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Text(title, Modifier.padding(top = 4.dp), color = l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                WButton(stringResource(R.string.player_back), onBack, kind = Btn.Secondary)
+                WButton(stringResource(R.string.reader_leave), onBack, kind = Btn.Secondary)
                 if (next != null) WButton(stringResource(R.string.next_volume), { onNext(next) }, icon = Ic.ChevronRight)
             }
         }
@@ -242,7 +242,8 @@ fun ReaderScreen(
                         // A page not here yet holds a page's room, so the strip does not jump as it arrives.
                         ?: Box(Modifier.fillMaxWidth().aspectRatio(0.7f), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(36.dp), color = l.muted, strokeWidth = 2.dp) }
                 }
-                item(key = "end") { Box(Modifier.fillMaxWidth().padding(vertical = 96.dp), contentAlignment = Alignment.Center) { endCard() } }
+                // Clear of the page slider floating over the bottom.
+                item(key = "end") { Box(Modifier.fillMaxWidth().padding(top = 72.dp, bottom = 190.dp), contentAlignment = Alignment.Center) { endCard() } }
             }
         } else
         HorizontalPager(state = pager, reverseLayout = rtl, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize()) { i ->

@@ -211,7 +211,8 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
     }
     val resumeHero = remember(rails, hero) { (rails.firstOrNull()?.cards?.firstOrNull() as? Card.Resume)?.takeIf { hero != null && titleKey(it.item) == hero.key } }
     Refreshable(state.busy, { vm.refresh() }) {
-    LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
+    // Room under the last rail, so its captions end clear of the bar.
+    LazyColumn(contentPadding = PaddingValues(bottom = 56.dp)) {
         if (hero != null) {
             item {
                 HeroFrame(hero.art(), (LocalConfiguration.current.screenHeightDp * 0.44f).dp) {
@@ -469,14 +470,9 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
     val anySeries = remember(titles) { titles.any { it.items.size > 1 } }
     // An order that cannot apply here (most episodes among single films) is not kept.
     var filters by remember { mutableStateOf(Filters(sort = Sort.of(prefs.sortOf(sortScope)).takeIf { it != Sort.EpisodesDesc || anySeries } ?: Sort.Title)) }
-    // What a closed sheet left unapplied, offered back for a moment.
+    // What a closed sheet left unapplied, offered back until it is applied or let go:
+    // a bar that left by itself took the pending choices with it.
     var unapplied by remember { mutableStateOf<Filters?>(null) }
-    LaunchedEffect(unapplied) {
-        if (unapplied != null) {
-            kotlinx.coroutines.delay(8000)
-            unapplied = null
-        }
-    }
     var dense by remember { mutableStateOf(prefs.smallTiles) }
     var sheet by remember { mutableStateOf(false) }
     val now = remember { System.currentTimeMillis() / 1000 }
@@ -501,7 +497,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     Icon(Ic.Sliders, null, tint = if (narrowing) l.text else l.muted, modifier = Modifier.size(18.dp))
-                    Text(stringResource(R.string.filters) + if (filters.active > 0) " · ${filters.active}" else "", color = if (narrowing) l.text else l.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                    Text(stringResource(R.string.filters) + (filters.active + if (filters.sort != Sort.Title) 1 else 0).let { n -> if (n > 0) " · $n" else "" }, color = if (narrowing) l.text else l.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
             }
             FlowRow(
@@ -581,6 +577,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                     Modifier.clip(l.buttonShape).clickable { filters = left; prefs.setSortOf(sortScope, left.sort.id); unapplied = null }.padding(horizontal = 12.dp, vertical = 12.dp),
                     color = l.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 )
+                IconBtn(Ic.Close, stringResource(R.string.discard_changes), { unapplied = null }, tint = l.muted)
             }
         }
         if (far && unapplied == null) {
@@ -659,7 +656,7 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                 for (g in if (allGenres) genreNames else genreNames.take(8)) {
                     val on = draft.genres.any { it.equals(g, ignoreCase = true) }
                     val n = genreCounts[g.lowercase()] ?: 0
-                    OptionRow(g, n.takeIf { it > 0 || on }, on, { draft = draft.copy(genres = if (on) draft.genres.filterNot { it.equals(g, ignoreCase = true) } else draft.genres + g) }, enabled = n > 0, multi = true)
+                    OptionRow(g, n, on, { draft = draft.copy(genres = if (on) draft.genres.filterNot { it.equals(g, ignoreCase = true) } else draft.genres + g) }, enabled = n > 0, multi = true)
                 }
                 if (genreNames.size > 8) {
                     Text(
@@ -770,6 +767,10 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
             .map { it.first }
         (alike.ifEmpty { others.filter { it.libraryId == title.libraryId } }).take(12)
     }
+    // The title's ratings (the social module's, shared with the web); absent on a server without them.
+    var rating by remember(title.key) { mutableStateOf<io.github.enrell.lain.core.RatingInfo?>(null) }
+    var rateSheet by remember { mutableStateOf(false) }
+    LaunchedEffect(title.key) { rating = vm.rating(title) }
     var menu by remember { mutableStateOf<Item?>(null) }
     var confirmAll by remember { mutableStateOf(false) }
     var confirmMark by remember { mutableStateOf(false) }
@@ -887,6 +888,26 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                     if (series && watched > 0) stringResource(if (title.reading) R.string.read_of else R.string.watched_of, watched, title.items.size) else null,
                 )
                 if (under.isNotEmpty()) Text(under.joinToString("  ·  "), Modifier.padding(top = 10.dp), color = l.muted, fontSize = 13.sp)
+                // Your score and everyone's: one tap to give or change it.
+                rating?.let { r ->
+                    val mine = r.mine.toInt()
+                    Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            Modifier.height(36.dp).clip(CircleShape).border(1.dp, if (mine > 0) l.accent.copy(alpha = 0.6f) else l.line, CircleShape)
+                                .clickable(onClickLabel = stringResource(R.string.rate_title)) { rateSheet = true }.padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        ) {
+                            Icon(Ic.Star, null, tint = if (mine > 0) l.accent else l.text, modifier = Modifier.size(15.dp))
+                            Text(if (mine > 0) stringResource(R.string.rate_yours, mine) else stringResource(R.string.rate_action), color = l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        }
+                        if (r.scored.toInt() > 0) {
+                            Text(
+                                pluralStringResource(R.plurals.rate_average, r.scored.toInt(), java.lang.String.format(java.util.Locale.US, "%.1f", r.average), r.scored.toInt()),
+                                color = l.muted, fontSize = 13.sp, maxLines = 1,
+                            )
+                        }
+                    }
+                }
                 // One film or book under way: how far it is, as Home shows it.
                 resume?.takeIf { !series && it.durationSec > 0 }?.let { p ->
                     Box(Modifier.padding(top = 14.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f))) {
@@ -942,6 +963,34 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                         items(more, key = { it.key }) { RailCard(it, vm, seen = titleFraction(it, allProgressOf(state))) }
                     }
                 }
+            }
+        }
+    }
+    if (rateSheet) {
+        val mine = rating?.mine?.toInt() ?: 0
+        val saved = stringResource(R.string.rate_saved)
+        val removed = stringResource(R.string.rate_removed)
+        val failed = stringResource(R.string.rate_failed)
+        val give = { score: Int ->
+            rateSheet = false
+            scope.launch {
+                val got = vm.rate(title, score)
+                if (got != null) rating = got
+                android.widget.Toast.makeText(ctx, if (got == null) failed else if (score == 0) removed else saved, android.widget.Toast.LENGTH_SHORT).show()
+            }
+            Unit
+        }
+        Sheet(stringResource(R.string.rate_title), { rateSheet = false }) {
+            Text(stringResource(R.string.rate_body, title.title), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
+            Gap(14.dp)
+            for (row in (1..10).chunked(5)) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (n in row) ChoiceTile(n.toString(), mine == n, { give(n) }, Modifier.weight(1f))
+                }
+            }
+            if (mine > 0) {
+                Gap(12.dp)
+                WButton(stringResource(R.string.rate_remove), { give(0) }, Modifier.fillMaxWidth(), kind = Btn.Secondary)
             }
         }
     }

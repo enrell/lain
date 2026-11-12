@@ -7,7 +7,8 @@
 	import Download from '@lucide/svelte/icons/download';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import House from '@lucide/svelte/icons/house';
-	import Library from '@lucide/svelte/icons/library';
+	// The same glyph as the app's bar: the books-on-a-shelf icon read as a bar chart at this size.
+	import Library from '@lucide/svelte/icons/layout-grid';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import Search from '@lucide/svelte/icons/search';
 	import Settings from '@lucide/svelte/icons/settings';

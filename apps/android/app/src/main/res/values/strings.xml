@@ -306,7 +306,7 @@
     <string name="rail_my_list">Favorites</string>
     <string name="fav_add">Add to favorites</string>
     <string name="fav_remove">Remove from favorites</string>
-    <string name="fav_added">Added to favorites</string>
+    <string name="fav_added">Added to Favorites, on Home</string>
     <string name="fav_removed">Removed from favorites</string>
     <string name="mark_all_watched_q">Mark all as watched?</string>
     <string name="mark_all_read_q">Mark all as read?</string>
@@ -326,4 +326,19 @@
     <string name="reader_scroll">Scroll down</string>
     <string name="download_rest">Download the rest</string>
     <string name="action_continue">Continue</string>
+    <string name="rate_action">Rate</string>
+    <string name="rate_yours">Your score: %1$d</string>
+    <string name="rate_title">Your score</string>
+    <string name="rate_body">How good is %1$s, from 1 to 10? Friends you share with can see it.</string>
+    <string name="rate_remove">Remove my score</string>
+    <string name="rate_saved">Score saved</string>
+    <string name="rate_removed">Score removed</string>
+    <string name="rate_failed">Could not save the score</string>
+    <plurals name="rate_average">
+        <item quantity="one">%1$s from %2$d score</item>
+        <item quantity="other">%1$s average from %2$d scores</item>
+    </plurals>
+    <string name="discard_changes">Discard the changes</string>
+    <string name="player_speed_kept">Playing at %1$s</string>
+    <string name="reader_leave">Close the book</string>
 </resources>
