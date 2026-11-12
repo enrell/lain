@@ -127,15 +127,18 @@
 	afterNavigate((nav) => {
 		returning = nav.type === 'popstate';
 	});
-	async function restorePlace(): Promise<void> {
+	// The spot to return to, kept until the grid is drawn: before its first
+	// set's frame is guessed the page is only as tall as the skeleton, and a
+	// scroll made then stopped near the top (see `held`).
+	let restoreTo = $state(0);
+	function restorePlace(): void {
 		if (!returning) return;
 		returning = false;
 		try {
 			const saved = JSON.parse(sessionStorage.getItem(placeKey()) ?? 'null');
 			if (!saved || !(saved.y > 0)) return;
 			shown = Math.max(RENDER, Number(saved.shown) || RENDER);
-			await tick();
-			window.scrollTo({ top: saved.y });
+			restoreTo = saved.y;
 		} catch {
 			/* stay at the top */
 		}
@@ -158,6 +161,7 @@
 		const mine = ++run;
 		items = [];
 		held = null;
+		restoreTo = 0;
 		total = 0;
 		error = null;
 		loading = true;
@@ -182,7 +186,7 @@
 				}
 			}
 			loading = false;
-			void restorePlace();
+			restorePlace();
 			// Overlays carry the genres and artwork; the titles are usable
 			// before they arrive.
 			const ids = items.map((i) => i.id);
@@ -313,6 +317,13 @@
 			const settled = await settleFrame(set);
 			if (mine === settling && settled !== guess) held = { key, frame: settled };
 		})();
+	});
+	// Back lands where it left once the grid stands at its full height.
+	$effect(() => {
+		const y = restoreTo;
+		if (y === 0 || !held) return;
+		restoreTo = 0;
+		void tick().then(() => window.scrollTo({ top: y }));
 	});
 	// Loaded, and nothing at all: no tools for an empty list.
 	const bare = $derived(!loading && !error && all.length === 0);
