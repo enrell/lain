@@ -417,6 +417,7 @@ const en = {
 		scan: 'Scan every library',
 		unlock: 'Unlock or lock private libraries',
 		titlePlay: 'Play or resume',
+		titleRead: 'Read or continue',
 		favorite: 'Favorite or unfavorite',
 		rate: 'Rate and review',
 		share: 'Share with a friend',

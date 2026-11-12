@@ -181,7 +181,7 @@
 		subtitlesOpen = true;
 	}
 	usePageKeys(() => [
-		{ keys: ['P'], label: t('pageKeys.titlePlay') },
+		{ keys: ['P'], label: t(reading ? 'pageKeys.titleRead' : 'pageKeys.titlePlay') },
 		...(session.isAdmin && subtitleItems.length > 0 ? [{ keys: ['T'], label: t('pageKeys.subtitles') }] : [])
 	]);
 	const ratio = $derived(progress ? progressRatio(progress) : 0);
