@@ -687,9 +687,16 @@ impl App {
         std::thread::Builder::new()
             .name("transcode-hardware".into())
             .spawn(move || {
-                let Some(transcoder) = weak.upgrade().map(|a| a.media.transcoder.clone()) else {
+                let Some((transcoder, saved)) =
+                    weak.upgrade().map(|a| (a.media.transcoder.clone(), a.media.settings.get()))
+                else {
                     return;
                 };
+                // Requests probe with the saved ffmpeg and device: warm
+                // that set as well, so no request waits for a probe the
+                // boot could run (one probe with the shipped settings
+                // below, unless the operator moved ffmpeg or the device).
+                transcoder.warm(&saved);
                 let base = lain_watch::settings::defaults();
                 let hw = transcoder.probe(&base).hardware;
                 let Some(app) = weak.upgrade() else { return };

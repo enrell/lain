@@ -60,7 +60,20 @@ const SUBTITLE_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_QUEUE_CAPACITY: i64 = 64;
 const MAX_TRACKED_JOBS: usize = 128;
 const RECENT_ACCESS_GRACE: i64 = 60;
-const CAP_TTL: Duration = Duration::from_secs(30);
+/// A probed capability set is current this long. Past it a caller still
+/// gets it at once while one background probe replaces it: the ffmpeg
+/// build and the GPUs rarely change, and a probe costs seconds on a
+/// machine with a GPU (D-031).
+const CAP_FRESH: Duration = Duration::from_secs(600);
+/// How long an answer that lost something the previous probe found stays
+/// current. A check can miss its timeout on a busy machine (the
+/// libplacebo one takes seconds even when idle), so a loss is probed
+/// again this soon instead of standing for [`CAP_FRESH`]; a loss the
+/// next probe confirms is then current as usual.
+const CAP_RECHECK: Duration = Duration::from_secs(30);
+/// Capability sets kept, one per ffmpeg binary and VA-API device; more
+/// only comes from an operator trying paths.
+const CAP_KEYS: usize = 8;
 
 pub(crate) fn unsupported(msg: &str) -> Error {
     Error::new("unsupported-media", msg)
@@ -422,6 +435,8 @@ type ChangeFn = Box<dyn Fn(&V3Status) + Send + Sync>;
 #[derive(Default, Clone)]
 pub struct Hooks {
     pub probe: Option<ProbeFn>,
+    /// Stands in for the ffmpeg capability probe; its answers are cached
+    /// and shared like the real probe's.
     pub caps: Option<CapsFn>,
     pub run: Option<RunFn>,
     pub clock: Option<ClockFn>,
@@ -431,10 +446,98 @@ struct Inner {
     dir: PathBuf,
     state: Mutex<State>,
     cv: Condvar,
-    caps_cache: Mutex<Option<(String, Instant, Capabilities)>>,
+    caps: Mutex<CapsCache>,
+    /// Signalled whenever a capability probe lands.
+    caps_cv: Condvar,
     hooks: Hooks,
     on_change: Mutex<Option<ChangeFn>>,
     init_err: Option<String>,
+}
+
+/// Probed capability sets by [`caps_key`].
+struct CapsCache {
+    slots: HashMap<String, CapsSlot>,
+    /// [`CAP_FRESH`] and [`CAP_RECHECK`]; tests shorten them.
+    fresh: Duration,
+    recheck: Duration,
+}
+
+#[derive(Default)]
+struct CapsSlot {
+    /// The last probe's answer and when it landed.
+    value: Option<(Instant, Capabilities)>,
+    /// The answer lost something the one before had: current only for
+    /// [`CAP_RECHECK`].
+    doubtful: bool,
+    /// A probe for this key is running. Other callers keep the last
+    /// answer or wait for this one; none starts a second (single flight).
+    running: bool,
+}
+
+/// Whether the probe `now` lost an execution probe `before` passed (a
+/// tone mapping path, the video effects, a hardware backend).
+fn lost(before: &Capabilities, now: &Capabilities) -> bool {
+    (before.tone_map && !now.tone_map)
+        || (before.tone_map_2390 && !now.tone_map_2390)
+        || (before.effects && !now.effects)
+        || before.hardware.iter().any(|(b, ok)| *ok && !now.hardware.get(b).copied().unwrap_or(false))
+}
+
+/// What publishing a probe's answer found.
+struct Stored {
+    /// It differs from the answer before.
+    changed: bool,
+    /// It lost something the answer before had.
+    doubtful: bool,
+}
+
+impl CapsCache {
+    /// Whether the caller starts a probe for `key`: none is running, and
+    /// there is no answer yet, a stale one, or `force`. Claiming marks
+    /// the probe running.
+    fn claim(&mut self, key: &str, force: bool) -> bool {
+        let (fresh, recheck) = (self.fresh, self.recheck);
+        let slot = self.slots.entry(key.to_string()).or_default();
+        let life = if slot.doubtful { fresh.min(recheck) } else { fresh };
+        let start = !slot.running && (force || slot.value.as_ref().is_none_or(|(at, _)| at.elapsed() >= life));
+        slot.running |= start;
+        start
+    }
+
+    fn current(&self, key: &str) -> Option<Capabilities> {
+        self.slots.get(key)?.value.as_ref().map(|(_, c)| c.clone())
+    }
+
+    /// Publishes a probe's answer as probed (D-031: what the page shows is
+    /// what ffmpeg did).
+    fn store(&mut self, key: &str, caps: Capabilities) -> Stored {
+        let slot = self.slots.entry(key.to_string()).or_default();
+        let stored = Stored {
+            changed: slot.value.as_ref().is_none_or(|(_, old)| *old != caps),
+            doubtful: slot.value.as_ref().is_some_and(|(_, old)| lost(old, &caps)),
+        };
+        slot.value = Some((Instant::now(), caps));
+        slot.doubtful = stored.doubtful;
+        slot.running = false;
+        while self.slots.len() > CAP_KEYS {
+            // The idle set probed longest ago goes first.
+            let oldest = self
+                .slots
+                .iter()
+                .filter(|(_, s)| !s.running)
+                .min_by_key(|(_, s)| s.value.as_ref().map(|(at, _)| *at))
+                .map(|(k, _)| k.clone());
+            let Some(oldest) = oldest else { break };
+            self.slots.remove(&oldest);
+        }
+        stored
+    }
+}
+
+/// What a capability probe reads from the settings: the ffmpeg binary
+/// and the VA-API device. Changing any other setting keeps the set.
+fn caps_key(s: &TranscodeSettings) -> String {
+    format!("{}|{}", policy::ffmpeg_binary(s), policy::hardware_device(s))
 }
 
 enum Fail {
@@ -499,7 +602,8 @@ impl Transcoder {
                     ffmpeg: "ffmpeg".into(),
                 }),
                 cv: Condvar::new(),
-                caps_cache: Mutex::new(None),
+                caps: Mutex::new(CapsCache { slots: HashMap::new(), fresh: CAP_FRESH, recheck: CAP_RECHECK }),
+                caps_cv: Condvar::new(),
                 hooks,
                 on_change: Mutex::new(None),
                 init_err,
@@ -646,22 +750,103 @@ impl Transcoder {
 
     // ---- probing --------------------------------------------------------
 
-    /// The probed ffmpeg surface for these settings (cached 30 s per
-    /// ffmpeg binary and VA-API device).
+    fn caps_lock(&self) -> MutexGuard<'_, CapsCache> {
+        self.inner.caps.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The probed ffmpeg surface for these settings, kept per ffmpeg
+    /// binary and VA-API device. A caller with a set for its key never
+    /// waits for a probe: one older than [`CAP_FRESH`] comes back at once
+    /// while a background probe replaces it. Only a key with no set yet
+    /// (the first boot before the warm-up lands, a new ffmpeg path)
+    /// waits, and then for the one probe in flight.
     pub fn capabilities(&self, s: &TranscodeSettings) -> Capabilities {
-        if let Some(f) = &self.inner.hooks.caps {
-            return f(s);
+        let key = caps_key(s);
+        let mut g = self.caps_lock();
+        loop {
+            if g.claim(&key, false) {
+                let cached = g.current(&key);
+                drop(g);
+                self.launch_probe(&key, s);
+                if let Some(caps) = cached {
+                    return caps;
+                }
+                g = self.caps_lock();
+                continue;
+            }
+            if let Some(caps) = g.current(&key) {
+                return caps;
+            }
+            g = self.inner.caps_cv.wait(g).unwrap_or_else(|e| e.into_inner());
         }
-        let key = format!("{}|{}", s.ffmpeg_path, policy::hardware_device(s));
-        if let Some((k, at, caps)) = self.inner.caps_cache.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
-            && *k == key
-            && at.elapsed() < CAP_TTL
-        {
-            return caps.clone();
+    }
+
+    /// Starts a probe for these settings in the background when there is
+    /// no current set and none is running, and returns at once: the
+    /// server warms the cache when it starts.
+    pub fn warm(&self, s: &TranscodeSettings) {
+        self.start_probe(s, false);
+    }
+
+    /// Starts a fresh probe for these settings in the background even when
+    /// the set is current, unless one is already running (then that one
+    /// is the fresh probe). Callers keep the last set until it lands.
+    pub fn reprobe(&self, s: &TranscodeSettings) {
+        self.start_probe(s, true);
+    }
+
+    fn start_probe(&self, s: &TranscodeSettings, force: bool) {
+        let key = caps_key(s);
+        let start = self.caps_lock().claim(&key, force);
+        if start {
+            self.launch_probe(&key, s);
         }
-        let caps = policy::probe_build(s);
-        *self.inner.caps_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some((key, Instant::now(), caps.clone()));
-        caps
+    }
+
+    /// Runs the probe claimed for `key` on a thread of its own, so no
+    /// caller pays for more than waiting on its answer; on this thread
+    /// only when that one cannot start.
+    fn launch_probe(&self, key: &str, s: &TranscodeSettings) {
+        let (t, k, settings) = (self.clone(), key.to_string(), s.clone());
+        let spawned =
+            std::thread::Builder::new().name("transcode-caps".into()).spawn(move || t.run_probe(&k, &settings));
+        if let Err(e) = spawned {
+            tracing::warn!(err = %e, "capability probe thread not started; probing inline");
+            self.run_probe(key, s);
+        }
+    }
+
+    /// Probes and hands the answer to every waiter. A probe that panics
+    /// answers what an ffmpeg that does not run would, so no waiter is
+    /// left behind.
+    fn run_probe(&self, key: &str, s: &TranscodeSettings) {
+        let began = Instant::now();
+        let probed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match &self.inner.hooks.caps {
+            Some(f) => f(s),
+            None => policy::probe_build(s),
+        }));
+        let caps = probed.unwrap_or_else(|_| {
+            tracing::error!(ffmpeg = %policy::ffmpeg_binary(s), "transcode capability probe panicked");
+            Capabilities {
+                ffmpeg: policy::ffmpeg_binary(s),
+                hardware: st::HW_BACKENDS.iter().map(|b| (b.to_string(), false)).collect(),
+                ..Capabilities::default()
+            }
+        });
+        let ms = began.elapsed().as_millis() as u64;
+        let ready: Vec<&str> = caps.hardware.iter().filter(|(_, ok)| **ok).map(|(b, _)| b.as_str()).collect();
+        let (ffmpeg, hardware, tone, effects) = (caps.ffmpeg.clone(), ready.join(","), caps.tone_map, caps.effects);
+        let stored = self.caps_lock().store(key, caps);
+        self.inner.caps_cv.notify_all();
+        // What the probe found is visible (D-031): a first or a changed
+        // answer is logged, an unchanged refresh only at debug.
+        if stored.doubtful {
+            tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, "transcode capabilities lost something since the last probe; probing again soon");
+        } else if stored.changed {
+            tracing::info!(ffmpeg = %ffmpeg, ms, hardware = %hardware, tone_mapping = tone, video_effects = effects, "transcode capabilities probed");
+        } else {
+            tracing::debug!(ffmpeg = %ffmpeg, ms, "transcode capabilities unchanged");
+        }
     }
 
     /// The settings UI's report (D-031: probing is visible).
