@@ -20,6 +20,13 @@ export const MOBILE_NAV: NavEntry[] = [
 	{ href: '/settings', label: 'nav.settings', exact: false }
 ];
 
+/**
+ * The phone's bottom bar: the places used every day; the rest sit under
+ * More. Search stays here: a phone's top bar has no room for the field
+ * the desktop header holds, and the bar is where the thumb already is.
+ */
+export const MOBILE_BAR = ['/', '/library', '/search', '/favorites'];
+
 /** The entries a role sees, in order. */
 export function visibleNav(entries: NavEntry[], isAdmin: boolean): NavEntry[] {
 	return entries.filter((e) => isAdmin || !e.admin);

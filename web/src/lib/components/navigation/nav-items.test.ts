@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MOBILE_NAV, visibleNav } from './nav-items';
+import { MOBILE_BAR, MOBILE_NAV, visibleNav } from './nav-items';
 
 describe('mobile navigation', () => {
 	it('shows Acquire to admins only, before Settings', () => {
@@ -13,6 +13,10 @@ describe('mobile navigation', () => {
 	it('shows Social to everyone', () => {
 		expect(visibleNav(MOBILE_NAV, false).map((e) => e.href)).toContain('/social');
 		expect(visibleNav(MOBILE_NAV, true).map((e) => e.href)).toContain('/social');
+	});
+	it('keeps Search in the bar: the phone has no header field', () => {
+		expect(MOBILE_BAR).toContain('/search');
+		for (const href of MOBILE_BAR) expect(visibleNav(MOBILE_NAV, false).map((e) => e.href)).toContain(href);
 	});
 	it('keeps every entry unique', () => {
 		const hrefs = MOBILE_NAV.map((e) => e.href);
