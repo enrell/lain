@@ -414,7 +414,10 @@ const en = {
 		settingsMove: 'Next or previous control',
 		apply: 'Apply the staged changes',
 		discard: 'Discard the staged changes (twice)',
-		settingsFilter: 'Filter this section'
+		settingsFilter: 'Filter this section',
+		libraryPrivate: 'On a library’s row: private or not',
+		libraryLock: 'On a private library’s row: unlock or lock',
+		libraryRemove: 'On a library’s row: remove it (asks first)'
 	},
 	downloads: {
 		title: 'Downloads — Settings — Lain',
