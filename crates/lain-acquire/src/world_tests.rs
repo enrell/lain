@@ -664,6 +664,55 @@ fn sequel_reading(name: &str, kind: &str) -> lain_api::Release {
     r
 }
 
+/// "Show" with its second season numbered from 13, so that S2E1-2 is a
+/// unit it wants.
+fn show_with_two_seasons() -> Monitored {
+    let map = vec![SeasonStart { season: 1, first: 1 }, SeasonStart { season: 2, first: 13 }];
+    Monitored { season_map: map, ..mon("Show", 0, 0) }
+}
+
+/// Original and sequel both monitored: the release the parser answers as
+/// the sequel is the sequel's, and the original never reads it as its
+/// season 2 (D-279).
+#[test]
+fn a_monitored_sequel_keeps_its_release() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt4"), settings(0.0), |d| d.parse = Arc::new(sequel_reading));
+    add_indexer(&m, &w);
+    let show = monitor(&m, &w, show_with_two_seasons());
+    let sequel = monitor(&m, &w, mon("Show 2", 0, 0));
+    assert!(m.search_monitored(&show.id).unwrap().grabbed.is_empty(), "the original took the sequel's release");
+    let rep = m.rss_sync().unwrap();
+    assert_eq!(rep.grabbed.len(), 1, "{rep:?}");
+    let g = m.get(&rep.grabbed[0]).unwrap();
+    assert_eq!(g.monitored_id, sequel.id, "grabbed for {:?}", g.monitored_id);
+    let r = &g.release;
+    assert_eq!((r.title.as_str(), r.season, r.episodes.clone()), ("Show 2", 0, vec![1, 2]), "{r:?}");
+    m.close();
+}
+
+/// The same rule on the grab path: a grab made for "Show" settles its
+/// release against "Show" only while no monitored title is named by the
+/// parser's answer.
+#[test]
+fn a_grab_for_a_monitored_title_respects_the_others() {
+    for sequel_monitored in [false, true] {
+        let w = World::new();
+        let m = w.manager_with(&tmp("acq-alt5"), settings(0.0), |d| d.parse = Arc::new(sequel_reading));
+        let show = monitor(&m, &w, show_with_two_seasons());
+        if sequel_monitored {
+            monitor(&m, &w, mon("Show 2", 0, 0));
+        }
+        let req = GrabRequest { monitored_id: show.id.clone(), ..url_grab(&w.torrent_url(), &w.lib.id) };
+        let r = m.grab(req).unwrap().release;
+        let want = if sequel_monitored { ("Show 2", 0) } else { ("Show", 2) };
+        assert_eq!((r.title.as_str(), r.season), want, "sequel monitored: {sequel_monitored}");
+        assert_eq!(r.episodes, vec![1, 2]);
+        assert!(r.alternatives.is_empty());
+        m.close();
+    }
+}
+
 /// A search's year decides between readings and rejects another year
 /// (D-279): one either way is the same release, an unknown one never
 /// rejects.

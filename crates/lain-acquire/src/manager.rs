@@ -777,13 +777,17 @@ impl Manager {
         }
         g.title = clip(&g.title, 300);
         // A monitored title's names and year decide between the parser's
-        // readings (D-279); a manual grab names no title, so the answer
-        // stands.
-        let (known, year) = match g.monitored_id.as_str() {
-            "" => Default::default(),
-            id => self.monitored(id).map(|m| (crate::monitored::names(&m), m.year)).unwrap_or_default(),
+        // readings, unless the answer names another monitored title
+        // (D-279); a manual grab names no title, so the answer stands.
+        let rel = (self.d.parse)(&g.title, &lib.kind);
+        let monitored = match g.monitored_id.as_str() {
+            "" => None,
+            id => self.monitored(id).ok(),
         };
-        g.release = settle((self.d.parse)(&g.title, &lib.kind), |t| known.contains(&loose_key(t)), year);
+        g.release = match monitored {
+            Some(m) => crate::monitored::settle_for(&m, rel, &crate::monitored::claimed(&self.st.monitored())),
+            None => settle(rel, |_| false, 0),
+        };
         let (paused, dir, c) = {
             let i = lock(&self.inner);
             let active = self.active();
