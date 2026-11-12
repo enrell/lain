@@ -17,6 +17,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.media3.common.PlaybackException
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -102,6 +104,12 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (!isPlaying) model.report(player.currentPosition, player.duration)
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                val mime = (error as? ExoPlaybackException)?.rendererFormat?.sampleMimeType
+                val retried = error.errorCode in DECODER_ERRORS && model.decoderFailed(mime, player.currentPosition, player.duration)
+                if (!retried) model.playerFailed(error)
             }
         }
         player.addListener(listener)
@@ -192,3 +200,12 @@ fun PlayerScreen(core: LainCoreInterface, itemId: String, title: String, preferr
         }
     }
 }
+
+/** Errors where the device's decoder, not the file or network, gave up. */
+private val DECODER_ERRORS = setOf(
+    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+    PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+    PlaybackException.ERROR_CODE_DECODING_FAILED,
+    PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+)

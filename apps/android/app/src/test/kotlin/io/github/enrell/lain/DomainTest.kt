@@ -4,6 +4,7 @@ import io.github.enrell.lain.domain.Card
 import io.github.enrell.lain.domain.RailLabel
 import io.github.enrell.lain.domain.buildRails
 import io.github.enrell.lain.domain.decodeClaim
+import io.github.enrell.lain.domain.withoutFamily
 import io.github.enrell.lain.domain.fraction
 import io.github.enrell.lain.domain.groupTitles
 import io.github.enrell.lain.domain.nextUp
@@ -63,6 +64,16 @@ class DomainTest {
         assertEquals(claim.sorted(), claim)
         assertTrue(decodeClaim(emptySet()).isEmpty())
         assertTrue("webm/vp9" in decodeClaim(setOf("vp9")))
+    }
+
+    @Test
+    fun withoutFamilyDropsTheCodecAndEmptyContainers() {
+        val claim = decodeClaim(setOf("hevc", "aac", "vp9"))
+        val out = withoutFamily(claim, "hevc")
+        assertFalse(out.any { it.endsWith("/hevc") })
+        assertTrue("mkv/aac" in out && "webm/vp9" in out)
+        assertEquals(listOf("webm", "webm/vp9"), withoutFamily(decodeClaim(setOf("vp9", "hevc")), "hevc").filter { it.startsWith("webm") })
+        assertTrue(withoutFamily(decodeClaim(setOf("hevc")), "hevc").isEmpty())
     }
 
     @Test
