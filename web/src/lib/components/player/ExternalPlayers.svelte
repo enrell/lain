@@ -29,7 +29,7 @@
 		origin = window.location.origin;
 		void api.localplay
 			.players()
-			.then((cap) => (localPlayers = cap.players))
+			.then((cap) => (localPlayers = cap.players ?? []))
 			.catch(() => {});
 	});
 
