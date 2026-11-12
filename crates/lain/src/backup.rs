@@ -8,7 +8,8 @@
 //! (one read transaction, so it works mid-scan). Otherwise the data dir
 //! is read directly, which needs the server stopped (the store is
 //! locked while it runs). Restore extracts a tar into an empty data dir;
-//! it never overwrites a store.
+//! it never overwrites a store: `--replace` moves a stopped server's
+//! data dir aside first and keeps it.
 
 use std::path::{Path, PathBuf};
 
@@ -16,7 +17,7 @@ use serde_json::{Value, json};
 
 use lain_admin::backup as bundle;
 
-use crate::args::{flag, positional};
+use crate::args::{flag, has, positional};
 use crate::client::{Session, runtime};
 use crate::server::data_dir;
 
@@ -132,11 +133,63 @@ fn offline(args: &[String], out: &str) -> Result<(), String> {
 }
 
 pub fn restore(args: &[String]) -> Result<(), String> {
-    let [archive] = positional(args).try_into().map_err(|_| "usage: lain restore BACKUP.tar [--data-dir DIR]")?;
+    let [archive] =
+        positional(args).try_into().map_err(|_| "usage: lain restore BACKUP.tar [--data-dir DIR] [--replace]")?;
     let dir = data_dir(args)?;
-    restore_into(Path::new(&archive), &dir)?;
+    if !has(args, "replace") {
+        restore_into(Path::new(&archive), &dir)?;
+        println!("restored {archive} into {}", dir.display());
+        return Ok(());
+    }
+    let aside = replace_into(Path::new(&archive), &dir)?;
     println!("restored {archive} into {}", dir.display());
+    if let Some(old) = aside {
+        println!("the previous data is in {}; delete it once everything is there", old.display());
+    }
     Ok(())
+}
+
+/// `restore --replace`: one command instead of moving the live data
+/// aside by hand. The archive is checked first, the store must not be
+/// held by a running server, and the old data dir is kept beside the
+/// new one (`<dir>.before-restore`, numbered when taken), never
+/// deleted; a restore that fails puts it back. Answers where it went
+/// (`None` when there was nothing to move).
+pub fn replace_into(archive: &Path, dir: &Path) -> Result<Option<PathBuf>, String> {
+    let raw = std::fs::read(archive).map_err(|e| format!("{}: {e}", archive.display()))?;
+    validate(&raw)?;
+    let empty = std::fs::read_dir(dir).map(|mut rd| rd.next().is_none()).unwrap_or(true);
+    if empty {
+        restore_into(archive, dir)?;
+        return Ok(None);
+    }
+    if dir.join(lain_store::FILE_NAME).is_file() {
+        // redb locks the file while a server has it open. Any other
+        // failure (a damaged store) is a reason to restore, not to stop.
+        if let Err(e) = lain_store::Store::open(dir)
+            && e.to_string().to_lowercase().contains("already open")
+        {
+            return Err(format!("{}: {e} (a running server holds the store: stop it first)", dir.display()));
+        }
+    }
+    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "lain".into());
+    let aside = (1..1000)
+        .map(|n| {
+            let suffix = if n == 1 { String::new() } else { format!("-{n}") };
+            dir.with_file_name(format!("{name}.before-restore{suffix}"))
+        })
+        .find(|p| !p.exists())
+        .ok_or_else(|| format!("no free name beside {} to move it to", dir.display()))?;
+    std::fs::rename(dir, &aside).map_err(|e| format!("move {} aside: {e}", dir.display()))?;
+    if let Err(e) = restore_into(archive, dir) {
+        let _ = std::fs::remove_dir_all(dir);
+        let back = std::fs::rename(&aside, dir);
+        return Err(match back {
+            Ok(()) => format!("{e} (the previous data is back in {})", dir.display()),
+            Err(b) => format!("{e} (the previous data is in {}: {b})", aside.display()),
+        });
+    }
+    Ok(Some(aside))
 }
 
 /// Extracts a backup into `dir`, which must be empty or absent.
@@ -206,6 +259,35 @@ mod tests {
         let nodb = root.join("nodb.tar");
         std::fs::write(&nodb, tar(&[("manifest.json", &m)])).unwrap();
         assert!(restore_into(&nodb, &root.join("d3")).unwrap_err().contains("lain.redb"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `--replace`: the live dir goes aside (kept, numbered when taken),
+    /// a held store is refused, and a bad archive moves nothing.
+    #[test]
+    fn replace_keeps_the_old_data_beside_the_new() {
+        let root = std::env::temp_dir().join(format!("lain-replace-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let m = manifest();
+        let good = root.join("good.tar");
+        std::fs::write(&good, tar(&[("manifest.json", &m), ("lain.redb", b"db")])).unwrap();
+        let data = root.join("data");
+        assert_eq!(replace_into(&good, &data).unwrap(), None, "nothing to move: a plain restore");
+        assert_eq!(replace_into(&good, &data).unwrap(), Some(root.join("data.before-restore")));
+        assert_eq!(std::fs::read(root.join("data.before-restore/lain.redb")).unwrap(), b"db");
+        assert_eq!(replace_into(&good, &data).unwrap(), Some(root.join("data.before-restore-2")));
+        let nodb = root.join("nodb.tar");
+        std::fs::write(&nodb, tar(&[("manifest.json", &m)])).unwrap();
+        assert!(replace_into(&nodb, &data).is_err());
+        assert!(data.join("lain.redb").is_file() && !root.join("data.before-restore-3").exists());
+        // A store a server holds stays where it is.
+        let live = root.join("live");
+        let held = lain_store::Store::open(&live).unwrap();
+        let e = replace_into(&good, &live).unwrap_err();
+        assert!(e.contains("stop it first"), "{e}");
+        drop(held);
+        assert!(!root.join("live.before-restore").exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 }
