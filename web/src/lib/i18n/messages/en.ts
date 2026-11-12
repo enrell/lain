@@ -846,7 +846,6 @@ const en = {
 		hintAlways: 'Shown whenever the file has them in your subtitle language.',
 		hintForced: 'Only tracks marked forced: signs and lines in another language.',
 		hintOff: 'Never on by themselves; the player can still turn them on.',
-		invalid: 'Three letters, ISO 639-2 (por, eng, jpn).',
 		saveFailed: 'Could not save the language.'
 	},
 	download: {
