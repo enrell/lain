@@ -153,8 +153,9 @@ pub fn restore(args: &[String]) -> Result<(), String> {
 /// aside by hand. The archive is checked first, the store must not be
 /// held by a running server, and the old data dir is kept beside the
 /// new one (`<dir>.before-restore`, numbered when taken), never
-/// deleted; a restore that fails puts it back. Answers where it went
-/// (`None` when there was nothing to move).
+/// deleted; a restore that fails puts it back. The machine's own parts
+/// a backup leaves out (`MACHINE_PARTS`) are copied into the new one.
+/// Answers where the old one went (`None` when there was nothing to move).
 pub fn replace_into(archive: &Path, dir: &Path) -> Result<Option<PathBuf>, String> {
     let raw = std::fs::read(archive).map_err(|e| format!("{}: {e}", archive.display()))?;
     validate(&raw)?;
@@ -181,7 +182,7 @@ pub fn replace_into(archive: &Path, dir: &Path) -> Result<Option<PathBuf>, Strin
         .find(|p| !p.exists())
         .ok_or_else(|| format!("no free name beside {} to move it to", dir.display()))?;
     std::fs::rename(dir, &aside).map_err(|e| format!("move {} aside: {e}", dir.display()))?;
-    if let Err(e) = restore_into(archive, dir) {
+    if let Err(e) = restore_into(archive, dir).and_then(|()| keep_machine_parts(&aside, dir)) {
         let _ = std::fs::remove_dir_all(dir);
         let back = std::fs::rename(&aside, dir);
         return Err(match back {
@@ -190,6 +191,43 @@ pub fn replace_into(archive: &Path, dir: &Path) -> Result<Option<PathBuf>, Strin
         });
     }
     Ok(Some(aside))
+}
+
+/// What a backup leaves out on purpose because it belongs to the machine,
+/// not to the server's data: the installed components (`plugins/`, whose
+/// manifests name this machine's programs) and the Windows service's
+/// wrapper (`service/`). `--replace` restores on the same machine, so
+/// they come along from the old data dir, copied: the old dir stays
+/// whole. Without them the restored composition would bind components
+/// that are "not installed", and an installed service would not start.
+const MACHINE_PARTS: [&str; 2] = ["plugins", "service"];
+
+fn keep_machine_parts(old: &Path, new: &Path) -> Result<(), String> {
+    for part in MACHINE_PARTS {
+        let (from, to) = (old.join(part), new.join(part));
+        if from.is_dir() && !to.exists() {
+            copy_dir(&from, &to).map_err(|e| format!("keep {}: {e}", from.display()))?;
+        }
+    }
+    // The service writes its log here and may not create the folder.
+    if old.join("logs").is_dir() {
+        lain_store::ensure_private_dir(&new.join("logs")).map_err(|e| format!("{}: {e}", new.display()))?;
+    }
+    Ok(())
+}
+
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// Extracts a backup into `dir`, which must be empty or absent.
@@ -274,8 +312,16 @@ mod tests {
         std::fs::write(&good, tar(&[("manifest.json", &m), ("lain.redb", b"db")])).unwrap();
         let data = root.join("data");
         assert_eq!(replace_into(&good, &data).unwrap(), None, "nothing to move: a plain restore");
+        // The machine's own parts, which no backup carries, come along.
+        std::fs::create_dir_all(data.join("plugins")).unwrap();
+        std::fs::write(data.join("plugins/lain-release-model.json"), b"{}").unwrap();
+        std::fs::create_dir_all(data.join("logs")).unwrap();
+        std::fs::write(data.join("logs/lain.log"), b"old lines").unwrap();
         assert_eq!(replace_into(&good, &data).unwrap(), Some(root.join("data.before-restore")));
         assert_eq!(std::fs::read(root.join("data.before-restore/lain.redb")).unwrap(), b"db");
+        assert_eq!(std::fs::read(data.join("plugins/lain-release-model.json")).unwrap(), b"{}");
+        assert!(root.join("data.before-restore/plugins/lain-release-model.json").is_file(), "copied, not moved");
+        assert!(data.join("logs").is_dir() && !data.join("logs/lain.log").exists());
         assert_eq!(replace_into(&good, &data).unwrap(), Some(root.join("data.before-restore-2")));
         let nodb = root.join("nodb.tar");
         std::fs::write(&nodb, tar(&[("manifest.json", &m)])).unwrap();
