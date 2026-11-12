@@ -12,6 +12,10 @@ backups/
 !.env.example
 *.pem
 *.key
+# Android signing keys (D-278): the release key lives outside the tree and
+# reaches CI only as a secret.
+*.jks
+*.keystore
 
 # frontend build artifacts: the source in web/ is what gets committed
 web/node_modules/
