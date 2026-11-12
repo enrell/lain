@@ -431,11 +431,14 @@ const en = {
 	},
 	// An address the app does not know, or a page that failed to load (+error.svelte).
 	errorPage: {
+		notFoundEyebrow: '404 · Not a page of Lain',
 		notFoundTitle: 'Nothing at this address',
-		notFoundBody: '{path} is not a page of Lain. The link may be mistyped, or the page has moved.',
+		notFoundBody: 'The link may be mistyped, or the page has moved.',
+		failedEyebrow: '{status} · Did not load',
 		failedTitle: 'This page did not load',
 		failedBody: 'Something went wrong while opening it.',
 		home: 'Go to Home',
+		back: 'Go back',
 		reload: 'Try again',
 		searchHint: 'Looking for a title? Press / to search.'
 	},
