@@ -338,12 +338,13 @@ pub struct TranscodeSelection {
     /// of `PlaybackOptions.effects`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub video_effect: String,
-    /// This client instance's viewer id (D-281): 1 to 64 letters,
-    /// digits, `-` or `_`, made by the client once per player. Not an
-    /// option: it never changes the session. A session joined with one
-    /// is stopped by a release only when its last viewer leaves (see
-    /// `Client::release_transcode`); empty is a client that does not
-    /// name itself.
+    /// The viewer id of this start (D-281): 1 to 64 letters, digits,
+    /// `-` or `_`, made by the client, best fresh for every start (the
+    /// late release of an earlier start of the same session then cannot
+    /// end this one's hold). Not an option: it never changes the
+    /// session. A session joined with one is stopped by a release only
+    /// when its last viewer leaves (see `Client::release_transcode`);
+    /// empty is a client that does not name itself.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub viewer: String,
 }

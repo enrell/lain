@@ -9,7 +9,9 @@ import type {
 import type { SidecarTrack } from '$lib/player/sidecars';
 
 /**
- * A viewer id for one player instance (D-281): 128 random bits as hex.
+ * A viewer id for one start (D-281): 128 random bits as hex. A fresh one
+ * per start, so the release of a session the player leaves cannot end the
+ * hold its next start placed on the same session.
  * getRandomValues, not randomUUID: a server reached over plain HTTP on the
  * LAN is not a secure context, and randomUUID exists only in one.
  */
@@ -93,7 +95,8 @@ export const playback = {
 	 * stops the session only when no other viewer holds it and it is
 	 * still being produced; a finished one stays cached for a replay. Sent
 	 * with keepalive, so a release made while the page unloads still
-	 * arrives.
+	 * arrives. `viewer` must not be empty: without one this is a plain stop,
+	 * for every viewer.
 	 */
 	releaseTranscode: (id: string, session: string, viewer: string) =>
 		request<TranscodeStatus>(`/api/items/${encodeURIComponent(id)}/transcode`, {

@@ -171,10 +171,15 @@
 	let transcodeReady = $state(false);
 	let preparingTranscode = $state(false);
 	let transcodeSession = $state('');
-	// This player's viewer id (D-281). Sessions are shared by everyone
-	// asking for the same options, so a release names the viewer leaving:
-	// the server stops the session only when no other viewer holds it.
-	const viewer = newViewerId();
+	// The viewer id (D-281) this player started or joined transcodeSession
+	// with; empty while it holds nothing (a cached session it only adopted).
+	// Sessions are shared by everyone asking for the same options, so a
+	// release names the hold it ends: the server stops the session only when
+	// no other viewer holds it. Every start makes a fresh id, so the release
+	// of a session this player leaves can never end the hold its next start
+	// placed on the same session (a rebuild with unchanged options, or two
+	// starts racing), whichever request the server sees first.
+	let transcodeViewer = '';
 	let transcodeError = $state<string | null>(null);
 	let prepareProgress = $state(0);
 	let prepareStartedAt = $state(0);
@@ -432,10 +437,13 @@
 	 * (D-281). The server decides both, so there is no state to ask first.
 	 */
 	function releaseSession(): void {
-		if (transcodeSession) releaseTranscode(transcodeSession);
+		releaseTranscode(transcodeSession, transcodeViewer);
 	}
 
-	function releaseTranscode(sid: string): void {
+	// Without a viewer the server would stop the session for everyone, so a
+	// session this player holds nothing on is left alone.
+	function releaseTranscode(sid: string, viewer: string): void {
+		if (!sid || !viewer) return;
 		void api.playback.releaseTranscode(item.id, sid, viewer).catch(() => undefined);
 	}
 
@@ -659,6 +667,7 @@
 		try {
 			const subtitleStream =
 				selection?.subtitle_stream ?? (embeddedSubtitle === '' ? undefined : Number(embeddedSubtitle));
+			const viewer = newViewerId();
 			let status = await api.playback.startTranscode(item.id, {
 				quality: (selection?.quality ?? selectedQuality) || undefined,
 				audio_stream: selection?.audio_stream ?? (selectedAudio === '' ? undefined : Number(selectedAudio)),
@@ -669,12 +678,13 @@
 				video_effect: serverEffect || undefined,
 				viewer
 			});
-			// Left while the start was on its way: onDestroy had no session
-			// to release yet, and this player will never attach to it, so it
-			// is released here instead of holding a runner until the idle
-			// timeout.
-			if (destroyed) {
-				releaseTranscode(status.session);
+			// Left, or replaced by a newer start (a second seek, track or
+			// quality change before this one answered), while the start was on
+			// its way: onDestroy or the rebuild had no session to release yet,
+			// and this player will never attach to it, so its hold is released
+			// here instead of keeping a runner busy until the idle timeout.
+			if (destroyed || controller.signal.aborted) {
+				releaseTranscode(status.session, viewer);
 				return;
 			}
 			// The server answers a request it cannot honour with the plain
@@ -684,6 +694,7 @@
 			}
 			hevcCopied = status.video_direct === true && status.video_codec === 'hevc';
 			transcodeSession = status.session;
+			transcodeViewer = viewer;
 			delivery = status.delivery ?? 'progressive';
 			transcodeReasons = status.reasons ?? transcodeReasons;
 			// A pending extraction reports nothing yet; the poll loop raises
@@ -767,11 +778,14 @@
 	async function rebuildAt(position: number): Promise<void> {
 		if (mode !== 'transcode') return;
 		const oldSession = transcodeSession;
+		const oldViewer = transcodeViewer;
 		destroyHLS();
 		transcodeReady = false;
 		resumeApplied = true;
 		baseOffset = position;
-		if (oldSession) releaseTranscode(oldSession);
+		releaseTranscode(oldSession, oldViewer);
+		// Released: until the new start answers, this player holds nothing.
+		transcodeViewer = '';
 		try {
 			await prepareTranscode({
 				audio_stream: selectedAudio === '' ? undefined : Number(selectedAudio),
