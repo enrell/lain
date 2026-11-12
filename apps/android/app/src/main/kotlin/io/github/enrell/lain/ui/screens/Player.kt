@@ -195,11 +195,15 @@ fun PlayerScreen(
     var fill by remember { mutableStateOf(false) }
     val subtitleScale = remember { listOf(0.8f, 1f, 1.3f)[graph.prefs.subtitleSize.coerceIn(0, 2)] }
     val subtitleBox = remember { graph.prefs.subtitleBox }
+    // What just changed (the audio track, a speed kept from before), said over the picture
+    // by [NoteLine]. A plain state, not a delegate: this function is already at the size
+    // where the release build's PlayerKt failed to load as the app started.
+    val note = remember { mutableStateOf<String?>(null) }
     LaunchedEffect(player) {
         if (speed != 1f) {
             player.setPlaybackSpeed(speed)
             // Said once as it opens: a speed kept from another video is a surprise otherwise.
-            android.widget.Toast.makeText(context, context.getString(R.string.player_speed_kept, "$speed×"), android.widget.Toast.LENGTH_SHORT).show()
+            note.value = context.getString(R.string.player_speed_kept, "$speed×")
         }
     }
     var textTracks by remember { mutableStateOf(listOf<TextTrack>()) }
@@ -631,6 +635,7 @@ fun PlayerScreen(
                 color = Color.White, fontSize = 13.sp, lineHeight = 18.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
+        NoteLine(note, !inPip, Modifier.align(Alignment.TopCenter))
         // The end of an episode: the next one starts by itself unless stopped.
         countdown?.let { n ->
             if (next != null) {
@@ -819,7 +824,7 @@ fun PlayerScreen(
                         // Kept for this title, so its next part opens with the same choice.
                         t.group.getTrackFormat(t.index).language?.let { graph.prefs.setTrackLanguageOf(title, if (subs) "text" else "audio", it) }
                         // Said, since nothing on the picture shows which track plays.
-                        android.widget.Toast.makeText(context, context.getString(if (subs) R.string.player_subtitles_now else R.string.player_audio_now, t.label), android.widget.Toast.LENGTH_SHORT).show()
+                        note.value = context.getString(if (subs) R.string.player_subtitles_now else R.string.player_audio_now, t.label)
                         tracksPanel = 0
                     })
                 }
@@ -928,6 +933,29 @@ private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 private class TextTrack(val group: Tracks.Group, val index: Int, val label: String, val selected: Boolean)
 
 /** The skip buttons: the turning arrow with the step inside. */
+/**
+ * A short line over the picture, under the title, that fades after 2.5 s: what just changed.
+ * It replaced a system toast, which sat on the bar's own buttons (over the Subtitles button
+ * just used) and carried the app's icon into the film.
+ */
+@Composable
+private fun NoteLine(note: androidx.compose.runtime.MutableState<String?>, shown: Boolean, modifier: Modifier) {
+    val text = note.value
+    LaunchedEffect(text) {
+        if (text != null) {
+            delay(2500)
+            note.value = null
+        }
+    }
+    if (text == null || !shown) return
+    Text(
+        text,
+        modifier.safeDrawingPadding().padding(top = 64.dp, start = 24.dp, end = 24.dp)
+            .clip(CircleShape).background(Color.Black.copy(alpha = 0.75f)).padding(horizontal = 16.dp, vertical = 8.dp),
+        color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+    )
+}
+
 @Composable
 private fun SkipButton(icon: androidx.compose.ui.graphics.vector.ImageVector, seconds: Int, label: String, onClick: () -> Unit) {
     // Each says which way it goes: the two share a number, not a name.
