@@ -55,6 +55,9 @@ pub struct CatalogQuery {
     pub offset: i64,
     pub sort: String,
     pub library_id: String,
+    /// `title` pages titles instead of files (D-283): see
+    /// [`CatalogPage::group`], which says whether the server did.
+    pub group: String,
 }
 
 /// `GET /api/search`.
@@ -65,6 +68,8 @@ pub struct SearchQuery {
     pub limit: i64,
     pub offset: i64,
     pub sort: String,
+    /// `title` pages titles instead of files (D-283), as for the catalog.
+    pub group: String,
 }
 
 /// How to unlock a private library for this session (D-156).
@@ -406,7 +411,8 @@ impl Client {
                 ("limit", num(q.limit)),
                 ("offset", num(q.offset)),
                 ("sort", q.sort),
-                ("library_id", q.library_id)
+                ("library_id", q.library_id),
+                ("group", q.group)
             ])
         );
         self.call(Method::GET, &path, Body::None).await
@@ -430,7 +436,8 @@ impl Client {
                 ("kind", q.kind),
                 ("limit", num(q.limit)),
                 ("offset", num(q.offset)),
-                ("sort", q.sort)
+                ("sort", q.sort),
+                ("group", q.group)
             ])
         );
         self.call(Method::GET, &path, Body::None).await

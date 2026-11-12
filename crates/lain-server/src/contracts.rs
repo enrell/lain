@@ -23,7 +23,14 @@ pub struct PageParams {
     /// so totals do not count them. Rust-only field.
     #[serde(rename = "ExcludeLibraries", default, skip_serializing_if = "Vec::is_empty")]
     pub exclude_libraries: Vec<String>,
+    /// `title` (D-283): the page counts titles, not files, and holds every
+    /// file of each title on it. Rust-only field.
+    #[serde(rename = "Group", default, skip_serializing_if = "String::is_empty")]
+    pub group: String,
 }
+
+/// The one `group` a catalog page knows (D-283).
+pub const GROUP_TITLE: &str = "title";
 
 impl PageParams {
     /// Clamps raw query input like `contracts.NormalizePage`.
@@ -35,7 +42,13 @@ impl PageParams {
             sort: if sort == "recent" { "recent".into() } else { "title".into() },
             library_id: String::new(),
             exclude_libraries: Vec::new(),
+            group: String::new(),
         }
+    }
+
+    /// The `group` query value a page honours; anything else pages files.
+    pub fn grouping(raw: &str) -> String {
+        if raw.trim() == GROUP_TITLE { GROUP_TITLE.into() } else { String::new() }
     }
 }
 

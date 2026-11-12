@@ -424,6 +424,13 @@ pub struct CatalogPage {
     pub total: i64,
     pub limit: i64,
     pub offset: i64,
+    /// `title` when the page was asked for with `group=title` and honours
+    /// it (D-283): `total`, `limit` and `offset` then count titles, and
+    /// `items` holds every file of each title on the page, so a title is
+    /// never split across pages. Absent on a page of files (an older
+    /// server, or a catalog provider that does not group).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub group: String,
 }
 
 /// `GET /api/catalog/{id}/episodes`: one title's files.
