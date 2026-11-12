@@ -329,7 +329,8 @@ marks LRU recency), `position` (the segment the client last
 fetched — drives throttling, segment deletion and idle cleanup; the
 latest report wins, so a rewind re-pauses ffmpeg and holds off deletion
 instead of pacing both against a stale high-water mark),
-`cancel`, and `list` (admin view). States remain
+`cancel` (with a `viewer`, a release: see **Viewers** below), and
+`list` (admin view). States remain
 `idle|queued|running|ready|failed`.
 
 Request fields: `delivery` (`hls` default, or `progressive`),
@@ -337,7 +338,8 @@ Request fields: `delivery` (`hls` default, or `progressive`),
 `video_codec` (`h264` default, `hevc`/`av1` only when the operator
 allows them), `audio_codec`, `audio_stream`, `subtitle_stream`,
 `subtitle_mode` (`auto|extract|burn|off`), `segment_index`, `policy`
-(the requesting user's limits) and `settings`.
+(the requesting user's limits), `viewer` (D-281, never part of the
+session identity) and `settings`.
 
 `video_copy_codecs` (D-273, optional) lists the codecs beyond H.264 the
 client decodes in fragmented MP4. Only `hevc` is known; other values
@@ -496,7 +498,8 @@ are burned in via `overlay`, text tracks can be burned in via
 **HTTP.** `POST /api/items/{id}/transcode` starts/joins (202 while
 pending, 200 when ready, 429 `queue-full`, 403 `forbidden` when the
 user's policy denies the operation), `DELETE
-/api/items/{id}/transcode?session=` stops a session, `GET
+/api/items/{id}/transcode?session=` stops a session (with `&viewer=`,
+releases one viewer's hold; see **Viewers** below), `GET
 /api/items/{id}/transcode/status?session=` polls, `GET
 /api/items/{id}/transcode?session=` serves the progressive MP4 (409 for
 an HLS session), `GET /api/items/{id}/transcode/hls/{file}` serves
@@ -508,6 +511,32 @@ would otherwise 401 — native HLS cannot send headers either),
 `GET /api/items/{id}/subtitles?session=` serves the WebVTT sidecar, and
 `GET /api/playback/options` publishes the ladder and preferred
 delivery to authenticated players.
+
+**Viewers (D-281).** A session is keyed by source and options, not by
+client, so two players with the same options and start point (two
+tabs, two devices, two accounts) share one. A player names itself with
+a viewer id it makes once per player instance: 1 to 64 ASCII letters,
+digits, `-` or `_` (anything else is 400 `invalid-message`). `viewer` in
+the `POST /api/items/{id}/transcode` body attaches it to the session it
+starts or joins (a session served finished from the cache attaches
+nothing), and `DELETE /api/items/{id}/transcode?session=&viewer=`
+releases that hold. While a session is produced the server keeps its
+viewers, keyed by account and id, so one account cannot release
+another's viewer. A release stops and drops the session, as a release
+without a viewer does, only when that viewer held it, nothing else
+holds it and it is still `queued` or `running`; the answer is then
+`idle`. Otherwise it answers the session as it stands (200, its
+status): another viewer keeps it running, and a finished session stays
+in the cache for a replay, since it holds no runner (the LRU evicts it;
+a release without a viewer still drops it). A start without `viewer`
+behaves as before: it is an unnamed hold that no viewer's release ends,
+so a viewer leaving never stops a session an older client is playing.
+A release without `viewer` behaves as before too: it stops the session
+for every viewer, and only its owner (or an admin, through
+`/api/admin/transcodes/{session}`) may. Past 32 named viewers, further
+joins count as unnamed. A viewer that vanishes without releasing (a
+closed tab) is not reaped on its own: the idle timeout still stops a
+session nobody fetches from.
 
 **Operator surface.** `GET/PUT /api/admin/settings/transcode`
 (admin-only) reads and writes the policy — validated, persisted as JSON

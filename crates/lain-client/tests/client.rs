@@ -998,6 +998,9 @@ async fn watch_routes() {
     let e = bob.transcode_status(ITEM1, &"f".repeat(64)).await.unwrap_err();
     assert!(matches!(e, ClientError::NotFound { ref message } if message == "unknown transcode session"), "{e:?}");
     assert_eq!(bob.cancel_transcode(ITEM1, &"f".repeat(64)).await.unwrap().state, "idle");
+    assert_eq!(bob.release_transcode(ITEM1, &"f".repeat(64), "tab-1").await.unwrap().state, "idle");
+    let e = bob.release_transcode(ITEM1, &"f".repeat(64), "not a viewer").await.unwrap_err();
+    assert!(matches!(e, ClientError::Api { status: 400, ref code, .. } if code == "invalid-message"), "{e:?}");
     assert!(admin.admin_transcodes().await.unwrap().sessions.is_empty());
     assert!(matches!(bob.admin_transcodes().await.unwrap_err(), ClientError::Forbidden { .. }));
     let hls = bob.hls_url(ITEM1, "s1").unwrap();

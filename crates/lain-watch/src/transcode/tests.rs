@@ -188,6 +188,100 @@ fn cancel_stops_and_only_the_owner_may() {
     assert_eq!(after.state, IDLE);
 }
 
+fn as_viewer(r: &Rig, action: &str, user: &str, viewer: &str, session: &str) -> V3Request {
+    V3Request { user_id: user.into(), viewer: viewer.into(), session: session.into(), ..req(r, action) }
+}
+
+#[test]
+fn a_shared_session_stops_when_its_last_viewer_leaves() {
+    let r = rig("tc-viewers", true);
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-a", "")).unwrap();
+    let b = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-b", "")).unwrap();
+    assert_eq!(a.session, b.session, "same options, one session");
+    // Another account joins it too.
+    r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u2", "phone", "")).unwrap();
+    let release =
+        |user: &str, viewer: &str| r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, user, viewer, &a.session)).unwrap();
+    let left = release("u1", "tab-a");
+    assert!(left.state == QUEUED || left.state == RUNNING, "{}", left.state);
+    assert_eq!(left.session, a.session);
+    // A release that held nothing changes nothing: twice, or another
+    // account naming the same viewer id.
+    release("u1", "tab-a");
+    release("u2", "tab-b");
+    release("u1", "phone");
+    assert_eq!(r.t.list_v3().len(), 1);
+    release("u2", "phone");
+    assert_eq!(r.t.list_v3().len(), 1, "tab-b of u1 still holds it");
+    let last = release("u1", "tab-b");
+    assert_eq!((last.state.as_str(), last.user_id.as_str()), (IDLE, ""));
+    assert!(r.t.list_v3().is_empty());
+    r.gate.as_ref().unwrap().send(true).unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    // The stopped run never becomes a record.
+    assert_eq!(r.t.invoke_v3(&req(&r, ACTION_INSPECT)).unwrap().state, IDLE);
+}
+
+#[test]
+fn a_client_without_a_viewer_id_holds_the_session_as_before() {
+    let r = rig("tc-unnamed", true);
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-a", "")).unwrap();
+    // An older client joins without naming itself.
+    r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "", "")).unwrap();
+    let left = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "tab-a", &a.session)).unwrap();
+    assert_ne!(left.state, IDLE, "a viewer's release never ends an unnamed hold");
+    assert_eq!(r.t.list_v3().len(), 1);
+    // Its own release (no viewer) stops the session as it always did.
+    let stopped = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "", &a.session)).unwrap();
+    assert_eq!(stopped.state, IDLE);
+    assert!(r.t.list_v3().is_empty());
+    r.gate.as_ref().unwrap().send(true).unwrap();
+}
+
+#[test]
+fn a_finished_session_outlives_its_last_viewer() {
+    let r = rig("tc-viewer-ready", false);
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-a", "")).unwrap();
+    wait_state(&r, &a.session, READY);
+    let left = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "tab-a", &a.session)).unwrap();
+    assert_eq!(left.state, READY, "nothing to stop; the replay cache stays");
+    assert!(r.t.meta_path(&a.session).exists());
+    // Once no job tracks it (pruned, or a restart), a viewer's release
+    // answers the cached session and still removes nothing.
+    r.t.lock().jobs.clear();
+    let left = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "tab-b", &a.session)).unwrap();
+    assert!(left.state == READY && left.cached);
+    assert!(r.t.meta_path(&a.session).exists());
+    let gone = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "tab-b", &"f".repeat(64))).unwrap();
+    assert_eq!(gone.state, IDLE);
+    // A release without a viewer still drops it.
+    assert_eq!(r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "", &a.session)).unwrap().state, IDLE);
+    assert!(!r.t.meta_path(&a.session).exists());
+}
+
+#[test]
+fn viewer_ids_are_checked_and_bounded() {
+    let r = rig("tc-viewer-ids", true);
+    for bad in ["has space", "../x", "ü", &"v".repeat(65)] {
+        let e = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", bad, "")).unwrap_err();
+        assert_eq!(e.code, "invalid-message", "{bad}");
+        let e = r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", bad, &"f".repeat(64))).unwrap_err();
+        assert_eq!(e.code, "invalid-message", "{bad}");
+    }
+    assert!(valid_viewer_id("0f3c-AB_9") && valid_viewer_id(&"a".repeat(64)) && !valid_viewer_id(""));
+    // Past the bound, joins hold the session unnamed: releasing every
+    // named viewer no longer stops it.
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "v0", "")).unwrap();
+    for n in 1..=MAX_VIEWERS {
+        r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", &format!("v{n}"), "")).unwrap();
+    }
+    for n in 0..=MAX_VIEWERS {
+        r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", &format!("v{n}"), &a.session)).unwrap();
+    }
+    assert_eq!(r.t.list_v3().len(), 1);
+    r.gate.as_ref().unwrap().send(true).unwrap();
+}
+
 #[test]
 fn queue_and_stream_limits() {
     let r = rig("tc-limits", true);
