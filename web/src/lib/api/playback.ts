@@ -23,7 +23,7 @@ import type { SidecarTrack } from '$lib/player/sidecars';
  */
 export const playback = {
 	/**
-	 * How long each video is, in seconds (GET /api/durations, D-274). Items
+	 * How long each video is, in seconds (GET /api/durations, D-276). Items
 	 * the server cannot measure are left out; a failure is an empty map, since
 	 * a length is a nicety on a card and never blocks a page.
 	 */

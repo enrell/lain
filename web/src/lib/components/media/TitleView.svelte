@@ -39,7 +39,7 @@
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
-	// How long each episode is, asked once for the whole title (D-274).
+	// How long each episode is, asked once for the whole title (D-276).
 	let durations = $state<Map<string, number>>(new Map());
 	onMount(() => {
 		origin = window.location.origin;
