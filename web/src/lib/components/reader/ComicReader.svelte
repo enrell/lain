@@ -17,6 +17,7 @@
 	import ReaderBase from './ReaderBase.svelte';
 	import ReaderGroup from './ReaderGroup.svelte';
 	import ReaderToggle from './ReaderToggle.svelte';
+	import { t } from '$lib/i18n';
 
 	let {
 		item,
@@ -55,23 +56,23 @@
 	{#snippet toolbar()}
 		{#if settings.mode === 'paged'}
 			<!-- Fit and zoom, the spread, the strip: one track per question, as the manga reader. -->
-			<ReaderGroup label="Size">
+			<ReaderGroup label={t('reader.toolbar.size')}>
 				<ReaderToggle
-					label={settings.fit === 'contain' ? 'Fit page to screen (click for full width)' : 'Full width (click to fit page)'}
+					label={settings.fit === 'contain' ? t('reader.toolbar.fitPage') : t('reader.toolbar.fitWidth')}
 					onclick={() => settings.setFit(settings.fit === 'contain' ? 'width' : 'contain')}
 				>
-					{settings.fit === 'contain' ? 'Fit' : 'Width'}
+					{settings.fit === 'contain' ? t('reader.toolbar.fit') : t('reader.toolbar.width')}
 				</ReaderToggle>
 				<ReaderToggle
-					label="Zoom out (-)"
+					label={t('reader.toolbar.zoomOut')}
 					disabled={settings.zoom <= 1}
 					onclick={() => settings.setZoom(settings.zoom - 0.25)}
 				>
 					<ZoomOut class="size-4" aria-hidden="true" />
 				</ReaderToggle>
-				<span class="w-10 text-center font-mono text-[11px] tabular-nums text-muted">{Math.round(settings.zoom * 100)}%</span>
+				<span class="w-10 text-center font-mono text-[11px] tabular-nums text-muted">{t('reader.toolbar.zoomLevel', { percent: Math.round(settings.zoom * 100) })}</span>
 				<ReaderToggle
-					label="Zoom in (+)"
+					label={t('reader.toolbar.zoomIn')}
 					disabled={settings.zoom >= 3}
 					onclick={() => settings.setZoom(settings.zoom + 0.25)}
 				>
@@ -79,25 +80,25 @@
 				</ReaderToggle>
 			</ReaderGroup>
 			<!-- Spreads exist only on a screen wider than tall: an upright one does not offer them. -->
-			<ReaderGroup label="Page layout" class="portrait:hidden">
+			<ReaderGroup label={t('reader.toolbar.layout')} class="portrait:hidden">
 				<ReaderToggle
-					label="Double-page spreads (D)"
+					label={t('reader.toolbar.spreadsComic')}
 					active={settings.dual}
 					onclick={() => settings.toggleDual()}
 				>
 					<Columns2 class="size-4" aria-hidden="true" />
-					<span class="hidden max-md:inline xl:inline">Spread</span>
+					<span class="hidden max-md:inline xl:inline">{t('reader.toolbar.spread')}</span>
 				</ReaderToggle>
 			</ReaderGroup>
 		{/if}
-		<ReaderGroup label="Strip">
+		<ReaderGroup label={t('reader.toolbar.strip')}>
 			<ReaderToggle
-				label="Continuous scroll"
+				label={t('reader.toolbar.scrollLabel')}
 				active={settings.mode === 'strip'}
 				onclick={() => settings.setMode(settings.mode === 'strip' ? 'paged' : 'strip')}
 			>
 				<GalleryVertical class="size-4" aria-hidden="true" />
-				<span class="hidden max-md:inline xl:inline">Scroll</span>
+				<span class="hidden max-md:inline xl:inline">{t('reader.toolbar.scroll')}</span>
 			</ReaderToggle>
 		</ReaderGroup>
 	{/snippet}

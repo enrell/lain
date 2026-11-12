@@ -14,9 +14,12 @@
 	import CircleHelp from '@lucide/svelte/icons/circle-help';
 	import Maximize from '@lucide/svelte/icons/maximize';
 	import Minimize from '@lucide/svelte/icons/minimize';
+	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import { api } from '$lib/api';
 	import type { CatalogItem, ReaderView } from '$lib/api/types';
 	import { session } from '$lib/auth/session.svelte';
+	import Modal from '$lib/components/primitives/Modal.svelte';
+	import { t } from '$lib/i18n';
 	import {
 		buildSpreads,
 		keyAction,
@@ -101,26 +104,46 @@
 				: `${reading[0] + 1} / ${total}`
 	);
 
-	const unit = $derived(profile.kind === 'manga' ? 'volume' : 'issue');
+	// A manga is read in volumes, a comic in issues: the words differ, the keys do not.
+	const manga = $derived(profile.kind === 'manga');
 	const shortcuts = $derived<[string[], string][]>([
-		[settings.mode === 'paged' && settings.direction === 'rtl' ? ['←'] : ['→'], 'Next page'],
-		[settings.mode === 'paged' && settings.direction === 'rtl' ? ['→'] : ['←'], 'Previous page'],
-		...(settings.mode === 'strip' ? [[['↑', '↓'], 'Scroll'] as [string[], string]] : []),
-		[['Space', 'Shift+Space'], 'Next / previous page'],
-		[['Home', 'End'], 'First / last page'],
-		[['G'], 'Go to page'],
-		[['N', ']'], 'Next ' + unit],
-		[['P', '['], 'Previous ' + unit],
-		[['B', 'Backspace'], 'Back to the title'],
-		[['M'], profile.kind === 'manga' ? 'Paged / webtoon strip' : 'Paged / continuous scroll'],
-		...(profile.controls.fit ? [[['W'], 'Fit page / full width'] as [string[], string]] : []),
-		...(profile.controls.direction ? [[['R'], 'Flip reading direction'] as [string[], string]] : []),
-		...(profile.controls.dual ? [[['D'], 'Two-page spreads'] as [string[], string]] : []),
-		...(profile.controls.zoom ? [[['+', '-', '0'], 'Zoom in / out / reset'] as [string[], string]] : []),
-		[['H'], 'Show or hide the bars'],
-		[['F'], 'Fullscreen'],
-		[['?'], 'This list']
+		[settings.mode === 'paged' && settings.direction === 'rtl' ? ['←'] : ['→'], t('reader.keys.next')],
+		[settings.mode === 'paged' && settings.direction === 'rtl' ? ['→'] : ['←'], t('reader.keys.previous')],
+		...(settings.mode === 'strip' ? [[['↑', '↓'], t('reader.keys.scroll')] as [string[], string]] : []),
+		[['Space', 'Shift+Space'], t('reader.keys.space')],
+		[['Home', 'End'], t('reader.keys.ends')],
+		[['G'], t('reader.keys.jump')],
+		[['N', ']'], manga ? t('reader.keys.nextVolume') : t('reader.keys.nextIssue')],
+		[['P', '['], manga ? t('reader.keys.previousVolume') : t('reader.keys.previousIssue')],
+		[['B', 'Backspace'], t('reader.keys.back')],
+		[['M'], manga ? t('reader.keys.modeManga') : t('reader.keys.modeComic')],
+		...(profile.controls.fit ? [[['W'], t('reader.keys.fit')] as [string[], string]] : []),
+		...(profile.controls.direction ? [[['R'], t('reader.keys.direction')] as [string[], string]] : []),
+		...(profile.controls.dual ? [[['D'], t('reader.keys.dual')] as [string[], string]] : []),
+		...(profile.controls.zoom ? [[['+', '-', '0'], t('reader.keys.zoom')] as [string[], string]] : []),
+		[['H'], t('reader.keys.bars')],
+		[['F'], t('reader.keys.fullscreen')],
+		[['?'], t('shortcuts.help')]
 	]);
+
+	/*
+	 * A page shown whole sits between the bars while they are up, and takes
+	 * the full height once they are away (a page turn puts them away). Drawn
+	 * over the art, the bars covered the top of every page and the slider its
+	 * last panel. A page that is panned (full width, zoomed) or a strip
+	 * scrolls under them as any scrolling view does.
+	 */
+	let headerHeight = $state(0);
+	let footerHeight = $state(0);
+	const fitsBetweenBars = $derived(settings.mode === 'paged' && settings.fit === 'contain' && settings.zoom <= 1);
+	const insetTop = $derived(ui && fitsBetweenBars ? headerHeight : 0);
+	const insetBottom = $derived(ui && fitsBetweenBars ? footerHeight : 0);
+
+	// A phone's top bar is one row; the reading toggles wait behind a button.
+	let options = $state(false);
+	$effect(() => {
+		if (!ui) options = false;
+	});
 
 	const kbd = 'shrink-0 rounded-md border border-line bg-background px-1.5 py-0.5 font-mono text-[10px] font-normal';
 
@@ -279,23 +302,14 @@
 		}
 	}
 
-	// The key list takes the focus while it is open and gives it back where it was.
-	function holdFocus(node: HTMLElement): { destroy: () => void } {
-		const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-		node.focus();
-		return { destroy: () => before?.focus({ preventScroll: true }) };
-	}
-
 	function onKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey) return;
 		if (help) {
-			if (e.key === 'Escape' || e.key === '?') {
+			// The key list is the app's dialog (Escape and Tab are its own); `?`
+			// closes it again, as it does the player's.
+			if (e.key === '?') {
 				e.preventDefault();
 				help = false;
-			} else if (e.key === 'Tab') {
-				// A modal list with nothing to press: Tab stays on it instead of
-				// walking the reader's controls behind the backdrop.
-				e.preventDefault();
 			}
 			return;
 		}
@@ -418,7 +432,8 @@
 		const z = settings.zoom;
 		if (settings.fit === 'width') return `width:${(100 / count) * z}vw;max-width:none;height:auto`;
 		if (z > 1) return `height:${z * 100}dvh;max-height:none;max-width:none;width:auto`;
-		return `max-height:100dvh;max-width:${100 / count}vw;width:auto;height:auto`;
+		// The height left between the bars (see fitsBetweenBars); the whole screen when they are away.
+		return `max-height:calc(100dvh - var(--reader-top) - var(--reader-bottom));max-width:${100 / count}vw;width:auto;height:auto`;
 	}
 </script>
 
@@ -427,21 +442,25 @@
 
 <div
 	bind:this={root}
-	class="group/reader fixed inset-0 z-40 flex select-none flex-col bg-[color-mix(in_srgb,var(--color-background)_72%,black)] text-foreground"
+	class="group/reader reader-root fixed inset-0 z-40 flex select-none flex-col bg-[color-mix(in_srgb,var(--color-background)_72%,black)] text-foreground"
+	style:--reader-top="{insetTop}px"
+	style:--reader-bottom="{insetBottom}px"
+	data-immersive
 >
 	<!-- Top bar: the same glass panel language as the rest of Lain. -->
 	<header
+		bind:clientHeight={headerHeight}
 		class="pointer-events-none absolute inset-x-0 top-0 z-20 p-3 transition duration-300 ease-[var(--ease-out-quick)] {ui
 			? ''
 			: '-translate-y-[130%] opacity-0'}"
 	>
 		<div
-			class="pointer-events-auto mx-auto flex max-w-5xl flex-wrap items-center gap-x-2 gap-y-1.5 rounded-2xl border border-line/70 bg-background/80 p-2 shadow-[0_18px_45px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+			class="pointer-events-auto mx-auto flex max-w-5xl flex-wrap items-center gap-x-2 gap-y-1.5 rounded-2xl border border-line/70 bg-background/80 p-2 shadow-[0_18px_45px_rgba(0,0,0,0.4)] backdrop-blur-xl max-sm:gap-x-1"
 		>
 			<a
 				href={backHref}
 				class="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground sm:size-9"
-				aria-label="Back to {item.title}"
+				aria-label={t('reader.back', { title: item.title })}
 			>
 				<ArrowLeft class="size-[18px]" aria-hidden="true" />
 			</a>
@@ -450,19 +469,39 @@
 				<p class="truncate text-sm font-semibold tracking-[-0.01em] text-foreground">{item.title}</p>
 			</div>
 			{#if counter}
-				<p class="shrink-0 px-2 font-mono text-xs tabular-nums text-muted" aria-live="polite">{counter}</p>
+				<p class="shrink-0 px-2 font-mono text-xs tabular-nums text-muted max-sm:px-1" aria-live="polite">{counter}</p>
 			{/if}
-			<div class="flex shrink-0 flex-wrap items-center gap-1.5 max-sm:order-last max-sm:w-full max-sm:[&_button]:min-h-10 max-sm:[&_button]:min-w-10">
-				<!-- Packed from the start on a phone: spread around, two toggles and a divider
-				     stood alone in a wide bar of nothing. Each reader groups its toggles
-				     (ReaderGroup), one track per question. -->
+			<!-- One row on a phone: the toggles open under it on request, the way
+			     the player keeps its settings behind one button. A second row of
+			     toggles made the bar a box over the top of the page. -->
+			<div
+				id="reader-options"
+				class="shrink-0 flex-wrap items-center gap-1.5 sm:flex max-sm:order-last max-sm:w-full max-sm:[&_button]:min-h-10 max-sm:[&_button]:min-w-10 {options
+					? 'flex max-sm:border-t max-sm:border-line/50 max-sm:pt-2'
+					: 'hidden'}"
+			>
+				<!-- Each reader groups its toggles (ReaderGroup), one track per question. -->
 				{@render toolbar?.()}
 			</div>
 			<div class="flex shrink-0 items-center gap-0.5">
+				{#if toolbar}
+					<button
+						type="button"
+						class="inline-flex size-11 items-center justify-center rounded-lg transition-colors hover:bg-surface-hover hover:text-foreground sm:hidden {options
+							? 'bg-surface-hover text-foreground'
+							: 'text-muted'}"
+						aria-label={t('reader.options')}
+						aria-expanded={options}
+						aria-controls="reader-options"
+						onclick={() => (options = !options)}
+					>
+						<SlidersHorizontal class="size-[18px]" aria-hidden="true" />
+					</button>
+				{/if}
 				<button
 					type="button"
 					class="inline-flex size-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground sm:size-9"
-					aria-label={fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+					aria-label={fullscreen ? t('reader.exitFullscreen') : t('reader.fullscreen')}
 					onclick={toggleFullscreen}
 				>
 					{#if fullscreen}<Minimize class="size-4" aria-hidden="true" />{:else}<Maximize class="size-4" aria-hidden="true" />{/if}
@@ -472,7 +511,7 @@
 					class="inline-flex size-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground max-sm:hidden {help
 						? 'bg-accent/15 text-accent'
 						: ''}"
-					aria-label="Keyboard shortcuts (?)"
+					aria-label={t('reader.shortcuts')}
 					aria-pressed={help}
 					onclick={() => (help = !help)}
 				>
@@ -486,7 +525,7 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div
 			bind:this={stage}
-			class="relative flex min-h-0 flex-1 overflow-auto"
+			class="reader-stage relative flex min-h-0 flex-1 overflow-auto"
 			data-reader-stage
 			data-direction={settings.direction}
 			onclick={onStageClick}
@@ -495,7 +534,7 @@
 				{#each shown as i (i)}
 					<img
 						src={src(i)}
-						alt="Page {i + 1}"
+						alt={t('reader.pageAlt', { page: i + 1 })}
 						draggable="false"
 						class="block object-contain shadow-[0_24px_70px_rgba(0,0,0,0.55)]"
 						style={pageStyle(shown.length)}
@@ -527,7 +566,7 @@
 				{#each pages as p (p.index)}
 					<img
 						src={src(p.index)}
-						alt="Page {p.index + 1}"
+						alt={t('reader.pageAlt', { page: p.index + 1 })}
 						data-index={p.index}
 						loading="lazy"
 						draggable="false"
@@ -536,7 +575,7 @@
 					/>
 				{/each}
 				<div class="flex flex-col items-center gap-3 px-6 py-24 text-center">
-					<p class="font-mono text-[10px] uppercase tracking-[0.26em] text-muted">End of {label}</p>
+					<p class="font-mono text-[10px] uppercase tracking-[0.26em] text-muted">{t('reader.end.label', { label })}</p>
 					{@render neighbours()}
 				</div>
 			</div>
@@ -554,33 +593,6 @@
 		</p>
 	{/if}
 
-	{#if help}
-		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-		<div class="absolute inset-0 z-30 flex items-center justify-center bg-black/55 p-6 backdrop-blur-sm" onclick={() => (help = false)}>
-			<div
-				class="w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-2xl"
-				role="dialog"
-				aria-modal="true"
-				tabindex="-1"
-				aria-label="Keyboard shortcuts"
-				use:holdFocus
-				onclick={(e) => e.stopPropagation()}
-			>
-				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent">Shortcuts</p>
-				<dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-5 gap-y-2.5 text-sm">
-					{#each shortcuts as [keys, what] (what)}
-						<dt class="flex flex-wrap gap-1">
-							{#each keys as k (k)}
-								<kbd class="rounded-md border border-line bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground">{k}</kbd>
-							{/each}
-						</dt>
-						<dd class="text-muted">{what}</dd>
-					{/each}
-				</dl>
-			</div>
-		</div>
-	{/if}
-
 	{#if jumping}
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 		<div class="absolute inset-0 z-30 flex items-start justify-center bg-black/40 p-6 pt-[18vh]" onclick={() => (jumping = false)}>
@@ -593,7 +605,7 @@
 					submitJump();
 				}}
 			>
-				<label class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent" for="reader-jump">Go to page</label>
+				<label class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent" for="reader-jump">{t('reader.jump.label')}</label>
 				<div class="mt-3 flex items-center gap-2">
 					<input
 						id="reader-jump"
@@ -611,7 +623,7 @@
 					/>
 					<span class="shrink-0 font-mono text-xs tabular-nums text-muted">/ {total}</span>
 				</div>
-				<p class="mt-2 font-mono text-[10px] text-muted"><kbd>Enter</kbd> jump · <kbd>Esc</kbd> cancel</p>
+				<p class="mt-2 font-mono text-[10px] text-muted"><kbd>Enter</kbd> {t('reader.jump.go')} · <kbd>Esc</kbd> {t('reader.jump.cancel')}</p>
 			</form>
 		</div>
 	{/if}
@@ -622,11 +634,11 @@
 				bind:this={endCard}
 				role="dialog"
 				aria-modal="true"
-				aria-label="End of {label}"
+				aria-label={t('reader.end.label', { label })}
 				tabindex="-1"
 				class="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 text-center shadow-2xl"
 			>
-				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent">End</p>
+				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent">{t('reader.end.kicker')}</p>
 				<p class="mt-2 text-xl font-semibold tracking-[-0.02em] text-foreground">{label}</p>
 				<p class="mt-1 text-sm text-muted">{item.title}</p>
 				<div class="mt-6 flex flex-col gap-2">
@@ -637,7 +649,7 @@
 						class="flex items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:bg-surface-hover focus-visible:text-foreground"
 						onclick={() => (atEnd = false)}
 					>
-						<span>Keep reading this {unit}</span><kbd class={kbd}>Esc</kbd>
+						<span>{manga ? t('reader.end.keepVolume') : t('reader.end.keepIssue')}</span><kbd class={kbd}>Esc</kbd>
 					</button>
 				</div>
 			</div>
@@ -646,6 +658,7 @@
 
 	<!-- Progress: reads in the same direction as the pages. -->
 	<footer
+		bind:clientHeight={footerHeight}
 		class="pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3 transition duration-300 ease-[var(--ease-out-quick)] {ui
 			? ''
 			: 'translate-y-[130%] opacity-0'}"
@@ -663,7 +676,7 @@
 				oninput={seek}
 				onpointerup={(e) => e.currentTarget.blur()}
 				tabindex="-1"
-				aria-label="Page"
+				aria-label={t('reader.page')}
 				class="reader-range"
 				style:--fill="{total > 1 ? (current / (total - 1)) * 100 : 100}%"
 				style:--to={settings.mode === 'paged' && settings.direction === 'rtl' ? 'left' : 'right'}
@@ -680,20 +693,50 @@
 			data-primary
 			class="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover focus-visible:outline-offset-2"
 		>
-			<span>Next: {next.label}</span><kbd class="{kbd} border-accent-fg/30 bg-accent-fg/10 text-accent-fg">Enter</kbd>
+			<span>{t('reader.end.next', { label: next.label })}</span><kbd class="{kbd} border-accent-fg/30 bg-accent-fg/10 text-accent-fg">Enter</kbd>
 		</a>
 	{/if}
 	{#if prev}
 		<a href={prev.href} class="flex items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:bg-surface-hover focus-visible:text-foreground">
-			<span>Previous: {prev.label}</span><kbd class={kbd}>P</kbd>
+			<span>{t('reader.end.previous', { label: prev.label })}</span><kbd class={kbd}>P</kbd>
 		</a>
 	{/if}
 	<a href={backHref} class="flex items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:bg-surface-hover focus-visible:text-foreground">
-		<span>Back to {item.title}</span><kbd class={kbd}>B</kbd>
+		<span>{t('reader.end.back', { title: item.title })}</span><kbd class={kbd}>B</kbd>
 	</a>
 {/snippet}
 
+<!-- The keys, in the app's own dialog (the player's `?` list is the same one). -->
+<Modal bind:open={help} title={t('shortcuts.title')}>
+	<dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-sm">
+		{#each shortcuts as [keys, what] (what)}
+			<dt class="flex gap-1">{#each keys as key (key)}<kbd>{key}</kbd>{/each}</dt>
+			<dd class="text-muted">{what}</dd>
+		{/each}
+	</dl>
+</Modal>
+
 <style>
+	/* Registered, so the page's height and the bars' bands move together. */
+	@property --reader-top {
+		syntax: '<length>';
+		inherits: true;
+		initial-value: 0px;
+	}
+	@property --reader-bottom {
+		syntax: '<length>';
+		inherits: true;
+		initial-value: 0px;
+	}
+	.reader-root {
+		transition:
+			--reader-top 300ms var(--ease-out-quick),
+			--reader-bottom 300ms var(--ease-out-quick);
+	}
+	.reader-stage {
+		padding-top: var(--reader-top);
+		padding-bottom: var(--reader-bottom);
+	}
 	.reader-range {
 		appearance: none;
 		-webkit-appearance: none;

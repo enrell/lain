@@ -14,6 +14,7 @@
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	import { startPage } from '$lib/reader/layout';
 	import { PageTurns } from '$lib/reader/turns';
+	import { t } from '$lib/i18n';
 
 	const id = $derived(page.params.id ?? '');
 
@@ -42,7 +43,7 @@
 		try {
 			const it = await api.catalog.get(id);
 			if (!isReadable(it.kind)) {
-				error = 'This item is not a comic or manga.';
+				error = t('reader.notReadable');
 				return;
 			}
 			const [v, prog, eps] = await Promise.all([
@@ -111,18 +112,18 @@
 	const next = $derived(at >= 0 ? neighbour(ordered[at + 1]) : null);
 </script>
 
-<svelte:head><title>{item?.title ? `Reading ${item.title} — Lain` : 'Reader — Lain'}</title></svelte:head>
+<svelte:head><title>{item?.title ? t('reader.pageTitle', { title: item.title }) : t('reader.pageTitleEmpty')}</title></svelte:head>
 <svelte:window onpagehide={saveOnHide} />
 <svelte:document onvisibilitychange={() => document.visibilityState === 'hidden' && saveOnHide()} />
 
 {#if loading && !item}
 	<div class="flex h-dvh items-center justify-center bg-background">
-		<Spinner class="size-6 text-accent" label="Opening" />
+		<Spinner class="size-6 text-accent" label={t('reader.opening')} />
 	</div>
 {:else if notFound}
-	<div class="p-8"><ErrorState message="This item is not in your library." /></div>
+	<div class="p-8"><ErrorState message={t('reader.notFound')} /></div>
 {:else if error || !item || !view}
-	<div class="p-8"><ErrorState message={error ?? 'Unknown error'} retry={() => void load()} /></div>
+	<div class="p-8"><ErrorState message={error ?? t('reader.unknownError')} retry={() => void load()} /></div>
 {:else}
 	{#key item.id}
 		{#if item.kind === 'manga'}
