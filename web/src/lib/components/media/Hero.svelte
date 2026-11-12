@@ -119,7 +119,9 @@
 	{/if}
 	<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
 	<div class="relative mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-[1800px] flex-col justify-end px-5 sm:px-8 lg:px-10 pb-8 pt-8 max-md:min-h-0 md:min-h-[min(40rem,60svh)] md:justify-end md:pb-10 md:pt-36">
-		<div class="hero-monolith-copy max-w-4xl">
+		<!-- Beside upright art the copy keeps to the left half until the screen
+		     is wide enough for both: at 768 the synopsis ran under the poster. -->
+		<div class="hero-monolith-copy max-w-4xl {upright ? 'md:max-w-[52%] xl:max-w-4xl' : ''}">
 			<img
 				src={enrichment?.poster || cover}
 				alt=""
