@@ -13,6 +13,7 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import SkipBack from '@lucide/svelte/icons/rotate-ccw';
 	import SkipForward from '@lucide/svelte/icons/rotate-cw';
+	import NextEpisode from '@lucide/svelte/icons/skip-forward';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Volume1 from '@lucide/svelte/icons/volume-1';
 	import Volume2 from '@lucide/svelte/icons/volume-2';
@@ -66,13 +67,16 @@
 		item,
 		plan,
 		initialProgress,
-		onFinished
+		onFinished,
+		next = null
 	}: {
 		item: CatalogItem;
 		plan: PlaybackPlan;
 		initialProgress: Progress | null;
 		/** Fired once playback reaches the end of the file. */
 		onFinished?: () => void;
+		/** The episode after this one, if any: a button in the bar and Shift+N go to it. */
+		next?: { label: string; go: () => void } | null;
 	} = $props();
 
 	const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -1431,6 +1435,12 @@
 			case 'F':
 				void toggleFullscreen();
 				break;
+			case 'N':
+				// Shift+N, as most web players have it: a bare N is too easy to hit by mistake.
+				if (!next) break;
+				consume(event);
+				next.go();
+				break;
 			case '?':
 				consume(event);
 				keysOpen = true;
@@ -1981,6 +1991,13 @@
 			<IconButton label={`Forward ${skipSec} seconds`} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(skipSec)}>
 				<SkipForward class="size-6" /><span class="absolute text-[9px] font-semibold">{skipSec}</span>
 			</IconButton>
+			<!-- On to the next episode from the bar, where every other player keeps it: the list
+			     beside the picture is hidden on narrower screens, and the end card waits for the end. -->
+			{#if next}
+				<IconButton label={t('player.nextEpisodeNamed', { name: next.label })} class="size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => next?.go()}>
+					<NextEpisode class="size-6" />
+				</IconButton>
+			{/if}
 
 			<div class="flex items-center gap-1">
 				<IconButton label={muted ? 'Unmute' : 'Mute'} class="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={toggleMute}>
@@ -2029,7 +2046,7 @@
 
 <Modal bind:open={keysOpen} title="Keyboard shortcuts">
 	<dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-sm">
-		{#each [[['Space', 'K'], 'Play or pause'], [['←', '→'], 'Back or forward 5 seconds'], [['J', 'L'], `Back or forward ${skipSec} seconds`], [['↑', '↓'], 'Volume'], [['M'], 'Mute'], [['F'], 'Full screen'], [['Esc'], 'Close a panel, leave full screen'], [['?'], 'This list']] as [keys, what] (what)}
+		{#each [[['Space', 'K'], 'Play or pause'], [['←', '→'], 'Back or forward 5 seconds'], [['J', 'L'], `Back or forward ${skipSec} seconds`], [['↑', '↓'], 'Volume'], [['M'], 'Mute'], [['F'], 'Full screen'], ...(next ? [[['Shift', 'N'], t('player.nextEpisode')] as [string[], string]] : []), [['Esc'], 'Close a panel, leave full screen'], [['?'], 'This list']] as [keys, what] (what)}
 			<dt class="flex gap-1">{#each keys as key (key)}<kbd>{key}</kbd>{/each}</dt>
 			<dd class="text-muted">{what}</dd>
 		{/each}

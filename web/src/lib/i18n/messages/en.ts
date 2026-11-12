@@ -657,6 +657,10 @@ const en = {
 		emptyBody: 'Connect an account in Settings → Connections to import what you track. AniList is supported.',
 		openConnections: 'Open Connections'
 	},
+	player: {
+		nextEpisode: 'Next episode',
+		nextEpisodeNamed: 'Next episode: {name} (Shift+N)'
+	},
 	playerPrefs: {
 		group: 'Skipping and subtitles · this browser',
 		skip: 'Skip step',

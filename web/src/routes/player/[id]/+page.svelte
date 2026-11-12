@@ -71,6 +71,10 @@
 		void goto(playHref(target.id));
 	}
 
+	// The episode after this one, for the bar's Next button and Shift+N.
+	const following = $derived(item ? nextEpisode(episodes, item.id) : null);
+	const next = $derived(following ? { label: episodeLabel(following), go: () => playNext(following) } : null);
+
 	function onFinished(): void {
 		if (!item || !autoplayNext) return;
 		const target = nextEpisode(episodes, item.id);
@@ -184,7 +188,7 @@
 				     the player (video element, transcode session, clock) instead
 				     of leaving the previous episode's state behind. -->
 				{#key item.id}
-					<Player {item} {plan} initialProgress={progress} {onFinished} />
+					<Player {item} {plan} initialProgress={progress} {onFinished} {next} />
 				{/key}
 				{#if upNext && countdown !== null}
 					<div
