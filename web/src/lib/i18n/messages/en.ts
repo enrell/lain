@@ -50,7 +50,8 @@ const en = {
 			tagline: 'Your media. Your machine. Your rules.',
 			submit: 'Sign in',
 			failed: 'Sign in failed.',
-			mismatch: 'That username and password do not match. Check both and try again.'
+			mismatch: 'That username and password do not match. Check both and try again.',
+			forgot: 'Forgot your password? An administrator of this server can set a new one.'
 		}
 	},
 	privateLibrary: {

@@ -11,8 +11,7 @@
 	 * - `list`: a list kept elsewhere, titles with how far along each is;
 	 * - `people`: a title among three people, joined as the app's mark joins
 	 *   its nodes;
-	 * - `queue`: releases on their way into the library;
-	 * - `fan`: three posters fanned out.
+	 * - `queue`: releases on their way into the library.
 	 * Beside the words from a tablet's width; a phone has the words alone.
 	 *
 	 * Steps, when given, sit under a hairline as short mono-labelled notes,
@@ -30,14 +29,14 @@
 	import { groupItems, type SeriesGroup } from '$lib/utilities/grouping';
 	import Poster from './Poster.svelte';
 
-	type Art = 'fan' | 'list' | 'people' | 'queue';
+	type Art = 'list' | 'people' | 'queue';
 
 	let {
 		eyebrow,
 		title,
 		body,
 		steps = [],
-		art = 'fan',
+		art = false,
 		children
 	}: {
 		eyebrow: string;
@@ -51,7 +50,7 @@
 		children?: Snippet;
 	} = $props();
 
-	const WANTED: Record<Art, number> = { fan: 3, list: 4, people: 1, queue: 3 };
+	const WANTED: Record<Art, number> = { list: 4, people: 1, queue: 3 };
 
 	interface Pick {
 		group: SeriesGroup;
@@ -85,7 +84,6 @@
 	});
 
 	const lead = $derived(picks[1] ?? picks[0]);
-	const fan = $derived(picks.slice(0, 3));
 	const nameOf = (p: Pick) => enrichmentCache.get(p.item.id)?.title || p.group.title;
 	// A drawn row's second line: the year only. The newest files hold only part
 	// of a long show, so a count of its episodes here would be short.
@@ -140,26 +138,7 @@
 
 		{#if picks.length > 0 && art}
 			<div class="relative mx-auto hidden md:block" aria-hidden="true">
-				{#if art === 'fan'}
-					<!-- Three posters fanned out, the middle one in front. -->
-					<div class="relative h-72 w-72 lg:h-80 lg:w-[28rem]">
-						{#each fan as p, i (p.item.id)}
-							{@const centre = i === 1 || fan.length === 1}
-							<div
-								class={[
-									'absolute top-1/2 aspect-[2/3] overflow-hidden rounded-xl shadow-[0_30px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/10',
-									centre
-										? 'left-1/2 z-10 w-36 -translate-x-1/2 -translate-y-1/2 lg:w-44'
-										: i === 0
-											? 'left-0 w-28 -translate-y-[46%] -rotate-[8deg] opacity-80 lg:left-6 lg:w-36'
-											: 'right-0 w-28 -translate-y-[46%] rotate-[8deg] opacity-80 lg:right-6 lg:w-36'
-								].join(' ')}
-							>
-								<Poster item={p.item} enrichment={enrichmentCache.get(p.item.id) ?? null} frame="portrait" class="size-full" />
-							</div>
-						{/each}
-					</div>
-				{:else if art === 'list'}
+				{#if art === 'list'}
 					<!-- A list kept elsewhere: a sheet of titles, how far along each one is,
 					     over a second sheet behind it. -->
 					<div class="relative w-64 lg:w-[22rem]">

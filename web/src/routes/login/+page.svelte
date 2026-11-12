@@ -119,9 +119,11 @@
 				{t('auth.login.submit')}
 			</Button>
 		</form>
+		<!-- The way back in without a mail server: an admin sets a new password (Settings → Users). -->
+		<p class="mt-4 text-center text-xs text-muted">{t('auth.login.forgot')}</p>
 		<!-- Which server this is: more than one is common among self-hosters. -->
 		{#if host}
-			<p class="mt-4 text-center font-mono text-[11px] text-muted">{host}</p>
+			<p class="mt-2 text-center font-mono text-[11px] text-muted">{host}</p>
 		{/if}
 	</div>
 </div>
