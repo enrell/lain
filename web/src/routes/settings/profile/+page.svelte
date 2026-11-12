@@ -56,7 +56,7 @@
 	}
 
 	function signOut(): void {
-		passing = true;
+		signingOut = true;
 		session.logout();
 		void goto('/login');
 	}
@@ -89,22 +89,35 @@
 	 * browser's own question.
 	 */
 	let leaveTo = $state<URL | null>(null);
+	// A held Back or Forward is replayed as one, so the history stays as it was.
+	let leaveDelta = 0;
 	let asking = $state(false);
+	// Lets the next navigation through: the one this page starts itself.
 	let passing = false;
+	// Signing out leaves whatever was typed, through however many redirects.
+	let signingOut = false;
 	beforeNavigate((nav) => {
-		if (!dirty || passing) return;
+		if (passing) {
+			passing = false;
+			return;
+		}
+		if (!dirty || signingOut) return;
 		nav.cancel();
 		if (nav.willUnload || !nav.to) return;
 		leaveTo = nav.to.url;
+		leaveDelta = nav.type === 'popstate' ? nav.delta : 0;
 		asking = true;
 	});
 	function leave(): void {
 		const to = leaveTo;
+		const delta = leaveDelta;
 		asking = false;
 		leaveTo = null;
+		leaveDelta = 0;
 		if (!to) return;
 		passing = true;
-		void goto(to.pathname + to.search + to.hash).finally(() => (passing = false));
+		if (delta) history.go(delta);
+		else void goto(to.pathname + to.search + to.hash);
 	}
 	async function saveAndLeave(): Promise<void> {
 		asking = false;
