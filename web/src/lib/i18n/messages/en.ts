@@ -583,6 +583,14 @@ const en = {
 			},
 			pages: { one: '{count} page', other: '{count} pages' }
 		},
+		// A file's name in its kind's words: a manga's volume and chapter, a comic's issue.
+		label: {
+			volume: 'Vol {volume}',
+			chapter: 'Ch {number}',
+			issue: 'Issue {number}',
+			volumeChapter: 'Vol {volume} · Ch {number}',
+			volumeIssue: 'Vol {volume} · Issue {number}'
+		},
 		pageTitle: 'Reading {title} — Lain',
 		pageTitleEmpty: 'Reader — Lain',
 		opening: 'Opening',
