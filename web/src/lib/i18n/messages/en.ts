@@ -244,7 +244,10 @@ const en = {
 			},
 			libraries: {
 				scan: 'Walks every library root and updates the catalog. Safe to run while watching.',
-				libraries: 'Folders on the server that Lain reads in place. Nothing is copied or moved.'
+				libraries: 'Folders on the server that Lain reads in place. Nothing is copied or moved.',
+				removeTitle: 'Remove library?',
+				removeBody: 'The files on disk stay untouched. Its catalog entries are removed with it.',
+				remove: 'Remove library'
 			},
 			users: {
 				activeFor: '{name} can sign in',
@@ -381,6 +384,9 @@ const en = {
 		dismiss: 'Dismiss'
 	},
 	security: {
+		current: 'Current password',
+		new: 'New password',
+		confirm: 'Confirm new password',
 		tooShort: 'At least 8 characters.',
 		mismatch: 'The two new passwords differ.',
 		wrongCurrent: 'That is not your current password.',
@@ -952,6 +958,12 @@ const en = {
 		nextEpisode: 'Next episode',
 		nextEpisodeNamed: 'Next episode: {name} (Shift+N)',
 		keys: {
+			play: 'Play or pause',
+			seek: 'Back or forward {seconds} seconds',
+			volume: 'Volume',
+			mute: 'Mute',
+			fullscreen: 'Full screen',
+			escape: 'Close a panel, leave full screen',
 			subtitles: 'Subtitles on or off',
 			speed: 'Slower or faster',
 			episodes: 'Episode list beside the picture'
