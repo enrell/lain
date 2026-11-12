@@ -91,7 +91,9 @@
 		try {
 			if (which === 'feed') {
 				// The friends too: an empty feed with nobody to follow is the page's first run.
-				const [res, people] = await Promise.all([api.social.feed(), api.social.friends()]);
+				// Only that choice hangs on them, so their failure leaves the feed standing
+				// (an empty one then says so plainly, without the first run).
+				const [res, people] = await Promise.all([api.social.feed(), api.social.friends().catch(() => null)]);
 				feed = res.items;
 				feedUsers = res.users;
 				feedMore = res.items.length > 0;
