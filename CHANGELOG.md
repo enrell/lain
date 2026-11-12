@@ -24,7 +24,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   that is bound but missing.
 - **`lain restore BACKUP.tar --replace`**: with the server stopped, one
   command moves the data folder aside (kept as `<dir>.before-restore`)
-  and restores into a fresh one; a failed restore puts it back.
+  and restores into a fresh one, keeping this machine's installed
+  components and service wrapper; a failed restore puts it back.
 
 ### Changed
 - **A scan asked for during a scan is queued on the server** (D-286):

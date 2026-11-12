@@ -45,6 +45,9 @@ mediated services (gateway-owned writes, scoped secrets).
   the server stopped, moves the data dir aside to
   `<dir>.before-restore` (kept, never deleted; put back if the restore
   fails) and restores into a fresh one, so a restore is one command.
+  The machine's own parts a backup leaves out (installed components in
+  `plugins/`, the Windows service wrapper in `service/`) are copied
+  into the new data dir.
 - Data dir documents are atomic JSON; a corrupt file errors loudly at
   load (`store.CorruptError`), pointing at the exact document.
 - Last-known composition persists in `composition.json`; a fresh
