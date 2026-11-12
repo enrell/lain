@@ -4,6 +4,8 @@ export interface Toast {
 	id: number;
 	kind: ToastKind;
 	message: string;
+	/** One action beside the message (an Undo), which also dismisses it. */
+	action?: { label: string; run: () => void };
 }
 
 /** Small global surface for transient feedback (errors from actions). */
@@ -28,6 +30,13 @@ class Toasts {
 
 	info(message: string): number {
 		return this.push('info', message, 4000);
+	}
+
+	/** A done thing that can be taken back: the message with an Undo, for a little longer. */
+	undoable(message: string, undo: () => void, label = 'Undo'): number {
+		const id = this.push('success', message, 8000);
+		this.items = this.items.map((t) => (t.id === id ? { ...t, action: { label, run: undo } } : t));
+		return id;
 	}
 
 	dismiss(id: number): void {

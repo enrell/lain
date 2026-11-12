@@ -286,9 +286,16 @@
 	async function startOver(): Promise<void> {
 		if (!resumeTarget || restarting) return;
 		restarting = true;
+		const was = resumeProgress;
+		const id = resumeTarget.id;
 		try {
-			await api.progress.put(resumeTarget.id, { position_sec: 0, duration_sec: resumeProgress?.duration_sec ?? 0, completed: false });
-			toasts.success('Progress reset.');
+			await api.progress.put(id, { position_sec: 0, duration_sec: resumeProgress?.duration_sec ?? 0, completed: false });
+			toasts.undoable('Back to the start.', () => {
+				if (!was) return;
+				void api.progress
+					.put(id, { position_sec: was.position_sec, duration_sec: was.duration_sec, completed: was.completed })
+					.then(() => onProgressChanged?.());
+			});
 			onProgressChanged?.();
 		} catch (err) {
 			toasts.error(errorMessage(err, 'Could not reset progress.'));
