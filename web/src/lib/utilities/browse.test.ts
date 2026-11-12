@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
-import { NO_FILTERS, activeCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState, type Context, type Filters } from './browse';
+import { NO_FILTERS, activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState, type Context, type Filters } from './browse';
 import { groupItems } from './grouping';
 
 const NOW = 1_000_000;
@@ -50,6 +50,8 @@ describe('filters', () => {
 		expect(titles({ sort: 'year' })).toEqual(['Alpha', 'Beta', 'Gamma']);
 		expect(titles({ sort: 'size_desc' })[0]).toBe('Beta');
 		expect(titles({ sort: 'episodes_desc' })[0]).toBe('Alpha');
+		// The order they came in: what favourites were kept in, newest first.
+		expect(apply([...groups].reverse(), f({ sort: 'listed' }), ctx).map((g) => g.title)).toEqual(['Gamma', 'Beta', 'Alpha']);
 	});
 });
 
@@ -64,6 +66,10 @@ describe('facets', () => {
 		const counts = countBy(groups, f({ watch: 'watched' }), ctx, 'watch', (g) => [watchState(g, ctx.progress)]);
 		expect(Object.fromEntries(counts)).toEqual({ in_progress: 1, watched: 1, unwatched: 1 });
 	});
+	it('count an axis left open as everything the other filters keep', () => {
+		expect(anyCount(groups, f({ watch: 'watched' }), ctx, 'watch')).toBe(3);
+		expect(anyCount(groups, f({ watch: 'watched', genres: ['Mystery'] }), ctx, 'watch')).toBe(2);
+	});
 });
 
 describe('URL', () => {
@@ -76,5 +82,12 @@ describe('URL', () => {
 	});
 	it('ignores values it does not know', () => {
 		expect(filtersFromParams(new URLSearchParams('sort=bogus&watch=x&added=5&shape=y'))).toEqual(NO_FILTERS);
+	});
+	it('takes the listed order only where it is offered', () => {
+		expect(filtersFromParams(new URLSearchParams('sort=listed')).sort).toBe('title');
+		const offered = ['listed', 'title'] as const;
+		expect(filtersFromParams(new URLSearchParams(''), 'listed', offered).sort).toBe('listed');
+		expect(filtersFromParams(new URLSearchParams('sort=title'), 'listed', offered).sort).toBe('title');
+		expect(filtersToParams(f({ sort: 'listed' }), 'listed').toString()).toBe('');
 	});
 });

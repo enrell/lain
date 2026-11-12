@@ -14,7 +14,7 @@ use lain_client::Client;
 use crate::LainCore;
 use crate::core::Backend;
 use crate::error::LainError;
-use crate::types::{PlaySource, SourceKind, SubtitleTrack};
+use crate::types::{PlaySource, QualityInfo, SourceKind, StoryboardSheet, SubtitleTrack};
 
 /// The plan's `client` value for this app.
 pub const CLIENT: &str = "android";
@@ -192,6 +192,86 @@ impl LainCore {
                 duration_sec: None,
                 subtitles: Vec::new(),
                 session,
+            })
+        })
+        .await
+    }
+
+    /// A transcode session from `start_sec`, at `quality` (empty: the
+    /// server's choice), optionally with the embedded subtitle
+    /// `burn_stream` burned in. A seek outside the range a session holds,
+    /// and a quality change, are both this: a new session whose timeline
+    /// begins where the viewer is.
+    pub async fn play_transcoded(
+        &self,
+        item_id: String,
+        start_sec: f64,
+        quality: String,
+        burn_stream: Option<i64>,
+    ) -> Result<PlaySource, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let c = &b.client;
+            let start = start_sec.max(0.);
+            let sel = TranscodeSelection {
+                quality: quality.clone(),
+                subtitle_stream: burn_stream,
+                subtitle_mode: if burn_stream.is_some() { "burn".into() } else { String::new() },
+                start_sec: start,
+                ..Default::default()
+            };
+            let session = hls(c, &item_id, sel).await?;
+            let mut note = String::from("transcode · HLS");
+            if !quality.is_empty() {
+                note.push_str(" · ");
+                note.push_str(&quality);
+            }
+            if burn_stream.is_some() {
+                note.push_str(" · subtitles burned in");
+            }
+            Ok(PlaySource {
+                kind: SourceKind::Hls,
+                url: c.hls_url(&item_id, &session)?,
+                note,
+                start_sec: start,
+                offset_sec: start,
+                duration_sec: None,
+                subtitles: Vec::new(),
+                session,
+            })
+        })
+        .await
+    }
+
+    /// The qualities the server offers for a transcode.
+    pub async fn play_qualities(&self) -> Result<Vec<QualityInfo>, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            Ok(b.client
+                .playback_options()
+                .await?
+                .qualities
+                .into_iter()
+                .map(|q| QualityInfo { name: q.name, max_height: q.max_height, bitrate_kbps: q.bitrate_kbps })
+                .collect())
+        })
+        .await
+    }
+
+    /// The item's storyboard: its layout and the picture. The first call
+    /// for an item waits while the server makes the picture.
+    pub async fn storyboard(&self, item_id: String) -> Result<StoryboardSheet, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let l = b.client.storyboard_layout(&item_id).await?;
+            let image = b.client.storyboard_image(&item_id).await?;
+            Ok(StoryboardSheet {
+                image,
+                interval_sec: l.interval_sec,
+                count: l.count,
+                columns: l.columns,
+                tile_width: l.tile_width,
+                tile_height: l.tile_height,
             })
         })
         .await

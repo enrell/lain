@@ -23,6 +23,26 @@ import type { SidecarTrack } from '$lib/player/sidecars';
  */
 export const playback = {
 	/**
+	 * How long each video is, in seconds (GET /api/durations, D-276). Items
+	 * the server cannot measure are left out; a failure is an empty map, since
+	 * a length is a nicety on a card and never blocks a page.
+	 */
+	durations: async (ids: string[]): Promise<Map<string, number>> => {
+		const out = new Map<string, number>();
+		for (let i = 0; i < ids.length; i += 100) {
+			try {
+				const page = await request<{ items?: { item_id: string; duration_sec: number }[] }>('/api/durations', {
+					query: { ids: ids.slice(i, i + 100).join(',') }
+				});
+				for (const d of page.items ?? []) out.set(d.item_id, d.duration_sec);
+			} catch {
+				return out;
+			}
+		}
+		return out;
+	},
+
+	/**
 	 * The plan is the playback policy: the UI must honor `available` and
 	 * `mode` instead of reconstructing URLs by itself. The request carries
 	 * what this browser reported it can decode (D-058) — a token list the

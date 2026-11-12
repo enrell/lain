@@ -72,6 +72,8 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'player', href: '/settings/playback', anchor: 'player', keywords: 'mpv vlc browser external play' },
 	{ id: 'playbackLanguage', href: '/settings/playback', anchor: 'language', keywords: 'idioma audio subtitle captions language dub' },
 	{ id: 'effects', href: '/settings/playback', anchor: 'effects', keywords: 'anime4k upscale shader webgpu effect server render gpu' },
+	{ id: 'skip', href: '/settings/playback', anchor: 'skip', keywords: 'skip seek jump seconds forward back double tap' },
+	{ id: 'subtitleLook', href: '/settings/playback', anchor: 'subtitle-size', keywords: 'subtitle captions size font background box readability' },
 	{ id: 'anilist', href: '/settings/connections', anchor: 'anilist', keywords: 'anilist list sync scrobble tracker connect' },
 	{ id: 'password', href: '/settings/security', anchor: 'password', keywords: 'password security credentials' },
 	{ id: 'privacyProfile', href: '/settings/privacy', anchor: 'privacy-profile', keywords: 'privacy visibility profile public friends private social' },

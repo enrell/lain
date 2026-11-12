@@ -194,6 +194,9 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/api/items/{id}/playback", route(GET, Gate::User, playback))
         .route("/api/items/{id}/stream", route(GET, Gate::User, stream))
         .route("/api/items/{id}/thumbnail", route(GET, Gate::User, thumbnail_get))
+        .route("/api/durations", route(GET, Gate::User, durations_get))
+        .route("/api/items/{id}/storyboard", route(GET, Gate::User, storyboard_get))
+        .route("/api/items/{id}/storyboard/image", route(GET, Gate::User, storyboard_image))
         .route(
             "/api/items/{id}/transcode",
             route(GET, Gate::User, transcode_get).merge(route(POST, Gate::User, transcode_start)).merge(route(
@@ -441,6 +444,116 @@ fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
             }
         };
     file(&thumb.path, "image/jpeg", vec![("cache-control", "private, max-age=86400".into())], "thumbnail unavailable")
+}
+
+/// The item's length, probed; `None` when it is not a file ffprobe reads.
+fn duration_of(app: &App, it: &CatalogItem) -> Option<f64> {
+    let settings = settings(app);
+    let (out, _) = app
+        .registry
+        .call_one(CAP_MEDIA_PROBE, "probe", json!({"file_path": it.file_path, "ffprobe_path": settings.ffprobe_path}))
+        .ok()?;
+    serde_json::from_value::<MediaInfo>(out).ok().map(|i| i.duration).filter(|d| *d > 0.0)
+}
+
+/// The most ids one `GET /api/durations` reads (a title's episodes).
+const MAX_DURATION_IDS: usize = 200;
+
+/// Lengths already probed, by file identity (path, size, modified time):
+/// a replaced file is probed again, an unchanged one never is. In memory:
+/// a restart pays one ffprobe per file a client asks about, once.
+fn duration_cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, f64>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, f64>>> =
+        std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// `GET /api/durations?ids=a,b,c` (D-276): how long each video is, so a
+/// list of episodes can say "24 min" where the catalog only knows a file.
+/// Items that are not videos, are not visible, or cannot be probed are
+/// left out; nothing here fails the request.
+fn durations_get(app: &App, w: &WReq, v: &Verified) -> Out {
+    let ids: Vec<&str> =
+        w.req.query("ids").split(',').map(str::trim).filter(|s| !s.is_empty()).take(MAX_DURATION_IDS).collect();
+    let mut known: Vec<(String, f64)> = Vec::new();
+    let mut misses: Vec<(CatalogItem, String)> = Vec::new();
+    for id in ids {
+        let Some(it) = app.visible_item(v, id) else { continue };
+        if !content_type(&it.file_path).starts_with("video/") {
+            continue;
+        }
+        let Ok(meta) = std::fs::metadata(&it.file_path) else { continue };
+        let mtime = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let key = format!("{}|{}|{mtime}", it.file_path, meta.len());
+        let hit = duration_cache().lock().unwrap_or_else(|e| e.into_inner()).get(&key).copied();
+        match hit {
+            Some(d) => known.push((it.id, d)),
+            None => misses.push((it, key)),
+        }
+    }
+    // A few probes at a time: a season asked for at once must not start
+    // twenty-six ffprobes together.
+    for chunk in misses.chunks(4) {
+        let probed: Vec<Option<f64>> = std::thread::scope(|s| {
+            let handles: Vec<_> = chunk.iter().map(|(it, _)| s.spawn(move || duration_of(app, it))).collect();
+            handles.into_iter().map(|h| h.join().ok().flatten()).collect()
+        });
+        for ((it, key), d) in chunk.iter().zip(probed) {
+            if let Some(d) = d {
+                duration_cache().lock().unwrap_or_else(|e| e.into_inner()).insert(key.clone(), d);
+                known.push((it.id.clone(), d));
+            }
+        }
+    }
+    let items: Vec<Value> = known.into_iter().map(|(id, d)| json!({"item_id": id, "duration_sec": d})).collect();
+    Reply::ok(json!({"items": items})).into()
+}
+
+/// How the item's storyboard is laid out (D-275). Cheap: it probes the
+/// length and makes nothing; a client asks this, then the image.
+fn storyboard_get(app: &App, w: &WReq, v: &Verified) -> Out {
+    let it = match item(app, w, v) {
+        Ok(it) => it,
+        Err(o) => return *o,
+    };
+    match duration_of(app, &it).and_then(thumbnail::storyboard_layout) {
+        Some(layout) => Reply::ok(json!(layout)).into(),
+        None => Reply::err(404, "no storyboard for this item").into(),
+    }
+}
+
+/// The storyboard itself, one JPEG; made on the first request (which
+/// waits for it) and served from the cache afterwards.
+fn storyboard_image(app: &App, w: &WReq, v: &Verified) -> Out {
+    let it = match item(app, w, v) {
+        Ok(it) => it,
+        Err(o) => return *o,
+    };
+    let Some(duration_sec) = duration_of(app, &it) else {
+        return Reply::err(404, "no storyboard for this item").into();
+    };
+    let req = thumbnail::StoryboardRequest { file_path: it.file_path.clone(), duration_sec };
+    match app.registry.call_one(thumbnail::CAP, "storyboard", serde_json::to_value(&req).unwrap_or_default()) {
+        Ok((out, _)) => match serde_json::from_value::<thumbnail::Storyboard>(out) {
+            Ok(sb) if !sb.path.is_empty() => file(
+                &sb.path,
+                "image/jpeg",
+                vec![("cache-control", "private, max-age=86400".into())],
+                "storyboard unavailable",
+            ),
+            _ => Reply::err(500, "bad storyboard result").into(),
+        },
+        Err(e) if e.code == "invalid-message" => Reply::err(404, "no storyboard for this item").into(),
+        Err(e) => {
+            tracing::warn!(item = %it.id, err = %e, "storyboard failed");
+            Reply::err(503, &e.to_string()).into()
+        }
+    }
 }
 
 // ---- transcode ----------------------------------------------------------

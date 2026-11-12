@@ -207,6 +207,32 @@ pub struct PlaybackOptions {
     pub effects: Vec<String>,
 }
 
+/// One video's length (`GET /api/durations`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ItemDuration {
+    pub item_id: String,
+    pub duration_sec: f64,
+}
+
+/// The envelope of `GET /api/durations`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ItemDurations {
+    #[serde(default)]
+    pub items: Vec<ItemDuration>,
+}
+
+/// How an item's storyboard is laid out (`GET /api/items/{id}/storyboard`):
+/// tile `i`, row by row, is the frame near `i * interval_sec`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoryboardLayout {
+    pub interval_sec: i64,
+    pub count: i64,
+    pub columns: i64,
+    pub rows: i64,
+    pub tile_width: i64,
+    pub tile_height: i64,
+}
+
 /// A transcode session as clients see it: never a filesystem path.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TranscodeStatus {

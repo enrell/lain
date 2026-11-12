@@ -151,18 +151,18 @@
 <svelte:head><title>{t('acquire.indexers.title')}</title></svelte:head>
 <svelte:window onkeydown={pageKey} />
 
-<div class="max-w-4xl pb-24">
-	<SettingsGroup id="indexers" title={t('acquire.indexers.group')}>
+<div>
+	<SettingsGroup id="indexers" title={t('acquire.indexers.group')} description={t('settings.groups.indexers.indexers')}>
 		{#snippet aside()}
-			<Button size="sm" onclick={() => startEdit(null)}>{t('acquire.indexers.add')} <kbd class="ms-1 font-mono text-[10px] opacity-70">n</kbd></Button>
+			<Button size="field" variant="tonal" onclick={() => startEdit(null)}>{t('acquire.indexers.add')} <kbd class="ms-1 font-mono text-[10px] text-muted">n</kbd></Button>
 		{/snippet}
 		{#if indexers === null}
 			<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
 		{:else if indexers.length === 0}
-			<p class="py-6 text-sm text-muted">{t('acquire.indexers.empty')}</p>
+			<p class="py-5 text-sm text-muted">{t('acquire.indexers.empty')}</p>
 		{:else}
-			<p class="pt-4 text-xs text-muted">{t('acquire.indexers.keys')}</p>
-			<div class="mt-2 divide-y divide-hairline" role="grid" aria-label={t('acquire.indexers.group')}>
+			<p class="settings-note">{t('acquire.indexers.keys')}</p>
+			<div class="settings-items" role="grid" aria-label={t('acquire.indexers.group')}>
 				{#each indexers as ix (ix.id)}
 					<div role="row" tabindex="0" class="grid gap-x-6 gap-y-2 py-3 outline-none focus-visible:bg-surface-active/40 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" onkeydown={(e) => rowKey(e, ix)}>
 						<div class="min-w-0" role="gridcell">
@@ -184,9 +184,9 @@
 						</div>
 						<div class="flex flex-wrap items-center gap-1.5" role="gridcell">
 							<Switch bare label={t('acquire.indexers.enabled')} checked={ix.enabled} onCheckedChange={(v) => void toggle(ix, v)} />
-							<Button size="sm" variant="ghost" tabindex={-1} loading={busy === ix.id} onclick={() => void test(ix)}>{t('acquire.indexers.test')} <kbd class="ms-1 font-mono text-[10px] text-muted">t</kbd></Button>
-							<Button size="sm" variant="ghost" tabindex={-1} onclick={() => startEdit(ix)}>{t('acquire.indexers.edit')} <kbd class="ms-1 font-mono text-[10px] text-muted">e</kbd></Button>
-							<Button size="sm" variant="ghost" tabindex={-1} onclick={() => askDelete(ix)}>{t('acquire.indexers.remove')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
+							<Button size="field" variant="ghost" tabindex={-1} loading={busy === ix.id} onclick={() => void test(ix)}>{t('acquire.indexers.test')} <kbd class="ms-1 font-mono text-[10px] text-muted">t</kbd></Button>
+							<Button size="field" variant="ghost" tabindex={-1} onclick={() => startEdit(ix)}>{t('acquire.indexers.edit')} <kbd class="ms-1 font-mono text-[10px] text-muted">e</kbd></Button>
+							<Button size="field" variant="ghost" tabindex={-1} onclick={() => askDelete(ix)}>{t('acquire.indexers.remove')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
 						</div>
 					</div>
 				{/each}

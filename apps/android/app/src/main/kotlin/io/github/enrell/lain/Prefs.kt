@@ -9,6 +9,114 @@ class Prefs(private val sp: SharedPreferences) {
         get() = sp.getString("server", null)
         set(v) = sp.edit().putString("server", v).apply()
 
+    /** The server palette last fetched (`/api/theme`), as JSON. */
+    var palette: String?
+        get() = sp.getString("palette", null)
+        set(v) = sp.edit().putString("palette", v).apply()
+
+    /** Library page conveniences: the sort used last and the tile size. */
+    var librarySort: String
+        get() = sp.getString("library_sort", "title") ?: "title"
+        set(v) = sp.edit().putString("library_sort", v).apply()
+
+    /** The order one library was last put in ("" is the whole catalog): "most episodes" means nothing among films. */
+    fun sortOf(scope: String): String = sp.getString("library_sort:$scope", "title") ?: "title"
+    fun setSortOf(scope: String, v: String) = sp.edit().putString("library_sort:$scope", v).apply()
+
+    var smallTiles: Boolean
+        // Three posters a row by default: two showed hardly more than two titles a screen.
+        get() = sp.getBoolean("small_tiles", true)
+        set(v) = sp.edit().putBoolean("small_tiles", v).apply()
+
+    var libraryShelves: Boolean
+        get() = sp.getBoolean("library_shelves", true)
+        set(v) = sp.edit().putBoolean("library_shelves", v).apply()
+
+    /** The video effect used last in the player (a preset id). */
+    var videoEffect: String
+        get() = sp.getString("video_effect", "off") ?: "off"
+        set(v) = sp.edit().putString("video_effect", v).apply()
+
+    /** How far a skip goes, in seconds; 0 leaves it to the title's length. */
+    var skipSec: Int
+        get() = sp.getInt("skip_sec", 0)
+        set(v) = sp.edit().putInt("skip_sec", v).apply()
+
+    /**
+     * Items whose codec the device's decoder failed on, as `item=family`
+     * (the newest few hundred): their next play asks for a transcode at
+     * once instead of failing first.
+     */
+    fun failedFamilies(itemId: String): Set<String> =
+        (sp.getStringSet("decode_failed", emptySet()) ?: emptySet()).filter { it.startsWith("$itemId=") }.map { it.substringAfter('=') }.toSet()
+
+    fun rememberFailed(itemId: String, family: String) {
+        val all = (sp.getStringSet("decode_failed", emptySet()) ?: emptySet()).toMutableList()
+        all.remove("$itemId=$family")
+        all.add("$itemId=$family")
+        sp.edit().putStringSet("decode_failed", all.takeLast(400).toSet()).apply()
+    }
+
+    /** The last few searches that found something, newest first. */
+    var recentSearches: List<String>
+        get() = (sp.getString("recent_searches", "") ?: "").split('\n').filter { it.isNotBlank() }
+        set(v) = sp.edit().putString("recent_searches", v.joinToString("\n")).apply()
+
+    /** The audio and subtitle languages last chosen in the player for a title ("" for subtitles off). */
+    fun trackLanguageOf(title: String, kind: String): String? = sp.getString("track_lang:$kind:" + title.trim().lowercase(), null)
+    fun setTrackLanguageOf(title: String, kind: String, language: String) = sp.edit().putString("track_lang:$kind:" + title.trim().lowercase(), language).apply()
+
+    /** Downloads wait for a network that is not metered (Wi-Fi). */
+    var wifiOnly: Boolean
+        get() = sp.getBoolean("wifi_only", false)
+        set(v) = sp.edit().putBoolean("wifi_only", v).apply()
+
+    /** The quality asked for on a metered network (mobile data); empty plays the file as the server chooses. */
+    var meteredQuality: String
+        get() = sp.getString("metered_quality", "") ?: ""
+        set(v) = sp.edit().putString("metered_quality", v).apply()
+
+    /** Subtitle text size: 0 small, 1 medium, 2 large. */
+    var subtitleSize: Int
+        get() = sp.getInt("subtitle_size", 1)
+        set(v) = sp.edit().putInt("subtitle_size", v).apply()
+
+    /** Subtitles on a dark box instead of an outline alone. */
+    var subtitleBox: Boolean
+        get() = sp.getBoolean("subtitle_box", false)
+        set(v) = sp.edit().putBoolean("subtitle_box", v).apply()
+
+    /** The question about download notifications was put once. */
+    var notifyAsked: Boolean
+        get() = sp.getBoolean("notify_asked", false)
+        set(v) = sp.edit().putBoolean("notify_asked", v).apply()
+
+    /** The playback speed last chosen, kept from one video to the next. */
+    var speed: Float
+        get() = sp.getFloat("player_speed", 1f)
+        set(v) = sp.edit().putFloat("player_speed", v).apply()
+
+    /** The player's gestures were explained once. */
+    var playerHintSeen: Boolean
+        get() = sp.getBoolean("player_hint_seen", false)
+        set(v) = sp.edit().putBoolean("player_hint_seen", v).apply()
+
+    /**
+     * How a title is read, as last chosen for it: "ltr", "rtl" or "down"
+     * (pages one under the other); null until a choice is made, when the
+     * book's own direction applies. Kept per title, as the web reader keeps
+     * it, so one book's choice does not follow you into another; the reader
+     * keys it on the title alone, so every volume of a manga opens the way
+     * its first was read.
+     */
+    fun readingWayOf(title: String): String? = sp.getString("reader_way:" + title.trim().lowercase(), null)
+    fun setReadingWayOf(title: String, way: String) = sp.edit().putString("reader_way:" + title.trim().lowercase(), way).apply()
+
+    /** The reader's gestures were explained once. */
+    var readerHintSeen: Boolean
+        get() = sp.getBoolean("reader_hint_seen", false)
+        set(v) = sp.edit().putBoolean("reader_hint_seen", v).apply()
+
     var theme: String
         get() = sp.getString("theme", "lain-dark") ?: "lain-dark"
         set(v) = sp.edit().putString("theme", v).apply()

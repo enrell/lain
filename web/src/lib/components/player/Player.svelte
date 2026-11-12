@@ -13,6 +13,7 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import SkipBack from '@lucide/svelte/icons/rotate-ccw';
 	import SkipForward from '@lucide/svelte/icons/rotate-cw';
+	import NextEpisode from '@lucide/svelte/icons/skip-forward';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Volume1 from '@lucide/svelte/icons/volume-1';
 	import Volume2 from '@lucide/svelte/icons/volume-2';
@@ -26,7 +27,10 @@
 		TranscodeStatus
 	} from '$lib/api/types';
 	import { api } from '$lib/api';
+	import type { StoryboardLayout } from '$lib/api/thumbnail';
 	import { session } from '$lib/auth/session.svelte';
+	import Modal from '$lib/components/primitives/Modal.svelte';
+	import Keyboard from '@lucide/svelte/icons/keyboard';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
@@ -40,6 +44,19 @@
 	import { elapsedSince, formatTime } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
 	import { EFFECT_PRESETS, loadEffectsPolicy, resolveEffect, serverEffectFor, type EffectPreset, type EffectRenderer } from '$lib/player/effects-policy';
+	import { episodeLabel } from '$lib/utilities/grouping';
+	import {
+		SKIP_CHOICES,
+		loadSkip,
+		loadSubtitleBackground,
+		loadSubtitleSize,
+		saveSkip,
+		saveSubtitleBackground,
+		saveSubtitleSize,
+		type SubtitleBackground,
+		type SubtitleSize
+	} from '$lib/player/player-prefs';
+	import { t } from '$lib/i18n';
 	import { detectBrowserProfile, type BrowserProfile, type RendererBackend } from '$lib/player/browser-profile';
 	import { VideoRenderer } from '$lib/player/webgpu/engine';
 	import type { WebGLAnime4KRenderer } from '$lib/player/webgl/engine';
@@ -50,13 +67,16 @@
 		item,
 		plan,
 		initialProgress,
-		onFinished
+		onFinished,
+		next = null
 	}: {
 		item: CatalogItem;
 		plan: PlaybackPlan;
 		initialProgress: Progress | null;
 		/** Fired once playback reaches the end of the file. */
 		onFinished?: () => void;
+		/** The episode after this one, if any: a button in the bar and Shift+N go to it. */
+		next?: { label: string; go: () => void } | null;
 	} = $props();
 
 	const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -127,6 +147,8 @@
 	let fullscreenNotice = $state<string | null>(null);
 	let controlsVisible = $state(true);
 	let settingsOpen = $state(false);
+	// The keys, listed on `?` (the reader does the same).
+	let keysOpen = $state(false);
 	let settingsButton = $state<HTMLButtonElement | null>(null);
 	$effect(() => {
 		if (settingsOpen) void tick().then(() => chromeTailEl?.querySelector<HTMLSelectElement>('select')?.focus());
@@ -161,12 +183,8 @@
 	// A sidecar that fails to load makes the renderer yield to native video
 	// (D-059's original degradation, kept for cue-overlay rendering D-082).
 	let trackFailed = $state(false);
-	let subtitleBg = $state<'none' | 'box'>(
-		(prefs.get('player.subtitle_bg') as 'none' | 'box') || 'none'
-	);
-	let subtitleSize = $state<'small' | 'medium' | 'large'>(
-		(prefs.get('player.subtitle_size') as 'small' | 'medium' | 'large') || 'medium'
-	);
+	let subtitleBg = $state<SubtitleBackground>(loadSubtitleBackground());
+	let subtitleSize = $state<SubtitleSize>(loadSubtitleSize());
 	const subtitleBgClass = $derived(subtitleBg === 'box' ? 'subtitles-bg-box' : 'subtitles-bg-none');
 	const subtitleSizeClass = $derived(
 		subtitleSize === 'small'
@@ -176,14 +194,14 @@
 				: 'subtitles-size-medium'
 	);
 
-	function setSubtitleBg(val: 'none' | 'box'): void {
+	function setSubtitleBg(val: SubtitleBackground): void {
 		subtitleBg = val;
-		prefs.set('player.subtitle_bg', val);
+		saveSubtitleBackground(val);
 	}
 
-	function setSubtitleSize(val: 'small' | 'medium' | 'large'): void {
+	function setSubtitleSize(val: SubtitleSize): void {
 		subtitleSize = val;
-		prefs.set('player.subtitle_size', val);
+		saveSubtitleSize(val);
 	}
 	let languageMetadataKnown = $state(false);
 	// v3 session state (D-042): delivery actually used, the quality the
@@ -264,7 +282,9 @@
 					? api.playback.transcodeUrl(item.id, session.token, transcodeSession)
 					: api.playback.streamUrl(item.id, session.token)
 	);
-	const title = $derived(item.title);
+	// The episode by name as well as its show: the bar said only "Paper Moon
+	// Station", so which episode was playing could be read only off the list.
+	const title = $derived(item.episode > 0 ? `${item.title} · ${episodeLabel(item)}` : item.title);
 	// Only a file with a video track can prove itself with a picture:
 	// audio-only direct play has no frame to wait for.
 	const expectsVideo = $derived((plan.streams ?? []).some((s) => s.type === 'video'));
@@ -311,7 +331,16 @@
 		}
 	);
 
+	/*
+	 * Progress is what was watched: nothing is written until the picture has
+	 * actually played in this session. Opening a finished title (its player
+	 * starts at 0:00) and leaving used to write "0:00, not finished" over
+	 * "finished", which un-watched it and put it back in Continue.
+	 */
+	let watched = false;
+
 	function persistNow(): void {
+		if (!watched) return;
 		const snap = snapshot();
 		if (snap.duration_sec <= 0) return;
 		void api.progress.put(item.id, snap, { keepalive: true }).catch(() => {
@@ -854,14 +883,14 @@
 			bufferedStart = el.buffered.start(0) + baseOffset;
 			bufferedEnd = el.buffered.end(el.buffered.length - 1) + baseOffset;
 		}
-		void reporter.update(snapshot());
+		if (watched) void reporter.update(snapshot());
 	}
 
 	function onPause(): void {
 		playing = false;
 		waiting = false;
 		controlsVisible = true;
-		void reporter.update(snapshot(), { force: true });
+		if (watched) void reporter.update(snapshot(), { force: true });
 	}
 
 	function onPlay(): void {
@@ -872,6 +901,7 @@
 	}
 
 	function onPlaying(): void {
+		watched = true;
 		waiting = false;
 		confirmFrameProof();
 	}
@@ -882,7 +912,7 @@
 
 	function onSeeked(): void {
 		if (video) currentTime = video.currentTime + baseOffset;
-		void reporter.update(snapshot(), { force: true });
+		if (watched) void reporter.update(snapshot(), { force: true });
 	}
 
 	function onEnded(): void {
@@ -1113,7 +1143,18 @@
 	 * fullscreen.
 	 */
 	const TAP_GAP_MS = 280;
-	const SKIP_SEC = 10;
+	// How far one skip goes (the double tap, the buttons, the arrow keys):
+	// the viewer's choice, or by the title's length when left to the
+	// player. Ten seconds is a step in an episode and nothing in a two
+	// hour film.
+	// Kept on the keys Settings > Playback edits too (player-prefs).
+	let skipChoice = $state(loadSkip());
+	const autoSkip = $derived.by(() => (totalDuration >= 3600 ? 30 : 10));
+	const skipSec = $derived.by(() => (skipChoice > 0 ? skipChoice : autoSkip));
+	function setSkip(next: number): void {
+		skipChoice = next;
+		saveSkip(next);
+	}
 	let lastTap = { at: 0, side: 0 };
 	let tapTimer: ReturnType<typeof setTimeout> | null = null;
 	let skipFlash = $state<{ side: -1 | 1; total: number; key: number } | null>(null);
@@ -1126,8 +1167,8 @@
 	}
 
 	function skip(side: -1 | 1): void {
-		seekBy(side * SKIP_SEC);
-		const total = skipFlash && skipFlash.side === side ? skipFlash.total + SKIP_SEC : SKIP_SEC;
+		seekBy(side * skipSec);
+		const total = skipFlash && skipFlash.side === side ? skipFlash.total + skipSec : skipSec;
 		skipFlash = { side, total, key: Date.now() };
 		if (skipFlashTimer) clearTimeout(skipFlashTimer);
 		skipFlashTimer = setTimeout(() => (skipFlash = null), 700);
@@ -1180,10 +1221,41 @@
 	let hoverAt = $state<number | null>(null);
 	let seekRow = $state<HTMLElement | null>(null);
 	let previewSrc = $state('');
+	// The storyboard, once it is here: every preview is a tile of one
+	// picture, so nothing is fetched while dragging. Until then (and for an
+	// item that has none) the single-frame requests below stand in.
+	let board = $state<{ layout: StoryboardLayout; url: string } | null>(null);
+	$effect(() => {
+		const id = item.id;
+		board = null;
+		let live = true;
+		void api.storyboard
+			.layout(id)
+			.then((layout) => {
+				const url = api.storyboard.imageUrl(id, session.token);
+				const img = new Image();
+				img.onload = () => {
+					if (live) board = { layout, url };
+				};
+				img.src = url;
+			})
+			.catch(() => undefined);
+		return () => {
+			live = false;
+		};
+	});
+	const boardStyle = $derived.by(() => {
+		if (!board || previewAt === null) return '';
+		const { layout, url } = board;
+		const i = Math.min(layout.count - 1, Math.max(0, Math.floor(previewAt / layout.interval_sec)));
+		const x = (i % layout.columns) / Math.max(1, layout.columns - 1);
+		const y = Math.floor(i / layout.columns) / Math.max(1, layout.rows - 1);
+		return `background-image:url("${url}");background-size:${layout.columns * 100}% ${layout.rows * 100}%;background-position:${x * 100}% ${layout.rows > 1 ? y * 100 : 0}%`;
+	});
 	const previewAt = $derived(scrubbing ? scrubValue : hoverAt);
 	const previewStep = $derived(Math.max(2, Math.round(totalDuration / 150)));
 	const previewWanted = $derived.by(() => {
-		if (previewAt === null || totalDuration <= 0) return '';
+		if (board || previewAt === null || totalDuration <= 0) return '';
 		const at = Math.min(Math.max(0, totalDuration - 1), Math.round(previewAt / previewStep) * previewStep);
 		return api.thumbnail.url(item.id, session.token, { at, width: 320 });
 	});
@@ -1380,11 +1452,11 @@
 				break;
 			case 'j':
 			case 'J':
-				seekBy(-10);
+				seekBy(-skipSec);
 				break;
 			case 'l':
 			case 'L':
-				seekBy(10);
+				seekBy(skipSec);
 				break;
 			case 'ArrowUp':
 				consume(event);
@@ -1401,6 +1473,16 @@
 			case 'f':
 			case 'F':
 				void toggleFullscreen();
+				break;
+			case 'N':
+				// Shift+N, as most web players have it: a bare N is too easy to hit by mistake.
+				if (!next) break;
+				consume(event);
+				next.go();
+				break;
+			case '?':
+				consume(event);
+				keysOpen = true;
 				break;
 		}
 	}
@@ -1671,31 +1753,20 @@
 	{/if}
 
 	<!-- Paused start / ended: a large, unmissable play affordance. -->
-	{#if transcodeReady && (ended || (!playing && !error && !waiting && currentTime === 0)) && controlsVisible}
+	{#if transcodeReady && (ended || (!playing && !error && !waiting)) && controlsVisible && !settingsOpen && !keysOpen}
 		<button
-			class="absolute inset-0 flex items-center justify-center"
+			class="absolute inset-0 z-10 flex items-center justify-center"
 			onclick={togglePlay}
 			aria-label={ended ? 'Play again' : 'Play'}
 		>
 			<span
-				class="flex size-20 items-center justify-center rounded-full border border-foreground/25 bg-background/60 text-foreground backdrop-blur transition-transform duration-150 hover:scale-105"
+				class="flex size-20 items-center justify-center rounded-full border border-white/40 bg-black/65 text-white shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur transition-transform duration-150 hover:scale-105 max-md:portrait:size-16"
 			>
-				<Play class="size-9 translate-x-0.5" />
+				<Play class="size-9 translate-x-0.5 fill-current" />
 			</span>
 		</button>
 	{/if}
 
-	<!-- Resume banner -->
-	{#if showResume && resumedFrom > 0}
-		<div
-			class="absolute left-4 top-20 rounded-md border border-line/40 bg-background/95 px-4 py-3 text-sm text-foreground"
-		>
-			Resuming from {formatTime(resumedFrom)}
-			<button class="ml-3 text-accent hover:text-accent-hover" onclick={skipResumeToStart}>
-				Start over
-			</button>
-		</div>
-	{/if}
 
 	<!-- A refused fullscreen request is a failure the viewer asked for: it is
 	     reported where they are looking, and playback keeps going windowed. -->
@@ -1735,6 +1806,12 @@
 				Speed
 				<select class="chrome-select" value={rate} onchange={(event) => setRate(Number(event.currentTarget.value))} aria-label="Playback speed">
 					{#each RATES as option (option)}<option value={option}>{option === 1 ? 'Normal' : `${option}×`}</option>{/each}
+				</select>
+			</label>
+			<label class="chrome-chip">
+				Skip
+				<select class="chrome-select" value={skipChoice} onchange={(event) => setSkip(Number(event.currentTarget.value))} aria-label="Skip step">
+					{#each SKIP_CHOICES as option (option)}<option value={option}>{option === 0 ? `Auto (${autoSkip} s)` : `${option} s`}</option>{/each}
 				</select>
 			</label>
 			<label class="chrome-chip">
@@ -1831,7 +1908,7 @@
 						aria-label="Subtitle font size"
 					>
 						<option value="small">Small</option>
-						<option value="medium">Normal</option>
+						<option value="medium">Medium</option>
 						<option value="large">Large</option>
 					</select>
 				</label>
@@ -1866,10 +1943,18 @@
 	<footer
 		bind:this={chromeFootEl}
 		class={[
-			'relative z-20 bg-transparent px-3 pb-3 pt-2 sm:px-6 sm:pb-4',
+			// On the picture the controls are white, not the page's muted grey.
+			'relative z-20 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-3 pb-3 pt-10 sm:px-6 sm:pb-4 [&_button:not(.bg-accent)]:text-white/90 [&_button:not(.bg-accent):hover]:text-white',
 			chromeClass
 		].join(' ')}
 	>
+		<!-- Where playback picked up, in the bar it belongs to. -->
+		{#if showResume && resumedFrom > 0}
+			<p class="mb-1 flex items-center gap-3 text-xs text-white/85">
+				Resuming from {formatTime(resumedFrom)}
+				<button class="rounded-md border border-white/30 px-2 py-0.5 font-medium text-white hover:bg-white/10" onclick={skipResumeToStart}>Start over</button>
+			</p>
+		{/if}
 		<!-- Seek -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
@@ -1882,7 +1967,9 @@
 				<div class="pointer-events-none absolute bottom-full left-0 right-[6.5rem] mb-2 sm:right-[7.5rem]" aria-hidden="true">
 					<div class="absolute bottom-0 w-44 -translate-x-1/2 sm:w-56" style={`left: clamp(5.5rem, ${previewLeft}%, calc(100% - 5.5rem))`}>
 						<div class="overflow-hidden rounded-lg border border-white/20 bg-black shadow-[0_10px_30px_rgba(0,0,0,0.6)]">
-							{#if previewSrc}
+							{#if board}
+								<div class="aspect-video w-full bg-no-repeat" style={boardStyle}></div>
+							{:else if previewSrc}
 								<img src={previewSrc} alt="" class="aspect-video w-full object-contain" />
 							{:else}
 								<div class="aspect-video w-full bg-black"></div>
@@ -1919,7 +2006,8 @@
 				}}
 				class="relative flex h-6 w-full touch-none select-none items-center"
 			>
-				<span class="relative h-[3px] w-full grow overflow-hidden bg-line/25">
+				<!-- Thick enough to aim at; thicker still under the pointer. -->
+				<span class="relative h-1.5 w-full grow overflow-hidden rounded-full bg-white/30 transition-[height] duration-150 hover:h-2">
 					<!-- The ready range sits where it actually is: a resumed or
 					     re-seeked session begins partway into the episode. -->
 					<span
@@ -1931,7 +2019,7 @@
 				<Slider.Thumb
 					index={0}
 					aria-label="Seek"
-					class="block size-3.5 rounded-full bg-accent transition-transform duration-150 hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+					class="block size-4 rounded-full bg-accent shadow-[0_0_0_3px_rgba(0,0,0,0.25)] transition-transform duration-150 hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 				/>
 			</Slider.Root>
 			<span class="shrink-0 text-xs tabular-nums text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] sm:text-sm">
@@ -1941,15 +2029,25 @@
 
 		<!-- Transport -->
 		<div class="mt-1 flex items-center gap-1.5">
-			<IconButton label={playing ? 'Pause' : 'Play'} class="size-11 bg-accent text-accent-fg hover:bg-accent-hover hover:text-accent-fg" onclick={togglePlay}>
-				{#if playing}<Pause class="size-6" />{:else}<Play class="size-6" />{/if}
+			<!-- One of the bar's buttons, drawn like them: the accent block read as a second kind of play button beside the one on the picture. -->
+			<IconButton label={playing ? 'Pause' : 'Play'} class="size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={togglePlay}>
+				{#if playing}<Pause class="size-6 fill-current" />{:else}<Play class="size-6 fill-current" />{/if}
 			</IconButton>
-			<IconButton label="Back 10 seconds" class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(-10)}>
-				<SkipBack class="size-6" /><span class="absolute text-[9px] font-semibold">10</span>
+			<!-- The step inside the arrow's ring: at the bar's 24 px the two digits touched the
+			     ring, so the ring is a size up and the digits sit tight inside it. -->
+			<IconButton label={`Back ${skipSec} seconds`} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(-skipSec)}>
+				<SkipBack class="size-7" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span>
 			</IconButton>
-			<IconButton label="Forward 10 seconds" class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(10)}>
-				<SkipForward class="size-6" /><span class="absolute text-[9px] font-semibold">10</span>
+			<IconButton label={`Forward ${skipSec} seconds`} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(skipSec)}>
+				<SkipForward class="size-7" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span>
 			</IconButton>
+			<!-- On to the next episode from the bar, where every other player keeps it: the list
+			     beside the picture is hidden on narrower screens, and the end card waits for the end. -->
+			{#if next}
+				<IconButton label={t('player.nextEpisodeNamed', { name: next.label })} class="size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => next?.go()}>
+					<NextEpisode class="size-6" />
+				</IconButton>
+			{/if}
 
 			<div class="flex items-center gap-1">
 				<IconButton label={muted ? 'Unmute' : 'Mute'} class="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={toggleMute}>
@@ -1977,6 +2075,9 @@
 			</div>
 
 			<div class="ml-auto flex items-center gap-1.5">
+				<IconButton label="Keyboard shortcuts (?)" class="max-md:hidden" onclick={() => (keysOpen = true)}>
+					<Keyboard class="size-5" />
+				</IconButton>
 				<button bind:this={settingsButton} type="button" aria-label="Playback settings" aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
 					<Settings class="size-5" />
 					<span class="sr-only">Playback settings</span>
@@ -1992,6 +2093,15 @@
 		</div>
 	</footer>
 </div>
+
+<Modal bind:open={keysOpen} title="Keyboard shortcuts">
+	<dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-sm">
+		{#each [[['Space', 'K'], 'Play or pause'], [['←', '→'], 'Back or forward 5 seconds'], [['J', 'L'], `Back or forward ${skipSec} seconds`], [['↑', '↓'], 'Volume'], [['M'], 'Mute'], [['F'], 'Full screen'], ...(next ? [[['Shift', 'N'], t('player.nextEpisode')] as [string[], string]] : []), [['Esc'], 'Close a panel, leave full screen'], [['?'], 'This list']] as [keys, what] (what)}
+			<dt class="flex gap-1">{#each keys as key (key)}<kbd>{key}</kbd>{/each}</dt>
+			<dd class="text-muted">{what}</dd>
+		{/each}
+	</dl>
+</Modal>
 
 <style>
 	.player-settings .chrome-chip {

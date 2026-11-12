@@ -114,15 +114,52 @@ class ModelsTest {
         assertTrue(vm.state.value.screen is Screen.TitleDetail)
         vm.open(core.items.first { it.kind == "manga" })
         assertEquals(Screen.Reader("m1"), vm.state.value.screen)
-        // A destination resets the stack; back from a destination goes Home, then out.
-        vm.go(Screen.Library)
-        assertEquals(listOf<Screen>(Screen.Library), vm.state.value.stack)
+        // A destination resets the stack, and Back from it returns to the deep
+        // place it was opened from (never into a player or a reader), then Home, then out.
+        vm.go(Screen.Settings)
+        assertEquals(listOf<Screen>(Screen.Settings), vm.state.value.stack)
+        assertTrue(vm.back())
+        assertTrue(vm.state.value.screen is Screen.TitleDetail)
         assertTrue(vm.back())
         assertEquals(Screen.Home, vm.state.value.screen)
+        assertFalse(vm.back())
+        // From a destination's own root there is nowhere to return to but Home.
+        vm.go(Screen.Library)
+        vm.go(Screen.Settings)
+        assertTrue(vm.back())
+        assertEquals(Screen.Home, vm.state.value.screen)
+        assertFalse(vm.back())
+        // Home never leads back into another place.
+        vm.go(Screen.TitleDetail(s.titles.first { it.title == "Frieren" }.key))
+        vm.go(Screen.Home)
         assertFalse(vm.back())
         vm.search("frier")
         advanceUntilIdle()
         assertEquals(2, vm.state.value.results.size)
+        core.stopEvents()
+    }
+
+    @Test
+    fun aPageIsKeptWhileBackOrTheBarCanReturnToIt() = runTest(main) {
+        val core = FakeCore().apply { sessionInfo = io.github.enrell.lain.core.SessionInfo("http://s", "u", "bob") }
+        val vm = AppViewModel(core, io = main)
+        vm.start("http://s")
+        val title = Screen.TitleDetail(vm.state.value.titles.first { it.title == "Frieren" }.key)
+        vm.go(title)
+        assertTrue(vm.state.value.keeps(title))
+        // Under the player that an episode row opened.
+        vm.open(core.items.first { it.id == "e1" })
+        assertTrue(vm.state.value.keeps(title))
+        assertTrue(vm.back())
+        // In Home's stack while another destination is open, and back on screen with it.
+        vm.go(Screen.Downloads)
+        assertTrue(vm.state.value.keeps(title))
+        vm.go(Screen.Home)
+        assertEquals(title, vm.state.value.screen)
+        // Closed with Back: the stack Home was left with earlier no longer counts.
+        assertTrue(vm.back())
+        assertEquals(Screen.Home, vm.state.value.screen)
+        assertFalse(vm.state.value.keeps(title))
         core.stopEvents()
     }
 
@@ -145,24 +182,6 @@ class ModelsTest {
         m.report(1_400_000, 1_440_000)?.join()
         assertTrue(core.saved.last().completed)
         assertTrue(m.state.value.completed)
-    }
-
-    @Test
-    fun aDecoderFailureRetriesWithoutThatCodec() = runTest(main) {
-        val core = FakeCore()
-        val claim = listOf("mkv", "mkv/aac", "mkv/hevc", "mp4", "mp4/hevc")
-        val m = PlayerModel(core, "e1", claim, this)
-        m.load()
-        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 0.0, 0.0, 1440.0, emptyList(), "sess-1")
-
-        assertTrue(m.decoderFailed("video/hevc", 0, 0))
-        advanceUntilIdle()
-        assertEquals(listOf("mkv", "mkv/aac"), core.playCaps.last())
-        assertEquals(SourceKind.HLS, m.state.value.source!!.kind)
-
-        // Already transcoding, or a codec it never claimed: nothing to retry.
-        assertFalse(m.decoderFailed("video/hevc", 0, 0))
-        assertFalse(m.decoderFailed("video/x-unknown", 0, 0))
     }
 
     @Test
@@ -207,6 +226,54 @@ class ModelsTest {
         assertEquals(SourceKind.HLS, src.kind)
         assertEquals(90.0, src.offsetSec, 0.001)
         assertEquals("the plan's length is kept", 1440.0, src.durationSec!!, 0.001)
+    }
+
+    @Test
+    fun aDecoderFailureRetriesWithoutThatCodec() = runTest(main) {
+        val core = FakeCore()
+        val claim = listOf("mkv", "mkv/aac", "mkv/hevc", "mp4", "mp4/hevc")
+        val told = mutableListOf<String>()
+        val m = PlayerModel(core, "e1", claim, this, onDecoderFailed = { told += it })
+        m.load()
+        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 0.0, 0.0, 1440.0, emptyList(), "sess-1")
+
+        assertTrue(m.decoderFailed("video/hevc", 0, 0))
+        advanceUntilIdle()
+        assertEquals(listOf("mkv", "mkv/aac"), core.playCaps.last())
+        assertEquals(SourceKind.HLS, m.state.value.source!!.kind)
+        assertEquals(listOf("hevc"), told)
+
+        // Already transcoding, or a codec it never claimed: nothing to retry.
+        assertFalse(m.decoderFailed("video/hevc", 0, 0))
+        assertFalse(m.decoderFailed("video/x-unknown", 0, 0))
+    }
+
+    @Test
+    fun aCodecThatFailedBeforeIsNotClaimedAgain() = runTest(main) {
+        val core = FakeCore()
+        val m = PlayerModel(core, "e1", listOf("mkv", "mkv/aac", "mkv/hevc"), this, failedBefore = setOf("hevc"))
+        m.load()
+        advanceUntilIdle()
+        assertEquals(listOf("mkv", "mkv/aac"), core.playCaps.last())
+    }
+
+    @Test
+    fun aSeekOutsideTheSessionNeedsANewOne() = runTest(main) {
+        val core = FakeCore()
+        core.source = PlaySource(SourceKind.HLS, "http://s/hls", "transcode", 600.0, 600.0, 7200.0, emptyList(), "sess-1")
+        val m = PlayerModel(core, "e1", emptyList(), this)
+        m.load()
+        advanceUntilIdle()
+        // The session holds 600 s .. 660 s of the title.
+        assertFalse(m.needsRebuild(630.0, 60_000))
+        assertFalse(m.needsRebuild(598.0, 60_000))
+        assertTrue(m.needsRebuild(100.0, 60_000))
+        assertTrue(m.needsRebuild(3000.0, 60_000))
+        m.rebuild(3000.0, quality = "720p")
+        advanceUntilIdle()
+        assertEquals(Triple(3000.0, "720p", null), core.transcodes.last())
+        assertEquals("the title's length is kept", 7200.0, m.state.value.source!!.durationSec!!, 0.001)
+        assertEquals("720p", m.state.value.quality)
     }
 
     // ---- the reader ----------------------------------------------------------

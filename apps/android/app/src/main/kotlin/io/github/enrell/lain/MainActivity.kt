@@ -1,5 +1,17 @@
 package io.github.enrell.lain
 
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -62,17 +74,66 @@ import io.github.enrell.lain.ui.screens.TitleScreen
 import io.github.enrell.lain.ui.screens.episodeLabel
 import io.github.enrell.lain.ui.theme.LainTheme
 import io.github.enrell.lain.ui.theme.LocalLain
+import io.github.enrell.lain.ui.theme.WebPalette
+import io.github.enrell.lain.ui.screens.Ic
+import io.github.enrell.lain.ui.screens.LibraryDetailScreen
+import io.github.enrell.lain.ui.screens.Mono
+import io.github.enrell.lain.ui.screens.Sheet
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    /** Set by the player while a video plays: leaving the app then keeps the picture in a corner. */
+    var leaveToPip: (() -> Unit)? = null
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        leaveToPip?.invoke()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The app is dark whatever the system's mode: light icons on both
+        // bars and no light scrim behind the navigation buttons.
+        val dark = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = dark, navigationBarStyle = dark)
+        requestedOrientation = io.github.enrell.lain.ui.screens.restOrientation(this)
         val graph = this.graph
         setContent {
             var themeId by remember { mutableStateOf(graph.prefs.theme) }
             val tokens = remember(themeId) { graph.themes.load(themeId) }
-            LainTheme(tokens) {
+            // The server's palette, as the web client paints (and the one
+            // kept from last time until it answers).
+            var paletteJson by remember { mutableStateOf(graph.prefs.palette) }
+            val palette = remember(paletteJson) { WebPalette.parse(paletteJson) ?: WebPalette.Default }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    graph.prefs.server?.let { server ->
+                        WebPalette.fetch(server)?.let { json ->
+                            if (json != paletteJson) {
+                                graph.prefs.palette = json
+                                paletteJson = json
+                            }
+                        }
+                    }
+                    delay(30_000)
+                }
+            }
+            LainTheme(tokens, palette) {
                 val vm: AppViewModel = viewModel { AppViewModel(graph.core, rememberServer = { graph.prefs.server = it }) }
                 LaunchedEffect(Unit) { if (vm.state.value.phase == Phase.Starting) vm.start(graph.prefs.server) }
                 Root(graph, vm, themeId) {
@@ -82,6 +143,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    fun needsNotificationAsk(): Boolean =
+        Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
 
     fun askNotifications() {
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -103,6 +167,7 @@ private fun labelOf(id: String): Int = when (id) {
  * The shell: a quiet top navigation built from `/api/modules` (D-250)
  * and the current screen. Keys: Ctrl+1..9 destinations, `/` search, Esc back.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (String) -> Unit) {
     val l = LocalLain.current
@@ -110,19 +175,42 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val activity = context as? MainActivity
-    val canBack = state.phase == Phase.Main && (state.stack.size > 1 || state.screen != Screen.Home)
+    var depth by remember { mutableStateOf(1) }
+    val canBack = state.phase == Phase.Main && (state.stack.size > 1 || state.screen != Screen.Home || state.returnTo != null)
     BackHandler(enabled = canBack) { vm.back() }
 
-    val download: (Item) -> Unit = { item ->
+    // The first download asks about notifications, with the reason, before it starts.
+    var askFor by remember { mutableStateOf<Item?>(null) }
+    val start: (Item) -> Unit = { item ->
         scope.launch {
             vm.download(item.id).fold(
                 onSuccess = {
-                    activity?.askNotifications()
                     DownloadService.start(context)
-                    Toast.makeText(context, context.getString(R.string.download_queued, item.title), Toast.LENGTH_SHORT).show()
+                    val what = episodeLabel(item.season, item.episode, item.kind in io.github.enrell.lain.domain.READING_KINDS)
+                    Toast.makeText(context, if (what.isEmpty()) context.getString(R.string.download_queued, item.title) else context.getString(R.string.download_queued_ep, item.title, what), Toast.LENGTH_SHORT).show()
                 },
                 onFailure = { Toast.makeText(context, it.message ?: it.toString(), Toast.LENGTH_LONG).show() },
             )
+        }
+    }
+
+    val download: (Item) -> Unit = { item ->
+        if (activity?.needsNotificationAsk() == true && !graph.prefs.notifyAsked) askFor = item else start(item)
+    }
+    askFor?.let { item ->
+        val go = { allow: Boolean ->
+            graph.prefs.notifyAsked = true
+            askFor = null
+            if (allow) activity?.askNotifications()
+            start(item)
+        }
+        io.github.enrell.lain.ui.screens.Sheet(stringResource(R.string.notify_title), { go(false) }, footer = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                io.github.enrell.lain.ui.screens.WButton(stringResource(R.string.notify_later), { go(false) }, Modifier.weight(1f), kind = io.github.enrell.lain.ui.screens.Btn.Secondary)
+                io.github.enrell.lain.ui.screens.WButton(stringResource(R.string.notify_allow), { go(true) }, Modifier.weight(1.4f))
+            }
+        }) {
+            Text(stringResource(R.string.notify_body), Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = l.muted, fontSize = 14.sp, lineHeight = 21.sp)
         }
     }
 
@@ -155,23 +243,67 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                 is Screen.Player -> {
                     val item = state.items[s.itemId]
                     val title = item?.let { it.title + episodeLabel(it.season, it.episode, false).let { e -> if (e.isEmpty()) "" else " · $e" } } ?: ""
-                    PlayerScreen(graph.core, s.itemId, title, state.user?.preferredLanguage ?: "")
+                    // What comes after it in its title, so the end of an episode leads on.
+                    val nextItem = item?.let { cur ->
+                        state.titles.firstOrNull { t -> t.items.any { it.id == cur.id } }?.items?.let { all -> all.getOrNull(all.indexOfFirst { it.id == cur.id } + 1) }
+                    }
+                    PlayerScreen(graph.core, s.itemId, title, state.user?.preferredLanguage ?: "", state.progress[s.itemId]?.completed == true, nextItem) { n -> vm.replace(Screen.Player(n.id)) }
                 }
-                is Screen.Reader -> Box(Modifier.safeDrawingPadding()) { ReaderScreen(graph.core, s.itemId) }
+                is Screen.Reader -> {
+                    val item = state.items[s.itemId]
+                    // The title, and apart from it which volume ("Vol 2"), said as the title page says it;
+                    // joined as "Ink and Thunder · #1" the volume was the first thing the bar cut off.
+                    val title = item?.title ?: ""
+                    val part = item?.let {
+                        when {
+                            it.season > 0 -> stringResource(R.string.volume_n, it.season.toInt()) + if (it.episode > 0) " · #${it.episode}" else ""
+                            it.episode > 0 -> stringResource(R.string.volume_n, it.episode.toInt())
+                            else -> ""
+                        }
+                    } ?: ""
+                    val nextVolume = item?.let { cur ->
+                        state.titles.firstOrNull { t -> t.items.any { it.id == cur.id } }?.items?.let { all -> all.getOrNull(all.indexOfFirst { it.id == cur.id } + 1) }
+                    }
+                    ReaderScreen(graph.core, s.itemId, title, part, { vm.back() }, nextVolume) { n -> vm.replace(Screen.Reader(n.id)) }
+                }
                 else -> Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                    NavBar(state.destinations, s, state.online, vm)
+                    // A title page runs its art up under the status bar's edge
+                    // and brings its own way back; a library's page has its own
+                    // header with the way back, so the brand bar would only push
+                    // its grid down.
+                    if (s !is Screen.TitleDetail && s !is Screen.LibraryDetail) TopBar(state, vm)
+                    // Screens cross-fade with a short rise; going back falls instead.
                     Box(Modifier.weight(1f)) {
-                        when (s) {
+                    AnimatedContent(
+                        targetState = s,
+                        modifier = Modifier.fillMaxSize(),
+                        transitionSpec = {
+                            val forward = state.stack.size >= depth
+                            depth = state.stack.size
+                            (fadeIn(tween(180)) + slideInVertically(tween(220)) { if (forward) it / 24 else -it / 24 }) togetherWith fadeOut(tween(120))
+                        },
+                        label = "screen",
+                    ) { screen ->
+                        when (screen) {
                             Screen.Home -> HomeScreen(state, vm)
                             Screen.Library -> LibraryScreen(state, vm, readingOnly = false)
                             Screen.Read -> LibraryScreen(state, vm, readingOnly = true)
                             Screen.Search -> SearchScreen(state, vm)
                             Screen.Downloads -> DownloadsScreen(graph, vm)
                             Screen.Settings -> SettingsScreen(graph, state, vm, themeId, onTheme)
-                            is Screen.TitleDetail -> TitleScreen(state, vm, s.key, download)
+                            is Screen.LibraryDetail -> LibraryDetailScreen(state, vm, screen.id)
+                            is Screen.TitleDetail -> TitleScreen(state, vm, screen.key, download)
                             else -> Unit
                         }
                     }
+                    // A row half out of view reads as "more below", not as cut by the bar.
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(14.dp).background(Brush.verticalGradient(listOf(Color.Transparent, l.bg))))
+                    if (s is Screen.TitleDetail) {
+                        Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(20.dp).background(Brush.verticalGradient(listOf(l.bg, Color.Transparent))))
+                    }
+                    }
+                    // While typing, the keyboard takes the bar's place: the results get the room.
+                    if (!WindowInsets.isImeVisible) BottomBar(state.destinations, s, vm, state.stack.firstOrNull()?.takeIf { r -> state.destinations.any { it.screen == r } })
                 }
             }
         }
@@ -180,32 +312,87 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
 
 private val DIGITS = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight, Key.Nine)
 
+/** The slim top bar: the mark and name, the offline note, the account's initial. */
 @Composable
-private fun NavBar(dests: List<Dest>, current: Screen, online: Boolean, vm: AppViewModel) {
+private fun TopBar(state: io.github.enrell.lain.ui.AppState, vm: AppViewModel) {
     val l = LocalLain.current
-    Row(
-        Modifier.fillMaxWidth().background(l.scrim).horizontalScroll(rememberScrollState()).padding(horizontal = l.sp(3), vertical = l.sp(2)),
-        horizontalArrangement = Arrangement.spacedBy(l.sp(3)),
-        verticalAlignment = Alignment.CenterVertically,
+    Column {
+        Row(Modifier.fillMaxWidth().height(48.dp).padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Ic.Mark, null, tint = l.accent, modifier = Modifier.size(18.dp))
+            Text("lain", Modifier.padding(start = 8.dp), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 3.sp)
+            Box(Modifier.weight(1f))
+            if (!state.online) {
+                Row(Modifier.padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Dot(l.warn)
+                    Mono(stringResource(R.string.offline), color = l.warn)
+                }
+            }
+            Box(
+                Modifier.size(34.dp).clip(CircleShape).background(l.raised).clickable { vm.go(Screen.Settings) },
+                contentAlignment = Alignment.Center,
+            ) { Text((state.user?.username ?: "?").take(1).uppercase(), color = l.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.45f)))
+    }
+}
+
+private fun iconOf(id: String) = when (id) {
+    "home" -> Ic.Home
+    "library" -> Ic.Grid
+    "search" -> Ic.Search
+    "downloads" -> Ic.Download
+    else -> Ic.Gear
+}
+
+/**
+ * The bar: the same five places on every screen. Comics are libraries,
+ * reached like the others, so nothing hides behind a "More".
+ */
+private val BAR = listOf("home", "library", "search", "downloads", "settings")
+
+@Composable
+private fun BottomBar(dests: List<Dest>, current: Screen, vm: AppViewModel, stackRoot: Screen? = null) {
+    val l = LocalLain.current
+    val bar = BAR.mapNotNull { id -> dests.firstOrNull { it.id == id } }
+    // A screen opened from a destination keeps that destination lit.
+    // The destination the page was opened from (its stack's first screen): a title opened
+    // from Home keeps Home lit, one opened from Library keeps Library.
+    val root = stackRoot ?: when (current) {
+        is Screen.LibraryDetail -> if (current.id == io.github.enrell.lain.ui.FAVORITES) Screen.Home else Screen.Library
+        is Screen.TitleDetail, Screen.Read -> Screen.Library
+        else -> current
+    }
+    Column(Modifier.background(l.bg)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.45f)))
+        Row(Modifier.fillMaxWidth().height(62.dp)) {
+            for (d in bar) Tab(stringResource(labelOf(d.id)), iconOf(d.id), d.screen == root, Modifier.weight(1f)) {
+                // Coming back to a destination lands where it was left; tapping the one already open
+                // takes it to its top: a page opened in it closes, and at its root the list scrolls up.
+                if (d.screen == current) when (d.screen) {
+                    Screen.Home -> io.github.enrell.lain.ui.screens.ListMemory.toTop("home")
+                    Screen.Library -> io.github.enrell.lain.ui.screens.ListMemory.toTop("library-root")
+                    else -> Unit
+                }
+                vm.go(d.screen)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Tab(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val l = LocalLain.current
+    // The place you are in: a lighter pill and the accent, not the accent alone.
+    val tint = if (on) l.accent else l.muted
+    Column(
+        modifier.fillMaxHeight().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClickLabel = label, onClick = onClick)
+            .semantics { selected = on },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Label("lain", color = l.accent)
-        dests.forEachIndexed { i, d ->
-            val active = d.screen == current
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(l.sp(1))) {
-                io.github.enrell.lain.ui.screens.Action(
-                    stringResource(labelOf(d.id)),
-                    null,
-                    { vm.go(d.screen) },
-                    primary = active,
-                )
-                if (i < 9) Kbd("^${i + 1}")
-            }
+        Box(Modifier.width(58.dp).height(30.dp).clip(CircleShape).background(if (on) l.raised else Color.Transparent), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
         }
-        if (!online) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(l.sp(1))) {
-                Dot(l.warn)
-                Text(stringResource(R.string.offline), style = l.label(l.warn))
-            }
-        }
+        Text(label, Modifier.padding(top = 5.dp), color = if (on) l.text else l.muted, fontSize = 11.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
     }
 }
