@@ -12,12 +12,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `lain-release-model` provider asks for up to five other readings; a
   search takes the one that names its query, automation and its grabs
   the one that names the monitored title or an alias, and an import the
-  one that names the grabbed release. A manual grab keeps the parser's
-  answer, and a library's other titles never pull a sequel into the show
-  it follows. `GET /api/acquire/parse` shows the readings
-  (`alternatives`, additive); they are never stored in a grab or
-  returned in a search. An older parser service, or the tokenizer,
-  offers none and nothing changes.
+  one that names the grabbed release; a reading whose year is more than
+  one from the expected year is never taken. A release the parser
+  answers as a monitored title stays that title's: with "Show" and
+  "Show 2" both monitored, "Show 2 - 03" never becomes season 2 of
+  "Show". A manual grab keeps the parser's answer, and a library's other
+  titles never pull a sequel into the show it follows.
+  `GET /api/acquire/parse` shows the readings (`alternatives`,
+  additive); they are never stored in a grab or returned in a search.
+  An older parser service, or the tokenizer, offers none and nothing
+  changes.
+
+### Fixed
+- **Years in acquisition** (D-279): a search with a year rejects a
+  release whose year is more than one away ("year does not match"); it
+  never compared years before. A model reading whose title holds the
+  year ("Blade.Runner.2049.1080p" read as "Blade Runner 2049") no longer
+  takes it as the release year, so a monitored "Blade Runner 2049"
+  (2017) no longer refuses that release.
 
 ## [0.3.0] - 2026-11-12
 
