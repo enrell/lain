@@ -619,3 +619,48 @@ exit 1
     t.close();
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// A probe that panics leaves no waiter behind and no lock poisoned: the
+/// callers waiting for the first answer get what an ffmpeg that does not
+/// run would answer, in doubt, and the next caller after CAP_RECHECK
+/// probes again.
+#[test]
+fn a_probe_that_panics_answers_nothing_available_and_is_probed_again() {
+    let dir = lain_store::test_dir("tc-caps-panic");
+    std::fs::create_dir_all(&dir).unwrap();
+    let runs = Arc::new(AtomicI64::new(0));
+    let counter = runs.clone();
+    let hooks = Hooks {
+        caps: Some(Arc::new(move |_: &TranscodeSettings| {
+            if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                std::thread::sleep(Duration::from_millis(100));
+                panic!("probe hook panics on purpose");
+            }
+            Capabilities { tone_map: true, ..Capabilities::default() }
+        })),
+        ..Hooks::default()
+    };
+    let t = Transcoder::with_hooks(&dir.join("transcodes"), hooks);
+    let s = st::defaults();
+    let (tx, rx) = mpsc::channel();
+    for _ in 0..4 {
+        let (t, s, tx) = (t.clone(), s.clone(), tx.clone());
+        std::thread::spawn(move || tx.send(t.capabilities(&s)).unwrap());
+    }
+    for _ in 0..4 {
+        let caps = rx.recv_timeout(Duration::from_secs(10)).expect("no waiter is left behind");
+        assert!(!caps.tone_map && caps.hardware.values().all(|ok| !ok), "{caps:?}");
+    }
+    assert_eq!(runs.load(Ordering::SeqCst), 1);
+    assert!(!t.inner.caps.is_poisoned());
+    assert!(t.inner.caps.lock().unwrap().slots[&caps_key(&s)].doubtful);
+    t.inner.caps.lock().unwrap().recheck = Duration::ZERO;
+    assert!(!t.capabilities(&s).tone_map, "the answer in doubt comes back at once");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !t.capabilities(&s).tone_map {
+        assert!(Instant::now() < deadline, "no probe after the panic");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    t.close();
+    std::fs::remove_dir_all(&dir).ok();
+}
