@@ -39,18 +39,24 @@
 		}
 	});
 
-	async function patch(row: string, p: SettingsPatch): Promise<void> {
+	async function patch(row: string, p: SettingsPatch): Promise<boolean> {
 		try {
 			st = await api.social.updateSettings(p);
 			flash.mark(row);
+			return true;
 		} catch (err) {
 			toasts.error(socialError(err, t('social.privacy.saveFailed')));
+			return false;
 		}
 	}
 
-	function removeFavorite(key: string): void {
+	// One click takes a title off the profile; the toast puts it back where it was (Ctrl+Z).
+	async function removeFavorite(key: string): Promise<void> {
 		if (!st) return;
-		void patch('favorites', { favorites: st.favorites.filter((f) => workKey(f) !== key).map(targetOf) });
+		const before = st.favorites.map(targetOf);
+		const gone = st.favorites.find((f) => workKey(f) === key);
+		if (!(await patch('favorites', { favorites: st.favorites.filter((f) => workKey(f) !== key).map(targetOf) }))) return;
+		toasts.undoable(t('social.privacy.favoriteRemoved', { title: gone?.title ?? '' }), () => void patch('favorites', { favorites: before }));
 	}
 </script>
 
@@ -91,7 +97,7 @@
 					{#each st!.favorites as f (workKey(f))}
 						<li class="flex items-center justify-between gap-3 py-2.5">
 							<WorkLink work={f} />
-							<Button variant="ghost" size="field" class="hover:text-danger!" onclick={() => removeFavorite(workKey(f))}>{t('social.privacy.removeFavorite')}</Button>
+							<Button variant="ghost" size="field" class="hover:text-danger!" onclick={() => void removeFavorite(workKey(f))} aria-label={t('social.privacy.removeFavoriteNamed', { title: f.title })}>{t('social.privacy.removeFavorite')}</Button>
 						</li>
 					{:else}
 						<li class="py-2.5 text-sm text-muted">{t('social.privacy.noFavorites')}</li>
