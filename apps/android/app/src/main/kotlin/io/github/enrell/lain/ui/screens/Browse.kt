@@ -915,7 +915,11 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 // What else can be done with the title, at one weight below the main action.
                 // One row of columns, icon over word; each takes room by the length of its word, so none wraps alone.
                 Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (resume != null) QuietAction(this, Ic.RotateCcw, stringResource(R.string.start_over)) { undone = resume; vm.markWatched(listOf(next.id), false) }
+                    // On a series it restarts one part, beside actions on the whole title: it names that part.
+                    if (resume != null) QuietAction(
+                        this, Ic.RotateCcw,
+                        if (series && (next.episode > 0 || next.season > 0)) stringResource(R.string.restart_part, rowLabelShort(next, title.reading)) else stringResource(R.string.start_over),
+                    ) { undone = resume; vm.markWatched(listOf(next.id), false) }
                     QuietAction(this, 
                         if (allDone) Ic.EyeOff else Ic.CheckCircle,
                         stringResource(
