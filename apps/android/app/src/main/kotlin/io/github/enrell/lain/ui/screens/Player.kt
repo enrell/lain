@@ -484,6 +484,9 @@ fun PlayerScreen(
             // Subtitles sit above the bar while it is up, and near the edge when it is not.
             update = { view ->
                 view.subtitleView?.setBottomPaddingFraction(if (controls || pinned) 0.24f else 0.08f)
+                // While the bar is dragged its preview card stands where the subtitles are, and
+                // the line showed through under it; they return when the finger lifts.
+                view.subtitleView?.visibility = if (scrub != null) android.view.View.INVISIBLE else android.view.View.VISIBLE
                 // The size and ground chosen in Settings.
                 view.subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subtitleScale)
                 view.subtitleView?.setStyle(
