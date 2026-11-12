@@ -3,93 +3,79 @@
 	 * The titles kept with the heart: the page the Favorites rail on Home
 	 * opens. The list itself is the social module's (the one a profile
 	 * shows); a server without that module has no favourites to list.
+	 *
+	 * It is a library browser over the favourites: one long unfiltered
+	 * sequence stopped working once there were many, so they get the same
+	 * search, sort, filters and tile size as a library, newest kept first.
 	 */
-	import { onMount } from 'svelte';
 	import Heart from '@lucide/svelte/icons/heart';
 	import { api } from '$lib/api';
-	import type { CatalogItem, Progress } from '$lib/api/types';
-	import ShowCard from '$lib/components/media/ShowCard.svelte';
-	import { groupItems, type SeriesGroup } from '$lib/utilities/grouping';
-	import MediaCard from '$lib/components/media/MediaCard.svelte';
-	import { FIT } from '$lib/components/media/MediaGrid.svelte';
+	import type { CatalogItem } from '$lib/api/types';
+	import LibraryBrowser from '$lib/components/media/LibraryBrowser.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
-	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
-	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
-	import { enrichmentCache, ensureEnrichments, ensureItems } from '$lib/stores/media-cache.svelte';
+	import { ensureItems } from '$lib/stores/media-cache.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { t } from '$lib/i18n';
 
-	// One card per title, as every grid has it: a favourite series is the series, not its first episode.
-	let groups = $state<SeriesGroup[]>([]);
-	let progressMap = $state<Map<string, Progress>>(new Map());
 	// Favourites whose files are no longer in a library this account can see.
 	let gone = $state(0);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
 
-	async function load(): Promise<void> {
-		loading = true;
-		error = null;
+	/*
+	 * Every file of each kept title, newest kept first: a favourite series is
+	 * the series, not the episode the heart was pressed on, so its card counts
+	 * and marks the whole of it.
+	 */
+	async function favourites(): Promise<CatalogItem[]> {
+		let favorites;
 		try {
-			const favorites = (await api.social.settings()).favorites;
-			const ids = favorites.map((f) => f.item_id ?? '').filter((id) => id !== '');
-			// Newest first, as the rail on Home shows them.
-			const found = (await ensureItems(ids.reverse())).filter((item): item is CatalogItem => item !== undefined);
-			const [parts, progress] = await Promise.all([
-				Promise.all(found.map((item) => api.catalog.episodes(item.id).then((r) => r.items).catch(() => [item]))),
-				api.me.continueWatching().catch(() => [] as Progress[])
-			]);
-			const next = parts.flatMap((items) => groupItems(items.length > 0 ? items : []).slice(0, 1));
-			await ensureEnrichments(next.map((g) => g.items[0].id));
-			progressMap = new Map(progress.map((p) => [p.item_id, p]));
-			groups = next;
-			gone = favorites.length - found.length;
+			favorites = (await api.social.settings()).favorites;
 		} catch (err) {
-			error = errorMessage(err, 'Could not load your favorites.');
-		} finally {
-			loading = false;
+			throw new Error(errorMessage(err, t('favorites.loadFailed')));
 		}
+		const ids = favorites.map((f) => f.item_id ?? '').filter((id) => id !== '');
+		const found = (await ensureItems([...ids].reverse())).filter((item): item is CatalogItem => item !== undefined);
+		const parts = await Promise.all(
+			found.map((item) =>
+				api.catalog
+					.episodes(item.id)
+					.then((r) => (r.items.length > 0 ? r.items : [item]))
+					.catch(() => [item])
+			)
+		);
+		// Two episodes of one show kept apart are still one title.
+		const seen = new Set<string>();
+		const items: CatalogItem[] = [];
+		for (const item of parts.flat()) {
+			if (seen.has(item.id)) continue;
+			seen.add(item.id);
+			items.push(item);
+		}
+		gone = ids.length - found.length;
+		return items;
 	}
-
-	onMount(() => void load());
 </script>
 
-<svelte:head><title>Favorites — Lain</title></svelte:head>
+<svelte:head><title>{t('favorites.title')} — Lain</title></svelte:head>
 
-<div class="space-y-6">
-	<header class="space-y-1">
-		<h1 class="text-xl font-semibold tracking-tight text-foreground">Favorites</h1>
-		<p class="text-sm text-muted">
-			{#if loading}
-				The titles you kept with the heart.
-			{:else}
-				{groups.length} {groups.length === 1 ? 'title' : 'titles'} kept with the heart{#if gone > 0}; {gone} more {gone === 1 ? 'is' : 'are'} no longer in a library you can see{/if}.
-			{/if}
-		</p>
-	</header>
-
-	{#if error}
-		<ErrorState message={error} retry={() => void load()} />
-	{:else if loading}
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-			{#each Array(6) as _}
-				<Skeleton class="h-56" />
-			{/each}
-		</div>
-	{:else if groups.length === 0}
-		<EmptyState title="No favorites yet" description="The heart beside a title's main action keeps it here and on Home.">
+<LibraryBrowser
+	source={favourites}
+	listed={t('favorites.sortListed')}
+	prefsKey="lain.favorites.prefs"
+	searchLabel={t('favorites.search')}
+>
+	{#snippet header()}
+		<header class="space-y-1">
+			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('favorites.title')}</h1>
+			<p class="text-sm text-muted">
+				{t('favorites.lead')}{#if gone > 0}{' '}{t('favorites.gone', { count: gone })}{/if}
+			</p>
+		</header>
+	{/snippet}
+	{#snippet empty()}
+		<EmptyState title={t('favorites.emptyTitle')} description={t('favorites.emptyBody')}>
 			{#snippet icon()}<Heart class="size-6 text-muted" />{/snippet}
-			<LinkButton href="/library">Browse the library</LinkButton>
+			<LinkButton href="/library">{t('favorites.browse')}</LinkButton>
 		</EmptyState>
-	{:else}
-		<div class={FIT}>
-			{#each groups as group, i (group.key)}
-				{#if group.count > 1}
-					<ShowCard {group} progressOf={(id) => progressMap.get(id)} priority={i < 6} fit />
-				{:else}
-					<MediaCard item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} progress={progressMap.get(group.items[0].id) ?? null} priority={i < 6} fit />
-				{/if}
-			{/each}
-		</div>
-	{/if}
-</div>
+	{/snippet}
+</LibraryBrowser>

@@ -8,6 +8,9 @@
 	 * bookmarked, and Back returns to it. The grid lists titles, one card
 	 * per show (it opens the show's page) or per single file, all in one
 	 * frame (see `frameOf`).
+	 *
+	 * The titles are a library's, every library's, or whatever `source`
+	 * gives (the favourites), so every list of titles browses the same way.
 	 */
 	import { onMount, tick, type Snippet } from 'svelte';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
@@ -33,7 +36,7 @@
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
 	import { SAMPLE, frameOf } from '$lib/stores/shapes.svelte';
 	import {
-		ADDED, NO_FILTERS, SHAPES, SORTS, WATCH,
+		ADDED, LISTED, NO_FILTERS, SHAPES, SORTS, WATCH,
 		activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState,
 		type Context, type Filters, type Sort
 	} from '$lib/utilities/browse';
@@ -45,7 +48,6 @@
 	const ENRICH = 150;
 	const RENDER = 96;
 	const GENRES_SHOWN = 24;
-	const PREFS = 'lain.library.prefs';
 
 	let {
 		libraries = [],
@@ -54,7 +56,12 @@
 		name = '',
 		backHref = '',
 		header,
-		view
+		view,
+		empty,
+		source,
+		listed = '',
+		prefsKey = 'lain.library.prefs',
+		searchLabel = ''
 	}: {
 		libraries?: Library[];
 		libraryId?: string;
@@ -70,6 +77,15 @@
 		header?: Snippet;
 		/** A control kept at the right end of the sticky bar (the Library page's view switch). */
 		view?: Snippet;
+		/** Shown instead of the generic empty state when there are no titles at all. */
+		empty?: Snippet;
+		/** The titles' files, instead of a library's or every library's. */
+		source?: () => Promise<CatalogItem[]>;
+		/** The label of the order `source` gives them in; set, that order is offered first and is the default. */
+		listed?: string;
+		/** Where this browser keeps its sort and tile size. */
+		prefsKey?: string;
+		searchLabel?: string;
 	} = $props();
 
 	let selectedLibrary = $state('');
@@ -86,7 +102,7 @@
 	let dense = $state(false);
 	function savePrefs(): void {
 		try {
-			localStorage.setItem(PREFS, JSON.stringify({ sort: defaultSort, dense }));
+			localStorage.setItem(prefsKey, JSON.stringify({ sort: defaultSort, dense }));
 		} catch {
 			/* private window: lasts for this visit */
 		}
@@ -142,17 +158,24 @@
 		error = null;
 		loading = true;
 		try {
-			for (;;) {
-				const got = await api.catalog.list({
-					limit: FETCH,
-					offset: items.length,
-					sort: 'title',
-					libraryId: selectedLibrary || undefined
-				});
+			if (source) {
+				const got = await source();
 				if (mine !== run) return;
-				items = [...items, ...got.items];
-				total = got.total;
-				if (got.items.length === 0 || items.length >= got.total) break;
+				items = got;
+				total = got.length;
+			} else {
+				for (;;) {
+					const got = await api.catalog.list({
+						limit: FETCH,
+						offset: items.length,
+						sort: 'title',
+						libraryId: selectedLibrary || undefined
+					});
+					if (mine !== run) return;
+					items = [...items, ...got.items];
+					total = got.total;
+					if (got.items.length === 0 || items.length >= got.total) break;
+				}
 			}
 			loading = false;
 			void restorePlace();
@@ -170,9 +193,10 @@
 	}
 
 	onMount(() => {
+		if (listed) defaultSort = LISTED;
 		try {
-			const saved = JSON.parse(localStorage.getItem(PREFS) ?? '{}');
-			if (SORTS.some((s) => s.value === saved.sort)) defaultSort = saved.sort;
+			const saved = JSON.parse(localStorage.getItem(prefsKey) ?? '{}');
+			if (sortOptions.some((s) => s.value === saved.sort)) defaultSort = saved.sort;
 			dense = saved.dense === true;
 		} catch {
 			/* defaults */
@@ -187,7 +211,17 @@
 
 	// ---- what is set: the URL ----------------------------------------------
 
-	const filters = $derived(filtersFromParams(page.url.searchParams, defaultSort));
+	const sortOptions = $derived<{ value: Sort; label: string }[]>([
+		...(listed ? [{ value: LISTED as Sort, label: listed }] : []),
+		...SORTS.map((s) => ({ value: s.value as Sort, label: s.label as string }))
+	]);
+	const filters = $derived(
+		filtersFromParams(
+			page.url.searchParams,
+			defaultSort,
+			sortOptions.map((s) => s.value)
+		)
+	);
 	const active = $derived(activeCount(filters));
 
 	function set(patch: Partial<Filters>): void {
@@ -244,6 +278,8 @@
 	const visible = $derived(results.slice(0, shown));
 	// One frame for the whole grid, from its first titles' pictures.
 	const frame = $derived(frameOf(results, (id) => enrichmentCache.get(id)));
+	// Loaded, and nothing at all: no tools for an empty list.
+	const bare = $derived(!loading && !error && all.length === 0);
 	let sentinel = $state<HTMLElement | null>(null);
 	$effect(() => {
 		const node = sentinel;
@@ -369,7 +405,7 @@
 			<div>
 				{@render heading('Sort')}
 				<div class="grid grid-cols-2 gap-1.5 px-2">
-					{#each SORTS as s (s.value)}
+					{#each sortOptions as s (s.value)}
 						<button
 							type="button"
 							aria-pressed={filters.sort === s.value}
@@ -524,7 +560,7 @@
 	{#if header}
 		<div class="mb-4 lg:col-start-1 lg:row-start-1 lg:mb-6">{@render header()}</div>
 	{/if}
-	<aside class="hidden lg:col-start-1 lg:row-start-2 lg:block" aria-label="Filters">
+	<aside class={['hidden lg:col-start-1 lg:row-start-2', bare ? '' : 'lg:block'].join(' ')} aria-label="Filters">
 		<div class="sticky top-24 -ml-2 max-h-[calc(100vh-7rem)] overflow-y-auto pb-6 pr-1">
 			{@render panel('genre-find', false)}
 		</div>
@@ -534,106 +570,110 @@
 		<!-- Stuck right under the header (h-20), so no top padding is needed to clear
 		     it: at rest the bar starts level with the heading. Its shadow shows only
 		     once the grid scrolls under it; at rest it drew a dark seam on the page. -->
-		<div class={['sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 transition-shadow sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-20', scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''].join(' ')}>
-			<div class="flex items-center gap-2">
-				<div class="relative min-w-0 flex-1">
-					<Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
-					<input
-						bind:this={searchBox}
-						type="search"
-						value={text}
-						oninput={(e) => onSearch(e.currentTarget.value)}
-						placeholder="Search this library"
-						aria-label="Search this library"
-						autocomplete="off"
-						spellcheck="false"
-						enterkeyhint="search"
-						class="h-11 w-full rounded-md border border-line bg-field pl-9 pr-12 text-sm sm:h-10 text-foreground placeholder:text-muted/70 transition-colors hover:border-white/15 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
-					/>
-					{#if text}
-						<button type="button" aria-label="Clear search" class="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-foreground" onclick={() => { onSearch(''); searchBox?.focus(); }}>
-							<X class="size-4" />
+		{#if !bare || view}
+			<div class={['sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 transition-shadow sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-20', scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''].join(' ')}>
+				{#if !bare}
+					<div class="flex items-center gap-2">
+						<div class="relative min-w-0 flex-1">
+							<Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+							<input
+								bind:this={searchBox}
+								type="search"
+								value={text}
+								oninput={(e) => onSearch(e.currentTarget.value)}
+								placeholder={searchLabel || 'Search this library'}
+								aria-label={searchLabel || 'Search this library'}
+								autocomplete="off"
+								spellcheck="false"
+								enterkeyhint="search"
+								class="h-11 w-full rounded-md border border-line bg-field pl-9 pr-12 text-sm sm:h-10 text-foreground placeholder:text-muted/70 transition-colors hover:border-white/15 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+							/>
+							{#if text}
+								<button type="button" aria-label="Clear search" class="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-foreground" onclick={() => { onSearch(''); searchBox?.focus(); }}>
+									<X class="size-4" />
+								</button>
+							{:else}
+								<kbd class="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 text-muted/70 md:inline-flex">/</kbd>
+							{/if}
+						</div>
+						<div class="hidden w-44 shrink-0 sm:block">
+							<Select
+								aria-label="Sort"
+								bind:value={sortValue}
+								options={sortOptions}
+								onValueChange={() => pickSort(sortValue as Sort)}
+							/>
+						</div>
+						<button
+							type="button"
+							class="hidden h-10 shrink-0 items-center gap-2 rounded-md border border-line px-3 text-sm text-muted transition-colors hover:border-white/15 hover:text-foreground sm:flex"
+							aria-pressed={dense}
+							aria-label={dense ? 'Tile size: small. Switch to large.' : 'Tile size: large. Switch to small.'}
+							title="Tile size"
+							onclick={() => {
+								dense = !dense;
+								savePrefs();
+							}}
+						>
+							<!-- An icon of what it changes beside the word: a bare "LARGE" read as a label. -->
+							{#if dense}<Grid3x3 class="size-4" aria-hidden="true" />{:else}<Grid2x2 class="size-4" aria-hidden="true" />{/if}
+							<!-- Says what is set, as the sheet's "Tiles" does: "Large tiles" read as the size it would switch to. -->
+							{t('browse.tiles', { size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge') })}
 						</button>
-					{:else}
-						<kbd class="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 text-muted/70 md:inline-flex">/</kbd>
-					{/if}
-				</div>
-				<div class="hidden w-44 shrink-0 sm:block">
-					<Select
-						aria-label="Sort"
-						bind:value={sortValue}
-						options={SORTS.map((s) => ({ value: s.value, label: s.label }))}
-						onValueChange={() => pickSort(sortValue as Sort)}
-					/>
-				</div>
-				<button
-					type="button"
-					class="hidden h-10 shrink-0 items-center gap-2 rounded-md border border-line px-3 text-sm text-muted transition-colors hover:border-white/15 hover:text-foreground sm:flex"
-					aria-pressed={dense}
-					aria-label={dense ? 'Tile size: small. Switch to large.' : 'Tile size: large. Switch to small.'}
-					title="Tile size"
-					onclick={() => {
-						dense = !dense;
-						savePrefs();
-					}}
-				>
-					<!-- An icon of what it changes beside the word: a bare "LARGE" read as a label. -->
-					{#if dense}<Grid3x3 class="size-4" aria-hidden="true" />{:else}<Grid2x2 class="size-4" aria-hidden="true" />{/if}
-					<!-- Says what is set, as the sheet's "Tiles" does: "Large tiles" read as the size it would switch to. -->
-					{t('browse.tiles', { size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge') })}
-				</button>
-				<button
-					type="button"
-					class={['flex h-11 shrink-0 items-center gap-2 rounded-md border px-3.5 text-sm sm:h-10 lg:hidden', active > 0 ? 'border-accent/60 text-foreground' : 'border-line text-muted'].join(' ')}
-					aria-label={active > 0 ? `Filters (${active} active)` : 'Filters'}
-					onclick={() => (sheet = true)}
-				>
-					<SlidersHorizontal class="size-4" />
-					<!-- Named, as in the app: the sliders alone did not say "filters". -->
-					<span class="sm:hidden">Sort &amp; filter</span><span class="max-sm:hidden">Filters</span>{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
-				</button>
-			</div>
+						<button
+							type="button"
+							class={['flex h-11 shrink-0 items-center gap-2 rounded-md border px-3.5 text-sm sm:h-10 lg:hidden', active > 0 ? 'border-accent/60 text-foreground' : 'border-line text-muted'].join(' ')}
+							aria-label={active > 0 ? `Filters (${active} active)` : 'Filters'}
+							onclick={() => (sheet = true)}
+						>
+							<SlidersHorizontal class="size-4" />
+							<!-- Named, as in the app: the sliders alone did not say "filters". -->
+							<span class="sm:hidden">Sort &amp; filter</span><span class="max-sm:hidden">Filters</span>{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
+						</button>
+					</div>
+				{/if}
 
-			<div class="flex min-h-7 flex-wrap items-center gap-1.5">
-				{#if backHref && scrollY > 140}
-					<a
-						href={backHref}
-						class="mr-1 flex items-center gap-1.5 rounded-md py-0.5 pr-2 text-sm text-muted transition-colors hover:text-foreground"
-						title="Back (Backspace)"
-					>
-						<span aria-hidden="true">‹</span>
-						<span class="max-w-40 truncate font-medium text-foreground">{name || 'Library'}</span>
-					</a>
-					<span class="mr-1 text-muted/40" aria-hidden="true">·</span>
-				{/if}
-				<p class="mr-1 text-sm text-muted" aria-live="polite">
-					{#if loading && items.length === 0}
-						Loading…
-					{:else if narrowed}
-						<span class="text-foreground">{results.length}</span> of {all.length} {all.length === 1 ? 'title' : 'titles'}
-					{:else}
-						{all.length} {all.length === 1 ? 'title' : 'titles'}
+				<div class="flex min-h-7 flex-wrap items-center gap-1.5">
+					{#if backHref && scrollY > 140}
+						<a
+							href={backHref}
+							class="mr-1 flex items-center gap-1.5 rounded-md py-0.5 pr-2 text-sm text-muted transition-colors hover:text-foreground"
+							title="Back (Backspace)"
+						>
+							<span aria-hidden="true">‹</span>
+							<span class="max-w-40 truncate font-medium text-foreground">{name || 'Library'}</span>
+						</a>
+						<span class="mr-1 text-muted/40" aria-hidden="true">·</span>
 					{/if}
-					{#if loading && items.length > 0}<span class="text-muted/70"> · loading the rest…</span>{/if}
-				</p>
-				{#each chips as chip (chip.label)}
-					<button
-						type="button"
-						class="flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 py-0.5 pl-2.5 pr-1.5 text-xs text-foreground transition-colors hover:border-accent/70"
-						aria-label={`Remove filter ${chip.label}`}
-						onclick={chip.off}
-					>
-						{chip.label} <X class="size-3 opacity-70" />
-					</button>
-				{/each}
-				{#if narrowed}
-					<button type="button" class="rounded-full px-2 py-0.5 text-xs text-muted hover:text-foreground" onclick={clearAll}>
-						Clear <kbd class="ml-0.5 hidden opacity-70 md:inline-flex">C</kbd>
-					</button>
-				{/if}
-				{@render view?.()}
+					<p class={['mr-1 text-sm text-muted', bare ? 'hidden' : ''].join(' ')} aria-live="polite">
+						{#if loading && items.length === 0}
+							Loading…
+						{:else if narrowed}
+							<span class="text-foreground">{results.length}</span> of {all.length} {all.length === 1 ? 'title' : 'titles'}
+						{:else}
+							{all.length} {all.length === 1 ? 'title' : 'titles'}
+						{/if}
+						{#if loading && items.length > 0}<span class="text-muted/70"> · loading the rest…</span>{/if}
+					</p>
+					{#each chips as chip (chip.label)}
+						<button
+							type="button"
+							class="flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 py-0.5 pl-2.5 pr-1.5 text-xs text-foreground transition-colors hover:border-accent/70"
+							aria-label={`Remove filter ${chip.label}`}
+							onclick={chip.off}
+						>
+							{chip.label} <X class="size-3 opacity-70" />
+						</button>
+					{/each}
+					{#if narrowed}
+						<button type="button" class="rounded-full px-2 py-0.5 text-xs text-muted hover:text-foreground" onclick={clearAll}>
+							Clear <kbd class="ml-0.5 hidden opacity-70 md:inline-flex">C</kbd>
+						</button>
+					{/if}
+					{@render view?.()}
+				</div>
 			</div>
-		</div>
+		{/if}
 
 		<div bind:this={gridTop}></div>
 		{#if error && items.length === 0}
@@ -645,9 +685,13 @@
 				{/each}
 			</div>
 		{:else if all.length === 0}
-			<EmptyState title="Nothing indexed here" description="Once a scan finds files for this library they will appear here.">
-				{#snippet icon()}<Film class="size-6 text-muted" />{/snippet}
-			</EmptyState>
+			{#if empty}
+				{@render empty()}
+			{:else}
+				<EmptyState title="Nothing indexed here" description="Once a scan finds files for this library they will appear here.">
+					{#snippet icon()}<Film class="size-6 text-muted" />{/snippet}
+				</EmptyState>
+			{/if}
 		{:else if results.length === 0}
 			<div class="py-14 text-center">
 				<p class="text-sm text-foreground">
