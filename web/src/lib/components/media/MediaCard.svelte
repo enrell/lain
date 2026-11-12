@@ -3,7 +3,8 @@
 	import { isReadable } from '$lib/reader/kinds';
 	import Play from '@lucide/svelte/icons/play';
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
-	import { mediaSubtitle } from '$lib/utilities/format';
+	import { formatLength, mediaSubtitle } from '$lib/utilities/format';
+	import { lengthOf, wantLength } from '$lib/stores/lengths.svelte';
 	import { progressRatio } from '$lib/utilities/progress';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
@@ -27,11 +28,17 @@
 
 	const title = $derived(enrichment?.title || item.title);
 
-	const subtitle = $derived(
+	const said = $derived(
 		[enrichment?.year && item.year === 0 ? String(enrichment.year) : '', mediaSubtitle(item)]
 			.filter(Boolean)
 			.join(' · ')
 	);
+	// A film or clip with nothing else to say is captioned with its length.
+	const bare = $derived(said === '' && !isReadable(item.kind));
+	$effect(() => {
+		if (bare) wantLength(item.id);
+	});
+	const subtitle = $derived(said || (bare ? formatLength(lengthOf(item.id)) : ''));
 	const reading = $derived(isReadable(item.kind));
 	const ratio = $derived(progress && !progress.completed ? progressRatio(progress) : 0);
 	// The link's aria-label replaces its inner text, so the visual 'Watching'
