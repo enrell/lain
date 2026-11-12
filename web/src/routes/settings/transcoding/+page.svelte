@@ -20,6 +20,7 @@
 		applySafeAutomaticPolicy,
 		availableHardwareBackends,
 		cloneTranscodeSettings,
+		engineChoices,
 		settingsEqual
 	} from '$lib/settings/playback-policy';
 	import { page } from '$app/state';
@@ -56,12 +57,7 @@
 	const hardwareActive = $derived(
 		!!settings && settings.hardware_acceleration !== 'none'
 	);
-	// The engine row's choices: the one set (even if the probe no longer
-	// passes it), every backend the probe passed, then software ('none').
-	const engineChoices = $derived([
-		...new Set([...(hardwareActive && settings ? [settings.hardware_acceleration] : []), ...readyHardware]),
-		'none'
-	]);
+	const engines = $derived(engineChoices(settings?.hardware_acceleration ?? 'none', readyHardware));
 	const customEncodingActive = $derived(
 		!!settings &&
 		(settings.allow_hevc ||
@@ -446,7 +442,7 @@
 				     and the ones the probe passed. A word beside two bare "Use …" buttons
 				     read as a label and two links, not as one control. -->
 				<div class="inline-flex flex-wrap rounded-md bg-field p-0.5" role="radiogroup" aria-label="Video engine">
-					{#each engineChoices as backend (backend)}
+					{#each engines as backend (backend)}
 						{@const on = (hardwareActive ? settings.hardware_acceleration : 'none') === backend}
 						<button
 							type="button"

@@ -34,6 +34,17 @@ export function availableHardwareBackends(capabilities: TranscodeCapabilities | 
 }
 
 /**
+ * The choices of Transcoding's video engine control, in order: the backend
+ * that is set (kept even when the probe no longer passes it, so the control
+ * still shows what is in force), every backend the probe passed, then
+ * software ('none') last.
+ */
+export function engineChoices(current: string, ready: string[]): string[] {
+	const hardware = current && current !== 'none' ? [current] : [];
+	return [...new Set([...hardware, ...ready]), 'none'];
+}
+
+/**
  * Stage a conservative automatic policy using only existing contract values.
  * The best backend that passed the server's real encode probe is enabled;
  * without one, software remains the honest fallback. Capacity, custom paths

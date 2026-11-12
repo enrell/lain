@@ -4,6 +4,7 @@ import {
 	applySafeAutomaticPolicy,
 	availableHardwareBackends,
 	cloneTranscodeSettings,
+	engineChoices,
 	settingsEqual
 } from './playback-policy';
 
@@ -121,5 +122,13 @@ describe('playback settings policy helpers', () => {
 		clone.qualities[0].name = 'changed';
 		expect(settings.qualities[0].name).toBe('custom');
 		expect(settingsEqual(settings, clone)).toBe(false);
+	});
+
+	it('offers the set engine first, then the probed ones, then software', () => {
+		expect(engineChoices('vaapi', ['qsv', 'vaapi'])).toEqual(['vaapi', 'qsv', 'none']);
+		// A backend the probe no longer passes stays, so the control still shows it.
+		expect(engineChoices('nvenc', ['qsv'])).toEqual(['nvenc', 'qsv', 'none']);
+		expect(engineChoices('none', ['qsv', 'vaapi'])).toEqual(['qsv', 'vaapi', 'none']);
+		expect(engineChoices('none', [])).toEqual(['none']);
 	});
 });
