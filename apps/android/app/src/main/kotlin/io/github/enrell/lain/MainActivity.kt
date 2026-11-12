@@ -251,11 +251,20 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                 }
                 is Screen.Reader -> {
                     val item = state.items[s.itemId]
-                    val title = item?.let { it.title + episodeLabel(it.season, it.episode, true).let { e -> if (e.isEmpty()) "" else " · $e" } } ?: ""
+                    // The title, and apart from it which volume ("Vol 2"), said as the title page says it;
+                    // joined as "Ink and Thunder · #1" the volume was the first thing the bar cut off.
+                    val title = item?.title ?: ""
+                    val part = item?.let {
+                        when {
+                            it.season > 0 -> stringResource(R.string.volume_n, it.season.toInt()) + if (it.episode > 0) " · #${it.episode}" else ""
+                            it.episode > 0 -> stringResource(R.string.volume_n, it.episode.toInt())
+                            else -> ""
+                        }
+                    } ?: ""
                     val nextVolume = item?.let { cur ->
                         state.titles.firstOrNull { t -> t.items.any { it.id == cur.id } }?.items?.let { all -> all.getOrNull(all.indexOfFirst { it.id == cur.id } + 1) }
                     }
-                    ReaderScreen(graph.core, s.itemId, title, { vm.back() }, nextVolume) { n -> vm.replace(Screen.Reader(n.id)) }
+                    ReaderScreen(graph.core, s.itemId, title, part, { vm.back() }, nextVolume) { n -> vm.replace(Screen.Reader(n.id)) }
                 }
                 else -> Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                     // A title page runs its art up under the status bar's edge

@@ -105,7 +105,9 @@ class Prefs(private val sp: SharedPreferences) {
      * How a title is read, as last chosen for it: "ltr", "rtl" or "down"
      * (pages one under the other); null until a choice is made, when the
      * book's own direction applies. Kept per title, as the web reader keeps
-     * it, so one book's choice does not follow you into another.
+     * it, so one book's choice does not follow you into another; the reader
+     * keys it on the title alone, so every volume of a manga opens the way
+     * its first was read.
      */
     fun readingWayOf(title: String): String? = sp.getString("reader_way:" + title.trim().lowercase(), null)
     fun setReadingWayOf(title: String, way: String) = sp.edit().putString("reader_way:" + title.trim().lowercase(), way).apply()
