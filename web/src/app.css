@@ -443,10 +443,12 @@ details.settings-group > summary::-webkit-details-marker {
 }
 
 /* ---- phones ---------------------------------------------------------- */
-/* Keyboard hints mean nothing without a keyboard. */
+/* Keyboard hints mean nothing without a keyboard: key caps, and a line of
+ * keys spelled out (`keyboard-hint`, "Enter grabs · j/k move"). */
 @media (hover: none) and (pointer: coarse) {
 	kbd,
-	.key-hint {
+	.key-hint,
+	.keyboard-hint {
 		display: none !important;
 	}
 }
