@@ -83,7 +83,8 @@
 		}
 	});
 
-	const lead = $derived(picks[1] ?? picks[0]);
+	// The title whose colours wash the page: the one drawn alone when there is one (people).
+	const lead = $derived(art === 'people' ? picks[0] : (picks[1] ?? picks[0]));
 	const nameOf = (p: Pick) => enrichmentCache.get(p.item.id)?.title || p.group.title;
 	// A drawn row's second line: the year only. The newest files hold only part
 	// of a long show, so a count of its episodes here would be short.
@@ -164,7 +165,9 @@
 						<svg class="absolute inset-0 size-full text-accent/35" viewBox="0 0 100 100" preserveAspectRatio="none" fill="none">
 							<path d="M12 22 L88 14 L50 90 Z" stroke="currentColor" stroke-width="0.6" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" />
 						</svg>
-						<div class="absolute left-1/2 top-1/2 w-32 -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl shadow-[0_30px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/10 lg:w-40">
+						<!-- A little above the middle: the person under it stands below the
+						     poster's lettering, not over it. -->
+						<div class="absolute left-1/2 top-[46%] w-32 -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl shadow-[0_30px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/10 lg:w-40">
 							<Poster item={picks[0].item} enrichment={enrichmentCache.get(picks[0].item.id) ?? null} frame="portrait" class="aspect-[2/3] size-full" />
 						</div>
 						{#each PEOPLE as person (person.mascot)}
