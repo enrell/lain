@@ -1,6 +1,7 @@
 <script lang="ts">
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
+	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -336,15 +337,17 @@
 					     optional prose, so it is on screen on arrival at 320x568. -->
 					<div class="mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
 						{#if playable || (!item.missing && preferredPlayer !== 'browser')}
-							<LinkButton href={playHref(item.id)} size="lg" class="max-md:w-full" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
+							<LinkButton href={playHref(item.id)} size="lg" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
 								<Play class="size-4 fill-current" />
 								{reading ? (resumeAt > 0 ? `Continue from page ${Math.floor(resumeAt)}` : 'Read') : resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
 							</LinkButton>
 						{:else}
-							<Button size="lg" class="max-md:w-full" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
+							<Button size="lg" class="max-md:w-[calc(100%-3.25rem)]" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
 								<Play class="size-4" /> Play
 							</Button>
 						{/if}
+						<!-- The heart keeps the main action's row, on a phone too. -->
+						<FavoriteButton />
 						{#if progress && (progress.position_sec > 0 || progress.completed)}
 							<Button variant="ghost" size="md" loading={resetting} onclick={() => void resetProgress()}>
 								<RotateCcw class="size-4" /> {t('title.startOver')}

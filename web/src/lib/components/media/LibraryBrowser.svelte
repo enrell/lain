@@ -548,7 +548,8 @@
 					onclick={() => (sheet = true)}
 				>
 					<SlidersHorizontal class="size-4" />
-					{#if active > 0}<span class="font-mono text-xs tabular-nums">{active}</span>{/if}
+					<!-- Named, as in the app: the sliders alone did not say "filters". -->
+					Filters{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
 				</button>
 			</div>
 

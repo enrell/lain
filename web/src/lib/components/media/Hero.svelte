@@ -44,7 +44,8 @@
 	);
 	const title = $derived(enrichment?.title || item.title);
 	const eyebrow = $derived(
-		resume ? (reading ? 'Continue reading' : 'Continue watching') : 'New in your library'
+		// Not the words of the rail right under it.
+		resume ? 'Where you left off' : 'New in your library'
 	);
 	// What it is, in words: the episode you are on and what is left of it,
 	// or the year; then up to two genres.

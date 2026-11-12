@@ -91,7 +91,38 @@
 	function submit(event: SubmitEvent): void {
 		event.preventDefault();
 		debounced.cancel();
+		remember(query);
 		void run(query, true);
+	}
+
+	// The last searches that were meant (sent with Enter, or followed into a
+	// result), kept in this browser: typing passes through too many half words.
+	const RECENT_KEY = 'lain.search.recent';
+	let recent = $state<string[]>([]);
+	function remember(q: string): void {
+		const term = q.trim();
+		if (term.length < 2) return;
+		recent = [term, ...recent.filter((r) => r.toLowerCase() !== term.toLowerCase())].slice(0, 6);
+		try {
+			localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+		} catch {
+			// A browser that keeps nothing still searches.
+		}
+	}
+	function forget(): void {
+		recent = [];
+		try {
+			localStorage.removeItem(RECENT_KEY);
+		} catch {
+			// Nothing was kept.
+		}
+	}
+	function again(term: string): void {
+		query = term;
+		syncUrl(term);
+		debounced.cancel();
+		remember(term);
+		void run(term, true);
 	}
 
 	function clear(): void {
@@ -103,6 +134,12 @@
 	}
 
 	onMount(() => {
+		try {
+			const kept: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+			if (Array.isArray(kept)) recent = kept.filter((r): r is string => typeof r === 'string').slice(0, 6);
+		} catch {
+			// Unreadable: start with none.
+		}
 		if (query.trim() !== '') void run(query, true);
 	});
 
@@ -160,7 +197,27 @@
 	{#if error}
 		<ErrorState message={error} retry={() => void run(query, true)} />
 	{:else if showIdle}
-		<!-- Before a query: the libraries to start from. -->
+		<!-- Before a query: what was searched lately, and the libraries to start from. -->
+		{#if recent.length > 0}
+			<section aria-label="Recent searches">
+				<div class="flex items-center justify-between gap-3">
+					<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">Recent</h2>
+					<button type="button" class="rounded-md px-2 py-1 text-xs text-muted hover:text-foreground" onclick={forget}>Clear</button>
+				</div>
+				<div class="mt-2 flex flex-wrap gap-2">
+					{#each recent as term (term)}
+						<button
+							type="button"
+							class="inline-flex min-h-9 items-center gap-2 rounded-full border border-line px-3.5 text-sm text-foreground hover:bg-surface-hover"
+							onclick={() => again(term)}
+						>
+							<Search class="size-3.5 text-muted" aria-hidden="true" />
+							{term}
+						</button>
+					{/each}
+				</div>
+			</section>
+		{/if}
 		<section aria-label="Browse">
 			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">Browse</h2>
 			<ul class="mt-2 divide-y divide-line/50">
@@ -191,7 +248,8 @@
 	{:else}
 		<!-- A search answers with titles, not files: twelve episodes of one
 		     show are one card that opens the show. -->
-		<div class={FIT}>
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+		<div class={FIT} onclick={() => remember(searchedFor)}>
 			{#each groups as group, i (group.key)}
 				{#if group.count > 1}
 					<ShowCard {group} fit priority={i < 6} />
@@ -207,5 +265,18 @@
 				</Button>
 			</div>
 		{/if}
+	{/if}
+	{#if !error && !showIdle && !loading && groups.length <= 6 && browse.length > 0}
+		<!-- A short answer leaves the page with somewhere to go on to. -->
+		<nav aria-label="Browse" class="border-t border-line/50 pt-5">
+			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{emptyResults ? 'Browse instead' : 'Or browse'}</h2>
+			<div class="mt-2 flex flex-wrap gap-2">
+				{#each browse as lib (lib.id)}
+					<a href={`/library/${lib.id}`} class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-sm text-foreground hover:bg-surface-hover">
+						{lib.name} <ChevronRight class="size-3.5 text-muted" aria-hidden="true" />
+					</a>
+				{/each}
+			</div>
+		</nav>
 	{/if}
 </div>

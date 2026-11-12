@@ -158,6 +158,7 @@
 		{/each}
 		<p class="mt-8 hidden font-mono text-[10px] leading-5 text-muted/70 md:block">
 			<kbd class="text-muted">Ctrl K</kbd> {t('settings.hints.find')}<br />
+			<kbd class="text-muted">g</kbd> {t('settings.hints.jump')}<br />
 			<kbd class="text-muted">j k</kbd> {t('settings.hints.move')} · <kbd class="text-muted">[ ]</kbd> {t('settings.hints.section')}
 		</p>
 	</nav>
