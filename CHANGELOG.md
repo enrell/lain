@@ -77,11 +77,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   could hold a request for 20 s or more when the machine was busy, and
   every request that found no cached result ran a probe of its own. The
   server now probes when it starts, requests share one probe, and a
-  result older than 10 minutes (30 s when one of its checks timed out)
-  is answered at once while one probe refreshes it in the background.
-  The probe's checks (tone mapping, video effects, each hardware
-  backend) run at once. Saving the transcoding settings probes again in
-  the background.
+  result older than 10 minutes (30 s when one of its checks timed out
+  or no ffmpeg was found) is answered at once while one probe refreshes
+  it in the background. The probe's checks (tone mapping, video effects,
+  each hardware backend) run at once. Saving the transcoding settings
+  probes again in the background.
 
 ## [0.3.0] - 2026-11-12
 

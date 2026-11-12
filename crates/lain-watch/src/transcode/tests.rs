@@ -409,7 +409,12 @@ fn caps_rig(tag: &str) -> CapsRig {
         caps: Some(Arc::new(move |_: &TranscodeSettings| {
             let n = counter.fetch_add(1, Ordering::SeqCst) + 1;
             let _ = rx.lock().unwrap().recv();
-            Capabilities { ffmpeg: format!("probe-{n}"), effects: fx.load(Ordering::SeqCst), ..Capabilities::default() }
+            Capabilities {
+                ffmpeg: format!("probe-{n}"),
+                encoders: ["libx264".to_string()].into(),
+                effects: fx.load(Ordering::SeqCst),
+                ..Capabilities::default()
+            }
         })),
         ..Hooks::default()
     };
@@ -565,7 +570,7 @@ fn a_set_that_lost_a_capability_is_probed_again_sooner() {
 fn an_answer_with_a_timed_out_check_is_probed_again_sooner() {
     let mut c =
         CapsCache { slots: HashMap::new(), fresh: CAP_FRESH, recheck: CAP_RECHECK, limit: policy::PROBE_TIMEOUT };
-    let caps = Capabilities { tone_map: true, ..Capabilities::default() };
+    let caps = Capabilities { encoders: ["libx264".to_string()].into(), tone_map: true, ..Capabilities::default() };
     assert!(c.claim("k", false));
     assert!(c.store("k", caps.clone(), true).doubtful, "a first answer with a timed-out check");
     assert!(!c.claim("k", false), "current for CAP_RECHECK");
@@ -574,6 +579,21 @@ fn an_answer_with_a_timed_out_check_is_probed_again_sooner() {
     assert!(c.store("k", caps.clone(), true).doubtful, "the same answer, timed out again: still in doubt");
     assert!(c.claim("k", false));
     assert!(!c.store("k", caps, false).doubtful, "every run ended");
+    assert!(!c.claim("k", false), "current for CAP_FRESH");
+}
+
+/// An answer with no ffmpeg there is in doubt: the operator may install
+/// it any time (the old 30 s cache found it then), and probing for a
+/// missing binary costs nothing.
+#[test]
+fn an_answer_with_no_ffmpeg_is_probed_again_sooner() {
+    let mut c =
+        CapsCache { slots: HashMap::new(), fresh: CAP_FRESH, recheck: Duration::ZERO, limit: policy::PROBE_TIMEOUT };
+    assert!(c.claim("k", false));
+    assert!(c.store("k", Capabilities::default(), false).doubtful);
+    assert!(c.claim("k", false), "probed again after CAP_RECHECK");
+    let found = Capabilities { encoders: ["libx264".to_string()].into(), ..Capabilities::default() };
+    assert!(!c.store("k", found, false).doubtful);
     assert!(!c.claim("k", false), "current for CAP_FRESH");
 }
 
