@@ -181,15 +181,18 @@
 								{@const row = QUEUE[i]}
 								<li class="flex items-center gap-3 border-hairline py-3 [&:not(:first-child)]:border-t">
 									{@render thumb(p, ['w-9 lg:w-10', row.fill === 0 ? 'opacity-50' : ''].join(' '))}
+									<!-- The state beside its bar, under the title: the title keeps the row's width. -->
 									<div class="min-w-0 flex-1">
 										<p class="truncate text-sm font-semibold text-foreground">{nameOf(p)}</p>
-										<div class="mt-2 h-1 w-full overflow-hidden rounded-full bg-line">
-											<div class="h-full rounded-full bg-accent" style:width="{row.fill * 100}%"></div>
+										<div class="mt-2 flex items-center gap-3">
+											<div class="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-line">
+												<div class="h-full rounded-full bg-accent" style:width="{row.fill * 100}%"></div>
+											</div>
+											<span class={['shrink-0 font-mono text-[10px] uppercase tracking-[0.14em]', row.state === 'done' ? 'text-accent' : 'text-muted'].join(' ')}>
+												{t(`acquire.state.${row.state}`)}
+											</span>
 										</div>
 									</div>
-									<span class={['w-24 shrink-0 text-right font-mono text-[10px] uppercase tracking-[0.14em]', row.state === 'done' ? 'text-accent' : 'text-muted'].join(' ')}>
-										{t(`acquire.state.${row.state}`)}
-									</span>
 								</li>
 							{/each}
 						</ol>
