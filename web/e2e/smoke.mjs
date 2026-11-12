@@ -268,9 +268,12 @@ async function settle() {
 
 async function waitText(text, timeoutMs = 15000) {
 	const deadline = Date.now() + timeoutMs;
+	// The UI's copy uses typographic apostrophes (’) and the test's literals
+	// straight ones; either way it is the same text.
+	const wanted = JSON.stringify(text.replace(/[‘’]/g, "'"));
 	while (Date.now() < deadline) {
 		const found = await evalValue(
-			`document.body ? document.body.innerText.includes(${JSON.stringify(text)}) : false`
+			`document.body ? document.body.innerText.replace(/[\\u2018\\u2019]/g, "'").includes(${wanted}) : false`
 		);
 		if (found) return;
 		await sleep(120);
