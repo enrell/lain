@@ -234,6 +234,7 @@
     <string name="play_again">Play again</string>
     <string name="read_again">Read again</string>
     <string name="start_over">Start over</string>
+    <string name="restart_part">Restart %1$s</string>
     <string name="mark_watched">Mark watched</string>
     <string name="mark_read">Mark read</string>
     <string name="mark_unwatched">Mark unwatched</string>
@@ -360,7 +361,7 @@
     <string name="settings_sub_box_hint">Easier to read over bright pictures.</string>
     <string name="settings_metered">On mobile data</string>
     <string name="settings_metered_hint">The quality videos start at when the network is metered.</string>
-    <string name="settings_metered_original">As the server chooses</string>
+    <string name="settings_metered_original">Same as on Wi-Fi</string>
     <string name="settings_wifi_only">Only on Wi-Fi</string>
     <string name="settings_wifi_only_hint">On mobile data, downloads wait for Wi-Fi.</string>
     <string name="size_small">Small</string>
