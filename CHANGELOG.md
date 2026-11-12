@@ -11,6 +11,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   stills and posters, where results were rows of mixed shapes. Arrow keys
   move between results and from the header's field into them; up from the
   first row goes back to the field. The library grid answers the same keys.
+- **The library's view switch stays put** (web): By library and All titles
+  hold it at the same place, at the end of the bar's first row; in All
+  titles it sat a row lower, under the search. With the switch beside the
+  search, sort and tile size join the filters sheet below a wide screen.
 
 ### Fixed
 - **Grids no longer change shape while they load** (web): a library grid,

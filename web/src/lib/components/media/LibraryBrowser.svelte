@@ -414,6 +414,20 @@
 	</button>
 {/snippet}
 
+{#snippet filtersButton(place: string)}
+	<button
+		type="button"
+		class={['h-11 shrink-0 items-center gap-2 rounded-md border px-3.5 text-sm sm:h-10', place, active > 0 ? 'border-accent/60 text-foreground' : 'border-line text-muted'].join(' ')}
+		aria-label={active > 0 ? `Filters (${active} active)` : 'Filters'}
+		onclick={() => (sheet = true)}
+	>
+		<SlidersHorizontal class="size-4" />
+		<!-- Named, as in the app: the sliders alone did not say "filters". Below a
+		     wide screen the sheet also holds the sort. -->
+		Sort &amp; filter{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
+	</button>
+{/snippet}
+
 {#snippet heading(label: string)}
 	<h3 class="mb-1 px-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted/80">{label}</h3>
 {/snippet}
@@ -591,8 +605,11 @@
 		     once the grid scrolls under it; at rest it drew a dark seam on the page. -->
 		{#if !bare || view}
 			<div class={['sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 transition-shadow sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-20', scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''].join(' ')}>
-				{#if !bare}
-					<div class="flex items-center gap-2">
+				<!-- The first row is as tall as the shelves' band (LibraryShelves), and the
+				     view switch ends it in both: switching views leaves it where it was.
+				     It sat a row lower here, under the search. -->
+				<div class="flex min-h-11 items-center gap-2 sm:min-h-10">
+					{#if !bare}
 						<div class="relative min-w-0 flex-1">
 							<Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
 							<input
@@ -600,12 +617,20 @@
 								type="search"
 								value={text}
 								oninput={(e) => onSearch(e.currentTarget.value)}
+								onkeydown={(e) => {
+									// Down from the field walks into the titles, as from the header's search.
+									if (e.key !== 'ArrowDown' || e.altKey || e.ctrlKey || e.metaKey) return;
+									const first = gridEl?.querySelector<HTMLElement>('a[href]');
+									if (!first) return;
+									e.preventDefault();
+									first.focus();
+								}}
 								placeholder={searchLabel || 'Search this library'}
 								aria-label={searchLabel || 'Search this library'}
 								autocomplete="off"
 								spellcheck="false"
 								enterkeyhint="search"
-								class="h-11 w-full rounded-md border border-line bg-field pl-9 pr-12 text-sm sm:h-10 text-foreground placeholder:text-muted/70 transition-colors hover:border-white/15 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+								class="h-11 w-full text-ellipsis rounded-md border border-line bg-field pl-9 pr-10 text-sm sm:h-10 md:pr-12 text-foreground placeholder:text-muted/70 transition-colors hover:border-white/15 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
 							/>
 							{#if text}
 								<button type="button" aria-label="Clear search" class="absolute right-1.5 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-foreground" onclick={() => { onSearch(''); searchBox?.focus(); }}>
@@ -615,7 +640,9 @@
 								<kbd class="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 text-muted/70 md:inline-flex">/</kbd>
 							{/if}
 						</div>
-						<div class="hidden w-44 shrink-0 sm:block">
+						<!-- With the view switch beside them, sort and tile size stay in the
+						     sheet until a wide screen has room for all three. -->
+						<div class={['hidden w-44 shrink-0', view ? 'lg:block' : 'sm:block'].join(' ')}>
 							<Select
 								aria-label="Sort"
 								bind:value={sortValue}
@@ -625,7 +652,7 @@
 						</div>
 						<button
 							type="button"
-							class="hidden h-10 shrink-0 items-center gap-2 rounded-md border border-line px-3 text-sm text-muted transition-colors hover:border-white/15 hover:text-foreground sm:flex"
+							class={['hidden h-10 shrink-0 items-center gap-2 rounded-md border border-line px-3 text-sm text-muted transition-colors hover:border-white/15 hover:text-foreground', view ? 'lg:flex' : 'sm:flex'].join(' ')}
 							aria-pressed={dense}
 							aria-label={dense ? 'Tile size: small. Switch to large.' : 'Tile size: large. Switch to small.'}
 							title="Tile size"
@@ -639,18 +666,14 @@
 							<!-- Says what is set, as the sheet's "Tiles" does: "Large tiles" read as the size it would switch to. -->
 							{t('browse.tiles', { size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge') })}
 						</button>
-						<button
-							type="button"
-							class={['flex h-11 shrink-0 items-center gap-2 rounded-md border px-3.5 text-sm sm:h-10 lg:hidden', active > 0 ? 'border-accent/60 text-foreground' : 'border-line text-muted'].join(' ')}
-							aria-label={active > 0 ? `Filters (${active} active)` : 'Filters'}
-							onclick={() => (sheet = true)}
-						>
-							<SlidersHorizontal class="size-4" />
-							<!-- Named, as in the app: the sliders alone did not say "filters". -->
-							<span class="sm:hidden">Sort &amp; filter</span><span class="max-sm:hidden">Filters</span>{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
-						</button>
-					</div>
-				{/if}
+						{#if !view}
+							{@render filtersButton('flex lg:hidden')}
+						{:else}
+							{@render filtersButton('hidden sm:flex lg:hidden')}
+						{/if}
+					{/if}
+					{@render view?.()}
+				</div>
 
 				<div class="flex min-h-7 flex-wrap items-center gap-1.5">
 					{#if backHref && scrollY > 140}
@@ -689,7 +712,10 @@
 							Clear <kbd class="ml-0.5 hidden opacity-70 md:inline-flex">C</kbd>
 						</button>
 					{/if}
-					{@render view?.()}
+					<!-- A phone's first row holds the search and the view switch; sort and filters come here. -->
+					{#if view && !bare}
+						{@render filtersButton('ms-auto flex sm:hidden')}
+					{/if}
 				</div>
 			</div>
 		{/if}
