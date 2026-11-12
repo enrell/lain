@@ -3,8 +3,8 @@
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import { goto } from '$app/navigation';
-	import { ApiError } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
+	import { signInRefusal } from '$lib/auth/sign-in';
 	import { t } from '$lib/i18n';
 	import { errorMessage } from '$lib/utilities/errors';
 	import Button from '$lib/components/primitives/Button.svelte';
@@ -15,11 +15,13 @@
 	 * The server answers a wrong pair with 401 and a bare 'invalid
 	 * credentials'. It is accurate and useless: it names neither field, rules
 	 * out nothing and offers no next step, so the form says something a
-	 * person can act on. Told by the status, not the wording: the sign-in
-	 * route answers 401 for nothing else.
+	 * person can act on. A disabled account shares the 401 and gets its own
+	 * words (signInRefusal).
 	 */
 	function signInError(err: unknown): string {
-		if (err instanceof ApiError && err.status === 401) return t('auth.login.mismatch');
+		const refusal = signInRefusal(err);
+		if (refusal === 'disabled') return t('auth.login.disabled');
+		if (refusal === 'mismatch') return t('auth.login.mismatch');
 		return errorMessage(err, t('auth.login.failed'));
 	}
 
