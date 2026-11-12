@@ -358,8 +358,12 @@ private fun BottomBar(dests: List<Dest>, current: Screen, vm: AppViewModel, stac
         Row(Modifier.fillMaxWidth().height(62.dp)) {
             for (d in bar) Tab(stringResource(labelOf(d.id)), iconOf(d.id), d.screen == root, Modifier.weight(1f)) {
                 // Coming back to a destination lands where it was left; tapping the one already open
-                // takes it to its top.
-                if (d.screen == Screen.Library && d.screen == current) io.github.enrell.lain.ui.screens.ListMemory.forget("library-root")
+                // takes it to its top: a page opened in it closes, and at its root the list scrolls up.
+                if (d.screen == current) when (d.screen) {
+                    Screen.Home -> io.github.enrell.lain.ui.screens.ListMemory.toTop("home")
+                    Screen.Library -> io.github.enrell.lain.ui.screens.ListMemory.toTop("library-root")
+                    else -> Unit
+                }
                 vm.go(d.screen)
             }
         }
