@@ -206,7 +206,17 @@
 		</div>
 	</div>
 
-	<form onsubmit={save}>
+	<!-- Ctrl+Enter saves from either field, as the Save button says: it
+	     was the bio's alone, and in the name field it did nothing. -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<form
+		onsubmit={save}
+		onkeydown={(e) => {
+			if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+			e.preventDefault();
+			e.currentTarget.requestSubmit();
+		}}
+	>
 		<SettingsGroup title={t('settings.profilePage.details')} description={t('settings.groups.profile.details')}>
 			<SettingRow id="display-name" label={t('settings.entry.displayName')} hint={t('settings.profilePage.nameHint', { username: user.username })} saved={flash.is('details')}>
 				<!-- The count sits inside its field's end: beside it, it floated in a column of its
@@ -233,9 +243,6 @@
 						aria-label={t('settings.entry.bio')}
 						class="block w-full resize-none rounded-md border px-3 pb-5 pt-2 text-sm text-foreground outline-none placeholder:text-muted"
 						placeholder={t('settings.profilePage.bioPlaceholder')}
-						onkeydown={(e) => {
-							if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit();
-						}}
 					></textarea>
 					<span class="pointer-events-none absolute bottom-1.5 end-2.5 font-mono text-[10px] tabular-nums text-muted" class:invisible={bio.length === 0}>{bio.length}/{MAX_BIO}</span>
 				</div>
@@ -322,7 +329,7 @@
 		</SettingRow>
 		<SettingRow label={t('settings.usersPage.role')}>
 			<span class="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] {user.role === 'admin' ? 'text-accent' : 'text-muted'}">
-				<span class="size-1.5 rounded-full {user.role === 'admin' ? 'bg-accent' : 'bg-muted'}" aria-hidden="true"></span>{user.role}
+				<span class="size-1.5 rounded-full {user.role === 'admin' ? 'bg-accent' : 'bg-muted'}" aria-hidden="true"></span>{user.role === 'admin' ? t('settings.usersPage.roleAdmin') : t('settings.usersPage.roleUser')}
 			</span>
 		</SettingRow>
 		<SettingRow label={t('settings.profilePage.session')} hint={t('settings.profilePage.sessionHint')}>
