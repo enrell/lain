@@ -10,8 +10,17 @@
 local mp = require "mp"
 local utils = require "mp.utils"
 
-local opts = { state = "", state_dir = "", resume_file = "", language = "" }
+local opts = {
+    state = "", state_dir = "", resume_file = "",
+    -- D-280: the account's track preferences. `language` is D-071's one
+    -- language, read as both when the other two are empty.
+    audio_language = "", subtitle_language = "", subtitle_mode = "", language = "",
+}
 require("mp.options").read_options(opts, "lain")
+if opts.audio_language == "" and opts.subtitle_language == "" and opts.language ~= "" then
+    opts.audio_language, opts.subtitle_language = opts.language, opts.language
+end
+if opts.subtitle_mode == "" then opts.subtitle_mode = "auto" end
 
 local aliases = {
     fre = "fra", ger = "deu", chi = "zho", dut = "nld",
@@ -19,25 +28,85 @@ local aliases = {
     per = "fas", may = "msa", alb = "sqi", arm = "hye",
     baq = "eus", bur = "mya", ice = "isl", mac = "mkd",
 }
-local function matches(actual)
-    local code = string.lower(actual or ""):match("^[a-z]+") or ""
-    return code ~= "" and (aliases[code] or code) == (aliases[opts.language] or opts.language)
+local function code(lang)
+    local c = string.lower(lang or ""):match("^[a-z]+") or ""
+    return aliases[c] or c
+end
+local function same(actual, preferred)
+    local a = code(actual)
+    return a ~= "" and preferred ~= "" and a == code(preferred)
 end
 
+-- The rule of lain-watch's tracks.rs (D-280), on mpv's track list.
 local function choose_tracks()
-    if opts.language == "" then return end
+    local a_lang, s_lang, mode = opts.audio_language, opts.subtitle_language, opts.subtitle_mode
+    if a_lang == "" and s_lang == "" and mode == "auto" then return end
     local tracks = mp.get_property_native("track-list") or {}
-    local audio, subtitle = nil, nil
-    for _, track in ipairs(tracks) do
-        if track.type == "audio" and matches(track.lang) and not audio then audio = track.id end
-        if track.type == "sub" and matches(track.lang) and not subtitle then subtitle = track.id end
+    local audios, subs, tagged = {}, {}, false
+    for _, t in ipairs(tracks) do
+        if t.type == "audio" then table.insert(audios, t) end
+        if t.type == "sub" then table.insert(subs, t) end
+        if (t.type == "audio" or t.type == "sub") and code(t.lang) ~= "" and code(t.lang) ~= "und" then tagged = true end
     end
-    if audio then
-        mp.set_property("aid", tostring(audio))
-        mp.set_property("sid", "no")
-    elseif subtitle then
-        mp.set_property("sid", tostring(subtitle))
+    local audio = nil
+    for _, t in ipairs(audios) do
+        if same(t.lang, a_lang) then audio = t break end
+    end
+    if audio then mp.set_property("aid", tostring(audio.id)) end
+    if not audio then
+        for _, t in ipairs(audios) do
+            if t.default then audio = t break end
+        end
+        audio = audio or audios[1]
+    end
+    local heard = audio and audio.lang or ""
+    local function in_language(lang)
+        for _, t in ipairs(subs) do
+            if not t.forced and same(t.lang, lang) then return t end
+        end
+        for _, t in ipairs(subs) do
+            if same(t.lang, lang) then return t end
+        end
+        return nil
+    end
+    local pick, off = nil, false
+    if mode == "off" then
+        off = true
+    elseif mode == "forced" then
+        for _, want in ipairs({ s_lang, heard }) do
+            for _, t in ipairs(subs) do
+                if not pick and t.forced and same(t.lang, want) then pick = t end
+            end
+        end
+        for _, t in ipairs(subs) do
+            if not pick and t.forced and (code(t.lang) == "" or code(t.lang) == "und") then pick = t end
+        end
+        off = pick == nil
+    elseif mode == "always" then
+        if s_lang == "" then
+            for _, t in ipairs(subs) do
+                if not pick and not t.forced and t.default then pick = t end
+            end
+            for _, t in ipairs(subs) do
+                if not pick and not t.forced then pick = t end
+            end
+            off = pick == nil
+        else
+            pick = in_language(s_lang)
+            off = pick == nil and tagged
+        end
     else
+        if s_lang == "" or not tagged then return end
+        if same(heard, s_lang) then
+            off = true
+        else
+            pick = in_language(s_lang)
+            off = pick == nil
+        end
+    end
+    if pick then
+        mp.set_property("sid", tostring(pick.id))
+    elseif off then
         mp.set_property("sid", "no")
     end
 end

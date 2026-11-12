@@ -1,7 +1,8 @@
 //! `lain-watch` (D-190): the watch module's domain for the Rust server.
 //! Playback plans ([`plan`]), the transcoder over external ffmpeg
 //! ([`transcode`]), thumbnails ([`thumbnail`]), local playback
-//! ([`localplay`]) and the operator's transcode settings ([`settings`]),
+//! ([`localplay`]), the track preferences' rule ([`tracks`], D-280) and
+//! the operator's transcode settings ([`settings`]),
 //! each also served as an in-process provider under the Go provider id
 //! so compositions, swaps and module suspend work unchanged.
 //!
@@ -13,6 +14,7 @@ pub mod localplay;
 pub mod plan;
 pub mod settings;
 pub mod thumbnail;
+pub mod tracks;
 pub mod transcode;
 
 use std::path::Path;
