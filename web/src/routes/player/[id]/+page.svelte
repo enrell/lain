@@ -18,6 +18,7 @@
 	import { episodeLabel, nextEpisode } from '$lib/utilities/grouping';
 	import { prefs } from '$lib/auth/storage';
 	import { itemCache } from '$lib/stores/media-cache.svelte';
+	import { wideStill } from '$lib/stores/frames';
 	import { loadPreferredPlayer, playbackHref, type PreferredPlayer } from '$lib/player/external-player';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
@@ -55,6 +56,17 @@
 	let notFound = $state(false);
 	const AUTOPLAY_SECONDS = 8;
 	let autoplayNext = $state(prefs.getBool('player.autoplay_next', true));
+	// The episode list beside the picture (lg and up), kept out of the way when asked: a per-browser choice.
+	let listShown = $state(prefs.getBool('player.episode_list', true));
+	const episodesToggle = {
+		get shown() {
+			return listShown;
+		},
+		toggle: () => {
+			listShown = !listShown;
+			prefs.set('player.episode_list', String(listShown));
+		}
+	};
 	// Seconds left before the next episode starts; null while nothing is queued.
 	let countdown = $state<number | null>(null);
 	let upNext = $state<CatalogItem | null>(null);
@@ -141,10 +153,6 @@
 		void load();
 	});
 
-	function stillUrl(episodeId: string): string {
-		return api.thumbnail.url(episodeId, session.token, { width: 320 });
-	}
-
 	function progressLine(episode: CatalogItem): string {
 		if (episode.missing) return 'Missing from disk';
 		const p = progressMap.get(episode.id);
@@ -189,7 +197,7 @@
 				     the player (video element, transcode session, clock) instead
 				     of leaving the previous episode's state behind. -->
 				{#key item.id}
-					<Player {item} {plan} initialProgress={progress} {onFinished} {next} />
+					<Player {item} {plan} initialProgress={progress} {onFinished} {next} episodes={episodes.length > 1 ? episodesToggle : null} />
 				{/key}
 				{#if upNext && countdown !== null}
 					<div
@@ -243,7 +251,7 @@
 
 		{#if episodes.length > 1}
 			<aside
-				class="hidden w-80 shrink-0 flex-col border-l border-line/40 bg-surface/60 lg:flex max-md:portrait:flex max-md:portrait:min-h-0 max-md:portrait:w-full max-md:portrait:flex-1 max-md:portrait:border-l-0 max-md:portrait:bg-background"
+				class="hidden w-80 shrink-0 flex-col border-l border-line/40 bg-surface/60 {listShown ? 'lg:flex' : ''} max-md:portrait:flex max-md:portrait:min-h-0 max-md:portrait:w-full max-md:portrait:flex-1 max-md:portrait:border-l-0 max-md:portrait:bg-background"
 				aria-label="Episodes"
 			>
 				<div class="border-b border-line/40 px-4 py-3">
@@ -282,7 +290,7 @@
 							>
 								<span class="relative block h-12 w-20 shrink-0 overflow-hidden border border-line/40 bg-surface">
 									<img
-										src={stillUrl(episode.id)}
+										src={wideStill(episode, 320)}
 										alt=""
 										aria-hidden="true"
 										loading="lazy"

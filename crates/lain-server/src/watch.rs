@@ -25,7 +25,8 @@ use axum::routing::{MethodFilter, MethodRouter, on};
 use serde_json::{Value, json};
 
 use lain_api::{
-    AdminTranscodeStatus, CatalogItem, MediaInfo, PlaybackOptions, PlaybackPlan, TranscodeSelection, TranscodeSettings,
+    AdminTranscodeStatus, CatalogItem, MediaInfo, MediaStream, PlaybackOptions, PlaybackPlan, TranscodeSelection,
+    TranscodeSettings,
 };
 use lain_auth::{PlaybackPolicy, Verified};
 use lain_core::Error;
@@ -386,6 +387,8 @@ fn playback(app: &App, w: &WReq, v: &Verified) -> Out {
                 file_path: it.file_path.clone(),
                 delivery: settings.default_delivery.clone(),
                 max_bitrate_kbps: max,
+                // The session a start without a track choice joins (D-280).
+                audio_stream: info.as_ref().and_then(|i| preferred_audio(app, v, &i.streams)),
                 settings: settings.clone(),
                 ..V3Request::default()
             },
@@ -444,6 +447,20 @@ fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
             }
         };
     file(&thumb.path, "image/jpeg", vec![("cache-control", "private, max-age=86400".into())], "thumbnail unavailable")
+}
+
+/// D-282: tells each item what `GET /api/items/{id}/thumbnail` serves it
+/// without a time, so a client draws its card in the picture's shape
+/// before the picture loads. Filled on every read, never stored: a still
+/// added next to a file counts at once, as it does for the route.
+pub(crate) fn tell_thumbnails(items: &mut [CatalogItem]) {
+    let infos = {
+        let files: Vec<&Path> = items.iter().map(|it| Path::new(&it.file_path)).collect();
+        thumbnail::describe(&files)
+    };
+    for (it, info) in items.iter_mut().zip(infos) {
+        it.thumbnail = info;
+    }
 }
 
 /// The item's length, probed; `None` when it is not a file ffprobe reads.
@@ -558,6 +575,31 @@ fn storyboard_image(app: &App, w: &WReq, v: &Verified) -> Out {
 
 // ---- transcode ----------------------------------------------------------
 
+/// The audio stream the account's preferred language picks when it is
+/// not the file's default (D-280); `None` keeps the default.
+fn preferred_audio(app: &App, v: &Verified, streams: &[MediaStream]) -> Option<i64> {
+    let prefs = app.auth().track_preferences(&v.user_id);
+    if prefs.audio_language.is_empty() {
+        return None;
+    }
+    lain_watch::tracks::preferred_audio_stream(streams, &prefs)
+}
+
+/// A start that names no audio stream plays the account's preferred
+/// language when the file has it (D-280): a client that cannot switch
+/// audio in a session (one HLS rendition) still hears it. Probing costs
+/// one ffprobe, and only when there is a preference to apply.
+fn default_audio(app: &App, v: &Verified, path: &str) -> Option<i64> {
+    if app.auth().track_preferences(&v.user_id).audio_language.is_empty() {
+        return None;
+    }
+    let ffprobe = settings(app).ffprobe_path;
+    let (out, _) =
+        app.registry.call_one(CAP_MEDIA_PROBE, "probe", json!({"file_path": path, "ffprobe_path": ffprobe})).ok()?;
+    let info: MediaInfo = serde_json::from_value(out).ok()?;
+    preferred_audio(app, v, &info.streams)
+}
+
 /// The plugin request from operator settings, the account's limits and
 /// the client's selection.
 fn transcode_request(app: &App, v: &Verified, path: &str, sel: &TranscodeSelection, item_id: &str) -> V3Request {
@@ -577,7 +619,7 @@ fn transcode_request(app: &App, v: &Verified, path: &str, sel: &TranscodeSelecti
         max_bitrate_kbps: effective_bitrate(policy.max_bitrate_kbps, settings.remote_bitrate_limit_kbps),
         video_codec: sel.video_codec.clone(),
         audio_codec: sel.audio_codec.clone(),
-        audio_stream: sel.audio_stream,
+        audio_stream: sel.audio_stream.or_else(|| default_audio(app, v, path)),
         subtitle_stream: sel.subtitle_stream,
         subtitle_mode: if sel.subtitle_mode.is_empty() {
             policy.subtitle_mode.clone()
@@ -590,6 +632,7 @@ fn transcode_request(app: &App, v: &Verified, path: &str, sel: &TranscodeSelecti
         video_copy_codecs: sel.video_copy_codecs.clone(),
         video_effect: sel.video_effect.clone(),
         policy: limits,
+        viewer: sel.viewer.clone(),
         user_id: v.user_id.clone(),
         item_id: item_id.into(),
         settings,
@@ -646,23 +689,31 @@ fn transcode_status(app: &App, w: &WReq, v: &Verified) -> Out {
     }
 }
 
-/// Stops a session the caller owns, for the item it names.
+/// Stops a session the caller owns, for the item it names. With
+/// `viewer` (D-281) it releases that viewer's hold instead, and the
+/// session stops only when it was the last one.
 fn transcode_cancel(app: &App, w: &WReq, v: &Verified) -> Out {
     let session = w.req.query("session");
     if session.is_empty() {
         return session_required("session required");
     }
+    let viewer = w.req.query("viewer");
     let file_path = app.visible_item(v, w.req.param("id")).map(|i| i.file_path).unwrap_or_default();
     let req = V3Request {
         action: transcode::ACTION_CANCEL.into(),
         session: session.into(),
         file_path,
+        viewer: viewer.into(),
         user_id: v.user_id.clone(),
         ..V3Request::default()
     };
     match v3(app, req) {
         Ok(s) => {
-            tracing::info!(session = %session, "transcode cancelled");
+            if viewer.is_empty() {
+                tracing::info!(session = %session, "transcode cancelled");
+            } else {
+                tracing::info!(session = %session, state = %s.state, "transcode viewer released");
+            }
             Reply::ok(public(&s)).into()
         }
         Err(e) => transcode_error(&e),
@@ -834,7 +885,7 @@ fn transcode_hls(app: &App, w: &WReq, v: &Verified) -> Out {
             tracing::debug!(err = %e, "transcode position update failed");
         }
     }
-    let ct = if name == "init.mp4" { "video/mp4" } else { "video/iso.segment" };
+    let ct = if transcode::hls::is_init(name) { "video/mp4" } else { "video/iso.segment" };
     file(path, ct, vec![("cache-control", "private, max-age=3600".into())], "unknown hls file")
 }
 
@@ -933,6 +984,12 @@ fn settings_put(app: &App, w: &WReq, _: &Verified) -> Out {
         return Reply::json(400, json!({"error": e.to_string(), "code": "invalid-message"})).into();
     }
     tracing::info!("transcode settings updated");
+    // A save is when the operator looks at the machine again (a driver
+    // installed, ffmpeg replaced in place): probe it afresh, off this
+    // request. The answer carries the set as last probed (or waits for
+    // the first probe of a new ffmpeg or device); the next load shows
+    // the new one.
+    app.media.transcoder.reprobe(&settings(app));
     Reply::ok(settings_view(app)).into()
 }
 
@@ -1002,11 +1059,11 @@ fn play_local(app: &App, w: &WReq, v: &Verified) -> Out {
         Ok(it) => it,
         Err(o) => return *o,
     };
-    let language = app.auth().get_public(&v.user_id).map(|u| u.preferred_language).unwrap_or_default();
     let play = localplay::PlayInput {
         player: input.player,
         user_id: v.user_id.clone(),
-        language,
+        language: String::new(),
+        tracks: app.auth().track_preferences(&v.user_id),
         item: it,
         hidden_libraries: app.hidden_libraries(v),
     };

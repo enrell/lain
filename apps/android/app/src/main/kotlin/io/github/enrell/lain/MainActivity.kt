@@ -67,6 +67,7 @@ import io.github.enrell.lain.ui.screens.Label
 import io.github.enrell.lain.ui.screens.LibraryScreen
 import io.github.enrell.lain.ui.screens.LoginScreen
 import io.github.enrell.lain.ui.screens.PlayerScreen
+import io.github.enrell.lain.ui.screens.trackPrefsOf
 import io.github.enrell.lain.ui.screens.ReaderScreen
 import io.github.enrell.lain.ui.screens.SearchScreen
 import io.github.enrell.lain.ui.screens.SettingsScreen
@@ -247,7 +248,7 @@ private fun Root(graph: AppGraph, vm: AppViewModel, themeId: String, onTheme: (S
                     val nextItem = item?.let { cur ->
                         state.titles.firstOrNull { t -> t.items.any { it.id == cur.id } }?.items?.let { all -> all.getOrNull(all.indexOfFirst { it.id == cur.id } + 1) }
                     }
-                    PlayerScreen(graph.core, s.itemId, title, state.user?.preferredLanguage ?: "", state.progress[s.itemId]?.completed == true, nextItem) { n -> vm.replace(Screen.Player(n.id)) }
+                    PlayerScreen(graph.core, s.itemId, title, trackPrefsOf(state.user), state.progress[s.itemId]?.completed == true, nextItem, tracksKey = item?.title ?: title) { n -> vm.replace(Screen.Player(n.id)) }
                 }
                 is Screen.Reader -> {
                     val item = state.items[s.itemId]

@@ -101,6 +101,36 @@
 	}
 }
 
+/*
+ * One type scale for headings (r19 design review). A page's own name is
+ * the largest text after a hero's title, and a section under it (a rail,
+ * a title's episodes, a search's suggestions) is one step down, as Home's
+ * rails are. Library, Search and Favorites named their page at 20 px over
+ * 24 px rails, Settings at 32 px, and a title page's sections at 18 px.
+ */
+@utility page-title {
+	font-size: 1.75rem;
+	font-weight: 700;
+	line-height: 1.15;
+	letter-spacing: -0.03em;
+	color: var(--color-foreground);
+	@media (width >= 48rem) {
+		font-size: 2rem;
+	}
+}
+
+@utility section-title {
+	font-size: 1.25rem;
+	font-weight: 600;
+	line-height: 1.75rem;
+	letter-spacing: -0.025em;
+	color: var(--color-foreground);
+	@media (width >= 40rem) {
+		font-size: 1.5rem;
+		line-height: 2rem;
+	}
+}
+
 /* The faint node lattice used behind empty states and the player. */
 @utility lattice {
 	background-image: radial-gradient(circle, var(--color-line) 1px, transparent 1px);
@@ -292,6 +322,27 @@ details.settings-group > summary::-webkit-details-marker {
 	animation: hero-enter 0.8s 0.08s var(--ease-out-quick) both;
 }
 
+/* A title page on a phone (TitleView, the item page) sets the name beside
+   the cover: the copy's box dissolves (`display: contents`) so the name
+   block and the actions become cells of the hero's grid. A box that is not
+   drawn does not animate, so its two parts enter instead. The name gets
+   about two thirds of the screen there, so it is sized to its column (the
+   name block is a container): at the desktop's 36 px a long word
+   (MONOCHROME) ran into the gutter at 390 px and was cut at 360. A word
+   longer still breaks rather than overflow. */
+@media (width < 48rem) {
+	.hero-monolith-split {
+		display: contents;
+	}
+	.hero-monolith-split > * {
+		animation: hero-enter 0.8s 0.08s var(--ease-out-quick) both;
+	}
+	.hero-monolith-split .title-hero-name {
+		font-size: min(2.25rem, 13.5cqi);
+		overflow-wrap: break-word;
+	}
+}
+
 .home-library::before {
 	position: absolute;
 	inset: -5rem 0 auto;
@@ -449,44 +500,6 @@ select:not(.chrome-select, [multiple], [size]) {
 	background-position: right 0.75rem center;
 	background-size: 1rem;
 	padding-inline-end: 2.25rem;
-}
-
-/* ---- cards that take the shape of their picture ----------------------- */
-/* One height per row; a card is as wide as its picture's shape (--r).     */
-.fit-card {
-	width: calc(var(--card-h) * var(--r));
-}
-.fit-frame {
-	height: var(--card-h);
-}
-/* A phone has no room for rows of free widths. Six columns: a portrait
-   takes three (two a row) and a landscape all six; the small tile size
-   gives three portraits or two landscapes a row. */
-@media (max-width: 639px) {
-	.fit-grid {
-		display: grid;
-		grid-template-columns: repeat(6, minmax(0, 1fr));
-		grid-auto-flow: dense;
-		align-items: start;
-		gap: 1.25rem 0.75rem;
-	}
-	.fit-grid .fit-card {
-		width: auto;
-		grid-column: span 3;
-	}
-	.fit-grid .fit-card[data-shape='landscape'] {
-		grid-column: span 6;
-	}
-	.fit-grid.fit-dense .fit-card {
-		grid-column: span 2;
-	}
-	.fit-grid.fit-dense .fit-card[data-shape='landscape'] {
-		grid-column: span 3;
-	}
-	.fit-grid .fit-frame {
-		height: auto;
-		aspect-ratio: var(--r);
-	}
 }
 
 /* A phone lists episodes as rows (thumbnail, then text): six fit a screen

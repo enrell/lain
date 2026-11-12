@@ -18,6 +18,8 @@
 
 	const uid = $props.id();
 	const inputId = $derived(id ?? uid);
+	// The message under the field is read with it: the error when there is one, else the hint.
+	const describedBy = $derived(error ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined);
 </script>
 
 <div class="space-y-1.5">
@@ -28,6 +30,7 @@
 		id={inputId}
 		bind:value
 		aria-invalid={error ? 'true' : undefined}
+		aria-describedby={describedBy}
 		class={[
 			'h-10 w-full rounded-md border bg-field px-3 text-sm text-foreground',
 			'placeholder:text-muted/60 focus:border-accent/60 focus:outline-none',
@@ -37,8 +40,8 @@
 		{...rest}
 	/>
 	{#if error}
-		<p class="text-xs text-danger">{error}</p>
+		<p id="{inputId}-error" class="text-xs text-danger">{error}</p>
 	{:else if hint}
-		<p class="text-xs text-muted">{hint}</p>
+		<p id="{inputId}-hint" class="text-xs text-muted">{hint}</p>
 	{/if}
 </div>

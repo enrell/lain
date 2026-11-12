@@ -17,6 +17,7 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import { sectionFor, sectionHint, sectionLabel, visibleSections } from '$lib/settings/sections';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -45,6 +46,12 @@
 			)
 		].filter((el) => el.offsetParent !== null && !el.closest('[aria-hidden="true"]'));
 	}
+
+	usePageKeys(() => [
+		{ keys: ['g', '…'], label: t('pageKeys.settingsGo') },
+		{ keys: ['[', ']'], label: t('pageKeys.settingsStep') },
+		{ keys: ['j', 'k'], label: t('pageKeys.settingsMove') }
+	]);
 
 	function onKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
@@ -180,7 +187,7 @@
 				<p class="font-mono text-[10px] uppercase tracking-[0.26em] text-muted">
 					{t('settings.eyebrow', { scope: t(current.scope === 'you' ? 'settings.scope.you' : 'settings.scope.server') })}
 				</p>
-				<h1 class="mt-2 text-[1.75rem] font-bold leading-tight tracking-[-0.03em] text-foreground md:text-[2rem]">
+				<h1 class="page-title mt-2">
 					<button
 						type="button"
 						class="-mx-1 inline-flex max-w-full items-center gap-2 rounded-md px-1 text-left md:hidden"

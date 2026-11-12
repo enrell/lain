@@ -90,12 +90,119 @@ pub struct User {
     pub pwd_ver: u64,
     #[serde(default)]
     pub created_at: i64,
+    /// D-071's one language, kept for older clients: since D-280 the
+    /// subtitle language when one is set, else the audio language.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub preferred_language: String,
+    /// D-280: ISO 639-2; absent plays the file's default audio.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preferred_audio_language: String,
+    /// D-280: ISO 639-2; absent when none is preferred.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preferred_subtitle_language: String,
+    /// D-280: `always`, `forced` or `off`; absent is `auto`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preferred_subtitle_mode: String,
     #[serde(default)]
     pub playback: PlaybackPolicy,
     #[serde(default)]
     pub profile: Profile,
+}
+
+impl User {
+    /// How this account wants tracks chosen. With none of the D-280
+    /// fields (a server before D-280) `preferred_language` is both
+    /// languages with subtitles on `auto`, which is D-071.
+    pub fn track_preferences(&self) -> TrackPreferences {
+        TrackPreferences::read(
+            &self.preferred_language,
+            &self.preferred_audio_language,
+            &self.preferred_subtitle_language,
+            &self.preferred_subtitle_mode,
+        )
+    }
+}
+
+/// The subtitle modes of D-280.
+pub const SUBTITLE_MODES: [&str; 4] = ["auto", "always", "forced", "off"];
+
+/// How a viewer wants audio and subtitle tracks chosen (D-280): the
+/// resolved account values every player applies.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrackPreferences {
+    /// ISO 639-2; empty plays the file's default audio.
+    #[serde(default)]
+    pub audio_language: String,
+    /// ISO 639-2; empty when none is preferred.
+    #[serde(default)]
+    pub subtitle_language: String,
+    /// `auto` (subtitles when the audio is not in the subtitle language),
+    /// `always`, `forced` (forced tracks only) or `off`; empty is `auto`.
+    #[serde(default)]
+    pub subtitle_mode: String,
+}
+
+impl TrackPreferences {
+    /// Reads an account's fields (D-280's wire and stored shape): a
+    /// record without any of the three split fields is one written
+    /// before D-280, and its one language is both; an empty mode is
+    /// `auto`.
+    pub fn read(language: &str, audio: &str, subtitle: &str, mode: &str) -> Self {
+        if audio.is_empty() && subtitle.is_empty() && mode.is_empty() {
+            return TrackPreferences::legacy(language);
+        }
+        TrackPreferences {
+            audio_language: audio.to_string(),
+            subtitle_language: subtitle.to_string(),
+            subtitle_mode: if mode.is_empty() { "auto".into() } else { mode.to_string() },
+        }
+    }
+
+    /// D-071's single language: audio in it, else subtitles in it.
+    pub fn legacy(language: &str) -> Self {
+        TrackPreferences {
+            audio_language: language.to_string(),
+            subtitle_language: language.to_string(),
+            subtitle_mode: "auto".into(),
+        }
+    }
+
+    /// Nothing to apply: the player's own defaults stand.
+    pub fn is_empty(&self) -> bool {
+        self.audio_language.is_empty()
+            && self.subtitle_language.is_empty()
+            && matches!(self.subtitle_mode.as_str(), "" | "auto")
+    }
+
+    /// The one language an older client understands (D-071): the
+    /// subtitle language, the one the viewer reads, else the audio one.
+    pub fn legacy_language(&self) -> &str {
+        if self.subtitle_language.is_empty() { &self.audio_language } else { &self.subtitle_language }
+    }
+}
+
+/// `PATCH /api/me/preferences` (D-071, D-280): only the fields present
+/// apply. `preferred_language` (an older client) sets both languages;
+/// the others then override it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreferencesPatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_audio_language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_subtitle_language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_subtitle_mode: Option<String>,
+}
+
+impl PreferencesPatch {
+    pub fn is_empty(&self) -> bool {
+        self.preferred_language.is_none()
+            && self.preferred_audio_language.is_none()
+            && self.preferred_subtitle_language.is_none()
+            && self.preferred_subtitle_mode.is_none()
+    }
 }
 
 /// `PATCH /api/me/profile`: only the fields present apply; `mascot: ""`
@@ -285,8 +392,29 @@ pub struct CatalogItem {
     pub root: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub rel_path: String,
+    /// D-282: what the item's thumbnail is, filled by the gateway on
+    /// catalog and search answers and never stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumbnail: Option<ThumbnailInfo>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
+}
+
+/// What `GET /api/items/{id}/thumbnail` serves without a time (D-269),
+/// said before it is fetched (D-282): a client draws the card in its
+/// final shape at once instead of measuring the picture first.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ThumbnailInfo {
+    /// `sidecar`: a still that came with the file (`<name>-poster.*`,
+    /// `<name>-thumb.*`, `.metadata/thumbs/`); `cover`: a comic
+    /// archive's cover page (the first upright page); `frame`: a frame
+    /// the server cuts from the video.
+    pub source: String,
+    /// Width over height, when the server read it from the picture's
+    /// header (a sidecar); absent when unknown (a frame is the video's
+    /// shape, which the catalog does not hold).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspect: Option<f64>,
 }
 
 /// The paged envelope of catalog reads (default limit 50, cap 500).
@@ -909,6 +1037,21 @@ pub struct ExtractJob {
     pub error: Option<JobError>,
 }
 
+/// Another reading of who a release is (`Release.alternatives`, D-279):
+/// the fields that name it, with `Release`'s meanings and zeros.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReleaseIdentity {
+    pub title: String,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub year: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub season: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub episodes: Vec<i64>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub absolute: bool,
+}
+
 /// A parsed release name (`lain.release.parse@1`). Zero numbers mean
 /// "not stated"; `episodes` lists every episode a pack covers and
 /// `absolute` marks absolute numbering (anime with no season marker).
@@ -945,10 +1088,18 @@ pub struct Release {
     pub repack: bool,
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub version: i64,
+    /// Other identities the provider considered, best first, at most
+    /// `MAX_RELEASE_ALTERNATIVES` (D-279). Advice for a caller that knows
+    /// which titles it expects; a provider that has none omits them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<ReleaseIdentity>,
     /// The provider that produced the record.
     #[serde(default)]
     pub parser: String,
 }
+
+/// The most `Release.alternatives` a provider answers.
+pub const MAX_RELEASE_ALTERNATIVES: usize = 5;
 
 // ---- composition and modules ------------------------------------------------
 
@@ -1184,6 +1335,25 @@ mod tests {
         assert!(lib.extra.is_empty());
         let stored = Library { locked: None, ..lib };
         assert!(serde_json::to_value(&stored).unwrap().get("locked").is_none());
+    }
+
+    #[test]
+    fn release_alternatives_are_additive() {
+        let plain = r#"{"title":"Show","season":1,"episodes":[2],"parser":"lain-release-tokenizer"}"#;
+        let r: Release = serde_json::from_str(plain).unwrap();
+        assert!(r.alternatives.is_empty());
+        assert_eq!(serde_json::to_value(&r).unwrap(), serde_json::from_str::<Value>(plain).unwrap());
+        let with = r#"{"title":"Show 2","parser":"p","alternatives":[{"title":"Show","episodes":[2],"absolute":true},{"title":"Show","season":2}]}"#;
+        let r: Release = serde_json::from_str(with).unwrap();
+        assert_eq!(
+            r.alternatives[0],
+            ReleaseIdentity { title: "Show".into(), episodes: vec![2], absolute: true, ..Default::default() }
+        );
+        assert_eq!(r.alternatives[1].season, 2);
+        assert_eq!(
+            serde_json::to_value(&r).unwrap()["alternatives"][1],
+            serde_json::json!({"title": "Show", "season": 2})
+        );
     }
 
     #[test]

@@ -42,6 +42,18 @@ import io.github.enrell.lain.core.Item
 import io.github.enrell.lain.core.LainCoreInterface
 import io.github.enrell.lain.core.PlaySource
 import io.github.enrell.lain.core.SourceKind
+import io.github.enrell.lain.core.UserInfo
+import io.github.enrell.lain.domain.RememberedTracks
+import io.github.enrell.lain.domain.SubtitleMode
+import io.github.enrell.lain.domain.TextPick
+import io.github.enrell.lain.domain.TrackInfo
+import io.github.enrell.lain.domain.TrackPrefs
+import io.github.enrell.lain.domain.decideText
+import io.github.enrell.lain.domain.sessionAudio
+import io.github.enrell.lain.domain.shortLanguage
+import io.github.enrell.lain.domain.startTracks
+import io.github.enrell.lain.domain.trackName
+import io.github.enrell.lain.domain.transcodeAudioLanguage
 import io.github.enrell.lain.graph
 import io.github.enrell.lain.player.Anime4kEffect
 import io.github.enrell.lain.player.DeviceCaps
@@ -73,28 +85,65 @@ private fun mediaItem(src: PlaySource): MediaItem {
     return b.build()
 }
 
-/** A player for one item, starting in the track languages this title and the account ask for. */
-private fun newPlayer(context: Context, title: String, preferredLanguage: String): ExoPlayer =
+/** The account's track preferences (D-280), from the user the core answered. */
+internal fun trackPrefsOf(user: UserInfo?): TrackPrefs =
+    if (user == null) TrackPrefs() else TrackPrefs(user.preferredAudioLanguage, user.preferredSubtitleLanguage, SubtitleMode.of(user.preferredSubtitleMode))
+
+/** What was chosen last time for this title: Japanese audio picked on episode 3 is still Japanese on episode 4. */
+private fun rememberedOf(prefs: io.github.enrell.lain.Prefs, title: String) =
+    RememberedTracks(prefs.trackLanguageOf(title, "audio")?.takeIf { it.isNotEmpty() }, prefs.trackLanguageOf(title, "text"))
+
+/**
+ * A player for one item, starting in the track languages this title and the
+ * account ask for (D-280): audio and text apart, as close to the rule as
+ * Media3's own preferences go; the subtitles are settled once the tracks
+ * are known ([settleText]).
+ */
+private fun newPlayer(context: Context, title: String, tracks: TrackPrefs): ExoPlayer =
     ExoPlayer.Builder(context).build().apply {
-        // The account's language: audio in it when the file has it, subtitles in it otherwise
-        // (the rule the web player follows).
-        if (preferredLanguage.isNotEmpty()) {
-            trackSelectionParameters = trackSelectionParameters.buildUpon()
-                .setPreferredAudioLanguage(preferredLanguage)
-                .setPreferredTextLanguage(preferredLanguage)
-                .build()
+        val start = startTracks(tracks, rememberedOf(context.graph.prefs, title))
+        trackSelectionParameters = trackSelectionParameters.buildUpon().apply {
+            start.audioLanguage?.let { setPreferredAudioLanguage(it) }
+            // Only a language replaces Media3's default: setting null would also drop the
+            // system caption language a viewer with captions on gets when the account names none.
+            start.textLanguage?.let { setPreferredTextLanguage(it) }
+            if (start.textDisabled) setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            // Forced only: Media3 then takes the forced track in the audio's language.
+            if (start.forcedOnly) setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+        }.build()
+    }
+
+private fun infoOf(f: androidx.media3.common.Format) =
+    TrackInfo(f.language, forced = f.selectionFlags and C.SELECTION_FLAG_FORCED != 0, default = f.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0)
+
+/**
+ * The account's subtitle rule over the tracks the file turned out to have
+ * (D-280), which Media3's preferences cannot say alone: Auto shows the
+ * subtitle language only when the audio that plays is not in it, and
+ * Forced only takes a forced track in the subtitle language before the
+ * audio's. Only tracks the device can render count.
+ */
+private fun settleText(player: ExoPlayer, tracks: Tracks, prefs: TrackPrefs, remembered: RememberedTracks, ui: PlayerUi) {
+    val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+    val texts = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { g to it } }
+    val audios = audioGroups.flatMap { g -> (0 until g.length).map { infoOf(g.getTrackFormat(it)) } }
+    val playing = audioGroups.firstNotNullOfOrNull { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { infoOf(g.getTrackFormat(it)) } }
+    when (val pick = decideText(texts.map { (g, i) -> infoOf(g.getTrackFormat(i)) }, audios, playing, prefs, remembered)) {
+        TextPick.Keep -> Unit
+        TextPick.Off -> if (texts.any { (g, i) -> g.isTrackSelected(i) }) {
+            ui.textOff = true
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
         }
-        // What was chosen last time for this title wins over the account's default:
-        // Japanese audio picked on episode 3 is still Japanese on episode 4.
-        val prefs = context.graph.prefs
-        prefs.trackLanguageOf(title, "audio")?.takeIf { it.isNotEmpty() }?.let { lang ->
-            trackSelectionParameters = trackSelectionParameters.buildUpon().setPreferredAudioLanguage(lang).build()
-        }
-        prefs.trackLanguageOf(title, "text")?.let { lang ->
-            trackSelectionParameters = if (lang.isEmpty()) trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
-            else trackSelectionParameters.buildUpon().setPreferredTextLanguage(lang).build()
+        is TextPick.Track -> {
+            val (g, i) = texts[pick.index]
+            if (!g.isTrackSelected(i)) {
+                ui.textOff = false
+                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, i)).build()
+            }
         }
     }
+}
 
 /**
  * The player, with the web player's chrome and gestures (D-246 for the
@@ -117,11 +166,18 @@ fun PlayerScreen(
     core: LainCoreInterface,
     itemId: String,
     title: String,
-    preferredLanguage: String,
+    /** The account's audio and subtitle preferences (D-280). */
+    trackPrefs: TrackPrefs,
     /** The item was already watched: playing it again keeps it so. */
     watchedBefore: Boolean = false,
     /** What plays after this one (the title's next episode), if anything. */
     next: Item? = null,
+    /**
+     * The name the audio and subtitle picks are kept under: the work's
+     * title, so the next episode opens with them ([title] names the
+     * episode too, which kept each pick to its own episode).
+     */
+    tracksKey: String = title,
     onNext: (Item) -> Unit = {},
 ) {
     val l = LocalLain.current
@@ -130,12 +186,18 @@ fun PlayerScreen(
     val activity = context as? android.app.Activity
     val scope = remember(itemId) { CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
     val model = remember(itemId) {
-        PlayerModel(core, itemId, DeviceCaps.claim, scope, graph.prefs.failedFamilies(itemId)) { family -> graph.prefs.rememberFailed(itemId, family) }
+        PlayerModel(
+            core, itemId, DeviceCaps.claim, scope, graph.prefs.failedFamilies(itemId),
+            onDecoderFailed = { family -> graph.prefs.rememberFailed(itemId, family) },
+            trackPrefs = trackPrefs,
+            // A session carries one audio stream: it starts in the title's, not only the account's.
+            audioLanguage = { transcodeAudioLanguage(trackPrefs, rememberedOf(graph.prefs, tracksKey)) },
+        )
     }
     val stateRef = model.state.collectAsState()
     val state by stateRef
     remember(model) { model.rewatch = watchedBefore; Unit }
-    val player = remember(itemId) { newPlayer(context, title, preferredLanguage) }
+    val player = remember(itemId) { newPlayer(context, tracksKey, trackPrefs) }
     val focus = remember { FocusRequester() }
     val back = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     val ui = remember { PlayerUi(graph.prefs) }
@@ -231,12 +293,18 @@ fun PlayerScreen(
                         val f = g.getTrackFormat(i)
                         val lang = f.language?.takeIf { it != "und" }
                         val name = io.github.enrell.lain.domain.trackName(f.label, lang)
-                        // Two audio tracks in one language are two tracks (a commentary); two subtitles are the same text twice.
-                        (if (once) lang ?: name else "${g.hashCode()}:$i") to TextTrack(g, i, name.ifEmpty { "#${i + 1}" }, g.isTrackSelected(i))
+                        // Two audio tracks in one language are two tracks (a commentary); two subtitles are the same text
+                        // twice, unless one is the forced (signs) track, which the account's rule tells apart (D-280).
+                        val forced = f.selectionFlags and C.SELECTION_FLAG_FORCED != 0
+                        (if (once) (lang ?: name) + if (forced) ":forced" else "" else "${g.hashCode()}:$i") to TextTrack(g, i, name.ifEmpty { "#${i + 1}" }, g.isTrackSelected(i))
                     }
                 }.groupBy({ it.first }, { it.second }).values.map { same -> same.firstOrNull { it.selected } ?: same.first() }
                 ui.textTracks = of(C.TRACK_TYPE_TEXT, once = true)
                 ui.audioTracks = of(C.TRACK_TYPE_AUDIO, once = false)
+                if (!ui.textDecided && !tracks.isEmpty) {
+                    ui.textDecided = true
+                    settleText(player, tracks, trackPrefs, rememberedOf(graph.prefs, tracksKey), ui)
+                }
             }
 
             override fun onVideoSizeChanged(size: androidx.media3.common.VideoSize) {
@@ -256,7 +324,11 @@ fun PlayerScreen(
     }
     val src = state.source
     LaunchedEffect(src) {
+        // A session's one audio stream is not the file's choice: the list is the file's (D-280).
+        ui.streamAudio = streamAudioOf(src, trackPrefs)
         if (src == null) return@LaunchedEffect
+        // A new source (a transcode after the decoder gave up) has its own tracks.
+        ui.textDecided = false
         player.setMediaItem(mediaItem(src), model.seekOnStartMs(src))
         player.prepare()
         player.playWhenReady = true
@@ -380,8 +452,24 @@ fun PlayerScreen(
         }
         if (shown) PlayerBar(ui, moves, model, state, itemId, player, next, onNext, canPip, enterPip)
         if (ui.settings || ui.tracksPanel != 0) PanelScrim(ui)
-        if (ui.tracksPanel != 0) TracksPanel(ui, player, title)
+        if (ui.tracksPanel != 0) {
+            TracksPanel(ui, player, tracksKey) { stream ->
+                // Another audio stream is another session, from where the viewer is.
+                val at = moves.nowSec()
+                if (model.switchAudio(stream, at)) ui.pendingSec = at
+            }
+        }
         if (ui.settings) PlaybackPanel(ui, moves, model, state, player)
+    }
+}
+
+/** The audio list an HLS session offers: the file's streams, when there is more than one to choose. */
+internal fun streamAudioOf(src: PlaySource?, prefs: TrackPrefs): List<StreamAudio> {
+    if (src == null || src.kind != SourceKind.HLS || src.audio.size < 2) return emptyList()
+    val playing = sessionAudio(src.audio, src.audioStream, prefs)
+    return src.audio.mapIndexed { i, a ->
+        val lang = a.language.takeIf { it != "und" }
+        StreamAudio(a.stream, trackName(a.label, lang?.let(::shortLanguage)).ifEmpty { "#${i + 1}" }, a.language, a.stream == playing)
     }
 }
 

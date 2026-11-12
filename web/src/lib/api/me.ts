@@ -4,11 +4,16 @@ import type { Progress, User } from './types';
 /** Gateway routes: GET /api/me, PATCH /api/me/password, GET /api/me/continue. */
 export const me = {
 	get: () => request<User>('/api/me'),
-	setPreferredLanguage: (preferredLanguage: string) =>
-		request<User>('/api/me/preferences', {
-			method: 'PATCH',
-			body: { preferred_language: preferredLanguage }
-		}),
+	/**
+	 * PATCH /api/me/preferences (D-280): only the fields present change; ''
+	 * clears. (`preferred_language` alone, D-071's one language, is for
+	 * clients before D-280.)
+	 */
+	updatePreferences: (patch: {
+		preferred_audio_language?: string;
+		preferred_subtitle_language?: string;
+		preferred_subtitle_mode?: 'auto' | 'always' | 'forced' | 'off';
+	}) => request<User>('/api/me/preferences', { method: 'PATCH', body: patch }),
 
 	changePassword: (oldPassword: string, newPassword: string) =>
 		request<{ status: string }>('/api/me/password', {

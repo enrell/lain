@@ -1,6 +1,7 @@
 <script lang="ts">
-	import SearchIcon from '@lucide/svelte/icons/search';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Download from '@lucide/svelte/icons/download';
+	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import { nameable } from '$lib/stores/media-cache.svelte';
 	/*
@@ -16,7 +17,7 @@
 	import { page } from '$app/state';
 	import { api, ApiError, type AcquireUsage, type Candidate, type Grab, type Indexer, type Library, type SearchResponse } from '$lib/api';
 	import Button from '$lib/components/primitives/Button.svelte';
-	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
+	import FirstRun from '$lib/components/media/FirstRun.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { grabProgress, isActiveGrab, ratio, releaseNumbers, releaseTags } from '$lib/acquire/format';
@@ -25,6 +26,8 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatBytes, formatRelative } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
+	import { tabStep } from '$lib/utilities/tabs';
 	import BlocklistTab from '$lib/components/acquire/BlocklistTab.svelte';
 	import SubtitlesTab from '$lib/components/acquire/SubtitlesTab.svelte';
 	import WantedTab from '$lib/components/acquire/WantedTab.svelte';
@@ -37,6 +40,8 @@
 
 	let libraries = $state<Library[]>([]);
 	let indexers = $state<Indexer[]>([]);
+	// Until both lists answer, "no library" and "no indexer" are not known yet.
+	let loaded = $state(false);
 	let libraryId = $state('');
 	const library = $derived(libraries.find((l) => l.id === libraryId));
 
@@ -76,6 +81,7 @@
 		} catch (err) {
 			toasts.error(errorMessage(err, t('acquire.loadFailed')));
 		}
+		loaded = true;
 		await refresh();
 	});
 	onDestroy(() => {
@@ -227,8 +233,33 @@
 		void goto(url, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 
+	function onTabKey(e: KeyboardEvent): void {
+		const next = tabStep(e.key, TABS, tab);
+		if (!next) return;
+		e.preventDefault();
+		setTab(next);
+		document.getElementById(`acquire-tab-${next}`)?.focus();
+	}
+
+	// Nothing to search with: the page says what it is for and offers the first step.
+	const noLibrary = $derived(loaded && libraries.length === 0);
+	const firstRun = $derived(noLibrary || (loaded && tab === 'search' && indexers.length === 0));
+
+	usePageKeys(() => [
+		{ keys: ['1', '…', '5'], label: t('pageKeys.tabs') },
+		...(tab === 'search' && !firstRun ? [{ keys: ['/'], label: t('pageKeys.releaseSearch') }] : []),
+		...(tab === 'queue' ? [{ keys: ['/'], label: t('acquire.queue.link') }] : []),
+		...(firstRun ? [{ keys: [noLibrary ? 'L' : 'I'], label: noLibrary ? t('acquire.noLibrariesAction') : t('acquire.firstRun.addIndexer') }] : [])
+	]);
+
 	async function onKey(e: KeyboardEvent): Promise<void> {
 		if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		// Not a key a queue row already took (i retries an import there).
+		if (firstRun && !e.defaultPrevented && e.key === (noLibrary ? 'l' : 'i')) {
+			e.preventDefault();
+			void goto(noLibrary ? '/settings/libraries' : '/settings/indexers');
+			return;
+		}
 		const n = Number(e.key);
 		if (n >= 1 && n <= TABS.length) {
 			e.preventDefault();
@@ -250,8 +281,10 @@
 <div class="space-y-6">
 	<header class="flex flex-wrap items-end justify-between gap-4">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('acquire.heading')}</h1>
-			<p class="mt-0.5 text-sm text-muted">{t('acquire.subtitle')}</p>
+			<h1 class="page-title">{t('acquire.heading')}</h1>
+			<!-- Kept on every tab, the first-run one too: hidden there, the tabs
+			     under it jumped a line each time the first tab was left. -->
+			<p class="mt-1 text-sm text-muted">{t('acquire.subtitle')}</p>
 		</div>
 		<div class="flex gap-4 text-sm">
 			<a href="/settings/indexers" class="inline-flex min-h-9 items-center gap-1 text-foreground/70 hover:text-foreground">{t('acquire.indexersLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>
@@ -259,10 +292,10 @@
 		</div>
 	</header>
 
-	<div class="flex gap-6 border-b border-hairline" role="tablist" aria-label={t('acquire.heading')}>
+	<div class="flex gap-6 border-b border-hairline" role="tablist" aria-label={t('acquire.heading')} tabindex="-1" onkeydown={onTabKey}>
 		{#each [{ id: 'search', key: '1', label: t('acquire.tab.search') }, { id: 'queue', key: '2', label: t('acquire.tab.queue') }, { id: 'wanted', key: '3', label: t('acquire.tab.wanted') }, { id: 'blocklist', key: '4', label: t('acquire.tab.blocklist') }, { id: 'subtitles', key: '5', label: t('acquire.tab.subtitles') }] as x (x.id)}
-			<button type="button" role="tab" aria-selected={tab === x.id} onclick={() => setTab(x.id as Tab)}
-				class="-mb-px flex items-center gap-2 border-b-2 pb-2 text-sm transition-colors {tab === x.id ? 'border-accent text-foreground' : 'border-transparent text-muted hover:text-foreground'}">
+			<button type="button" role="tab" id="acquire-tab-{x.id}" aria-selected={tab === x.id} tabindex={tab === x.id ? 0 : -1} onclick={() => setTab(x.id as Tab)}
+				class="-mb-px flex min-h-11 items-center gap-2 border-b-2 pb-2 text-sm transition-colors md:min-h-0 {tab === x.id ? 'border-accent text-foreground' : 'border-transparent text-muted hover:text-foreground'}">
 				<kbd class="text-muted">{x.key}</kbd>
 				{x.label}
 				{#if x.id === 'queue' && grabs && grabs.filter((g) => isActiveGrab(g.state)).length > 0}<span class="rounded-full bg-accent px-1.5 font-mono text-[10px] text-background">{grabs.filter((g) => isActiveGrab(g.state)).length}</span>{/if}
@@ -270,41 +303,50 @@
 		{/each}
 	</div>
 
-	{#if libraries.length === 0}
-		<EmptyState title={t('acquire.noLibrariesTitle')} description={t('acquire.noLibrariesBody')}>
-			<a href="/settings/libraries" class="rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-foreground">{t('acquire.noLibrariesAction')}</a>
-		</EmptyState>
+	{#if !loaded}
+		<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
+	{:else if noLibrary}
+		<FirstRun eyebrow={t('acquire.firstRun.eyebrow')} title={t('acquire.firstRun.noLibraryTitle')} body={t('acquire.firstRun.noLibraryBody')}>
+			<LinkButton href="/settings/libraries" size="rowMain">{t('acquire.noLibrariesAction')} <kbd>L</kbd></LinkButton>
+		</FirstRun>
 	{:else if tab === 'search' && indexers.length === 0}
-		<EmptyState title={t('acquire.search.noIndexersTitle')} description={t('acquire.search.noIndexersBody')}>
-			{#snippet icon()}<SearchIcon class="size-6" aria-hidden="true" />{/snippet}
-			<LinkButton href="/settings/indexers">{t('acquire.search.addIndexer')}</LinkButton>
-		</EmptyState>
+		<FirstRun
+			eyebrow={t('acquire.firstRun.eyebrow')}
+			title={t('acquire.firstRun.title')}
+			body={t('acquire.firstRun.body')}
+			steps={[
+				{ label: t('acquire.firstRun.stepIndexer'), text: t('acquire.firstRun.stepIndexerText') },
+				{ label: t('acquire.firstRun.stepSearch'), text: t('acquire.firstRun.stepSearchText') },
+				{ label: t('acquire.firstRun.stepFollow'), text: t('acquire.firstRun.stepFollowText') }
+			]}
+		>
+			<LinkButton href="/settings/indexers" size="rowMain">{t('acquire.firstRun.addIndexer')} <kbd>I</kbd></LinkButton>
+			<Button variant="tonal" size="row" onclick={() => setTab('queue')}>{t('acquire.firstRun.fromLink')} <kbd>2</kbd></Button>
+		</FirstRun>
 	{:else if tab === 'search'}
 		<form class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_6rem_6rem_auto] sm:items-end" onsubmit={search}>
 			<label class="block space-y-1.5">
-				<span class="flex items-center gap-2 text-xs text-muted">{t('acquire.search.query')} <kbd class="font-mono text-[10px]">/</kbd></span>
+				<span class="flex h-5 items-center gap-2 text-xs text-muted">{t('acquire.search.query')} <kbd class="font-mono text-[10px]">/</kbd></span>
 				<input bind:this={queryInput} bind:value={query} class="{field} w-full" placeholder={t('acquire.search.placeholder')} spellcheck={false} autocomplete="off" />
 			</label>
 			<label class="block space-y-1.5">
-				<span class="text-xs text-muted">{t('acquire.search.library')}</span>
+				<span class="flex h-5 items-center text-xs text-muted">{t('acquire.search.library')}</span>
 				<select bind:value={libraryId} class="{field} w-full">
 					{#each libraries as l (l.id)}<option value={l.id}>{l.name} · {l.type}</option>{/each}
 				</select>
 			</label>
 			<label class="block space-y-1.5">
-				<span class="text-xs text-muted">{library?.type === 'manga' || library?.type === 'comic' ? t('acquire.search.volume') : t('acquire.search.season')}</span>
+				<span class="flex h-5 items-center text-xs text-muted">{library?.type === 'manga' || library?.type === 'comic' ? t('acquire.search.volume') : t('acquire.search.season')}</span>
 				<input bind:value={season} type="number" min="0" class="{field} w-full font-mono" />
 			</label>
 			<label class="block space-y-1.5">
-				<span class="text-xs text-muted">{library?.type === 'manga' || library?.type === 'comic' ? t('acquire.search.chapter') : t('acquire.search.episode')}</span>
+				<span class="flex h-5 items-center text-xs text-muted">{library?.type === 'manga' || library?.type === 'comic' ? t('acquire.search.chapter') : t('acquire.search.episode')}</span>
 				<input bind:value={episode} type="number" min="0" class="{field} w-full font-mono" />
 			</label>
 			<Button type="submit" loading={searching} disabled={!query.trim() || indexers.length === 0} title={indexers.length === 0 ? t('acquire.search.noIndexers') : undefined}>{t('acquire.search.submit')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
 		</form>
 
-		{#if indexers.length === 0}
-			<p class="flex flex-wrap items-center gap-3 text-sm text-muted">{t('acquire.search.noIndexers')} <LinkButton href="/settings/indexers" variant="secondary" size="sm">{t('acquire.indexersLink')}</LinkButton></p>
-		{:else if results}
+		{#if results}
 			{#if results.candidates.length === 0}
 				<p class="py-6 text-sm text-muted">{t('acquire.search.empty')}</p>
 			{:else}
@@ -344,14 +386,16 @@
 	{:else if tab === 'subtitles'}
 		<SubtitlesTab />
 	{:else}
-		<form class="flex flex-wrap items-end gap-3" onsubmit={grabLink}>
-			<label class="block min-w-0 flex-1 space-y-1.5">
-				<span class="flex items-center gap-2 text-xs text-muted">{t('acquire.queue.link')} <kbd class="font-mono text-[10px]">/</kbd></span>
+		<!-- One column on a phone, where the link field was squeezed beside the
+		     library to a few letters; the labels share one height, key cap or not. -->
+		<form class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end" onsubmit={grabLink}>
+			<label class="block min-w-0 space-y-1.5">
+				<span class="flex h-5 items-center gap-2 text-xs text-muted">{t('acquire.queue.link')} <kbd class="font-mono text-[10px]">/</kbd></span>
 				<input bind:this={linkInput} bind:value={link} class="{field} w-full font-mono text-xs" placeholder="magnet:?xt=… / https://…/file.torrent" spellcheck={false} autocomplete="off" />
 			</label>
 			<label class="block space-y-1.5">
-				<span class="text-xs text-muted">{t('acquire.search.library')}</span>
-				<select bind:value={libraryId} class={field}>
+				<span class="flex h-5 items-center text-xs text-muted">{t('acquire.search.library')}</span>
+				<select bind:value={libraryId} class="{field} w-full">
 					{#each libraries as l (l.id)}<option value={l.id}>{l.name} · {l.type}</option>{/each}
 				</select>
 			</label>
@@ -367,7 +411,9 @@
 		{#if grabs === null}
 			<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
 		{:else if grabs.length === 0}
-			<p class="py-6 text-sm text-muted">{t('acquire.queue.empty')}</p>
+			<EmptyState title={t('acquire.queue.empty')} description={t('acquire.queue.emptyBody')}>
+				{#snippet icon()}<Download class="size-6 text-muted" aria-hidden="true" />{/snippet}
+			</EmptyState>
 		{:else}
 			<p class="text-xs text-muted">{t('acquire.queue.keys')}</p>
 			<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.tab.queue')}>

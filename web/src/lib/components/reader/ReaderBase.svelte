@@ -279,12 +279,23 @@
 		}
 	}
 
+	// The key list takes the focus while it is open and gives it back where it was.
+	function holdFocus(node: HTMLElement): { destroy: () => void } {
+		const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		node.focus();
+		return { destroy: () => before?.focus({ preventScroll: true }) };
+	}
+
 	function onKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey) return;
 		if (help) {
 			if (e.key === 'Escape' || e.key === '?') {
 				e.preventDefault();
 				help = false;
+			} else if (e.key === 'Tab') {
+				// A modal list with nothing to press: Tab stays on it instead of
+				// walking the reader's controls behind the backdrop.
+				e.preventDefault();
 			}
 			return;
 		}
@@ -549,8 +560,10 @@
 			<div
 				class="w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-2xl"
 				role="dialog"
+				aria-modal="true"
 				tabindex="-1"
 				aria-label="Keyboard shortcuts"
+				use:holdFocus
 				onclick={(e) => e.stopPropagation()}
 			>
 				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent">Shortcuts</p>

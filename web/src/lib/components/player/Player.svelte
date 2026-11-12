@@ -27,15 +27,19 @@
 		TranscodeStatus
 	} from '$lib/api/types';
 	import { api } from '$lib/api';
+	import { newViewerId } from '$lib/api/playback';
 	import type { StoryboardLayout } from '$lib/api/thumbnail';
 	import { session } from '$lib/auth/session.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Keyboard from '@lucide/svelte/icons/keyboard';
+	import PanelRightClose from '@lucide/svelte/icons/panel-right-close';
+	import PanelRightOpen from '@lucide/svelte/icons/panel-right-open';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
-	import { resolveTracks } from '$lib/player/track-language';
-	import { embeddedChoice, pickSidecar, sidecarIndex, sidecarLabel, sidecarValue, type SidecarTrack } from '$lib/player/sidecars';
+	import { defaultAudioStream, resolveTracks, trackName, trackPreferences } from '$lib/player/track-language';
+	import { offeredQualities } from '$lib/player/quality-ladder';
+	import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, toggledSubtitle, type SidecarTrack } from '$lib/player/sidecars';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
 	import { isCompleted } from '$lib/utilities/progress';
@@ -50,13 +54,15 @@
 		loadSkip,
 		loadSubtitleBackground,
 		loadSubtitleSize,
+		loadTitleTracks,
 		saveSkip,
 		saveSubtitleBackground,
 		saveSubtitleSize,
+		saveTitleTrack,
 		type SubtitleBackground,
 		type SubtitleSize
 	} from '$lib/player/player-prefs';
-	import { t } from '$lib/i18n';
+	import { i18n, t } from '$lib/i18n';
 	import { detectBrowserProfile, type BrowserProfile, type RendererBackend } from '$lib/player/browser-profile';
 	import { VideoRenderer } from '$lib/player/webgpu/engine';
 	import type { WebGLAnime4KRenderer } from '$lib/player/webgl/engine';
@@ -68,7 +74,8 @@
 		plan,
 		initialProgress,
 		onFinished,
-		next = null
+		next = null,
+		episodes = null
 	}: {
 		item: CatalogItem;
 		plan: PlaybackPlan;
@@ -77,6 +84,8 @@
 		onFinished?: () => void;
 		/** The episode after this one, if any: a button in the bar and Shift+N go to it. */
 		next?: { label: string; go: () => void } | null;
+		/** The episode list beside the player on a wide screen: E and a bar button show or hide it. */
+		episodes?: { shown: boolean; toggle: () => void } | null;
 	} = $props();
 
 	const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -159,6 +168,11 @@
 	let headerEl = $state<HTMLElement | null>(null);
 	let chromeTailEl = $state<HTMLElement | null>(null);
 	let chromeFootEl = $state<HTMLElement | null>(null);
+	// Subtitles sit on the picture's bottom edge, which is where the control
+	// bar is drawn: while it shows, the browser's cues move up by its height
+	// (less its transparent fade) instead of being drawn under the buttons.
+	let footHeight = $state(0);
+	const cueLift = $derived(controlsVisible ? Math.max(0, footHeight - 32) : 0);
 	let scrubbing = $state(false);
 	let scrubValue = $state(0);
 	// True only between pointerdown and pointerup on the seek row. Used to
@@ -170,6 +184,15 @@
 	let transcodeReady = $state(false);
 	let preparingTranscode = $state(false);
 	let transcodeSession = $state('');
+	// The viewer id (D-281) this player started or joined transcodeSession
+	// with; empty while it holds nothing (a cached session it only adopted).
+	// Sessions are shared by everyone asking for the same options, so a
+	// release names the hold it ends: the server stops the session only when
+	// no other viewer holds it. Every start makes a fresh id, so the release
+	// of a session this player leaves can never end the hold its next start
+	// placed on the same session (a rebuild with unchanged options, or two
+	// starts racing), whichever request the server sees first.
+	let transcodeViewer = '';
 	let transcodeError = $state<string | null>(null);
 	let prepareProgress = $state(0);
 	let prepareStartedAt = $state(0);
@@ -242,6 +265,12 @@
 	const mode = $derived(forcedTranscode ? 'transcode' : plan.mode);
 
 	const audioTracks = $derived((plan.streams ?? []).filter((s) => s.type === 'audio'));
+	// The ladder up to the file's own size, on both sides: a 2160p rung
+	// changes nothing for a 360p file, and a 1920x800 film keeps 1080p.
+	const sourceVideo = $derived((plan.streams ?? []).find((s) => s.type === 'video'));
+	const qualities = $derived(
+		offeredQualities(playbackOptions?.qualities ?? [], sourceVideo?.width, sourceVideo?.height)
+	);
 	const subtitleTracks = $derived(
 		(plan.streams ?? []).filter((s) => s.type === 'subtitle' && s.convertible)
 	);
@@ -353,8 +382,11 @@
 	}
 
 	onMount(() => {
-		const language = session.user?.preferred_language ?? '';
-		const choice = resolveTracks(plan.streams ?? [], language);
+		// The account's audio and subtitle preferences (D-280); what was
+		// picked for this title last time wins over them.
+		const trackPrefs = trackPreferences(session.user);
+		const remembered = loadTitleTracks(item.title);
+		const choice = resolveTracks(plan.streams ?? [], trackPrefs, remembered);
 		languageMetadataKnown = choice.metadataKnown;
 		selectedAudio = choice.audioIndex === undefined ? '' : String(choice.audioIndex);
 		selectedSubtitle = choice.subtitleIndex === undefined ? '' : String(choice.subtitleIndex);
@@ -369,11 +401,11 @@
 			.sidecars(item.id)
 			.then((res) => {
 				sidecars = res.sidecars;
-				const pick = pickSidecar(sidecars, language, {
-					audioMatches: choice.audioMatches,
-					embeddedFound: choice.subtitleIndex !== undefined
-				});
-				if (pick !== undefined && selectedSubtitle === '') selectedSubtitle = sidecarValue(pick);
+				// The same rule over the files too, when nothing embedded was
+				// chosen and the viewer has not picked yet.
+				if (selectedSubtitle !== '' || subtitlePicked) return;
+				const pick = resolveTracks(plan.streams ?? [], trackPrefs, remembered, sidecars).sidecarIndex;
+				if (pick !== undefined) selectedSubtitle = sidecarValue(pick);
 			})
 			.catch(() => undefined); // no sidecars: embedded tracks only
 		void detectBrowserProfile().then((profile) => { browserProfile = profile; });
@@ -384,7 +416,10 @@
 		if (mode === 'transcode') {
 			transcodeSession = plan.session ?? '';
 			transcodeReasons = plan.reasons ?? [];
-			if (plan.state === 'ready' && !language) {
+			// The plan's session is the default one with the account's
+			// preferred audio (D-280): it fits when no embedded subtitle and no
+			// remembered audio asks for another.
+			if (plan.state === 'ready' && embeddedChoice(selectedSubtitle) === '' && remembered.audio === undefined) {
 				// A cached session was produced from the start of the source.
 				void adoptReadySession();
 			} else {
@@ -412,7 +447,30 @@
 		if (frameCheck) clearTimeout(frameCheck);
 		transcodeAbort?.abort();
 		destroyHLS();
+		releaseSession();
 	});
+
+	/*
+	 * Leaving the player for good releases its session. One still being
+	 * produced that nobody else watches is stopped by the server: coming
+	 * back starts a new session at the saved position, and left running,
+	 * the throttle pauses it once it is ahead of a viewer who is gone,
+	 * and it holds one of the server's few runners (max_concurrent) until
+	 * the idle timeout, two minutes, while the next title waits queued
+	 * behind it. Another tab or device on the same session keeps it, and
+	 * a finished session stays: it is the cache a replay attaches to
+	 * (D-281). The server decides both, so there is no state to ask first.
+	 */
+	function releaseSession(): void {
+		releaseTranscode(transcodeSession, transcodeViewer);
+	}
+
+	// Without a viewer the server would stop the session for everyone, so a
+	// session this player holds nothing on is left alone.
+	function releaseTranscode(sid: string, viewer: string): void {
+		if (!sid || !viewer) return;
+		void api.playback.releaseTranscode(item.id, sid, viewer).catch(() => undefined);
+	}
 
 	/* ---------------------------------------------------------------- */
 	/* optional WebGPU presentation layer                                */
@@ -531,7 +589,12 @@
 		const url = api.playback.hlsUrl(item.id, session.token, transcodeSession, 'index.m3u8');
 		destroyHLS();
 		if (Hls.isSupported()) {
-			hls = new Hls({ enableWorker: true });
+			// A session's timeline starts where the viewer is (start_sec), so
+			// play starts at its 0. Left to itself hls.js reads the growing
+			// playlist (no ENDLIST yet) as live and starts near its edge: a
+			// fast session, such as an audio switch that copies the video,
+			// had an hour written by then and the viewer landed an hour on.
+			hls = new Hls({ enableWorker: true, startPosition: 0 });
 			let mediaRecoveries = 0;
 			hls.on(Hls.Events.ERROR, (_event, data) => {
 				if (!data.fatal) return;
@@ -634,6 +697,7 @@
 		try {
 			const subtitleStream =
 				selection?.subtitle_stream ?? (embeddedSubtitle === '' ? undefined : Number(embeddedSubtitle));
+			const viewer = newViewerId();
 			let status = await api.playback.startTranscode(item.id, {
 				quality: (selection?.quality ?? selectedQuality) || undefined,
 				audio_stream: selection?.audio_stream ?? (selectedAudio === '' ? undefined : Number(selectedAudio)),
@@ -641,15 +705,33 @@
 				subtitle_mode: (languageMetadataKnown || chosenSidecar !== null) && embeddedSubtitle === '' ? 'off' : undefined,
 				start_sec: baseOffset || undefined,
 				video_copy_codecs: copyCodecs(),
-				video_effect: serverEffect || undefined
+				video_effect: serverEffect || undefined,
+				viewer
 			});
+			// Left, or replaced by a newer start (a second seek, track or
+			// quality change before this one answered), while the start was on
+			// its way: onDestroy or the rebuild had no session to release yet,
+			// and this player will never attach to it, so its hold is released
+			// here instead of keeping a runner busy until the idle timeout.
+			if (destroyed || controller.signal.aborted) {
+				releaseTranscode(status.session, viewer);
+				return;
+			}
 			// The server answers a request it cannot honour with the plain
 			// session and the reason; say it instead of showing nothing.
 			if (serverEffect && !(status.reasons ?? []).some((reason) => reason.startsWith('video effect'))) {
 				effectError = status.fallback || 'the server did not render the effect';
 			}
 			hevcCopied = status.video_direct === true && status.video_codec === 'hevc';
+			// A hold this start replaces without a rebuild (Retry after a
+			// status poll failed leaves the earlier one in place) ends here.
+			// The new hold is already placed, so releasing the old one never
+			// stops the session this player goes on to play.
+			const replacedSession = transcodeSession;
+			const replacedViewer = transcodeViewer;
 			transcodeSession = status.session;
+			transcodeViewer = viewer;
+			if (replacedViewer && replacedViewer !== viewer) releaseTranscode(replacedSession, replacedViewer);
 			delivery = status.delivery ?? 'progressive';
 			transcodeReasons = status.reasons ?? transcodeReasons;
 			// A pending extraction reports nothing yet; the poll loop raises
@@ -716,9 +798,45 @@
 	// Only an embedded choice rebuilds a transcode; a sidecar swap is a
 	// <track> change in every mode.
 	let lastEmbedded = '';
+	// The viewer chose subtitles here: late sidecars no longer pick one.
+	let subtitlePicked = false;
 	function onSubtitleChoice(): void {
+		subtitlePicked = true;
+		rememberSubtitle();
 		if (mode === 'transcode' && embeddedSubtitle !== lastEmbedded) void changeTracks();
 		lastEmbedded = embeddedSubtitle;
+	}
+
+	// A pick in the menu is kept for this title, so its next part opens
+	// with the same language (D-280), as the app does.
+	function rememberSubtitle(): void {
+		if (selectedSubtitle === '') return saveTitleTrack(item.title, 'subtitle', null);
+		const language =
+			chosenSidecar !== null
+				? sidecars.find((s) => s.index === chosenSidecar)?.language
+				: subtitleTracks.find((s) => String(s.index) === embeddedSubtitle)?.language;
+		saveTitleTrack(item.title, 'subtitle', language);
+	}
+
+	function onAudioChoice(): void {
+		// "Default" means the file's default track, which a start without
+		// audio_stream no longer gets when the account prefers a language.
+		if (selectedAudio === '') {
+			const index = defaultAudioStream(plan.streams ?? [], trackPreferences(session.user));
+			if (index !== undefined) selectedAudio = String(index);
+		}
+		saveTitleTrack(item.title, 'audio', audioTracks.find((s) => String(s.index) === selectedAudio)?.language);
+		if (mode === 'transcode') void changeTracks();
+		// The browser plays a file's default audio and cannot switch it: another
+		// track is a session, entered at the viewer's place.
+		else if (selectedAudio !== String(audioTracks.find((s) => s.default)?.index ?? audioTracks[0]?.index)) void leaveDirectPlay();
+	}
+
+	// A quality is a session too: from direct play, choosing one leaves it;
+	// "Original" is the direct play itself.
+	function onQualityChoice(): void {
+		if (mode === 'transcode') void changeTracks();
+		else if (selectedQuality !== '') void leaveDirectPlay();
 	}
 
 	async function changeTracks(): Promise<void> {
@@ -733,11 +851,14 @@
 	async function rebuildAt(position: number): Promise<void> {
 		if (mode !== 'transcode') return;
 		const oldSession = transcodeSession;
+		const oldViewer = transcodeViewer;
 		destroyHLS();
 		transcodeReady = false;
 		resumeApplied = true;
 		baseOffset = position;
-		if (oldSession) void api.playback.cancelTranscode(item.id, oldSession).catch(() => undefined);
+		releaseTranscode(oldSession, oldViewer);
+		// Released: until the new start answers, this player holds nothing.
+		transcodeViewer = '';
 		try {
 			await prepareTranscode({
 				audio_stream: selectedAudio === '' ? undefined : Number(selectedAudio),
@@ -820,6 +941,13 @@
 		const el = video;
 		const at = el && el.currentTime > 1 ? el.currentTime : resumePosition();
 		el?.pause();
+		// Drop the direct stream before the offset moves, as a rebuild's
+		// destroyHLS does. Its pause and timeupdate events run after this
+		// function, and read against the new offset its still-current time
+		// counted twice: the bar jumped to twice the place, and the forced
+		// save on pause kept that (or marked the title watched).
+		el?.removeAttribute('src');
+		el?.load();
 		transcodeReady = false;
 		baseOffset = at;
 		resumeApplied = true;
@@ -833,6 +961,19 @@
 	/* ---------------------------------------------------------------- */
 	/* media element events                                              */
 	/* ---------------------------------------------------------------- */
+
+	// Play means play: the title page's Play and Autoplay next both open this
+	// player, and it used to wait paused for a second press, so Autoplay next
+	// counted down into a paused episode. Once per player: a later reload of
+	// the source (a track change) keeps whatever the viewer chose since. A
+	// browser that refuses (a deep link with no gesture behind it) leaves the
+	// big play button, as before.
+	let autoStarted = false;
+	function autoStart(el: HTMLVideoElement): void {
+		if (autoStarted) return;
+		autoStarted = true;
+		if (el.paused) void el.play().catch(() => undefined);
+	}
 
 	function onLoadedMetadata(): void {
 		const el = video;
@@ -848,16 +989,17 @@
 				resumedFrom = baseOffset;
 				showResume = true;
 				resumeTimer = setTimeout(() => (showResume = false), 7000);
-				return;
-			}
-			const resume = resumePosition();
-			if (resume > 0 && duration > 0 && resume < duration - 5) {
-				el.currentTime = resume;
-				resumedFrom = resume;
-				showResume = true;
-				resumeTimer = setTimeout(() => (showResume = false), 7000);
+			} else {
+				const resume = resumePosition();
+				if (resume > 0 && duration > 0 && resume < duration - 5) {
+					el.currentTime = resume;
+					resumedFrom = resume;
+					showResume = true;
+					resumeTimer = setTimeout(() => (showResume = false), 7000);
+				}
 			}
 		}
+		autoStart(el);
 	}
 
 	function onDurationChange(): void {
@@ -1090,7 +1232,11 @@
 		if (!el) return;
 		if (el.paused || el.ended) {
 			ended = false;
-			void el.play().catch(() => {
+			void el.play().catch((err: unknown) => {
+				// A pause before playback could start (K twice while a seek
+				// is still loading) rejects this play with AbortError: that is
+				// the viewer's own pause, not the browser refusing to play.
+				if (err instanceof DOMException && err.name === 'AbortError') return;
 				error = 'The browser blocked playback. Click play to start.';
 			});
 		} else {
@@ -1320,6 +1466,41 @@
 	}
 
 	/*
+	 * What a key changed, said on the picture for a moment: a key has no
+	 * button to light up, and the settings panel is closed. Inside the
+	 * player, so it shows in fullscreen too.
+	 */
+	let osd = $state<{ text: string; key: number } | null>(null);
+	let osdTimer: ReturnType<typeof setTimeout> | null = null;
+	function showOsd(text: string): void {
+		osd = { text, key: Date.now() };
+		if (osdTimer) clearTimeout(osdTimer);
+		osdTimer = setTimeout(() => (osd = null), 1200);
+	}
+
+	function stepRate(direction: 1 | -1): void {
+		const at = RATES.indexOf(rate);
+		const next = RATES[Math.min(RATES.length - 1, Math.max(0, (at < 0 ? RATES.indexOf(1) : at) + direction))];
+		setRate(next);
+		showOsd(next === 1 ? t('player.osd.speedNormal') : t('player.osd.speed', { rate: `${next}×` }));
+	}
+
+	// C turns subtitles off, and on again with the track that was on (or the first there is).
+	let subtitleBefore = '';
+	function toggleSubtitles(): void {
+		const choices = [...subtitleTracks.map((track) => String(track.index)), ...sidecars.map((file) => sidecarValue(file.index))];
+		if (choices.length === 0) return showOsd(t('player.osd.noSubtitles'));
+		if (selectedSubtitle !== '') subtitleBefore = selectedSubtitle;
+		selectedSubtitle = toggledSubtitle(selectedSubtitle, subtitleBefore, choices);
+		onSubtitleChoice();
+		if (selectedSubtitle === '') return showOsd(t('player.osd.subtitlesOff'));
+		const file = sidecars.find((f) => sidecarValue(f.index) === selectedSubtitle);
+		const track = subtitleTracks.find((tr) => String(tr.index) === selectedSubtitle);
+		const name = file ? sidecarLabel(file) : track?.language || track?.title || selectedSubtitle;
+		showOsd(t('player.osd.subtitlesOn', { name }));
+	}
+
+	/*
 	 * Fullscreen is a request, not a guarantee: a browser can refuse it (a
 	 * permission policy, a container that forbids it) or not offer the API at
 	 * all. A refusal is reported in the player instead of swallowed (D-011),
@@ -1430,6 +1611,9 @@
 	}
 
 	function onKeydown(event: KeyboardEvent): void {
+		// A dialog over the player (its key list) owns the keyboard: Escape
+		// closes it, and no key reaches the video behind it.
+		if (keysOpen || document.querySelector('[role="dialog"]')) return;
 		if (event.key === 'Escape') {
 			onEscape(event);
 			return;
@@ -1473,6 +1657,23 @@
 			case 'f':
 			case 'F':
 				void toggleFullscreen();
+				break;
+			case 'c':
+			case 'C':
+				consume(event);
+				toggleSubtitles();
+				break;
+			case '<':
+			case '>':
+				consume(event);
+				stepRate(event.key === '>' ? 1 : -1);
+				break;
+			case 'e':
+			case 'E':
+				// Only where the list sits beside the picture (lg and up); below, it is under it.
+				if (!episodes || !window.matchMedia('(min-width: 1024px)').matches) break;
+				consume(event);
+				episodes.toggle();
 				break;
 			case 'N':
 				// Shift+N, as most web players have it: a bare N is too easy to hit by mistake.
@@ -1546,6 +1747,7 @@
 		subtitleBgClass,
 		subtitleSizeClass
 	].join(' ')}
+	style:--cue-lift={`${cueLift}px`}
 	role="region"
 	aria-label={`Player — ${title}`}
 	onpointermove={onStagePointerMove}
@@ -1574,6 +1776,13 @@
 				<span class="rounded-full bg-black/55 px-3.5 py-1.5 text-sm font-semibold tabular-nums text-white backdrop-blur">
 					{skipFlash.side < 0 ? '−' : '+'}{skipFlash.total}s
 				</span>
+			</div>
+		{/key}
+	{/if}
+	{#if osd}
+		{#key osd.key}
+			<div class="pointer-events-none absolute inset-x-0 top-20 z-20 flex justify-center" role="status">
+				<span class="rounded-full bg-black/65 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur">{osd.text}</span>
 			</div>
 		{/key}
 	{/if}
@@ -1831,17 +2040,20 @@
 			{/if}
 			{#if effectError && selectedEffect !== 'off'}<p class="mt-1 text-xs text-danger" role="status">Anime4K unavailable: {effectError}</p>{/if}
 			<a class="mt-1 block text-xs text-accent hover:underline" href="/settings/playback#effects">Set default effects and overrides</a>
-			{#if mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}
+			<!-- Offered in direct play as well: the file's audio and size were
+			     fixed there, and a second language or a smaller stream had no
+			     way in short of a setting nobody would find. -->
+			{#if expectsVideo && qualities.length > 0}
 				<label class="chrome-chip">
 					Quality
 					<select
 						class="chrome-select"
 						bind:value={selectedQuality}
-						onchange={() => void changeTracks()}
+						onchange={onQualityChoice}
 						aria-label="Transcode quality"
 					>
-						<option value="">Auto</option>
-						{#each playbackOptions?.qualities ?? [] as quality (quality.name)}
+						<option value="">{t(mode === 'transcode' ? 'player.qualityAuto' : 'player.qualityOriginal')}</option>
+						{#each qualities as quality (quality.name)}
 							<option value={quality.name}>
 								{quality.name}{quality.bitrate_kbps ? ` · ${Math.round(quality.bitrate_kbps / 1000)} Mbps` : ''}
 							</option>
@@ -1849,19 +2061,19 @@
 					</select>
 				</label>
 			{/if}
-			{#if mode === 'transcode' && audioTracks.length > 1}
+			{#if audioTracks.length > 1}
 				<label class="chrome-chip">
 					Audio
 					<select
 						class="chrome-select"
 						bind:value={selectedAudio}
-						onchange={() => void changeTracks()}
+						onchange={onAudioChoice}
 						aria-label="Audio track"
 					>
 						<option value="">Default</option>
 						{#each audioTracks as track (track.index)}
 							<option value={String(track.index)}>
-								{track.language || track.title || `Track ${track.index}`}
+								{trackName(track, i18n.locale, `Track ${track.index}`)}
 							</option>
 						{/each}
 					</select>
@@ -1879,7 +2091,7 @@
 						<option value="">Off</option>
 						{#each subtitleTracks as track (track.index)}
 							<option value={String(track.index)}>
-								{track.language || track.title || `Track ${track.index}`}
+								{trackName(track, i18n.locale, `Track ${track.index}`)}
 							</option>
 						{/each}
 						{#each sidecars as file (file.index)}
@@ -1942,6 +2154,7 @@
 	<!-- Transport deck: transparent to keep subtitles visible (D-065/D-066). -->
 	<footer
 		bind:this={chromeFootEl}
+		bind:clientHeight={footHeight}
 		class={[
 			// On the picture the controls are white, not the page's muted grey.
 			'relative z-20 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-3 pb-3 pt-10 sm:px-6 sm:pb-4 [&_button:not(.bg-accent)]:text-white/90 [&_button:not(.bg-accent):hover]:text-white',
@@ -2078,6 +2291,12 @@
 				<IconButton label="Keyboard shortcuts (?)" class="max-md:hidden" onclick={() => (keysOpen = true)}>
 					<Keyboard class="size-5" />
 				</IconButton>
+				{#if episodes}
+					<!-- The list beside the picture takes a quarter of a laptop's width: it can step aside. -->
+					<IconButton label={episodes.shown ? t('player.episodesHide') : t('player.episodesShow')} class="max-lg:hidden" onclick={episodes.toggle}>
+						{#if episodes.shown}<PanelRightClose class="size-5" />{:else}<PanelRightOpen class="size-5" />{/if}
+					</IconButton>
+				{/if}
 				<button bind:this={settingsButton} type="button" aria-label="Playback settings" aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
 					<Settings class="size-5" />
 					<span class="sr-only">Playback settings</span>
@@ -2094,9 +2313,9 @@
 	</footer>
 </div>
 
-<Modal bind:open={keysOpen} title="Keyboard shortcuts">
+<Modal bind:open={keysOpen} title={t('shortcuts.title')}>
 	<dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-sm">
-		{#each [[['Space', 'K'], 'Play or pause'], [['←', '→'], 'Back or forward 5 seconds'], [['J', 'L'], `Back or forward ${skipSec} seconds`], [['↑', '↓'], 'Volume'], [['M'], 'Mute'], [['F'], 'Full screen'], ...(next ? [[['Shift', 'N'], t('player.nextEpisode')] as [string[], string]] : []), [['Esc'], 'Close a panel, leave full screen'], [['?'], 'This list']] as [keys, what] (what)}
+		{#each [[['Space', 'K'], t('player.keys.play')], [['←', '→'], t('player.keys.seek', { seconds: 5 })], [['J', 'L'], t('player.keys.seek', { seconds: skipSec })], [['↑', '↓'], t('player.keys.volume')], [['M'], t('player.keys.mute')], [['C'], t('player.keys.subtitles')], [['<', '>'], t('player.keys.speed')], [['F'], t('player.keys.fullscreen')], ...(episodes ? [[['E'], t('player.keys.episodes')] as [string[], string]] : []), ...(next ? [[['Shift', 'N'], t('player.nextEpisode')] as [string[], string]] : []), [['Esc'], t('player.keys.escape')], [['?'], t('shortcuts.help')]] as [keys, what] (what)}
 			<dt class="flex gap-1">{#each keys as key (key)}<kbd>{key}</kbd>{/each}</dt>
 			<dd class="text-muted">{what}</dd>
 		{/each}
@@ -2155,6 +2374,7 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		header, footer { transition: none; }
+		:global(video::-webkit-media-text-track-container) { transition: none; }
 	}
 
 	:global(video::cue) {
@@ -2172,6 +2392,12 @@
 		font-family: inherit;
 		font-weight: 600;
 		line-height: 1.35;
+	}
+
+	/* Chromium and Safari: the box the cues are laid out in. */
+	:global(video::-webkit-media-text-track-container) {
+		transform: translateY(calc(-1 * var(--cue-lift, 0px)));
+		transition: transform 150ms ease-out;
 	}
 
 	:global(.subtitles-bg-box video::cue) {

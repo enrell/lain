@@ -3,6 +3,8 @@
 use std::path::{Component, Path};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use lain_api::Release;
+
 use crate::error::{AcqError, CODE_INVALID, Result};
 
 /// Unix seconds.
@@ -43,6 +45,46 @@ pub fn loose_key(s: &str) -> String {
         .filter(|w| !w.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Whether two release years can name one release (D-279): an unknown
+/// year (0) never conflicts, and a year either way is the same release
+/// (a festival screening, then the premiere; another country's date).
+pub fn years_agree(a: i64, b: i64) -> bool {
+    a <= 0 || b <= 0 || (a - b).abs() <= 1
+}
+
+/// Reads `rel` as the first of its alternatives whose title `known`
+/// accepts, when its own title is not one (D-279). A parser cannot tell
+/// "Show 2" the sequel from episode 2 of "Show"; the caller that searched
+/// for a title, monitors one or imports into a library can. `year` is the
+/// year the caller expects (0 when it knows none): an alternative whose
+/// year it rules out (`years_agree`) is another release, however its
+/// title reads ("Blade.Runner.2049.2017" is not "Blade Runner" of 1982).
+/// The identity moves as a whole (title, year, season, episodes,
+/// numbering) and every other field stays. The alternatives are dropped
+/// either way: they are advice for this decision, never part of a stored
+/// release. An alternative without a word in its title names nothing, so
+/// a `known` that matches loose keys cannot take it for an empty one.
+pub fn settle(mut rel: Release, known: impl Fn(&str) -> bool, year: i64) -> Release {
+    let alternatives = std::mem::take(&mut rel.alternatives);
+    if rel.title.is_empty() || known(&rel.title) {
+        return rel;
+    }
+    if let Some(alt) = alternatives
+        .into_iter()
+        .find(|a| !loose_key(&a.title).is_empty() && known(&a.title) && years_agree(a.year, year))
+    {
+        if !alt.episodes.is_empty() {
+            rel.season_pack = false;
+        }
+        rel.title = alt.title;
+        rel.year = alt.year;
+        rel.season = alt.season;
+        rel.episodes = alt.episodes;
+        rel.absolute = alt.absolute;
+    }
+    rel
 }
 
 /// At most `n` bytes, cut at a character boundary (Go cuts bytes and can
@@ -122,6 +164,83 @@ pub fn url_host(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lain_api::ReleaseIdentity;
+
+    fn alt(title: &str, season: i64, episodes: &[i64]) -> ReleaseIdentity {
+        ReleaseIdentity {
+            title: title.into(),
+            season,
+            episodes: episodes.to_vec(),
+            absolute: season == 0 && !episodes.is_empty(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn settle_takes_the_first_alternative_with_a_known_title() {
+        let wanted = |t: &str| loose_key(t) == "quiet harbor";
+        let read = Release {
+            title: "Quiet Harbor 2".into(),
+            year: 2014,
+            group: "Fansub-A".into(),
+            resolution: "1080p".into(),
+            season_pack: true,
+            alternatives: vec![alt("Quiet", 0, &[]), alt("Quiet.Harbor", 0, &[2]), alt("Quiet Harbor", 2, &[])],
+            ..Default::default()
+        };
+        let r = settle(read.clone(), wanted, 0);
+        assert_eq!((r.title.as_str(), r.season, r.episodes.clone(), r.absolute), ("Quiet.Harbor", 0, vec![2], true));
+        assert_eq!(r.year, 0, "the identity moves as a whole");
+        assert!(!r.season_pack, "an episode is not a pack");
+        assert_eq!((r.group.as_str(), r.resolution.as_str()), ("Fansub-A", "1080p"), "the rest stays");
+        assert!(r.alternatives.is_empty());
+
+        // A season without episodes leaves what the name said about a pack.
+        let r = settle(read.clone(), |t| t == "Quiet Harbor", 0);
+        assert_eq!((r.title.as_str(), r.season, r.episodes.len(), r.season_pack), ("Quiet Harbor", 2, 0, true));
+
+        // A reading without a word names nothing, even to a caller whose
+        // own key is empty.
+        let odd = Release { title: "Quiet Harbor 2".into(), alternatives: vec![alt(" - ", 0, &[3])], ..read.clone() };
+        let r = settle(odd, |t| loose_key(t).is_empty(), 0);
+        assert_eq!((r.title.as_str(), r.episodes.len()), ("Quiet Harbor 2", 0));
+
+        // The stated title is known: nothing moves, even with a known alternative.
+        let r = settle(read.clone(), |t| t.starts_with("Quiet Harbor"), 0);
+        assert_eq!((r.title.as_str(), r.year, r.season_pack), ("Quiet Harbor 2", 2014, true));
+        assert!(r.alternatives.is_empty());
+
+        // No alternative is known: the answer stands, the advice is dropped.
+        let r = settle(read.clone(), |t| t == "Silver Tide", 0);
+        assert_eq!(r, Release { alternatives: Vec::new(), ..read.clone() });
+
+        // A decline stays a decline.
+        let declined = Release { alternatives: vec![alt("Quiet Harbor", 0, &[2])], ..Default::default() };
+        assert_eq!(settle(declined, wanted, 0), Release::default());
+    }
+
+    /// "Blade.Runner.2049.2017": the sequel, or "Blade Runner" with the
+    /// name's 2017. Asked for the 1982 film, the year rules the second
+    /// reading out; a year either way, or a year nobody knows, does not.
+    #[test]
+    fn settle_never_takes_an_alternative_of_another_year() {
+        let read = |alt_year| Release {
+            title: "Blade Runner 2049".into(),
+            year: 2017,
+            alternatives: vec![ReleaseIdentity { title: "Blade Runner".into(), year: alt_year, ..Default::default() }],
+            ..Default::default()
+        };
+        let first = |t: &str| loose_key(t) == "blade runner";
+        let r = settle(read(2017), first, 1982);
+        assert_eq!((r.title.as_str(), r.year), ("Blade Runner 2049", 2017), "the answer stands");
+        assert!(r.alternatives.is_empty(), "and the advice is dropped");
+        for (alt_year, expected) in [(1983, 1982), (1981, 1982), (0, 1982), (2017, 0)] {
+            let r = settle(read(alt_year), first, expected);
+            assert_eq!((r.title.as_str(), r.year), ("Blade Runner", alt_year), "{alt_year} for {expected}");
+        }
+        assert!(years_agree(0, 0) && years_agree(2017, 0) && years_agree(0, 2017) && years_agree(2016, 2017));
+        assert!(!years_agree(2015, 2017) && !years_agree(2017, 1982));
+    }
 
     #[test]
     fn keys_and_names() {

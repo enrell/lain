@@ -2,8 +2,8 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { ensureLibraries } from '$lib/stores/media-cache.svelte';
 	import X from '@lucide/svelte/icons/x';
-	import { onMount, untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { onMount, tick, untrack } from 'svelte';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import Search from '@lucide/svelte/icons/search';
@@ -11,15 +11,20 @@
 	import type { CatalogItem } from '$lib/api/types';
 	import { api } from '$lib/api';
 	import MediaCard from '$lib/components/media/MediaCard.svelte';
-	import { FIT } from '$lib/components/media/MediaGrid.svelte';
+	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
+	import { framedGrid } from '$lib/components/media/grid';
 	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { t } from '$lib/i18n';
+	import { frameNow, settleFrame } from '$lib/stores/frames';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { recentSearches } from '$lib/stores/recent-searches.svelte';
+	import { gridKeys } from '$lib/utilities/grid-nav';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { groupItems } from '$lib/utilities/grouping';
 	import { debounce } from '$lib/utilities/debounce';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -32,11 +37,55 @@
 	let input = $state<HTMLInputElement | null>(null);
 	let items = $state<CatalogItem[]>([]);
 	const groups = $derived(groupItems(items));
+	// One frame for the results, as a library grid has: guessed when the
+	// answer is drawn, checked once against its first pictures and held.
+	let frame = $state<Shape>('portrait');
+	let checking = 0;
+	let grid = $state<HTMLElement | null>(null);
 	let total = $state(0);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let searchedFor = $state('');
 	let controller: AbortController | null = null;
+
+	// ---- where you were ----------------------------------------------------
+	// Back from a result lands where the viewer was, as a library grid does.
+	// SvelteKit restores the scroll before the results are fetched, when the
+	// page is only as tall as its header, so the spot and how many results
+	// were loaded are kept per URL and restored once they are drawn again.
+	const PLACE = 'lain.search.place:';
+	const placeKey = (url: URL) => PLACE + url.pathname + url.search;
+	let restoreTo: { y: number; count: number } | null = null;
+	beforeNavigate((nav) => {
+		if (!nav.from) return;
+		try {
+			sessionStorage.setItem(placeKey(nav.from.url), JSON.stringify({ y: window.scrollY, count: items.length }));
+		} catch {
+			/* no storage: Back lands at the top */
+		}
+	});
+	afterNavigate((nav) => {
+		if (nav.type !== 'popstate') return;
+		try {
+			const saved = JSON.parse(sessionStorage.getItem(placeKey(page.url)) ?? 'null');
+			if (saved && saved.y > 0) restoreTo = { y: Number(saved.y), count: Number(saved.count) || 0 };
+		} catch {
+			/* stay at the top */
+		}
+	});
+	/** Scrolls back to the saved spot once as many results as there were are drawn. */
+	async function restorePlace(term: string): Promise<void> {
+		const place = restoreTo;
+		if (!place) return;
+		if (items.length < place.count && items.length < total) {
+			// The viewer had loaded more: the same pages come back first.
+			await run(term, false);
+			return;
+		}
+		restoreTo = null;
+		await tick();
+		window.scrollTo({ top: place.y });
+	}
 
 	async function run(q: string, reset: boolean): Promise<void> {
 		const term = q.trim();
@@ -45,6 +94,8 @@
 		controller = abort;
 
 		if (term === '') {
+			restoreTo = null;
+			checking += 1;
 			items = [];
 			total = 0;
 			searchedFor = '';
@@ -63,10 +114,28 @@
 				offset,
 				signal: abort.signal
 			});
-			items = reset ? result.items : [...items, ...result.items];
+			const next = reset ? result.items : [...items, ...result.items];
+			// The overlays carry the titles' names and say which pictures are
+			// posters: one request, no picture.
+			await ensureEnrichments(result.items.map((i) => i.id));
+			if (abort.signal.aborted) return;
+			// Drawn at once, in the frame guessed from what is known before a
+			// picture loads: waiting for the pictures left the page blank for
+			// seconds on a cold cache. More of the same answer keeps the frame.
+			const shown = groupItems(next);
+			if (reset) frame = frameNow(shown);
+			items = next;
 			total = result.total;
 			searchedFor = term;
-			await ensureEnrichments(result.items.map((i) => i.id));
+			void restorePlace(term);
+			if (reset) {
+				// Then checked once against its first pictures: the frame changes
+				// only if the guess was wrong, and is held after that.
+				const mine = ++checking;
+				void settleFrame(shown).then((settled) => {
+					if (mine === checking) frame = settled;
+				});
+			}
 		} catch (err) {
 			if (err instanceof DOMException && err.name === 'AbortError') return;
 			error = errorMessage(err);
@@ -87,6 +156,7 @@
 	}
 
 	function onInput(event: Event): void {
+		restoreTo = null;
 		query = (event.currentTarget as HTMLInputElement).value;
 		syncUrl(query);
 		debounced(query);
@@ -115,6 +185,7 @@
 	$effect(() => {
 		const q = page.url.searchParams.get('q') ?? '';
 		if (q === untrack(() => query.trim())) return;
+		restoreTo = null;
 		query = q;
 		debounced.cancel();
 		void run(q, true);
@@ -126,6 +197,15 @@
 		if (header instanceof HTMLInputElement && header.getClientRects().length > 0) return header;
 		return input && input.getClientRects().length > 0 ? input : null;
 	}
+
+	usePageKeys(() =>
+		items.length > 0
+			? [
+					{ keys: ['↓'], label: t('pageKeys.resultsMove') },
+					{ keys: ['↑', '↓', '←', '→'], label: t('pageKeys.gridMove') }
+				]
+			: []
+	);
 
 	// `/` is this page's field where it is the one shown; the header's handler covers the rest.
 	function onKey(e: KeyboardEvent): void {
@@ -161,12 +241,23 @@
 	});
 </script>
 
+<!-- The libraries as chips, before a query and after a short answer alike. -->
+{#snippet browseChips()}
+	<div class="mt-2 flex flex-wrap gap-2">
+		{#each browse as lib (lib.id)}
+			<a href={`/library/${lib.id}`} class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-sm text-foreground hover:bg-surface-hover">
+				{lib.name} <ChevronRight class="size-3.5 text-muted" aria-hidden="true" />
+			</a>
+		{/each}
+	</div>
+{/snippet}
+
 <svelte:head><title>{query ? t('search.pageTitleQuery', { query }) : t('search.pageTitle')}</title></svelte:head>
 <svelte:window onkeydown={onKey} />
 
 <div class="space-y-6">
 	<header class="space-y-3">
-		<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('search.heading')}</h1>
+		<h1 class="page-title">{t('search.heading')}</h1>
 		<!-- A phone's field: from md up the header holds the search bar (HeaderSearch). -->
 		<form class="relative md:hidden" onsubmit={submit} role="search">
 			<Search
@@ -179,6 +270,13 @@
 				oninput={onInput}
 				onkeydown={(e) => {
 					if (e.key === 'Escape' && query !== '') clear();
+					else if (e.key === 'ArrowDown' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+						// The results are the page: the arrow walks into them.
+						const first = grid?.querySelector<HTMLElement>('a[href]');
+						if (!first) return;
+						e.preventDefault();
+						first.focus();
+					}
 				}}
 				type="search"
 				placeholder={t('search.placeholder')}
@@ -231,22 +329,15 @@
 		{/if}
 		<section aria-label={t('search.browse')}>
 			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t('search.browse')}</h2>
-			<ul class="mt-2 divide-y divide-line/50">
-				{#each browse as lib (lib.id)}
-					<li>
-						<a href={`/library/${lib.id}`} class="-mx-2 flex min-h-12 items-center justify-between gap-3 rounded-md px-2 text-sm font-medium text-foreground hover:bg-surface-hover">
-							{lib.name}
-							<ChevronRight class="size-4 text-muted" aria-hidden="true" />
-						</a>
-					</li>
-				{/each}
-			</ul>
+			{@render browseChips()}
 			<p class="mt-4 text-sm text-muted">{t('search.matches')}</p>
 		</section>
+		<!-- Something to look at before a word is typed, sized as Home's rails. -->
+		<RelatedRow recent heading={t('search.newest')} />
 	{:else if loading && items.length === 0}
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+		<div class={framedGrid('portrait')}>
 			{#each Array(12) as _}
-				<Skeleton class="h-56" />
+				<Skeleton class="aspect-[2/3] w-full rounded-xl" />
 			{/each}
 		</div>
 	{:else if emptyResults}
@@ -258,14 +349,23 @@
 		</EmptyState>
 	{:else}
 		<!-- A search answers with titles, not files: twelve episodes of one
-		     show are one card that opens the show. -->
+		     show are one card that opens the show. One frame and the library's
+		     sizes, so a result looks as the same title does everywhere else.
+		     Arrows move between results; up from the first row returns to the
+		     field (the header's, or this page's on a phone). -->
 		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-		<div class={FIT} onclick={() => recentSearches.remember(searchedFor)}>
+		<div
+			id="search-results"
+			bind:this={grid}
+			class={[framedGrid(frame), '[&>*]:scroll-mt-28 [&>*]:scroll-mb-24'].join(' ')}
+			onclick={() => recentSearches.remember(searchedFor)}
+			onkeydown={(e) => gridKeys(e, field)}
+		>
 			{#each groups as group, i (group.key)}
 				{#if group.count > 1}
-					<ShowCard {group} fit priority={i < 6} />
+					<ShowCard {group} {frame} priority={i < 6} />
 				{:else}
-					<MediaCard item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} priority={i < 6} fit />
+					<MediaCard item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} priority={i < 6} {frame} />
 				{/if}
 			{/each}
 		</div>
@@ -281,13 +381,7 @@
 		<!-- A short answer leaves the page with somewhere to go on to. -->
 		<nav aria-label={t('search.browse')} class="border-t border-line/50 pt-5">
 			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t(emptyResults ? 'search.browseInstead' : 'search.orBrowse')}</h2>
-			<div class="mt-2 flex flex-wrap gap-2">
-				{#each browse as lib (lib.id)}
-					<a href={`/library/${lib.id}`} class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-sm text-foreground hover:bg-surface-hover">
-						{lib.name} <ChevronRight class="size-3.5 text-muted" aria-hidden="true" />
-					</a>
-				{/each}
-			</div>
+			{@render browseChips()}
 		</nav>
 	{/if}
 </div>

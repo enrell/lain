@@ -7,7 +7,9 @@
 	 */
 	import { onMount } from 'svelte';
 	import { api, type AutomationState, type Library, type Monitored, type Profile, type WantedRow } from '$lib/api';
+	import Radar from '@lucide/svelte/icons/radar';
 	import Button from '$lib/components/primitives/Button.svelte';
+	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { compressUnits, unitLabel } from '$lib/acquire/format';
@@ -16,6 +18,7 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatRelative } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import MonitorDialog from './MonitorDialog.svelte';
 	import SubtitlePanel from './SubtitlePanel.svelte';
 
@@ -147,6 +150,11 @@
 		e.preventDefault();
 	}
 
+	usePageKeys(() => [
+		{ keys: ['M'], label: t('acquire.wanted.monitor') },
+		{ keys: ['R'], label: t('acquire.wanted.rss') }
+	]);
+
 	function pageKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
 		if (e.key === 'm') {
@@ -188,7 +196,10 @@
 {#if rows === null}
 	<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
 {:else if rows.length === 0}
-	<p class="py-6 text-sm text-muted">{t('acquire.wanted.empty')}</p>
+	<!-- The tab's whole content when empty: drawn as the app's empty state, not a stray line. -->
+	<EmptyState title={t('acquire.wanted.empty')} description={t('acquire.wanted.emptyBody')}>
+		{#snippet icon()}<Radar class="size-6 text-muted" aria-hidden="true" />{/snippet}
+	</EmptyState>
 {:else}
 	<p class="text-xs text-muted">{t('acquire.wanted.keys')}</p>
 	<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.tab.wanted')}>

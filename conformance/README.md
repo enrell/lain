@@ -35,7 +35,8 @@ conformance/
                   and module disable (v2)
   cases/watch/    the watch module over two real clips: playback plans,
                   streams and ranges, thumbnails, transcode sessions
-                  (progressive, HLS with signed URIs, v1), subtitles,
+                  (progressive, HLS with signed URIs, viewers sharing
+                  one session, v1), subtitles,
                   settings, local play (v1), and every
                   watch route of a private library (v2)
   fixtures/       catalog.json, the lain.catalog-export@3 document the

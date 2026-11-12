@@ -27,13 +27,18 @@
 	let swapping = $state(false);
 	let swapError = $state<string | null>(null);
 
-	async function load(): Promise<void> {
-		loading = true;
-		error = null;
+	// After a swap (`quiet`) the table refreshes in place: the skeleton swapped
+	// it out, so the focus fell to the page and the place in the list was lost.
+	async function load(quiet = false): Promise<void> {
+		if (!quiet) {
+			loading = true;
+			error = null;
+		}
 		try {
 			info = await api.plugins.info();
 		} catch (err) {
-			error = errorMessage(err);
+			if (quiet) toasts.error(errorMessage(err));
+			else error = errorMessage(err);
 		} finally {
 			loading = false;
 		}
@@ -101,16 +106,16 @@
 			if (info) info = { ...info, composition: result.composition };
 			swapOpen = false;
 			toasts.success(`${binding.capability} now generation ${result.generation}.`);
-			await load();
+			await load(true);
 		} catch (err) {
 			if (err instanceof ApiError && err.kind === 'conflict') {
 				// Stale writer: somebody changed the binding first. Reload
 				// the authoritative state instead of retrying blindly.
 				swapError = `${err.message}. Reloading the current composition.`;
-				await load();
+				await load(true);
 			} else if (err instanceof ApiError && err.kind === 'unavailable') {
 				swapError = `${err.message}. The candidate failed its health check; the previous generation keeps serving.`;
-				await load();
+				await load(true);
 			} else {
 				swapError = errorMessage(err);
 			}
@@ -201,7 +206,7 @@
 					<li class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 py-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]">
 						<div class="min-w-0">
 							{#if purpose}
-								<p class="text-sm text-foreground lg:truncate" title={purpose}>{purpose}</p>
+								<p class="text-sm text-foreground lg:line-clamp-2" title={purpose}>{purpose}</p>
 							{/if}
 							<p class="truncate font-mono text-xs {purpose ? 'text-muted' : 'text-foreground'}">
 								{shortCapability(binding.capability)}<span>{capabilityVersion(binding.capability)}</span>

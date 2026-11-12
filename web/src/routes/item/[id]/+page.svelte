@@ -50,6 +50,7 @@
 	import { isReadable } from '$lib/reader/kinds';
 	import ComicInfoPanel from '$lib/components/reader/ComicInfoPanel.svelte';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer, item?.kind); }
@@ -98,10 +99,18 @@
 		].filter((segment) => segment !== '')
 	);
 
-	async function load(): Promise<void> {
-		loading = true;
-		error = null;
-		notFound = false;
+	/*
+	 * `quiet` refreshes what is on screen after an action (a mark, Start
+	 * over): the page stays as it is meanwhile, so the focus, the scroll
+	 * position and the menu that was used stay where they were, and a
+	 * failed refresh says so without replacing the page.
+	 */
+	async function load(quiet = false): Promise<void> {
+		if (!quiet) {
+			loading = true;
+			error = null;
+			notFound = false;
+		}
 		try {
 			const [it, pl, enr, libs, eps, allProgress] = await Promise.all([
 				api.catalog.get(id),
@@ -124,7 +133,9 @@
 			series = eps.items.length > 1 ? groupFromEpisodes(eps.items) : null;
 			if (series) await ensureEnrichments(series.items.map((episode) => episode.id));
 		} catch (err) {
-			if (err instanceof ApiError && err.kind === 'not-found') {
+			if (quiet) {
+				toasts.error(errorMessage(err, t('title.refreshFailed')));
+			} else if (err instanceof ApiError && err.kind === 'not-found') {
 				notFound = true;
 			} else {
 				error = errorMessage(err);
@@ -155,11 +166,24 @@
 		reading || !item ? [] : (series ? series.items : [item]).filter((it) => !it.missing).map((it) => it.id)
 	);
 	function pageKey(e: KeyboardEvent): void {
-		if (e.key !== 't' || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if ((e.key !== 't' && e.key !== 'p') || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+		if (isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if (e.key === 'p') {
+			// The hero's own Play (or Resume, Read) link, so an external player still opens as a click would.
+			const play = document.querySelector<HTMLAnchorElement>('a[data-title-play]');
+			if (!play) return;
+			e.preventDefault();
+			play.click();
+			return;
+		}
 		if (!session.isAdmin || subtitleItems.length === 0) return;
 		e.preventDefault();
 		subtitlesOpen = true;
 	}
+	usePageKeys(() => [
+		{ keys: ['P'], label: t(reading ? 'pageKeys.titleRead' : 'pageKeys.titlePlay') },
+		...(session.isAdmin && subtitleItems.length > 0 ? [{ keys: ['T'], label: t('pageKeys.subtitles') }] : [])
+	]);
 	const ratio = $derived(progress ? progressRatio(progress) : 0);
 
 	// What an admin can do with the title, behind one "Manage" menu. The
@@ -317,7 +341,7 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if series}
 	{#key series.key}
-		<TitleView group={series} {progressMap} {libraries} {manage} onProgressChanged={() => void load()} />
+		<TitleView group={series} {progressMap} {libraries} {manage} onProgressChanged={() => void load(true)} />
 	{/key}
 	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} /></div>{/if}
 {:else if item}
@@ -339,11 +363,13 @@
 			<button type="button" class="absolute left-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur md:hidden" aria-label="Back" onclick={() => history.back()}>
 				<ArrowLeft class="size-5" aria-hidden="true" />
 			</button>
-			<div class="relative flex w-full flex-col gap-5 pb-6 pt-16 md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
-				<div class="w-24 shrink-0 md:w-52">
+			<!-- On a phone the cover sits beside the name, as on a series page (TitleView). -->
+			<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-16 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
+				<div class="w-full shrink-0 md:w-52">
 					<Poster {item} {enrichment} class="aspect-[2/3] rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10" priority />
 				</div>
-				<div class="hero-monolith-copy min-w-0 flex-1">
+				<div class="hero-monolith-copy hero-monolith-split min-w-0 flex-1">
+					<div class="min-w-0 @container">
 					{#if library}
 						<a href={`/library/${library.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
 							<ChevronLeft class="size-4" aria-hidden="true" /> {library.name}
@@ -361,11 +387,13 @@
 						</ul>
 					{/if}
 
+					</div>
+					<div class="max-md:col-span-2">
 					<!-- The primary action sits directly under the title, above the
 					     optional prose, so it is on screen on arrival at 320x568. -->
-					<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
+					<div class="title-actions flex flex-wrap items-center gap-x-2 gap-y-3 md:mt-6">
 						{#if playable || (!item.missing && preferredPlayer !== 'browser')}
-							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
+							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
 								<Play class="size-4 fill-current" />
 								{reading ? (resumeAt > 0 ? `Continue from page ${Math.floor(resumeAt)}` : 'Read') : resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
 							</LinkButton>
@@ -400,6 +428,7 @@
 					{#if enrichment?.synopsis}
 						<p class="mt-5 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{enrichment.synopsis}</p>
 					{/if}
+					</div>
 				</div>
 			</div>
 		</header>

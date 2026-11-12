@@ -21,6 +21,7 @@
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { episodeLabel, type SeriesGroup } from '$lib/utilities/grouping';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
+	import { wideStill } from '$lib/stores/frames';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -29,14 +30,18 @@
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Poster from '$lib/components/media/Poster.svelte';
+	import { framedGrid } from '$lib/components/media/grid';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import { formatLength, formatTime } from '$lib/utilities/format';
+	import { playTarget } from '$lib/utilities/progress';
 	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
 	import Settings2 from '@lucide/svelte/icons/settings-2';
 	import { t } from '$lib/i18n';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
+	import { gridKeys } from '$lib/utilities/grid-nav';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	// How long each episode is, asked once for the whole title (D-276).
@@ -77,8 +82,12 @@
 	const player = $derived<PreferredPlayer>(reading ? 'browser' : preferredPlayer);
 	function playHref(id: string): string { return playbackHref(origin, id, player, group.items[0]?.kind); }
 	function label(item: CatalogItem): string { return reading ? readingLabel(item) : episodeLabel(item); }
+	// A comic split into volumes (Vol 1, Vol 2, no issue numbers) is counted
+	// in volumes, as its library card does; the page said "3 issues" and
+	// "Seasons 3" under a card that said "3 volumes".
+	const byVolume = $derived(reading && group.items.every((i) => i.season > 0 && i.episode <= 0));
 	const unitPlural = $derived(
-		!reading ? 'episodes' : group.items[0]?.kind !== 'manga' ? 'issues' : group.items.some((i) => i.episode > 0) ? 'volumes & chapters' : 'volumes'
+		!reading ? 'episodes' : group.items[0]?.kind !== 'manga' ? (byVolume ? 'volumes' : 'issues') : group.items.some((i) => i.episode > 0) ? 'volumes & chapters' : 'volumes'
 	);
 
 	const seasons = $derived(
@@ -109,7 +118,7 @@
 	);
 
 	const countLabel = $derived(
-		t(!reading ? 'title.episodes' : group.items[0]?.kind === 'manga' ? 'title.volumes' : 'title.issues', { count: group.count })
+		t(!reading ? 'title.episodes' : group.items[0]?.kind === 'manga' || byVolume ? 'title.volumes' : 'title.issues', { count: group.count })
 	);
 	const totalLength = $derived(group.items.reduce((sum, i) => sum + (durations.get(i.id) ?? 0), 0));
 	const meta = $derived([group.year > 0 ? String(group.year) : '', countLabel].filter(Boolean).join('  ·  '));
@@ -163,6 +172,11 @@
 		selected = new Set();
 	}
 
+	usePageKeys(() => [
+		...(group.items.length > 1 ? [{ keys: ['↑', '↓', '←', '→'], label: t(reading ? 'pageKeys.partsMove' : 'pageKeys.episodesMove') }] : []),
+		...(selecting ? [{ keys: ['Esc'], label: t('pageKeys.selectDone') }] : [])
+	]);
+
 	// One click for the whole title: select every episode that still has
 	// a file — across all seasons, not just the visible filter — and open
 	// the same confirmation the manual selection uses.
@@ -205,12 +219,7 @@
 	// A book left on its first page is being read, as Home and the library already say.
 	const minResume = $derived(reading ? 1 : 5);
 	const available = $derived(group.items.filter((i) => !isGone(i)));
-	const resumeTarget = $derived(
-		available.find((i) => {
-			const p = progressMap?.get(i.id);
-			return p && !p.completed && p.position_sec >= minResume;
-		}) ?? available[0]
-	);
+	const resumeTarget = $derived(playTarget(available, progressMap, minResume));
 	const resumeProgress = $derived(
 		resumeTarget ? (progressMap?.get(resumeTarget.id) ?? null) : null
 	);
@@ -233,7 +242,10 @@
 			: resuming
 				? // The phrase the smoke test keys on, then which episode it is.
 					`Resume from ${formatTime(resumeProgress!.position_sec)} · ${label(resumeTarget!)}`
-				: 'Play'
+				: resumeTarget && resumeTarget.id !== available[0]?.id
+					? // Which episode Play goes on with, once it is not the first.
+						t('title.playPart', { part: label(resumeTarget) })
+					: 'Play'
 	);
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
@@ -394,12 +406,16 @@
 		</button>
 		<!-- One template for every kind of title: the cover, then what it is and what it can do.
 		     Both start on one line: aligned at the bottom, the cover floated mid-hero beside a
-		     long synopsis and the copy floated beside a cover taller than it. -->
-		<div class="relative flex w-full flex-col gap-5 pb-6 pt-16 md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
-			<div class="aspect-[2/3] w-24 shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
+		     long synopsis and the copy floated beside a cover taller than it. On a phone the
+		     cover sits beside the name, not above it: stacked, it put every episode below
+		     the fold. -->
+		<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-16 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
+			<div class="aspect-[2/3] w-full shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
-			<div class="hero-monolith-copy min-w-0 max-w-6xl flex-1">
+			<div class="hero-monolith-copy hero-monolith-split min-w-0 max-w-6xl flex-1">
+				<!-- The name block: beside the cover on a phone (the parent is `contents` there). -->
+				<div class="min-w-0 @container">
 				{#if homeLibrary}
 					<a href={`/library/${homeLibrary.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
 						<ChevronLeft class="size-4" aria-hidden="true" /> {homeLibrary.name}
@@ -415,14 +431,16 @@
 						{/each}
 					</ul>
 				{/if}
+				</div>
+				<div class="max-md:col-span-2">
 				<!-- The main action and what else the title can do, where the eye
 				     already is; the rail below keeps the cover and the facts. -->
 				<!-- On a phone: the main action and the heart on one line, then the score,
 				     Download and More (as an icon) on the next. Spelled out, More fell onto a
 				     third line of its own. -->
-				<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
+				<div class="title-actions flex flex-wrap items-center gap-x-2 gap-y-3 md:mt-6">
 					{#if resumeTarget}
-						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
+						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
 						</LinkButton>
 					{:else}
@@ -451,6 +469,7 @@
 						<span class={['block text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? '' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
 					</button>
 				{/if}
+				</div>
 			</div>
 		</div>
 	</header>
@@ -488,7 +507,7 @@
 			{/if}
 
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-				<h2 class="text-lg font-semibold tracking-[-0.02em] text-foreground capitalize">
+				<h2 class="section-title capitalize">
 					{reading ? unitPlural : 'Episodes'}
 					{#if selecting}
 						<span class="ml-2 align-middle font-mono text-[11px] font-normal uppercase tracking-[0.14em] text-muted">
@@ -532,7 +551,12 @@
 				{/if}
 			</div>
 			<!-- More, smaller cards on a wide screen: three big ones put every name below the fold. -->
-			<ul class="grid {reading ? 'grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-4 lg:grid-cols-5 xl:grid-cols-6' : 'episode-rows grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'}" data-episode-grid>
+			<!-- Volumes are sized as every poster grid is (two a row on a phone, where
+			     three were cramped); episodes as wide cards, rows on a phone. Arrows
+			     move between the parts as in a library grid; up from the first row
+			     returns to Play. -->
+			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+			<ul class={reading ? framedGrid('portrait') : 'episode-rows grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'} data-episode-grid onkeydown={(e) => gridKeys(e, () => document.querySelector<HTMLElement>('a[data-title-play]'))}>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
@@ -545,16 +569,10 @@
 								type="button"
 								onclick={() => toggleSelect(item.id)}
 								aria-pressed={selected.has(item.id)}
-								class={[
-									'group relative block w-full overflow-hidden rounded-xl border bg-surface/30 text-left transition duration-300',
-									selected.has(item.id)
-										? 'border-accent ring-1 ring-accent'
-										: 'border-line/60 hover:border-white/15',
-									gone ? 'opacity-60' : ''
-								].join(' ')}
+								class={['group relative block w-full rounded-card text-left', gone ? 'opacity-60' : ''].join(' ')}
 								aria-label={`${selected.has(item.id) ? 'Deselect' : 'Select'} ${label(item)}`}
 							>
-								{@render episodeCard(item, progress, ratio, gone)}
+								{@render episodeCard(item, progress, ratio, gone, false, selected.has(item.id))}
 								<span
 									class={[
 										'absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border backdrop-blur transition-colors',
@@ -571,7 +589,7 @@
 							     the card stays for context (progress, titles) but does
 							     not navigate. -->
 							<div
-								class="block overflow-hidden rounded-xl border border-line/60 bg-surface/30 opacity-60"
+								class="block opacity-60"
 								aria-label={`${label(item)}, missing from disk`}
 							>
 								{@render episodeCard(item, progress, ratio, gone)}
@@ -580,7 +598,7 @@
 							<a
 								href={playHref(item.id)}
 								onclick={(e) => playExternalClick(e, item.id, player)}
-								class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
+								class="group block rounded-card transition-transform duration-300 ease-out hover:-translate-y-1"
 								aria-label={`${reading ? 'Read' : 'Play'} ${label(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 							>
 								{@render episodeCard(item, progress, ratio, gone, true)}
@@ -606,14 +624,15 @@
 							<dd class="mt-1 font-semibold text-foreground">{group.year}</dd>
 						</div>
 					{/if}
-					{#if seasons.length > 0}
+					<!-- A reading file's season is its volume: the count below says it. -->
+					{#if seasons.length > 0 && !reading}
 						<div class="border-t border-line/60 py-3">
 							<dt class="text-xs uppercase tracking-wider text-muted">Seasons</dt>
 							<dd class="mt-1 font-semibold text-foreground">{seasons.length}</dd>
 						</div>
 					{/if}
 					<div class="border-t border-line/60 py-3">
-						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? (group.items[0]?.kind === 'manga' ? 'Volumes' : 'Issues') : 'Episodes'}</dt>
+						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? (group.items[0]?.kind === 'manga' || byVolume ? 'Volumes' : 'Issues') : 'Episodes'}</dt>
 						<dd class="mt-1 font-semibold text-foreground">{group.count}</dd>
 					</div>
 					{#if totalLength > 0}
@@ -637,15 +656,24 @@
 	</div>
 </article>
 
-{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false)}
-	<div class="episode-thumb relative {reading ? 'aspect-[3/4]' : 'aspect-video'} overflow-hidden bg-surface">
+{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false, chosen = false)}
+	<!-- A card as every other card in the app is drawn: the picture in a rounded
+	     frame with a faint ring, the words under it. A bordered box around both
+	     made the episodes and volumes a second kind of card. -->
+	<div
+		class={[
+			'episode-thumb relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] transition duration-300',
+			reading ? 'aspect-[2/3]' : 'aspect-video',
+			chosen ? 'ring-2 ring-accent' : 'ring-1 ring-white/5 group-hover:ring-white/15'
+		].join(' ')}
+	>
 		<img
-			src={stillUrl(item.id)}
+			src={wideStill(item, 480)}
 			alt=""
 			aria-hidden="true"
 			loading="lazy"
 			decoding="async"
-			class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+			class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
 		/>
 		{#if !gone}
 			<span
@@ -660,16 +688,17 @@
 			</span>
 		{/if}
 		{#if ratio > 0}
-			<div class="absolute inset-x-0 bottom-0 h-1.5 bg-black/50">
-				<div class="h-full bg-accent" style={`width: ${ratio}%`}></div>
+			<!-- The bar every card wears: inset and rounded, not a strip on the edge. -->
+			<div class="absolute inset-x-0 bottom-0 p-1.5">
+				<ProgressBar ratio={ratio / 100} label={t(reading ? 'title.readProgress' : 'title.watchProgress')} class="bg-black/50" />
 			</div>
 		{/if}
 	</div>
 	<!-- Room at the end for the card's ⋮, which sits over this corner. -->
-	<div class="episode-text min-w-0 p-3" style:padding-inline-end={menu ? '3rem' : undefined}>
-		<p class="text-xs font-semibold text-accent">{label(item)}</p>
+	<div class="episode-text min-w-0 pt-3" style:padding-inline-end={menu ? '2.75rem' : undefined}>
+		<p class="truncate text-sm font-semibold leading-snug tracking-[-0.015em] text-foreground">{label(item)}</p>
 		{#if item.title !== group.title}
-			<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>
+			<p class="mt-0.5 truncate text-sm text-foreground/80">{item.title}</p>
 		{/if}
 		<p class={['mt-1 truncate text-xs', gone ? 'text-danger' : 'text-muted'].join(' ')}>
 			{gone ? 'Missing from disk' : cardLine(item, progress)}

@@ -20,12 +20,14 @@
 		applySafeAutomaticPolicy,
 		availableHardwareBackends,
 		cloneTranscodeSettings,
+		engineChoices,
 		settingsEqual
 	} from '$lib/settings/playback-policy';
 	import { page } from '$app/state';
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
 	import StagedBar from '$lib/components/settings/StagedBar.svelte';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -56,6 +58,7 @@
 	const hardwareActive = $derived(
 		!!settings && settings.hardware_acceleration !== 'none'
 	);
+	const engines = $derived(engineChoices(settings?.hardware_acceleration ?? 'none', readyHardware));
 	const customEncodingActive = $derived(
 		!!settings &&
 		(settings.allow_hevc ||
@@ -348,6 +351,8 @@
 
 	// "/" jumps to the setting search, as in most developer tools.
 	let searchInput = $state<HTMLInputElement>();
+	usePageKeys(() => [{ keys: ['/'], label: t('pageKeys.settingsFilter') }]);
+
 	function onSlash(e: KeyboardEvent): void {
 		const t = e.target as HTMLElement | null;
 		if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -436,15 +441,29 @@
 				</div>
 			</SettingRow>
 			<SettingRow label="Video engine" hint="The first backend that passed the probe is used; failures fall back to software visibly.">
-				<span class="font-mono text-xs uppercase tracking-[0.1em] text-foreground">
-					{hardwareActive ? settings.hardware_acceleration : 'software'}
-				</span>
-				{#each readyHardware.filter((b) => b !== settings?.hardware_acceleration) as backend (backend)}
-					<Button variant="ghost" size="field" onclick={() => stageHardware(backend)}>Use {backend.toUpperCase()}</Button>
-				{/each}
-				{#if hardwareActive}
-					<Button variant="ghost" size="field" onclick={stageSoftware}>Use software</Button>
-				{/if}
+				<!-- One segmented choice, drawn as the policy's above: the engine in use
+				     and the ones the probe passed. A word beside two bare "Use …" buttons
+				     read as a label and two links, not as one control. -->
+				<div class="inline-flex flex-wrap rounded-md bg-field p-0.5" role="radiogroup" aria-label="Video engine">
+					{#each engines as backend (backend)}
+						{@const on = (hardwareActive ? settings.hardware_acceleration : 'none') === backend}
+						<button
+							type="button"
+							role="radio"
+							aria-checked={on}
+							class="h-8 rounded px-3 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors {on
+								? 'bg-foreground/[0.12] text-foreground'
+								: 'text-muted hover:text-foreground'}"
+							onclick={() => {
+								if (on) return;
+								if (backend === 'none') stageSoftware();
+								else stageHardware(backend);
+							}}
+						>
+							{backend === 'none' ? 'software' : backend}
+						</button>
+					{/each}
+				</div>
 			</SettingRow>
 			<SettingRow label="Delivery">
 				<span class="font-mono text-xs text-foreground">{settings.default_delivery === 'hls' ? 'HLS · starts early' : 'progressive · full file'}</span>

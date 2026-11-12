@@ -5,7 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-12
+
 ### Added
+- **Catalog answers say what each thumbnail is** (D-282): `GET
+  /api/catalog`, `/api/catalog/{id}`, `/api/catalog/{id}/episodes` and
+  `/api/search` give every item an additive `thumbnail`: `sidecar` (a
+  still that came with the file, D-269, with its `aspect` read from the
+  picture's header), `cover` (a comic archive's cover page) or `frame`
+  (cut from the video). Filled on each read, never stored, so a poster
+  added next to a file counts at once.
 - **`https` servers in every native client** (D-277): `lain-client` speaks
   TLS through `lain-http`'s rustls setup, so `lain login --server
   https://...`, the desktop app and Android reach a server behind a reverse
@@ -15,6 +24,59 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `lain_<version>_android.apk` and its `.sha256` to the release, signed
   with the project's key; the version code comes from the tag
   (`v0.3.1` is 3001), so every release installs over the one before.
+- **Release alternatives** (D-279): a release name that reads more than
+  one way ("Show 2 - 03": episode 3 of the sequel, or of season 2) is
+  settled by the title the server expects. With lain-parser 1.3.0 the
+  `lain-release-model` provider asks for up to five other readings; a
+  search takes the one that names its query, automation and its grabs
+  the one that names the monitored title or an alias, and an import the
+  one that names the grabbed release; a reading whose year is more than
+  one from the expected year is never taken. A release the parser
+  answers as a monitored title stays that title's: with "Show" and
+  "Show 2" both monitored, "Show 2 - 03" never becomes season 2 of
+  "Show". A manual grab keeps the parser's answer, and a library's other
+  titles never pull a sequel into the show it follows.
+  `GET /api/acquire/parse` shows the readings (`alternatives`,
+  additive); they are never stored in a grab or returned in a search.
+  An older parser service, or the tokenizer, offers none and nothing
+  changes.
+- **Audio language and subtitle language apart** (D-280): Japanese audio
+  with Portuguese subtitles, and no subtitles over a film dubbed in
+  Portuguese. The account keeps an audio language, a subtitle language
+  and when subtitles show (Auto: when the audio is not in your subtitle
+  language; Always; Forced only; Off). Settings > Playback on the web and
+  Settings in the Android app have the three rows; the web player, the
+  Android player, mpv and VLC opened by the server and `lain watch` pick
+  tracks with them, and a choice made in the player for a title still
+  wins (the web player now remembers it per title too). A transcode
+  started without a track choice plays the preferred audio language, so
+  the Android app hears it in an HLS session. `lain language` gains
+  `--audio`, `--subtitles` and `--subtitle-mode`.
+- **API**: a player can name itself with a `viewer` id when it starts or
+  joins a transcode session and when it releases it (D-281). Two players
+  with the same options share one session; it now stops only when the
+  last of them leaves, and a finished one stays cached. Requests without
+  a viewer behave as before. The web player sends one; `lain-client` has
+  `release_transcode`.
+- **First-run pages for Tracking, Social and Acquire** (web): on a server
+  with nothing of yours there yet, each says in a line or two what it is
+  for and offers the first step as its main action, with a key (connect
+  AniList, or sync a linked account that came back empty; find people and
+  the privacy settings; add an indexer, or a library first), over art from
+  the server's own library, in place of a grey box.
+- **`?` lists the keys of the screen in view** (web), above the keys that
+  work everywhere: a title's P (play or resume, new), F, R, S, C, M, D and
+  T, the library's filters and grid keys, Social's and Acquire's tabs, the
+  settings chords and row keys, each only while it does something. A page
+  filter that takes `/` hides the header's `/` cap.
+- **More keys** (web): Left and Right walk a row of cards (Home, the
+  library's shelves, "More in"); the arrows move between a title's
+  episodes and volumes; Ctrl+Z takes the newest toast's Undo; in the
+  player, C turns subtitles on and off, < and > set the speed and E hides
+  the episode list beside the picture (also a bar button, remembered).
+- **A page for unknown addresses** (web), with Home focused and the
+  library beside it, in place of a bare "404 Not Found"; `/tracking`
+  opens Tracking.
 
 ### Changed
 - **A server address typed without `http://` or `https://`** (D-277) is
@@ -24,6 +86,246 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   otherwise; an `https` that fails is never retried as `http`. This holds
   in the CLI, the desktop app and Android, whose connect field no longer
   starts at `http://`.
+- `preferred_language` stays for older clients: setting it sets both
+  languages, and it now reads as the subtitle language when one is set.
+  Accounts saved before keep exactly their old behaviour.
+- **Search results look like a library** (web): one card frame per answer,
+  the library's sizes (those of Home's rails) and the same treatment of
+  stills and posters, where results were rows of mixed shapes. Arrow keys
+  move between results and from the header's field into them; up from the
+  first row goes back to the field. The library grid answers the same keys.
+  Before a query the page offers the libraries as chips, as it does after a
+  short answer, and a rail of the newest titles.
+- **Social's feed opens with its titles** (web): what friends watch and
+  read is a rail of cards at Home's sizes over the activity list. The
+  people search shows its key in the field; spelled out in the
+  placeholder it ran off a phone's width.
+- **Home shows posters whole** (web): a library's row takes the frame its
+  pictures decide (a films library of posters is a poster rail, not
+  widescreen cards cropping each poster), and an upright picture in a
+  widescreen card is shown whole over a blurred copy of itself.
+- **Tracking's grid uses the library's card sizes** (web), and a wide
+  cover is shown whole instead of cropped to a poster.
+- **The library's view switch stays put** (web): By library and All titles
+  hold it at the same place, at the end of the bar's first row; in All
+  titles it sat a row lower, under the search. With the switch beside the
+  search, sort and tile size join the filters sheet below a wide screen.
+- **One heading scale** (web): a page's own name (Library, a library,
+  Favorites, Search, Tracking, Social, Acquire, Settings, a collection, a
+  profile) is set at Settings' size, and a section under it (a rail, a
+  title's episodes or volumes, More in, a search's suggestions) at Home's
+  rail size. Library named its page at 20 px over 24 px rails, and a
+  title page's sections were 18 px. Acquire and Social keep their one-line
+  lead on every tab: hidden on the first-run tab only, it made the tabs
+  under it jump each time that tab was left.
+- **Episode and volume cards look like every other card** (web): the
+  picture in a rounded frame with a faint ring, the words under it, and
+  the inset progress bar the library's cards wear; a bordered box around
+  picture and words made them a second kind of card. Volumes are sized as
+  every poster grid is: two a row on a phone, where three were cramped.
+- **One main action on a title page** (web): Rate, Share and Add to
+  collection under Community, and a comic's Save offline, are the quiet
+  buttons of the hero's row; an accent Rate competed with Play.
+- **The library's toolbar is one kind of control** (web): the search,
+  sort, tile size and Sort & filter are filled fields like the sort
+  picker, where an outlined field, a filled picker and an outlined button
+  stood side by side. The genre finder and the library picker in the
+  filters end where the rows under them do.
+- **The library's header on a phone** (web): the admin actions keep their
+  words on one line ("Manage libraries" broke inside its chip), and the
+  row of library names fades at its end, so a name scrolled past the view
+  switch reads as more to swipe to rather than missing.
+- **Empty tabs** (web): Acquire's Queue and Wanted and Social's
+  Notifications and Collections, when empty, show the app's empty state
+  (an icon, what the tab holds, how to fill it) instead of one grey line.
+- **Settings controls** (web): Transcoding's video engine is one segmented
+  choice like the policy above it (the engine in use, the ones the probe
+  passed, software), where a mono word sat beside two bare "Use …" buttons;
+  Playback's Render on is as wide as every other picker in its column; a
+  plugin job's description wraps to two lines instead of stopping mid-word.
+- The reader's toggles keep a gap between them (web): Spread and Cover
+  alone, both on, read as one block.
+- **A title page on a phone starts with its episodes in view** (web): the
+  cover sits beside the title's name instead of above it, so the first
+  episodes or volumes show under the actions where the hero filled the
+  whole screen. The name is sized to the column beside the cover, so a
+  long word ("Monochrome") fits it instead of running into the edge.
+- **First-run pages on a tablet** (web): Tracking, Social and Acquire set
+  their poster fan beside the copy from 1024 px; at 768 px it left the
+  headline one or two words a line.
+- **Play plays** (web): the player starts once the file is ready instead of
+  waiting paused for a second press, so Autoplay next really plays the next
+  episode. A title's Play goes on from the episode after the last one
+  watched (Play · Episode 4), and Home's hero offers that episode as Up
+  next, or a new title from its first episode rather than whichever file a
+  scan added last.
+- **Audio and quality in direct play** (web): the player's settings offer
+  the file's other audio tracks and a lower quality when the browser plays
+  the file itself; picking one switches to a prepared stream at the same
+  place. Tracks are named by language ("Portuguese", not "por"), and the
+  quality ladder stops at the file's own size, width and height alike: a
+  2160p rung is not offered for a 1080p file, while a 1920x800 film keeps
+  its 1080p.
+- **A scan asked for during a scan runs after it** (web): Add and scan on a
+  second library while the first one scanned did nothing (the server
+  answers 409); the page now queues the scan, says so, and starts it when
+  the running one ends. The slow metadata step says the titles are already
+  browsable.
+- **First run** (web): setup and sign-in focus the name field, a wrong
+  password is selected for retyping, the welcome step's Add a media library
+  (Enter) opens the Add dialog, and both screens go through `t()`. Dialogs
+  open on their first field instead of the close button.
+
+### Fixed
+- **Web**: a title page or player on a server with no local player (no mpv or
+  VLC on its machine) threw on every render: the server answers
+  `players: null` there, and the Open with menu read its length.
+- **A first visit draws in its final frame** (web, D-282): a films or
+  shows library, All titles, search results and Home's library rows no
+  longer draw wide cards that turn upright a moment later (or after
+  seconds on a cold server); the frame comes from what the server says
+  of each picture, and only pictures it knows nothing about are measured.
+  Home's library rows are drawn with the page instead of after their
+  pictures.
+- **Back to a search page returns to the same spot** (web), with as many
+  results loaded as before, as a library grid does.
+- **An episode's still is the episode's** (web): where a show's poster
+  sits next to its first episode, the episode lists of the title page and
+  the player, and Continue watching, show that episode's frame instead of
+  the poster cut to 16:9.
+- **Home's hero shows an upright poster whole** (web): a film whose only
+  art is its poster had it blown up across the hero, its lettering cut
+  away; it is now shown beside the title over a blurred copy, as a book's
+  cover is.
+- **"New in your library" lists whole shows** (web): a show among the
+  newest files counted only those files ("5 of 21 watched") and showed a
+  later episode's still instead of its poster.
+- **Years in acquisition** (D-279): a search with a year rejects a
+  release whose year is more than one away ("year does not match"); it
+  never compared years before. A model reading whose title holds the
+  year ("Blade.Runner.2049.1080p" read as "Blade Runner 2049") no longer
+  takes it as the release year, so a monitored "Blade Runner 2049"
+  (2017) no longer refuses that release.
+- Android: the audio and subtitles picked in the player for a title now
+  carry to its next episode; the pick was kept per episode. A forced
+  (signs) subtitle track is listed apart from the full one in its
+  language.
+- Android: on a video the server converts (HLS), the audio menu lists the
+  file's audio tracks and a pick plays from where you are in the chosen
+  language; an episode opens in the audio language last picked for its
+  title instead of the account's. A converted stream carries one audio
+  track, so the pick could not switch inside it.
+- **Web**: a link clicked within a moment of typing in the header's
+  search field on the Search page no longer bounces back to Search with
+  the field focused.
+- **Web**: an account without the admin role that opens an admin
+  settings page lands on its own Profile settings; when an admin had last
+  used Settings in the same browser it used to bounce between two pages
+  forever.
+- **Web**: leaving the player stops its transcode session if it is still
+  being prepared and no other player (another tab or device) is watching
+  it, so the next title starts at once instead of waiting behind it for
+  up to two minutes; a finished session stays cached.
+- **Web**: a session the player started for a seek, track or quality
+  change that a second change replaced before the server answered is
+  released too, instead of running on until the idle timeout.
+- **Web**: pausing (K, Space) before a just-started play has begun no
+  longer shows "The browser blocked playback" and pins the controls.
+- **Server**: an HLS session whose hardware encode fails and is retried
+  in software starts that retry from an empty directory: the failed
+  attempt's playlist is withdrawn and its segments are no longer served
+  next to the retry's init segment. The retry's init segment and
+  segments have names of their own (`sw-init.mp4`, `sw-seg…`), so a
+  player that was watching the failed attempt never decodes the retry's
+  segments with the failed attempt's init segment it kept or cached.
+- **Server**: a transcode session started again just as it was stopped
+  (a viewer joining as the last one leaves, or a play after an idle
+  stop) waits for the stopped one to finish cleaning up, instead of
+  losing its files to that cleanup.
+- **Grids no longer change shape while they load, nor wait for their
+  pictures** (web): a library grid, a shelf, the rail under a title and
+  search results are drawn as soon as their titles are here, in the frame
+  guessed from what is known before a picture loads (posters in the
+  overlays, reading files, and what this browser has seen of each public
+  library's stills), then checked once against their first pictures and
+  changed only if the guess was wrong, and held after that.
+  A grid opened in one shape and turned to the other as its posters came
+  in; measuring first instead left a query or a library on a cold
+  thumbnail cache with nothing on screen for up to 2.5 s. A card's
+  picture pulses until it loads. A provider's cover (a wide banner) is no
+  longer taken for a poster.
+- **Acquire no longer flashes "no library"** (web) while its libraries load.
+- **Acquire's forms on a phone** (web): the link field of the Queue had
+  shrunk beside the library picker to a few letters; the form stacks, and
+  the labels of both forms line up whether or not they carry a key.
+- **Activity rows on a phone** (web): the person and the time take one
+  line and what they did the next, where the name and verb columns left
+  the title a few letters; an episode of a show without seasons reads E5,
+  not S0E5.
+- **`/` finds people on Social again** (web): the header's search had taken
+  the key since it became a field; the page now moves focus on to its
+  people search once the Friends tab has drawn it, as other pages do.
+- **Empty states sit open on the page** (web), an icon and a line or two
+  with no grey panel around them (no search match, an empty library, a
+  missing title or profile).
+- **The Kind filter names kinds** (web): Films and clips, Episodes, Manga,
+  Comics, where it listed the catalog's raw words.
+- **Playback options and Settings > Transcoding no longer wait for the
+  ffmpeg probe** (D-031): on a machine with a GPU the capability probe
+  could hold a request for 20 s or more when the machine was busy, and
+  every request that found no cached result ran a probe of its own. The
+  server now probes when it starts, requests share one probe, and a
+  result older than 10 minutes (30 s when one of its checks timed out
+  or no ffmpeg was found) is answered at once while one probe refreshes
+  it in the background. The probe's checks (tone mapping, video effects,
+  each hardware backend) run at once. Saving the transcoding settings
+  probes again in the background.
+- **Staged server settings are not lost by accident** (web): Escape
+  discards them only when pressed twice, and leaving the section with
+  changes staged asks to apply, discard or stay; Profile's unsaved name
+  and bio ask the same.
+- **Confirmations before what cannot be undone** (web): revoking an API
+  key and deleting a comment ask first; disabling a user and taking a
+  favorite off the profile offer Undo.
+- **Dialogs open on what they are for** (web): the first field, or the
+  primary action, never the close button (a confirmation lands on its
+  action with Enter beside it; one that deletes files lands on Cancel);
+  the player's key list closes on Escape and no longer lets keys through
+  to the video; the reader's takes the focus and keeps it.
+- **Marking a title's episodes keeps the page where it was** (web): the
+  refresh no longer swaps the page for its skeleton, which jumped to the
+  top and dropped the focus; a provider swap on Plugins likewise.
+- **Backup's restore steps work as written** (web): they named a `.db`
+  file and restored into the live, non-empty data folder; they now move
+  it aside first and name the archive just downloaded.
+- **Accessibility** (web): a switch beside its label is named by it, and
+  row switches by their row; Social's and Acquire's tabs follow the tabs
+  pattern (arrows, one Tab stop) and are 44 px tall on a phone; switches
+  take a 56 x 44 px press; a field's hint or error is read with it; the
+  password and first-run forms point at the field to fix; sign-in and
+  setup start in the username; `/library?view=all` opens All titles.
+- **Enter in the Add library dialog adds the library** (web); it went up a
+  folder and renamed the library after the parent. The dialog no longer
+  names a library after the folder the picker opens on.
+- **Rating with the keyboard** (web): a digit then Enter saves that score;
+  Enter used to press the focused 1 instead.
+- **The reader keeps the page reached** (web) when the tab is closed or
+  reloaded; the last turns were lost.
+- **Subtitles stay above the player's controls** (web) while they show.
+- **Counts that disagreed** (web): Search's New in your library said
+  "1 of 21 watched" for a 26-episode show, and a comic in volumes was
+  "3 issues, Seasons 3" on its page under a card saying "3 volumes".
+- **Library rows at tablet width** (web) keep their names; beside the
+  settings rail the controls took the whole row.
+- **An account without Acquire** opening `/acquire` lands on Home, not on
+  its profile settings.
+- **A prepared stream starts at the viewer's place** (web): one that ran
+  ahead of playback, such as an audio switch that copies the video,
+  started near the end of what it had written, up to an hour on. Leaving
+  direct play no longer shows, and saves, twice the position.
+- **Focus on the first screens** (web): the setup fields show which one
+  has focus, and a dialog that opens on choices (the filters sheet, the
+  rating) no longer focuses a field further down first.
 
 ## [0.3.0] - 2026-11-12
 

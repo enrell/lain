@@ -67,6 +67,35 @@ async fn auth_session_and_account() {
         .unwrap();
     assert_eq!((u.profile.display_name.as_str(), u.profile.avatar.mascot.as_str()), ("The Admin", "moth"));
     assert_eq!(c.set_preferred_language(" JPN ").await.unwrap().preferred_language, "jpn");
+    // D-280: the one language is both; the split fields change apart.
+    let both = c.me().await.unwrap().track_preferences();
+    assert_eq!(
+        (both.audio_language.as_str(), both.subtitle_language.as_str(), both.subtitle_mode.as_str()),
+        ("jpn", "jpn", "auto")
+    );
+    let u = c
+        .update_preferences(&lain_api::PreferencesPatch {
+            preferred_subtitle_language: Some("por".into()),
+            preferred_subtitle_mode: Some("always".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let t = u.track_preferences();
+    assert_eq!(
+        (t.audio_language.as_str(), t.subtitle_language.as_str(), t.subtitle_mode.as_str()),
+        ("jpn", "por", "always")
+    );
+    assert_eq!(u.preferred_language, "por", "older clients read the language the viewer reads");
+    assert_mirrors::<User>(&raw_get(&server.url, &s.token, "/api/me").await);
+    let refused = c
+        .update_preferences(&lain_api::PreferencesPatch {
+            preferred_subtitle_mode: Some("sometimes".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+    assert!(refused.to_string().contains("auto, always, forced or off"), "{refused}");
     assert!(c.mascots().await.unwrap().contains(&"moth".to_string()));
     assert!(!c.pin_status().await.unwrap());
     c.set_pin(&pin(0), &pw(0)).await.unwrap();
@@ -998,6 +1027,9 @@ async fn watch_routes() {
     let e = bob.transcode_status(ITEM1, &"f".repeat(64)).await.unwrap_err();
     assert!(matches!(e, ClientError::NotFound { ref message } if message == "unknown transcode session"), "{e:?}");
     assert_eq!(bob.cancel_transcode(ITEM1, &"f".repeat(64)).await.unwrap().state, "idle");
+    assert_eq!(bob.release_transcode(ITEM1, &"f".repeat(64), "tab-1").await.unwrap().state, "idle");
+    let e = bob.release_transcode(ITEM1, &"f".repeat(64), "not a viewer").await.unwrap_err();
+    assert!(matches!(e, ClientError::Api { status: 400, ref code, .. } if code == "invalid-message"), "{e:?}");
     assert!(admin.admin_transcodes().await.unwrap().sessions.is_empty());
     assert!(matches!(bob.admin_transcodes().await.unwrap_err(), ClientError::Forbidden { .. }));
     let hls = bob.hls_url(ITEM1, "s1").unwrap();

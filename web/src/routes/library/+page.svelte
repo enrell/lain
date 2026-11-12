@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
+	import { page } from '$app/state';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import LockOpen from '@lucide/svelte/icons/lock-open';
 	import type { Library } from '$lib/api/types';
@@ -10,6 +11,7 @@
 	import { t } from '$lib/i18n';
 	import { api } from '$lib/api';
 	import { ensureLibraries, nameable } from '$lib/stores/media-cache.svelte';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -37,6 +39,11 @@
 		await tick();
 		document.querySelector<HTMLElement>('#library-view [aria-pressed="true"]')?.focus();
 	}
+	// A link can ask for a view (/library?view=all): it wins over the one remembered.
+	$effect(() => {
+		const asked = page.url.searchParams.get('view');
+		if ((asked === 'all' || asked === 'shelves') && asked !== untrack(() => view)) void setView(asked);
+	});
 	let unlockOpen = $state(false);
 	// Re-mounts the browser so it refetches once a library unlocks.
 	let generation = $state(0);
@@ -66,7 +73,7 @@
 
 	onMount(() => {
 		try {
-			if (localStorage.getItem(VIEW_KEY) === 'all') view = 'all';
+			if (localStorage.getItem(VIEW_KEY) === 'all' && !page.url.searchParams.has('view')) view = 'all';
 		} catch {
 			/* default view */
 		}
@@ -82,12 +89,17 @@
 	async function rescan(): Promise<void> {
 		if (!session.isAdmin || scan.running) return;
 		try {
-			await scan.start();
-			toasts.success('Scan started.');
+			toasts.success(t((await scan.start()) === 'queued' ? 'scan.queued' : 'palette.action.scanStarted'));
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not start the scan.'));
+			toasts.error(errorMessage(err, t('scan.startFailed')));
 		}
 	}
+
+	usePageKeys(() => [
+		...(visible.length > 1 ? [{ keys: ['V'], label: t('pageKeys.libraryView') }] : []),
+		...(locked.length > 0 || open.length > 0 ? [{ keys: ['U'], label: t('pageKeys.unlock') }] : []),
+		...(session.isAdmin ? [{ keys: ['S'], label: t('pageKeys.scan') }] : [])
+	]);
 
 	function onKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey || (e.key !== 's' && e.key !== 'u' && e.key !== 'v')) return;
@@ -114,16 +126,18 @@
 
 <svelte:window onkeydown={onKey} />
 
-<svelte:head><title>Library — Lain</title></svelte:head>
+<svelte:head><title>{t('nav.library')} — Lain</title></svelte:head>
 
 <div class="space-y-6">
 	<header class="flex flex-wrap items-end justify-between gap-3">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-foreground">Library</h1>
-			<p class="mt-0.5 text-sm text-muted max-md:hidden">Everything Lain has indexed.</p>
+			<h1 class="page-title">{t('nav.library')}</h1>
+			<p class="mt-0.5 text-sm text-muted max-md:hidden">{t('library.lead')}</p>
 		</div>
 		{#if session.isAdmin || locked.length > 0 || open.length > 0}
-			<div class="flex items-center gap-1 text-sm max-md:w-full max-md:gap-2 max-md:[&>*]:min-h-10 max-md:[&>*]:rounded-lg max-md:[&>*]:border max-md:[&>*]:border-line max-md:[&>*]:px-3.5 max-md:[&>a]:flex max-md:[&>a]:items-center">
+			<!-- On a phone each action is a chip on one line of its own words: "Manage
+			     libraries" broke over two lines inside its box. -->
+			<div class="flex items-center gap-1 whitespace-nowrap text-sm max-md:w-full max-md:flex-wrap max-md:gap-2 max-md:[&>*]:min-h-10 max-md:[&>*]:rounded-lg max-md:[&>*]:border max-md:[&>*]:border-line max-md:[&>*]:px-3.5 max-md:[&>a]:flex max-md:[&>a]:items-center">
 				{#if locked.length > 0 || open.length > 0}
 					<button
 						type="button"
@@ -144,10 +158,10 @@
 						disabled={scan.running}
 						onclick={() => void rescan()}
 					>
-						{scan.running ? 'Scanning…' : 'Scan'} <kbd class="text-muted/70">S</kbd>
+						{scan.running ? t('library.scanning') : t('library.scan')} <kbd class="text-muted/70">S</kbd>
 					</button>
 					<a href="/settings/libraries" class="rounded-md px-2.5 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground">
-						Manage libraries
+						{t('library.manage')}
 					</a>
 				{/if}
 			</div>

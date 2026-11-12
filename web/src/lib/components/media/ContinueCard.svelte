@@ -4,6 +4,8 @@
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import { t } from '$lib/i18n';
+	import { wideStill } from '$lib/stores/frames';
+	import { toldShape } from '$lib/stores/shapes.svelte';
 	import { formatLength, mediaSubtitle } from '$lib/utilities/format';
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	import { progressRatio } from '$lib/utilities/progress';
@@ -21,9 +23,13 @@
 
 	// Landscape continue-watching card: episode still, progress rail,
 	// episode label over the series title.
-	const still = $derived(api.thumbnail.url(item.id, session.token, { width: 640 }));
 	const series = $derived(enrichment?.title || item.title);
 	const reading = $derived(isReadable(item.kind));
+	// An episode whose own picture is the show's poster shows its frame, as
+	// the other episodes do (see `wideStill`); a film keeps its poster and a
+	// book its cover.
+	const framed = $derived(!reading && item.episode > 0 && toldShape(item) === 'portrait');
+	const still = $derived(framed ? wideStill(item, 640) : api.thumbnail.url(item.id, session.token, { width: 640 }));
 	const epLabel = $derived(
 		reading
 			? readingLabel(item)
@@ -52,6 +58,12 @@
 	const ratio = $derived(progress && !progress.completed ? progressRatio(progress) : 0);
 
 	let stillFailed = $state(false);
+	// An upright picture (a file that came with its poster, a page) is shown
+	// whole over a blurred copy of itself, as a grid's frame treats it; cut
+	// to 16:9 a poster lost its title. Known before it loads when the server
+	// says (D-282), so the card is drawn that way at once; else measured.
+	let measuredUpright = $state<boolean | null>(null);
+	const upright = $derived(measuredUpright ?? (!framed && toldShape(item) === 'portrait'));
 </script>
 
 <a
@@ -60,15 +72,22 @@
 	aria-label={`${title}, ${subtitle}${ratio > 0 ? (reading ? ', reading' : ', watching') : ''}`}
 >
 	<div class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/14">
-		<div class="aspect-video">
+		<div class="relative aspect-video">
 			{#if !stillFailed}
+				{#if upright}
+					<img src={still} alt="" aria-hidden="true" decoding="async" class="absolute inset-0 size-full scale-125 object-cover opacity-50 blur-2xl" />
+				{/if}
 				<img
 					src={still}
 					alt=""
 					aria-hidden="true"
 					loading="lazy"
 					decoding="async"
-					class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
+					class="relative size-full {upright ? 'object-contain' : 'object-cover'} {reading && !upright ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
+					onload={(e) => {
+						const img = e.currentTarget as HTMLImageElement;
+						measuredUpright = img.naturalWidth > 0 && img.naturalWidth <= img.naturalHeight * 1.15;
+					}}
 					onerror={() => (stillFailed = true)}
 				/>
 			{/if}

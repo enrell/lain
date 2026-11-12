@@ -187,9 +187,9 @@ impl Core {
                     }
                 }
             }
-            for i in 0..n {
+            for (i, avail) in self.avail.iter_mut().enumerate().take(n) {
                 if bf.has(i) {
-                    self.avail[i] += 1;
+                    *avail += 1;
                 }
             }
             p.bf = Some(bf);

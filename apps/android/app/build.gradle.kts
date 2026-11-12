@@ -18,7 +18,7 @@ val releaseKeystore = env("LAIN_ANDROID_KEYSTORE")
 // from it as MAJOR * 1_000_000 + MINOR * 1_000 + PATCH (3001), so it is the
 // same for every build of a tag and grows with every release. A suffix
 // (`-rc.1`) does not count. `LAIN_ANDROID_VERSION_CODE` overrides it.
-val lainVersion = env("LAIN_VERSION")?.removePrefix("v") ?: "0.3.0"
+val lainVersion = env("LAIN_VERSION")?.removePrefix("v") ?: "0.3.1"
 val lainVersionCode = env("LAIN_ANDROID_VERSION_CODE")?.let {
     it.toIntOrNull() ?: throw GradleException("LAIN_ANDROID_VERSION_CODE is not a number: $it")
 } ?: run {

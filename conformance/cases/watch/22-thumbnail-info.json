@@ -1,0 +1,29 @@
+{
+  "tier": "v2",
+  "description": "D-282: catalog and search answers say what each item's thumbnail is before it is fetched: a still that came with the file (D-269, `sidecar`, with its width over height when its header reads) or a frame the server cuts (`frame`, shape unknown). Filled on every read, so a still added or removed next to a file counts at once. The still here is a WebP header written as text (600x896). lain-rs only.",
+  "cases": [
+    {"name": "a still next to the file is told, with its aspect, and served", "requires": ["w_alpha", "media_root"], "steps": [
+      {"write_file": {"path": "{{media_root}}/Clips/Alpha-poster.webp",
+        "text": "RIFF\u0016\u0000\u0000\u0000WEBPVP8X\n\u0000\u0000\u0000\u0000\u0000\u0000\u0000W\u0002\u0000\u007f\u0003\u0000"}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{w_alpha}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"id": "{{w_alpha}}", "thumbnail": {"source": "sidecar", "aspect": 0.67}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog?library_id=lib-be88dfed", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"total": 2, "items": [
+         {"id": "{{w_alpha}}", "thumbnail": {"source": "sidecar", "aspect": 0.67}, "$open": true},
+         {"id": "{{w_beta}}", "thumbnail": {"source": "frame"}, "$open": true}], "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/search?q=alpha", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"items": [{"id": "{{w_alpha}}", "thumbnail": {"source": "sidecar", "aspect": 0.67}, "$open": true}], "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{w_alpha}}/episodes", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"items": [{"id": "{{w_alpha}}", "thumbnail": {"source": "sidecar", "aspect": 0.67}, "$open": true}]}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "image/webp"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail?t=1&w=96", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "image/jpeg"}}}
+    ]},
+    {"name": "a still taken away is a frame again", "requires": ["w_alpha", "media_root"], "steps": [
+      {"remove_file": "{{media_root}}/Clips/Alpha-poster.webp"},
+      {"req": {"method": "GET", "path": "/api/catalog/{{w_alpha}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"id": "{{w_alpha}}", "thumbnail": {"source": "frame"}, "$open": true}}}
+    ]}
+  ]
+}

@@ -48,6 +48,18 @@ enrichment documents are never swept.
 
 Portable document `lain.catalog-export@1` is the replacement contract.
 
+`CatalogItem.thumbnail` (D-282, additive, omitted when absent) says what
+`GET /api/items/{id}/thumbnail` serves the item without `t`, so a client
+lays out its card before the picture loads: `{source, aspect?}`, where
+`source` is `sidecar` (a still that came with the file, D-269), `cover` (a
+comic archive's cover page, upright) or `frame` (cut from the video), and
+`aspect` is width over height to three decimals when the server read it
+from the picture's header (a sidecar's; a frame's is the video's and is
+not known). The gateway fills it on `GET /api/catalog`,
+`/api/catalog/{id}`, `/api/catalog/{id}/episodes` and `/api/search` on
+every read; it is never stored or exported, and a catalog provider never
+sets it. An item with no resolved `file_path` has none.
+
 ### Gateway read: one title's files
 
 `GET /api/catalog/{id}/episodes` (auth) → `{items: CatalogItem[]}`, 404
@@ -124,6 +136,65 @@ wins and subtitles are disabled; otherwise a matching subtitle is
 selected when the client can render it. Missing language metadata
 leaves the native player selection in control. Explicit player track
 changes override the initial automatic selection for that item.
+
+**Audio and subtitles apart (D-280).** The public user object adds three
+optional fields, each absent when empty:
+
+- `preferred_audio_language` — ISO 639-2; absent plays the file's
+  default audio.
+- `preferred_subtitle_language` — ISO 639-2; absent when none is
+  preferred.
+- `preferred_subtitle_mode` — `always`, `forced` or `off`; absent is
+  `auto`.
+
+`PATCH /api/me/preferences` takes any subset of `preferred_language`,
+`preferred_audio_language`, `preferred_subtitle_language` and
+`preferred_subtitle_mode` (`""` resets the mode to `auto`); only the
+fields present change, and a refused value (400, `<field> must be a
+three-letter ISO 639-2 code` or `preferred_subtitle_mode must be auto,
+always, forced or off`) changes nothing. An empty patch is still 400
+`preferred_language is required`. The mode is named apart from
+`playback.subtitle_mode` on the same object, the operator's delivery
+policy (`auto|extract|burn|off`), whose values mean other things.
+
+Compatibility. `preferred_language` stays in requests and responses:
+
+- Written alone (an older client), it sets both languages and leaves
+  the mode as it is.
+- Answered, it is the subtitle language when one is set, else the audio
+  language: the language the viewer reads, so an older client applying
+  D-071 still turns subtitles on for audio in another language.
+- An account saved before D-280 has none of the three fields and reads
+  as its one language for both, mode `auto`, which is D-071 exactly; the
+  server answers it with both split fields filled. A client talking to a
+  server before D-280 sees none of the three and does the same.
+
+How players choose (every client and the server's own players apply
+the same rule, `lain-watch`'s `tracks.rs`):
+
+- **Audio**: a track in the audio language, else the file's default
+  (flagged default, else first).
+- **`auto`**: subtitles in the subtitle language when the audio that
+  plays is not in it, none when it is; a full track before a forced one.
+  With no subtitle language, or no language tag on any audio or
+  subtitle track, the player's default stands.
+- **`always`**: subtitles in the subtitle language even over audio in
+  it; with no subtitle language, the file's default (else first) full
+  subtitle track.
+- **`forced`**: only a track flagged forced, in the subtitle language,
+  else in the language of the audio that plays, else an untagged one.
+- **`off`**: none.
+- A choice made in a player for a title (the web player and the Android
+  app keep one per title on the device) wins over the account.
+
+On the server: local playback hands mpv all three (`lain-audio_language`,
+`lain-subtitle_language`, `lain-subtitle_mode` script options) and VLC
+`--audio-language`, `--sub-language` plus a per-file "subtitles off". A
+transcode start without `audio_stream` takes the preferred-language
+audio track when the file's default is another (one ffprobe, only when
+the account has an audio language), and the plan's `session`/`state`
+describe that same session. A transcode never adds subtitles nobody
+asked for: clients choose them, so they are not delivered twice.
 
 ## lain.userstate.progress@1 (exactly-one)
 
@@ -329,7 +400,8 @@ marks LRU recency), `position` (the segment the client last
 fetched — drives throttling, segment deletion and idle cleanup; the
 latest report wins, so a rewind re-pauses ffmpeg and holds off deletion
 instead of pacing both against a stale high-water mark),
-`cancel`, and `list` (admin view). States remain
+`cancel` (with a `viewer`, a release: see **Viewers** below), and
+`list` (admin view). States remain
 `idle|queued|running|ready|failed`.
 
 Request fields: `delivery` (`hls` default, or `progressive`),
@@ -337,7 +409,8 @@ Request fields: `delivery` (`hls` default, or `progressive`),
 `video_codec` (`h264` default, `hevc`/`av1` only when the operator
 allows them), `audio_codec`, `audio_stream`, `subtitle_stream`,
 `subtitle_mode` (`auto|extract|burn|off`), `segment_index`, `policy`
-(the requesting user's limits) and `settings`.
+(the requesting user's limits), `viewer` (D-281, never part of the
+session identity) and `settings`.
 
 `video_copy_codecs` (D-273, optional) lists the codecs beyond H.264 the
 client decodes in fragmented MP4. Only `hevc` is known; other values
@@ -426,10 +499,18 @@ deletion off.
 backend is probed with a real one-frame encode, hardware decoding
 applies only to the allowed codec list, and a backend that fails its
 probe — or fails at runtime — falls back to software with a visible
-`fallback` string. Software encoders stay the default; there is no
-silent opportunistic switching. The backend list mirrors Jellyfin's
-documented methods: `vaapi`, `nvenc`, `qsv`, `amf`, `v4l2m2m`,
-`videotoolbox` and `rkmpp` (Rockchip). `hardware_low_power` selects
+`fallback` string. An HLS session retried in software after a runtime
+failure starts over: the failed attempt's playlists and segments are
+removed first and `playable` is false again until the retry's first
+segment, so no segment of one encoder is ever served beside the other's
+init segment. The retry writes `sw-init.mp4` and `sw-segNNNNN.*`, never
+a name the failed attempt used: a player keeps an init segment whose
+URI did not change, and a browser caches the segments it fetched, so a
+viewer of the failed attempt would otherwise decode one encoder's
+segments with the other's init segment. Software encoders stay the
+default; there is no silent opportunistic switching. The backend list
+mirrors Jellyfin's documented methods: `vaapi`, `nvenc`, `qsv`, `amf`,
+`v4l2m2m`, `videotoolbox` and `rkmpp` (Rockchip). `hardware_low_power` selects
 QSV's low-power H.264/HEVC encoder (Jellyfin's "Intel Low-Power
 hardware encoder"); only QSV honours it.
 
@@ -492,11 +573,13 @@ are burned in via `overlay`, text tracks can be burned in via
 **HTTP.** `POST /api/items/{id}/transcode` starts/joins (202 while
 pending, 200 when ready, 429 `queue-full`, 403 `forbidden` when the
 user's policy denies the operation), `DELETE
-/api/items/{id}/transcode?session=` stops a session, `GET
+/api/items/{id}/transcode?session=` stops a session (with `&viewer=`,
+releases one viewer's hold; see **Viewers** below), `GET
 /api/items/{id}/transcode/status?session=` polls, `GET
 /api/items/{id}/transcode?session=` serves the progressive MP4 (409 for
 an HLS session), `GET /api/items/{id}/transcode/hls/{file}` serves
-`index.m3u8`, `init.mp4`, `segNNNNN.m4s` and `segNNNNN.ts` (every other
+`index.m3u8`, `init.mp4`, `segNNNNN.m4s` and `segNNNNN.ts`, and a
+software retry's `sw-init.mp4` and `sw-segNNNNN.*` (every other
 name is 404;
 the served playlist signs each media URI with `session` and `token`,
 because a relative URI in an m3u8 drops the playlist's query string and
@@ -504,6 +587,36 @@ would otherwise 401 — native HLS cannot send headers either),
 `GET /api/items/{id}/subtitles?session=` serves the WebVTT sidecar, and
 `GET /api/playback/options` publishes the ladder and preferred
 delivery to authenticated players.
+
+**Viewers (D-281).** A session is keyed by source and options, not by
+client, so two players with the same options and start point (two
+tabs, two devices, two accounts) share one. A player names its hold with
+a viewer id it makes: 1 to 64 ASCII letters, digits, `-` or `_`
+(anything else is 400 `invalid-message`). A fresh id for every start is
+the safe choice, and the web player's: a player that leaves a session
+and starts the same one again (a rebuild with unchanged options, or two
+starts racing) would otherwise end its new hold with the release of the
+old one if the server saw that release last. `viewer` in
+the `POST /api/items/{id}/transcode` body attaches it to the session it
+starts or joins (a session served finished from the cache attaches
+nothing), and `DELETE /api/items/{id}/transcode?session=&viewer=`
+releases that hold. While a session is produced the server keeps its
+viewers, keyed by account and id, so one account cannot release
+another's viewer. A release stops and drops the session, as a release
+without a viewer does, only when that viewer held it, nothing else
+holds it and it is still `queued` or `running`; the answer is then
+`idle`. Otherwise it answers the session as it stands (200, its
+status): another viewer keeps it running, and a finished session stays
+in the cache for a replay, since it holds no runner (the LRU evicts it;
+a release without a viewer still drops it). A start without `viewer`
+behaves as before: it is an unnamed hold that no viewer's release ends,
+so a viewer leaving never stops a session an older client is playing.
+A release without `viewer` behaves as before too: it stops the session
+for every viewer, and only its owner (or an admin, through
+`/api/admin/transcodes/{session}`) may. Past 32 named viewers, further
+joins count as unnamed. A viewer that vanishes without releasing (a
+closed tab) is not reaped on its own: the idle timeout still stops a
+session nobody fetches from.
 
 **Operator surface.** `GET/PUT /api/admin/settings/transcode`
 (admin-only) reads and writes the policy — validated, persisted as JSON
@@ -596,7 +709,9 @@ A seek past the end retries at 0. The gateway streams the file with
 `Cache-Control: private, max-age=86400` and `GET /api/items/{id}/thumbnail?t=&w=`
 accepts `?token=` (image elements cannot attach headers). ffmpeg is
 spawned by the provider with a 20s timeout and at most 2 concurrent
-processes; absence degrades this capability, never the boot.
+processes; absence degrades this capability, never the boot. Without `t`
+the gateway serves a still that came with the file instead (D-269), and
+catalog answers say which it will be (`CatalogItem.thumbnail`, D-282).
 
 `GET /api/items/{id}/storyboard` (D-275) is how a seek bar previews
 without a request per position: `{interval_sec, count, columns, rows,
@@ -681,7 +796,9 @@ frontend's CSS defaults keep the UI usable.
 ## lain.playback.local@1 (exactly-one)
 
 Same-machine playback supervision (D-072/D-076). Ops: `players` (nil →
-`{players}`), `play` `{player?, user_id, language?, item}` →
+`{players}`), `play` `{player?, user_id, language?, audio_language?,
+subtitle_language?, subtitle_mode?, item}` (D-280; `language` alone is
+D-071's one language for both) →
 `{status, player, count}`. The provider owns playlist resolution
 (series queue from the episode onward), resume positions (through
 `userstate.progress`), VLC subtitle policy (through `media.probe`),
@@ -898,7 +1015,7 @@ are core code (`internal/torrent`, `internal/acquire`), not plugins
 
 | Capability | Mode | Built-ins | Input → output |
 |---|---|---|---|
-| `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides; in lain-rs a component, see "P4 components"), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain) |
+| `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides; in lain-rs a component, see "P4 components"), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain; optional `alternatives`, D-279) |
 | `lain.indexer@1` | ordered-many; `unsupported-protocol` declines | `lain-indexer-torznab` (Torznab + Newznab) | `IndexerCapsInput` → `IndexerCaps`; `IndexerSearchInput` → `IndexerSearchOutput` |
 | `lain.subtitle@1` | ordered-many; `unsupported-provider` declines | `lain-subtitle-opensubtitles` (OpenSubtitles.com REST v1) | `SubtitleSearchInput` → `SubtitleSearchOutput`; `SubtitleDownloadInput` → `SubtitleDownloadOutput` (a link; the core fetches it, D-150). In lain-rs the ops are `search` and `download` (D-202) |
 
@@ -954,14 +1071,65 @@ unhealthy provider, so:
 
 ### lain.release.parse@1 from the model (D-225)
 
-`lain-release-model` posts `{filename}` to the daemon's `/parse`. A null
+`lain-release-model` posts `{filename}` to the daemon's `/parse` (with
+`alternatives: 5` since D-279, see "Release.alternatives"). A null
 `record` (the model's gated abstention, or a name over its 254-character
 window) answers the zero `Release`. Otherwise the model is trusted for
 title, episode_title, year, season, episodes (absolute when it states no
 season), release group and resolution, and the tokenizer for every other
-tag (Go's `merge`); `parser` is `lain-release-model`. Default binding:
+tag (Go's `merge`), except a year the model does not label and its
+title holds (see "Release.alternatives"); `parser` is
+`lain-release-model`. Default binding:
 `[lain-release-model, lain-release-tokenizer]` (V-5,
 `docs/benchmarks/parser-v5.md`, D-226).
+
+### Release.alternatives (D-279)
+
+A name can be read more than one way and nothing in it says which is
+right: "Show 2 - 03" is episode 3 of the sequel "Show 2", or of season 2
+of "Show". `Release` gains the additive, optional
+`alternatives: ReleaseIdentity[]`: other identities the provider
+considered, best first, at most five. A `ReleaseIdentity` is
+`{title, year, season, episodes, absolute}` with `Release`'s meanings
+and zeros. The answer itself is unchanged, and a provider with nothing
+to offer (the tokenizer, an older parser service) omits the field.
+
+- **Who decides.** The caller that knows which title it expects, never
+  the parser. `lain_acquire::util::settle(release, known, year)` keeps
+  the answer when `known` accepts its title; otherwise it takes the first
+  alternative whose title `known` accepts, moving the identity as a
+  whole (title, year, season, episodes, `absolute`; `season_pack` is
+  cleared when episodes come with it) and keeping every other field. An
+  alternative whose title has no word names nothing and is skipped. So
+  is one whose year rules it out: `year`, the year the caller expects,
+  and the alternative's, both known and more than one apart
+  (`util::years_agree`; 0 is unknown and never rules anything out). It
+  always drops the list: alternatives are advice for one decision and
+  are never stored in a grab or returned in a search candidate.
+- **Where.** A search settles against its query and year, and rejects a
+  candidate whose settled year is more than one from the query's
+  (`year does not match`). Automation and its grabs settle against the
+  monitored title, its aliases and its year, unless the parser's own
+  answer names a monitored title (title or alias, any library, enabled
+  or not; `monitored::settle_for`): that release is that title's, and no
+  other monitored title reads it as an alternative ("Show 2 - 03"
+  answered as "Show 2" stays the sequel's while "Show 2" is monitored,
+  never S2E3 of "Show"). An import settles each file against the title
+  and year of the grabbed release. A manual grab and a library's other
+  titles settle nothing (a sequel must not land in the folder of the
+  show it follows). `GET /api/acquire/parse` returns the list as the
+  provider gave it.
+- **From the model.** `lain-release-model` posts `{filename,
+  alternatives: 5}` (lain-parser 1.3.0; an older service ignores the key
+  and answers none). The list is read entry by entry: a list or an
+  entry that does not read is left out, never failing the answer. Each
+  alternative is cleaned like the answer, compared with the model's own
+  reading (so the answer is not listed again) and carries the model's
+  numbers only, never the tokenizer's. A year the model did not read,
+  for the answer and each alternative alike, is the tokenizer's, unless
+  the reading's title holds it as a word ("Blade Runner 2049" read off
+  "Blade.Runner.2049.1080p"): then it is the last other year the
+  tokenizer read in the name, or none.
 
 ### lain.subtitle.translate@1 (ordered-many; `unsupported-format` declines; D-228)
 

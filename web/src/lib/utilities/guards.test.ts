@@ -46,10 +46,20 @@ describe('routeRedirect', () => {
 	it('keeps normal users out of admin routes', () => {
 		const state = { ...base, authenticated: true, admin: false };
 		expect(routeRedirect({ ...state, pathname: '/settings' })).toBeNull();
-		expect(routeRedirect({ ...state, pathname: '/settings/libraries' })).toBe('/settings');
-		expect(routeRedirect({ ...state, pathname: '/settings/users' })).toBe('/settings');
-		expect(routeRedirect({ ...state, pathname: '/settings/plugins' })).toBe('/settings');
-		expect(routeRedirect({ ...state, pathname: '/settings/backup' })).toBe('/settings');
+		expect(routeRedirect({ ...state, pathname: '/settings/libraries' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/settings/users' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/settings/plugins' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/settings/backup' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/acquire' })).toBe('/');
+	});
+
+	it('sends normal users from an admin route somewhere that stays put', () => {
+		// /settings reopens the last section of this browser, which an admin
+		// may have left on an admin page: a redirect there bounced forever.
+		const state = { ...base, authenticated: true, admin: false };
+		const target = routeRedirect({ ...state, pathname: '/settings/backup' });
+		expect(target).not.toBe('/settings');
+		expect(routeRedirect({ ...state, pathname: target ?? '' })).toBeNull();
 	});
 
 	it('lets admins into admin routes', () => {

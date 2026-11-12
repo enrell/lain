@@ -33,6 +33,7 @@
 	} from '$lib/player/player-prefs';
 	import Switch from '$lib/components/primitives/Switch.svelte';
 	import { SavedFlash } from '$lib/settings/flash.svelte';
+	import { trackPreferences, type SubtitleMode } from '$lib/player/track-language';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { t } from '$lib/i18n';
@@ -42,8 +43,10 @@
 	const flash = new SavedFlash();
 
 	let player = $state<PreferredPlayer>('browser');
-	let language = $state('');
-	let languageError = $state('');
+	// The account's track preferences (D-280): every client reads them.
+	let audioLanguage = $state('');
+	let subtitleLanguage = $state('');
+	let subtitleMode = $state<SubtitleMode>('auto');
 	let policy = $state<EffectsPolicy>(defaultEffectsPolicy());
 	let libraries = $state<Library[]>([]);
 	// The player's own choices, kept in this browser: the same keys its menu writes.
@@ -54,7 +57,7 @@
 	onMount(() => {
 		if (!session.user) return;
 		player = loadPreferredPlayer(session.user.id);
-		language = session.user.preferred_language ?? '';
+		({ audio: audioLanguage, subtitle: subtitleLanguage, mode: subtitleMode } = trackPreferences(session.user));
 		policy = loadEffectsPolicy(session.user.id);
 		skip = loadSkip();
 		subtitleSize = loadSubtitleSize();
@@ -89,8 +92,6 @@
 	}
 
 	const LANGUAGES: [string, string][] = [
-		// Said as the app says it: one account setting, two names for it read as two settings.
-		['', t('playbackLanguage.asFile')],
 		['eng', 'English'],
 		['por', 'Portuguese'],
 		['spa', 'Spanish'],
@@ -101,27 +102,46 @@
 		['kor', 'Korean'],
 		['zho', 'Chinese']
 	];
-	// A code set elsewhere that the list does not name stays choosable.
-	const languageOptions = $derived(
-		[...LANGUAGES, ...(language && !LANGUAGES.some(([c]) => c === language) ? [[language, language] as [string, string]] : [])].map(
-			([value, label]) => ({ value, label })
-		)
+	// A code set elsewhere (the CLI, another client) that the list does not name stays choosable.
+	function languageOptions(current: string, empty: string) {
+		const extra: [string, string][] = current && !LANGUAGES.some(([c]) => c === current) ? [[current, current]] : [];
+		return [['', empty] as [string, string], ...LANGUAGES, ...extra].map(([value, label]) => ({ value, label }));
+	}
+	const audioOptions = $derived(languageOptions(audioLanguage, t('trackPrefs.asFile')));
+	const subtitleOptions = $derived(languageOptions(subtitleLanguage, t('trackPrefs.none')));
+	const modeOptions = $derived([
+		{ value: 'auto', label: t('trackPrefs.modeAuto') },
+		{ value: 'always', label: t('trackPrefs.modeAlways') },
+		{ value: 'forced', label: t('trackPrefs.modeForced') },
+		{ value: 'off', label: t('trackPrefs.modeOff') }
+	]);
+	const modeHint = $derived(
+		{
+			auto: t('trackPrefs.hintAuto'),
+			always: t('trackPrefs.hintAlways'),
+			forced: t('trackPrefs.hintForced'),
+			off: t('trackPrefs.hintOff')
+		}[subtitleMode]
 	);
 
-	async function commitLanguage(): Promise<void> {
-		const next = language.trim().toLowerCase();
-		if (next === (session.user?.preferred_language ?? '')) return;
-		if (next && !/^[a-z]{3}$/.test(next)) {
-			languageError = 'Three letters, ISO 639-2 (por, eng, jpn).';
-			return;
-		}
-		languageError = '';
+	// Each row saves its own field on change; a refusal puts the row back.
+	async function commitTracks(
+		row: 'audio-language' | 'subtitle-language' | 'subtitle-mode',
+		patch: Parameters<typeof api.me.updatePreferences>[0]
+	): Promise<void> {
 		try {
-			session.user = await api.me.setPreferredLanguage(next);
-			language = next;
-			flash.mark('language');
+			session.user = await api.me.updatePreferences(patch);
+			flash.mark(row);
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not save the language.'));
+			toasts.error(errorMessage(err, t('trackPrefs.saveFailed')));
+		}
+		({ audio: audioLanguage, subtitle: subtitleLanguage, mode: subtitleMode } = trackPreferences(session.user));
+	}
+	const changeAudio = (v: string) => void commitTracks('audio-language', { preferred_audio_language: v });
+	const changeSubtitle = (v: string) => void commitTracks('subtitle-language', { preferred_subtitle_language: v });
+	function changeMode(v: string): void {
+		if (v === 'auto' || v === 'always' || v === 'forced' || v === 'off') {
+			void commitTracks('subtitle-mode', { preferred_subtitle_mode: v });
 		}
 	}
 
@@ -167,25 +187,32 @@
 			{/if}
 		{/snippet}
 	</SettingRow>
-	<SettingRow
-		id="language"
-		label={t('playbackLanguage.label')}
-		hint={t('playbackLanguage.hint')}
-		saved={flash.is('language')}
-	>
+	<SettingRow id="audio-language" label={t('trackPrefs.audio')} hint={t('trackPrefs.audioHint')} saved={flash.is('audio-language')}>
 		<!-- A language by name, from a list: a three-letter code to type was a thing to know first. -->
 		<!-- As wide as the native pickers on this page; the whole column on a phone, as they are. -->
 		<div class="w-full">
+			<Select aria-label={t('trackPrefs.audio')} bind:value={audioLanguage} options={audioOptions} onValueChange={changeAudio} />
+		</div>
+	</SettingRow>
+	<SettingRow
+		id="subtitle-language"
+		label={t('trackPrefs.subtitle')}
+		hint={t('trackPrefs.subtitleHint')}
+		saved={flash.is('subtitle-language')}
+	>
+		<div class="w-full">
 			<Select
-				aria-label="Audio and subtitle language"
-				bind:value={language}
-				options={languageOptions}
-				onValueChange={() => void commitLanguage()}
+				aria-label={t('trackPrefs.subtitle')}
+				bind:value={subtitleLanguage}
+				options={subtitleOptions}
+				onValueChange={changeSubtitle}
 			/>
 		</div>
-		{#snippet below()}
-			{#if languageError}<p class="text-xs text-danger" role="alert">{languageError}</p>{/if}
-		{/snippet}
+	</SettingRow>
+	<SettingRow id="subtitle-mode" label={t('trackPrefs.mode')} hint={modeHint} saved={flash.is('subtitle-mode')}>
+		<div class="w-full">
+			<Select aria-label={t('trackPrefs.mode')} bind:value={subtitleMode} options={modeOptions} onValueChange={changeMode} />
+		</div>
 	</SettingRow>
 </SettingsGroup>
 
@@ -242,7 +269,7 @@
 		saved={flash.is('effect-render')}
 	>
 		<select
-			class="{field} w-56"
+			class="{field} w-full"
 			aria-label="Where video effects are rendered"
 			value={policy.renderOn ?? 'client'}
 			onchange={(e) => persistEffects({ ...policy, renderOn: e.currentTarget.value as EffectRenderer }, 'effect-render')}

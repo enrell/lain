@@ -23,9 +23,9 @@ use lain_api::{
     AdminTranscodes, BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health,
     IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryPatch, LocalPlayers, LoginReply, Mascots,
     ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions, PlaybackPlan,
-    PluginsView, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar, Sidecars,
-    StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings, TranscodeSettingsView, TranscodeStatus,
-    User, UserPatch, WithdrawReply,
+    PluginsView, PreferencesPatch, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar,
+    Sidecars, StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings, TranscodeSettingsView,
+    TranscodeStatus, User, UserPatch, WithdrawReply,
 };
 
 use crate::error::ClientError;
@@ -288,9 +288,19 @@ impl Client {
         self.call(Method::GET, "/api/me", Body::None).await
     }
 
-    /// A three-letter ISO 639-2 code, or `""` to clear it.
+    /// D-071's one language: a three-letter ISO 639-2 code, or `""` to
+    /// clear it. On a server with D-280 it sets the audio and the
+    /// subtitle language both.
     pub async fn set_preferred_language(&self, language: &str) -> Result<User, ClientError> {
         self.call(Method::PATCH, "/api/me/preferences", json_body(&json!({"preferred_language": language}))).await
+    }
+
+    /// D-280's track preferences: only the fields present change. A
+    /// server before D-280 ignores the new fields and answers 400 for a
+    /// patch without `preferred_language`; read the result with
+    /// [`User::track_preferences`].
+    pub async fn update_preferences(&self, patch: &PreferencesPatch) -> Result<User, ClientError> {
+        self.call(Method::PATCH, "/api/me/preferences", json_body(patch)).await
     }
 
     /// Changes the password; every session of the account, this one
@@ -655,6 +665,8 @@ impl Client {
 
     /// Starts (or joins) a transcode session; ready or not, the answer
     /// is its status (poll [`Client::transcode_status`] until `ready`).
+    /// A player that sets `sel.viewer` (D-281) leaves with
+    /// [`Client::release_transcode`] and the same id.
     pub async fn start_transcode(
         &self,
         item_id: &str,
@@ -668,9 +680,24 @@ impl Client {
         self.call(Method::GET, &path, Body::None).await
     }
 
-    /// Stops a session this account started.
+    /// Stops a session this account started, whoever else watches it.
     pub async fn cancel_transcode(&self, item_id: &str, session: &str) -> Result<TranscodeStatus, ClientError> {
-        let path = format!("/api/items/{}/transcode{}", encode(item_id), query(&[("session", session.into())]));
+        self.release_transcode(item_id, session, "").await
+    }
+
+    /// Leaves a session joined with `viewer` (D-281): it stops only when
+    /// no other viewer holds it and it is still being produced; a
+    /// finished one stays cached. The answer is the session afterwards
+    /// (`idle` once stopped). An empty `viewer` is
+    /// [`Client::cancel_transcode`].
+    pub async fn release_transcode(
+        &self,
+        item_id: &str,
+        session: &str,
+        viewer: &str,
+    ) -> Result<TranscodeStatus, ClientError> {
+        let q = query(&[("session", session.into()), ("viewer", viewer.into())]);
+        let path = format!("/api/items/{}/transcode{q}", encode(item_id));
         self.call(Method::DELETE, &path, Body::None).await
     }
 
