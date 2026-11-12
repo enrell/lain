@@ -100,7 +100,9 @@ private fun newPlayer(context: Context, title: String, tracks: TrackPrefs): ExoP
         val start = startTracks(tracks, rememberedOf(context.graph.prefs, title))
         trackSelectionParameters = trackSelectionParameters.buildUpon().apply {
             start.audioLanguage?.let { setPreferredAudioLanguage(it) }
-            setPreferredTextLanguage(start.textLanguage)
+            // Only a language replaces Media3's default: setting null would also drop the
+            // system caption language a viewer with captions on gets when the account names none.
+            start.textLanguage?.let { setPreferredTextLanguage(it) }
             if (start.textDisabled) setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             // Forced only: Media3 then takes the forced track in the audio's language.
             if (start.forcedOnly) setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)

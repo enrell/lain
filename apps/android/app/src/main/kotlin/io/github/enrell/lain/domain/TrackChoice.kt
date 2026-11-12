@@ -131,7 +131,7 @@ fun decideText(texts: List<TrackInfo>, audios: List<TrackInfo>, playingAudio: Tr
 data class StartTracks(
     /** setPreferredAudioLanguage; null leaves the file's default. */
     val audioLanguage: String?,
-    /** setPreferredTextLanguage; null asks for none. */
+    /** setPreferredTextLanguage; null leaves Media3's default (the system caption language when captions are on). */
     val textLanguage: String?,
     /** setTrackTypeDisabled(TEXT): subtitles off. */
     val textDisabled: Boolean,
