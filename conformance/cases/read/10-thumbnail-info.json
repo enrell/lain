@@ -1,0 +1,15 @@
+{
+  "tier": "v2",
+  "description": "D-282: a comic archive's thumbnail is its cover page (the first upright page among the first four), told in catalog answers as `cover` without opening the archive; a video in the same library is a `frame`. lain-rs only.",
+  "cases": [
+    {"name": "a comic archive's thumbnail is its cover", "requires": ["lib"], "steps": [
+      {"req": {"method": "GET", "path": "/api/catalog/item-read-manga", "auth": "b"},
+       "expect": {"status": 200, "body": {"id": "item-read-manga", "thumbnail": {"source": "cover"}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/search?q=tiny%20blade", "auth": "b"},
+       "expect": {"status": 200, "body": {"items": {"$len": 3, "$contains": [
+         {"id": "item-read-manga", "thumbnail": {"source": "cover"}, "$open": true},
+         {"id": "item-read-comic", "thumbnail": {"source": "cover"}, "$open": true},
+         {"id": "item-read-video", "thumbnail": {"source": "frame"}, "$open": true}]}, "$open": true}}}
+    ]}
+  ]
+}

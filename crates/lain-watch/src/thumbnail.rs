@@ -2,11 +2,13 @@
 //! frame per (file identity, time, width), cached on disk. It returns
 //! a path, never bytes; the gateway streams the file.
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
+use lain_api::ThumbnailInfo;
 use lain_core::Error;
 use lain_probe::exec;
 use serde::{Deserialize, Serialize};
@@ -105,17 +107,31 @@ fn comic(path: &str) -> bool {
 /// folder. A non-empty regular file, never a link out of the folder.
 pub fn local_cover(media_file: &Path) -> Option<PathBuf> {
     let dir = media_file.parent()?;
+    let mut names: Vec<PathBuf> = own_names(media_file)?.into_iter().map(|n| dir.join(n)).collect();
+    let thumbs = dir.join(".metadata").join("thumbs");
+    names.extend(FOLDER_STILLS.iter().map(|n| thumbs.join(n)));
+    names.into_iter().find(|p| still_file(p))
+}
+
+/// A folder's stills, in `.metadata/thumbs/`, after the file's own.
+const FOLDER_STILLS: [&str; 2] = ["thumbnail.jpg", "banner.jpg"];
+
+/// The names a file's own still may have next to it, in the order they
+/// are tried.
+fn own_names(media_file: &Path) -> Option<Vec<String>> {
     let stem = media_file.file_stem()?.to_string_lossy();
-    let mut names: Vec<PathBuf> = Vec::new();
+    let mut names = Vec::new();
     for suffix in ["-poster", "-thumb"] {
         for ext in ["jpg", "jpeg", "png", "webp"] {
-            names.push(dir.join(format!("{stem}{suffix}.{ext}")));
+            names.push(format!("{stem}{suffix}.{ext}"));
         }
     }
-    let thumbs = dir.join(".metadata").join("thumbs");
-    names.push(thumbs.join("thumbnail.jpg"));
-    names.push(thumbs.join("banner.jpg"));
-    names.into_iter().find(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file() && m.len() > 0))
+    Some(names)
+}
+
+/// A non-empty regular file, never a link out of the folder.
+fn still_file(p: &Path) -> bool {
+    std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file() && m.len() > 0)
 }
 
 /// The content type of a still by its first bytes: a downloader may
@@ -124,12 +140,117 @@ pub fn image_type(path: &Path) -> &'static str {
     use std::io::Read;
     let mut head = [0u8; 12];
     let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut head)).unwrap_or(0);
-    match &head[..n] {
+    type_of(&head[..n])
+}
+
+fn type_of(head: &[u8]) -> &'static str {
+    match head {
         [0x89, b'P', b'N', b'G', ..] => "image/png",
         [b'G', b'I', b'F', b'8', ..] => "image/gif",
-        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P'] => "image/webp",
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => "image/webp",
         _ => "image/jpeg",
     }
+}
+
+pub const SOURCE_SIDECAR: &str = "sidecar";
+pub const SOURCE_COVER: &str = "cover";
+pub const SOURCE_FRAME: &str = "frame";
+
+/// What the thumbnail of each file is (D-282), in the order given: the
+/// still that came with it (`local_cover`'s choice, with its aspect when
+/// its header reads), else a comic archive's cover page, else a frame.
+/// `None` for a file with no path (a root this machine does not map).
+///
+/// A folder is listed once for all its files instead of trying ten names
+/// per file: a page of 500 episodes costs a listing per season folder,
+/// which matters on a network share where every failed lookup is a round
+/// trip.
+pub fn describe(files: &[&Path]) -> Vec<Option<ThumbnailInfo>> {
+    let mut folders: HashMap<PathBuf, Folder> = HashMap::new();
+    files
+        .iter()
+        .map(|file| {
+            if file.as_os_str().is_empty() {
+                return None;
+            }
+            let dir = file.parent().unwrap_or(Path::new(""));
+            let folder = folders.entry(dir.to_path_buf()).or_insert_with(|| Folder::read(dir));
+            let own = own_names(file)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|n| folder.names.contains(n))
+                .map(|n| dir.join(n))
+                .find(|p| still_file(p));
+            if let Some(still) = own.or_else(|| folder.still.clone()) {
+                return Some(ThumbnailInfo { source: SOURCE_SIDECAR.into(), aspect: aspect_of(&still) });
+            }
+            let source = if lain_read::archive::format(file).is_empty() { SOURCE_FRAME } else { SOURCE_COVER };
+            Some(ThumbnailInfo { source: source.into(), aspect: None })
+        })
+        .collect()
+}
+
+/// One folder's listing: the names of its entries and its own still.
+struct Folder {
+    names: HashSet<String>,
+    still: Option<PathBuf>,
+}
+
+impl Folder {
+    fn read(dir: &Path) -> Folder {
+        let names: HashSet<String> = std::fs::read_dir(dir)
+            .map(|entries| entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+            .unwrap_or_default();
+        let thumbs = dir.join(".metadata").join("thumbs");
+        let still = if names.contains(".metadata") {
+            FOLDER_STILLS.iter().map(|n| thumbs.join(n)).find(|p| still_file(p))
+        } else {
+            None
+        };
+        Folder { names, still }
+    }
+}
+
+/// How much of a still is read for its header: enough for a JPEG behind
+/// a typical EXIF block; a larger one is read again up to the reader's
+/// limit, once (see `ASPECTS`).
+const ASPECT_HEAD: usize = 64 << 10;
+/// Aspects kept in memory, keyed by path and checked against size and
+/// time, so a replaced still is read again and an unchanged one never.
+const ASPECTS_KEPT: usize = 8192;
+
+type Stamp = (u64, Option<std::time::SystemTime>);
+
+fn aspects() -> &'static Mutex<HashMap<PathBuf, (Stamp, Option<f64>)>> {
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<PathBuf, (Stamp, Option<f64>)>>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// A still's width over its height from its header, three decimals;
+/// `None` when the header does not read.
+pub fn aspect_of(still: &Path) -> Option<f64> {
+    let meta = std::fs::metadata(still).ok()?;
+    let stamp: Stamp = (meta.len(), meta.modified().ok());
+    if let Some((s, a)) = aspects().lock().unwrap_or_else(|e| e.into_inner()).get(still)
+        && *s == stamp
+    {
+        return *a;
+    }
+    let read = |limit: usize| -> Option<f64> {
+        use std::io::Read;
+        let mut head = Vec::with_capacity(limit.min(meta.len() as usize));
+        std::fs::File::open(still).ok()?.take(limit as u64).read_to_end(&mut head).ok()?;
+        let (w, h) = lain_read::image::dimensions(&head, type_of(&head));
+        (w > 0 && h > 0).then(|| (f64::from(w) / f64::from(h) * 1000.0).round() / 1000.0)
+    };
+    let aspect = read(ASPECT_HEAD)
+        .or_else(|| (meta.len() > ASPECT_HEAD as u64).then(|| read(lain_read::image::HEAD_BYTES)).flatten());
+    let mut cache = aspects().lock().unwrap_or_else(|e| e.into_inner());
+    if cache.len() >= ASPECTS_KEPT {
+        cache.clear();
+    }
+    cache.insert(still.to_path_buf(), (stamp, aspect));
+    aspect
 }
 
 pub struct Generator {
@@ -427,6 +548,67 @@ mod cover_tests {
         assert_eq!(local_cover(&media), Some(dir.join("item-poster.webp")));
         assert_eq!(image_type(&dir.join("item-poster.webp")), "image/webp");
         assert_eq!(image_type(&dir.join("missing.jpg")), "image/jpeg");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    fn info(source: &str, aspect: Option<f64>) -> Option<ThumbnailInfo> {
+        Some(ThumbnailInfo { source: source.into(), aspect })
+    }
+
+    #[test]
+    fn describe_says_what_each_thumbnail_is() {
+        let dir = std::env::temp_dir().join(format!("lain-describe-{}", std::process::id()));
+        let show = dir.join("Show");
+        let films = dir.join("Films");
+        std::fs::create_dir_all(&show).unwrap();
+        std::fs::create_dir_all(films.join(".metadata").join("thumbs")).unwrap();
+        // A show's poster next to its first episode; the second has none.
+        std::fs::write(show.join("Show 01-poster.png"), lain_read::image::test_png(600, 900)).unwrap();
+        // A wide still under a `.jpg` name: the type is read, not assumed.
+        std::fs::write(films.join("Wide-thumb.jpg"), lain_read::image::test_png(640, 360)).unwrap();
+        // A still whose header does not read: a sidecar, shape unknown.
+        std::fs::write(films.join("Odd-poster.jpg"), b"not a picture").unwrap();
+        // An empty poster is no poster; the folder's still stands in.
+        std::fs::write(films.join("Empty-poster.jpg"), b"").unwrap();
+        std::fs::write(
+            films.join(".metadata").join("thumbs").join("banner.jpg"),
+            lain_read::image::test_png(1000, 185),
+        )
+        .unwrap();
+        let files = [
+            show.join("Show 01.mkv"),
+            show.join("Show 02.mkv"),
+            films.join("Wide.mp4"),
+            films.join("Odd.mp4"),
+            films.join("Empty.mp4"),
+            show.join("Book v01.cbz"),
+            PathBuf::new(),
+        ];
+        let refs: Vec<&Path> = files.iter().map(PathBuf::as_path).collect();
+        let got = describe(&refs);
+        assert_eq!(
+            got,
+            vec![
+                info(SOURCE_SIDECAR, Some(0.667)),
+                info(SOURCE_FRAME, None),
+                info(SOURCE_SIDECAR, Some(1.778)),
+                info(SOURCE_SIDECAR, None),
+                info(SOURCE_SIDECAR, Some(5.405)),
+                info(SOURCE_COVER, None),
+                None,
+            ]
+        );
+        // Each answer is the still the thumbnail route serves.
+        for (file, want) in files.iter().zip(&got).take(5) {
+            assert_eq!(
+                local_cover(file).is_some(),
+                want.as_ref().is_some_and(|i| i.source == SOURCE_SIDECAR),
+                "{file:?}"
+            );
+        }
+        // A replaced still is read again.
+        std::fs::write(show.join("Show 01-poster.png"), lain_read::image::test_png(1280, 720)).unwrap();
+        assert_eq!(aspect_of(&show.join("Show 01-poster.png")), Some(1.778));
         std::fs::remove_dir_all(dir).ok();
     }
 }

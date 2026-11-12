@@ -29,7 +29,7 @@ use lain_core::codes;
 
 use crate::app::App;
 use crate::catalog::{CAP_CATALOG_READ, CAP_CATALOG_WRITE, CAP_USER_PROGRESS};
-use crate::contracts::{CatalogItem, Library, PageParams, Progress};
+use crate::contracts::{CatalogItem, CatalogPage, Library, PageParams, Progress};
 use crate::events::{SseBody, SubInfo};
 use crate::files::FileBody;
 use crate::libraries::LibraryPatch;
@@ -843,8 +843,20 @@ fn search(app: &App, req: &Req, v: &Verified) -> Reply {
     p.exclude_libraries = app.hidden_libraries(v);
     let input = json!({"q": req.query("q"), "kind": req.query("kind"), "page": p});
     match app.registry.call_one(CAP_CATALOG_READ, "query", input) {
-        Ok((out, _)) => Reply::ok(out),
+        Ok((out, _)) => Reply::ok(page_with_thumbnails(out)),
         Err(e) => Reply::err(503, &e.to_string()),
+    }
+}
+
+/// A catalog page with what each item's thumbnail is (D-282); a page that
+/// does not decode (a swapped provider's) goes out as it came.
+fn page_with_thumbnails(out: Value) -> Value {
+    match serde_json::from_value::<CatalogPage>(out.clone()) {
+        Ok(mut page) => {
+            crate::watch::tell_thumbnails(&mut page.items);
+            json!(page)
+        }
+        Err(_) => out,
     }
 }
 
@@ -901,14 +913,22 @@ fn catalog_list(app: &App, req: &Req, v: &Verified) -> Reply {
     p.library_id = req.query("library_id").to_string();
     p.exclude_libraries = app.hidden_libraries(v);
     match app.registry.call_one(CAP_CATALOG_READ, "page", json!({"page": p})) {
-        Ok((out, _)) => Reply::ok(out),
+        Ok((out, _)) => Reply::ok(page_with_thumbnails(out)),
         Err(e) => Reply::err(500, &e.to_string()),
     }
 }
 
 fn catalog_get(app: &App, req: &Req, v: &Verified) -> Reply {
     match app.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": req.param("id")})) {
-        Ok((out, _)) if app.visible_item(v, req.param("id")).is_some() => Reply::ok(out),
+        Ok((out, _)) if app.visible_item(v, req.param("id")).is_some() => {
+            match serde_json::from_value::<CatalogItem>(out.clone()) {
+                Ok(mut it) => {
+                    crate::watch::tell_thumbnails(std::slice::from_mut(&mut it));
+                    Reply::ok(json!(it))
+                }
+                Err(_) => Reply::ok(out),
+            }
+        }
         Ok(_) => Reply::err(404, "unknown item"),
         Err(e) => {
             if !e.is(codes::NOT_FOUND) {
@@ -928,12 +948,12 @@ fn catalog_episodes(app: &App, req: &Req, v: &Verified) -> Reply {
             // A title split across a public and a locked library shows
             // only the public part.
             let hidden = app.hidden_libraries(v);
-            let items: Vec<Value> = serde_json::from_value::<Vec<CatalogItem>>(out)
+            let mut items: Vec<CatalogItem> = serde_json::from_value::<Vec<CatalogItem>>(out)
                 .unwrap_or_default()
                 .into_iter()
                 .filter(|it| !hidden.contains(&it.library_id))
-                .map(|it| json!(it))
                 .collect();
+            crate::watch::tell_thumbnails(&mut items);
             Reply::ok(json!({"items": items}))
         }
         Err(e) => {
