@@ -6,6 +6,7 @@
 	import { page } from '$app/state';
 	import AppShell from '$lib/components/navigation/AppShell.svelte';
 	import BootScreen from '$lib/components/navigation/BootScreen.svelte';
+	import ReturnFocus from '$lib/components/navigation/ReturnFocus.svelte';
 	import Toaster from '$lib/components/primitives/Toaster.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { session } from '$lib/auth/session.svelte';
@@ -89,4 +90,7 @@
 	{/if}
 
 	<Toaster />
+	<!-- Here, not in the shell: the player and the reader leave the shell, and
+	     Back from them must still find the card that opened them. -->
+	<ReturnFocus />
 </Tooltip.Provider>
