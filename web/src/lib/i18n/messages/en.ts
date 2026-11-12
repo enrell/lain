@@ -120,6 +120,7 @@ const en = {
 		progress: 'Scan progress',
 		queued: 'A scan is running. Another starts when it ends, for what was added meanwhile.',
 		queuedLine: 'Another scan follows this one, for libraries added since it started.',
+		enrichHint: 'The titles are already in the library. This step looks up posters and descriptions, title by title, and can take a while.',
 		libraryAdded: 'Library “{name}” added.',
 		libraryAddedQueued: 'Library “{name}” added. A scan is running; it is scanned when that one ends.',
 		startFailed: 'Could not start the scan.'
