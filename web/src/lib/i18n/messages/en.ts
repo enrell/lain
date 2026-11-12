@@ -109,7 +109,8 @@ const en = {
 			you: 'You',
 			server: 'Server'
 		},
-		breadcrumb: 'settings / {scope} / {section}',
+		eyebrow: 'Settings · {scope}',
+		pick: '{section}: choose another settings section',
 		since: 'since {date}',
 		hints: {
 			find: 'find a setting',
@@ -195,6 +196,51 @@ const en = {
 			language: 'Language',
 			languageHint: 'The language of Lain’s interface in this browser.',
 			system: 'System ({name})'
+		},
+		// The one line under each group's heading: what the group is for.
+		groups: {
+			profile: {
+				details: 'How other people on this server see you.',
+				avatar: 'A picture of your own, or one of the mascots.',
+				interface: 'How Lain reads in this browser.',
+				account: 'Your sign-in and this session.'
+			},
+			playback: {
+				playing: 'What Play opens, and which tracks it picks.',
+				prefs: 'How far a skip jumps and how subtitles sit on the picture.',
+				effects: 'Upscaling shaders the web player runs on the GPU.'
+			},
+			connections: {
+				lists: 'Tracking lists your progress comes from and goes back to.'
+			},
+			security: {
+				password: 'The password you sign in with on every client.'
+			},
+			privacy: {
+				visibility: 'Who sees your profile, activity and ratings.',
+				people: 'How other people find you and reach you.',
+				favorites: 'Up to twelve titles shown on your profile.'
+			},
+			offline: {
+				storage: 'Comics and manga this browser keeps for reading offline.',
+				items: 'What this browser holds now.'
+			},
+			downloads: {
+				queue: 'Files the server fetches over HTTP onto its own disk.',
+				storage: 'What the downloads use, and what is left on the disk.',
+				limits: 'Shared with acquisition: one budget and one free-space floor for both.'
+			},
+			indexers: {
+				indexers: 'Torznab and Newznab endpoints searched for releases.'
+			},
+			acquisition: {
+				engine: 'The built-in BitTorrent client.',
+				seeding: 'When a finished torrent stops sharing.',
+				import: 'How a finished download reaches its library.',
+				automation: 'Scheduled searches for monitored titles.',
+				profiles: 'Which releases are wanted, and when one is worth an upgrade.',
+				subtitles: 'Where missing subtitles are searched, with your own API keys.'
+			}
 		}
 	},
 	palette: {

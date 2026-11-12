@@ -27,6 +27,9 @@
 	/* A field that stays visible even when a palette maps surface onto the
 	   background (several Omarchy themes do). */
 	--color-field: color-mix(in srgb, var(--color-foreground) 6%, var(--color-background));
+	/* A tonal panel (settings groups): a step above the page, a step below
+	   a field, from the foreground for the same reason as the field. */
+	--color-panel: color-mix(in srgb, var(--color-foreground) 3.5%, var(--color-background));
 
 	--font-sans:
 		ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
@@ -169,9 +172,12 @@ video::cue {
 }
 
 /*
- * Settings (D-086, AGENTS.md audience): rows on hairlines, no framed cards.
- * Form controls inside settings are fields on a surface, bordered only
- * when focused, so a dense page is not a grid of outlined boxes.
+ * Settings (D-087, owner review 2026-11): a dense page is read in groups.
+ * Each group is a tonal panel with its heading above it, like a home rail
+ * under its title; rows inside are split by hairlines. No outlines: the
+ * panel is a fill derived from the foreground, so it shows on palettes
+ * that map surface onto the background. Fields inside a panel are one
+ * step brighter than it, bordered only when focused.
  */
 .settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, textarea) {
 	border-color: transparent;
@@ -183,6 +189,59 @@ video::cue {
 .settings-body [data-bits-select-trigger], .settings-body button[role='combobox'] {
 	border-color: transparent;
 }
+/* One control height in a settings row on a desktop: a select, a field and
+   the Select primitive's trigger line up with the buttons beside them. */
+@media (min-width: 768px) {
+	.settings-card :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, button[data-select-trigger]) {
+		height: 2.25rem;
+	}
+}
+.settings-card {
+	--color-field: color-mix(in srgb, var(--color-foreground) 8%, var(--color-background));
+	border-radius: var(--radius-card);
+	background: var(--color-panel);
+}
+/* Rows and items sit on the panel's inner edge; the panel draws the
+   hairline between them, so a row never needs to know its neighbours. */
+.settings-card > *,
+.settings-items > * {
+	padding-inline: 1.25rem;
+}
+.settings-card > * + *,
+.settings-items > * + * {
+	border-top: 1px solid var(--color-hairline);
+}
+.settings-card > .settings-items {
+	padding-inline: 0;
+}
+@media (max-width: 639px) {
+	.settings-card > *,
+	.settings-items > * {
+		padding-inline: 1rem;
+	}
+	.settings-card > .settings-items {
+		padding-inline: 0;
+	}
+}
+/* A phone stacks a row's control under its label, except a lone switch or
+   number: those stay beside the label, where a thumb expects a toggle. */
+@media (max-width: 639px) {
+	.setting-row:has(> :nth-child(2) > :only-child:is(input[type='number'], .contents)) {
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+	}
+	.setting-row:has(> :nth-child(2) > :only-child:is(input[type='number'], .contents)) > :nth-child(3) {
+		grid-column: 1 / -1;
+	}
+}
+/* A short note at the top or bottom of a panel: keys, an empty list. */
+.settings-note {
+	padding-block: 0.875rem;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	color: var(--color-muted);
+}
+/* Hairline sections of the older settings layout, until every page is on groups. */
 .settings-section {
 	border-top: 1px solid var(--color-hairline);
 	padding-block: 1.75rem 0.5rem;
@@ -208,6 +267,13 @@ details.settings-section > summary {
 }
 .settings-list > * + * {
 	border-top: 1px solid var(--color-hairline);
+}
+/* A collapsible group: the summary is the heading, with its own marker. */
+details.settings-group > summary {
+	list-style: none;
+}
+details.settings-group > summary::-webkit-details-marker {
+	display: none;
 }
 .saved-flash {
 	animation: saved-flash 1.6s ease-out both;
