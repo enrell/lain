@@ -162,6 +162,11 @@
 	let headerEl = $state<HTMLElement | null>(null);
 	let chromeTailEl = $state<HTMLElement | null>(null);
 	let chromeFootEl = $state<HTMLElement | null>(null);
+	// Subtitles sit on the picture's bottom edge, which is where the control
+	// bar is drawn: while it shows, the browser's cues move up by its height
+	// (less its transparent fade) instead of being drawn under the buttons.
+	let footHeight = $state(0);
+	const cueLift = $derived(controlsVisible ? Math.max(0, footHeight - 32) : 0);
 	let scrubbing = $state(false);
 	let scrubValue = $state(0);
 	// True only between pointerdown and pointerup on the seek row. Used to
@@ -1653,6 +1658,7 @@
 		subtitleBgClass,
 		subtitleSizeClass
 	].join(' ')}
+	style:--cue-lift={`${cueLift}px`}
 	role="region"
 	aria-label={`Player — ${title}`}
 	onpointermove={onStagePointerMove}
@@ -2049,6 +2055,7 @@
 	<!-- Transport deck: transparent to keep subtitles visible (D-065/D-066). -->
 	<footer
 		bind:this={chromeFootEl}
+		bind:clientHeight={footHeight}
 		class={[
 			// On the picture the controls are white, not the page's muted grey.
 			'relative z-20 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-3 pb-3 pt-10 sm:px-6 sm:pb-4 [&_button:not(.bg-accent)]:text-white/90 [&_button:not(.bg-accent):hover]:text-white',
@@ -2262,6 +2269,7 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		header, footer { transition: none; }
+		:global(video::-webkit-media-text-track-container) { transition: none; }
 	}
 
 	:global(video::cue) {
@@ -2279,6 +2287,12 @@
 		font-family: inherit;
 		font-weight: 600;
 		line-height: 1.35;
+	}
+
+	/* Chromium and Safari: the box the cues are laid out in. */
+	:global(video::-webkit-media-text-track-container) {
+		transform: translateY(calc(-1 * var(--cue-lift, 0px)));
+		transition: transform 150ms ease-out;
 	}
 
 	:global(.subtitles-bg-box video::cue) {
