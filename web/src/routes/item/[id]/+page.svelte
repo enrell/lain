@@ -50,6 +50,7 @@
 	import { isReadable } from '$lib/reader/kinds';
 	import ComicInfoPanel from '$lib/components/reader/ComicInfoPanel.svelte';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer, item?.kind); }
@@ -155,11 +156,24 @@
 		reading || !item ? [] : (series ? series.items : [item]).filter((it) => !it.missing).map((it) => it.id)
 	);
 	function pageKey(e: KeyboardEvent): void {
-		if (e.key !== 't' || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if ((e.key !== 't' && e.key !== 'p') || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+		if (isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if (e.key === 'p') {
+			// The hero's own Play (or Resume, Read) link, so an external player still opens as a click would.
+			const play = document.querySelector<HTMLAnchorElement>('a[data-title-play]');
+			if (!play) return;
+			e.preventDefault();
+			play.click();
+			return;
+		}
 		if (!session.isAdmin || subtitleItems.length === 0) return;
 		e.preventDefault();
 		subtitlesOpen = true;
 	}
+	usePageKeys(() => [
+		{ keys: ['P'], label: t('pageKeys.titlePlay') },
+		...(session.isAdmin && subtitleItems.length > 0 ? [{ keys: ['T'], label: t('pageKeys.subtitles') }] : [])
+	]);
 	const ratio = $derived(progress ? progressRatio(progress) : 0);
 
 	// What an admin can do with the title, behind one "Manage" menu. The
@@ -365,7 +379,7 @@
 					     optional prose, so it is on screen on arrival at 320x568. -->
 					<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
 						{#if playable || (!item.missing && preferredPlayer !== 'browser')}
-							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
+							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
 								<Play class="size-4 fill-current" />
 								{reading ? (resumeAt > 0 ? `Continue from page ${Math.floor(resumeAt)}` : 'Read') : resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
 							</LinkButton>

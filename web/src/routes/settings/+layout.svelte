@@ -17,6 +17,7 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import { sectionFor, sectionHint, sectionLabel, visibleSections } from '$lib/settings/sections';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -45,6 +46,12 @@
 			)
 		].filter((el) => el.offsetParent !== null && !el.closest('[aria-hidden="true"]'));
 	}
+
+	usePageKeys(() => [
+		{ keys: ['g', '…'], label: t('pageKeys.settingsGo') },
+		{ keys: ['[', ']'], label: t('pageKeys.settingsStep') },
+		{ keys: ['j', 'k'], label: t('pageKeys.settingsMove') }
+	]);
 
 	function onKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;

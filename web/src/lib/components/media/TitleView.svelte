@@ -422,7 +422,7 @@
 				     third line of its own. -->
 				<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
 					{#if resumeTarget}
-						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
+						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
 						</LinkButton>
 					{:else}

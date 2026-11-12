@@ -39,6 +39,7 @@
 	import { pageKey, socialError } from '$lib/social/format';
 	import { ensureItems } from '$lib/stores/media-cache.svelte';
 	import { socialBadge } from '$lib/stores/social.svelte';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { debounce } from '$lib/utilities/debounce';
 	import { isTypingTarget } from '$lib/utilities/guards';
@@ -203,6 +204,13 @@
 		url.searchParams.set('tab', id);
 		void goto(url, { replaceState: true, keepFocus: true, noScroll: true });
 	}
+
+	usePageKeys(() => [
+		{ keys: ['1', '…', '4'], label: t('pageKeys.tabs') },
+		{ keys: ['/'], label: t('pageKeys.findPeople') },
+		...(tab === 'notifications' ? [{ keys: ['R'], label: t('pageKeys.markRead') }] : []),
+		...(tab === 'collections' ? [{ keys: ['N'], label: t('pageKeys.newCollection') }] : [])
+	]);
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
 		// The header's search takes `/` first and marks it handled; a page with

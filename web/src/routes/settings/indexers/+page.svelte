@@ -13,6 +13,7 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatRelative } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 
 	/*
 	 * Indexers (docs/slices/acquisition.md, A-7/A-8): Torznab and Newznab,
@@ -138,6 +139,8 @@
 		}
 		e.preventDefault();
 	}
+
+	usePageKeys(() => [{ keys: ['N'], label: t('acquire.firstRun.addIndexer') }]);
 
 	function pageKey(e: KeyboardEvent): void {
 		if (e.key !== 'n' || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;

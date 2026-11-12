@@ -19,6 +19,7 @@
 	import UserChip from './UserChip.svelte';
 	import { favoriteState, ratingState } from '$lib/social/favorite.svelte';
 	import { FIELD } from './styles';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 
 	let { target }: { target: WorkTarget } = $props();
 
@@ -136,6 +137,18 @@
 			composer?.blur();
 		}
 	}
+
+	usePageKeys(() =>
+		view
+			? [
+					{ keys: ['F'], label: t('pageKeys.favorite') },
+					{ keys: ['R'], label: t('pageKeys.rate') },
+					{ keys: ['S'], label: t('pageKeys.share') },
+					{ keys: ['C'], label: t('pageKeys.collect') },
+					{ keys: ['M'], label: t('pageKeys.comment') }
+				]
+			: []
+	);
 
 	function onKey(e: KeyboardEvent): void {
 		if (!view) return;

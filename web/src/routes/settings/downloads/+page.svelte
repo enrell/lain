@@ -14,6 +14,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatBytes, formatRelative } from '$lib/utilities/format';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { fromGiB, isActive, progressRatio, settingsChanges, toGiB } from './downloads';
 
 	/*
@@ -144,6 +145,8 @@
 				break;
 		}
 	}
+
+	usePageKeys(() => [{ keys: ['/'], label: t('downloads.queue.add') }]);
 
 	function pageKey(e: KeyboardEvent): void {
 		const el = e.target as HTMLElement | null;
