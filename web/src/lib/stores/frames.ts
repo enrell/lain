@@ -4,7 +4,7 @@ import { session } from '$lib/auth/session.svelte';
 import { isReadable } from '$lib/reader/kinds';
 import type { SeriesGroup } from '$lib/utilities/grouping';
 import { enrichmentCache, ensureEnrichments, libraryCache } from './media-cache.svelte';
-import { frameDecided, frameOf, knownShape, measure, MEASURE_WAIT_MS, sampleArt, showsOwnStill, toldShape, type Shape, type StillOf } from './shapes.svelte';
+import { frameDecided, frameOf, knownShape, measure, MEASURE_WAIT_MS, pictureShape, sampleArt, showsOwnStill, toldShape, type Shape, type StillOf } from './shapes.svelte';
 
 /** The still a card shows for a file without artwork: its own cover or a frame. */
 export function cardThumb(item: Pick<CatalogItem, 'id' | 'kind'>): string {
@@ -58,6 +58,12 @@ export function wideStill(item: Pick<CatalogItem, 'id' | 'kind' | 'thumbnail'>, 
 /** The frame a set's titles make by what is known now: overlays loaded, kinds, shapes measured. */
 export function frameNow(groups: SeriesGroup[]): Shape {
 	return frameOf(groups, (id) => enrichmentCache.get(id));
+}
+
+/** Each title's picture shape by what is known now (see `pictureShape`), by its key. */
+export function shapesNow(groups: SeriesGroup[]): Map<string, Shape> {
+	const lookup = (id: string) => enrichmentCache.get(id);
+	return new Map(groups.map((g) => [g.key, pictureShape(g, lookup)]));
 }
 
 /**

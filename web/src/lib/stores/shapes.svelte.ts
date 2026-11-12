@@ -206,6 +206,25 @@ export function frameOf(groups: SeriesGroup[], enrichment: (id: string) => Enric
 	return frameFor(groups.slice(0, SAMPLE).map((g) => pictureShape(g, enrichment)));
 }
 
+/**
+ * A set split by the shape of its pictures, each part in the set's order:
+ * the larger part first (upright on a tie), an empty part left out. A grid
+ * of titles whose pictures differ draws each part in its own frame, at
+ * Home's sizes for it, instead of boxing one shape inside the other's
+ * frame (a still letterboxed in a poster's, a poster pillarboxed in a
+ * still's).
+ */
+export function splitByShape<T>(items: T[], shapeOf: (item: T) => Shape): { shape: Shape; items: T[] }[] {
+	const portrait: T[] = [];
+	const landscape: T[] = [];
+	for (const item of items) (shapeOf(item) === 'landscape' ? landscape : portrait).push(item);
+	const parts = [
+		{ shape: 'portrait' as Shape, items: portrait },
+		{ shape: 'landscape' as Shape, items: landscape }
+	].filter((p) => p.items.length > 0);
+	return parts.sort((a, b) => b.items.length - a.items.length);
+}
+
 /** The files whose pictures decide a set's frame. */
 export function sampleArt(groups: SeriesGroup[]): CatalogItem[] {
 	return groups.slice(0, SAMPLE).map(artItem);

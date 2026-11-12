@@ -3,7 +3,7 @@ import type { CatalogItem, Enrichment } from '$lib/api/types';
 import { groupItems } from '$lib/utilities/grouping';
 import {
 	SAMPLE, STILLS_CAP, frameDecided, frameFor, frameOf, guessShape, knownShape, measure, recordShape, sampleArt, shapeOf, showsOwnStill,
-	stillKey, tallyStill, toldShape, usualStill
+	splitByShape, stillKey, tallyStill, toldShape, usualStill
 } from './shapes.svelte';
 
 function item(id: string, title: string, kind = 'video', episode = 0, library = 'lib'): CatalogItem {
@@ -178,5 +178,20 @@ describe('frames', () => {
 	});
 	it('measures nothing outside a browser and nothing already known', async () => {
 		await expect(measure([{ id: 's1', src: 'x.jpg' }, { id: 'new', src: '' }])).resolves.toBeUndefined();
+	});
+});
+
+describe('splitByShape', () => {
+	const shape = (s: string) => (s.startsWith('w') ? 'landscape' : 'portrait');
+	it('keeps each part in order, the larger part first', () => {
+		expect(splitByShape(['p1', 'w1', 'p2', 'w2', 'w3'], shape)).toEqual([
+			{ shape: 'landscape', items: ['w1', 'w2', 'w3'] },
+			{ shape: 'portrait', items: ['p1', 'p2'] }
+		]);
+	});
+	it('puts posters first on a tie and leaves an empty part out', () => {
+		expect(splitByShape(['w1', 'p1'], shape).map((p) => p.shape)).toEqual(['portrait', 'landscape']);
+		expect(splitByShape(['p1', 'p2'], shape)).toEqual([{ shape: 'portrait', items: ['p1', 'p2'] }]);
+		expect(splitByShape([], shape)).toEqual([]);
 	});
 });
