@@ -136,7 +136,8 @@ const en = {
 			integrations: { label: 'Integrations', hint: 'OAuth apps and API keys' },
 			plugins: { label: 'Plugins', hint: 'Which provider does each job' },
 			backup: { label: 'Backup', hint: 'Database snapshot' },
-			downloads: { label: 'Downloads', hint: 'Fetch to server disk, limits' },
+			// The server's fetcher, not what you saved: beside "Offline" a bare "Downloads" read as your copies.
+			downloads: { label: 'Server downloads', hint: 'Fetch to server disk, limits' },
 			offline: { label: 'Offline', hint: 'Saved in this browser' },
 			indexers: { label: 'Indexers', hint: 'Torznab, Newznab, Jackett, Prowlarr' },
 			acquisition: { label: 'Acquisition', hint: 'Torrent engine, seeding, import' }
