@@ -37,11 +37,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   search, sort and tile size join the filters sheet below a wide screen.
 
 ### Fixed
-- **Grids no longer change shape while they load** (web): a library grid,
-  a shelf, the rail under a title and search results measure their first
-  pictures before they are drawn and keep the frame those decide; a grid
-  opened in one shape and turned to the other as its posters came in. A
-  provider's cover (a wide banner) is no longer taken for a poster.
+- **Grids no longer change shape while they load, nor wait for their
+  pictures** (web): a library grid, a shelf, the rail under a title and
+  search results are drawn as soon as their titles are here, in the frame
+  guessed from what is known before a picture loads (posters in the
+  overlays, reading files), then checked once against their first
+  pictures and changed only if the guess was wrong, and held after that.
+  A grid opened in one shape and turned to the other as its posters came
+  in; measuring first instead left a query or a library on a cold
+  thumbnail cache with nothing on screen for up to 2.5 s. A card's
+  picture pulses until it loads. A provider's cover (a wide banner) is no
+  longer taken for a poster.
 - **Acquire no longer flashes "no library"** (web) while its libraries load.
 - **Acquire's forms on a phone** (web): the link field of the Queue had
   shrunk beside the library picker to a few letters; the form stacks, and

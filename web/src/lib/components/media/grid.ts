@@ -1,5 +1,5 @@
 /*
- * The sizes of a set of cards that share one frame (see `settleFrame`).
+ * The sizes of a set of cards that share one frame (see `guessFrame`).
  * A tile is about the size of Home's rail cards for its shape, so a
  * poster grid and a widescreen grid carry the same weight wherever titles
  * are listed: a library, the favourites, search results, a rail.
