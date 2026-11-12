@@ -12,6 +12,7 @@
 	import ProgressBar from './ProgressBar.svelte';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable } from '$lib/reader/kinds';
+	import { toldShape } from '$lib/stores/shapes.svelte';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	onMount(() => {
@@ -35,6 +36,11 @@
 	} = $props();
 
 	const reading = $derived(isReadable(item.kind));
+	// Upright art (a page, a poster with no wide banner, a still the server
+	// says is upright, D-282) is shown whole beside the title over a blurred
+	// copy of itself: spread across the hero, a film's poster was blown up
+	// into a smear with its lettering cut away.
+	const upright = $derived(reading || (!enrichment?.cover && (!!enrichment?.poster || toldShape(item) === 'portrait')));
 	// A page is portrait: shown as a cover over a blurred backdrop instead of
 	// being stretched across the hero like a video still.
 	const cover = $derived(api.thumbnail.url(item.id, session.token, { width: 720 }));
@@ -69,7 +75,7 @@
 </script>
 
 <section class="hero-monolith relative overflow-hidden bg-background" aria-label={title}>
-	{#if reading}
+	{#if upright}
 		<img
 			src={artwork}
 			alt=""
