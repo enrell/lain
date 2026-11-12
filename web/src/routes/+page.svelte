@@ -20,7 +20,9 @@
 	import { frameNow, settleFrame } from '$lib/stores/frames';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
-	import { compareEpisodes, groupItems } from '$lib/utilities/grouping';
+	import { compareEpisodes, type SeriesGroup } from '$lib/utilities/grouping';
+	import { artItem } from '$lib/utilities/browse';
+	import { listTitles, pagedTitles } from '$lib/stores/titles';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { t } from '$lib/i18n';
 	import { isInProgress, nextUpAfter, sortByRecent } from '$lib/utilities/progress';
@@ -47,18 +49,23 @@
 	// and Play started a show in its middle.
 	let heroStart = $state<CatalogItem | null>(null);
 	let recent = $state<CatalogItem[]>([]);
-	// Each library's row, in the frame its pictures make (see `guessFrame`):
-	// a films library of posters was cut into widescreen cards because its
-	// type said nothing of its pictures. Drawn with the page in the frame
-	// known before a picture loads, then checked once.
-	let libraryRows = $state<{ lib: Library; items: CatalogItem[]; layout: 'poster' | 'landscape' }[]>([]);
+	// Each library's newest titles, a row each, in the frame their pictures
+	// make (see `guessFrame`): a films library of posters was cut into
+	// widescreen cards because its type said nothing of its pictures. Drawn
+	// with the page in the frame known before a picture loads, then checked
+	// once. One row per library is also what was new: a row of every
+	// library's newest files mixed a show's episodes, films and clips in one
+	// frame, so it is not drawn beside them.
+	let libraryRows = $state<{ lib: Library; groups: SeriesGroup[]; layout: 'poster' | 'landscape' }[]>([]);
 	const layoutOf = (frame: Shape) => (frame === 'portrait' ? ('poster' as const) : ('landscape' as const));
-	// A row lists files, so each file is its own title here.
-	const titlesOf = (items: CatalogItem[]) => items.flatMap((i) => groupItems([i]));
 	let rowsRun = 0;
 	let catalogTotal = $state(0);
+	// Every position of the account, so a title's card counts what is watched.
+	let allProgress = $state<Map<string, Progress>>(new Map());
 
 	const NEXT_UP_TITLES = 6;
+	// Titles in a library's row.
+	const ROW_TITLES = 12;
 
 	// One suggestion per show: the episode after the most recently
 	// finished one. A failed lookup only drops that show's suggestion.
@@ -109,11 +116,13 @@
 			const [progressList, libs, recentPage] = await Promise.all([
 				api.me.continueWatching(),
 				ensureLibraries(),
-				api.catalog.list({ sort: 'recent', limit: 18 })
+				// The newest title, whole (D-283): its first file is where it starts.
+				api.catalog.list({ sort: 'recent', limit: 1, group: 'title' })
 			]);
 			libraries = libs;
 			recent = recentPage.items;
 			catalogTotal = recentPage.total;
+			allProgress = new Map(progressList.map((p) => [p.item_id, p]));
 
 			// A video counts as started after a few seconds; a book counts from its
 			// first page (its position is a page number, not seconds), so what is
@@ -130,17 +139,19 @@
 			continueItems = started.map((row) => row.item);
 			nextUpItems = await loadNextUp(progressList);
 			favoriteItems = await loadFavorites();
-			heroStart = continueItems.length === 0 && nextUpItems.length === 0 && recent[0] ? await firstOfTitle(recent[0]) : null;
+			heroStart =
+				continueItems.length === 0 && nextUpItems.length === 0 && recent[0]
+					? pagedTitles(recentPage)
+						? recent.filter((i) => !i.missing).sort(compareEpisodes)[0] ?? recent[0]
+						: await firstOfTitle(recent[0])
+					: null;
 
-			// One row per library when there is more than one: the
-			// catalog filter runs server-side, nothing is preloaded.
+			// One row per library, its newest titles: the catalog filter and
+			// the grouping run server-side (D-283), nothing is preloaded.
 			const rows = await Promise.all(
-				libs.slice(0, 4).map(async (lib) => ({
-					lib,
-					items: (await api.catalog.list({ libraryId: lib.id, limit: 12 })).items
-				}))
+				libs.map(async (lib) => ({ lib, groups: (await listTitles({ libraryId: lib.id, sort: 'recent', limit: ROW_TITLES })).groups }))
 			);
-			const shown = libs.length > 1 ? rows.filter((r) => r.items.length > 0) : [];
+			const shown = rows.filter((r) => r.groups.length > 0);
 
 			const ids = [
 				...(heroStart ? [heroStart.id] : []),
@@ -148,16 +159,17 @@
 				...nextUpItems.map((i) => i.id),
 				...favoriteItems.map((i) => i.id),
 				...recent.map((i) => i.id),
-				...shown.flatMap((r) => r.items.map((i) => i.id))
+				// A card's picture is its title's first episode's (see `artItem`).
+				...shown.flatMap((r) => r.groups.map((g) => artItem(g).id))
 			];
 			await ensureEnrichments(ids);
 			// Drawn with the page, in the frame the server's word on each
 			// picture gives (D-282); a row of pictures nothing is known about is
 			// checked once and changes only if that was wrong.
 			const mine = ++rowsRun;
-			libraryRows = shown.map((r) => ({ ...r, layout: layoutOf(frameNow(titlesOf(r.items))) }));
+			libraryRows = shown.map((r) => ({ ...r, layout: layoutOf(frameNow(r.groups)) }));
 			shown.forEach((r, i) => {
-				void settleFrame(titlesOf(r.items)).then((settled) => {
+				void settleFrame(r.groups).then((settled) => {
 					const row = libraryRows[i];
 					if (mine === rowsRun && row && row.layout !== layoutOf(settled)) libraryRows[i] = { ...row, layout: layoutOf(settled) };
 				});
@@ -271,12 +283,8 @@
 					<MediaRow title="Read next" href="/library" actionLabel={t('home.browseLibrary')} items={nextUpReading} {progressMap} layout="poster" />
 				{/if}
 
-				{#if recent.length > 0}
-					<MediaRow title="Recently added" href="/library" items={recent.slice(0, 12)} {progressMap} layout="landscape" />
-				{/if}
-
 				{#each libraryRows as row (row.lib.id)}
-					<MediaRow title={row.lib.name} href={`/library/${row.lib.id}`} items={row.items} {progressMap} layout={row.layout} />
+					<MediaRow title={row.lib.name} href={`/library/${row.lib.id}`} groups={row.groups} progressMap={allProgress} layout={row.layout} />
 				{/each}
 			</div>
 		</section>
