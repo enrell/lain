@@ -3,6 +3,7 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
 	import RatingPill from '$lib/components/social/RatingPill.svelte';
+	import ProgressBar from '$lib/components/media/ProgressBar.svelte';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import BookOpen from '@lucide/svelte/icons/book-open';
@@ -366,6 +367,9 @@
 				{/if}
 				<!-- The main action and what else the title can do, where the eye
 				     already is; the rail below keeps the cover and the facts. -->
+				<!-- On a phone: the main action and the heart on one line, then the score,
+				     Download and More (as an icon) on the next. Spelled out, More fell onto a
+				     third line of its own. -->
 				<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
 					{#if resumeTarget}
 						<LinkButton href={playHref(resumeTarget.id)} size="lg" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
@@ -381,10 +385,14 @@
 					<RatingPill />
 					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} size="md" /></span>{/if}
 					<DownloadFileButton items={group.items} variant="ghost" size="md" label={t('download.all')} />
-					<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreEntries} variant="ghost" size="md">
+					<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreEntries} variant="ghost" size="md" compact>
 						{#snippet icon()}<Ellipsis class="size-4" aria-hidden="true" />{/snippet}
 					</Menu>
 				</div>
+				<!-- The part under way, as the film page shows it: a bar under the button that resumes it. -->
+				{#if resuming && resumeProgress!.duration_sec > 0}
+					<ProgressBar ratio={resumeProgress!.position_sec / resumeProgress!.duration_sec} class="mt-4 max-w-sm bg-surface-active" />
+				{/if}
 				<p class="mt-3 text-sm text-muted" aria-live="polite">{watchedLine}</p>
 				{#if synopsis}
 					<!-- A cut synopsis opens on a tap: an ellipsis with no way past it is a dead end. -->

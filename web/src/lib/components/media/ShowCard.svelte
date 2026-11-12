@@ -6,7 +6,11 @@
 	import type { SeriesGroup } from '$lib/utilities/grouping';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { artItem as pickArt } from '$lib/utilities/browse';
-	import { isReadable as readable } from '$lib/reader/kinds';
+	import { isReadable as readable, readingLabel } from '$lib/reader/kinds';
+	import { episodeLabel } from '$lib/utilities/grouping';
+	import { formatLength } from '$lib/utilities/format';
+	import { t } from '$lib/i18n';
+	import ProgressBar from './ProgressBar.svelte';
 	import { RATIO, shapeOf } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
 
@@ -69,6 +73,16 @@
 		};
 	});
 
+	// The part under way: the first one begun and not finished.
+	const under = $derived.by(() => {
+		if (!progressOf) return null;
+		for (const it of group.items) {
+			const p = progressOf(it.id);
+			if (p && !p.completed && p.position_sec > 0 && p.duration_sec > 0) return { item: it, p };
+		}
+		return null;
+	});
+
 	const seasons = $derived([...new Set(group.items.map((i) => i.season).filter((s) => s > 0))]);
 	const detail = $derived.by(() => {
 		const parts: string[] = [
@@ -82,8 +96,17 @@
 		} else if (seasons.length === 1) parts.push(`Season ${seasons[0]}`);
 		else if (seasons.length > 1) parts.push(`Seasons ${Math.min(...seasons)}–${Math.max(...seasons)}`);
 		if (group.year > 0) parts.push(String(group.year));
-		// Under way, the line says how far: "2 of 12 watched", as the app's cards do.
-		if (progressOf && state.started && !state.finished) return `${state.done} of ${group.count} ${reading ? 'read' : 'watched'}`;
+		// Under way, the line says how far: "2 of 12 watched", as the app's cards do. With
+		// nothing finished yet it names the part under way and what is left of it:
+		// "0 of 12 watched" under a Watching badge said nothing had happened.
+		if (progressOf && state.started && !state.finished) {
+			if (state.done === 0 && under) {
+				return reading
+					? `${readingLabel(under.item)} · ${Math.floor(under.p.position_sec)}/${Math.floor(under.p.duration_sec)}`
+					: `${episodeLabel(under.item)} · ${t('title.left', { time: formatLength(Math.max(1, under.p.duration_sec - under.p.position_sec)) })}`;
+			}
+			return `${state.done} of ${group.count} ${reading ? 'read' : 'watched'}`;
+		}
 		return parts.join(' · ');
 	});
 </script>
@@ -122,8 +145,10 @@
 			<span class="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground backdrop-blur">
 				{reading ? 'Reading' : 'Watching'}
 			</span>
-			<div class="absolute inset-x-0 bottom-0 h-1.5 bg-black/50">
-				<div class="h-full bg-accent" style={`width: ${Math.max(3, Math.min(100, Math.round(state.fraction * 100)))}%`}></div>
+			<!-- The film cards' bar, inset and rounded: a flush strip here and an inset bar
+			     there drew one fact two ways in the same grid. -->
+			<div class="absolute inset-x-0 bottom-0 p-1.5">
+				<ProgressBar ratio={Math.max(0.03, Math.min(1, state.fraction))} class="bg-black/50" />
 			</div>
 		{/if}
 	</div>

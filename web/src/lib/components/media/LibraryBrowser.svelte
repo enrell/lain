@@ -8,7 +8,7 @@
 	 * bookmarked, and Back returns to it. The grid lists titles, one card
 	 * per show (it opens the show's page) or per single file.
 	 */
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, type Snippet } from 'svelte';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
@@ -49,7 +49,8 @@
 		libraryId = '',
 		showLibraryFilter = false,
 		name = '',
-		backHref = ''
+		backHref = '',
+		header
 	}: {
 		libraries?: Library[];
 		libraryId?: string;
@@ -57,6 +58,12 @@
 		/** Shown in the sticky bar once the page header has scrolled away. */
 		name?: string;
 		backHref?: string;
+		/**
+		 * The page's own heading. On a wide screen it heads the filter column,
+		 * so the search bar starts level with it; above the grid it left a band
+		 * of nothing over the toolbar.
+		 */
+		header?: Snippet;
 	} = $props();
 
 	let selectedLibrary = $state('');
@@ -494,15 +501,24 @@
 	</div>
 {/snippet}
 
-<div class="lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)] lg:gap-8">
-	<aside class="hidden lg:block" aria-label="Filters">
+<!-- Two rows on a wide screen: the heading then the filters on the left, the
+     toolbar and grid spanning both on the right. The heading's row is sized
+     by the heading alone (the grid spans the flexible row). -->
+<div class="lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-x-8">
+	{#if header}
+		<div class="mb-4 lg:col-start-1 lg:row-start-1 lg:mb-6">{@render header()}</div>
+	{/if}
+	<aside class="hidden lg:col-start-1 lg:row-start-2 lg:block" aria-label="Filters">
 		<div class="sticky top-24 -ml-2 max-h-[calc(100vh-7rem)] overflow-y-auto pb-6 pr-1">
 			{@render panel('genre-find', false)}
 		</div>
 	</aside>
 
-	<div class="min-w-0 space-y-4">
-		<div class="sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)] sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-16 md:pt-6">
+	<div class="min-w-0 space-y-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+		<!-- Stuck right under the header (h-20), so no top padding is needed to clear
+		     it: at rest the bar starts level with the heading. Its shadow shows only
+		     once the grid scrolls under it; at rest it drew a dark seam on the page. -->
+		<div class={['sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 transition-shadow sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-20', scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''].join(' ')}>
 			<div class="flex items-center gap-2">
 				<div class="relative min-w-0 flex-1">
 					<Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden="true" />
