@@ -904,16 +904,78 @@ fn probe_effects(ffmpeg: &str) -> bool {
     )
 }
 
+/// One execution probe of [`probe_build`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Check {
+    ToneMap,
+    ToneMap2390,
+    Effects,
+    Hardware(&'static str),
+}
+
+impl Check {
+    fn run(self, ffmpeg: &str, device: &str) -> bool {
+        match self {
+            Check::ToneMap => probe_tone_map(ffmpeg, false),
+            Check::ToneMap2390 => probe_tone_map(ffmpeg, true),
+            Check::Effects => probe_effects(ffmpeg),
+            Check::Hardware(backend) => probe_hardware(ffmpeg, backend, device),
+        }
+    }
+}
+
+/// Runs `run` over every job at once, one thread each, and answers in
+/// job order. The probes are separate ffmpeg runs that each wait on a
+/// device or a driver (Vulkan, CUDA, VA-API) under their own
+/// [`PROBE_TIMEOUT`], so together they cost the slowest one instead of
+/// their sum. A job whose thread cannot start runs on this one; a job
+/// that panics answers the default (a failed probe).
+fn concurrently<J, T, F>(jobs: &[J], run: F) -> Vec<T>
+where
+    J: Copy + Send,
+    T: Send + Default,
+    F: Fn(J) -> T + Sync,
+{
+    let run = &run;
+    std::thread::scope(|scope| {
+        let started: Vec<_> = jobs
+            .iter()
+            .map(|&job| {
+                std::thread::Builder::new()
+                    .name("ffmpeg-probe".into())
+                    .spawn_scoped(scope, move || run(job))
+                    .map_err(|_| job)
+            })
+            .collect();
+        started
+            .into_iter()
+            .map(|h| match h {
+                Ok(h) => h.join().unwrap_or_default(),
+                Err(job) => run(job),
+            })
+            .collect()
+    })
+}
+
 /// Probes the ffmpeg build with no cache: encoder, filter and hwaccel
 /// lists plus real execution probes for tone mapping and each hardware
 /// backend the build could support. Discovery does not depend on the
 /// current selection, so a software install can learn what it may pick.
+/// The lists run at once, then every execution probe at once (they only
+/// need the lists, not each other); the answer is the one the probes
+/// gave one after another.
 pub fn probe_build(s: &TranscodeSettings) -> Capabilities {
     let ffmpeg = ffmpeg_binary(s);
     let mut caps = Capabilities { ffmpeg: ffmpeg.clone(), ..Capabilities::default() };
-    ffmpeg_list(&ffmpeg, "-encoders", &mut caps.encoders);
-    ffmpeg_list(&ffmpeg, "-filters", &mut caps.filters);
-    ffmpeg_list(&ffmpeg, "-hwaccels", &mut caps.hwaccels);
+    let mut lists = concurrently(&["-encoders", "-filters", "-hwaccels"], |flag| {
+        let mut set = BTreeSet::new();
+        ffmpeg_list(&ffmpeg, flag, &mut set);
+        set
+    })
+    .into_iter();
+    caps.encoders = lists.next().unwrap_or_default();
+    caps.filters = lists.next().unwrap_or_default();
+    caps.hwaccels = lists.next().unwrap_or_default();
     if caps.encoders.is_empty() {
         // No ffmpeg at all: every execution probe would fail too.
         for b in st::HW_BACKENDS {
@@ -921,13 +983,19 @@ pub fn probe_build(s: &TranscodeSettings) -> Capabilities {
         }
         return caps;
     }
-    caps.tone_map = probe_tone_map(&ffmpeg, false);
-    caps.tone_map_2390 = caps.has_filter("libplacebo") && probe_tone_map(&ffmpeg, true);
-    caps.effects = caps.has_filter("libplacebo") && probe_effects(&ffmpeg);
+    let mut checks = vec![Check::ToneMap];
+    if caps.has_filter("libplacebo") {
+        checks.extend([Check::ToneMap2390, Check::Effects]);
+    }
+    checks.extend(st::HW_BACKENDS.into_iter().filter(|b| hardware_candidate(b, &caps)).map(Check::Hardware));
     let device = hardware_device(s);
+    let ok = concurrently(&checks, |c| c.run(&ffmpeg, &device));
+    let passed = |c: Check| checks.iter().zip(&ok).any(|(x, ok)| *x == c && *ok);
+    caps.tone_map = passed(Check::ToneMap);
+    caps.tone_map_2390 = passed(Check::ToneMap2390);
+    caps.effects = passed(Check::Effects);
     for b in st::HW_BACKENDS {
-        let ok = hardware_candidate(b, &caps) && probe_hardware(&ffmpeg, b, &device);
-        caps.hardware.insert(b.to_string(), ok);
+        caps.hardware.insert(b.to_string(), passed(Check::Hardware(b)));
     }
     caps
 }
@@ -1295,5 +1363,79 @@ mod tests {
         );
         assert!(set.contains("libx264") && set.contains("aac") && set.contains("vaapi") && set.contains("------"));
         assert!(!set.contains("="));
+    }
+
+    #[test]
+    fn probe_build_without_ffmpeg_finds_nothing() {
+        let s = TranscodeSettings { ffmpeg_path: "/nonexistent/lain-test/ffmpeg".into(), ..st::defaults() };
+        let caps = probe_build(&s);
+        assert_eq!(caps.ffmpeg, s.ffmpeg_path);
+        assert!(caps.encoders.is_empty() && caps.filters.is_empty() && caps.hwaccels.is_empty());
+        assert!(!caps.tone_map && !caps.tone_map_2390 && !caps.effects);
+        assert_eq!(caps.hardware.len(), st::HW_BACKENDS.len());
+        assert!(caps.hardware.values().all(|ok| !ok));
+    }
+
+    /// The probe of a known build: a POSIX stub ffmpeg lists encoders,
+    /// filters and hwaccels and passes or fails each execution probe.
+    /// Each of the five execution probes also waits (5 s at most) until
+    /// all five have started, so they pass only when they run at once.
+    #[cfg(unix)]
+    #[test]
+    fn probe_build_reads_the_lists_and_runs_the_checks_at_once() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = lain_store::test_dir("policy-probe-build");
+        let marks = dir.join("marks");
+        std::fs::create_dir_all(&marks).unwrap();
+        let bin = dir.join("ffmpeg");
+        let script = r#"#!/bin/sh
+case "$2" in
+  -encoders) printf ' V..... = Video\n V....D libx264 H.264\n V....D h264_nvenc NVENC\n V....D h264_vaapi VAAPI\n'; exit 0 ;;
+  -filters) printf ' ... libplacebo VV->V GPU filters\n ... zscale V->V zimg\n'; exit 0 ;;
+  -hwaccels) printf 'cuda\nvaapi\n'; exit 0 ;;
+esac
+args="$*"
+: > 'MARKS'/$$
+i=0
+while :; do
+  set -- 'MARKS'/*
+  [ "$#" -ge 5 ] && break
+  i=$((i + 1))
+  [ "$i" -gt 100 ] && exit 1
+  sleep 0.05
+done
+case "$args" in
+  *h264_nvenc*) echo '0, 0, 0, 1, 2048, 0x1a2b3c4d'; exit 0 ;;
+  *h264_vaapi*) echo '0, 0, 0, 1, 0, 0x00000000'; exit 0 ;;
+  *bt.2390*) exit 0 ;;
+  *libplacebo=w=*) exit 1 ;;
+  *tonemap=hable*) exit 0 ;;
+esac
+exit 1
+"#
+        .replace("MARKS", &marks.to_string_lossy());
+        std::fs::write(&bin, script).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let s = TranscodeSettings { ffmpeg_path: bin.to_string_lossy().into_owned(), ..st::defaults() };
+        let caps = probe_build(&s);
+        let set = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<BTreeSet<String>>();
+        let mut hardware: BTreeMap<String, bool> = st::HW_BACKENDS.iter().map(|b| (b.to_string(), false)).collect();
+        hardware.insert(st::HW_NVENC.into(), true);
+        let want = Capabilities {
+            encoders: set(&["libx264", "h264_nvenc", "h264_vaapi"]),
+            filters: set(&["libplacebo", "zscale"]),
+            hwaccels: set(&["cuda", "vaapi"]),
+            tone_map: true,
+            tone_map_2390: true,
+            // libplacebo is listed but renders nothing (no Vulkan device),
+            // and VA-API takes the graph but encodes no packet.
+            effects: false,
+            hardware,
+            ffmpeg: s.ffmpeg_path.clone(),
+        };
+        assert_eq!(caps, want);
+        let runs = std::fs::read_dir(&marks).unwrap().count();
+        assert_eq!(runs, 5, "tone map, BT.2390, effects, VA-API and NVENC ran once each");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
