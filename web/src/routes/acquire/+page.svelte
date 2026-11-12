@@ -234,8 +234,9 @@
 	const firstRun = $derived(noLibrary || (loaded && tab === 'search' && indexers.length === 0));
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
-		if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
-		if (firstRun && e.key === (noLibrary ? 'l' : 'i')) {
+		if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		// Not a key a queue row already took (i retries an import there).
+		if (firstRun && !e.defaultPrevented && e.key === (noLibrary ? 'l' : 'i')) {
 			e.preventDefault();
 			void goto(noLibrary ? '/settings/libraries' : '/settings/indexers');
 			return;

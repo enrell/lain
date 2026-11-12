@@ -5,7 +5,6 @@
 	 * notifications read, n starts a collection.
 	 */
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Users from '@lucide/svelte/icons/users';
@@ -42,6 +41,7 @@
 	import { socialBadge } from '$lib/stores/social.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { debounce } from '$lib/utilities/debounce';
+	import { isTypingTarget } from '$lib/utilities/guards';
 	import { formatRelative } from '$lib/utilities/format';
 
 	type Tab = 'feed' | 'friends' | 'notifications' | 'collections';
@@ -203,7 +203,10 @@
 	}
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
-		const k = pageKey(e);
+		// The header's search takes `/` first and marks it handled; a page with
+		// a field of its own for the key moves focus on to it (HeaderSearch).
+		const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTypingTarget(e.target) && !document.querySelector('[role="dialog"]');
+		const k = slash ? '/' : pageKey(e);
 		if (!k) return;
 		const target = TABS.find((x) => x.key === k);
 		if (target) {
@@ -211,9 +214,7 @@
 			setTab(target.id);
 		} else if (k === '/') {
 			e.preventDefault();
-			setTab('friends');
-			await tick();
-			searchInput?.focus();
+			void findPeople();
 		} else if (k === 'r' && tab === 'notifications') {
 			e.preventDefault();
 			void markAllRead();
@@ -254,11 +255,17 @@
 		return (await ensureItems(ids)).filter((item): item is CatalogItem => item !== undefined);
 	}
 
-	async function findPeople(): Promise<void> {
+	// The people search, once the Friends tab has loaded and drawn it.
+	let wantSearch = $state(false);
+	function findPeople(): void {
+		wantSearch = true;
 		setTab('friends');
-		await tick();
-		searchInput?.focus();
 	}
+	$effect(() => {
+		if (!wantSearch || !searchInput) return;
+		wantSearch = false;
+		searchInput.focus();
+	});
 </script>
 
 <svelte:head><title>{t('social.pageTitle')}</title></svelte:head>
@@ -312,13 +319,13 @@
 					{ label: t('social.firstRun.stepShare'), text: t('social.firstRun.stepShareText') }
 				]}
 			>
-				<Button size="rowMain" onclick={() => void findPeople()}>{t('social.feed.findFriends')} <kbd>/</kbd></Button>
+				<Button size="rowMain" onclick={findPeople}>{t('social.feed.findFriends')} <kbd>/</kbd></Button>
 				<LinkButton href="/settings/privacy" variant="tonal" size="row">{t('social.firstRun.privacy')}</LinkButton>
 			</FirstRun>
 		{:else if feed.length === 0}
 			<EmptyState title={t('social.feed.emptyTitle')} description={t('social.feed.emptyBody')}>
 				{#snippet icon()}<Users class="size-6 text-muted" />{/snippet}
-				<Button onclick={() => void findPeople()}>{t('social.feed.findFriends')} <Kbd>/</Kbd></Button>
+				<Button onclick={findPeople}>{t('social.feed.findFriends')} <Kbd>/</Kbd></Button>
 			</EmptyState>
 		{:else}
 			<RelatedRow heading={t('social.feed.titles')} source={feedTitles} class="mb-2" />
