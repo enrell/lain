@@ -277,22 +277,26 @@
 										<span
 											class={['size-1.5 shrink-0 rounded-full', provider.healthy ? 'bg-success' : 'bg-danger'].join(' ')}
 											role="img"
-																aria-label={provider.healthy ? t('settings.pluginsPage.healthy') : t('settings.pluginsPage.unhealthy')}
-															></span>
-														{:else}
-															<!-- Bound ahead of its install (a component): named, and said not to be here yet. -->
-															<span class="shrink-0 font-sans text-muted">{t('settings.pluginsPage.notInstalled')}</span>
-														{/if}
-													</span>
-												{/each}
-												{#if missing.length > 0}
-													<!-- What to do about it, on the server: the bridges install as components. -->
-													<p class="basis-full text-xs leading-5 text-muted">
-														{t('settings.pluginsPage.installHint')} <code class="font-mono text-[11px] text-foreground">lain component install {missing[0]}</code>
-													</p>
-												{/if}
-											</div>
-						<div class="col-span-2 row-start-3 flex items-center gap-2 lg:col-span-1 lg:row-start-auto lg:flex-col lg:items-start lg:gap-1">
+											aria-label={provider.healthy ? t('settings.pluginsPage.healthy') : t('settings.pluginsPage.unhealthy')}
+										></span>
+									{:else}
+										<!-- Bound ahead of its install (a component): named, and said not to be here yet. -->
+										<span class="shrink-0 font-sans text-muted">{t('settings.pluginsPage.notInstalled')}</span>
+									{/if}
+								</span>
+							{/each}
+							<span class="lg:hidden"><Badge tone={modeTone(binding.mode)}>{binding.mode}</Badge></span>
+							{#if missing.length > 0}
+								<!-- What to do about it, on the server: the bridges install as components. -->
+								<p class="basis-full text-xs leading-5 text-muted">
+									{t('settings.pluginsPage.installHint')} <code class="font-mono text-[11px] text-foreground">lain component install {missing[0]}</code>
+								</p>
+							{/if}
+						</div>
+						<!-- On a phone the binding rides at the end of the providers' line
+						     (the generation is a desktop detail): a line of its own under
+						     every job made the list a third longer. -->
+						<div class="hidden lg:flex lg:flex-col lg:items-start lg:gap-1">
 							<Badge tone={modeTone(binding.mode)}>{binding.mode}</Badge>
 							<span class="text-xs text-muted">{t('settings.pluginsPage.generation', { n: binding.generation })}</span>
 						</div>
