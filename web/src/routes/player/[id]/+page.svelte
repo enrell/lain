@@ -112,12 +112,14 @@
 	/*
 	 * The episode playing is in view in the list: playing episode 12 of 12,
 	 * the list opened on 1 to 11 with 12 cut off at the bottom. Scrolled only
-	 * when it is not already in view, and only the list, never the page.
+	 * when it is not already in view, and only the list, never the page; again
+	 * when the list comes back, since a hidden list forgets where it was.
 	 */
 	let listScroller = $state<HTMLElement | null>(null);
 	$effect(() => {
 		const scroller = listScroller;
 		const current = item?.id;
+		void episodesToggle.shown;
 		if (!scroller || !current || episodes.length === 0) return;
 		void tick().then(() => {
 			const row = scroller.querySelector<HTMLElement>('[aria-current="true"]')?.closest('li');
