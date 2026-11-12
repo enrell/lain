@@ -9,8 +9,10 @@
 	import type { ApiKey } from '$lib/api/list';
 	import type { Library } from '$lib/api/types';
 	import Button from '$lib/components/primitives/Button.svelte';
-	import Input from '$lib/components/primitives/Input.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
+	import SettingRow from '$lib/components/settings/SettingRow.svelte';
+	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
+	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 
@@ -81,24 +83,18 @@
 	}
 </script>
 
-<section id="api-keys" class="settings-section scroll-mt-28 !border-t-0 !pt-0">
-	<h2 class="settings-heading">API keys</h2>
-	<p class="mt-1 max-w-2xl text-sm text-muted">
-		For a program that puts files in a library and tells Lain what they are. A key sees only the
-		libraries picked here: their names and paths, nothing in them.
-	</p>
-
+<SettingsGroup id="api-keys" title="API keys" description={t('settings.groups.integrations.apiKeys')}>
 	{#if !ready}
-		<div class="mt-4 flex items-center gap-2 text-sm text-muted"><Spinner /> Loading…</div>
+		<div class="flex items-center gap-2 py-4 text-sm text-muted"><Spinner /> Loading…</div>
 	{:else}
 		{#if fresh?.key}
-			<div class="mt-4 rounded-md border border-accent/40 bg-accent/5 p-3" role="status">
+			<div class="bg-accent/5 py-4" role="status">
 				<p class="text-sm text-foreground">
 					Key for “{fresh.name}”. Copy it now: it is not shown again.
 				</p>
 				<div class="mt-2 flex items-center gap-2">
-					<code class="min-w-0 flex-1 truncate rounded bg-field px-2 py-1.5 font-mono text-xs">{fresh.key}</code>
-					<Button variant="secondary" size="sm" onclick={() => void copy()}>
+					<code class="min-w-0 flex-1 truncate rounded-md bg-field px-3 py-2 font-mono text-xs">{fresh.key}</code>
+					<Button variant="tonal" size="field" onclick={() => void copy()}>
 						{#if copied}<Check class="size-4" /> Copied{:else}<Clipboard class="size-4" /> Copy{/if}
 					</Button>
 				</div>
@@ -106,16 +102,16 @@
 		{/if}
 
 		{#if keys.length > 0}
-			<ul class="settings-list mt-4">
+			<ul class="settings-items">
 				{#each keys as key (key.id)}
-					<li class="flex items-center gap-3 py-2.5">
+					<li class="flex items-center gap-3 py-3">
 						<div class="min-w-0 flex-1">
 							<p class="truncate text-sm font-medium text-foreground">{key.name}</p>
 							<p class="truncate text-xs text-muted">
 								{key.libraries.map(libraryName).join(', ')}
 							</p>
 						</div>
-						<Button variant="ghost" size="sm" onclick={() => void remove(key)} aria-label={`Revoke ${key.name}`}>
+						<Button variant="ghost" size="field" class="hover:text-danger!" onclick={() => void remove(key)} aria-label={`Revoke ${key.name}`}>
 							<Trash2 class="size-4" /> Revoke
 						</Button>
 					</li>
@@ -124,24 +120,31 @@
 		{/if}
 
 		<form
-			class="mt-5 max-w-xl space-y-4"
+			class="settings-items"
 			onsubmit={(e) => {
 				e.preventDefault();
 				void create();
 			}}
 		>
-			<Input label="Name" bind:value={name} placeholder="Downloader" required />
-			<fieldset>
-				<legend class="mb-1.5 block text-sm font-medium text-muted">Libraries</legend>
+			<SettingRow label="Name" hint={t('settings.groups.integrations.keyNameHint')}>
+				<input
+					class="h-9 w-full rounded-md border px-3 text-sm text-foreground outline-none placeholder:text-muted/60"
+					bind:value={name}
+					placeholder="Downloader"
+					required
+					aria-label="Name"
+				/>
+			</SettingRow>
+			<SettingRow label="Libraries" hint={t('settings.groups.integrations.apiKeysScope')} stack>
 				{#if libraries.length === 0}
 					<p class="text-sm text-muted">Add a library first.</p>
 				{:else}
-					<div class="flex flex-wrap gap-2">
+					<div class="flex flex-wrap gap-2" role="group" aria-label="Libraries">
 						{#each libraries as lib (lib.id)}
 							<label
 								class={[
-									'flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm',
-									picked.includes(lib.id) ? 'border-accent/60 text-foreground' : 'border-line text-muted'
+									'flex h-9 cursor-pointer items-center gap-2 rounded-md px-3 text-sm transition-colors',
+									picked.includes(lib.id) ? 'bg-accent/15 text-foreground' : 'bg-field text-muted hover:text-foreground'
 								].join(' ')}
 							>
 								<input
@@ -155,10 +158,12 @@
 						{/each}
 					</div>
 				{/if}
-			</fieldset>
-			<Button type="submit" loading={creating} disabled={!name.trim() || picked.length === 0}>
-				Create key <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
-			</Button>
+			</SettingRow>
+			<div class="flex justify-end py-3">
+				<Button type="submit" size="field" loading={creating} disabled={!name.trim() || picked.length === 0}>
+					Create key <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
+				</Button>
+			</div>
 		</form>
 	{/if}
-</section>
+</SettingsGroup>

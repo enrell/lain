@@ -46,6 +46,7 @@ class FakeCore : LainCoreInterface {
     val stopped = mutableListOf<String>()
     var source = PlaySource(SourceKind.DIRECT, "http://s/api/items/e1/stream?token=t", "direct play", 0.0, 0.0, 1440.0, emptyList(), "")
     var burned: PlaySource? = null
+    val playCaps = mutableListOf<List<String>>()
     var book = ComicBook("m1", "rtl", List(5) { io.github.enrell.lain.core.PageInfo(it.toLong(), 16, 24, "image/png") }, false)
     val events = Channel<CoreEvent?>(Channel.UNLIMITED)
 
@@ -57,6 +58,11 @@ class FakeCore : LainCoreInterface {
     override suspend fun continueWatching(): List<ProgressInfo> {
         reachable()
         return progress.values.filter { !it.completed }.sortedByDescending { it.updatedAt }
+    }
+
+    override suspend fun allProgress(): List<ProgressInfo> {
+        reachable()
+        return progress.values.sortedByDescending { it.updatedAt }
     }
     override suspend fun episodes(itemId: String): List<Item> = items
     override suspend fun flushProgress() = FlushSummary(0, 0, 0, 0, null)
@@ -77,7 +83,12 @@ class FakeCore : LainCoreInterface {
     override fun logout() {
         sessionInfo = null
     }
-    override suspend fun me(): UserInfo = UserInfo(sessionInfo?.userId ?: "", sessionInfo?.username ?: "", "user", "", "jpn")
+    var language = "jpn"
+    override suspend fun me(): UserInfo = UserInfo(sessionInfo?.userId ?: "", sessionInfo?.username ?: "", "user", "", language)
+    override suspend fun setPreferredLanguage(language: String): UserInfo {
+        this.language = language
+        return me()
+    }
     override suspend fun modules(): List<ModuleInfo> {
         reachable()
         return modules
@@ -96,6 +107,34 @@ class FakeCore : LainCoreInterface {
     override suspend fun progress(itemId: String): ProgressInfo = progress[itemId] ?: progress(itemId, 0.0, 0.0, at = 0)
     override fun queuedProgress(): Long = 0
     override suspend fun refreshWatched(): Long = 0
+    val favoriteIds = mutableListOf<String>()
+
+    private fun favoriteList() = favoriteIds.mapNotNull { id -> items.firstOrNull { it.id == id } }.map { io.github.enrell.lain.core.FavoriteInfo(it.id, it.kind, it.title) }
+
+    override suspend fun favorites(): List<io.github.enrell.lain.core.FavoriteInfo> = favoriteList()
+
+    override suspend fun setFavorite(itemId: String, on: Boolean): List<io.github.enrell.lain.core.FavoriteInfo> {
+        favoriteIds.remove(itemId)
+        if (on) favoriteIds.add(itemId)
+        return favoriteList()
+    }
+
+    val scores = mutableMapOf<String, UInt>()
+
+    private fun ratingOf(itemId: String): io.github.enrell.lain.core.RatingInfo {
+        val mine = scores[itemId] ?: 0u
+        return io.github.enrell.lain.core.RatingInfo(mine, mine.toDouble(), if (mine > 0u) 1u else 0u)
+    }
+
+    override suspend fun rating(itemId: String): io.github.enrell.lain.core.RatingInfo = ratingOf(itemId)
+
+    override suspend fun rate(itemId: String, score: UInt): io.github.enrell.lain.core.RatingInfo {
+        if (score == 0u) scores.remove(itemId) else scores[itemId] = score
+        return ratingOf(itemId)
+    }
+
+    override suspend fun durations(itemIds: List<String>): List<io.github.enrell.lain.core.DurationInfo> = emptyList()
+
     override suspend fun saveProgress(itemId: String, positionSec: Double, durationSec: Double, completed: Boolean): SaveOutcome {
         val p = progress(itemId, positionSec, durationSec, completed, at = saved.size + 10L)
         saved += p
@@ -116,9 +155,19 @@ class FakeCore : LainCoreInterface {
         events.trySend(null)
     }
     override suspend fun thumbnail(itemId: String): ByteArray = ByteArray(0)
+    override suspend fun frame(itemId: String, atSec: Double, width: UInt): ByteArray = ByteArray(0)
+    var transcodes = mutableListOf<Triple<Double, String, Long?>>()
+    override suspend fun playTranscoded(itemId: String, startSec: Double, quality: String, burnStream: Long?): PlaySource {
+        transcodes += Triple(startSec, quality, burnStream)
+        return burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=b", "burned", startSec, startSec, null, emptyList(), "sess-b")
+    }
+    override suspend fun playQualities(): List<io.github.enrell.lain.core.QualityInfo> = listOf(io.github.enrell.lain.core.QualityInfo("720p", 720, 4000))
+    override suspend fun storyboard(itemId: String): io.github.enrell.lain.core.StoryboardSheet = throw LainException.NotFound("")
+    override suspend fun overlays(itemIds: List<String>): List<io.github.enrell.lain.core.Overlay> = emptyList()
+    override suspend fun unlockLibrary(libraryId: String, secret: String, pin: Boolean): LibraryInfo = LibraryInfo(libraryId, "", "", true, false)
+    override suspend fun lockLibrary(libraryId: String): LibraryInfo = LibraryInfo(libraryId, "", "", true, true)
     override suspend fun playBurnedIn(itemId: String, stream: Long, startSec: Double): PlaySource =
         burned ?: PlaySource(SourceKind.HLS, "http://s/hls?session=b", "burned", startSec, startSec, null, emptyList(), "sess-b")
-    val playCaps = mutableListOf<List<String>>()
     override suspend fun playSource(itemId: String, caps: List<String>): PlaySource {
         playCaps += caps
         val start = progress[itemId]?.takeIf { !it.completed && it.positionSec > 3 }?.positionSec ?: 0.0

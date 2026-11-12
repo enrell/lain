@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Activity from '@lucide/svelte/icons/activity';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -12,6 +11,8 @@
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
+	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
+	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatRelative } from '$lib/utilities/format';
@@ -44,7 +45,10 @@
 
 	function openSwap(binding: BindingView): void {
 		swapTarget = binding;
-		selected = [...binding.providers];
+		// A component bound before it is installed is not offered again: the
+		// server refuses a provider it does not know, so a swap that kept it
+		// could never be applied.
+		selected = binding.providers.filter((id) => !!providerInfo(id));
 		swapError = null;
 		swapOpen = true;
 	}
@@ -164,91 +168,94 @@
 
 <svelte:head><title>Plugins — Settings — Lain</title></svelte:head>
 
-<div class="space-y-6">
-	<p class="max-w-3xl text-sm leading-relaxed text-muted">
-		Each row is one job this server does &mdash; reading folders, identifying files, storing items,
-		serving playback &mdash; and the plugin currently doing it. Replacing a plugin is safe: the
-		change is refused if the new plugin is unhealthy, and a plugin that fails later falls back to
-		the one that worked. Only replace a row if you know what the job is for; the id underneath is
-		the technical name.
-	</p>
-
+<div>
 	{#if loading}
 		<div class="space-y-3">
 			{#each Array(4) as _}
-				<Skeleton class="h-24" />
+				<Skeleton class="h-20" />
 			{/each}
 		</div>
 	{:else if error}
 		<ErrorState message={error} retry={() => void load()} />
 	{:else if info}
-		<section id="capabilities" class="scroll-mt-28 space-y-3">
-			<h2 class="settings-heading">Capabilities</h2>
-			<ul class="settings-list">
+		<SettingsGroup id="capabilities" title="Capabilities" description={t('settings.groups.plugins.capabilities')}>
+			<p class="settings-note">
+				Each row is one job this server does &mdash; reading folders, identifying files, storing items,
+				serving playback &mdash; and the plugin currently doing it. Replacing a plugin is safe: the
+				change is refused if the new plugin is unhealthy, and a plugin that fails later falls back to
+				the one that worked. Only replace a row if you know what the job is for; the id underneath is
+				the technical name.
+			</p>
+			<!-- A table: the job, who does it, how they are bound, and the swap.
+			     Read across one line per job on a desktop; stacked on a phone. -->
+			<ul class="settings-items" aria-label="Capabilities">
+				<li class="hidden gap-x-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]" aria-hidden="true">
+					<span>{t('settings.groups.plugins.colJob')}</span>
+					<span>{t('settings.groups.plugins.colProviders')}</span>
+					<span>{t('settings.groups.plugins.colMode')}</span>
+					<span></span>
+				</li>
 				{#each info.composition as binding (binding.capability)}
-					<li class="py-4">
-						<div class="flex flex-wrap items-center justify-between gap-3">
-							<div class="min-w-0">
-								{#if purposeOf(binding.capability)}
-									<p class="text-sm font-medium text-foreground">{purposeOf(binding.capability)}</p>
-								{/if}
-								<p class="truncate font-mono text-xs text-muted">
-									{shortCapability(binding.capability)}<span
-										>{capabilityVersion(binding.capability)}</span
-									>
-								</p>
-								<div class="mt-1.5 flex flex-wrap items-center gap-2">
-									<Badge tone={modeTone(binding.mode)}>{binding.mode}</Badge>
-									<span class="text-xs text-muted">generation {binding.generation}</span>
-								</div>
-							</div>
-							<Button
-								variant="secondary"
-								size="sm"
-								onclick={() => openSwap(binding)}
-								aria-label={`Replace providers for ${binding.capability}`}
-							>
-								Replace
-							</Button>
+					{@const installed = (info.provider_info ?? []).some((p) => p.capabilities.includes(binding.capability))}
+					{@const purpose = purposeOf(binding.capability)}
+					<li class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 py-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]">
+						<div class="min-w-0">
+							{#if purpose}
+								<p class="text-sm text-foreground lg:truncate" title={purpose}>{purpose}</p>
+							{/if}
+							<p class="truncate font-mono text-xs {purpose ? 'text-muted' : 'text-foreground'}">
+								{shortCapability(binding.capability)}<span>{capabilityVersion(binding.capability)}</span>
+							</p>
 						</div>
-						<div class="mt-3 flex flex-wrap items-center gap-2">
+						<div class="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 lg:col-span-1 lg:row-start-auto">
 							{#each binding.providers as id, index (id + index)}
 								{@const provider = providerInfo(id)}
-								<span
-									class="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1 font-mono text-xs text-foreground"
-								>
+								<span class="inline-flex max-w-full items-center gap-2 rounded-full bg-field px-2.5 py-1 font-mono text-[11px] text-foreground">
 									{#if !exactlyOne && binding.providers.length > 1}
 										<span class="text-muted">{index + 1}</span>
 									{/if}
-									{id}
+									<span class="truncate">{id}</span>
 									{#if provider}
 										<span
-											class={[
-												'size-1.5 rounded-full',
-												provider.healthy ? 'bg-success' : 'bg-danger'
-											].join(' ')}
+											class={['size-1.5 shrink-0 rounded-full', provider.healthy ? 'bg-success' : 'bg-danger'].join(' ')}
 											role="img"
 											aria-label={provider.healthy ? 'healthy' : 'unhealthy'}
 										></span>
+									{:else}
+										<!-- Bound ahead of its install (a component): named, and said not to be here yet. -->
+										<span class="shrink-0 font-sans text-muted">not installed</span>
 									{/if}
 								</span>
 							{/each}
 						</div>
+						<div class="col-span-2 row-start-3 flex items-center gap-2 lg:col-span-1 lg:row-start-auto lg:flex-col lg:items-start lg:gap-1">
+							<Badge tone={modeTone(binding.mode)}>{binding.mode}</Badge>
+							<span class="text-xs text-muted">generation {binding.generation}</span>
+						</div>
+						<!-- Nothing installed can do this job yet: there is nothing to replace with. -->
+						<Button
+							variant="tonal"
+							size="field"
+							class="col-start-2 row-start-1 justify-self-end lg:col-start-auto lg:row-start-auto"
+							disabled={!installed}
+							title={installed ? undefined : 'Install a component that provides this first'}
+							onclick={() => openSwap(binding)}
+							aria-label={`Replace providers for ${binding.capability}`}
+						>
+							Replace
+						</Button>
 					</li>
 				{/each}
 			</ul>
-		</section>
+		</SettingsGroup>
 
-		<section class="space-y-3">
-			<h2 class="flex items-center gap-2 text-base font-semibold text-foreground">
-				<Activity class="size-4 text-muted" /> Recent composition events
-			</h2>
+		<SettingsGroup id="events" title="Recent composition events" description={t('settings.groups.plugins.events')}>
 			{#if events.length === 0}
-				<p class="text-sm text-muted">No swaps or fallbacks recorded in this process.</p>
+				<p class="py-4 text-sm text-muted">No swaps or fallbacks recorded in this process.</p>
 			{:else}
-				<ul class="settings-list">
+				<ul class="settings-items">
 					{#each [...events].reverse().slice(0, 20) as event, index (event.at + '-' + index)}
-						<li class="flex flex-wrap items-baseline gap-x-3 gap-y-1 bg-surface/30 px-4 py-2.5 text-sm">
+						<li class="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-sm">
 							<Badge
 								tone={event.kind.includes('rejected') || event.kind.includes('degraded')
 									? 'danger'
@@ -266,7 +273,7 @@
 					{/each}
 				</ul>
 			{/if}
-		</section>
+		</SettingsGroup>
 	{/if}
 </div>
 

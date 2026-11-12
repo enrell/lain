@@ -677,32 +677,43 @@ impl App {
         if let Some(m) = self.acquire.get() {
             m.start();
         }
-        // First boot probes ffmpeg for a hardware backend: never on the
-        // boot path (D-192).
+        // ffmpeg is probed for a hardware backend off the boot path
+        // (D-192): the first boot saves the policy with the best one, and a
+        // later boot moves a policy nobody tuned to today's best (a GPU that
+        // was added, or one a fixed probe now finds).
         // The probe holds only the transcoder, never the App (and its
         // store), so a server that stops meanwhile closes at once.
         let weak = Arc::downgrade(self);
         std::thread::Builder::new()
-            .name("transcode-first-boot".into())
+            .name("transcode-hardware".into())
             .spawn(move || {
-                let Some(transcoder) = weak
-                    .upgrade()
-                    .filter(|a| !a.media.settings.has().unwrap_or(true))
-                    .map(|a| a.media.transcoder.clone())
-                else {
+                let Some(transcoder) = weak.upgrade().map(|a| a.media.transcoder.clone()) else {
                     return;
                 };
                 let base = lain_watch::settings::defaults();
                 let hw = transcoder.probe(&base).hardware;
-                let chosen = lain_watch::settings::with_automatic_hardware(&base, &hw);
-                if let Some(app) = weak.upgrade() {
-                    match app.media.settings.ensure(&chosen) {
-                        Ok(false) => {
-                            tracing::info!(hardware = %chosen.hardware_acceleration, "transcode settings initialized")
+                let Some(app) = weak.upgrade() else { return };
+                if app.media.settings.has().unwrap_or(true) {
+                    let saved = app.media.settings.get();
+                    if let Some(next) = lain_watch::settings::repick_hardware(&saved, &hw) {
+                        match app.media.settings.put(&next) {
+                            Ok(_) => tracing::info!(
+                                from = %saved.hardware_acceleration,
+                                hardware = %next.hardware_acceleration,
+                                "transcode hardware re-picked"
+                            ),
+                            Err(e) => tracing::warn!(err = %e, "transcode hardware not re-picked"),
                         }
-                        Ok(true) => {}
-                        Err(e) => tracing::warn!(err = %e, "transcode settings not initialized"),
                     }
+                    return;
+                }
+                let chosen = lain_watch::settings::with_automatic_hardware(&base, &hw);
+                match app.media.settings.ensure(&chosen) {
+                    Ok(false) => {
+                        tracing::info!(hardware = %chosen.hardware_acceleration, "transcode settings initialized")
+                    }
+                    Ok(true) => {}
+                    Err(e) => tracing::warn!(err = %e, "transcode settings not initialized"),
                 }
             })
             .ok();

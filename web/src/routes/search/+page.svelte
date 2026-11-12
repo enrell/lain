@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import { ensureLibraries } from '$lib/stores/media-cache.svelte';
+	import X from '@lucide/svelte/icons/x';
+	import { onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
@@ -7,20 +10,28 @@
 	import SearchX from '@lucide/svelte/icons/search-x';
 	import type { CatalogItem } from '$lib/api/types';
 	import { api } from '$lib/api';
-	import MediaGrid from '$lib/components/media/MediaGrid.svelte';
+	import MediaCard from '$lib/components/media/MediaCard.svelte';
+	import { FIT } from '$lib/components/media/MediaGrid.svelte';
+	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
-	import { ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { t } from '$lib/i18n';
+	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { recentSearches } from '$lib/stores/recent-searches.svelte';
+	import { groupItems } from '$lib/utilities/grouping';
 	import { debounce } from '$lib/utilities/debounce';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { isTypingTarget } from '$lib/utilities/guards';
+	import { searchHref } from '$lib/utilities/search';
 
 	const PAGE_SIZE = 60;
 
 	let query = $state(page.url.searchParams.get('q') ?? '');
 	let input = $state<HTMLInputElement | null>(null);
 	let items = $state<CatalogItem[]>([]);
+	const groups = $derived(groupItems(items));
 	let total = $state(0);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
@@ -69,7 +80,7 @@
 	}, 300);
 
 	function syncUrl(q: string): void {
-		const target = q.trim() === '' ? '/search' : `/search?q=${encodeURIComponent(q.trim())}`;
+		const target = searchHref(q);
 		if (`${page.url.pathname}${page.url.search}` !== target) {
 			void goto(target, { replaceState: true, keepFocus: true, noScroll: true });
 		}
@@ -84,7 +95,46 @@
 	function submit(event: SubmitEvent): void {
 		event.preventDefault();
 		debounced.cancel();
+		recentSearches.remember(query);
 		void run(query, true);
+	}
+
+	function again(term: string): void {
+		query = term;
+		syncUrl(term);
+		debounced.cancel();
+		recentSearches.remember(term);
+		void run(term, true);
+	}
+
+	/*
+	 * From md up the header's field is this page's field: it types into
+	 * the URL (already debounced) and the results follow at once. This
+	 * page's own typing writes the URL too, and finds it unchanged.
+	 */
+	$effect(() => {
+		const q = page.url.searchParams.get('q') ?? '';
+		if (q === untrack(() => query.trim())) return;
+		query = q;
+		debounced.cancel();
+		void run(q, true);
+	});
+
+	// The field shown on this screen: the header's from md up, this page's on a phone.
+	function field(): HTMLInputElement | null {
+		const header = document.getElementById('header-search');
+		if (header instanceof HTMLInputElement && header.getClientRects().length > 0) return header;
+		return input && input.getClientRects().length > 0 ? input : null;
+	}
+
+	// `/` is this page's field where it is the one shown; the header's handler covers the rest.
+	function onKey(e: KeyboardEvent): void {
+		if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+		if (isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if (!input || input.getClientRects().length === 0) return;
+		e.preventDefault();
+		input.focus();
+		input.select();
 	}
 
 	function clear(): void {
@@ -97,18 +147,28 @@
 
 	onMount(() => {
 		if (query.trim() !== '') void run(query, true);
+		// Arriving with nothing to look for: the cursor is in the search bar.
+		else field()?.focus();
 	});
 
 	const emptyResults = $derived(!loading && searchedFor !== '' && items.length === 0 && !error);
 	const showIdle = $derived(searchedFor === '' && !loading);
+	// The libraries, to browse from before anything is typed.
+	let browse = $state<{ id: string; name: string }[]>([]);
+	$effect(() => {
+		// A private library still locked is not offered: it would open onto nothing.
+		void ensureLibraries().then((libs) => (browse = libs.filter((l) => !l.locked).map((l) => ({ id: l.id, name: l.name }))));
+	});
 </script>
 
-<svelte:head><title>{query ? `${query} — Search — Lain` : 'Search — Lain'}</title></svelte:head>
+<svelte:head><title>{query ? t('search.pageTitleQuery', { query }) : t('search.pageTitle')}</title></svelte:head>
+<svelte:window onkeydown={onKey} />
 
 <div class="space-y-6">
 	<header class="space-y-3">
-		<h1 class="text-xl font-semibold tracking-tight text-foreground">Search</h1>
-		<form class="relative max-w-2xl" onsubmit={submit} role="search">
+		<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('search.heading')}</h1>
+		<!-- A phone's field: from md up the header holds the search bar (HeaderSearch). -->
+		<form class="relative md:hidden" onsubmit={submit} role="search">
 			<Search
 				class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
 				aria-hidden="true"
@@ -121,16 +181,26 @@
 					if (e.key === 'Escape' && query !== '') clear();
 				}}
 				type="search"
-				placeholder="Titles, not filenames"
-				aria-label="Search your library"
+				placeholder={t('search.placeholder')}
+				aria-label={t('search.label')}
 				autocapitalize="none"
 				spellcheck={false}
-				class="h-12 w-full rounded-card border border-line bg-surface pl-10 pr-4 text-sm text-foreground placeholder:text-muted/60 focus:border-accent/60 focus:outline-none"
+				class="h-12 w-full rounded-card border border-line bg-surface pl-10 pr-12 text-sm text-foreground placeholder:text-muted/60 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
 			/>
+			{#if query !== ''}
+				<button
+					type="button"
+					class="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-muted hover:text-foreground"
+					aria-label={t('search.clear')}
+					onclick={() => { clear(); input?.focus(); }}
+				>
+					<X class="size-4" aria-hidden="true" />
+				</button>
+			{/if}
 		</form>
 		{#if searchedFor !== '' && !loading}
 			<p class="text-sm text-muted" aria-live="polite">
-				{total} {total === 1 ? 'result' : 'results'} for “{searchedFor}”
+				{t('search.count', { count: groups.length, query: searchedFor })}
 			</p>
 		{/if}
 	</header>
@@ -138,12 +208,41 @@
 	{#if error}
 		<ErrorState message={error} retry={() => void run(query, true)} />
 	{:else if showIdle}
-		<EmptyState
-			title="Search your library"
-			description="Type a title. Matching is case-insensitive and covers what the catalog knows, not raw filenames."
-		>
-			{#snippet icon()}<Search class="size-6 text-muted" />{/snippet}
-		</EmptyState>
+		<!-- Before a query: what was searched lately, and the libraries to start from. -->
+		{#if recentSearches.items.length > 0}
+			<section aria-label={t('search.recentLabel')}>
+				<div class="flex items-center justify-between gap-3">
+					<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t('search.recent')}</h2>
+					<button type="button" class="rounded-md px-2 py-1 text-xs text-muted hover:text-foreground" onclick={() => recentSearches.forget()}>{t('search.forget')}</button>
+				</div>
+				<div class="mt-2 flex flex-wrap gap-2">
+					{#each recentSearches.items as term (term)}
+						<button
+							type="button"
+							class="inline-flex min-h-9 items-center gap-2 rounded-full border border-line px-3.5 text-sm text-foreground hover:bg-surface-hover"
+							onclick={() => again(term)}
+						>
+							<Search class="size-3.5 text-muted" aria-hidden="true" />
+							{term}
+						</button>
+					{/each}
+				</div>
+			</section>
+		{/if}
+		<section aria-label={t('search.browse')}>
+			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t('search.browse')}</h2>
+			<ul class="mt-2 divide-y divide-line/50">
+				{#each browse as lib (lib.id)}
+					<li>
+						<a href={`/library/${lib.id}`} class="-mx-2 flex min-h-12 items-center justify-between gap-3 rounded-md px-2 text-sm font-medium text-foreground hover:bg-surface-hover">
+							{lib.name}
+							<ChevronRight class="size-4 text-muted" aria-hidden="true" />
+						</a>
+					</li>
+				{/each}
+			</ul>
+			<p class="mt-4 text-sm text-muted">{t('search.matches')}</p>
+		</section>
 	{:else if loading && items.length === 0}
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
 			{#each Array(12) as _}
@@ -152,19 +251,43 @@
 		</div>
 	{:else if emptyResults}
 		<EmptyState
-			title={`No matches for “${searchedFor}”`}
-			description="Try a shorter title, or check whether a scan has indexed the library."
+			title={t('search.emptyTitle', { query: searchedFor })}
+			description={t('search.emptyBody')}
 		>
 			{#snippet icon()}<SearchX class="size-6 text-muted" />{/snippet}
 		</EmptyState>
 	{:else}
-		<MediaGrid {items} fit />
+		<!-- A search answers with titles, not files: twelve episodes of one
+		     show are one card that opens the show. -->
+		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+		<div class={FIT} onclick={() => recentSearches.remember(searchedFor)}>
+			{#each groups as group, i (group.key)}
+				{#if group.count > 1}
+					<ShowCard {group} fit priority={i < 6} />
+				{:else}
+					<MediaCard item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} priority={i < 6} fit />
+				{/if}
+			{/each}
+		</div>
 		{#if items.length < total}
 			<div class="mt-8 flex justify-center">
 				<Button variant="secondary" loading={loading} onclick={() => void run(searchedFor, false)}>
-					<ArrowDown class="size-4" /> Load more
+					<ArrowDown class="size-4" /> {t('search.loadMore')}
 				</Button>
 			</div>
 		{/if}
+	{/if}
+	{#if !error && !showIdle && !loading && groups.length <= 6 && browse.length > 0}
+		<!-- A short answer leaves the page with somewhere to go on to. -->
+		<nav aria-label={t('search.browse')} class="border-t border-line/50 pt-5">
+			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t(emptyResults ? 'search.browseInstead' : 'search.orBrowse')}</h2>
+			<div class="mt-2 flex flex-wrap gap-2">
+				{#each browse as lib (lib.id)}
+					<a href={`/library/${lib.id}`} class="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-sm text-foreground hover:bg-surface-hover">
+						{lib.name} <ChevronRight class="size-3.5 text-muted" aria-hidden="true" />
+					</a>
+				{/each}
+			</div>
+		</nav>
 	{/if}
 </div>

@@ -1,9 +1,10 @@
 <script lang="ts">
+	import Eye from '@lucide/svelte/icons/eye';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import { goto } from '$app/navigation';
 	import { session } from '$lib/auth/session.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import Button from '$lib/components/primitives/Button.svelte';
-	import Input from '$lib/components/primitives/Input.svelte';
 	import SignalMark from '$lib/components/primitives/SignalMark.svelte';
 
 	/*
@@ -38,6 +39,10 @@
 			busy = false;
 		}
 	}
+	let host = $state('');
+	$effect(() => {
+		host = window.location.host;
+	});
 </script>
 
 <svelte:head><title>Sign in — Lain</title></svelte:head>
@@ -65,34 +70,49 @@
 					{error}
 				</div>
 			{/if}
-			<Input
-				label="Username"
-				bind:value={username}
-				autocomplete="username"
-				autocapitalize="none"
-				spellcheck={false}
-				required
-			/>
+			<!-- Fields with an edge of their own: on the card's surface a
+			     borderless field is hard to find. -->
 			<div class="space-y-1.5">
-				<Input
-					label="Password"
-					type={showPassword ? 'text' : 'password'}
-					bind:value={password}
-					autocomplete="current-password"
+				<label for="login-username" class="block text-sm font-medium text-muted">Username</label>
+				<input
+					id="login-username"
+					bind:value={username}
+					autocomplete="username"
+					autocapitalize="none"
+					spellcheck={false}
 					required
+					class="h-11 w-full rounded-md border border-line bg-field px-3 text-sm text-foreground focus:border-accent focus:outline-none"
 				/>
-				<button
-					type="button"
-					class="inline-flex min-h-6 items-center px-1 text-xs text-muted hover:text-foreground"
-					onclick={() => (showPassword = !showPassword)}
-					aria-pressed={showPassword}
-				>
-					{showPassword ? 'Hide password' : 'Show password'}
-				</button>
 			</div>
-			<Button type="submit" class="w-full" loading={busy}>
+			<div class="space-y-1.5">
+				<label for="login-password" class="block text-sm font-medium text-muted">Password</label>
+				<div class="relative">
+					<input
+						id="login-password"
+						type={showPassword ? 'text' : 'password'}
+						bind:value={password}
+						autocomplete="current-password"
+						required
+						class="h-11 w-full rounded-md border border-line bg-field pl-3 pr-11 text-sm text-foreground focus:border-accent focus:outline-none"
+					/>
+					<button
+						type="button"
+						class="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-md text-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
+						onclick={() => (showPassword = !showPassword)}
+						aria-pressed={showPassword}
+						aria-label={showPassword ? 'Hide password' : 'Show password'}
+					>
+						{#if showPassword}<EyeOff class="size-4" aria-hidden="true" />{:else}<Eye class="size-4" aria-hidden="true" />{/if}
+					</button>
+				</div>
+			</div>
+			<Button type="submit" size="lg" class="w-full" loading={busy}>
 				Sign in
 			</Button>
 		</form>
+		<!-- Which server this is: more than one is common among self-hosters. -->
+		{#if host}
+			<p class="mt-4 text-center font-mono text-[11px] text-muted">{host}</p>
+		{/if}
 	</div>
 </div>

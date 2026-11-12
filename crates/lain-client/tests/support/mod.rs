@@ -112,8 +112,12 @@ pub fn pin(n: u32) -> String {
     (1000 + (std::process::id() % 8000) + n).to_string()
 }
 
+/// The timeout is generous: the transcode settings view probes the
+/// machine's encoders, which takes seconds on a GPU machine while the
+/// other tests run beside it.
 pub fn client(url: &str) -> Client {
-    Client::new(ClientConfig { server: url.to_string(), timeout_ms: 5_000 }, Arc::new(MemoryTokenStore::new())).unwrap()
+    Client::new(ClientConfig { server: url.to_string(), timeout_ms: 20_000 }, Arc::new(MemoryTokenStore::new()))
+        .unwrap()
 }
 
 /// A fresh server with `admin` (password123) and `bob` (bobpassword).
@@ -304,7 +308,7 @@ pub async fn stub(files: Vec<StubFile>) -> Stub {
 /// A client of the stub with a made-up session.
 pub fn stub_client(url: &str) -> Client {
     let tokens = Arc::new(MemoryTokenStore::new());
-    let c = Client::new(ClientConfig { server: url.to_string(), timeout_ms: 5_000 }, tokens.clone()).unwrap();
+    let c = Client::new(ClientConfig { server: url.to_string(), timeout_ms: 20_000 }, tokens.clone()).unwrap();
     tokens
         .save(&Session { server: c.server(), token: "t".into(), user_id: "user-stub".into(), username: "stub".into() })
         .unwrap();

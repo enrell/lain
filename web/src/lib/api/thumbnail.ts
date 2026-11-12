@@ -1,4 +1,4 @@
-import { mediaUrl } from './client';
+import { mediaUrl, request } from './client';
 
 export interface ThumbnailOptions {
 	/**
@@ -26,4 +26,25 @@ export const thumbnail = {
 			...(opts.at === undefined ? {} : { t: String(opts.at) }),
 			w: String(opts.width ?? 480)
 		})
+};
+
+/** How an item's storyboard is laid out: tile `i`, row by row, is the frame near `i * interval_sec`. */
+export interface StoryboardLayout {
+	interval_sec: number;
+	count: number;
+	columns: number;
+	rows: number;
+	tile_width: number;
+	tile_height: number;
+}
+
+/**
+ * Gateway routes: GET /api/items/{id}/storyboard (the layout, cheap) and
+ * /storyboard/image (one JPEG of small frames; the first request for an
+ * item waits while the server makes it). A seek bar cuts its previews out
+ * of the image, so dragging fetches nothing.
+ */
+export const storyboard = {
+	layout: (id: string) => request<StoryboardLayout>(`/api/items/${encodeURIComponent(id)}/storyboard`),
+	imageUrl: (id: string, token: string | null) => mediaUrl(`/api/items/${encodeURIComponent(id)}/storyboard/image`, token)
 };

@@ -26,22 +26,22 @@
 	<div class="flex items-baseline justify-between gap-4">
 		<h2 class="flex items-center gap-1 text-xl font-semibold tracking-[-0.025em] text-foreground sm:text-2xl">
 			{title}
-			{#if href}
-				<ChevronRight class="size-4 text-muted" aria-hidden="true" />
-			{/if}
 		</h2>
 		{#if href}
 			<a
 				href={href}
-				class="inline-flex min-h-6 items-center text-[10px] font-semibold uppercase tracking-[0.18em] text-muted transition-colors hover:text-accent sm:text-xs"
+				class="inline-flex min-h-6 items-center gap-1 text-sm text-foreground/70 transition-colors hover:text-foreground"
 			>
-				{actionLabel}
+				{actionLabel} <ChevronRight class="size-3.5" aria-hidden="true" />
 			</a>
 		{/if}
 	</div>
-	<!-- Scrollable rail keeps the familiar streaming-library scan pattern. -->
+	<!-- Scrollable rail keeps the familiar streaming-library scan pattern. It runs
+	     through the page's side padding at every width, so the card that continues
+	     is cut by the window, not sliced by an invisible line at the gutter; the
+	     first card and the scroll stops stay on the gutter. -->
 	<div
-		class="-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-4 no-scrollbar sm:scroll-px-8 md:scroll-px-0 sm:-mx-8 sm:px-8 md:-mx-0 md:gap-4 md:px-0 lg:gap-5"
+		class="-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-4 no-scrollbar sm:-mx-8 sm:scroll-px-8 sm:px-8 md:gap-4 lg:-mx-10 lg:scroll-px-10 lg:px-10 lg:gap-5"
 	>
 		{#each items as item (item.id)}
 			{#if layout === 'landscape'}

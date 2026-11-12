@@ -27,6 +27,9 @@
 	/* A field that stays visible even when a palette maps surface onto the
 	   background (several Omarchy themes do). */
 	--color-field: color-mix(in srgb, var(--color-foreground) 6%, var(--color-background));
+	/* A tonal panel (settings groups): a step above the page, a step below
+	   a field, from the foreground for the same reason as the field. */
+	--color-panel: color-mix(in srgb, var(--color-foreground) 3.5%, var(--color-background));
 
 	--font-sans:
 		ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
@@ -47,6 +50,14 @@
 		/* Reserve the scrollbar's width on every page, so moving between a
 		   page that scrolls and one that does not never shifts the layout. */
 		scrollbar-gutter: stable;
+	}
+
+	/* A fullscreen element owns the whole screen: the gutter kept for the
+	   page's scrollbar is given back, or the player sat ten pixels short of
+	   the right edge. */
+	html:has(:fullscreen) {
+		scrollbar-gutter: auto;
+		overflow: hidden;
 	}
 
 	body {
@@ -161,9 +172,12 @@ video::cue {
 }
 
 /*
- * Settings (D-086, AGENTS.md audience): rows on hairlines, no framed cards.
- * Form controls inside settings are fields on a surface, bordered only
- * when focused, so a dense page is not a grid of outlined boxes.
+ * Settings (D-087, owner review 2026-11): a dense page is read in groups.
+ * Each group is a tonal panel with its heading above it, like a home rail
+ * under its title; rows inside are split by hairlines. No outlines: the
+ * panel is a fill derived from the foreground, so it shows on palettes
+ * that map surface onto the background. Fields inside a panel are one
+ * step brighter than it, bordered only when focused.
  */
 .settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, textarea) {
 	border-color: transparent;
@@ -175,31 +189,64 @@ video::cue {
 .settings-body [data-bits-select-trigger], .settings-body button[role='combobox'] {
 	border-color: transparent;
 }
-.settings-section {
-	border-top: 1px solid var(--color-hairline);
-	padding-block: 1.75rem 0.5rem;
+/* One control height in a settings row on a desktop: a select, a field and
+   the Select primitive's trigger line up with the buttons beside them. */
+@media (min-width: 768px) {
+	.settings-card :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, button[data-select-trigger]) {
+		height: 2.25rem;
+	}
 }
-details.settings-section > * {
+.settings-card {
+	--color-field: color-mix(in srgb, var(--color-foreground) 8%, var(--color-background));
+	border-radius: var(--radius-card);
+	background: var(--color-panel);
+}
+/* Rows and items sit on the panel's inner edge; the panel draws the
+   hairline between them, so a row never needs to know its neighbours. */
+.settings-card > *,
+.settings-items > * {
+	padding-inline: 1.25rem;
+}
+.settings-card > * + *,
+.settings-items > * + * {
+	border-top: 1px solid var(--color-hairline);
+}
+.settings-card > .settings-items {
 	padding-inline: 0;
 }
-details.settings-section > summary {
-	padding-top: 0;
+@media (max-width: 639px) {
+	.settings-card > *,
+	.settings-items > * {
+		padding-inline: 1rem;
+	}
+	.settings-card > .settings-items {
+		padding-inline: 0;
+	}
 }
-.settings-heading {
-	font-size: 0.9375rem;
-	font-weight: 600;
-	letter-spacing: -0.015em;
-	color: var(--color-foreground);
+/* A phone stacks a row's control under its label, except a lone switch or
+   number: those stay beside the label, where a thumb expects a toggle. */
+@media (max-width: 639px) {
+	.setting-row:has(> :nth-child(2) > :only-child:is(input[type='number'], .contents)) {
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+	}
+	.setting-row:has(> :nth-child(2) > :only-child:is(input[type='number'], .contents)) > :nth-child(3) {
+		grid-column: 1 / -1;
+	}
 }
-.settings-panel {
-	border-radius: 0.625rem;
-	background: var(--color-field);
+/* A short note at the top or bottom of a panel: keys, an empty list. */
+.settings-note {
+	padding-block: 0.875rem;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	color: var(--color-muted);
 }
-.settings-list {
-	border-block: 1px solid var(--color-hairline);
+/* A collapsible group: the summary is the heading, with its own marker. */
+details.settings-group > summary {
+	list-style: none;
 }
-.settings-list > * + * {
-	border-top: 1px solid var(--color-hairline);
+details.settings-group > summary::-webkit-details-marker {
+	display: none;
 }
 .saved-flash {
 	animation: saved-flash 1.6s ease-out both;
@@ -218,8 +265,13 @@ details.settings-section > summary {
 }
 
 .title-hero {
-	/* Break out of the centred page column to the viewport edges. */
+	/* Break out of the centred page column to the viewport edges, and pad
+	   back by the same amount so the content sits exactly on the column.
+	   Both percentages are of the column; 100vw counts the scrollbar's
+	   gutter, so an inner column of its own (max-width + padding) landed
+	   half a scrollbar left of every other page edge. */
 	margin-inline: calc(50% - 50vw);
+	padding-inline: calc(50vw - 50%);
 }
 
 .title-hero-name {
@@ -284,6 +336,45 @@ details.settings-section > summary {
 	}
 }
 
+/*
+ * A key next to an action reads as a key: a small cap with a border, never
+ * a bare letter or number that could be taken for a count.
+ */
+@layer base {
+	kbd,
+	.key-hint {
+		display: inline-flex;
+		min-width: 1.25rem;
+		height: 1.25rem;
+		align-items: center;
+		justify-content: center;
+		padding: 0 0.3rem;
+		border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+		border-bottom-width: 2px;
+		border-radius: 0.3rem;
+		background: color-mix(in srgb, currentColor 6%, transparent);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 500;
+		line-height: 1;
+		letter-spacing: 0;
+		text-transform: none;
+		opacity: 0.8;
+	}
+}
+
+/*
+ * What scrolls under the phone's bar fades into it: a card that is half
+ * out of view reads as "more below", not as cut by the bar.
+ */
+.mobile-nav::before {
+	position: absolute;
+	inset: -0.875rem 0 100% 0;
+	background: linear-gradient(to bottom, transparent, var(--color-background));
+	content: '';
+	pointer-events: none;
+}
+
 /* ---- phones ---------------------------------------------------------- */
 /* Keyboard hints mean nothing without a keyboard. */
 @media (hover: none) and (pointer: coarse) {
@@ -321,8 +412,13 @@ details.settings-section > summary {
 	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, textarea) {
 		max-width: 100%;
 	}
+	/* A Select's trigger at the type size of the native pickers beside it
+	   (bits-ui marks it with data-select-trigger, not a combobox role). */
+	.settings-body :is(button[role='combobox'], [data-select-trigger]) {
+		font-size: 16px;
+	}
 	/* Thumb-sized fields; text fields and pickers span the column. */
-	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, button[role='combobox']) {
+	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, button[role='combobox'], [data-select-trigger]) {
 		min-height: 2.75rem;
 	}
 	.settings-body :is(input:is([type='text'], [type='password'], [type='url'], [type='search'], [type='email'], :not([type])), select, textarea, button[role='combobox']) {
@@ -335,6 +431,24 @@ details.settings-section > summary {
 	main button.font-mono {
 		min-height: 2.25rem;
 	}
+}
+
+/*
+ * Native selects drawn as the Select primitive's trigger: no OS arrow, the
+ * same muted chevron at the right. Beside a Select, a native one read as a
+ * different control (other arrow, other box). Left unlayered on purpose, so
+ * the chevron's room is kept over a utility's `px-*`; only the image and the
+ * end padding are set, so each select keeps its own fill, border and size.
+ * The player's chrome selects keep their own look.
+ */
+select:not(.chrome-select, [multiple], [size]) {
+	appearance: none;
+	-webkit-appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a90a3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 0.75rem center;
+	background-size: 1rem;
+	padding-inline-end: 2.25rem;
 }
 
 /* ---- cards that take the shape of their picture ----------------------- */
@@ -390,4 +504,11 @@ details.settings-section > summary {
 		flex: 1;
 		padding: 0.5rem 0.875rem;
 	}
+}
+
+/* A key cap inside an accent-filled button takes the button's own ink:
+   the muted grey it wears elsewhere vanished on the accent. */
+.bg-accent kbd {
+	color: inherit;
+	opacity: 0.8;
 }

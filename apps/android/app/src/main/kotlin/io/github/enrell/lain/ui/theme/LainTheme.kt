@@ -30,36 +30,60 @@ import kotlin.math.pow
  * (the app bundles no fonts yet): a `mono` family to monospace, the
  * display family to serif, the rest to sans-serif.
  */
-class Lain(val tokens: ThemeTokens) {
+class Lain(val tokens: ThemeTokens, val web: WebPalette = WebPalette.Default) {
     private fun c(argb: Long) = Color(argb.toInt())
 
-    val bg = c(tokens.colors.bg)
-    val surface = c(tokens.colors.surface)
-    val raised = c(tokens.colors.raised)
-    val line = c(tokens.colors.line)
-    val text = c(tokens.colors.text)
-    val muted = c(tokens.colors.muted)
-    val accent = c(tokens.colors.accent)
-    val onAccent = c(tokens.colors.onAccent)
-    val danger = c(tokens.colors.danger)
-    val ok = c(tokens.colors.ok)
-    val warn = c(tokens.colors.warn)
-    val scrim = c(tokens.colors.scrim)
-    val focus = c(tokens.colors.focus)
+    // Colours are the server's (the web client's); the theme file keeps
+    // spacing, motion and the player's values.
+    val bg = web.background
+    val surface = web.surface
+    val raised = web.surfaceActive
+    val hover = web.surfaceHover
+    val line = web.line
+    val text = web.foreground
+    val muted = web.muted
+    val accent = web.accent
+    val onAccent = web.accentForeground
+    val danger = web.danger
+    val ok = web.success
+    val warn = web.warning
+    /** The foreground at [f] over the background, opaque. */
+    private fun lift(f: Float) = Color(
+        red = web.background.red + (web.foreground.red - web.background.red) * f,
+        green = web.background.green + (web.foreground.green - web.background.green) * f,
+        blue = web.background.blue + (web.foreground.blue - web.background.blue) * f,
+    )
+    /** A field's fill: the foreground at 6 % over the background, as on the web. */
+    val field = lift(0.06f)
+    /**
+     * A sheet's ground, one step above the page. A theme's `surface` is often
+     * the background itself, and a sheet on it read as a hole in the scrim,
+     * not as something raised.
+     */
+    val sheet = lift(0.045f)
+    /**
+     * A control's or a row's ground: the foreground at 8 % and 5 % over the
+     * page. Surfaces are told apart by fill, not by hairlines: outlines on
+     * near-black made every screen read as a wireframe.
+     */
+    val tonal = web.foreground.copy(alpha = 0.08f)
+    val tonalLow = web.foreground.copy(alpha = 0.05f)
+    val scrim = web.background.copy(alpha = 0.8f)
+    val focus = web.accent
     val controlsBg = c(tokens.colors.controlsBg)
-    val heroStops = tokens.colors.heroStops.map { c(it) }
-    val dark = tokens.scheme != "light"
+    val heroStops = listOf(Color.Transparent, web.background.copy(alpha = 0.55f), web.background)
+    val dark = web.dark
 
     val ui = family(tokens.fontUi)
-    val display = if (tokens.fontDisplay.contains("mono", true)) FontFamily.Monospace else FontFamily.Serif
+    val display = FontFamily.SansSerif
     val mono = FontFamily.Monospace
 
     val cardW: Dp = tokens.railCardW.dp * 0.6f
     val cardH: Dp = tokens.railCardH.dp * 0.6f
     val gap: Dp = tokens.railGap.dp * 0.75f
-    val cardShape = RoundedCornerShape(tokens.radiusCard.dp)
-    val buttonShape = RoundedCornerShape(tokens.radiusButton.dp)
-    val panelShape = RoundedCornerShape(tokens.radiusPanel.dp)
+    val cardShape = RoundedCornerShape(12.dp)
+    val buttonShape = RoundedCornerShape(6.dp)
+    val panelShape = RoundedCornerShape(12.dp)
     val focusScale: Float = tokens.railHoverScale
     val easing: Easing = tokens.easing.let { e -> if (e.size == 4) CubicBezierEasing(e[0], e[1], e[2], e[3]) else CubicBezierEasing(0.33f, 1f, 0.68f, 1f) }
     val fastMs: Int = tokens.motionFastMs.toInt()
@@ -135,8 +159,8 @@ class Lain(val tokens: ThemeTokens) {
 val LocalLain = staticCompositionLocalOf<Lain> { error("LainTheme missing") }
 
 @Composable
-fun LainTheme(tokens: ThemeTokens, content: @Composable () -> Unit) {
-    val lain = remember(tokens) { Lain(tokens) }
+fun LainTheme(tokens: ThemeTokens, web: WebPalette = WebPalette.Default, content: @Composable () -> Unit) {
+    val lain = remember(tokens, web) { Lain(tokens, web) }
     CompositionLocalProvider(LocalLain provides lain) {
         MaterialTheme(colorScheme = lain.colorScheme(), typography = lain.typography(), shapes = lain.shapes(), content = content)
     }

@@ -6,8 +6,10 @@
 	import { t } from '$lib/i18n';
 	import Download from '@lucide/svelte/icons/download';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import Heart from '@lucide/svelte/icons/heart';
 	import House from '@lucide/svelte/icons/house';
-	import Library from '@lucide/svelte/icons/library';
+	// The same glyph as the app's bar: the books-on-a-shelf icon read as a bar chart at this size.
+	import Library from '@lucide/svelte/icons/layout-grid';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import Search from '@lucide/svelte/icons/search';
 	import Settings from '@lucide/svelte/icons/settings';
@@ -16,23 +18,24 @@
 	import { session } from '$lib/auth/session.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import { socialBadge } from '$lib/stores/social.svelte';
-	import { MOBILE_NAV, visibleNav } from './nav-items';
+	import { MOBILE_BAR, MOBILE_NAV, visibleNav } from './nav-items';
 
 	const icons: Record<string, typeof House> = {
 		'/': House,
 		'/library': Library,
 		'/list': ListChecks,
+		'/favorites': Heart,
 		'/social': Users,
 		'/search': Search,
 		'/acquire': Download,
 		'/settings': Settings
 	};
-	const BAR = ['/', '/library', '/search', '/list'];
+	// The heart's list is used every day; an imported tracking list sits under More.
 	const all = $derived(
 		visibleNav(MOBILE_NAV, session.isAdmin).map((e) => ({ ...e, label: t(e.label), icon: icons[e.href] ?? House }))
 	);
-	const bar = $derived(BAR.map((href) => all.find((e) => e.href === href)).filter((e) => e !== undefined));
-	const rest = $derived(all.filter((e) => !BAR.includes(e.href)));
+	const bar = $derived(MOBILE_BAR.map((href) => all.find((e) => e.href === href)).filter((e) => e !== undefined));
+	const rest = $derived(all.filter((e) => !MOBILE_BAR.includes(e.href)));
 
 	function active(href: string, exact: boolean): boolean {
 		const path = page.url.pathname;
@@ -60,7 +63,7 @@
 {/snippet}
 
 <nav
-	class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-background/95 backdrop-blur md:hidden"
+	class="mobile-nav fixed inset-x-0 bottom-0 z-40 border-t border-line/60 bg-background/95 backdrop-blur md:hidden"
 	aria-label={t('nav.primary')}
 	style="padding-bottom: env(safe-area-inset-bottom);"
 >
@@ -82,12 +85,12 @@
 			class={['flex h-[3.75rem] flex-col items-center justify-center gap-1.5 transition-colors', inRest ? 'text-accent' : 'text-muted active:text-foreground'].join(' ')}
 			onclick={() => (more = true)}
 		>
-			{@render tab('More', Ellipsis, inRest, socialBadge.unread > 0)}
+			{@render tab(t('nav.more'), Ellipsis, inRest, socialBadge.unread > 0)}
 		</button>
 	</div>
 </nav>
 
-<Modal bind:open={more} title="More">
+<Modal bind:open={more} title={t('nav.more')}>
 	<ul class="-mx-2">
 		{#each rest as item (item.href)}
 			{@const on = active(item.href, item.exact)}

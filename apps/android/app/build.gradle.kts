@@ -15,8 +15,8 @@ android {
         applicationId = "io.github.enrell.lain"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.3.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -24,7 +24,14 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // The build to put on a phone: optimized and shrunk (R8), and not
+            // debuggable, which is what makes Compose scroll and start fast.
+            // Signed with the debug key until there is a release one, so it
+            // installs over a debug build.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -44,7 +51,14 @@ android {
         }
     }
 
+    // The Anime4K shader packs are the web player's own files: one copy in
+    // the repository, packaged here as assets (its TypeScript index is not).
+    androidResources {
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!*.ts"
+    }
+
     sourceSets.getByName("main") {
+        assets.srcDir("../../../web/src/lib/player/webgl/packs")
         java.srcDir("generated/uniffi")
         kotlin.srcDir("generated/uniffi")
         jniLibs.srcDir("build/rustJniLibs")
@@ -75,6 +89,8 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
+    // Video effects (the Anime4K shaders) run in Media3's frame processor.
+    implementation(libs.media3.effect)
     implementation(libs.kotlinx.coroutines.android)
     // UniFFI's Kotlin bindings call the Rust library through JNA.
     implementation(libs.jna) { artifact { type = "aar" } }

@@ -1,16 +1,30 @@
 <script lang="ts">
+	/*
+	 * Other ways to play a file, as one "Open with" menu beside Play: the
+	 * player on this machine when the server runs here, mpv or VLC through
+	 * the CLI's link handler, and how to set that handler up.
+	 */
 	import { onMount } from 'svelte';
-	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
-	import Button from '$lib/components/primitives/Button.svelte';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
+	import Modal from '$lib/components/primitives/Modal.svelte';
+	import type { ButtonSize, ButtonVariant } from '$lib/components/primitives/button-styles';
 	import { api, ApiError } from '$lib/api';
 	import { externalPlayerUrl } from '$lib/player/external-player';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { t } from '$lib/i18n';
 
-	let { itemId, onOpen }: { itemId: string; onOpen?: () => void } = $props();
+	let {
+		itemId,
+		onOpen,
+		variant = 'ghost',
+		size = 'sm',
+		class: className = ''
+	}: { itemId: string; onOpen?: () => void; variant?: ButtonVariant; size?: ButtonSize; class?: string } = $props();
 	let origin = $state('');
 	let localPlayers = $state<string[]>([]);
-	let starting = $state(false);
+	let setup = $state(false);
 	onMount(() => {
 		origin = window.location.origin;
 		void api.localplay
@@ -19,42 +33,39 @@
 			.catch(() => {});
 	});
 
-	function href(player: 'mpv' | 'vlc'): string { return externalPlayerUrl(origin, itemId, player); }
+	function open(player: 'mpv' | 'vlc'): void {
+		onOpen?.();
+		window.location.assign(externalPlayerUrl(origin, itemId, player));
+	}
 
 	async function playLocal(): Promise<void> {
-		starting = true;
 		try {
 			const result = await api.localplay.play(itemId);
-			toasts.success(`Playing in ${result.player} on this machine.`);
+			toasts.success(t('openWith.playing', { player: result.player }));
 		} catch (err) {
 			if (err instanceof ApiError && (err.kind === 'forbidden' || err.kind === 'unavailable')) {
 				localPlayers = [];
 				return;
 			}
-			toasts.error(errorMessage(err, 'Could not start local playback.'));
-		} finally {
-			starting = false;
+			toasts.error(errorMessage(err, t('openWith.failed')));
 		}
 	}
+
+	const entries = $derived<MenuEntry[]>([
+		...(localPlayers.length ? [{ label: t('openWith.thisMachine'), onSelect: () => void playLocal() }] : []),
+		{ label: 'mpv', onSelect: () => open('mpv') },
+		{ label: 'VLC', onSelect: () => open('vlc') },
+		{ label: t('openWith.setup'), onSelect: () => (setup = true), separated: true }
+	]);
 </script>
 
 {#if origin}
-	<div class="space-y-2">
-		<div class="flex flex-wrap items-center gap-2">
-			{#if localPlayers.length}
-				<Button variant="secondary" size="sm" loading={starting} onclick={() => void playLocal()}>
-					Play on this machine
-				</Button>
-			{/if}
-			<LinkButton href={href('mpv')} variant="secondary" size="sm" onclick={onOpen}>Open in mpv</LinkButton>
-			<LinkButton href={href('vlc')} variant="secondary" size="sm" onclick={onOpen}>Open in VLC</LinkButton>
-		</div>
-		<details class="text-xs text-muted">
-			<summary class="cursor-pointer">Set up external players on this computer</summary>
-			<p class="mt-1">Install the Lain CLI and mpv or VLC, then run:</p>
-			<code class="mt-1 block select-all break-all">lain login --server {origin}</code>
-			<code class="block select-all">lain install-player-handler</code>
-			<p class="mt-1">Your browser may ask before opening the player. Playback uses the local CLI login and saves watch progress.</p>
-		</details>
-	</div>
+	<Menu label={t('openWith.label')} {entries} {variant} {size} class={className} align="start" hint={t('openWith.hint')}>
+		{#snippet icon()}<ExternalLink class="size-3.5" aria-hidden="true" />{/snippet}
+	</Menu>
+	<Modal bind:open={setup} title={t('openWith.setupTitle')} description={t('openWith.setupBody')}>
+		<code class="block select-all break-all rounded-md bg-background px-3 py-2 font-mono text-xs text-foreground">lain login --server {origin}</code>
+		<code class="mt-2 block select-all rounded-md bg-background px-3 py-2 font-mono text-xs text-foreground">lain install-player-handler</code>
+		<p class="mt-3 text-sm text-muted">{t('openWith.setupNote')}</p>
+	</Modal>
 {/if}
