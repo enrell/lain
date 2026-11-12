@@ -145,8 +145,6 @@
 		if (!ui) options = false;
 	});
 
-	const kbd = 'shrink-0 rounded-md border border-line bg-background px-1.5 py-0.5 font-mono text-[10px] font-normal';
-
 	const src = (i: number): string => api.reader.pageUrl(item.id, i, session.token);
 
 	function go(action: NavAction): void {
@@ -649,7 +647,7 @@
 						class="flex items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:bg-surface-hover focus-visible:text-foreground"
 						onclick={() => (atEnd = false)}
 					>
-						<span>{manga ? t('reader.end.keepVolume') : t('reader.end.keepIssue')}</span><kbd class={kbd}>Esc</kbd>
+						<span>{manga ? t('reader.end.keepVolume') : t('reader.end.keepIssue')}</span><kbd>Esc</kbd>
 					</button>
 				</div>
 			</div>
@@ -693,16 +691,16 @@
 			data-primary
 			class="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover focus-visible:outline-offset-2"
 		>
-			<span>{t('reader.end.next', { label: next.label })}</span><kbd class="{kbd} border-accent-fg/30 bg-accent-fg/10 text-accent-fg">Enter</kbd>
+			<span>{t('reader.end.next', { label: next.label })}</span><kbd>Enter</kbd>
 		</a>
 	{/if}
 	{#if prev}
 		<a href={prev.href} class="flex items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:bg-surface-hover focus-visible:text-foreground">
-			<span>{t('reader.end.previous', { label: prev.label })}</span><kbd class={kbd}>P</kbd>
+			<span>{t('reader.end.previous', { label: prev.label })}</span><kbd>P</kbd>
 		</a>
 	{/if}
 	<a href={backHref} class="flex items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:bg-surface-hover focus-visible:text-foreground">
-		<span>{t('reader.end.back', { title: item.title })}</span><kbd class={kbd}>B</kbd>
+		<span>{t('reader.end.back', { title: item.title })}</span><kbd>B</kbd>
 	</a>
 {/snippet}
 
