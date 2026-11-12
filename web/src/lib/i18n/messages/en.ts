@@ -815,6 +815,7 @@ const en = {
 		failed: 'Could not start local playback.'
 	},
 	title: {
+		refreshFailed: 'Could not refresh this title; reload the page to see the change.',
 		manage: 'Manage',
 		manageHint: 'For administrators: metadata, subtitles and files of this title',
 		more: 'More',
