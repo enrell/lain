@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
-use lain_api::{CatalogItem, MediaInfo, MediaStream, Progress};
+use lain_api::{CatalogItem, MediaInfo, MediaStream, Progress, TrackPreferences};
 use lain_core::{Error, Registry};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -20,7 +20,7 @@ pub const ID: &str = "lain-playback-local";
 pub const CAP: &str = "lain.playback.local@1";
 
 /// The progress script mpv runs (shared with the CLI): one JSON state
-/// file per playlist index, and the preferred-language track policy.
+/// file per playlist index, and the track preferences (D-280).
 pub const MPV_SCRIPT: &str = include_str!("../assets/mpv_progress.lua");
 
 /// One playlist entry.
@@ -41,7 +41,8 @@ type DoneFn = Box<dyn FnOnce(Result<(), String>) + Send>;
 pub struct PlayRequest {
     pub player: String,
     pub entries: Vec<Entry>,
-    pub language: String,
+    /// The viewer's track preferences (D-280).
+    pub tracks: TrackPreferences,
     /// Measured positions, from the monitor thread.
     pub save: SaveFn,
     pub done: Option<DoneFn>,
@@ -266,8 +267,11 @@ fn prepare(dir: &Path, player: &str, req: &PlayRequest) -> Result<Vec<String>, S
             format!("--script-opt=lain-state_dir={}", p(dir)),
             format!("--script-opt=lain-resume_file={}", p(&resume)),
         ];
-        if !req.language.is_empty() {
-            a.push(format!("--script-opt=lain-language={}", req.language));
+        if !req.tracks.is_empty() {
+            let t = &req.tracks;
+            a.push(format!("--script-opt=lain-audio_language={}", t.audio_language));
+            a.push(format!("--script-opt=lain-subtitle_language={}", t.subtitle_language));
+            a.push(format!("--script-opt=lain-subtitle_mode={}", t.subtitle_mode));
         }
         a.push(format!("--playlist={}", p(&m3u)));
         return Ok(a);
@@ -278,9 +282,11 @@ fn prepare(dir: &Path, player: &str, req: &PlayRequest) -> Result<Vec<String>, S
         "--extraintf=rc".into(),
         format!("--rc-unix={}", p(&dir.join("vlc.sock"))),
     ];
-    if !req.language.is_empty() {
-        a.push(format!("--audio-language={}", req.language));
-        a.push(format!("--sub-language={}", req.language));
+    if !req.tracks.audio_language.is_empty() {
+        a.push(format!("--audio-language={}", req.tracks.audio_language));
+    }
+    if !req.tracks.subtitle_language.is_empty() && req.tracks.subtitle_mode != "off" {
+        a.push(format!("--sub-language={}", req.tracks.subtitle_language));
     }
     if let Some(at) = resumes.get("0") {
         a.push(format!("--start-time={at:.0}"));
@@ -449,57 +455,13 @@ mod vlc {
     }
 }
 
-const LANGUAGE_ALIASES: [(&str, &str); 16] = [
-    ("fre", "fra"),
-    ("ger", "deu"),
-    ("chi", "zho"),
-    ("dut", "nld"),
-    ("gre", "ell"),
-    ("rum", "ron"),
-    ("cze", "ces"),
-    ("slo", "slk"),
-    ("per", "fas"),
-    ("may", "msa"),
-    ("alb", "sqi"),
-    ("arm", "hye"),
-    ("baq", "eus"),
-    ("bur", "mya"),
-    ("ice", "isl"),
-    ("mac", "mkd"),
-];
+pub use crate::tracks::same_language;
 
-fn alias(code: &str) -> String {
-    LANGUAGE_ALIASES.iter().find(|(b, _)| *b == code).map(|(_, t)| t.to_string()).unwrap_or_else(|| code.to_string())
-}
-
-/// A stream language tag matches the account preference (ISO 639-2
-/// bibliographic codes folded to terminology ones).
-pub fn same_language(actual: &str, preferred: &str) -> bool {
-    let a = alias(&actual.split('-').next().unwrap_or("").to_ascii_lowercase());
-    let p = alias(&preferred.to_ascii_lowercase());
-    !a.is_empty() && a == p
-}
-
-/// D-071 for VLC: matching audio hides subtitles; without it a matching
-/// subtitle stays; tagged streams with no match hide them; untagged
-/// media leaves the player's defaults alone.
-pub fn subtitle_off(streams: &[MediaStream], language: &str) -> bool {
-    if language.is_empty() {
-        return false;
-    }
-    let mut known = false;
-    for s in streams {
-        if (s.kind == "audio" || s.kind == "subtitle") && !s.language.is_empty() {
-            known = true;
-        }
-        if s.kind == "audio" && same_language(&s.language, language) {
-            return true;
-        }
-    }
-    if !known {
-        return false;
-    }
-    !streams.iter().any(|s| s.kind == "subtitle" && same_language(&s.language, language))
+/// VLC under the account's preferences (D-071, D-280): its language
+/// flags pick the tracks, and this says when subtitles go off instead,
+/// which no VLC flag can say per file.
+pub fn subtitle_off(streams: &[MediaStream], prefs: &TrackPreferences) -> bool {
+    !prefs.is_empty() && crate::tracks::choose(streams, prefs).subtitle == crate::tracks::Subtitle::Off
 }
 
 /// What `play` is asked.
@@ -508,8 +470,13 @@ pub struct PlayInput {
     #[serde(default)]
     pub player: String,
     pub user_id: String,
-    #[serde(default)]
+    /// D-071's one language, for a caller before D-280: both languages
+    /// when `tracks` names neither.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub language: String,
+    /// The viewer's track preferences (D-280), flat in the input.
+    #[serde(default, flatten)]
+    pub tracks: TrackPreferences,
     pub item: CatalogItem,
     /// Libraries this session may not see (D-156): their episodes never
     /// join the queue.
@@ -562,6 +529,14 @@ impl LocalPlay {
         }
         let items = self.queue(&input.item, &input.hidden_libraries)?;
         let reg = self.reg();
+        let tracks = if input.tracks.audio_language.is_empty()
+            && input.tracks.subtitle_language.is_empty()
+            && !input.language.is_empty()
+        {
+            TrackPreferences::legacy(&input.language)
+        } else {
+            input.tracks.clone()
+        };
         let entries: Vec<Entry> = items
             .iter()
             .map(|it| {
@@ -571,8 +546,9 @@ impl LocalPlay {
                 {
                     e.resume = p.position_sec;
                 }
-                if player == "vlc" && !input.language.is_empty() {
-                    e.subs_off = reg.as_ref().is_some_and(|r| subs_off(r, &it.file_path, &input.language));
+                if player == "vlc" && !tracks.is_empty() {
+                    e.subs_off = tracks.subtitle_mode == "off"
+                        || reg.as_ref().is_some_and(|r| subs_off(r, &it.file_path, &tracks));
                 }
                 e
             })
@@ -584,7 +560,7 @@ impl LocalPlay {
         let req = PlayRequest {
             player: player.clone(),
             entries,
-            language: input.language.clone(),
+            tracks,
             save: Box::new(move |item, pos, dur| {
                 let Some(r) = weak.upgrade() else { return };
                 let p =
@@ -647,9 +623,9 @@ fn progress(reg: &Registry, user: &str, item: &str) -> Option<Progress> {
     serde_json::from_value(out).ok()
 }
 
-fn subs_off(reg: &Registry, path: &str, language: &str) -> bool {
+fn subs_off(reg: &Registry, path: &str, tracks: &TrackPreferences) -> bool {
     let Ok((out, _)) = reg.call_one(crate::CAP_MEDIA_PROBE, "probe", json!({"file_path": path})) else { return false };
-    serde_json::from_value::<MediaInfo>(out).map(|i| subtitle_off(&i.streams, language)).unwrap_or(false)
+    serde_json::from_value::<MediaInfo>(out).map(|i| subtitle_off(&i.streams, tracks)).unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -662,12 +638,70 @@ mod tests {
 
     #[test]
     fn subtitle_policy() {
-        assert!(subtitle_off(&[s("audio", "por"), s("subtitle", "eng")], "por"));
-        assert!(!subtitle_off(&[s("audio", "jpn"), s("subtitle", "por")], "por"));
-        assert!(subtitle_off(&[s("audio", "jpn"), s("subtitle", "eng")], "por"));
-        assert!(!subtitle_off(&[s("audio", ""), s("subtitle", "")], "por"), "untagged keeps defaults");
-        assert!(!subtitle_off(&[s("audio", "por")], ""));
-        assert!(same_language("fre", "fra") && same_language("pt-BR", "pt") && !same_language("", ""));
+        let por = TrackPreferences::legacy("por");
+        assert!(subtitle_off(&[s("audio", "por"), s("subtitle", "eng")], &por));
+        assert!(!subtitle_off(&[s("audio", "jpn"), s("subtitle", "por")], &por));
+        assert!(subtitle_off(&[s("audio", "jpn"), s("subtitle", "eng")], &por));
+        assert!(!subtitle_off(&[s("audio", ""), s("subtitle", "")], &por), "untagged keeps defaults");
+        assert!(!subtitle_off(&[s("audio", "por")], &TrackPreferences::default()));
+        // D-280: Japanese audio with Portuguese subtitles keeps them on.
+        let split = TrackPreferences {
+            audio_language: "jpn".into(),
+            subtitle_language: "por".into(),
+            subtitle_mode: "auto".into(),
+        };
+        assert!(!subtitle_off(&[s("audio", "jpn"), s("subtitle", "por")], &split));
+        assert!(subtitle_off(
+            &[s("audio", "jpn"), s("subtitle", "por")],
+            &TrackPreferences { subtitle_mode: "off".into(), ..split }
+        ));
+    }
+
+    #[test]
+    fn player_arguments_carry_the_preferences() {
+        let dir = lain_store::test_dir("localplay-args");
+        let req = |player: &str, tracks: TrackPreferences| PlayRequest {
+            player: player.into(),
+            entries: vec![Entry { item_id: "i1".into(), path: "/m/a.mkv".into(), ..Entry::default() }],
+            tracks,
+            save: Box::new(|_, _, _| {}),
+            done: None,
+        };
+        let split = TrackPreferences {
+            audio_language: "jpn".into(),
+            subtitle_language: "por".into(),
+            subtitle_mode: "auto".into(),
+        };
+        let mpv = prepare(&dir.join("mpv"), "mpv", &req("mpv", split.clone())).unwrap();
+        for want in ["lain-audio_language=jpn", "lain-subtitle_language=por", "lain-subtitle_mode=auto"] {
+            assert!(mpv.iter().any(|a| a.ends_with(want)), "{want} in {mpv:?}");
+        }
+        let plain = prepare(&dir.join("mpv-plain"), "mpv", &req("mpv", TrackPreferences::default())).unwrap();
+        assert!(!plain.iter().any(|a| a.contains("language")), "{plain:?}");
+        let vlc = prepare(&dir.join("vlc"), "vlc", &req("vlc", split.clone())).unwrap();
+        assert!(vlc.contains(&"--audio-language=jpn".to_string()) && vlc.contains(&"--sub-language=por".to_string()));
+        let off = prepare(
+            &dir.join("vlc-off"),
+            "vlc",
+            &req("vlc", TrackPreferences { subtitle_mode: "off".into(), ..split }),
+        )
+        .unwrap();
+        assert!(!off.iter().any(|a| a.starts_with("--sub-language")), "{off:?}");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn an_input_before_d280_names_one_language() {
+        let item = serde_json::to_value(CatalogItem::default()).unwrap();
+        let old: PlayInput = serde_json::from_value(json!({"user_id": "u", "language": "jpn", "item": item})).unwrap();
+        assert_eq!((old.language.as_str(), old.tracks.is_empty()), ("jpn", true));
+        let new: PlayInput = serde_json::from_value(json!({
+            "user_id": "u", "audio_language": "jpn", "subtitle_language": "por", "subtitle_mode": "always", "item": item
+        }))
+        .unwrap();
+        assert_eq!(new.tracks.subtitle_mode, "always");
+        let back = serde_json::to_value(&new).unwrap();
+        assert_eq!((back["audio_language"].as_str(), back.get("language")), (Some("jpn"), None));
     }
 
     #[test]
@@ -703,7 +737,7 @@ mod tests {
                    dtx: Option<std::sync::mpsc::Sender<Result<(), String>>>| PlayRequest {
             player: "mpv".into(),
             entries: vec![Entry { item_id: "i1".into(), path: "/m/a.mkv".into(), ..Entry::default() }],
-            language: String::new(),
+            tracks: TrackPreferences::default(),
             save: Box::new(move |i, p, d| {
                 let _ = tx.send((i.to_string(), p, d));
             }),

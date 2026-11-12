@@ -14,7 +14,7 @@
 
 use std::sync::{Mutex, mpsc};
 
-use lain_api::{CatalogItem, ProgressUpdate};
+use lain_api::{CatalogItem, ProgressUpdate, TrackPreferences};
 use lain_client::{Client, RecordOutcome, SearchQuery};
 use lain_watch::localplay::{Entry, Manager, PlayError, PlayRequest, subtitle_off};
 
@@ -164,7 +164,7 @@ enum Msg {
 pub fn run_player(
     player: &str,
     entries: Vec<Entry>,
-    language: &str,
+    tracks: &TrackPreferences,
     mut record: impl FnMut(&str, ProgressUpdate) -> bool,
 ) -> Result<Vec<Saved>, String> {
     let (tx, rx) = mpsc::channel();
@@ -174,7 +174,7 @@ pub fn run_player(
     let req = PlayRequest {
         player: player.to_string(),
         entries,
-        language: language.to_string(),
+        tracks: tracks.clone(),
         save: Box::new(move |id, pos, dur| {
             let _ = save_tx.lock().unwrap_or_else(|e| e.into_inner()).send(Msg::Save(id.to_string(), pos, dur));
         }),
@@ -249,7 +249,11 @@ pub fn watch(args: &[String]) -> Result<(), String> {
     let once = has(args, "once");
     let rt = runtime()?;
     let c = &s.client;
-    let language = if dry { String::new() } else { rt.block_on(c.me()).map_err(|e| e.to_string())?.preferred_language };
+    let tracks = if dry {
+        TrackPreferences::default()
+    } else {
+        rt.block_on(c.me()).map_err(|e| e.to_string())?.track_preferences()
+    };
     let start = rt.block_on(resolve(c, args, true))?;
     let items = if !once && !dry && start.episode > 0 { rt.block_on(episode_queue(c, &start))? } else { vec![start] };
     let db = s.home.db()?;
@@ -268,11 +272,12 @@ pub fn watch(args: &[String]) -> Result<(), String> {
         } else {
             let p = rt.block_on(sync.fetch(&item.id)).map_err(|e| e.to_string())?;
             let off = player == "vlc"
-                && !language.is_empty()
-                && rt
-                    .block_on(c.playback_plan(&item.id, "vlc"))
-                    .map(|plan| subtitle_off(&plan.streams, &language))
-                    .map_err(|e| e.to_string())?;
+                && !tracks.is_empty()
+                && (tracks.subtitle_mode == "off"
+                    || rt
+                        .block_on(c.playback_plan(&item.id, "vlc"))
+                        .map(|plan| subtitle_off(&plan.streams, &tracks))
+                        .map_err(|e| e.to_string())?);
             (resume_at(p.position_sec, p.completed), off)
         };
         planned.push(Planned { entry: Entry { item_id: item.id.clone(), path, resume, subs_off }, item, local });
@@ -289,7 +294,7 @@ pub fn watch(args: &[String]) -> Result<(), String> {
     }
     let labels: Vec<(String, String)> = planned.iter().map(|p| (p.item.id.clone(), item_label(&p.item))).collect();
     let entries = planned.into_iter().map(|p| p.entry).collect();
-    let saved = run_player(&player, entries, &language, recorder(&rt, &sync))?;
+    let saved = run_player(&player, entries, &tracks, recorder(&rt, &sync))?;
     report(&saved, &|id| labels.iter().find(|(i, _)| i == id).map(|(_, l)| l.clone()).unwrap_or_default());
     Ok(())
 }
@@ -433,7 +438,7 @@ pub fn play_local(
     record: impl FnMut(&str, ProgressUpdate) -> bool,
 ) -> Result<Vec<Saved>, String> {
     let entry = Entry { item_id: item_id.to_string(), path: path.to_string(), resume, subs_off: false };
-    run_player(player, vec![entry], "", record)
+    run_player(player, vec![entry], &TrackPreferences::default(), record)
 }
 
 #[cfg(test)]
