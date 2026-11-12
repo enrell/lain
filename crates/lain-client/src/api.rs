@@ -21,11 +21,11 @@ use lain_api::{
 };
 use lain_api::{
     AdminTranscodes, BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health,
-    IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryPatch, LocalPlayers, LoginReply, Mascots,
-    ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions, PlaybackPlan,
-    PluginsView, PreferencesPatch, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar,
-    Sidecars, StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings, TranscodeSettingsView,
-    TranscodeStatus, User, UserPatch, WithdrawReply,
+    IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryOrder, LibraryPatch, LocalPlayers,
+    LoginReply, Mascots, ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions,
+    PlaybackPlan, PluginsView, PreferencesPatch, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus,
+    SetupStatus, Sidecar, Sidecars, StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings,
+    TranscodeSettingsView, TranscodeStatus, User, UserDeleted, UserPatch, WithdrawReply,
 };
 
 use crate::error::ClientError;
@@ -363,6 +363,12 @@ impl Client {
         self.call(Method::PATCH, &format!("/api/users/{}", encode(id)), json_body(&patch)).await
     }
 
+    /// Deletes an account and everything it kept (progress, lists,
+    /// social rows); its private libraries pass to the caller.
+    pub async fn delete_user(&self, id: &str) -> Result<UserDeleted, ClientError> {
+        self.call(Method::DELETE, &format!("/api/users/{}", encode(id)), Body::None).await
+    }
+
     // ---- libraries ----------------------------------------------------
 
     /// The libraries this user may see; a private one carries `locked`.
@@ -376,6 +382,11 @@ impl Client {
 
     pub async fn update_library(&self, id: &str, patch: LibraryPatch) -> Result<Library, ClientError> {
         self.call(Method::PATCH, &format!("/api/libraries/{}", encode(id)), json_body(&patch)).await
+    }
+
+    /// Orders the libraries: every id, first to last.
+    pub async fn order_libraries(&self, ids: Vec<String>) -> Result<Vec<Library>, ClientError> {
+        self.call(Method::PUT, "/api/libraries/order", json_body(&LibraryOrder { ids })).await
     }
 
     /// Removes the library and its catalog entries (never files).
@@ -477,7 +488,8 @@ impl Client {
     // ---- catalog population -----------------------------------------
 
     /// Starts a scan of every library (admin); answers when it starts.
-    /// A scan already running is `Api { status: 409, .. }`.
+    /// While one runs, one follow-up is queued behind it (D-286) and
+    /// [`ScanStatus::queued`] says so.
     pub async fn start_scan(&self) -> Result<(), ClientError> {
         self.raw(Method::POST, "/api/library/scan", Body::None, true).await.map(|_| ())
     }

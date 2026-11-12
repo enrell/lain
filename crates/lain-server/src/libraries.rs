@@ -40,13 +40,54 @@ impl Libraries {
         lib
     }
 
-    /// All libraries by name, paths resolved for this machine.
+    /// All libraries in the admin's order, then the never-ordered ones by
+    /// name; paths resolved for this machine.
     pub fn list(&self) -> Result<Vec<Library>, StoreError> {
         let rows = self.store.read(|tx| tx.all(Bucket::Libraries))?;
         let mut out: Vec<Library> =
             rows.iter().filter_map(|(_, v)| serde_json::from_slice(v).ok()).map(|l| self.resolve(l)).collect();
-        out.sort_by(|a, b| a.name.cmp(&b.name));
+        out.sort_by(|a, b| (a.position == 0, a.position, &a.name).cmp(&(b.position == 0, b.position, &b.name)));
         Ok(out)
+    }
+
+    /// Orders the libraries: `ids` is every library, first to last.
+    /// Answers the list in its new order.
+    pub fn reorder(&self, ids: &[String]) -> Result<Vec<Library>, String> {
+        let mut seen = std::collections::BTreeSet::new();
+        if let Some(dup) = ids.iter().find(|id| !seen.insert(id.as_str())) {
+            return Err(format!("{dup} is listed twice"));
+        }
+        self.store
+            .write(|tx| {
+                let mut libs: Vec<Library> =
+                    tx.all(Bucket::Libraries)?.iter().filter_map(|(_, v)| serde_json::from_slice(v).ok()).collect();
+                if let Some(missing) = ids.iter().find(|id| !libs.iter().any(|l| &l.id == *id)) {
+                    return Err(StoreError::Abort(format!("unknown library {missing}")));
+                }
+                if libs.len() != ids.len() {
+                    return Err(StoreError::Abort("every library must be listed".into()));
+                }
+                for lib in libs.iter_mut() {
+                    lib.position = ids.iter().position(|id| *id == lib.id).map_or(0, |i| i as i64 + 1);
+                    tx.put_json(Bucket::Libraries, lib.id.as_bytes(), lib)?;
+                }
+                Ok(())
+            })
+            .map_err(|e| match e {
+                StoreError::Abort(m) => m,
+                e => e.to_string(),
+            })?;
+        self.list().map_err(|e| e.to_string())
+    }
+
+    /// Where a folder lives: `(absolute path, root, path inside it)`;
+    /// the root is empty when no mapped root holds it.
+    fn locate(&self, path: &str) -> (String, String, String) {
+        let roots = self.roots.read().unwrap_or_else(|e| e.into_inner()).clone();
+        match roots.relativize(path) {
+            Some((r, rel)) => (path.to_string(), r, rel),
+            None => (path.to_string(), String::new(), String::new()),
+        }
     }
 
     pub fn get(&self, id: &str) -> Option<Library> {
@@ -80,9 +121,22 @@ impl Libraries {
         if !std::fs::metadata(&abs).map(|m| m.is_dir()).unwrap_or(false) {
             return Err("path is not a readable directory".into());
         }
-        let id = if root.is_empty() { short_id(&abs) } else { short_id(&format!("{root}:{root_path}")) };
+        let key = if root.is_empty() { abs.clone() } else { format!("{root}:{root_path}") };
+        // An edited folder keeps its library's id (PATCH `path`), so the
+        // id no longer always names the folder: the library that reads
+        // this folder now is the one "the same location" overwrites, and
+        // a library that moved away keeps the id it was made with, so a
+        // new one here takes the next free id instead of replacing it.
+        let others = self.list().map_err(|e| e.to_string())?;
+        let id = match others.iter().find(|o| o.path == abs) {
+            Some(same) => same.id.clone(),
+            None => std::iter::once(format!("lib-{}", short_id(&key)))
+                .chain((2..).map(|n| format!("lib-{}", short_id(&format!("{key}#{n}")))))
+                .find(|id| !others.iter().any(|o| o.id == *id))
+                .expect("an unbounded sequence of ids has a free one"),
+        };
         let lib = Library {
-            id: format!("lib-{id}"),
+            id,
             name: name.into(),
             kind: if kind.is_empty() { "anime".into() } else { kind.into() },
             path: abs,
@@ -116,6 +170,27 @@ impl Libraries {
                 return Err("name required".into());
             }
             lib.name = n.trim().to_string();
+        }
+        if let Some(k) = &p.kind {
+            if k.trim().is_empty() {
+                return Err("type required".into());
+            }
+            lib.kind = k.trim().to_lowercase();
+        }
+        if let Some(path) = &p.path {
+            let path = path.trim();
+            if path.is_empty() {
+                return Err("path required".into());
+            }
+            let (abs, root, root_path) = self.locate(path);
+            if !std::fs::metadata(&abs).map(|m| m.is_dir()).unwrap_or(false) {
+                return Err("path is not a readable directory".into());
+            }
+            let others = self.list().map_err(|e| e.to_string())?;
+            if others.iter().any(|o| o.id != lib.id && o.path == abs) {
+                return Err("another library already reads that folder".into());
+            }
+            (lib.path, lib.root, lib.root_path) = (abs, root, root_path);
         }
         for u in p.owner.iter().chain(p.members.iter().flatten()) {
             if !known_user(u) {
@@ -211,6 +286,40 @@ mod tests {
             .update(&by_root.id, &LibraryPatch { private: Some(false), ..Default::default() }, "user-admin", &known)
             .unwrap();
         assert!(!p.private && p.owner.is_empty() && p.members.is_empty());
+        drop(libs);
+        drop(store);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    /// A library whose folder was edited keeps its id; adding a library
+    /// at its old folder must not overwrite it, and adding one at its new
+    /// folder is the same location again.
+    #[test]
+    fn a_moved_library_keeps_its_id_and_its_record() {
+        let dir = lain_store::test_dir("libs-move");
+        let (old, new) = (dir.join("old"), dir.join("new"));
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        let store = Arc::new(Store::open(&dir.join("data")).unwrap());
+        let libs = Libraries::new(store.clone(), Arc::new(RwLock::new(Roots::default())));
+        let (old_s, new_s) = (old.to_string_lossy().into_owned(), new.to_string_lossy().into_owned());
+        let a = libs.create("Films", "movie", &old_s, "").unwrap();
+        let known = |_: &str| true;
+        let moved = libs
+            .update(&a.id, &LibraryPatch { path: Some(new_s.clone()), ..Default::default() }, "user-admin", &known)
+            .unwrap();
+        assert_eq!((moved.id.as_str(), moved.path.as_str()), (a.id.as_str(), new_s.as_str()));
+        let b = libs.create("Old films", "movie", &old_s, "").unwrap();
+        assert_ne!(b.id, a.id, "a new library at the old folder takes a fresh id");
+        assert_eq!(libs.get(&a.id).unwrap().path, new_s, "the moved library is untouched");
+        let again = libs.create("Films again", "movie", &new_s, "").unwrap();
+        assert_eq!(again.id, a.id, "the folder the moved library reads is its location");
+        assert_eq!(libs.list().unwrap().len(), 2);
+        assert_eq!(
+            libs.update(&b.id, &LibraryPatch { path: Some(new_s), ..Default::default() }, "user-admin", &known)
+                .unwrap_err(),
+            "another library already reads that folder"
+        );
         drop(libs);
         drop(store);
         std::fs::remove_dir_all(dir).ok();

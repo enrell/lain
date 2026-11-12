@@ -18,6 +18,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   asks for it in every episode row and Continue watching card, so Episode
   1 no longer shows the show's poster cut to 16:9. `lain-client`:
   `Client::still`.
+- **Delete a user** (Settings › Users, `DELETE /api/users/{id}`): the
+  account goes with its progress, tracking lists and linked accounts,
+  ratings, comments, collections, friends and notifications; private
+  libraries it owned pass to the admin deleting it. The dialog names
+  what goes and asks for the username typed out. A later account of the
+  same name never accepts the deleted one's tokens.
+- **Edit and order libraries** (Settings › Libraries): rename, change
+  the type or the folder, or make one private from the dialog that adds
+  libraries; move them up and down (Alt+arrows on a row). Home and the
+  library page follow the order. `PATCH /api/libraries/{id}` takes
+  `type` and `path`; `PUT /api/libraries/order` sets the order.
+- **Plugins name every job** (D-285): each binding on `GET /api/plugins`
+  carries a one-sentence `summary` from the server (a component can
+  describe the jobs it brings in its manifest). Settings › Plugins shows
+  it for every row, in families that close to one line each (how many
+  jobs, and whether a provider is missing or unhealthy), and says how
+  to install a provider that is bound but missing.
+- **`lain restore BACKUP.tar --replace`**: with the server stopped, one
+  command moves the data folder aside (kept as `<dir>.before-restore`)
+  and restores into a fresh one, keeping this machine's installed
+  components and service wrapper; a failed restore puts it back.
 
 ### Changed
 - **Web: titles, not files.** Home lists each library's newest titles in
@@ -31,6 +52,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   letterboxing one shape inside the other's frame; Search's newest titles
   split into two rails the same way. Continue watching shows a film's own
   wide still instead of its poster between blurred bars.
+- **A scan asked for during a scan is queued on the server** (D-286):
+  `POST /api/library/scan` answers 202 with `queued: true` instead of
+  409, and the follow-up starts when the running scan ends, even after
+  the tab that asked is closed. Settings › Libraries shows it and lets
+  you queue one from Scan now.
+- **Settings › Transcoding fits on one screen**: what the probe found
+  (the video engine, HDR) and the Auto / Custom policy at the top, every
+  custom section closed to a line of its current values. A server with
+  no hardware encoder says it encodes on the CPU instead of offering a
+  one-option control, and a fresh server reads as Auto.
+- **One segmented control** across Settings and the library's By library
+  / All titles switch; Settings group headings use the app's section
+  heading size, and the gap under every page title is one value.
+- **A wrong current password has a code**: `PATCH /api/me/password`
+  answers `code: "wrong-password"`, which Settings › Security reads
+  instead of the message.
+- Settings › Profile always shows whether the name and bio are saved;
+  your own row in Settings › Users shows your role as text instead of
+  disabled controls; library tags are one style and a phone's library
+  rows no longer wrap Remove; every Settings string goes through `t()`.
+- Settings rows stack beside the section rail on a tablet (768 to 959
+  px), and the Libraries and Users tables start at 1280 px, so a name or
+  a hint is never squeezed to a few letters.
 
 ### Fixed
 - **Web:** films and clips without a year are captioned with their length,

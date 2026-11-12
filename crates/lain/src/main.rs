@@ -26,7 +26,7 @@ server
   import    replace the catalog with a lain.catalog-export@3 document (--data-dir, --in FILE)
   backup    snapshot the server: online with a saved login, else from a stopped data dir
             (--out DIR|FILE, default backups/; --data-dir, --server)
-  restore   restore a backup into an empty data dir (restore BACKUP.tar [--data-dir])
+  restore   restore a backup into an empty data dir, or --replace a stopped one (restore BACKUP.tar [--data-dir] [--replace])
   component list | run <id> --sock S [--k v...] | install <id> [--data-dir] [--k v...] | uninstall <id>
             the bridges to standalone apps (lain-parser, AnimeSubs, Anything) as components; install writes
             <data-dir>/plugins/<id>.json, which the running server picks up

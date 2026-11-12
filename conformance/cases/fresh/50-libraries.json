@@ -1,6 +1,6 @@
 {
   "tier": "v1",
-  "description": "Libraries: any user lists, admins create and delete. Ids are stable over the path.",
+  "description": "Libraries: any user lists, admins create, edit, order and delete. Ids are stable over the path, and over an edit of it.",
   "cases": [
     {"name": "no libraries on a fresh server", "requires": ["media_dir"], "steps": [
       {"req": {"method": "GET", "path": "/api/libraries", "auth": "admin_token"}, "expect": {"status": 200, "body": []}}
@@ -34,6 +34,32 @@
       {"req": {"method": "POST", "path": "/api/libraries", "auth": "admin_token", "body": {"name": "Anime again", "path": "{{media_dir}}"}},
        "expect": {"status": 201, "body": {"id": "{{lib_id}}", "name": "Anime again", "$open": true}}},
       {"req": {"method": "GET", "path": "/api/libraries", "auth": "admin_token"}, "expect": {"status": 200, "body": {"$len": 2}}}
+    ]},
+    {"name": "admins edit a library's name, type and folder", "requires": ["media_dir", "media_dir2"], "steps": [
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib2_id}}", "auth": "admin_token", "body": {"name": "Films", "type": "auto", "path": "{{media_dir2}}"}},
+       "expect": {"status": 200, "body": {"id": "{{lib2_id}}", "name": "Films", "type": "auto", "path": "{{media_dir2}}", "$open": true}}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib2_id}}", "auth": "admin_token", "body": {"path": "{{media_dir}}"}},
+       "expect": {"status": 400, "body": {"error": "another library already reads that folder"}}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib2_id}}", "auth": "admin_token", "body": {"path": "{{media_dir}}/no-such-dir"}},
+       "expect": {"status": 400, "body": {"error": "path is not a readable directory"}}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib2_id}}", "auth": "admin_token", "body": {"type": " "}},
+       "expect": {"status": 400, "body": {"error": "type required"}}},
+      {"req": {"method": "PATCH", "path": "/api/libraries/{{lib2_id}}", "auth": "bob_token", "body": {"name": "x"}},
+       "expect": {"status": 403, "body": {"error": "admin required"}}}
+    ]},
+    {"name": "admins order the libraries", "requires": ["media_dir", "media_dir2"], "steps": [
+      {"req": {"method": "PUT", "path": "/api/libraries/order", "auth": "admin_token", "body": {"ids": ["{{lib2_id}}", "{{lib_id}}"]}},
+       "expect": {"status": 200, "body": [{"id": "{{lib2_id}}", "position": 1, "$open": true}, {"id": "{{lib_id}}", "position": 2, "$open": true}]}},
+      {"req": {"method": "GET", "path": "/api/libraries", "auth": "bob_token"},
+       "expect": {"status": 200, "body": [{"id": "{{lib2_id}}", "$open": true}, {"id": "{{lib_id}}", "$open": true}]}},
+      {"req": {"method": "PUT", "path": "/api/libraries/order", "auth": "admin_token", "body": {"ids": ["{{lib2_id}}"]}},
+       "expect": {"status": 400, "body": {"error": "every library must be listed"}}},
+      {"req": {"method": "PUT", "path": "/api/libraries/order", "auth": "admin_token", "body": {"ids": ["{{lib2_id}}", "{{lib2_id}}"]}},
+       "expect": {"status": 400, "body": {"error": "{{lib2_id}} is listed twice"}}},
+      {"req": {"method": "PUT", "path": "/api/libraries/order", "auth": "admin_token", "body": {"ids": ["lib-nope", "{{lib_id}}"]}},
+       "expect": {"status": 404, "body": {"error": "unknown library lib-nope"}}},
+      {"req": {"method": "PUT", "path": "/api/libraries/order", "auth": "bob_token", "body": {"ids": []}},
+       "expect": {"status": 403, "body": {"error": "admin required"}}}
     ]},
     {"name": "delete removes the library and reports its items", "requires": ["media_dir"], "steps": [
       {"req": {"method": "DELETE", "path": "/api/libraries/lib-nope", "auth": "admin_token"}, "expect": {"status": 404, "body": {"error": "unknown library"}}},

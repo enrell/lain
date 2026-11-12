@@ -110,6 +110,7 @@ pub fn manifest(
             entrypoint: exe.to_string_lossy().into_owned(),
             args,
         },
+        summaries: Default::default(),
     })
 }
 

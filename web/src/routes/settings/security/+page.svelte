@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api } from '$lib/api';
+	import { api, ApiError } from '$lib/api';
 	import { t } from '$lib/i18n';
 	import { session } from '$lib/auth/session.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
@@ -39,11 +39,13 @@
 			oldPassword = '';
 			newPassword = '';
 			confirm = '';
-			toasts.success('Password changed. Other sessions were signed out.');
+			toasts.success(t('security.changed'));
 		} catch (err) {
+			// The server names a wrong current password with a code; a server
+			// from before the code answered the bare "invalid credentials".
 			const message = errorMessage(err, t('security.failed'));
-			// The server's "invalid credentials" here can only mean the current password.
-			if (message === 'invalid credentials') {
+			const wrong = err instanceof ApiError && (err.code === 'wrong-password' || (!err.code && err.message === 'invalid credentials'));
+			if (wrong) {
 				fieldErrors = { old: t('security.wrongCurrent') };
 				oldInput?.select();
 			} else error = message;
@@ -55,10 +57,10 @@
 	const field = 'h-9 w-full rounded-md border px-3 text-sm text-foreground outline-none';
 </script>
 
-<svelte:head><title>Security — Settings — Lain</title></svelte:head>
+<svelte:head><title>{t('security.pageTitle')}</title></svelte:head>
 
 <form onsubmit={submit}>
-	<SettingsGroup id="password" title="Password" description={t('settings.groups.security.password')}>
+	<SettingsGroup id="password" title={t('security.group')} description={t('settings.groups.security.password')}>
 		{#if error}
 			<p class="py-3 text-sm text-danger" role="alert">{error}</p>
 		{/if}
@@ -75,8 +77,8 @@
 			{#snippet below()}{#if fieldErrors.confirm}<p id="pw-confirm-error" class="text-xs text-danger sm:text-right">{fieldErrors.confirm}</p>{/if}{/snippet}
 		</SettingRow>
 		<div class="flex items-center justify-between gap-3 py-4">
-			<p class="text-xs text-muted">Every other session is signed out immediately.</p>
-			<Button type="submit" size="field" loading={busy}>Update password</Button>
+			<p class="text-xs text-muted">{t('security.othersOut')}</p>
+			<Button type="submit" size="field" loading={busy}>{t('security.submit')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
 		</div>
 	</SettingsGroup>
 </form>

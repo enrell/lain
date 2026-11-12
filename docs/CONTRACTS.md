@@ -348,6 +348,15 @@ reaches `libraries`, since roots walk in parallel), `commit`
 (`libraries_done` of `libraries`) and `enrich` (the metadata backfill,
 `enrich_done` of `enrich_total`). It is absent in every other state.
 
+`POST /api/library/scan` (admin) answers 202 `{state: "running"}` when
+it starts a scan. While one runs it queues one follow-up scan of every
+library instead of refusing (D-286; it answered 409 before): 202
+`{state: "running", queued: true}`, and `GET /api/library/scan` carries
+`queued: true` until the running scan ends and the follow-up starts by
+itself. Asked again while queued, it stays one follow-up. The running
+scan walks only the libraries it started with, so a library added
+meanwhile is read by the follow-up.
+
 ## lain.playback.transcode@1 (exactly-one)
 
 Input: `{file_path}` → `Transcode{path, method?, cached?}`. The ffmpeg
@@ -1301,6 +1310,15 @@ Operator surfaces can list registered providers with their
 capabilities and live health (`provider_info` on `GET /api/plugins`) so
 a swap UI only ever offers candidates that can serve the capability.
 
+Each binding of `composition` (on `GET /api/plugins` and the swap and
+withdraw answers) carries `summary` (D-285, additive, omitted when
+empty): what the job is, in one plain sentence. The server describes
+the capabilities it knows (`lain_core::capabilities`, matched without
+the version, so a new version keeps its sentence); for one it does not
+know, the first bound provider that describes it does
+(`Provider::describe`; a component manifest's optional
+`summaries: {capability: sentence}`).
+
 ## Private libraries and portable roots (lain-rs, D-156, D-157, D-175)
 
 Served by the Rust server only (P1b); the Go server is unchanged.
@@ -1308,9 +1326,19 @@ Served by the Rust server only (P1b); the Go server is unchanged.
 - **Library fields** (additive, omitted when unset): `private`, `owner`,
   `members`, `root`, `root_path`, and in responses `locked` for a
   private library (whether this session has unlocked it).
-- `PATCH /api/libraries/{id}` (admin): `{name?, private?, owner?,
-  members?}`. Making a library private makes the caller its owner unless
-  `owner` is given; making it public clears owner and members.
+- `PATCH /api/libraries/{id}` (admin): `{name?, type?, path?, private?,
+  owner?, members?}`. Making a library private makes the caller its owner
+  unless `owner` is given; making it public clears owner and members.
+  A new `path` (absolute, recorded under a mapped root when inside one)
+  must be a readable directory no other library reads; the id stays, so
+  progress and overlays stay attached, and the next scan reads the new
+  folder and marks what it no longer finds missing (D-068). `type`
+  changes which files the next scan reads.
+- `PUT /api/libraries/order` (admin): `{ids}`, every library id once,
+  first to last; answers the list in that order. Libraries carry
+  `position` (1 first; omitted, 0, for one never ordered), and every
+  list of libraries is in that order, the never-ordered ones last by
+  name. 400 for a missing or repeated id, 404 for an unknown one.
 - `POST /api/libraries/{id}/unlock` `{pin}` or `{password}` and
   `POST /api/libraries/{id}/lock`: per session (per token). Only the
   owner and members can unlock (403 `not a member of this library` for an

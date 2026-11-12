@@ -389,4 +389,8 @@ impl Provider for Process {
         let timeout = self.shared.timeouts.invoke;
         self.shared.round_trip(&mut st, op, cap, input, timeout)
     }
+
+    fn describe(&self, capability: &str) -> Option<String> {
+        self.shared.manifest.summaries.get(capability).cloned()
+    }
 }
