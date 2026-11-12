@@ -8,6 +8,7 @@
 	import LibraryBrowser from '$lib/components/media/LibraryBrowser.svelte';
 	import LibraryShelves from '$lib/components/media/LibraryShelves.svelte';
 	import UnlockLibraryDialog from '$lib/components/media/UnlockLibraryDialog.svelte';
+	import Segmented from '$lib/components/primitives/Segmented.svelte';
 	import { t } from '$lib/i18n';
 	import { api } from '$lib/api';
 	import { ensureLibraries, nameable } from '$lib/stores/media-cache.svelte';
@@ -37,7 +38,7 @@
 		// rather than falling back to the page.
 		if (!refocus) return;
 		await tick();
-		document.querySelector<HTMLElement>('#library-view [aria-pressed="true"]')?.focus();
+		document.querySelector<HTMLElement>('#library-view [aria-checked="true"]')?.focus();
 	}
 	// A link can ask for a view (/library?view=all): it wins over the one remembered.
 	$effect(() => {
@@ -183,18 +184,17 @@
      read as loose text beside a button. -->
 {#snippet viewSwitch()}
 	<div class="ms-auto flex shrink-0 items-center gap-2">
-		<div id="library-view" class="inline-flex gap-0.5 rounded-lg bg-field p-0.5 text-[13px] ring-1 ring-hairline" role="group" aria-label={t('library.view')}>
-			{#each [['shelves', t('library.byLibrary')], ['all', t('library.allTitles')]] as const as [id, label] (id)}
-				<button
-					type="button"
-					aria-pressed={view === id}
-					class={['rounded-md px-2.5 py-2 transition-colors md:py-1', view === id ? 'bg-surface-active font-semibold text-foreground ring-1 ring-accent/50' : 'text-muted hover:bg-surface-hover hover:text-foreground'].join(' ')}
-					onclick={() => void setView(id, true)}
-				>
-					{label}
-				</button>
-			{/each}
-		</div>
+		<Segmented
+			id="library-view"
+			size="sm"
+			label={t('library.view')}
+			value={view}
+			options={[
+				{ value: 'shelves', label: t('library.byLibrary') },
+				{ value: 'all', label: t('library.allTitles') }
+			]}
+			onchange={(id) => void setView(id, true)}
+		/>
 		<kbd class="hidden text-muted/70 md:inline-flex" title={t('library.viewKey')}>V</kbd>
 	</div>
 {/snippet}
