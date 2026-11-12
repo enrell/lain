@@ -19,6 +19,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   1 no longer shows the show's poster cut to 16:9. `lain-client`:
   `Client::still`.
 
+### Changed
+- **Web: titles, not files.** Home lists each library's newest titles in
+  its own row (a show is one card counting all of its episodes, not a run
+  of "Glass Garden · 03" cards), and the mixed Recently added row is gone;
+  the Favorites rail lists whole titles. Search counts the titles that
+  match, not the ones loaded, and never cuts a show at the end of a page.
+- **Web: one frame per picture shape.** A grid whose titles mix posters
+  and wide stills (All titles, a search, the favourites) is in two parts,
+  posters and covers then widescreen, each at Home's sizes, instead of
+  letterboxing one shape inside the other's frame; Search's newest titles
+  split into two rails the same way. Continue watching shows a film's own
+  wide still instead of its poster between blurred bars.
+
+### Fixed
+- **Web:** films and clips without a year are captioned with their length,
+  not "video"; time left is said one way on every card and hero ("9 sec
+  left", where a card said "1 min left"); a film card under way says what
+  is left.
+- **Web, series page:** Resume picks the episode watched last when several
+  are half-watched, as Home does (one Continue watching card a title); on
+  arrival the page scrolls just far enough to show that episode, which
+  wears the accent; the phone hero is tighter and its synopsis clamps.
+- **Web, film and comic pages:** a watched film says so ("Watched 2 days
+  ago") and offers Watch again; a comic shows its ComicInfo.xml summary and
+  genres in the hero; volume cards are the size of the rail cards under
+  them.
+
 ## [0.3.1] - 2026-11-12
 
 ### Added
