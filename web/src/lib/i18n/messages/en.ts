@@ -134,6 +134,12 @@ const en = {
 			discardLeave: 'Discard and leave',
 			applyLeave: 'Apply and leave'
 		},
+		profileLeave: {
+			title: 'Leave without saving?',
+			body: 'Your display name or bio has changed and is not saved yet.',
+			discard: 'Leave without saving',
+			save: 'Save and leave'
+		},
 		section: {
 			profile: { label: 'Profile', hint: 'Name, bio, avatar, account' },
 			playback: { label: 'Playback', hint: 'Player, language, video effects' },
