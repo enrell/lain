@@ -29,8 +29,6 @@
 	const frame = $derived(layout === 'poster' ? ('portrait' as const) : ('landscape' as const));
 </script>
 
-
-
 <section class="space-y-4">
 	<div class="flex items-baseline justify-between gap-4">
 		<h2 class="section-title flex items-center gap-1">

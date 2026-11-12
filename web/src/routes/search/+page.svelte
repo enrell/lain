@@ -316,7 +316,7 @@
 				</button>
 			{/if}
 		</form>
-			{#if searchedFor !== '' && !loading}
+		{#if searchedFor !== '' && !loading}
 			<p class="text-sm text-muted" aria-live="polite">
 				{t('search.count', { count: byTitle ? total : groups.length, query: searchedFor })}
 			</p>
