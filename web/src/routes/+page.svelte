@@ -217,7 +217,7 @@
 				{/if}
 
 				{#if favoriteItems.length > 0}
-					<MediaRow title="Favorites" href={session.user ? `/u/${session.user.id}` : null} actionLabel="Your profile" items={favoriteItems} {progressMap} layout="poster" />
+					<MediaRow title="Favorites" href={session.user ? `/u/${session.user.id}` : null} actionLabel="All favorites" items={favoriteItems} {progressMap} layout="poster" />
 				{/if}
 
 				{#if nextUpWatching.length > 0}

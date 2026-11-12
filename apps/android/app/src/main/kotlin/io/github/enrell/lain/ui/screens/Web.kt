@@ -52,6 +52,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -296,13 +300,24 @@ fun SearchField(value: String, onChange: (String) -> Unit, placeholder: String, 
 @Composable
 fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enabled: Boolean = true, multi: Boolean = false) {
     val l = LocalLain.current
+    // A row just picked comes wholly into view, with room to spare: at the edge
+    // of a sheet it was left half under the footer.
+    val reveal = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var size by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val room = with(androidx.compose.ui.platform.LocalDensity.current) { 36.dp.toPx() }
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 46.dp)
+            .onSizeChanged { size = it }
+            .bringIntoViewRequester(reveal)
             .clip(l.buttonShape)
             .background(if (on) l.raised else Color.Transparent)
-            .clickable(enabled = enabled || on, onClick = onClick)
+            .clickable(enabled = enabled || on) {
+                onClick()
+                scope.launch { reveal.bringIntoView(androidx.compose.ui.geometry.Rect(0f, -room, size.width.toFloat(), size.height + room)) }
+            }
             .semantics { stateDescription = if (on) "selected" else "not selected" },
         verticalAlignment = Alignment.CenterVertically,
     ) {

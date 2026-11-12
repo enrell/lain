@@ -27,6 +27,9 @@ import kotlinx.coroutines.withContext
 enum class Phase { Starting, Connect, Login, Main }
 
 /** The app's screens; the stack replaces a navigation library. */
+/** Not a library: the id of the favourites' page (see [Screen.LibraryDetail]). */
+const val FAVORITES = "@favorites"
+
 sealed interface Screen {
     data object Home : Screen
     data object Library : Screen
@@ -34,6 +37,7 @@ sealed interface Screen {
     data object Search : Screen
     data object Downloads : Screen
     data object Settings : Screen
+    /** A library's page; [FAVORITES] in place of a library's id is the page of the titles kept as favourites. */
     data class LibraryDetail(val id: String) : Screen
     data class TitleDetail(val key: String) : Screen
     data class Player(val itemId: String) : Screen
