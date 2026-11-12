@@ -5,17 +5,22 @@
 	 * WebVTT sidecar and fires cuechange — and this paints the active cues
 	 * over the shader canvas. When the renderer is off the parent switches
 	 * the track back to `showing` and the browser renders cues natively.
+	 * Gecko, whose own cue box cannot be moved above the controls, always
+	 * gets this overlay (nativeCueBoxMovable).
 	 */
-	import { cuePlacement, pictureRect, type Rect } from '$lib/player/cue-overlay';
+	import { cuePlacement, pictureRect, stackBottom, type Rect } from '$lib/player/cue-overlay';
 
 	let {
 		track,
 		video,
-		size
+		size,
+		lift = 0
 	}: {
 		track: TextTrack;
 		video: HTMLVideoElement | null;
 		size: 'small' | 'medium' | 'large';
+		/** How far up the controls reach from the bottom edge while they show. */
+		lift?: number;
 	} = $props();
 
 	let cues = $state<VTTCue[]>([]);
@@ -55,8 +60,11 @@
 		return () => observer.disconnect();
 	});
 
+	// 5% of the element's height, the size the browser's own renderer gives
+	// cues (measured in Chromium), not of the picture's: a letterboxed picture
+	// on an upright phone had 11 px subtitles here and 20 px natively.
 	const fontPx = $derived(
-		rect ? rect.height * 0.05 * (size === 'small' ? 0.8 : size === 'large' ? 1.25 : 1) : 0
+		rect ? boxHeight * 0.05 * (size === 'small' ? 0.8 : size === 'large' ? 1.25 : 1) : 0
 	);
 	const linePx = $derived(fontPx * 1.35);
 	const placed = $derived(
@@ -88,7 +96,7 @@
 		{#if stacked.length > 0}
 			<div
 				class="cue-stack"
-				style={`left:${rect.left}px;width:${rect.width}px;bottom:${boxHeight - (rect.top + rect.height) + rect.height * 0.03}px;font-size:${fontPx}px`}
+				style={`left:${rect.left}px;width:${rect.width}px;bottom:${stackBottom(rect, boxHeight, lift)}px;font-size:${fontPx}px`}
 			>
 				{#each stacked as cue (cue)}
 					<div class="cue-line">{@html cueHTML(cue)}</div>
@@ -129,6 +137,8 @@
 
 	.cue-stack {
 		position: absolute;
+		/* With the controls, as the browser's own cue box moves in Chromium. */
+		transition: bottom 150ms ease-out;
 		display: flex;
 		flex-direction: column;
 		align-items: center;

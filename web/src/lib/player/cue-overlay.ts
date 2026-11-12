@@ -76,3 +76,28 @@ export function cuePlacement(cue: VTTCue, rect: Rect, lineHeight: number): CuePl
 	}
 	return { left, top, width, textAlign };
 }
+
+/*
+ * Whether the browser's own cue box can be moved. Chromium and Safari lay
+ * cues out in ::-webkit-media-text-track-container, which takes a transform,
+ * so the player lifts it above the controls while they show. Gecko has no
+ * such box and ::cue cannot position anything, so there the player draws the
+ * cues itself, with this overlay, where they can step above the controls.
+ * (`CSS.supports` on the -webkit- pseudo-element cannot tell: unknown
+ * -webkit- pseudo-elements parse everywhere, by spec.)
+ */
+export function nativeCueBoxMovable(): boolean {
+	if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return true;
+	return !CSS.supports('-moz-appearance', 'none');
+}
+
+/*
+ * Where the stack of unpositioned cues ends, as a distance from the box's
+ * bottom edge: just inside the picture's lower edge, or just above the
+ * controls while they cover that edge (`lift` is how far up they reach). A
+ * letterboxed picture whose edge is already above the controls stays put.
+ */
+export function stackBottom(rect: Rect, boxHeight: number, lift: number): number {
+	const resting = boxHeight - (rect.top + rect.height) + rect.height * 0.03;
+	return lift > 0 ? Math.max(resting, lift + rect.height * 0.02) : resting;
+}

@@ -37,6 +37,7 @@
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
+	import { nativeCueBoxMovable } from '$lib/player/cue-overlay';
 	import { defaultAudioStream, resolveTracks, trackName, trackPreferences } from '$lib/player/track-language';
 	import { offeredQualities } from '$lib/player/quality-ladder';
 	import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, toggledSubtitle, type SidecarTrack } from '$lib/player/sidecars';
@@ -84,8 +85,11 @@
 		onFinished?: () => void;
 		/** The episode after this one, if any: a button in the bar and Shift+N go to it. */
 		next?: { label: string; go: () => void } | null;
-		/** The episode list beside the player on a wide screen: E and a bar button show or hide it. */
-		episodes?: { shown: boolean; toggle: () => void } | null;
+		/**
+		 * The episode list: E and a bar button show or hide it. `overlay` when
+		 * it opens as a drawer over the picture, which Escape also closes.
+		 */
+		episodes?: { shown: boolean; toggle: () => void; overlay?: boolean } | null;
 	} = $props();
 
 	const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -127,7 +131,7 @@
 			libraries = await api.libraries.list();
 		} catch (error) {
 			console.warn('[lain-player] library-specific effect defaults unavailable', error);
-			effectError = `Could not load effect defaults: ${error instanceof Error ? error.message : String(error)}`;
+			effectError = t('player.settings.effectDefaultsFailed', { reason: error instanceof Error ? error.message : String(error) });
 		}
 		if (effectManual) return;
 		const library = libraries.find((entry) => entry.id === item.library_id);
@@ -173,6 +177,9 @@
 	// (less its transparent fade) instead of being drawn under the buttons.
 	let footHeight = $state(0);
 	const cueLift = $derived(controlsVisible ? Math.max(0, footHeight - 32) : 0);
+	// Firefox cannot move its own cue box (see nativeCueBoxMovable): there the
+	// player draws the cues, as it does over the GPU renderer's canvas.
+	const cueBoxMovable = nativeCueBoxMovable();
 	let scrubbing = $state(false);
 	let scrubValue = $state(0);
 	// True only between pointerdown and pointerup on the seek row. Used to
@@ -560,8 +567,10 @@
 	// While the renderer presents frames the sidecar track goes `hidden`:
 	// cues still parse and cuechange fires, but the CueOverlay paints them
 	// over the canvas; `showing` restores the native ::cue path (D-082). A
-	// rebuilt sidecar element clears the previous track's failure.
+	// rebuilt sidecar element clears the previous track's failure. Firefox
+	// takes the overlay path too (cueBoxMovable).
 	const cueTrack = $derived(trackEl?.track ?? null);
+	const drawCues = $derived((rendererActive || !cueBoxMovable) && !trackFailed);
 	let lastTrackEl: HTMLTrackElement | null = null;
 	$effect(() => {
 		const el = trackEl;
@@ -570,7 +579,7 @@
 			trackFailed = false;
 		}
 		if (!el) return;
-		el.track.mode = rendererActive && !trackFailed ? 'hidden' : 'showing';
+		el.track.mode = drawCues ? 'hidden' : 'showing';
 	});
 
 	async function loadPlaybackOptions(): Promise<void> {
@@ -607,7 +616,7 @@
 					return;
 				}
 				if (data.type === Hls.ErrorTypes.MEDIA_ERROR && refuseHevcCopy()) return;
-				error = 'HLS playback failed.';
+				error = t('player.error.hlsFailed');
 			});
 			hls.loadSource(url);
 			// hls.js would otherwise set the MediaSource duration to the
@@ -624,7 +633,7 @@
 		} else if (el.canPlayType('application/vnd.apple.mpegurl')) {
 			el.src = url;
 		} else {
-			error = 'This browser cannot play HLS streams.';
+			error = t('player.error.noHls');
 		}
 	}
 
@@ -720,7 +729,7 @@
 			// The server answers a request it cannot honour with the plain
 			// session and the reason; say it instead of showing nothing.
 			if (serverEffect && !(status.reasons ?? []).some((reason) => reason.startsWith('video effect'))) {
-				effectError = status.fallback || 'the server did not render the effect';
+				effectError = status.fallback || t('player.settings.effectNotRendered');
 			}
 			hevcCopied = status.video_direct === true && status.video_codec === 'hevc';
 			// A hold this start replaces without a rebuild (Retry after a
@@ -751,24 +760,24 @@
 			}
 			if (destroyed) return;
 			if (status.state === 'failed') {
-				throw new Error(status.error || 'The server could not prepare this video.');
+				throw new Error(status.error || t('player.prepare.failed'));
 			}
 			if (delivery === 'hls') {
 				if (!status.playable && status.state !== 'ready') {
-					throw new Error(status.error || 'The server could not prepare this video.');
+					throw new Error(status.error || t('player.prepare.failed'));
 				}
 				attachHLS();
 				transcodeReady = true;
 			} else {
 				if (status.state !== 'ready') {
-					throw new Error(status.error || 'The server could not prepare this video.');
+					throw new Error(status.error || t('player.prepare.failed'));
 				}
 				hasSubtitle = status.has_subtitle ?? hasSubtitle;
 				transcodeReady = true;
 			}
 		} catch (err) {
 			if (err instanceof DOMException && err.name === 'AbortError') return;
-			transcodeError = err instanceof Error ? err.message : 'The server could not prepare this video.';
+			transcodeError = err instanceof Error ? err.message : t('player.prepare.failed');
 		} finally {
 			if (transcodeAbort === controller) {
 				preparingTranscode = false;
@@ -1087,16 +1096,16 @@
 		}
 		switch (code) {
 			case MediaError.MEDIA_ERR_NETWORK:
-				error = 'The stream connection dropped.';
+				error = t('player.error.network');
 				break;
 			case MediaError.MEDIA_ERR_DECODE:
-				error = 'This file could not be decoded by the browser.';
+				error = t('player.error.decode');
 				break;
 			case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-				error = 'This media format is not supported in the browser.';
+				error = t('player.error.unsupported');
 				break;
 			default:
-				error = 'Playback failed.';
+				error = t('player.error.failed');
 		}
 	}
 
@@ -1237,7 +1246,7 @@
 				// is still loading) rejects this play with AbortError: that is
 				// the viewer's own pause, not the browser refusing to play.
 				if (err instanceof DOMException && err.name === 'AbortError') return;
-				error = 'The browser blocked playback. Click play to start.';
+				error = t('player.error.blocked');
 			});
 		} else {
 			el.pause();
@@ -1316,6 +1325,7 @@
 		seekBy(side * skipSec);
 		const total = skipFlash && skipFlash.side === side ? skipFlash.total + skipSec : skipSec;
 		skipFlash = { side, total, key: Date.now() };
+		announce(t(side < 0 ? 'player.osd.back' : 'player.osd.forward', { seconds: total }));
 		if (skipFlashTimer) clearTimeout(skipFlashTimer);
 		skipFlashTimer = setTimeout(() => (skipFlash = null), 700);
 	}
@@ -1470,12 +1480,25 @@
 	 * button to light up, and the settings panel is closed. Inside the
 	 * player, so it shows in fullscreen too.
 	 */
-	let osd = $state<{ text: string; key: number } | null>(null);
+	let osd = $state<string | null>(null);
 	let osdTimer: ReturnType<typeof setTimeout> | null = null;
 	function showOsd(text: string): void {
-		osd = { text, key: Date.now() };
+		osd = text;
+		announce(text);
 		if (osdTimer) clearTimeout(osdTimer);
 		osdTimer = setTimeout(() => (osd = null), 1200);
+	}
+
+	/*
+	 * What a screen reader is told: one live region that stays in the page
+	 * while only its text changes. A status element created together with its
+	 * text, once per key press, may never be announced. The same message twice
+	 * in a row (subtitles off, then off again) differs by a no-break space,
+	 * so the second press is still a change to announce.
+	 */
+	let announcement = $state('');
+	function announce(text: string): void {
+		announcement = announcement === text ? `${text}\u00a0` : text;
 	}
 
 	function stepRate(direction: 1 | -1): void {
@@ -1516,12 +1539,12 @@
 			} else if (request) {
 				await request();
 			} else {
-				fullscreenNotice = 'Fullscreen is not available in this browser.';
+				fullscreenNotice = t('player.fullscreenUnavailable');
 				return;
 			}
 			fullscreenNotice = null;
 		} catch {
-			fullscreenNotice = 'Fullscreen is not available in this browser.';
+			fullscreenNotice = t('player.fullscreenUnavailable');
 		}
 	}
 
@@ -1594,6 +1617,11 @@
 	 * the way out, and a viewer reaching for Escape must not lose playback.
 	 */
 	function onEscape(event: KeyboardEvent): void {
+		if (episodes?.overlay && episodes.shown) {
+			consume(event);
+			episodes.toggle();
+			return;
+		}
 		if (settingsOpen) {
 			consume(event);
 			settingsOpen = false;
@@ -1670,8 +1698,8 @@
 				break;
 			case 'e':
 			case 'E':
-				// Only where the list sits beside the picture (lg and up); below, it is under it.
-				if (!episodes || !window.matchMedia('(min-width: 1024px)').matches) break;
+				// Not on an upright phone, where the list is under the picture (no `episodes` there).
+				if (!episodes) break;
 				consume(event);
 				episodes.toggle();
 				break;
@@ -1711,26 +1739,35 @@
 	const telemetry = $derived(
 		mode === 'transcode'
 			? [
-					delivery === 'hls' ? 'HLS' : delivery === 'progressive' ? 'MP4' : 'Session',
-					selectedQuality || 'Auto'
+					delivery === 'hls' ? 'HLS' : delivery === 'progressive' ? 'MP4' : t('player.settings.session'),
+					selectedQuality || t('player.qualityAuto')
 				].join(' · ')
-			: 'Direct play'
+			: t('player.settings.direct')
 	);
 	// Technical details stay available without competing with the picture.
 	const sessionNote = $derived(
 		[
 			mode === 'transcode' && transcodeReasons.length > 0
-				? `Transcoding · ${transcodeReasons.join(' · ')}`
+				? t('player.settings.transcoding', { reasons: transcodeReasons.join(' · ') })
 				: '',
 			mode === 'transcode' && delivery
 				? delivery === 'hls'
-					? 'HLS delivery'
-					: 'Progressive MP4'
+					? t('player.settings.hlsDelivery')
+					: t('player.settings.progressiveDelivery')
 				: ''
 		]
 			.filter(Boolean)
 			.join('  ·  ')
 	);
+	// Effect presets by name; the list itself (ids, order) is shared with Settings.
+	const EFFECT_LABEL_KEYS = {
+		off: 'player.effect.off',
+		'anime4k-a': 'player.effect.anime4kA',
+		'anime4k-aa': 'player.effect.anime4kAA',
+		'anime4k-lite': 'player.effect.anime4kLite',
+		'anime4k-dog-x2': 'player.effect.anime4kDogX2'
+	} as const satisfies Record<EffectPreset, string>;
+	const effectLabel = (id: EffectPreset): string => t(EFFECT_LABEL_KEYS[id]);
 </script>
 
 <svelte:window
@@ -1749,7 +1786,7 @@
 	].join(' ')}
 	style:--cue-lift={`${cueLift}px`}
 	role="region"
-	aria-label={`Player — ${title}`}
+	aria-label={t('player.region', { title })}
 	onpointermove={onStagePointerMove}
 	onpointerdown={(event) => {
 		if (settingsOpen && event.target instanceof Node && !chromeTailEl?.contains(event.target) && !settingsButton?.contains(event.target)) settingsOpen = false;
@@ -1771,7 +1808,7 @@
 					'skip-flash pointer-events-none absolute inset-y-0 z-10 flex w-[36%] items-center justify-center',
 					skipFlash.side < 0 ? 'left-0 rounded-r-[50%]' : 'right-0 rounded-l-[50%]'
 				].join(' ')}
-				aria-live="polite"
+				aria-hidden="true"
 			>
 				<span class="rounded-full bg-black/55 px-3.5 py-1.5 text-sm font-semibold tabular-nums text-white backdrop-blur">
 					{skipFlash.side < 0 ? '−' : '+'}{skipFlash.total}s
@@ -1779,13 +1816,13 @@
 			</div>
 		{/key}
 	{/if}
+	<!-- Seen: the message on the picture. Heard: the live region below, which stays mounted. -->
 	{#if osd}
-		{#key osd.key}
-			<div class="pointer-events-none absolute inset-x-0 top-20 z-20 flex justify-center" role="status">
-				<span class="rounded-full bg-black/65 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur">{osd.text}</span>
-			</div>
-		{/key}
+		<div class="pointer-events-none absolute inset-x-0 top-20 z-20 flex justify-center" aria-hidden="true">
+			<span class="rounded-full bg-black/65 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur">{osd}</span>
+		</div>
 	{/if}
+	<p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</p>
 	<header
 		bind:this={headerEl}
 		class={[
@@ -1798,7 +1835,7 @@
 			class="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-2 text-sm text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] transition-colors hover:bg-surface-hover/60"
 			onclick={() => void goto(`/item/${item.id}`)}
 		>
-			<ArrowLeft class="size-5" aria-hidden="true" /> Back
+			<ArrowLeft class="size-5" aria-hidden="true" /> {t('player.back')}
 		</button>
 		<p
 			class="min-w-0 truncate text-base font-medium text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] sm:text-lg"
@@ -1838,7 +1875,7 @@
 						bind:this={trackEl}
 						kind="subtitles"
 						srclang={selectedSubtitleLanguage}
-						label="Subtitles"
+						label={t('player.subtitlesTrack')}
 						src={subtitleSrc}
 						default
 						onerror={() => (trackFailed = true)}
@@ -1863,27 +1900,25 @@
 			].join(' ')}
 			aria-hidden="true"
 		></canvas>
-		{#if rendererActive && cueTrack}
-			<CueOverlay track={cueTrack} video={video} size={subtitleSize} />
+		{#if drawCues && cueTrack}
+			<CueOverlay track={cueTrack} video={video} size={subtitleSize} lift={cueLift} />
 		{/if}
 
 	{#if preparingTranscode}
 		<div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/85 px-6 text-center">
-			<Spinner class="size-10 text-muted" label="Preparing playback" />
+			<Spinner class="size-10 text-muted" label={t('player.prepare.label')} />
 			<div class="max-w-md">
 				<p class="text-sm text-foreground">
-					{seekTarget > 0
-						? `Seeking to ${formatTime(seekTarget)}…`
-						: 'Preparing a browser-compatible version…'}
+					{seekTarget > 0 ? t('player.prepare.seeking', { time: formatTime(seekTarget) }) : t('player.prepare.first')}
 				</p>
 				<p class="mt-2 font-mono text-xs uppercase tracking-[0.14em] tabular-nums text-muted">
-					{formatTime(prepareElapsed)} elapsed
+					{t('player.prepare.elapsed', { time: formatTime(prepareElapsed) })}
 				</p>
 				{#if prepareProgress > 0}
 					<div
 						class="mx-auto mt-4 h-[3px] w-56 overflow-hidden bg-line/30"
 						role="progressbar"
-						aria-label="Preparation progress"
+						aria-label={t('player.prepare.progress')}
 						aria-valuemin="0"
 						aria-valuemax="100"
 						aria-valuenow={preparePercent}
@@ -1891,27 +1926,20 @@
 						<div class="h-full bg-accent" style={`width:${preparePercent}%`}></div>
 					</div>
 					<p class="mt-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-						{preparePercent}% prepared
+						{t('player.prepare.percent', { percent: preparePercent })}
 					</p>
 				{/if}
 				{#if seekTarget > 0}
-					<p class="mt-4 text-xs leading-relaxed text-muted">
-						The server starts producing this session from that point, so playback resumes shortly.
-					</p>
+					<p class="mt-4 text-xs leading-relaxed text-muted">{t('player.prepare.seekHint')}</p>
 				{:else}
-					<p class="mt-4 text-xs leading-relaxed text-muted">
-						The first play prepares a browser-compatible copy of this file. Sources like AV1 or
-						HEVC need a full re-encode and can take several minutes.
-					</p>
+					<p class="mt-4 text-xs leading-relaxed text-muted">{t('player.prepare.firstHint')}</p>
 				{/if}
-				<p class="mt-2 text-xs leading-relaxed text-muted">
-					You can leave this page — preparation continues on the server.
-				</p>
+				<p class="mt-2 text-xs leading-relaxed text-muted">{t('player.prepare.leaveHint')}</p>
 				<button
 					class="mt-5 inline-flex items-center gap-1.5 border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
 					onclick={() => void goto(`/item/${item.id}`)}
 				>
-					<ArrowLeft class="size-3.5" aria-hidden="true" /> Back to details
+					<ArrowLeft class="size-3.5" aria-hidden="true" /> {t('player.backToDetails')}
 				</button>
 			</div>
 		</div>
@@ -1924,7 +1952,7 @@
 					class="mt-5 inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
 					onclick={() => void prepareTranscode()}
 				>
-					<RotateCcw class="size-3.5" aria-hidden="true" /> Retry preparation
+					<RotateCcw class="size-3.5" aria-hidden="true" /> {t('player.prepare.retry')}
 				</button>
 			</div>
 		</div>
@@ -1933,7 +1961,7 @@
 	<!-- Buffering -->
 	{#if waiting && !error && !preparingTranscode}
 		<div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-			<Spinner class="size-10 text-muted" label="Buffering" />
+			<Spinner class="size-10 text-muted" label={t('player.buffering')} />
 		</div>
 	{/if}
 
@@ -1948,13 +1976,13 @@
 						class="inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
 						onclick={retryPlayback}
 					>
-						<RotateCcw class="size-3.5" aria-hidden="true" /> Retry
+						<RotateCcw class="size-3.5" aria-hidden="true" /> {t('player.error.retry')}
 					</button>
 					<a
 						href={`/item/${item.id}`}
 						class="inline-flex items-center border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
 					>
-						Back to details
+						{t('player.backToDetails')}
 					</a>
 				</div>
 			</div>
@@ -1966,7 +1994,7 @@
 		<button
 			class="absolute inset-0 z-10 flex items-center justify-center"
 			onclick={togglePlay}
-			aria-label={ended ? 'Play again' : 'Play'}
+			aria-label={ended ? t('player.playAgain') : t('player.play')}
 		>
 			<span
 				class="flex size-20 items-center justify-center rounded-full border border-white/40 bg-black/65 text-white shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur transition-transform duration-150 hover:scale-105 max-md:portrait:size-16"
@@ -1987,7 +2015,7 @@
 		>
 			<span>{fullscreenNotice}</span>
 			<IconButton
-				label="Dismiss fullscreen notice"
+				label={t('player.dismissNotice')}
 				onclick={() => (fullscreenNotice = null)}
 			>
 				<X class="size-4" />
@@ -2003,59 +2031,61 @@
 			bind:this={chromeTailEl}
 			id="player-settings"
 			role="region"
-			aria-label="Playback settings"
-			class="player-settings absolute bottom-24 right-3 z-30 max-h-[calc(100%-8rem)] w-[min(15.5rem,calc(100%-1.5rem))] overflow-y-auto rounded-lg border border-line/60 bg-background px-3 py-1.5 text-foreground shadow-xl md:bottom-28 md:max-h-[calc(100%-12rem)] md:w-[min(22rem,calc(100%-1.5rem))] md:p-4 sm:right-6"
+			aria-label={t('player.settings.title')}
+			class="player-settings absolute bottom-24 right-3 z-30 max-h-[calc(100%-8rem)] w-[min(15.5rem,calc(100%-1.5rem))] overflow-y-auto rounded-lg border border-line/60 bg-background px-3 py-1.5 text-foreground shadow-xl md:bottom-28 md:max-h-[calc(100%-12rem)] md:w-[min(22rem,calc(100%-1.5rem))] md:p-4 sm:right-6 max-md:portrait:top-3 max-md:portrait:max-h-none [@media(max-height:500px)]:top-3 [@media(max-height:500px)]:bottom-[5.5rem] [@media(max-height:500px)]:max-h-none [@media(max-height:500px)]:py-1.5"
 		>
-			<div class="mb-3 flex items-center justify-between max-md:hidden">
-				<h2 class="text-base font-semibold">Playback settings</h2>
-				<IconButton label="Close settings" onclick={() => { settingsOpen = false; settingsButton?.focus(); }}><X class="size-5" /></IconButton>
+			<!-- A screen this short (a phone on its side) keeps the panel for the
+			     settings themselves: the heading and Open with took all of it. -->
+			<div class="mb-3 flex items-center justify-between max-md:hidden [@media(max-height:500px)]:hidden">
+				<h2 class="text-base font-semibold">{t('player.settings.title')}</h2>
+				<IconButton label={t('player.settings.close')} onclick={() => { settingsOpen = false; settingsButton?.focus(); }}><X class="size-5" /></IconButton>
 			</div>
-			<div class="mb-4 border-b border-line/60 pb-4 max-md:hidden"><ExternalPlayers itemId={item.id} onOpen={() => video?.pause()} /></div>
+			<div class="mb-4 border-b border-line/60 pb-4 max-md:hidden [@media(max-height:500px)]:hidden"><ExternalPlayers itemId={item.id} onOpen={() => video?.pause()} /></div>
 			<label class="chrome-chip">
-				Speed
-				<select class="chrome-select" value={rate} onchange={(event) => setRate(Number(event.currentTarget.value))} aria-label="Playback speed">
-					{#each RATES as option (option)}<option value={option}>{option === 1 ? 'Normal' : `${option}×`}</option>{/each}
+				{t('player.settings.speed')}
+				<select class="chrome-select" value={rate} onchange={(event) => setRate(Number(event.currentTarget.value))} aria-label={t('player.settings.speedLabel')}>
+					{#each RATES as option (option)}<option value={option}>{option === 1 ? t('player.settings.speedNormal') : t('player.settings.speedRate', { rate: option })}</option>{/each}
 				</select>
 			</label>
 			<label class="chrome-chip">
-				Skip
-				<select class="chrome-select" value={skipChoice} onchange={(event) => setSkip(Number(event.currentTarget.value))} aria-label="Skip step">
-					{#each SKIP_CHOICES as option (option)}<option value={option}>{option === 0 ? `Auto (${autoSkip} s)` : `${option} s`}</option>{/each}
+				{t('player.settings.skip')}
+				<select class="chrome-select" value={skipChoice} onchange={(event) => setSkip(Number(event.currentTarget.value))} aria-label={t('player.settings.skipLabel')}>
+					{#each SKIP_CHOICES as option (option)}<option value={option}>{option === 0 ? t('player.settings.skipAuto', { seconds: autoSkip }) : t('player.settings.skipSeconds', { seconds: option })}</option>{/each}
 				</select>
 			</label>
 			<label class="chrome-chip">
-				Effects
-				<select class="chrome-select" bind:value={selectedEffect} aria-label="Video effects" onchange={() => { effectManual = true; effectError = null; }}>
-					{#each EFFECT_PRESETS as preset}<option value={preset.id}>{preset.label}</option>{/each}
+				{t('player.settings.effects')}
+				<select class="chrome-select" bind:value={selectedEffect} aria-label={t('player.settings.effectsLabel')} onchange={() => { effectManual = true; effectError = null; }}>
+					{#each EFFECT_PRESETS as preset (preset.id)}<option value={preset.id}>{effectLabel(preset.id)}</option>{/each}
 				</select>
 			</label>
 			{#if (playbackOptions?.effects?.length ?? 0) > 0}
 				<label class="chrome-chip">
-					Render on
-					<select class="chrome-select" bind:value={renderOn} aria-label="Where video effects are rendered" onchange={() => { effectError = null; }}>
-						<option value="client">This device</option>
-						<option value="server">Server</option>
+					{t('player.settings.renderOn')}
+					<select class="chrome-select" bind:value={renderOn} aria-label={t('player.settings.renderOnLabel')} onchange={() => { effectError = null; }}>
+						<option value="client">{t('player.settings.renderClient')}</option>
+						<option value="server">{t('player.settings.renderServer')}</option>
 					</select>
 				</label>
 			{/if}
-			{#if effectError && selectedEffect !== 'off'}<p class="mt-1 text-xs text-danger" role="status">Anime4K unavailable: {effectError}</p>{/if}
-			<a class="mt-1 block text-xs text-accent hover:underline" href="/settings/playback#effects">Set default effects and overrides</a>
+			{#if effectError && selectedEffect !== 'off'}<p class="mt-1 text-xs text-danger" role="status">{t('player.settings.effectUnavailable', { reason: effectError })}</p>{/if}
+			<a class="mt-1 block text-xs text-accent hover:underline" href="/settings/playback#effects">{t('player.settings.effectDefaults')}</a>
 			<!-- Offered in direct play as well: the file's audio and size were
 			     fixed there, and a second language or a smaller stream had no
 			     way in short of a setting nobody would find. -->
 			{#if expectsVideo && qualities.length > 0}
 				<label class="chrome-chip">
-					Quality
+					{t('player.settings.quality')}
 					<select
 						class="chrome-select"
 						bind:value={selectedQuality}
 						onchange={onQualityChoice}
-						aria-label="Transcode quality"
+						aria-label={t('player.settings.qualityLabel')}
 					>
 						<option value="">{t(mode === 'transcode' ? 'player.qualityAuto' : 'player.qualityOriginal')}</option>
 						{#each qualities as quality (quality.name)}
 							<option value={quality.name}>
-								{quality.name}{quality.bitrate_kbps ? ` · ${Math.round(quality.bitrate_kbps / 1000)} Mbps` : ''}
+								{quality.bitrate_kbps ? t('player.settings.qualityRung', { name: quality.name, mbps: Math.round(quality.bitrate_kbps / 1000) }) : quality.name}
 							</option>
 						{/each}
 					</select>
@@ -2063,17 +2093,17 @@
 			{/if}
 			{#if audioTracks.length > 1}
 				<label class="chrome-chip">
-					Audio
+					{t('player.settings.audio')}
 					<select
 						class="chrome-select"
 						bind:value={selectedAudio}
 						onchange={onAudioChoice}
-						aria-label="Audio track"
+						aria-label={t('player.settings.audioLabel')}
 					>
-						<option value="">Default</option>
+						<option value="">{t('player.settings.trackDefault')}</option>
 						{#each audioTracks as track (track.index)}
 							<option value={String(track.index)}>
-								{trackName(track, i18n.locale, `Track ${track.index}`)}
+								{trackName(track, i18n.locale, t('player.settings.trackNumber', { index: track.index }))}
 							</option>
 						{/each}
 					</select>
@@ -2081,17 +2111,17 @@
 			{/if}
 			{#if subtitleTracks.length > 0 || sidecars.length > 0 || hasSubtitle || selectedSubtitle !== ''}
 				<label class="chrome-chip">
-					Subtitles
+					{t('player.settings.subtitles')}
 					<select
 						class="chrome-select"
 						bind:value={selectedSubtitle}
 						onchange={onSubtitleChoice}
-						aria-label="Subtitle track"
+						aria-label={t('player.settings.subtitlesLabel')}
 					>
-						<option value="">Off</option>
+						<option value="">{t('player.settings.subtitlesOff')}</option>
 						{#each subtitleTracks as track (track.index)}
 							<option value={String(track.index)}>
-								{trackName(track, i18n.locale, `Track ${track.index}`)}
+								{trackName(track, i18n.locale, t('player.settings.trackNumber', { index: track.index }))}
 							</option>
 						{/each}
 						{#each sidecars as file (file.index)}
@@ -2100,40 +2130,40 @@
 					</select>
 				</label>
 				<label class="chrome-chip">
-					Subtitle style
+					{t('player.settings.subtitleStyle')}
 					<select
 						class="chrome-select"
 						value={subtitleBg}
 						onchange={(e) => setSubtitleBg(e.currentTarget.value as 'none' | 'box')}
-						aria-label="Subtitle background style"
+						aria-label={t('player.settings.subtitleStyleLabel')}
 					>
-						<option value="none">No background</option>
-						<option value="box">Black box</option>
+						<option value="none">{t('player.settings.styleNone')}</option>
+						<option value="box">{t('player.settings.styleBox')}</option>
 					</select>
 				</label>
 				<label class="chrome-chip">
-					Subtitle size
+					{t('player.settings.subtitleSize')}
 					<select
 						class="chrome-select"
 						value={subtitleSize}
 						onchange={(e) => setSubtitleSize(e.currentTarget.value as 'small' | 'medium' | 'large')}
-						aria-label="Subtitle font size"
+						aria-label={t('player.settings.subtitleSizeLabel')}
 					>
-						<option value="small">Small</option>
-						<option value="medium">Medium</option>
-						<option value="large">Large</option>
+						<option value="small">{t('playerPrefs.sizeSmall')}</option>
+						<option value="medium">{t('playerPrefs.sizeMedium')}</option>
+						<option value="large">{t('playerPrefs.sizeLarge')}</option>
 					</select>
 				</label>
 			{/if}
 			<details class="mt-4 border-t border-line/40 pt-3 text-xs leading-relaxed text-muted">
-				<summary class="cursor-pointer py-2 text-sm">Playback information</summary>
+				<summary class="cursor-pointer py-2 text-sm">{t('player.settings.info')}</summary>
 				<p class="mt-2 font-mono">{telemetry}</p>
-				{#if browserProfile}<p class="mt-2">Renderer profile: {browserProfile.id === 'brave' ? 'Brave' : 'Default'}</p>{/if}
-				{#if rendererBackend}<p class="mt-2">Video effects: {rendererBackend}</p>{/if}
+				{#if browserProfile}<p class="mt-2">{t('player.settings.rendererProfile', { name: browserProfile.id === 'brave' ? 'Brave' : t('player.settings.rendererDefault') })}</p>{/if}
+				{#if rendererBackend}<p class="mt-2">{t('player.settings.effectsBackend', { backend: rendererBackend })}</p>{/if}
 				{#if subtitleSrc}
-					<p class="mt-2">Subtitles: {rendererActive ? 'cue overlay' : 'browser sidecar'}</p>
+					<p class="mt-2">{drawCues ? t('player.settings.subtitlesOverlay') : t('player.settings.subtitlesNative')}</p>
 				{:else if embeddedSubtitle !== '' && mode === 'transcode'}
-					<p class="mt-2">Subtitles: burned in</p>
+					<p class="mt-2">{t('player.settings.subtitlesBurned')}</p>
 				{/if}
 				{#if sessionNote}<p class="mt-2">{sessionNote}</p>{/if}
 			</details>
@@ -2147,7 +2177,7 @@
 				chromeClass
 			].join(' ')}
 		>
-			Preparing this video for your browser.
+			{t('player.preparingForBrowser')}
 		</p>
 	{/if}
 
@@ -2164,8 +2194,8 @@
 		<!-- Where playback picked up, in the bar it belongs to. -->
 		{#if showResume && resumedFrom > 0}
 			<p class="mb-1 flex items-center gap-3 text-xs text-white/85">
-				Resuming from {formatTime(resumedFrom)}
-				<button class="rounded-md border border-white/30 px-2 py-0.5 font-medium text-white hover:bg-white/10" onclick={skipResumeToStart}>Start over</button>
+				{t('player.resuming', { time: formatTime(resumedFrom) })}
+				<button class="rounded-md border border-white/30 px-2 py-0.5 font-medium text-white hover:bg-white/10" onclick={skipResumeToStart}>{t('player.startOver')}</button>
 			</p>
 		{/if}
 		<!-- Seek -->
@@ -2231,7 +2261,7 @@
 				</span>
 				<Slider.Thumb
 					index={0}
-					aria-label="Seek"
+					aria-label={t('player.seek')}
 					class="block size-4 rounded-full bg-accent shadow-[0_0_0_3px_rgba(0,0,0,0.25)] transition-transform duration-150 hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 				/>
 			</Slider.Root>
@@ -2243,15 +2273,15 @@
 		<!-- Transport -->
 		<div class="mt-1 flex items-center gap-1.5">
 			<!-- One of the bar's buttons, drawn like them: the accent block read as a second kind of play button beside the one on the picture. -->
-			<IconButton label={playing ? 'Pause' : 'Play'} class="size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={togglePlay}>
+			<IconButton label={playing ? t('player.pause') : t('player.play')} class="size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={togglePlay}>
 				{#if playing}<Pause class="size-6 fill-current" />{:else}<Play class="size-6 fill-current" />{/if}
 			</IconButton>
 			<!-- The step inside the arrow's ring: at the bar's 24 px the two digits touched the
 			     ring, so the ring is a size up and the digits sit tight inside it. -->
-			<IconButton label={`Back ${skipSec} seconds`} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(-skipSec)}>
+			<IconButton label={t('player.backSeconds', { seconds: skipSec })} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(-skipSec)}>
 				<SkipBack class="size-7" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span>
 			</IconButton>
-			<IconButton label={`Forward ${skipSec} seconds`} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(skipSec)}>
+			<IconButton label={t('player.forwardSeconds', { seconds: skipSec })} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(skipSec)}>
 				<SkipForward class="size-7" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span>
 			</IconButton>
 			<!-- On to the next episode from the bar, where every other player keeps it: the list
@@ -2263,7 +2293,7 @@
 			{/if}
 
 			<div class="flex items-center gap-1">
-				<IconButton label={muted ? 'Unmute' : 'Mute'} class="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={toggleMute}>
+				<IconButton label={muted ? t('player.unmute') : t('player.mute')} class="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={toggleMute}>
 					<VolumeIcon class="size-5" />
 				</IconButton>
 				<div class="hidden w-20 md:block">
@@ -2280,7 +2310,7 @@
 						</span>
 						<Slider.Thumb
 							index={0}
-							aria-label="Volume"
+							aria-label={t('player.volume')}
 							class="block size-3 rounded-full bg-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 						/>
 					</Slider.Root>
@@ -2288,21 +2318,24 @@
 			</div>
 
 			<div class="ml-auto flex items-center gap-1.5">
-				<IconButton label="Keyboard shortcuts (?)" class="max-md:hidden" onclick={() => (keysOpen = true)}>
+				<IconButton label={t('player.shortcuts')} class="max-md:hidden" onclick={() => (keysOpen = true)}>
 					<Keyboard class="size-5" />
 				</IconButton>
 				{#if episodes}
-					<!-- The list beside the picture takes a quarter of a laptop's width: it can step aside. -->
-					<IconButton label={episodes.shown ? t('player.episodesHide') : t('player.episodesShow')} class="max-lg:hidden" onclick={episodes.toggle}>
-						{#if episodes.shown}<PanelRightClose class="size-5" />{:else}<PanelRightOpen class="size-5" />{/if}
-					</IconButton>
+					<!-- The list beside the picture takes a quarter of a laptop's width: it can step aside.
+					     Narrower, the same button opens it as a drawer over the picture's edge. -->
+					<span class="contents" data-episodes-toggle>
+						<IconButton label={episodes.shown ? t('player.episodesHide') : t('player.episodesShow')} onclick={episodes.toggle}>
+							{#if episodes.shown}<PanelRightClose class="size-5" />{:else}<PanelRightOpen class="size-5" />{/if}
+						</IconButton>
+					</span>
 				{/if}
-				<button bind:this={settingsButton} type="button" aria-label="Playback settings" aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
+				<button bind:this={settingsButton} type="button" aria-label={t('player.settings.title')} aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
 					<Settings class="size-5" />
-					<span class="sr-only">Playback settings</span>
+					<span class="sr-only">{t('player.settings.title')}</span>
 				</button>
 				<IconButton
-					label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+					label={fullscreen ? t('player.exitFullscreen') : t('player.fullscreen')}
 					class="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
 					onclick={() => void toggleFullscreen()}
 				>
@@ -2335,15 +2368,18 @@
 		text-transform: none;
 		color: var(--color-foreground);
 	}
+	/* One width for every choice, so the controls make one column instead of
+	   a ragged edge that followed each menu's longest option. */
 	.player-settings .chrome-select {
-		max-width: 65%;
+		width: 60%;
+		flex-shrink: 0;
 		min-height: 2.25rem;
 		padding: 0.25rem 0.5rem;
 		border: 1px solid var(--color-line);
 		border-radius: 0.375rem;
 		background: var(--color-background);
 	}
-	@media (max-width: 767px) {
+	@media (max-width: 767px), (max-height: 500px) {
 		.player-settings .chrome-chip {
 			align-items: center;
 			padding: 0.3rem 0;
@@ -2351,7 +2387,6 @@
 		}
 		.player-settings .chrome-select {
 			min-height: 2rem;
-			max-width: 60%;
 			padding: 0.125rem 0.375rem;
 			font-size: 0.8125rem;
 		}
