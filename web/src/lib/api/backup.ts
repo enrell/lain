@@ -15,7 +15,7 @@ function stamp(): string {
 }
 
 /**
- * GET /api/admin/backup streams a consistent bbolt snapshot. The
+ * GET /api/admin/backup streams a consistent snapshot as a tar. The
  * browser cannot download an authenticated URL by navigation (no
  * Authorization header), so fetch the bytes and hand them to a
  * temporary object URL. Filename comes from Content-Disposition.
@@ -24,7 +24,9 @@ export const backup = {
 	async download(): Promise<string> {
 		const res = await fetchRaw('/api/admin/backup');
 		const blob = await res.blob();
-		const name = filenameFrom(res.headers.get('Content-Disposition')) ?? `lain-backup-${stamp()}.db`;
+		// The server names it lain-backup-<stamp>.tar; the fallback keeps that shape, since
+		// the restore steps on the Backup page name the file this returns.
+		const name = filenameFrom(res.headers.get('Content-Disposition')) ?? `lain-backup-${stamp()}.tar`;
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
