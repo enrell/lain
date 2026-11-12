@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import BookOpen from '@lucide/svelte/icons/book-open';
 	import Play from '@lucide/svelte/icons/play';
 	import Info from '@lucide/svelte/icons/info';
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
@@ -50,8 +51,11 @@
 	// What it is, in words: the episode you are on and what is left of it,
 	// or the year; then up to two genres.
 	const left = $derived(
-		resume && !reading && progress && progress.duration_sec - progress.position_sec > 0
-			? t('title.left', { time: formatLength(progress.duration_sec - progress.position_sec) })
+		resume && progress && progress.duration_sec - progress.position_sec > 0
+			? reading
+				? // A book's position is a page.
+					`Page ${Math.max(1, Math.floor(progress.position_sec))} of ${Math.floor(progress.duration_sec)}`
+				: t('title.left', { time: formatLength(progress.duration_sec - progress.position_sec) })
 			: ''
 	);
 	const unit = $derived(
@@ -82,7 +86,7 @@
 			fetchpriority="high"
 			decoding="async"
 			referrerpolicy="no-referrer"
-			class="absolute right-[8%] top-[46%] hidden h-[64%] max-h-[38rem] w-auto -translate-y-1/2 rounded-xl object-contain shadow-[0_30px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/12 md:block lg:right-[12%]"
+			class="absolute right-[8%] top-[56%] z-[1] hidden h-[62%] max-h-[38rem] w-auto -translate-y-1/2 rounded-xl object-contain shadow-[0_30px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/12 md:block lg:right-[12%]"
 		/>
 	{:else if artwork}
 		<img
@@ -144,7 +148,7 @@
 					onclick={(e) => playExternalClick(e, item.id, playerFor(item))}
 					class="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-black transition duration-300 ease-out hover:-translate-y-0.5 hover:bg-white/88 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
 				>
-					<Play class="size-4 fill-current" aria-hidden="true" />
+					{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if}
 					{#if resume}
 						Continue{#if !reading && item.episode > 0}<span class="font-semibold opacity-60">· E{item.episode}</span>{/if}
 					{:else}

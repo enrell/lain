@@ -230,9 +230,9 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
             }
         }
         SettingsGroup(stringResource(R.string.settings_account)) {
-            SettingRow(stringResource(R.string.settings_sync), if (queued.toInt() == 0) stringResource(R.string.settings_sync_none) else pluralStringResource(R.plurals.settings_sync_waiting, queued.toInt(), queued.toInt())) {
-                // Offered when something waits: a greyed button beside "everything is synced" read as broken.
-                if (queued.toInt() > 0) {
+            // A row only when something waits: with nothing to do it is a note under the group, not a setting.
+            if (queued.toInt() > 0) SettingRow(stringResource(R.string.settings_sync), pluralStringResource(R.plurals.settings_sync_waiting, queued.toInt(), queued.toInt())) {
+                run {
                     WButton(stringResource(R.string.settings_sync_now), {
                         scope.launch {
                             runCatching { graph.core.flushProgress() }
@@ -249,6 +249,7 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
                 WButton(stringResource(R.string.settings_logout), { vm.logout() }, kind = Btn.Danger)
             }
         }
-        Text(stringResource(R.string.settings_about, io.github.enrell.lain.core.coreVersion()), Modifier.padding(top = 28.dp), color = l.muted, fontSize = 12.sp)
+        if (queued.toInt() == 0) Text(stringResource(R.string.settings_sync_none), Modifier.padding(top = 28.dp), color = l.muted, fontSize = 12.sp)
+        Text(stringResource(R.string.settings_about, io.github.enrell.lain.core.coreVersion()), Modifier.padding(top = if (queued.toInt() == 0) 6.dp else 28.dp), color = l.muted, fontSize = 12.sp)
     }
 }

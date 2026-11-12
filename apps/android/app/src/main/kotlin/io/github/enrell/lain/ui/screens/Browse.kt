@@ -30,6 +30,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -133,6 +135,20 @@ private fun RailCard(t: Title, vm: AppViewModel, height: Dp = RAIL_H, seen: Floa
 }
 
 /** How far into a title you are: its finished parts plus the part of the one in progress, of the whole. */
+@Composable
+private fun progressSubtitle(t: Title, progress: Map<String, io.github.enrell.lain.core.ProgressInfo>): String? {
+    val done = t.items.count { progress[it.id]?.completed == true }
+    val current = t.items.firstNotNullOfOrNull { item -> progress[item.id]?.takeIf { !it.completed && it.positionSec > 0 } }
+    return when {
+        t.items.size > 1 && (done > 0 || current != null) && done < t.items.size ->
+            stringResource(if (t.reading) R.string.read_of else R.string.watched_of, done, t.items.size)
+        t.items.size == 1 && current != null && current.durationSec > 0 ->
+            if (t.reading) stringResource(R.string.progress_page, current.positionSec.toInt().coerceAtLeast(1), current.durationSec.toInt())
+            else stringResource(R.string.time_left, length((current.durationSec - current.positionSec).coerceAtLeast(1.0)))
+        else -> null
+    }
+}
+
 private fun titleFraction(t: Title, progress: Map<String, io.github.enrell.lain.core.ProgressInfo>): Float {
     if (t.items.isEmpty()) return 0f
     val sum = t.items.sumOf { item ->
@@ -237,7 +253,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                             Icon(Ic.Play, null, tint = Color.Black, modifier = Modifier.size(14.dp))
                             Text(
                                 when {
-                                    resumeHero != null && hero.reading && resumeHero.progress.positionSec > 1 -> stringResource(R.string.continue_page_short, resumeHero.progress.positionSec.toInt())
+                                    resumeHero != null && hero.reading && resumeHero.progress.positionSec >= 1 -> stringResource(R.string.continue_page_short, resumeHero.progress.positionSec.toInt())
                                     hero.reading -> stringResource(R.string.action_read)
                                     resumeHero != null && resumeHero.item.episode > 0 -> stringResource(R.string.action_resume_short) + " · " + stringResource(R.string.episode_n, resumeHero.item.episode.toInt())
                                     resumeHero != null -> stringResource(R.string.action_resume_short)
@@ -543,7 +559,8 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                         ShapeCard(
                             artId = t.art(),
                             title = t.title,
-                            subtitle = titleSubtitle(t),
+                            // A title under way says how far it is, where an untouched one says what it is.
+                            subtitle = progressSubtitle(t, progress) ?: titleSubtitle(t),
                             onClick = { vm.go(Screen.TitleDetail(t.key)) },
                             landscape = wide[i],
                             progress = seen,
@@ -742,7 +759,8 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
     val series = title.items.size > 1
     val allDone = watched == title.items.size
     // A book opened at its first page has not been started: page 1 is where everyone begins.
-    val resume = state.progress[next.id]?.takeIf { !it.completed && it.positionSec > (if (title.reading) 1.0 else 0.0) }
+    // A book opened and left on its first page is a book being read: every surface says so alike.
+    val resume = state.progress[next.id]?.takeIf { !it.completed && it.positionSec > 0.0 }
     val total = title.items.sumOf { state.durations[it.id] ?: 0.0 }
     val more = remember(state.titles, state.overlays, title.key) {
         val mine = state.genresOf(title).map { it.lowercase() }.toSet()
@@ -803,7 +821,9 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 WButton(
                     when {
-                        title.reading && resume != null -> stringResource(R.string.continue_page, resume.positionSec.toInt())
+                        // A series names the volume here and the page under the actions; one book names the page.
+                        title.reading && resume != null && series -> stringResource(R.string.action_continue)
+                        title.reading && resume != null -> stringResource(R.string.continue_page_short, resume.positionSec.toInt().coerceAtLeast(1))
                         title.reading && allDone -> stringResource(R.string.read_again)
                         title.reading -> stringResource(R.string.action_read)
                         resume != null && series -> stringResource(R.string.action_resume_short)
@@ -854,7 +874,8 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                     if (have == title.items.size) {
                         QuietAction(this, Ic.Check, stringResource(R.string.dl_downloaded)) { vm.go(Screen.Downloads) }
                     } else {
-                        QuietAction(this, Ic.Download, stringResource(if (series) R.string.download_all else R.string.action_download)) {
+                        // With some already here, the button says it fetches the others.
+                        QuietAction(this, Ic.Download, stringResource(if (series && have > 0) R.string.download_rest else if (series) R.string.download_all else R.string.action_download)) {
                             if (series) confirmAll = true else title.items.filter { copyOf[it.id] == null }.forEach(ask)
                         }
                     }
@@ -862,9 +883,16 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 // Under the actions: what is left of the one in progress, and how much of the whole is done.
                 val under = listOfNotNull(
                     resume?.takeIf { series && !title.reading }?.let { rowLabelShort(next, false) + ": " + stringResource(R.string.time_left, length((it.durationSec - it.positionSec).coerceAtLeast(0.0))) },
+                    resume?.takeIf { series && title.reading && it.durationSec > 0 }?.let { rowLabelShort(next, true) + ": " + stringResource(R.string.progress_page, it.positionSec.toInt().coerceAtLeast(1), it.durationSec.toInt()) },
                     if (series && watched > 0) stringResource(if (title.reading) R.string.read_of else R.string.watched_of, watched, title.items.size) else null,
                 )
                 if (under.isNotEmpty()) Text(under.joinToString("  ·  "), Modifier.padding(top = 10.dp), color = l.muted, fontSize = 13.sp)
+                // One film or book under way: how far it is, as Home shows it.
+                resume?.takeIf { !series && it.durationSec > 0 }?.let { p ->
+                    Box(Modifier.padding(top = 14.dp).fillMaxWidth().height(3.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.14f))) {
+                        Box(Modifier.fillMaxWidth((p.positionSec / p.durationSec).toFloat().coerceIn(0.02f, 1f)).height(3.dp).background(l.accent))
+                    }
+                }
             }
         }
         state.synopsisOf(title).takeIf { it.isNotEmpty() }?.let { text ->
@@ -1082,7 +1110,7 @@ private fun EpisodeRow(item: Item, title: Title, state: AppState, onOpen: () -> 
                     p?.completed == true && dur != null -> length(dur) + " · " + stringResource(if (title.reading) R.string.progress_done else R.string.watched)
                     p?.completed == true -> stringResource(if (title.reading) R.string.progress_done else R.string.watched)
                     // Page 1 is where everyone begins: a volume opened and closed has not been started.
-                    p != null && p.positionSec > 1 && title.reading -> stringResource(R.string.progress_page, p.positionSec.toInt(), p.durationSec.toInt())
+                    p != null && p.positionSec >= 1 && title.reading -> stringResource(R.string.progress_page, p.positionSec.toInt(), p.durationSec.toInt())
                     p != null && title.reading && p.completed != true -> stringResource(R.string.watch_unwatched)
                     p != null && p.positionSec > 0 && p.durationSec > 0 -> stringResource(R.string.time_left, length((p.durationSec - p.positionSec).coerceAtLeast(0.0)))
                     dur != null -> length(dur)
@@ -1186,28 +1214,36 @@ fun SearchScreen(state: AppState, vm: AppViewModel) {
                     val byKey = state.titles.associateBy { it.key }
                     state.results.map { titleKey(it) }.distinct().mapNotNull { byKey[it] }
                 }
-                // Shapes are read in composition, never in the span lambda (see LibraryBrowser).
-                val wide = found.map { it.wide() }
-                val resultsState = rememberLazyGridState()
+                // Rows, not posters: several answers stay in sight above the keyboard,
+                // and the list ends clear of it.
+                val resultsState = androidx.compose.foundation.lazy.rememberLazyListState()
                 val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
                 LaunchedEffect(resultsState.isScrollInProgress) { if (resultsState.isScrollInProgress) keyboard?.hide() }
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(6),
+                val libraryName = remember(state.libraries) { state.libraries.associate { it.id to it.name } }
+                androidx.compose.foundation.lazy.LazyColumn(
                     state = resultsState,
-                    contentPadding = PaddingValues(start = GUTTER, end = GUTTER, top = 14.dp, bottom = 32.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                    modifier = Modifier.fillMaxSize().imePadding(),
+                    contentPadding = PaddingValues(top = 10.dp, bottom = 32.dp),
                 ) {
-                    items(found.size, key = { found[it].key }, span = { GridItemSpan(if (wide[it]) 6 else 3) }) { i ->
+                    items(found.size, key = { found[it].key }) { i ->
                         val t = found[i]
-                        ShapeCard(
-                            artId = t.art(),
-                            title = t.title,
-                            subtitle = titleSubtitle(t),
-                            onClick = { vm.go(Screen.TitleDetail(t.key)) },
-                            landscape = wide[i],
-                            badge = null,
-                        )
+                        val wideArt = t.wide()
+                        Row(
+                            Modifier.fillMaxWidth().clickable(onClickLabel = t.title) { keyboard?.hide(); vm.go(Screen.TitleDetail(t.key)) }.padding(horizontal = GUTTER, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(Modifier.width(if (wideArt) 96.dp else 54.dp).aspectRatio(if (wideArt) Shapes.LANDSCAPE else Shapes.PORTRAIT).clip(RoundedCornerShape(6.dp))) {
+                                Art(t.art(), Modifier.fillMaxSize(), label = t.title)
+                            }
+                            Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                                Text(t.title, color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    listOfNotNull(libraryName[t.libraryId], progressSubtitle(t, allProgressOf(state)) ?: titleSubtitle(t)).filter { it.isNotEmpty() }.joinToString(" · "),
+                                    Modifier.padding(top = 3.dp), color = l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Icon(Ic.ChevronRight, null, tint = l.muted, modifier = Modifier.size(16.dp))
+                        }
                     }
                 }
             }

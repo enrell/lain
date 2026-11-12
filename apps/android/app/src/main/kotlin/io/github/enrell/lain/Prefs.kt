@@ -76,6 +76,11 @@ class Prefs(private val sp: SharedPreferences) {
         get() = sp.getBoolean("player_hint_seen", false)
         set(v) = sp.edit().putBoolean("player_hint_seen", v).apply()
 
+    /** The reader shows pages one under the other (scroll mode) instead of turning them. */
+    var readerScroll: Boolean
+        get() = sp.getBoolean("reader_scroll", false)
+        set(v) = sp.edit().putBoolean("reader_scroll", v).apply()
+
     /** The reader's gestures were explained once. */
     var readerHintSeen: Boolean
         get() = sp.getBoolean("reader_hint_seen", false)
