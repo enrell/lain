@@ -184,6 +184,7 @@
 		</EmptyState>
 	{:else if entries.length === 0 && link}
 		<FirstRun
+			art="list"
 			eyebrow={t('tracking.linkedEmpty.eyebrow')}
 			title={t('tracking.linkedEmpty.title')}
 			body={t('tracking.linkedEmpty.body', { name: link.remote_username || link.platform })}
@@ -193,6 +194,7 @@
 		</FirstRun>
 	{:else if entries.length === 0}
 		<FirstRun
+			art="list"
 			eyebrow={t('tracking.firstRun.eyebrow')}
 			title={t('tracking.firstRun.title')}
 			body={t('tracking.firstRun.body')}
