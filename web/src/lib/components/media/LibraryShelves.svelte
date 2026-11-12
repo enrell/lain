@@ -32,13 +32,12 @@
 	let shelves = $state<Record<string, Shelf>>({});
 	let progressMap = $state<Map<string, Progress>>(new Map());
 
-	// The newest files name the titles; each title then gets all of its
-	// files (see `wholeTitle`).
-
 	async function load(lib: Library): Promise<void> {
 		try {
 			const page = await api.catalog.list({ libraryId: lib.id, limit: FETCH, sort: 'recent' });
 			const recent = sortGroups(groupItems(page.items), 'recent').slice(0, SHOWN);
+			// The newest files name the titles; each title then gets all of its
+			// files (see `wholeTitle`).
 			const groups = await Promise.all(recent.map(wholeTitle));
 			// A card needs its picture's overlay only; a long show's every episode
 			// would not fit in one request. Drawn without waiting for a picture,
