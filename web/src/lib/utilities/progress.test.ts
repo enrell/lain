@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Progress } from '$lib/api/types';
-import { isCompleted, isInProgress, nextUpAfter, progressRatio, resumePosition, sortByRecent } from './progress';
+import { isCompleted, isInProgress, nextUpAfter, playTarget, progressRatio, resumePosition, sortByRecent } from './progress';
 
 function progress(partial: Partial<Progress>): Progress {
 	return {
@@ -100,5 +100,48 @@ describe('nextUpAfter', () => {
 
 	it('offers nothing after the last episode', () => {
 		expect(nextUpAfter(eps, 'e3', new Map())).toBeNull();
+	});
+});
+
+describe('playTarget', () => {
+	const ep = (id: string, episode: number): CatalogItem => ({
+		id,
+		library_id: 'lib',
+		kind: 'episode',
+		title: 'Show',
+		season: 1,
+		episode,
+		year: 0,
+		file_path: '',
+		size: 0,
+		confidence: 1,
+		origin: '',
+		provenance: '',
+		updated_at: 0,
+		missing: false
+	});
+	const eps = [ep('e1', 1), ep('e2', 2), ep('e3', 3), ep('e4', 4)];
+	const done = (id: string, at: number) => [id, progress({ item_id: id, completed: true, updated_at: at })] as const;
+
+	it('plays the first file of a title never opened', () => {
+		expect(playTarget(eps, new Map(), 5)?.id).toBe('e1');
+	});
+
+	it('resumes the file under way', () => {
+		const map = new Map([done('e1', 1), ['e3', progress({ item_id: 'e3', position_sec: 40 })] as const]);
+		expect(playTarget(eps, map, 5)?.id).toBe('e3');
+	});
+
+	it('goes on after the most recently finished file, past finished ones', () => {
+		// e1 and e3 watched, e3 last: the next one is e4, not e1 again.
+		expect(playTarget(eps, new Map([done('e1', 1), done('e3', 2)]), 5)?.id).toBe('e4');
+		// e3 then e1 (re-watched last): e2 follows e1.
+		expect(playTarget(eps, new Map([done('e3', 1), done('e1', 2)]), 5)?.id).toBe('e2');
+	});
+
+	it('falls back to the first unfinished, then to the first', () => {
+		expect(playTarget(eps, new Map([done('e2', 1), done('e4', 2)]), 5)?.id).toBe('e1');
+		const all = new Map(eps.map((e, i) => done(e.id, i)));
+		expect(playTarget(eps, all, 5)?.id).toBe('e1');
 	});
 });
