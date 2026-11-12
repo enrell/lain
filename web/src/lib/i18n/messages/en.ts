@@ -1095,7 +1095,10 @@ const en = {
 			subtitlesOff: 'Subtitles off',
 			noSubtitles: 'No subtitles for this file',
 			speed: 'Speed {rate}',
-			speedNormal: 'Normal speed'
+			speedNormal: 'Normal speed',
+			// Said to a screen reader when a double tap skips (the flash on the picture).
+			back: 'Back {seconds} seconds',
+			forward: 'Forward {seconds} seconds'
 		},
 		// The quality menu's first choice: the server's pick in a prepared
 		// stream, the file itself in direct play.

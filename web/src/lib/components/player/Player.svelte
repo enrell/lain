@@ -1322,6 +1322,7 @@
 		seekBy(side * skipSec);
 		const total = skipFlash && skipFlash.side === side ? skipFlash.total + skipSec : skipSec;
 		skipFlash = { side, total, key: Date.now() };
+		announce(t(side < 0 ? 'player.osd.back' : 'player.osd.forward', { seconds: total }));
 		if (skipFlashTimer) clearTimeout(skipFlashTimer);
 		skipFlashTimer = setTimeout(() => (skipFlash = null), 700);
 	}
@@ -1476,12 +1477,25 @@
 	 * button to light up, and the settings panel is closed. Inside the
 	 * player, so it shows in fullscreen too.
 	 */
-	let osd = $state<{ text: string; key: number } | null>(null);
+	let osd = $state<string | null>(null);
 	let osdTimer: ReturnType<typeof setTimeout> | null = null;
 	function showOsd(text: string): void {
-		osd = { text, key: Date.now() };
+		osd = text;
+		announce(text);
 		if (osdTimer) clearTimeout(osdTimer);
 		osdTimer = setTimeout(() => (osd = null), 1200);
+	}
+
+	/*
+	 * What a screen reader is told: one live region that stays in the page
+	 * while only its text changes. A status element created together with its
+	 * text, once per key press, may never be announced. The same message twice
+	 * in a row (subtitles off, then off again) differs by a no-break space,
+	 * so the second press is still a change to announce.
+	 */
+	let announcement = $state('');
+	function announce(text: string): void {
+		announcement = announcement === text ? `${text}\u00a0` : text;
 	}
 
 	function stepRate(direction: 1 | -1): void {
@@ -1777,7 +1791,7 @@
 					'skip-flash pointer-events-none absolute inset-y-0 z-10 flex w-[36%] items-center justify-center',
 					skipFlash.side < 0 ? 'left-0 rounded-r-[50%]' : 'right-0 rounded-l-[50%]'
 				].join(' ')}
-				aria-live="polite"
+				aria-hidden="true"
 			>
 				<span class="rounded-full bg-black/55 px-3.5 py-1.5 text-sm font-semibold tabular-nums text-white backdrop-blur">
 					{skipFlash.side < 0 ? '−' : '+'}{skipFlash.total}s
@@ -1785,13 +1799,13 @@
 			</div>
 		{/key}
 	{/if}
+	<!-- Seen: the message on the picture. Heard: the live region below, which stays mounted. -->
 	{#if osd}
-		{#key osd.key}
-			<div class="pointer-events-none absolute inset-x-0 top-20 z-20 flex justify-center" role="status">
-				<span class="rounded-full bg-black/65 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur">{osd.text}</span>
-			</div>
-		{/key}
+		<div class="pointer-events-none absolute inset-x-0 top-20 z-20 flex justify-center" aria-hidden="true">
+			<span class="rounded-full bg-black/65 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur">{osd}</span>
+		</div>
 	{/if}
+	<p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</p>
 	<header
 		bind:this={headerEl}
 		class={[
