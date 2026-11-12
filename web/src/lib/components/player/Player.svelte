@@ -38,6 +38,7 @@
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
 	import { defaultAudioStream, resolveTracks, trackName, trackPreferences } from '$lib/player/track-language';
+	import { offeredQualities } from '$lib/player/quality-ladder';
 	import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, toggledSubtitle, type SidecarTrack } from '$lib/player/sidecars';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
@@ -264,11 +265,11 @@
 	const mode = $derived(forcedTranscode ? 'transcode' : plan.mode);
 
 	const audioTracks = $derived((plan.streams ?? []).filter((s) => s.type === 'audio'));
-	// The ladder up to the file's own height: a 2160p rung for a 360p file
-	// only upscales it.
-	const sourceHeight = $derived((plan.streams ?? []).find((s) => s.type === 'video')?.height ?? 0);
+	// The ladder up to the file's own size, on both sides: a 2160p rung
+	// changes nothing for a 360p file, and a 1920x800 film keeps 1080p.
+	const sourceVideo = $derived((plan.streams ?? []).find((s) => s.type === 'video'));
 	const qualities = $derived(
-		(playbackOptions?.qualities ?? []).filter((q) => !sourceHeight || !q.max_height || q.max_height <= sourceHeight)
+		offeredQualities(playbackOptions?.qualities ?? [], sourceVideo?.width, sourceVideo?.height)
 	);
 	const subtitleTracks = $derived(
 		(plan.streams ?? []).filter((s) => s.type === 'subtitle' && s.convertible)

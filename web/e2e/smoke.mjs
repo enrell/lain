@@ -1078,8 +1078,8 @@ try {
 		15000,
 		'quality menu'
 	);
-	// The ladder stops at the file's own height (360 lines): a taller rung
-	// has nothing to take off it.
+	// The ladder stops at the file's own size (640x360, the 360p rung): a
+	// larger rung would leave the picture as it is.
 	const rungs = await evalValue(
 		`[...document.querySelector('select[aria-label="Transcode quality"]').options].map((o) => o.value)`
 	);

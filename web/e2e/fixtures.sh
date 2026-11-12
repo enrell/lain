@@ -53,9 +53,9 @@ webm "$DIR/Anime/Frieren/[Fansub-A] Frieren - 02.webm" 523
 # the clock and paints nothing (0x0 video size, zero frames). No honest
 # client claims mkv/hevc, so the plan is a transcode and the HLS path is
 # what gets exercised — and a client that claims it anyway is what the
-# frame-verification step is about. 360 lines tall: the player offers the
-# quality ladder only up to a file's own height, 360p is the shipped
-# ladder's lowest rung, and the quality step picks it.
+# frame-verification step is about. 640x360: the player offers the
+# quality ladder only up to a file's own size, here the shipped ladder's
+# lowest rung (360p), and the quality step checks that and picks it.
 ffmpeg -hide_banner -loglevel error \
 	-f lavfi -i "testsrc2=size=640x360:rate=12" -t 120 \
 	-c:v libx265 -preset ultrafast -x265-params log-level=error \

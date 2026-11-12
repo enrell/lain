@@ -163,7 +163,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   the file's other audio tracks and a lower quality when the browser plays
   the file itself; picking one switches to a prepared stream at the same
   place. Tracks are named by language ("Portuguese", not "por"), and the
-  quality ladder stops at the file's own height.
+  quality ladder stops at the file's own size, width and height alike: a
+  2160p rung is not offered for a 1080p file, while a 1920x800 film keeps
+  its 1080p.
 - **A scan asked for during a scan runs after it** (web): Add and scan on a
   second library while the first one scanned did nothing (the server
   answers 409); the page now queues the scan, says so, and starts it when
