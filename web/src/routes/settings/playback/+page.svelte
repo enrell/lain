@@ -269,7 +269,7 @@
 		saved={flash.is('effect-render')}
 	>
 		<select
-			class="{field} w-56"
+			class="{field} w-full"
 			aria-label="Where video effects are rendered"
 			value={policy.renderOn ?? 'client'}
 			onchange={(e) => persistEffects({ ...policy, renderOn: e.currentTarget.value as EffectRenderer }, 'effect-render')}
