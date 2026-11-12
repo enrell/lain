@@ -241,33 +241,6 @@ video::cue {
 	line-height: 1.25rem;
 	color: var(--color-muted);
 }
-/* Hairline sections of the older settings layout, until every page is on groups. */
-.settings-section {
-	border-top: 1px solid var(--color-hairline);
-	padding-block: 1.75rem 0.5rem;
-}
-details.settings-section > * {
-	padding-inline: 0;
-}
-details.settings-section > summary {
-	padding-top: 0;
-}
-.settings-heading {
-	font-size: 0.9375rem;
-	font-weight: 600;
-	letter-spacing: -0.015em;
-	color: var(--color-foreground);
-}
-.settings-panel {
-	border-radius: 0.625rem;
-	background: var(--color-field);
-}
-.settings-list {
-	border-block: 1px solid var(--color-hairline);
-}
-.settings-list > * + * {
-	border-top: 1px solid var(--color-hairline);
-}
 /* A collapsible group: the summary is the heading, with its own marker. */
 details.settings-group > summary {
 	list-style: none;

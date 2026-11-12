@@ -236,6 +236,11 @@ const en = {
 					other: '{count} accounts. Roles and disabling take effect on the next request.'
 				}
 			},
+			transcoding: {
+				mode: 'Auto follows the server’s probe; Custom opens every section below.',
+				sessions: 'Transcodes running or waiting right now.',
+				ladderHint: 'The renditions a viewer can pick, largest first.'
+			},
 			integrations: {
 				anilist: 'One OAuth application for the whole server; each user links their own account.',
 				apiKeys: 'For a program that puts files in a library and tells Lain what they are.',
