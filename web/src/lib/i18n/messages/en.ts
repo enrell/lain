@@ -63,14 +63,16 @@ const en = {
 		primary: 'Primary',
 		home: 'Home',
 		library: 'Library',
-		list: 'My list',
+		list: 'Tracking',
+		favorites: 'Favorites',
 		social: 'Social',
 		unread: { one: '{count} unread notification', other: '{count} unread notifications' },
 		acquire: 'Acquire',
 		search: 'Search',
 		settings: 'Settings',
+		// The phone bar's last tab: every place that is not one of its four.
+		more: 'More',
 		accountMenu: 'Account menu',
-		palette: 'Open command palette (Ctrl+K)',
 		scanning: 'scanning',
 		scanningPercent: 'scanning {percent}',
 		skip: 'Skip to content'
@@ -93,7 +95,8 @@ const en = {
 	userMenu: {
 		profile: 'Profile',
 		playback: 'Playback',
-		allSettings: 'All settings'
+		allSettings: 'All settings',
+		shortcuts: 'Keyboard shortcuts'
 	},
 	time: {
 		justNow: 'just now'
@@ -105,9 +108,12 @@ const en = {
 			you: 'You',
 			server: 'Server'
 		},
-		breadcrumb: 'settings / {scope} / {section}',
+		eyebrow: 'Settings · {scope}',
+		pick: '{section}: choose another settings section',
+		since: 'since {date}',
 		hints: {
 			find: 'find a setting',
+			jump: 'then a letter: open a section',
 			move: 'move',
 			section: 'section'
 		},
@@ -130,7 +136,8 @@ const en = {
 			integrations: { label: 'Integrations', hint: 'OAuth apps and API keys' },
 			plugins: { label: 'Plugins', hint: 'Which provider does each job' },
 			backup: { label: 'Backup', hint: 'Database snapshot' },
-			downloads: { label: 'Downloads', hint: 'Fetch to server disk, limits' },
+			// The server's fetcher, not what you saved: beside "Offline" a bare "Downloads" read as your copies.
+			downloads: { label: 'Server downloads', hint: 'Fetch to server disk, limits' },
 			offline: { label: 'Offline', hint: 'Saved in this browser' },
 			indexers: { label: 'Indexers', hint: 'Torznab, Newznab, Jackett, Prowlarr' },
 			acquisition: { label: 'Acquisition', hint: 'Torrent engine, seeding, import' }
@@ -144,6 +151,8 @@ const en = {
 			player: 'Default player',
 			playbackLanguage: 'Audio & subtitle language',
 			effects: 'Video effects',
+			skip: 'Skip step',
+			subtitleLook: 'Subtitle size and background',
 			anilist: 'AniList',
 			password: 'Change password',
 			privacyProfile: 'Profile visibility',
@@ -186,6 +195,89 @@ const en = {
 			language: 'Language',
 			languageHint: 'The language of Lain’s interface in this browser.',
 			system: 'System ({name})'
+		},
+		// The one line under each group's heading: what the group is for.
+		groups: {
+			profile: {
+				details: 'How other people on this server see you.',
+				avatar: 'A picture of your own, or one of the mascots.',
+				interface: 'How Lain reads in this browser.',
+				account: 'Your sign-in and this session.'
+			},
+			playback: {
+				playing: 'What Play opens, and which tracks it picks.',
+				prefs: 'How far a skip jumps and how subtitles sit on the picture.',
+				effects: 'Upscaling shaders the web player runs on the GPU.'
+			},
+			connections: {
+				lists: 'Tracking lists your progress comes from and goes back to.'
+			},
+			security: {
+				password: 'The password you sign in with on every client.'
+			},
+			privacy: {
+				visibility: 'Who sees your profile, activity and ratings.',
+				people: 'How other people find you and reach you.',
+				favorites: 'Up to twelve titles shown on your profile.'
+			},
+			offline: {
+				storage: 'Comics and manga this browser keeps for reading offline.',
+				items: 'What this browser holds now.'
+			},
+			libraries: {
+				scan: 'Walks every library root and updates the catalog. Safe to run while watching.',
+				libraries: 'Folders on the server that Lain reads in place. Nothing is copied or moved.'
+			},
+			users: {
+				title: 'Accounts',
+				accounts: {
+					one: '{count} account. Roles and disabling take effect on the next request.',
+					other: '{count} accounts. Roles and disabling take effect on the next request.'
+				}
+			},
+			transcoding: {
+				mode: 'Auto follows the server’s probe; Custom opens every section below.',
+				sessions: 'Transcodes running or waiting right now.',
+				ladderHint: 'The renditions a viewer can pick, largest first.'
+			},
+			integrations: {
+				anilist: 'One OAuth application for the whole server; each user links their own account.',
+				apiKeys: 'For a program that puts files in a library and tells Lain what they are.',
+				apiKeysScope: 'A key sees only the libraries picked here: their names and paths, nothing in them.',
+				anilistSteps:
+					'Register the application in the AniList developer settings (D-080), paste its client credentials below and set its redirect URL to exactly the callback shown here. Users then link their own accounts in Settings › Connections.',
+				callbackHint:
+					'AniList requires an exact match. Behind a reverse proxy, this is the public URL users reach, not the internal bind address.',
+				clientIdHint: 'The numeric id of the AniList application.',
+				keyNameHint: 'What the program is, so its key can be told apart.'
+			},
+			plugins: {
+				capabilities: 'One job per row, and the plugin doing it.',
+				colJob: 'Job',
+				colProviders: 'Providers',
+				colMode: 'Binding',
+				events: 'Swaps and fallbacks since the server started.'
+			},
+			backup: {
+				snapshot: 'One archive of the database, safe to take while the server runs.',
+				restore: 'Deliberately offline: the server is stopped first.'
+			},
+			downloads: {
+				queue: 'Files the server fetches over HTTP onto its own disk.',
+				storage: 'What the downloads use, and what is left on the disk.',
+				limits: 'Shared with acquisition: one budget and one free-space floor for both.'
+			},
+			indexers: {
+				indexers: 'Torznab and Newznab endpoints searched for releases.'
+			},
+			acquisition: {
+				engine: 'The built-in BitTorrent client.',
+				seeding: 'When a finished torrent stops sharing.',
+				import: 'How a finished download reaches its library.',
+				automation: 'Scheduled searches for monitored titles.',
+				profiles: 'Which releases are wanted, and when one is worth an upgrade.',
+				subtitles: 'Where missing subtitles are searched, with your own API keys.'
+			}
 		}
 	},
 	palette: {
@@ -213,6 +305,47 @@ const en = {
 			signOut: 'Sign out'
 		},
 		sectionPrefix: 'Settings › {section}'
+	},
+	search: {
+		pageTitle: 'Search — Lain',
+		pageTitleQuery: '{query} — Search — Lain',
+		heading: 'Search',
+		placeholder: 'Titles, not filenames',
+		label: 'Search your library',
+		clear: 'Clear the search',
+		count: { one: '{count} title for “{query}”', other: '{count} titles for “{query}”' },
+		recent: 'Recent',
+		recentLabel: 'Recent searches',
+		forget: 'Clear',
+		browse: 'Browse',
+		browseInstead: 'Browse instead',
+		orBrowse: 'Or browse',
+		matches: 'Search matches titles, whatever their case; it does not look at file names.',
+		emptyTitle: 'No matches for “{query}”',
+		emptyBody: 'Try a shorter title, or check whether a scan has indexed the library.',
+		loadMore: 'Load more',
+		// The header's field: what it finds is titles; settings and actions are Ctrl+K's.
+		field: {
+			label: 'Search titles',
+			placeholder: 'Search titles',
+			results: 'Titles',
+			all: 'All results for “{query}”',
+			searching: 'Searching…',
+			none: 'No title matches “{query}”.',
+			failed: 'Could not search.',
+			move: 'move',
+			open: 'open',
+			clear: 'clear',
+			close: 'close',
+			quickFind: 'quick find'
+		}
+	},
+	shortcuts: {
+		title: 'Keyboard shortcuts',
+		search: 'Search titles, or the page’s own filter where it has one',
+		quickFind: 'Quick find: settings, actions and titles',
+		escape: 'Close a dialog, clear a field',
+		help: 'This list'
 	},
 	downloads: {
 		title: 'Downloads — Settings — Lain',
@@ -437,7 +570,7 @@ const en = {
 		title: {
 			heading: 'Community',
 			scored: { one: 'from {count} rating you can see', other: 'from {count} ratings you can see' },
-			unrated: 'No ratings you can see yet.',
+			unrated: 'No ratings yet.',
 			rate: 'Rate',
 			yourScore: 'Your score: {score}',
 			editReview: 'Edit review',
@@ -585,8 +718,125 @@ const en = {
 			saveFailed: 'Could not save the setting.'
 		}
 	},
+	openWith: {
+		label: 'Open with',
+		hint: 'Play in another player: mpv, VLC or the one on this machine',
+		thisMachine: 'The player on this machine',
+		setup: 'Set up mpv and VLC…',
+		setupTitle: 'Open in mpv or VLC',
+		setupBody: 'Install the Lain CLI and mpv or VLC on this computer, then run these two commands once.',
+		setupNote: 'Your browser may ask before opening the player. Playback uses the CLI login and saves your progress.',
+		playing: 'Playing in {player} on this machine.',
+		failed: 'Could not start local playback.'
+	},
+	title: {
+		manage: 'Manage',
+		manageHint: 'For administrators: metadata, subtitles and files of this title',
+		more: 'More',
+		moreHint: 'Start over, marks and, for administrators, the title\'s files and metadata',
+		fetchMetadata: 'Fetch metadata',
+		refetchMetadata: 'Refetch metadata',
+		removeMetadata: 'Remove metadata',
+		selectEpisodes: 'Select episodes',
+		deleteFile: 'Delete file',
+		deleteTitle: 'Delete title',
+		startOver: 'Start over',
+		left: '{time} left',
+		watched: 'Watched',
+		watchedLength: 'Watched · {time}',
+		fileDetails: 'File details',
+		episodes: { one: '{count} episode', other: '{count} episodes' },
+		volumes: { one: '{count} volume', other: '{count} volumes' },
+		issues: { one: '{count} issue', other: '{count} issues' },
+		length: 'Length',
+		continueFromPage: 'Continue from page {page}',
+		continueFromPageIn: 'Continue from page {page} · {part}',
+		readingAt: '{part}: page {page} of {pages}',
+		readOf: '{done} of {count} read',
+		watchedOf: '{done} of {count} watched',
+		partActions: 'More for {part}',
+		markWatched: 'Mark watched',
+		markUnwatched: 'Mark unwatched',
+		markRead: 'Mark read',
+		markUnread: 'Mark unread',
+		marked: '{part} marked.',
+		markFailed: 'Could not change the mark.'
+	},
+	browse: {
+		any: 'Any',
+		tiles: 'Tiles: {size}',
+		tilesLarge: 'large',
+		tilesSmall: 'small',
+		partLeft: '{part} · {time} left',
+		partPage: '{part} · page {page} of {pages}',
+		pageOf: 'Page {page} of {pages}'
+	},
+	library: {
+		view: 'View',
+		byLibrary: 'By library',
+		allTitles: 'All titles',
+		viewKey: 'Switch view (V)',
+		shelves: 'Libraries on this page',
+		viewAll: 'View all',
+		seeAll: 'See all',
+		shelfFailed: 'Could not load this library.',
+		shelfEmpty: 'Nothing indexed here yet.'
+	},
+	favorites: {
+		title: 'Favorites',
+		lead: 'Kept with the heart.',
+		gone: {
+			one: '{count} more is no longer in a library you can see.',
+			other: '{count} more are no longer in a library you can see.'
+		},
+		search: 'Search favorites',
+		sortListed: 'Recently kept',
+		emptyTitle: 'No favorites yet',
+		emptyBody: 'The heart beside a title’s main action keeps it here and on Home.',
+		browse: 'Browse the library',
+		loadFailed: 'Could not load your favorites.'
+	},
+	home: {
+		browseLibrary: 'Browse library'
+	},
+	tracking: {
+		subtitle: 'Everything your connected accounts track — manga, comics, anime, films and shows in one place.',
+		films: 'Films',
+		shows: 'Shows',
+		emptyTitle: 'Nothing tracked yet',
+		emptyBody: 'Connect an account in Settings → Connections to import what you track. AniList is supported.',
+		openConnections: 'Open Connections',
+		noMatchTitle: 'Nothing tracked of this kind',
+		noMatchBody: 'Your accounts track other things. Clear the filters to see all of it.',
+		showEverything: 'Show everything'
+	},
+	player: {
+		nextEpisode: 'Next episode',
+		nextEpisodeNamed: 'Next episode: {name} (Shift+N)'
+	},
+	playerPrefs: {
+		group: 'Skipping and subtitles · this browser',
+		skip: 'Skip step',
+		skipAutoHint: 'Auto jumps 30 s in videos over an hour and 10 s in shorter ones.',
+		skipFixedHint: 'J, L and the skip buttons jump {seconds} s in any video.',
+		skipAuto: 'Auto',
+		skipSeconds: '{seconds} s',
+		subtitleSize: 'Subtitle size',
+		sizeSmall: 'Small',
+		sizeMedium: 'Medium',
+		sizeLarge: 'Large',
+		subtitleBox: 'Subtitles on a dark box',
+		subtitleBoxHint: 'Easier to read over bright pictures.'
+	},
+	playbackLanguage: {
+		label: 'Audio & subtitle language',
+		hint: 'Audio in this language when the file has it; otherwise the file’s audio with subtitles in it. Follows your account on every client.',
+		asFile: 'As the file has it'
+	},
 	download: {
 		file: 'Download file',
+		one: 'Download',
+		all: 'Download all',
 		files: { one: 'Download {count} file', other: 'Download {count} files' }
 	},
 	acquire: {
@@ -725,6 +975,9 @@ const en = {
 			indexerFailed: '{name} did not answer: {error}',
 			empty: 'No releases found.',
 			noIndexers: 'No indexer is configured yet.',
+			noIndexersTitle: 'No indexer yet',
+			noIndexersBody: 'Search asks your indexers for releases. Add one to start.',
+			addIndexer: 'Add an indexer',
 			keys: { one: '{count} release · Enter grabs · j/k move', other: '{count} releases · Enter grabs · j/k move' },
 			seedersPeers: 'Seeders / peers',
 			grab: 'Grab',

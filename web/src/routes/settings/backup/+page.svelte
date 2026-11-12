@@ -1,9 +1,9 @@
 <script lang="ts">
-	import DatabaseBackup from '@lucide/svelte/icons/database-backup';
 	import Download from '@lucide/svelte/icons/download';
-	import Info from '@lucide/svelte/icons/info';
 	import { api } from '$lib/api';
 	import Button from '$lib/components/primitives/Button.svelte';
+	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
+	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 
@@ -24,42 +24,34 @@
 
 <svelte:head><title>Backup — Settings — Lain</title></svelte:head>
 
-<div class="max-w-3xl space-y-5">
-	<section id="backup" class="settings-section scroll-mt-28 !border-t-0 !pt-0">
-		<div class="flex items-start gap-4">
-			<div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent/10">
-				<DatabaseBackup class="size-5 text-accent" />
-			</div>
-			<div class="min-w-0 flex-1">
-				<h2 class="settings-heading">Database snapshot</h2>
-				<p class="mt-1 text-sm leading-relaxed text-muted">
-					Streams a consistent copy of <span class="font-mono text-xs">lain.db</span> from a
-					single read transaction: accounts, libraries, catalog and watch progress. Safe while
-					scans and streams are running. Media files are never included — they are your files,
-					where they already are.
-				</p>
-				<Button class="mt-4" loading={busy} onclick={() => void download()}>
-					<Download class="size-4" /> Download lain.db
-				</Button>
-			</div>
-		</div>
-	</section>
+<SettingsGroup id="backup" title="Database snapshot" description={t('settings.groups.backup.snapshot')}>
+	{#snippet aside()}
+		<Button size="field" loading={busy} onclick={() => void download()}>
+			<Download class="size-4" /> Download a backup
+		</Button>
+	{/snippet}
+	<p class="py-4 text-sm leading-6 text-muted">
+		One archive (<span class="font-mono text-xs">.tar</span>) read in a single transaction:
+		accounts, libraries, catalog and watch progress, with the plugin composition, library
+		roots and avatars. Safe while scans and streams are running. Media files are never
+		included — they are your files, where they already are. Restore it into an empty data
+		folder with <span class="font-mono text-xs">lain restore</span>.
+	</p>
+</SettingsGroup>
 
-	<section class="settings-section">
-		<h2 class="flex items-center gap-2 text-sm font-semibold text-foreground">
-			<Info class="size-4 text-muted" /> Restoring
-		</h2>
-		<p class="mt-2 text-sm leading-relaxed text-muted">
+<SettingsGroup id="restore" title="Restoring" description={t('settings.groups.backup.restore')}>
+	<div class="space-y-3 py-4">
+		<p class="text-sm leading-6 text-muted">
 			Restore is deliberately offline: bbolt holds an exclusive lock, so the server must be
 			stopped first. The CLI validates the snapshot before touching anything.
 		</p>
 		<pre
-			class="mt-3 overflow-x-auto rounded-md border border-line bg-background px-4 py-3 font-mono text-xs leading-relaxed text-foreground"><code>pkill -x lain
+			class="overflow-x-auto rounded-md bg-background px-4 py-3 font-mono text-xs leading-relaxed text-foreground"><code>pkill -x lain
 lain restore ~/Downloads/lain-backup.db --data-dir ~/.local/share/lain
 lain serve</code></pre>
-		<p class="mt-3 text-xs text-muted">
+		<p class="text-xs text-muted">
 			The composition file (<span class="font-mono">composition.json</span>) sits next to the
 			database in the data directory and is inspectable on the Plugins page.
 		</p>
-	</section>
-</div>
+	</div>
+</SettingsGroup>

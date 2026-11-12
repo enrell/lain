@@ -1,8 +1,10 @@
 <script lang="ts">
+	import { formatLength } from '$lib/utilities/format';
 	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import Check from '@lucide/svelte/icons/check';
 	import MonitorPlay from '@lucide/svelte/icons/monitor-play';
 	import type { CatalogItem, PlaybackPlan, Progress } from '$lib/api/types';
 	import { api, ApiError } from '$lib/api';
@@ -30,10 +32,24 @@
 	let item = $state<CatalogItem | null>(null);
 	let plan = $state<PlaybackPlan | null>(null);
 	let progress = $state<Progress | null>(null);
+	// What the title is about, for the column under an upright phone's player.
+	let about = $state<{ synopsis: string; genres: string[] } | null>(null);
+	$effect(() => {
+		const current = item?.id;
+		about = null;
+		if (!current) return;
+		void api.enrich
+			.get(current)
+			.then((e) => {
+				if (item?.id === current && e) about = { synopsis: e.synopsis ?? '', genres: e.genres ?? [] };
+			})
+			.catch(() => {});
+	});
 	// The title's other files, listed in the sidebar so the viewer can
 	// switch episodes without going back to the title page.
 	let episodes = $state<CatalogItem[]>([]);
 	let progressMap = $state<Map<string, Progress>>(new Map());
+	let durations = $state<Map<string, number>>(new Map());
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let notFound = $state(false);
@@ -55,6 +71,10 @@
 		cancelUpNext();
 		void goto(playHref(target.id));
 	}
+
+	// The episode after this one, for the bar's Next button and Shift+N.
+	const following = $derived(item ? nextEpisode(episodes, item.id) : null);
+	const next = $derived(following ? { label: episodeLabel(following), go: () => playNext(following) } : null);
 
 	function onFinished(): void {
 		if (!item || !autoplayNext) return;
@@ -97,6 +117,8 @@
 			progress = prog;
 			episodes = eps.items;
 			progressMap = new Map(allProgress.map((p) => [p.item_id, p]));
+			// How long each one is, for the list beside the picture.
+			void api.playback.durations(eps.items.map((e) => e.id)).then((d) => (durations = d));
 		} catch (err) {
 			if (err instanceof ApiError && err.kind === 'not-found') notFound = true;
 			else error = errorMessage(err);
@@ -126,11 +148,15 @@
 	function progressLine(episode: CatalogItem): string {
 		if (episode.missing) return 'Missing from disk';
 		const p = progressMap.get(episode.id);
-		if (!p) return 'Not watched';
-		if (p.completed) return 'Watched';
-		if (p.duration_sec > 0)
-			return `Resume at ${Math.min(100, Math.round((p.position_sec / p.duration_sec) * 100))}%`;
-		return 'Not watched';
+		// Its length, then its state, as the title page's cards say it.
+		const length = formatLength(durations.get(episode.id));
+		const with_ = (state: string): string => (length ? `${length} · ${state}` : state);
+		if (!p) return length || 'Not watched';
+		if (p.completed) return with_('Watched');
+		if (p.duration_sec > 0 && p.position_sec > 0)
+			// What is left, as every other place says it (not a percentage here and a time there).
+			return `${formatLength(Math.max(1, p.duration_sec - p.position_sec))} left`;
+		return length || 'Not watched';
 	}
 </script>
 
@@ -153,13 +179,17 @@
 	</div>
 {:else if item && plan}
 	<div class="flex h-dvh flex-col bg-black lg:flex-row">
-		<div class="relative min-h-0 min-w-0 flex-1 bg-black">
+		<!-- A phone held upright: a square stage at the top, the picture in its
+		     middle and the controls in the bands above and below it (on a 16:9
+		     frame that small they would cover the picture), and what comes next
+		     fills the rest. On its side, or full screen, it is all picture. -->
+		<div class="relative min-h-0 min-w-0 flex-1 bg-black max-md:portrait:aspect-square max-md:portrait:flex-none">
 			{#if plan.available}
 				<!-- A new episode is a new session: keying on the item rebuilds
 				     the player (video element, transcode session, clock) instead
 				     of leaving the previous episode's state behind. -->
 				{#key item.id}
-					<Player {item} {plan} initialProgress={progress} {onFinished} />
+					<Player {item} {plan} initialProgress={progress} {onFinished} {next} />
 				{/key}
 				{#if upNext && countdown !== null}
 					<div
@@ -213,7 +243,7 @@
 
 		{#if episodes.length > 1}
 			<aside
-				class="hidden w-80 shrink-0 flex-col border-l border-line/40 bg-surface/60 lg:flex"
+				class="hidden w-80 shrink-0 flex-col border-l border-line/40 bg-surface/60 lg:flex max-md:portrait:flex max-md:portrait:min-h-0 max-md:portrait:w-full max-md:portrait:flex-1 max-md:portrait:border-l-0 max-md:portrait:bg-background"
 				aria-label="Episodes"
 			>
 				<div class="border-b border-line/40 px-4 py-3">
@@ -221,16 +251,24 @@
 					<p class="mt-0.5 text-xs text-muted">{episodes.length} episodes</p>
 					<button
 						type="button"
-						class="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted hover:text-foreground"
-						aria-pressed={autoplayNext}
+						class="mt-2 inline-flex min-h-8 items-center gap-2 text-xs text-foreground/80 hover:text-foreground"
+						role="switch"
+						aria-checked={autoplayNext}
 						onclick={toggleAutoplay}
 					>
-						Autoplay next: {autoplayNext ? 'on' : 'off'}
+						<!-- A switch that looks like one: as small caps it read as a fact, not a choice. -->
+						<!-- Drawn as the settings switch: accent track and accent-ink knob when on, a small dim knob when off. -->
+						<span class={['relative h-4 w-7 rounded-full transition-colors', autoplayNext ? 'bg-accent' : 'bg-surface-active'].join(' ')}>
+							<span class={['absolute rounded-full transition-all', autoplayNext ? 'left-3.5 top-0.5 size-3 bg-accent-fg' : 'left-[3px] top-[3px] size-2.5 bg-muted/60'].join(' ')}></span>
+						</span>
+						Autoplay next
 					</button>
 				</div>
 				<ul class="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
 					{#each episodes as episode (episode.id)}
 						{@const current = episode.id === item.id}
+						{@const p = progressMap.get(episode.id)}
+						{@const begun = !!p && !p.completed && p.duration_sec > 0 && p.position_sec > 0}
 						<li>
 							<a
 								href={episode.missing ? undefined : playHref(episode.id)}
@@ -251,23 +289,45 @@
 										decoding="async"
 										class="size-full object-cover"
 									/>
+									<!-- The marks of the title page's episode cards: a check when watched, a strip
+									     for the one under way; the list said both in words only. -->
+									{#if p?.completed}
+										<span class="absolute left-1 top-1 flex size-4 items-center justify-center rounded-full bg-black/70 text-white" aria-hidden="true">
+											<Check class="size-2.5" />
+										</span>
+									{/if}
+									{#if begun}
+										<span class="absolute inset-x-0 bottom-0 h-1 bg-black/55" aria-hidden="true">
+											<span class="block h-full bg-accent" style:width={`${Math.min(100, (p!.position_sec / p!.duration_sec) * 100)}%`}></span>
+										</span>
+									{/if}
 								</span>
 								<span class="min-w-0 flex-1">
 									<span
 										class={[
-											'block font-mono text-[10px] uppercase tracking-[0.14em]',
+											'block text-xs font-semibold',
 											current ? 'text-accent' : 'text-muted'
 										].join(' ')}
 									>
 										{episodeLabel(episode)}
 									</span>
-									<span class="mt-0.5 block truncate text-xs text-muted">{progressLine(episode)}</span>
+									<!-- What is left of the one under way in the accent, as the app's episode rows. -->
+									<span class={['mt-0.5 block truncate text-xs', begun && !episode.missing ? 'text-accent' : 'text-muted'].join(' ')}>{progressLine(episode)}</span>
 								</span>
 							</a>
 						</li>
 					{/each}
 				</ul>
 			</aside>
+		{:else}
+			<div class="hidden min-h-0 flex-1 overflow-y-auto bg-background px-5 py-5 max-md:portrait:block">
+				<h1 class="text-xl font-semibold tracking-[-0.02em] text-foreground">{item.title}</h1>
+				<p class="mt-1.5 text-sm text-muted">
+					{[item.year > 0 ? String(item.year) : '', formatLength(plan?.duration_sec), ...(about?.genres ?? []).slice(0, 2)].filter(Boolean).join('  ·  ')}
+				</p>
+				{#if about?.synopsis}<p class="mt-4 text-sm leading-6 text-foreground/75">{about.synopsis}</p>{/if}
+				<a href={`/item/${item.id}`} class="mt-5 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover">Details</a>
+			</div>
 		{/if}
 	</div>
 {/if}

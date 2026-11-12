@@ -7,6 +7,7 @@
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import ListEntryCard from '$lib/components/media/ListEntryCard.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { t } from '$lib/i18n';
 
 	// The unified tracking list (D-078): everything a linked account
 	// imported, browsable by media type and status.
@@ -14,8 +15,9 @@
 		{ id: '', label: 'All' },
 		{ id: 'anime', label: 'Anime' },
 		{ id: 'manga', label: 'Manga' },
-		{ id: 'movie', label: 'Movies' },
-		{ id: 'series', label: 'Series' },
+		// The libraries' words for the same things.
+		{ id: 'movie', label: t('tracking.films') },
+		{ id: 'series', label: t('tracking.shows') },
 		{ id: 'comic', label: 'Comics' }
 	];
 	const statuses = [
@@ -49,6 +51,16 @@
 		}
 	}
 
+	// The filters narrow a list; over nothing tracked at all they had nothing to narrow.
+	const filtered = $derived(typeFilter !== '' || statusFilter !== '');
+	const showFilters = $derived(ready && !loadError && (entries.length > 0 || filtered));
+
+	function showEverything(): void {
+		typeFilter = '';
+		statusFilter = '';
+		void load();
+	}
+
 	function pickType(id: string): void {
 		typeFilter = id;
 		void load();
@@ -61,24 +73,24 @@
 	onMount(() => void load());
 </script>
 
-<svelte:head><title>My list — Lain</title></svelte:head>
+<svelte:head><title>Tracking — Lain</title></svelte:head>
 
 <div class="space-y-6">
 	<header>
-		<h1 class="text-xl font-semibold tracking-tight text-foreground">My list</h1>
-		<p class="mt-0.5 text-sm text-muted">
-			Everything your connected accounts track — manga, comics, anime, movies and series in
-			one place.
-		</p>
+		<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('nav.list')}</h1>
+		<p class="mt-0.5 text-sm text-muted">{t('tracking.subtitle')}</p>
 	</header>
 
+	{#if showFilters}
 	<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Media type">
 		{#each types as t (t.id)}
 			<button
 				type="button"
 				aria-pressed={typeFilter === t.id}
 				class={[
-					'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+					// The size of every other chip (recent searches, browse links): at 12 px
+					// these were the one set of small chips in the product.
+					'inline-flex min-h-9 items-center rounded-full border px-3.5 text-sm font-medium transition-colors',
 					typeFilter === t.id
 						? 'border-accent bg-accent/15 text-foreground'
 						: 'border-line bg-surface/60 text-muted hover:text-foreground'
@@ -90,7 +102,7 @@
 		{/each}
 		<span class="mx-1 hidden h-4 w-px bg-line sm:inline" aria-hidden="true"></span>
 		<select
-			class="rounded-full border border-line bg-surface/60 px-3 py-1.5 text-xs font-medium text-muted hover:text-foreground"
+			class="h-9 rounded-full border border-line bg-surface/60 ps-3.5 text-sm font-medium leading-none text-muted hover:text-foreground"
 			value={statusFilter}
 			aria-label="Status"
 			onchange={(e) => pickStatus(e.currentTarget.value)}
@@ -100,6 +112,7 @@
 			{/each}
 		</select>
 	</div>
+	{/if}
 
 	{#if loadError}
 		<ErrorState message={loadError} retry={() => void load()} />
@@ -111,16 +124,26 @@
 				<Skeleton class="aspect-[2/3] w-full rounded-xl" />
 			{/each}
 		</div>
+	{:else if entries.length === 0 && filtered}
+		<!-- Something is tracked, just not of this kind: "connect an account" would mislead. -->
+		<EmptyState title={t('tracking.noMatchTitle')} description={t('tracking.noMatchBody')}>
+			{#snippet icon()}<ListChecks class="size-6 text-muted" />{/snippet}
+			<button
+				type="button"
+				class="inline-flex h-10 items-center rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover"
+				onclick={showEverything}>{t('tracking.showEverything')}</button
+			>
+		</EmptyState>
 	{:else if entries.length === 0}
 		<EmptyState
-			title="Nothing on your list yet"
-			description="Connect an account in Settings → Account to import what you track. AniList is supported today."
+			title={t('tracking.emptyTitle')}
+			description={t('tracking.emptyBody')}
 		>
 			{#snippet icon()}<ListChecks class="size-6 text-muted" />{/snippet}
 			<a
-				href="/settings"
-				class="rounded-md border border-line bg-surface px-3 py-1.5 text-xs font-medium text-foreground"
-				>Open account settings</a
+				href="/settings/connections"
+				class="inline-flex h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg hover:bg-accent-hover"
+				>{t('tracking.openConnections')}</a
 			>
 		</EmptyState>
 	{:else}

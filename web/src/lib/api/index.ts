@@ -15,7 +15,7 @@ import { progress } from './progress';
 import { reader } from './reader';
 import { search } from './search';
 import { social } from './social';
-import { thumbnail } from './thumbnail';
+import { storyboard, thumbnail } from './thumbnail';
 import { theme } from './theme';
 import { transcodeAdmin } from './transcode-settings';
 import { users } from './users';
@@ -46,6 +46,7 @@ export const api = {
 	reader,
 	search,
 	social,
+	storyboard,
 	thumbnail,
 	theme,
 	transcodeAdmin,

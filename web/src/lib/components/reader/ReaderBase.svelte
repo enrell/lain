@@ -425,11 +425,11 @@
 			: '-translate-y-[130%] opacity-0'}"
 	>
 		<div
-			class="pointer-events-auto mx-auto flex max-w-5xl items-center gap-2 rounded-2xl border border-line/70 bg-background/80 p-2 shadow-[0_18px_45px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+			class="pointer-events-auto mx-auto flex max-w-5xl flex-wrap items-center gap-x-2 gap-y-1.5 rounded-2xl border border-line/70 bg-background/80 p-2 shadow-[0_18px_45px_rgba(0,0,0,0.4)] backdrop-blur-xl"
 		>
 			<a
 				href={backHref}
-				class="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+				class="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground sm:size-9"
 				aria-label="Back to {item.title}"
 			>
 				<ArrowLeft class="size-[18px]" aria-hidden="true" />
@@ -439,15 +439,18 @@
 				<p class="truncate text-sm font-semibold tracking-[-0.01em] text-foreground">{item.title}</p>
 			</div>
 			{#if counter}
-				<p class="hidden shrink-0 px-2 font-mono text-xs tabular-nums text-muted sm:block" aria-live="polite">{counter}</p>
+				<p class="shrink-0 px-2 font-mono text-xs tabular-nums text-muted" aria-live="polite">{counter}</p>
 			{/if}
-			<div class="flex shrink-0 items-center gap-0.5 rounded-xl border border-line/60 bg-surface/60 p-0.5">
+			<div class="flex shrink-0 flex-wrap items-center gap-1.5 max-sm:order-last max-sm:w-full max-sm:[&_button]:min-h-10 max-sm:[&_button]:min-w-10">
+				<!-- Packed from the start on a phone: spread around, two toggles and a divider
+				     stood alone in a wide bar of nothing. Each reader groups its toggles
+				     (ReaderGroup), one track per question. -->
 				{@render toolbar?.()}
 			</div>
 			<div class="flex shrink-0 items-center gap-0.5">
 				<button
 					type="button"
-					class="inline-flex size-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+					class="inline-flex size-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground sm:size-9"
 					aria-label={fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
 					onclick={toggleFullscreen}
 				>
@@ -455,7 +458,7 @@
 				</button>
 				<button
 					type="button"
-					class="inline-flex size-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground {help
+					class="inline-flex size-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground max-sm:hidden {help
 						? 'bg-accent/15 text-accent'
 						: ''}"
 					aria-label="Keyboard shortcuts (?)"

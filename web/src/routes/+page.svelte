@@ -19,6 +19,7 @@
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { t } from '$lib/i18n';
 	import { isInProgress, nextUpAfter, sortByRecent } from '$lib/utilities/progress';
 
 	let loading = $state(true);
@@ -26,10 +27,13 @@
 	let libraries = $state<Library[]>([]);
 	let continueItems = $state<CatalogItem[]>([]);
 	// Reading and watching are different habits: two rows, not one mixed shelf.
-	const continueWatching = $derived(continueItems.filter((i) => !isReadable(i.kind)));
-	const continueReading = $derived(continueItems.filter((i) => isReadable(i.kind)));
+	// What the hero resumes (the first of them) is not repeated as the first card of its rail.
+	const continueWatching = $derived(continueItems.slice(1).filter((i) => !isReadable(i.kind)));
+	const continueReading = $derived(continueItems.slice(1).filter((i) => isReadable(i.kind)));
 	let progressMap = $state<Map<string, Progress>>(new Map());
 	let nextUpItems = $state<CatalogItem[]>([]);
+	// The titles kept as favourites (the social module's list), newest first.
+	let favoriteItems = $state<CatalogItem[]>([]);
 	const nextUpWatching = $derived(nextUpItems.filter((i) => !isReadable(i.kind)));
 	const nextUpReading = $derived(nextUpItems.filter((i) => isReadable(i.kind)));
 	let recent = $state<CatalogItem[]>([]);
@@ -60,6 +64,16 @@
 		return found;
 	}
 
+	// A server without the social module, or an account with no favourites, has no such rail.
+	async function loadFavorites(): Promise<CatalogItem[]> {
+		try {
+			const ids = (await api.social.settings()).favorites.map((f) => f.item_id ?? '').filter((id) => id !== '');
+			return (await ensureItems(ids.reverse())).filter((item): item is CatalogItem => item !== undefined);
+		} catch {
+			return [];
+		}
+	}
+
 	async function load(): Promise<void> {
 		loading = true;
 		error = null;
@@ -73,13 +87,21 @@
 			recent = recentPage.items;
 			catalogTotal = recentPage.total;
 
-			const active = sortByRecent(progressList.filter(isInProgress)).slice(0, 12);
-			progressMap = new Map(active.map((p) => [p.item_id, p]));
-			const activeItems = (await ensureItems(active.map((p) => p.item_id))).filter(
-				(item): item is CatalogItem => item !== undefined
-			);
-			continueItems = activeItems;
+			// A video counts as started after a few seconds; a book counts from its
+			// first page (its position is a page number, not seconds), so what is
+			// started is decided once the items are known.
+			const touched = sortByRecent(
+				progressList.filter((p) => p.item_id !== '' && !p.completed && p.position_sec >= 1)
+			).slice(0, 36);
+			const touchedItems = await ensureItems(touched.map((p) => p.item_id));
+			const started = touched
+				.map((p, i) => ({ p, item: touchedItems[i] }))
+				.filter((row): row is { p: Progress; item: CatalogItem } => row.item !== undefined && (isReadable(row.item.kind) || isInProgress(row.p)))
+				.slice(0, 12);
+			progressMap = new Map(started.map((row) => [row.p.item_id, row.p]));
+			continueItems = started.map((row) => row.item);
 			nextUpItems = await loadNextUp(progressList);
+			favoriteItems = await loadFavorites();
 
 			// One row per library when there is more than one: the
 			// catalog filter runs server-side, nothing is preloaded.
@@ -94,6 +116,7 @@
 			const ids = [
 				...continueItems.map((i) => i.id),
 				...nextUpItems.map((i) => i.id),
+				...favoriteItems.map((i) => i.id),
 				...recent.map((i) => i.id),
 				...libraryRows.flatMap((r) => r.items.map((i) => i.id))
 			];
@@ -124,7 +147,7 @@
 <div>
 	{#if loading}
 		<div class="space-y-12 pb-20">
-			<Skeleton class="h-[72svh] min-h-[32rem] w-full rounded-none" />
+			<Skeleton class="h-[60svh] min-h-[24rem] w-full rounded-none md:h-[74svh]" />
 			<div class="mx-auto w-full max-w-[1800px] space-y-5 px-5 sm:px-8 lg:px-10">
 				<Skeleton class="h-7 w-52" />
 				<div class="flex gap-4 overflow-hidden">
@@ -170,18 +193,15 @@
 		</div>
 	{:else}
 		{@const hero = continueItems[0] ?? recent[0]}
-		{@const upNext = hero ? (continueItems.find((i) => i.id !== hero.id) ?? null) : null}
 		{#if hero}
 			<Hero
 				item={hero}
 				enrichment={enrichmentCache.get(hero.id) ?? null}
 				resume={progressMap.has(hero.id)}
-				{upNext}
-				upNextEnrichment={upNext ? enrichmentCache.get(upNext.id) ?? null : null}
-				upNextProgress={upNext ? progressMap.get(upNext.id) ?? null : null}
+				progress={progressMap.get(hero.id) ?? null}
 			/>
 		{/if}
-		<section id="home-library" class="home-library relative bg-background pb-24 pt-14 sm:pt-18 md:pb-20 md:pt-20">
+		<section id="home-library" class="home-library relative bg-background pb-24 pt-10 sm:pt-12 md:pb-20 md:pt-10">
 			<div class="mx-auto w-full max-w-[1800px] space-y-14 md:space-y-16 px-5 sm:px-8 lg:px-10">
 				{#if scan.running}
 					<div class="flex"><Badge tone="accent"><ScanLine class="size-3" /> Scanning…</Badge></div>
@@ -190,19 +210,23 @@
 				{/if}
 
 				{#if continueWatching.length > 0}
-					<MediaRow title="Continue watching" href="/library" actionLabel="Open library" items={continueWatching} {progressMap} layout="landscape" />
+					<MediaRow title="Continue watching" href="/library" actionLabel={t('home.browseLibrary')} items={continueWatching} {progressMap} layout="landscape" />
 				{/if}
 
 				{#if continueReading.length > 0}
-					<MediaRow title="Continue reading" href="/library" actionLabel="Open library" items={continueReading} {progressMap} layout="poster" />
+					<MediaRow title="Continue reading" href="/library" actionLabel={t('home.browseLibrary')} items={continueReading} {progressMap} layout="poster" />
+				{/if}
+
+				{#if favoriteItems.length > 0}
+					<MediaRow title="Favorites" href="/favorites" actionLabel="All favorites" items={favoriteItems} {progressMap} layout="poster" />
 				{/if}
 
 				{#if nextUpWatching.length > 0}
-					<MediaRow title="Next up" href="/library" actionLabel="Open library" items={nextUpWatching} {progressMap} layout="landscape" />
+					<MediaRow title="Next up" href="/library" actionLabel={t('home.browseLibrary')} items={nextUpWatching} {progressMap} layout="landscape" />
 				{/if}
 
 				{#if nextUpReading.length > 0}
-					<MediaRow title="Read next" href="/library" actionLabel="Open library" items={nextUpReading} {progressMap} layout="poster" />
+					<MediaRow title="Read next" href="/library" actionLabel={t('home.browseLibrary')} items={nextUpReading} {progressMap} layout="poster" />
 				{/if}
 
 				{#if recent.length > 0}

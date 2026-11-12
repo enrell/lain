@@ -495,9 +495,42 @@ pub fn with_automatic_hardware(
     s
 }
 
+/// What a saved policy becomes when the machine's hardware turns out
+/// different from what was picked for it: `Some` only for a policy nobody
+/// tuned (the shipped one, with whatever backend the first boot chose),
+/// and only when today's pick differs. A policy with any setting changed
+/// is the operator's and is left alone, hardware included.
+pub fn repick_hardware(
+    saved: &TranscodeSettings,
+    available: &std::collections::BTreeMap<String, bool>,
+) -> Option<TranscodeSettings> {
+    let now = with_automatic_hardware(&defaults(), available);
+    let mut untuned = saved.clone();
+    untuned.hardware_acceleration = now.hardware_acceleration.clone();
+    untuned.hardware_encode = now.hardware_encode;
+    (untuned == now && *saved != now).then_some(now)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_untuned_policy_follows_the_hardware() {
+        let only = |b: &str| std::collections::BTreeMap::from([(b.to_string(), true)]);
+        let both = std::collections::BTreeMap::from([(HW_QSV.to_string(), true), (HW_NVENC.to_string(), true)]);
+        // Picked QSV when the NVIDIA GPU did not probe; it does now.
+        let saved = with_automatic_hardware(&defaults(), &only(HW_QSV));
+        let next = repick_hardware(&saved, &both).unwrap();
+        assert_eq!((next.hardware_acceleration.as_str(), next.hardware_encode), (HW_NVENC, true));
+        // Already the pick, or the hardware went away entirely.
+        assert_eq!(repick_hardware(&next, &both), None);
+        assert_eq!(repick_hardware(&saved, &Default::default()).unwrap().hardware_acceleration, HW_NONE);
+        // Anything the operator changed makes the policy theirs.
+        let mut tuned = saved.clone();
+        tuned.hls_segment_seconds += 2;
+        assert_eq!(repick_hardware(&tuned, &both), None);
+    }
 
     #[test]
     fn defaults_validate_and_normalize_fills_zeroes() {

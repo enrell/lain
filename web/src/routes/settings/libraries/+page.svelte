@@ -14,12 +14,12 @@
 	import UnlockLibraryDialog from '$lib/components/media/UnlockLibraryDialog.svelte';
 	import Badge from '$lib/components/primitives/Badge.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
-	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Input from '$lib/components/primitives/Input.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
+	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
 	import { ensureLibraries, forgetLibrary, rememberLibrary } from '$lib/stores/media-cache.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -293,22 +293,14 @@
 
 <svelte:head><title>Libraries — Settings — Lain</title></svelte:head>
 
-<div class="space-y-6">
-	<!-- Scan -->
-	<section id="scan" class="settings-section scroll-mt-28 !border-t-0 !pt-0">
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<div>
-				<h2 class="settings-heading">Scan</h2>
-				<p class="mt-0.5 text-sm text-muted">
-					Walks every library root and updates the catalog. Safe to run while watching.
-				</p>
-			</div>
-			<Button onclick={() => void startScan()} loading={scan.running} disabled={scan.running}>
+<div>
+	<SettingsGroup id="scan" title="Scan" description={t('settings.groups.libraries.scan')}>
+		{#snippet aside()}
+			<Button size="field" onclick={() => void startScan()} loading={scan.running} disabled={scan.running}>
 				<ScanLine class="size-4" /> Scan now
 			</Button>
-		</div>
-
-		<div class="mt-4 text-sm">
+		{/snippet}
+		<div class="py-4 text-sm">
 			{#if scan.running}
 				{@const fraction = scan.fraction}
 				<div class="flex items-center gap-2 text-accent" role="status">
@@ -339,8 +331,8 @@
 			{:else if scan.status?.state === 'done' && scan.status.stats}
 				{@const stats = scan.status.stats}
 				<p class="text-muted">
-					Last scan {scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}
-					{#if scan.status.trigger === 'watch'}by the filesystem watcher{/if}:
+					<!-- The colon on the last word: on its own line it printed "ago :". -->
+					{[`Last scan ${scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}`, scan.status.trigger === 'watch' ? 'by the filesystem watcher' : ''].filter(Boolean).join(' ')}:
 					<span class="text-foreground">{stats.identified}</span> identified ·
 					<span class="text-foreground">{stats.unidentified}</span> unidentified ·
 					<span class="text-foreground">{stats.enriched}</span> enriched
@@ -368,43 +360,46 @@
 				<p class="text-muted">No scan recorded yet.</p>
 			{/if}
 		</div>
-	</section>
+	</SettingsGroup>
 
-	<!-- Libraries -->
-	<section id="libraries" class="scroll-mt-28 space-y-4 pt-8">
-		<div class="flex items-center justify-between gap-3">
-			<h2 class="settings-heading">Media libraries</h2>
-			<Button variant="secondary" size="sm" onclick={() => openCreate()}>
+	<SettingsGroup id="libraries" title="Media libraries" description={t('settings.groups.libraries.libraries')}>
+		{#snippet aside()}
+			<Button variant="tonal" size="field" onclick={() => openCreate()}>
 				<FolderPlus class="size-4" /> Add library
 			</Button>
-		</div>
-
+		{/snippet}
 		{#if loading}
-			<div class="h-20 animate-pulse rounded-card bg-surface-active/50"></div>
+			<div class="py-4"><div class="h-12 animate-pulse rounded-md bg-field"></div></div>
 		{:else if error}
-			<ErrorState message={error} retry={() => void load()} />
+			<div class="py-4"><ErrorState message={error} retry={() => void load()} /></div>
 		{:else if libraries.length === 0}
-			<EmptyState
-				title="No libraries configured"
-				description="A library is a directory on the server Lain is allowed to read. Nothing is copied or moved."
-			>
-				{#snippet icon()}<FolderPlus class="size-6 text-muted" />{/snippet}
-				<Button onclick={() => openCreate()}>
+			<!-- The panel is the frame here: a boxed empty state inside it was a box in a box. -->
+			<div class="flex flex-col items-center px-6 py-10 text-center">
+				<FolderPlus class="size-6 text-muted" />
+				<p class="mt-3 text-base font-semibold text-foreground">No libraries configured</p>
+				<p class="mt-1 max-w-md text-sm text-muted">
+					A library is a directory on the server Lain is allowed to read. Nothing is copied or moved.
+				</p>
+				<Button class="mt-5" size="field" onclick={() => openCreate()}>
 					<FolderPlus class="size-4" /> Add your first library
 				</Button>
-			</EmptyState>
+			</div>
 		{:else}
-			<ul class="settings-list">
+			<!-- One table: name and path, then the Private switch, the Lock/Unlock
+			     slot (empty where there is none, so no switch is pushed out of its
+			     column) and Remove. The keys act on the focused row, so their caps
+			     show on that row only. -->
+			<ul class="settings-items">
 				{#each libraries as lib (lib.id)}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 					<li
-						class="flex flex-wrap items-center gap-3 bg-surface/40 px-4 py-3.5 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
+						class="group/row flex flex-wrap items-center gap-x-3 gap-y-2 py-3.5 outline-none focus-visible:bg-surface-active/40 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:gap-x-4"
 						tabindex="0"
 						onkeydown={(e) => rowKey(e, lib)}
 					>
-						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-2">
-								<p class="truncate font-medium text-foreground">{lib.name}</p>
+						<div class="min-w-0 basis-full">
+							<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+								<p class="truncate text-sm font-medium text-foreground">{lib.name}</p>
 								<Badge>{lib.type}</Badge>
 								{#if lib.private}
 									<Badge tone="warning">{t('privateLibrary.badge')} · {lib.locked ? t('privateLibrary.locked') : t('privateLibrary.unlocked')}</Badge>
@@ -416,57 +411,66 @@
 									<Badge tone="warning">unreadable</Badge>
 								{/if}
 							</div>
-							<p class="mt-0.5 truncate font-mono text-xs text-muted">{lib.path}</p>
+							<!-- A long path is cut at its start: the folder's own name is the part that tells libraries apart. -->
+							<details class="group/path mt-0.5 text-left font-mono text-xs text-muted">
+								<summary class="cursor-pointer list-none truncate hover:text-foreground [&::-webkit-details-marker]:hidden" title="Show the whole path">
+									<span class="group-open/path:hidden">…/{lib.path.split(/[\\/]/).filter(Boolean).slice(-2).join('/')}</span>
+									<span class="hidden break-all whitespace-normal group-open/path:inline">{lib.path}</span>
+								</summary>
+							</details>
 						</div>
-						{#if roots !== null}
-							<div class="flex items-center gap-2 text-sm text-muted">
-								<Switch
-									bare
-									label={t('privateLibrary.makePrivate')}
-									checked={!!lib.private}
-									onCheckedChange={(next) => void setPrivate(lib, next)}
-								/>
-								<span>{t('privateLibrary.makePrivate')}</span>
-								<kbd class="font-mono text-[10px] text-muted">P</kbd>
-							</div>
-						{/if}
-						{#if lib.private}
-							<Button variant="ghost" size="sm" onclick={() => void toggleLock(lib)}>
-								{#if lib.locked}
-									<LockOpen class="size-4" /> {t('privateLibrary.unlock')}
-								{:else}
-									<LockIcon class="size-4" /> {t('privateLibrary.lock')}
-								{/if}
-								<kbd class="ms-1 font-mono text-[10px] text-muted">U</kbd>
-							</Button>
-						{/if}
+						<div class="flex items-center max-sm:empty:hidden">
+							{#if roots !== null}
+								<div class="flex h-9 items-center gap-2 pe-2 text-sm text-muted">
+									<Switch
+										bare
+										label={t('privateLibrary.makePrivate')}
+										checked={!!lib.private}
+										onCheckedChange={(next) => void setPrivate(lib, next)}
+									/>
+									<span>{t('privateLibrary.makePrivate')}</span>
+									<kbd class="transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">P</kbd>
+								</div>
+							{/if}
+						</div>
+						<div class="max-sm:empty:hidden sm:w-28">
+							{#if lib.private}
+								<Button variant="ghost" size="field" onclick={() => void toggleLock(lib)}>
+									{#if lib.locked}
+										<LockOpen class="size-4" /> {t('privateLibrary.unlock')}
+									{:else}
+										<LockIcon class="size-4" /> {t('privateLibrary.lock')}
+									{/if}
+									<kbd class="ms-1 transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">U</kbd>
+								</Button>
+							{/if}
+						</div>
+						<!-- Quiet until pointed at: a red bin on every row made five destructive
+						     buttons the loudest things on the page, louder than Scan now. -->
 						<Button
 							variant="ghost"
-							size="sm"
+							size="field"
+							class="justify-self-start hover:text-danger! focus-visible:text-danger!"
 							aria-label={`Remove ${lib.name}`}
 							onclick={() => askRemove(lib)}
 						>
-							<Trash2 class="size-4 text-danger" /> Remove
-							<kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd>
+							<Trash2 class="size-4" /> Remove
+							<kbd class="ms-1 transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">Del</kbd>
 						</Button>
 					</li>
 				{/each}
 			</ul>
 		{/if}
-	</section>
+	</SettingsGroup>
 
 	{#if roots !== null}
-		<section id="roots" class="settings-section scroll-mt-28 space-y-3">
-			<div>
-				<h2 class="settings-heading">{t('roots.heading')}</h2>
-				<p class="mt-0.5 text-sm text-muted">{t('roots.hint')}</p>
-			</div>
+		<SettingsGroup id="roots" title={t('roots.heading')} description={t('roots.hint')}>
 			{#if roots.length === 0}
-				<p class="text-sm text-muted">{t('roots.none')}</p>
+				<p class="py-4 text-sm text-muted">{t('roots.none')}</p>
 			{:else}
-				<ul class="settings-list">
+				<ul class="settings-items">
 					{#each roots as r (r.name)}
-						<li class="bg-surface/40 px-4 py-3">
+						<li class="py-3">
 							<div class="flex items-center gap-2">
 								<span class="font-mono text-sm text-foreground">{r.name}</span>
 								{#if !r.available}<Badge tone="warning">{t('roots.unavailable')}</Badge>{/if}
@@ -481,18 +485,15 @@
 					{/each}
 				</ul>
 			{/if}
-		</section>
+		</SettingsGroup>
 
-		<section id="pin" class="settings-section scroll-mt-28 space-y-3">
-			<div>
-				<h2 class="settings-heading">{t('privateLibrary.pinHeading')}</h2>
-				<p class="mt-0.5 text-sm text-muted">
-					{t('privateLibrary.pinHint')}
-					{pinSet ? t('privateLibrary.pinSet') : t('privateLibrary.pinNotSet')}
-				</p>
-			</div>
+		<SettingsGroup
+			id="pin"
+			title={t('privateLibrary.pinHeading')}
+			description={`${t('privateLibrary.pinHint')} ${pinSet ? t('privateLibrary.pinSet') : t('privateLibrary.pinNotSet')}`}
+		>
 			<form
-				class="grid gap-3 sm:grid-cols-[1fr_1fr_auto]"
+				class="grid gap-3 py-4 sm:grid-cols-[1fr_1fr_auto]"
 				onsubmit={(e) => {
 					e.preventDefault();
 					void savePin(false);
@@ -513,17 +514,17 @@
 					required
 				/>
 				<div class="flex items-end gap-2">
-					<Button type="submit" loading={pinBusy} disabled={!pinForm.pin || !pinForm.password}>
+					<Button type="submit" size="field" loading={pinBusy} disabled={!pinForm.pin || !pinForm.password}>
 						{t('privateLibrary.pinSave')} <kbd class="ms-1 font-mono text-[10px] text-muted">Enter</kbd>
 					</Button>
 					{#if pinSet}
-						<Button type="button" variant="ghost" disabled={!pinForm.password} onclick={() => void savePin(true)}>
+						<Button type="button" variant="ghost" size="field" disabled={!pinForm.password} onclick={() => void savePin(true)}>
 							{t('privateLibrary.pinClear')}
 						</Button>
 					{/if}
 				</div>
 			</form>
-		</section>
+		</SettingsGroup>
 	{/if}
 </div>
 

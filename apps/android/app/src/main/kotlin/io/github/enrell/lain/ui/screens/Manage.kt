@@ -1,10 +1,33 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.enrell.lain.ui.Screen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,7 +61,8 @@ import io.github.enrell.lain.ui.theme.LocalLain
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Offline copies of this server: progress, pause/resume, delete, and the device budget. */
+
+/** Offline copies: what they take, what is queued, and each one with its state. */
 @Composable
 fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
     val l = LocalLain.current
@@ -53,79 +77,158 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
             delay(if (live.running) 1_000 else 5_000)
         }
     }
-    Column(Modifier.fillMaxSize().padding(l.sp(4)), verticalArrangement = Arrangement.spacedBy(l.sp(3))) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(l.sp(2))) {
-            Text(stringResource(R.string.nav_downloads), style = MaterialTheme.typography.headlineLarge)
+    val queued = state.copies.count { it.state == CopyState.QUEUED }
+    var removing by remember { mutableStateOf<String?>(null) }
+    // A whole title's copies at once (its header's Remove all), asked first like one.
+    var removingAll by remember { mutableStateOf<List<String>?>(null) }
+    removingAll?.let { ids ->
+        Sheet(pluralStringResource(R.plurals.remove_downloads_q, ids.size, ids.size), { removingAll = null }, footer = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                WButton(stringResource(R.string.player_cancel), { removingAll = null }, Modifier.weight(1f), kind = Btn.Secondary)
+                WButton(stringResource(R.string.remove_all), { ids.forEach { model.remove(it) }; removingAll = null }, Modifier.weight(1f), kind = Btn.Danger)
+            }
+        }) {
+            Text(stringResource(R.string.remove_download_body), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
+        }
+    }
+    removing?.let { id ->
+        Sheet(stringResource(R.string.remove_download_q), { removing = null }, footer = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                WButton(stringResource(R.string.player_cancel), { removing = null }, Modifier.weight(1f), kind = Btn.Secondary)
+                WButton(stringResource(R.string.remove_download), { model.remove(id); removing = null }, Modifier.weight(1f), kind = Btn.Danger)
+            }
+        }) {
+            Text(stringResource(R.string.remove_download_body), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
+        }
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 32.dp)) {
+        item {
+            Text(stringResource(R.string.nav_downloads), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
+            Text(stringResource(R.string.downloads_hint), Modifier.padding(top = 4.dp), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
+            // What the copies take of the room they were given.
             state.usage?.let { u ->
-                Label(
-                    if (u.maxBytes > 0) stringResource(R.string.downloads_usage, bytes(u.usedBytes), bytes(u.maxBytes))
-                    else bytes(u.usedBytes),
-                )
-            }
-        }
-        Text(stringResource(R.string.downloads_hint), color = l.muted, style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(l.sp(2))) {
-            if (live.running) {
-                Action(stringResource(R.string.downloads_stop), null, { DownloadService.stop(context) })
-            } else {
-                Action(stringResource(R.string.downloads_start), null, { DownloadService.start(context) }, primary = state.copies.any { it.state == CopyState.QUEUED })
-            }
-            Action(stringResource(R.string.action_refresh), null, { model.refresh(); vm.refreshProgress() })
-        }
-        live.stopped?.let { Text(stringResource(R.string.downloads_stopped, it), color = l.warn, style = MaterialTheme.typography.bodySmall) }
-        live.evicted.lastOrNull()?.let { Text(stringResource(R.string.downloads_evicted, it), color = l.muted, style = MaterialTheme.typography.bodySmall) }
-        ErrorLine(state.error)
-        if (state.copies.isEmpty()) {
-            Text(stringResource(R.string.downloads_empty), color = l.muted)
-        }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(l.sp(2)), modifier = Modifier.weight(1f)) {
-            items(state.copies, key = { it.itemId }) { c ->
-                val (done, total) = live.bytes[c.itemId] ?: (c.bytes to c.size)
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(l.sp(1))) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(l.sp(2))) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                c.title + episodeLabel(c.season, c.episode, c.kind in io.github.enrell.lain.domain.READING_KINDS).let { if (it.isEmpty()) "" else " · $it" },
-                                style = MaterialTheme.typography.titleSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Label(
-                                when (c.state) {
-                                    CopyState.DONE -> stringResource(R.string.copy_done, bytes(c.bytes))
-                                    CopyState.QUEUED -> stringResource(R.string.copy_queued, bytes(done), if (total > 0) bytes(total) else "?")
-                                    CopyState.PAUSED -> stringResource(R.string.copy_paused, bytes(done))
-                                    CopyState.FAILED -> stringResource(R.string.copy_failed, c.error.ifBlank { c.code })
-                                },
-                                color = when (c.state) {
-                                    CopyState.DONE -> l.ok
-                                    CopyState.FAILED -> l.danger
-                                    else -> l.muted
-                                },
-                            )
-                        }
-                        val item = vm.state.value.items[c.itemId]
-                        if (c.state == CopyState.DONE && item != null) Action(stringResource(R.string.action_open), null, { vm.open(item) })
-                        when (c.state) {
-                            CopyState.QUEUED -> Action(stringResource(R.string.action_pause), null, { model.pause(c.itemId) })
-                            CopyState.PAUSED, CopyState.FAILED -> Action(stringResource(R.string.action_resume), null, {
-                                model.resume(c.itemId)
-                                DownloadService.start(context)
-                            })
-                            CopyState.DONE -> Unit
-                        }
-                        Action(stringResource(R.string.action_delete), null, { model.remove(c.itemId) })
+                Column(Modifier.padding(top = 18.dp).fillMaxWidth().clip(l.panelShape).background(l.tonalLow).padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(bytes(u.usedBytes), color = l.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                        if (u.maxBytes > 0) Text(stringResource(R.string.downloads_of, bytes(u.maxBytes)), Modifier.padding(start = 6.dp, bottom = 2.dp), color = l.muted, fontSize = 13.sp)
+                        Box(Modifier.weight(1f))
+                        Text(pluralStringResource(R.plurals.count_copies, state.copies.size, state.copies.size), color = l.muted, fontSize = 13.sp)
                     }
-                    if (c.state == CopyState.QUEUED && total > 0) {
-                        LinearProgressIndicator(progress = { (done.toFloat() / total).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = l.accent)
+                    if (u.maxBytes > 0) {
+                        // An empty track is faint: at nothing stored it must not look like a full bar.
+                        Box(Modifier.padding(top = 12.dp).fillMaxWidth().height(6.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.08f))) {
+                            Box(Modifier.fillMaxWidth((u.usedBytes.toFloat() / u.maxBytes).coerceIn(if (u.usedBytes > 0) 0.02f else 0f, 1f)).height(6.dp).clip(CircleShape).background(l.accent))
+                        }
                     }
                 }
             }
+            if (queued > 0 || live.running) {
+                Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (live.running) {
+                        WButton(stringResource(R.string.downloads_stop), { DownloadService.stop(context) }, kind = Btn.Secondary, icon = Ic.Pause)
+                    } else {
+                        WButton(pluralStringResource(R.plurals.downloads_start_n, queued, queued), { DownloadService.start(context) }, icon = Ic.Download)
+                    }
+                }
+            }
+            live.stopped?.let { Text(stringResource(R.string.downloads_stopped, it), Modifier.padding(top = 10.dp), color = l.warn, fontSize = 13.sp) }
+            live.evicted.lastOrNull()?.let { Text(stringResource(R.string.downloads_evicted, it), Modifier.padding(top = 6.dp), color = l.muted, fontSize = 13.sp) }
+            ErrorLine(state.error, Modifier.padding(top = 8.dp))
+            Gap(18.dp)
+            if (state.copies.isEmpty()) {
+                EmptyState(Ic.Download, stringResource(R.string.downloads_empty_title), stringResource(R.string.downloads_empty)) {
+                    WButton(stringResource(R.string.nav_library), { vm.go(Screen.Library) }, kind = Btn.Secondary)
+                }
+            }
+        }
+        // One group per title, its parts in order: a series reads as a series, not as a list of strays.
+        val groups = state.copies.groupBy { it.title.trim().lowercase() }.values
+            .map { g -> g.sortedWith(compareBy({ it.season }, { it.episode })) }
+            .sortedBy { it.first().title.lowercase() }
+        for (group in groups) {
+            if (group.size > 1) item(key = "@" + group.first().title) {
+                Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(group.first().title, color = l.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            pluralStringResource(R.plurals.count_downloads, group.size, group.size) + " · " + bytes(group.sumOf { it.bytes }),
+                            color = l.muted, fontSize = 12.sp,
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.remove_all),
+                        // The word on the cards' right edge; the touch area runs into the gutter.
+                        Modifier.offset(x = 10.dp).clip(l.buttonShape).clickable { removingAll = group.map { it.itemId } }.padding(horizontal = 10.dp, vertical = 8.dp),
+                        color = l.text.copy(alpha = 0.85f), fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+        items(group, key = { it.itemId }) { c ->
+            val (done, total) = live.bytes[c.itemId] ?: (c.bytes to c.size)
+            val item = vm.state.value.items[c.itemId]
+            val reading = c.kind in io.github.enrell.lain.domain.READING_KINDS
+            Row(
+                Modifier.padding(vertical = 4.dp).fillMaxWidth().clip(l.cardShape).background(l.tonalLow)
+                    .then(if (c.state == CopyState.DONE && item != null) Modifier.clickable { vm.open(item) } else Modifier),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.width(if (reading) 56.dp else 116.dp).aspectRatio(if (reading) 3f / 4f else 16f / 9f), contentAlignment = Alignment.Center) {
+                    // A finished copy plays (or opens) with a tap on its row; no disc on the
+                    // picture, which on every row was noise rather than news.
+                    Art(c.itemId, Modifier.fillMaxSize())
+                    if (c.state == CopyState.QUEUED && total > 0) {
+                        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.5f))) {
+                            Box(Modifier.fillMaxWidth((done.toFloat() / total).coerceIn(0f, 1f)).height(4.dp).background(l.accent))
+                        }
+                    }
+                }
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    val ep = when {
+                        c.episode <= 0L && c.season <= 0L -> ""
+                        reading -> stringResource(R.string.volume_long, (if (c.season > 0) c.season else c.episode).toInt())
+                        c.season > 0 -> stringResource(R.string.season_episode, c.season.toInt(), c.episode.toInt())
+                        else -> stringResource(R.string.episode_n, c.episode.toInt())
+                    }
+                    // Under its title's heading a row is named by its part: the title again
+                    // on every row said nothing, and pushed the part into the small line.
+                    val grouped = group.size > 1 && ep.isNotEmpty()
+                    Text(if (grouped) ep else c.title, color = l.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOf(
+                            if (grouped) "" else ep,
+                            when (c.state) {
+                                CopyState.DONE -> stringResource(R.string.copy_done, bytes(c.bytes))
+                                CopyState.QUEUED -> stringResource(R.string.copy_queued, bytes(done), if (total > 0) bytes(total) else "?")
+                                CopyState.PAUSED -> stringResource(R.string.copy_paused, bytes(done))
+                                CopyState.FAILED -> stringResource(R.string.copy_failed, c.error.ifBlank { c.code })
+                            },
+                        ).filter { it.isNotEmpty() }.joinToString(" · "),
+                        Modifier.padding(top = 4.dp),
+                        // Done is the quiet, normal state ("Downloaded" says it is ready);
+                        // colour is kept for what needs a look, a failure.
+                        color = when (c.state) {
+                            CopyState.FAILED -> l.danger
+                            else -> l.muted
+                        },
+                        fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                when (c.state) {
+                    CopyState.QUEUED -> IconBtn(Ic.Pause, stringResource(R.string.action_pause), { model.pause(c.itemId) })
+                    CopyState.PAUSED, CopyState.FAILED -> IconBtn(Ic.Download, stringResource(R.string.action_resume), {
+                        model.resume(c.itemId)
+                        DownloadService.start(context)
+                    })
+                    CopyState.DONE -> Unit
+                }
+                IconBtn(Ic.Trash, stringResource(R.string.remove_download), { removing = c.itemId }, tint = l.text.copy(alpha = 0.85f))
+            }
+        }
         }
     }
 }
 
-/** Settings (D-087 shape: label + hint left, control right; personal settings apply at once). */
+/** Settings, in the web client's shape: a name and what it does on the left, the control on the right. */
 @Composable
 fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: String, onTheme: (String) -> Unit) {
     val l = LocalLain.current
@@ -134,77 +237,127 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
     var policy by remember { mutableStateOf(graph.core.offlinePolicy()) }
     var budget by remember { mutableStateOf((policy.maxBytes shr 30).toString()) }
     var floor by remember { mutableStateOf((policy.minFreeBytes shr 30).toString()) }
+    var skip by remember { mutableStateOf(graph.prefs.skipSec) }
+    var subSize by remember { mutableStateOf(graph.prefs.subtitleSize) }
+    var subBox by remember { mutableStateOf(graph.prefs.subtitleBox) }
+    var metered by remember { mutableStateOf(graph.prefs.meteredQuality) }
+    var wifiOnly by remember { mutableStateOf(graph.prefs.wifiOnly) }
+    var qualities by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(Unit) { qualities = runCatching { graph.core.playQualities().map { it.name } }.getOrDefault(emptyList()) }
     LaunchedEffect(Unit) { queued = vm.queuedProgress() }
-    val themes = remember { graph.themes.list() }
-    LazyColumn(Modifier.fillMaxSize().padding(l.sp(4)), verticalArrangement = Arrangement.spacedBy(l.sp(3))) {
-        item { Text(stringResource(R.string.nav_settings), style = MaterialTheme.typography.headlineLarge) }
-        item { Label(stringResource(R.string.settings_you)) }
-        item {
-            SettingRow(stringResource(R.string.settings_account), state.user?.let { "${it.username} · ${it.role}" } ?: "") {
-                Action(stringResource(R.string.settings_logout), null, { vm.logout() })
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 40.dp)) {
+        Text(stringResource(R.string.nav_settings), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
+        // Who is signed in, where.
+        Row(Modifier.padding(top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(56.dp).clip(CircleShape).background(l.raised), contentAlignment = Alignment.Center) {
+                Text((state.user?.username ?: "?").take(1).uppercase(), color = l.accent, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Column(Modifier.padding(start = 14.dp)) {
+                Text(state.user?.username ?: "", color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text((state.user?.role ?: "").replaceFirstChar { it.uppercase() }, Modifier.padding(top = 2.dp), color = l.muted, fontSize = 13.sp)
             }
         }
-        item {
-            SettingRow(stringResource(R.string.settings_server), listOf(state.server, state.serverVersion).filter { it.isNotEmpty() }.joinToString(" · ")) {
-                Action(stringResource(R.string.login_other_server), null, { vm.changeServer() })
+        SettingsGroup(stringResource(R.string.settings_playback)) {
+            SettingRow(stringResource(R.string.player_skip), if (skip == 0) stringResource(R.string.settings_skip_hint) else stringResource(R.string.settings_skip_fixed, skip), below = true) {
+                Segmented(io.github.enrell.lain.domain.SKIP_CHOICES.map { it to if (it == 0) stringResource(R.string.settings_auto) else "$it s" }, skip, { skip = it; graph.prefs.skipSec = it }, Modifier.fillMaxWidth(), fill = true)
+            }
+            // The account's language: the same setting the web client edits.
+            val lang = state.user?.preferredLanguage.orEmpty()
+            val auto = stringResource(R.string.settings_language_auto)
+            ChoiceRow(
+                stringResource(R.string.settings_language), stringResource(R.string.settings_language_hint),
+                LANGUAGES.firstOrNull { it.first == lang }?.second ?: lang.ifEmpty { auto },
+                listOf("" to auto) + LANGUAGES,
+                lang,
+            ) { code -> scope.launch { vm.setPreferredLanguage(code) } }
+            SettingRow(stringResource(R.string.settings_sub_size), below = true) {
+                Segmented(listOf(0 to stringResource(R.string.size_small), 1 to stringResource(R.string.size_medium), 2 to stringResource(R.string.size_large)), subSize, { subSize = it; graph.prefs.subtitleSize = it }, Modifier.fillMaxWidth(), fill = true)
+            }
+            SettingRow(stringResource(R.string.settings_sub_box), stringResource(R.string.settings_sub_box_hint)) {
+                Toggle(subBox, { on -> subBox = on; graph.prefs.subtitleBox = on }, stringResource(R.string.settings_sub_box))
+            }
+            if (qualities.isNotEmpty()) {
+                val original = stringResource(R.string.settings_metered_original)
+                ChoiceRow(
+                    stringResource(R.string.settings_metered), stringResource(R.string.settings_metered_hint),
+                    metered.ifEmpty { original },
+                    listOf("" to original) + qualities.map { it to it },
+                    metered,
+                ) { q -> metered = q; graph.prefs.meteredQuality = q }
             }
         }
-        item {
-            SettingRow(stringResource(R.string.settings_sync), stringResource(R.string.settings_sync_hint, queued)) {
-                Action(stringResource(R.string.settings_sync_now), null, {
-                    scope.launch {
-                        runCatching { graph.core.flushProgress() }
-                        queued = vm.queuedProgress()
-                        vm.refreshProgress()
-                    }
-                })
-            }
-        }
-        item { Label(stringResource(R.string.settings_appearance)) }
-        items(themes, key = { it.id }) { t ->
-            SettingRow(t.name, t.problem ?: "${t.id} · ${t.scheme}") {
-                Action(
-                    stringResource(if (t.id == themeId) R.string.settings_theme_active else R.string.settings_theme_use),
-                    null,
-                    { onTheme(t.id) },
-                    primary = t.id == themeId,
-                )
-            }
-        }
-        item { Label(stringResource(R.string.settings_offline)) }
-        item {
+        SettingsGroup(stringResource(R.string.settings_offline)) {
             SettingRow(stringResource(R.string.settings_budget), stringResource(R.string.settings_budget_hint)) {
-                OutlinedTextField(budget, { v ->
+                Field(budget, { v ->
                     budget = v.filter(Char::isDigit).take(5)
                     budget.toLongOrNull()?.let { g -> policy = policy.copy(maxBytes = g shl 30); graph.savePolicy(policy) }
-                }, singleLine = true, modifier = Modifier.padding(start = l.sp(2)).fillMaxWidth(0.3f))
+                }, "", Modifier.width(88.dp), keyboardType = KeyboardType.Number)
             }
-        }
-        item {
             SettingRow(stringResource(R.string.settings_floor), stringResource(R.string.settings_floor_hint)) {
-                OutlinedTextField(floor, { v ->
+                Field(floor, { v ->
                     floor = v.filter(Char::isDigit).take(4)
                     floor.toLongOrNull()?.let { g -> policy = policy.copy(minFreeBytes = g shl 30); graph.savePolicy(policy) }
-                }, singleLine = true, modifier = Modifier.padding(start = l.sp(2)).fillMaxWidth(0.3f))
+                }, "", Modifier.width(88.dp), keyboardType = KeyboardType.Number)
             }
-        }
-        item {
+            SettingRow(stringResource(R.string.settings_wifi_only), stringResource(R.string.settings_wifi_only_hint)) {
+                Toggle(wifiOnly, { on -> wifiOnly = on; graph.prefs.wifiOnly = on }, stringResource(R.string.settings_wifi_only))
+            }
             SettingRow(stringResource(R.string.settings_evict), stringResource(R.string.settings_evict_hint)) {
-                Switch(policy.evictWatched, { on -> policy = policy.copy(evictWatched = on); graph.savePolicy(policy) })
+                Toggle(policy.evictWatched, { on -> policy = policy.copy(evictWatched = on); graph.savePolicy(policy) }, stringResource(R.string.settings_evict))
             }
         }
-        item { Label(stringResource(R.string.settings_about, io.github.enrell.lain.core.coreVersion())) }
+        SettingsGroup(stringResource(R.string.settings_account)) {
+            // A row only when something waits: with nothing to do it is a note under the group, not a setting.
+            if (queued.toInt() > 0) SettingRow(stringResource(R.string.settings_sync), pluralStringResource(R.plurals.settings_sync_waiting, queued.toInt(), queued.toInt())) {
+                run {
+                    WButton(stringResource(R.string.settings_sync_now), {
+                        scope.launch {
+                            runCatching { graph.core.flushProgress() }
+                            queued = vm.queuedProgress()
+                            vm.refreshProgress()
+                        }
+                    }, kind = Btn.Secondary)
+                }
+            }
+            SettingRow(stringResource(R.string.settings_server), listOf(state.server, state.serverVersion).filter { it.isNotEmpty() }.joinToString(" · ")) {
+                WButton(stringResource(R.string.settings_change), { vm.changeServer() }, kind = Btn.Secondary)
+            }
+            SettingRow(stringResource(R.string.settings_session), stringResource(R.string.settings_session_hint)) {
+                WButton(stringResource(R.string.settings_logout), { vm.logout() }, kind = Btn.Danger)
+            }
+        }
+        if (queued.toInt() == 0) Text(stringResource(R.string.settings_sync_none), Modifier.padding(top = 28.dp), color = l.muted, fontSize = 12.sp)
+        Text(stringResource(R.string.settings_about, io.github.enrell.lain.core.coreVersion()), Modifier.padding(top = if (queued.toInt() == 0) 6.dp else 28.dp), color = l.muted, fontSize = 12.sp)
     }
 }
 
+/** Languages offered for audio and subtitles: ISO 639-2/T, as the server keeps them. */
+private val LANGUAGES = listOf(
+    "eng" to "English", "por" to "Português", "spa" to "Español", "fra" to "Français", "deu" to "Deutsch",
+    "ita" to "Italiano", "jpn" to "日本語", "kor" to "한국어", "zho" to "中文",
+)
+
+/** A setting chosen from a list: the row shows the choice, a tap opens the list in a sheet. */
 @Composable
-private fun SettingRow(label: String, hint: String, control: @Composable () -> Unit) {
+private fun ChoiceRow(label: String, hint: String, shown: String, options: List<Pair<String, String>>, chosen: String, onPick: (String) -> Unit) {
     val l = LocalLain.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.titleSmall)
-            if (hint.isNotEmpty()) Text(hint, color = l.muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    var open by remember { mutableStateOf(false) }
+    // The list under its hint: beside it, a two-line hint was squeezed to four.
+    SettingRow(label, hint, below = true) {
+        // As wide as the segmented controls above and below it: sized to its words, each
+        // list on the page had a width of its own.
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(l.buttonShape).background(l.tonal).clickable(onClickLabel = label) { open = true }.padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(shown, Modifier.weight(1f), color = l.text, fontSize = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Icon(Ic.ChevronDown, null, tint = l.muted, modifier = Modifier.size(16.dp))
         }
-        control()
+    }
+    if (open) {
+        Sheet(label, { open = false }) {
+            for ((value, name) in options) OptionRow(name, null, value == chosen, { open = false; onPick(value) })
+        }
     }
 }

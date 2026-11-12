@@ -616,6 +616,38 @@ impl Client {
             .to_vec())
     }
 
+    /// A frame of the item at `at_sec`, `width` pixels wide: what a seek
+    /// bar shows for the place it points at.
+    pub async fn frame(&self, item_id: &str, at_sec: f64, width: u32) -> Result<Vec<u8>, ClientError> {
+        let q = query(&[("t", format!("{}", at_sec.max(0.0).floor() as i64)), ("w", width.to_string())]);
+        Ok(self
+            .raw(Method::GET, &format!("/api/items/{}/thumbnail{q}", encode(item_id)), Body::None, true)
+            .await?
+            .to_vec())
+    }
+
+    /// How long each of these videos is; items the server cannot tell
+    /// (not a video, not visible, unreadable) are simply absent.
+    pub async fn durations(&self, item_ids: &[String]) -> Result<Vec<lain_api::ItemDuration>, ClientError> {
+        let path = format!("/api/durations{}", query(&[("ids", item_ids.join(","))]));
+        Ok(self.call::<lain_api::ItemDurations>(Method::GET, &path, Body::None).await?.items)
+    }
+
+    /// How the item's storyboard is laid out; `NotFound` when it has none
+    /// (not a video, or of unknown length).
+    pub async fn storyboard_layout(&self, item_id: &str) -> Result<lain_api::StoryboardLayout, ClientError> {
+        self.call(Method::GET, &format!("/api/items/{}/storyboard", encode(item_id)), Body::None).await
+    }
+
+    /// The storyboard picture (one JPEG of small frames). The first
+    /// request for an item waits while the server makes it.
+    pub async fn storyboard_image(&self, item_id: &str) -> Result<Vec<u8>, ClientError> {
+        Ok(self
+            .raw(Method::GET, &format!("/api/items/{}/storyboard/image", encode(item_id)), Body::None, true)
+            .await?
+            .to_vec())
+    }
+
     /// What the player's quality menu offers.
     pub async fn playback_options(&self) -> Result<PlaybackOptions, ClientError> {
         self.call(Method::GET, "/api/playback/options", Body::None).await
