@@ -14,7 +14,7 @@
 	import type { CatalogItem } from '$lib/api/types';
 	import { cardPicture } from '$lib/stores/frames';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
-	import { guessShape, measure, shapeOf } from '$lib/stores/shapes.svelte';
+	import { guessShape, knownShape, measure, shapeOf } from '$lib/stores/shapes.svelte';
 	import { artItem } from '$lib/utilities/browse';
 	import { groupItems } from '$lib/utilities/grouping';
 	import Poster from './Poster.svelte';
@@ -49,7 +49,13 @@
 			const page = await api.catalog.list({ sort: 'recent', limit: 60 });
 			const picks = groupItems(page.items).slice(0, 12).map(artItem);
 			await ensureEnrichments(picks.map((i) => i.id));
-			await measure(picks.map((i) => ({ id: i.id, src: cardPicture(i, enrichmentCache.get(i.id)) })), 1500);
+			// Pictures are loaded first only when what is known of them (D-282)
+			// does not already name enough upright ones.
+			const known = (i: CatalogItem) => knownShape(i, enrichmentCache.get(i.id));
+			if (picks.filter((i) => known(i) === 'portrait').length < FAN) {
+				const unknown = picks.filter((i) => known(i) === undefined);
+				await measure(unknown.map((i) => ({ id: i.id, src: cardPicture(i, enrichmentCache.get(i.id)) })), 1500);
+			}
 			const upright = (i: CatalogItem) => shapeOf(i.id, guessShape(i, enrichmentCache.get(i.id))) === 'portrait';
 			fan = [...picks.filter(upright), ...picks.filter((i) => !upright(i))].slice(0, FAN);
 		} catch {
