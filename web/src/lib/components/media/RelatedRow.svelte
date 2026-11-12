@@ -53,6 +53,16 @@
 	// otherwise let the previous title's rail (which lists the new title)
 	// land after its own.
 	let run = 0;
+
+	async function whole(group: SeriesGroup): Promise<SeriesGroup> {
+		try {
+			const { items } = await api.catalog.episodes(group.items[0].id);
+			return groupItems(items)[0] ?? group;
+		} catch {
+			return group;
+		}
+	}
+
 	$effect(() => {
 		const id = libraryId;
 		const skip = new Set(exclude);
@@ -62,14 +72,21 @@
 		groups = [];
 		if (!id && !newest && !given) return;
 		const files = given
-			? given()
-			: api.catalog.list(newest ? { sort: 'recent', limit: 120 } : { libraryId: id, limit: 120 }).then((page) => page.items);
+			? given().then((items) => ({ items, cut: false }))
+			: api.catalog
+					.list(newest ? { sort: 'recent', limit: 120 } : { libraryId: id, limit: 120 })
+					.then((page) => ({ items: page.items, cut: page.total > page.items.length }));
 		void files
-			.then(async (items) => {
+			.then(async ({ items, cut }) => {
 				const all = groupItems(items);
-				const found = (newest ? sortGroups(all, 'recent') : all)
+				const listed = (newest ? sortGroups(all, 'recent') : all)
 					.filter((g) => !g.items.some((i) => skip.has(i.id)))
 					.slice(0, 12);
+				// A page cut at 120 files holds only part of a long show: its card
+				// counted "1 of 21 watched" where the library says 2 of 26. Each
+				// title then gets all of its files, as the library's shelves do.
+				const found = cut ? await Promise.all(listed.map(whole)) : listed;
+				if (mine !== run) return;
 				const guess = await guessFrame(found);
 				if (mine !== run) return;
 				frame = guess;
