@@ -63,6 +63,9 @@ internal fun PlayerPicture(player: ExoPlayer, ui: PlayerUi, pinned: Boolean) {
         },
         // Subtitles sit above the bar while it is up, and near the edge when it is not.
         update = { view ->
+            // The next episode comes with a new player while this view stays: hand it over,
+            // or the picture stays on the old, released one.
+            if (view.player !== player) view.player = player
             view.subtitleView?.setBottomPaddingFraction(if (ui.controls || pinned) 0.24f else 0.08f)
             // While the bar is dragged its preview card stands where the subtitles are, and
             // the line showed through under it; they return when the finger lifts.
@@ -97,7 +100,9 @@ internal fun PictureGestures(ui: PlayerUi, moves: PlayerMoves) {
         // A drag across the picture seeks: the bar and its preview follow the
         // finger, and letting go lands there. The whole width is two minutes
         // (a tenth of a long film, all of a short clip), so it is a fine control.
-        Modifier.fillMaxSize().pointerInput(Unit) {
+        // Keyed on the moves: the next episode's player brings new ones, and a gesture
+        // detector started for the old player would keep seeking a released one.
+        Modifier.fillMaxSize().pointerInput(moves) {
             detectHorizontalDragGestures(
                 onDragStart = { if (moves.totalSec() > 0) { ui.settings = false; ui.tracksPanel = 0; ui.scrub = (moves.nowSec() / moves.totalSec()).toFloat().coerceIn(0f, 1f) } },
                 onDragEnd = {
@@ -118,7 +123,7 @@ internal fun PictureGestures(ui: PlayerUi, moves: PlayerMoves) {
     ) {
         for (side in listOf(-1, 0, 1)) {
             Box(
-                Modifier.weight(if (side == 0) 0.28f else 0.36f).fillMaxHeight().pointerInput(side) {
+                Modifier.weight(if (side == 0) 0.28f else 0.36f).fillMaxHeight().pointerInput(side, moves) {
                     detectTapGestures(
                         onDoubleTap = { if (side == 0) moves.togglePlay() else moves.skip(side) },
                         onTap = {
