@@ -5,10 +5,10 @@
 	 * notifications read, n starts a collection.
 	 */
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
-	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Users from '@lucide/svelte/icons/users';
+	import type { CatalogItem } from '$lib/api/types';
 	import {
 		api,
 		type Activity,
@@ -22,8 +22,11 @@
 	} from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import { t } from '$lib/i18n';
+	import FirstRun from '$lib/components/media/FirstRun.svelte';
+	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
+	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
@@ -34,9 +37,11 @@
 	import { focusSoon } from '$lib/components/social/focus';
 	import { FIELD } from '$lib/components/social/styles';
 	import { pageKey, socialError } from '$lib/social/format';
+	import { ensureItems } from '$lib/stores/media-cache.svelte';
 	import { socialBadge } from '$lib/stores/social.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { debounce } from '$lib/utilities/debounce';
+	import { isTypingTarget } from '$lib/utilities/guards';
 	import { formatRelative } from '$lib/utilities/format';
 
 	type Tab = 'feed' | 'friends' | 'notifications' | 'collections';
@@ -85,10 +90,14 @@
 		ready = false;
 		try {
 			if (which === 'feed') {
-				const res = await api.social.feed();
+				// The friends too: an empty feed with nobody to follow is the page's first run.
+				// Only that choice hangs on them, so their failure leaves the feed standing
+				// (an empty one then says so plainly, without the first run).
+				const [res, people] = await Promise.all([api.social.feed(), api.social.friends().catch(() => null)]);
 				feed = res.items;
 				feedUsers = res.users;
 				feedMore = res.items.length > 0;
+				friends = people;
 			} else if (which === 'friends') {
 				friends = await api.social.friends();
 				await search();
@@ -196,7 +205,10 @@
 	}
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
-		const k = pageKey(e);
+		// The header's search takes `/` first and marks it handled; a page with
+		// a field of its own for the key moves focus on to it (HeaderSearch).
+		const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTypingTarget(e.target) && !document.querySelector('[role="dialog"]');
+		const k = slash ? '/' : pageKey(e);
 		if (!k) return;
 		const target = TABS.find((x) => x.key === k);
 		if (target) {
@@ -204,9 +216,7 @@
 			setTab(target.id);
 		} else if (k === '/') {
 			e.preventDefault();
-			setTab('friends');
-			await tick();
-			searchInput?.focus();
+			void findPeople();
 		} else if (k === 'r' && tab === 'notifications') {
 			e.preventDefault();
 			void markAllRead();
@@ -229,6 +239,35 @@
 		}
 	};
 	const visLabel = (v: Visibility) => t(`social.visibility.${v}`);
+
+	// No friend, no request either way, nothing in the feed: say what the page is for.
+	const firstRun = $derived(
+		tab === 'feed' &&
+			ready &&
+			!loadError &&
+			feed.length === 0 &&
+			friends !== null &&
+			friends.friends.length + friends.incoming.length + friends.outgoing.length === 0
+	);
+
+	// The titles in the feed, newest first, as cards over the list: the feed
+	// alone was a column of text beside every other page's posters.
+	async function feedTitles(): Promise<CatalogItem[]> {
+		const ids = [...new Set(feed.map((a) => a.work.item_id ?? '').filter((id) => id !== ''))].slice(0, 24);
+		return (await ensureItems(ids)).filter((item): item is CatalogItem => item !== undefined);
+	}
+
+	// The people search, once the Friends tab has loaded and drawn it.
+	let wantSearch = $state(false);
+	function findPeople(): void {
+		wantSearch = true;
+		setTab('friends');
+	}
+	$effect(() => {
+		if (!wantSearch || !searchInput) return;
+		wantSearch = false;
+		searchInput.focus();
+	});
 </script>
 
 <svelte:head><title>{t('social.pageTitle')}</title></svelte:head>
@@ -238,7 +277,8 @@
 	<header class="flex flex-wrap items-end justify-between gap-4">
 		<div>
 			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('social.heading')}</h1>
-			<p class="mt-0.5 text-sm text-muted">{t('social.subtitle')}</p>
+			<!-- The first-run block below says what the page is for, at length. -->
+			{#if !firstRun}<p class="mt-0.5 text-sm text-muted">{t('social.subtitle')}</p>{/if}
 		</div>
 		<a href="/settings/privacy" class="inline-flex min-h-9 items-center gap-1 text-sm text-foreground/70 hover:text-foreground">{t('social.privacyLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>
 	</header>
@@ -270,12 +310,27 @@
 			{#each Array(6) as _}<Skeleton class="h-10 w-full" />{/each}
 		</div>
 	{:else if tab === 'feed'}
-		{#if feed.length === 0}
+		{#if firstRun}
+			<FirstRun
+				eyebrow={t('social.firstRun.eyebrow')}
+				title={t('social.firstRun.title')}
+				body={t('social.firstRun.body')}
+				steps={[
+					{ label: t('social.firstRun.stepAdd'), text: t('social.firstRun.stepAddText') },
+					{ label: t('social.firstRun.stepFollow'), text: t('social.firstRun.stepFollowText') },
+					{ label: t('social.firstRun.stepShare'), text: t('social.firstRun.stepShareText') }
+				]}
+			>
+				<Button size="rowMain" onclick={findPeople}>{t('social.feed.findFriends')} <kbd>/</kbd></Button>
+				<LinkButton href="/settings/privacy" variant="tonal" size="row">{t('social.firstRun.privacy')}</LinkButton>
+			</FirstRun>
+		{:else if feed.length === 0}
 			<EmptyState title={t('social.feed.emptyTitle')} description={t('social.feed.emptyBody')}>
 				{#snippet icon()}<Users class="size-6 text-muted" />{/snippet}
-				<Button onclick={() => setTab('friends')}>{t('social.feed.findFriends')} <Kbd>/</Kbd></Button>
+				<Button onclick={findPeople}>{t('social.feed.findFriends')} <Kbd>/</Kbd></Button>
 			</EmptyState>
 		{:else}
+			<RelatedRow heading={t('social.feed.titles')} source={feedTitles} class="mb-2" />
 			<ul>
 				{#each feed as a (a.id)}
 					<ActivityRow activity={a} user={feedUsers[a.user_id]} />
@@ -287,16 +342,20 @@
 		{/if}
 	{:else if tab === 'friends' && friends}
 		<section class="space-y-3">
-			<label class="block">
+			<!-- The key sits in the field, as the library's search shows its own;
+			     spelled out in the placeholder it ran off a phone's width. -->
+			<label class="relative block">
 				<span class="sr-only">{t('social.friends.searchLabel')}</span>
 				<input
 					bind:this={searchInput}
 					bind:value={query}
 					oninput={searchSoon}
 					onkeydown={(e) => e.key === 'Escape' && searchInput?.blur()}
-					class={FIELD}
+					class="{FIELD} md:pe-10"
 					placeholder={t('social.friends.searchPlaceholder')}
+					aria-keyshortcuts="/"
 				/>
+				<kbd class="pointer-events-none absolute end-3 top-1/2 hidden -translate-y-1/2 text-muted/70 md:inline-flex">/</kbd>
 			</label>
 			<ul>
 				{#each results as r (r.user.id)}
