@@ -119,6 +119,16 @@
 	}
 }
 
+/*
+ * The lead line under a page's title sits one fixed step below it on every
+ * page (round 20): it was 2 px on Library and Tracking, 4 px on Favorites,
+ * Acquire and Social and 6 px in Settings. Unlayered, so it wins over the
+ * margin utilities those pages still carry.
+ */
+.page-title + p {
+	margin-top: 0.25rem;
+}
+
 @utility section-title {
 	font-size: 1.25rem;
 	font-weight: 600;
