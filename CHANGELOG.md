@@ -18,6 +18,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   behind it for up to two minutes; a finished session stays cached.
 - **Web**: pausing (K, Space) before a just-started play has begun no
   longer shows "The browser blocked playback" and pins the controls.
+- **Server**: an HLS session whose hardware encode fails and is retried
+  in software starts that retry from an empty directory: the failed
+  attempt's playlist is withdrawn and its segments are no longer served
+  next to the retry's init segment.
 
 ## [0.3.0] - 2026-11-12
 

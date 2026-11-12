@@ -189,6 +189,45 @@ pub fn delete_consumed(dir: &Path, client_segment: i64, keep_sec: i64, fallback_
     removed
 }
 
+/// Whether `name` is part of an encode's HLS output: the playlists, the
+/// init segment, the media segments, and the temp files ffmpeg
+/// (`temp_file`) and [`write_atomic`] write them through. A relocated
+/// session keeps its subtitle sidecar and burn-in file in the same
+/// directory; those are not.
+fn is_output(name: &str) -> bool {
+    let product = |n: &str| n == RAW_PLAYLIST || n == INDEX_PLAYLIST || n == "init.mp4" || segment_index(n).is_some();
+    // `<name>.tmp` (ffmpeg) or `<name>.<pid>-<n>.tmp` (write_atomic).
+    product(name)
+        || name.strip_suffix(".tmp").is_some_and(|n| {
+            product(n) || [RAW_PLAYLIST, INDEX_PLAYLIST, "init.mp4"].iter().any(|p| n.starts_with(&format!("{p}.")))
+        })
+}
+
+/// Removes an encode's HLS output from a session directory, so another
+/// attempt starts from nothing. The raw playlist goes first, so nothing
+/// can publish the old segments again, then the client playlist; a file
+/// already gone is fine.
+pub fn clear_output(dir: &Path) -> std::io::Result<()> {
+    let gone = |r: std::io::Result<()>| match r {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+        _ => Ok(()),
+    };
+    gone(std::fs::remove_file(dir.join(RAW_PLAYLIST)))?;
+    gone(std::fs::remove_file(dir.join(INDEX_PLAYLIST)))?;
+    let rd = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    for e in rd {
+        let e = e?;
+        if is_output(&e.file_name().to_string_lossy()) {
+            gone(std::fs::remove_file(e.path()))?;
+        }
+    }
+    Ok(())
+}
+
 /// The bytes of every file in a session directory.
 pub fn dir_size(dir: &Path) -> i64 {
     let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
@@ -253,6 +292,38 @@ mod tests {
         assert!(!dir.join("seg00001.m4s").exists() && dir.join("seg00002.m4s").exists());
         std::fs::remove_file(dir.join("init.mp4")).unwrap();
         assert!(!playable(&dir), "a missing init segment is not playable");
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn clearing_removes_only_the_encode_output() {
+        let dir = lain_store::test_dir("hls-clear");
+        std::fs::create_dir_all(&dir).unwrap();
+        let output = [
+            "raw.m3u8",
+            "raw.m3u8.tmp",
+            "index.m3u8",
+            "index.m3u8.42-7.tmp",
+            "init.mp4",
+            "seg00000.m4s",
+            "seg00001.m4s.tmp",
+            "seg00002.ts",
+        ];
+        // A relocated session keeps its sidecars beside the segments.
+        let kept = ["subs.vtt", "subs.vtt.tmp", "burn.ass", "media.mp4", "media.mp4.tmp", "notes.txt"];
+        for f in output.iter().chain(&kept) {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        clear_output(&dir).unwrap();
+        let mut left: Vec<String> =
+            std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        let mut want: Vec<String> = kept.iter().map(|s| s.to_string()).collect();
+        want.sort();
+        assert_eq!(left, want);
+        // Nothing there, or no directory at all, is not an error.
+        clear_output(&dir).unwrap();
+        clear_output(&dir.join("missing")).unwrap();
         std::fs::remove_dir_all(dir).ok();
     }
 
