@@ -5,6 +5,7 @@ import io.github.enrell.lain.domain.RailLabel
 import io.github.enrell.lain.domain.buildRails
 import io.github.enrell.lain.domain.decodeClaim
 import io.github.enrell.lain.domain.fraction
+import io.github.enrell.lain.domain.goOnWith
 import io.github.enrell.lain.domain.groupTitles
 import io.github.enrell.lain.domain.nextUp
 import io.github.enrell.lain.domain.skipSeconds
@@ -31,6 +32,24 @@ class DomainTest {
         assertEquals(listOf("e1", "e2"), frieren.items.map { it.id })
         assertEquals(9L, frieren.latest)
         assertFalse(titles.any { t -> t.items.any { it.missing } })
+    }
+
+    @Test
+    fun finishingAnEpisodePutsTheNextOneOnHome() {
+        val items = listOf(item("e1", "Frieren", 1), item("e2", "Frieren", 2), item("e3", "Frieren", 3), item("f", "Akira", 0))
+        val titles = groupTitles(items)
+        // Episode 1 finished last, Akira half-watched before it: Frieren's next comes first, as a fresh start.
+        val done = progress("e1", 100.0, done = true).copy(updatedAt = 20)
+        val half = progress("f", 30.0).copy(updatedAt = 10)
+        val got = goOnWith(titles, listOf(half), mapOf("e1" to done, "f" to half))
+        assertEquals(listOf("e2", "f"), got.map { it.itemId })
+        assertEquals(0.0, got[0].positionSec, 0.0)
+        // A title with a part half-way keeps that part, not the next one.
+        val mid = progress("e3", 5.0).copy(updatedAt = 5)
+        assertEquals(listOf("e3"), goOnWith(titles, listOf(mid), mapOf("e1" to done, "e3" to mid)).map { it.itemId })
+        // Everything finished: nothing to go on with.
+        val all = listOf("e1", "e2", "e3").associateWith { progress(it, 100.0, done = true) }
+        assertTrue(goOnWith(titles, emptyList(), all).isEmpty())
     }
 
     @Test

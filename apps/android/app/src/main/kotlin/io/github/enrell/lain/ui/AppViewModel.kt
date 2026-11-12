@@ -97,6 +97,8 @@ data class AppState(
     val stack: List<Screen> = listOf(Screen.Home),
     /** The deep place a bar destination was opened from, which Back returns to. */
     val returnTo: List<Screen>? = null,
+    /** Where each destination of the bar was left (its own stack), so coming back to it lands there. */
+    val tabStacks: Map<Screen, List<Screen>> = emptyMap(),
     val query: String = "",
     val results: List<Item> = emptyList(),
     val searching: Boolean = false,
@@ -193,10 +195,17 @@ class AppViewModel(
      */
     fun go(screen: Screen) = _state.update { s ->
         if (s.destinations.none { it.screen == screen }) return@update s.copy(stack = s.stack + screen)
-        val from = if (s.stack.size > 1) s.stack.filterNot { it is Screen.Player || it is Screen.Reader }.takeIf { it.size > 1 } else s.returnTo
+        // Each destination keeps its own stack: leaving Library from a title and coming back
+        // lands on that title again; the destination already open goes back to its top.
+        val here = s.stack.firstOrNull()
+        val kept = s.stack.filterNot { it is Screen.Player || it is Screen.Reader }
+        val stacks = if (here != null && kept.isNotEmpty()) s.tabStacks + (here to kept) else s.tabStacks
+        if (here == screen) return@update s.copy(stack = listOf(screen), tabStacks = stacks - screen, returnTo = null)
+        val from = if (kept.size > 1) kept else s.returnTo
         val clean = if (screen == Screen.Search && s.screen != Screen.Search) s.copy(query = "", results = emptyList(), searching = false) else s
+        val target = stacks[screen]?.takeIf { it.isNotEmpty() } ?: listOf(screen)
         // Home is where Back ends: it never leads back into another place.
-        clean.copy(stack = listOf(screen), returnTo = if (screen != Screen.Home && from != null && from.first() != screen) from else null)
+        clean.copy(stack = target, tabStacks = stacks, returnTo = if (screen != Screen.Home && target.size == 1 && from != null && from.first() != screen) from else null)
     }
 
     /** Puts [screen] in place of the current one (the next episode takes the player's place). */
