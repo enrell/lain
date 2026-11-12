@@ -656,7 +656,10 @@ const en = {
 		shows: 'Shows',
 		emptyTitle: 'Nothing tracked yet',
 		emptyBody: 'Connect an account in Settings → Connections to import what you track. AniList is supported.',
-		openConnections: 'Open Connections'
+		openConnections: 'Open Connections',
+		noMatchTitle: 'Nothing tracked of this kind',
+		noMatchBody: 'Your accounts track other things. Clear the filters to see all of it.',
+		showEverything: 'Show everything'
 	},
 	player: {
 		nextEpisode: 'Next episode',

@@ -51,6 +51,16 @@
 		}
 	}
 
+	// The filters narrow a list; over nothing tracked at all they had nothing to narrow.
+	const filtered = $derived(typeFilter !== '' || statusFilter !== '');
+	const showFilters = $derived(ready && !loadError && (entries.length > 0 || filtered));
+
+	function showEverything(): void {
+		typeFilter = '';
+		statusFilter = '';
+		void load();
+	}
+
 	function pickType(id: string): void {
 		typeFilter = id;
 		void load();
@@ -71,6 +81,7 @@
 		<p class="mt-0.5 text-sm text-muted">{t('tracking.subtitle')}</p>
 	</header>
 
+	{#if showFilters}
 	<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Media type">
 		{#each types as t (t.id)}
 			<button
@@ -99,6 +110,7 @@
 			{/each}
 		</select>
 	</div>
+	{/if}
 
 	{#if loadError}
 		<ErrorState message={loadError} retry={() => void load()} />
@@ -110,6 +122,16 @@
 				<Skeleton class="aspect-[2/3] w-full rounded-xl" />
 			{/each}
 		</div>
+	{:else if entries.length === 0 && filtered}
+		<!-- Something is tracked, just not of this kind: "connect an account" would mislead. -->
+		<EmptyState title={t('tracking.noMatchTitle')} description={t('tracking.noMatchBody')}>
+			{#snippet icon()}<ListChecks class="size-6 text-muted" />{/snippet}
+			<button
+				type="button"
+				class="inline-flex h-10 items-center rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover"
+				onclick={showEverything}>{t('tracking.showEverything')}</button
+			>
+		</EmptyState>
 	{:else if entries.length === 0}
 		<EmptyState
 			title={t('tracking.emptyTitle')}
