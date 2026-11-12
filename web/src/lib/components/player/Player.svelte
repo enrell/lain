@@ -923,6 +923,19 @@
 	/* media element events                                              */
 	/* ---------------------------------------------------------------- */
 
+	// Play means play: the title page's Play and Autoplay next both open this
+	// player, and it used to wait paused for a second press, so Autoplay next
+	// counted down into a paused episode. Once per player: a later reload of
+	// the source (a track change) keeps whatever the viewer chose since. A
+	// browser that refuses (a deep link with no gesture behind it) leaves the
+	// big play button, as before.
+	let autoStarted = false;
+	function autoStart(el: HTMLVideoElement): void {
+		if (autoStarted) return;
+		autoStarted = true;
+		if (el.paused) void el.play().catch(() => undefined);
+	}
+
 	function onLoadedMetadata(): void {
 		const el = video;
 		if (!el || !transcodeReady) return;
@@ -937,16 +950,17 @@
 				resumedFrom = baseOffset;
 				showResume = true;
 				resumeTimer = setTimeout(() => (showResume = false), 7000);
-				return;
-			}
-			const resume = resumePosition();
-			if (resume > 0 && duration > 0 && resume < duration - 5) {
-				el.currentTime = resume;
-				resumedFrom = resume;
-				showResume = true;
-				resumeTimer = setTimeout(() => (showResume = false), 7000);
+			} else {
+				const resume = resumePosition();
+				if (resume > 0 && duration > 0 && resume < duration - 5) {
+					el.currentTime = resume;
+					resumedFrom = resume;
+					showResume = true;
+					resumeTimer = setTimeout(() => (showResume = false), 7000);
+				}
 			}
 		}
+		autoStart(el);
 	}
 
 	function onDurationChange(): void {
