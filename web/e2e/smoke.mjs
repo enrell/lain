@@ -338,6 +338,25 @@ async function fillPlaceholder(placeholder, value) {
 	assert(filled, `no input with placeholder ${JSON.stringify(placeholder)}`);
 }
 
+/**
+ * Type into the search bar the screen shows: the header's field from md
+ * up (it drives /search's results), the page's own field on a phone.
+ */
+async function fillSearch(value) {
+	const filled = await evalValue(`(() => {
+		const shown = (el) => el && el.getClientRects().length > 0;
+		const header = document.getElementById('header-search');
+		const el = shown(header) ? header : document.querySelector('input[placeholder="Titles, not filenames"]');
+		if (!shown(el)) return false;
+		el.focus();
+		const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+		setter.call(el, ${JSON.stringify(value)});
+		el.dispatchEvent(new Event('input', { bubbles: true }));
+		return true;
+	})()`);
+	assert(filled, 'no search field on screen');
+}
+
 /** Set a native <select> (bound with Svelte bind:value) and fire change. */
 async function selectOption(ariaLabel, value) {
 	const ok = await evalValue(`(() => {
@@ -493,16 +512,16 @@ try {
 
 	await navigate(`${BASE}/search`);
 	await waitText('Search', 10000);
-	await fillPlaceholder('Titles, not filenames', 'frieren');
+	await fillSearch('frieren');
 	await waitFor(
 		// A search answers with titles: the two episodes of the fixture's show are one title.
 		`document.body.innerText.includes('1 title for')`,
 		15000,
 		'search results'
 	);
-	await fillPlaceholder('Titles, not filenames', 'zzzz-no-such-title');
+	await fillSearch('zzzz-no-such-title');
 	await waitText('No matches', 15000);
-	await fillPlaceholder('Titles, not filenames', '');
+	await fillSearch('');
 	console.log('   search results and empty state verified');
 
 	/* ---------------- item + enrichment ---------------- */
