@@ -274,7 +274,9 @@ const en = {
 			},
 			backup: {
 				snapshot: 'One archive of the database, safe to take while the server runs.',
-				restore: 'Deliberately offline: the server is stopped first.'
+				restore: 'Deliberately offline: the server is stopped first.',
+				restoreSteps:
+					'Stop the server, move its data folder aside (lain restore writes only into an empty one), restore the archive, start again. The CLI checks the archive before writing anything; delete the old folder once everything is there.'
 			},
 			downloads: {
 				queue: 'Files the server fetches over HTTP onto its own disk.',
