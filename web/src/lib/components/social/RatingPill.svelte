@@ -2,7 +2,9 @@
 	/*
 	 * Your score beside a title's main action, as the app shows it: "Rate"
 	 * before you gave one, "8" after, with everyone's average when others
-	 * scored it too. It opens the social block's rating dialog.
+	 * scored it too. It opens the social block's rating dialog. It wears the
+	 * title row's one quiet fill; the filled star, as the heart's fill, is
+	 * what says a score is given.
 	 */
 	import Star from '@lucide/svelte/icons/star';
 	import { ratingState } from '$lib/social/favorite.svelte';
@@ -13,10 +15,7 @@
 {#if ratingState.ready}
 	<button
 		type="button"
-		class={[
-			'inline-flex h-11 shrink-0 items-center gap-2 rounded-md px-3.5 text-sm font-medium transition-colors hover:bg-surface-hover',
-			ratingState.mine > 0 ? 'bg-accent/15 text-foreground' : 'bg-foreground/[0.08] text-foreground'
-		].join(' ')}
+		class="inline-flex h-11 shrink-0 items-center gap-2 rounded-md bg-foreground/[0.08] px-4 text-sm font-medium text-foreground transition-colors hover:bg-foreground/[0.14]"
 		title="Your score (R)"
 		onclick={() => ratingState.ask()}
 	>

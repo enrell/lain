@@ -392,8 +392,10 @@
 		<button type="button" class="absolute left-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur md:hidden" aria-label="Back" onclick={() => history.back()}>
 			<ArrowLeft class="size-5" aria-hidden="true" />
 		</button>
-		<!-- One template for every kind of title: the cover, then what it is and what it can do. -->
-		<div class="relative mx-auto flex w-full max-w-[1800px] flex-col gap-5 px-5 pb-6 pt-16 sm:px-8 md:min-h-[26rem] md:flex-row md:items-end md:gap-10 md:pb-10 md:pt-32 lg:px-10">
+		<!-- One template for every kind of title: the cover, then what it is and what it can do.
+		     Both start on one line: aligned at the bottom, the cover floated mid-hero beside a
+		     long synopsis and the copy floated beside a cover taller than it. -->
+		<div class="relative flex w-full flex-col gap-5 pb-6 pt-16 md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
 			<div class="aspect-[2/3] w-24 shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
@@ -420,21 +422,21 @@
 				     third line of its own. -->
 				<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
 					{#if resumeTarget}
-						<LinkButton href={playHref(resumeTarget.id)} size="lg" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
+						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
 						</LinkButton>
 					{:else}
-						<Button size="lg" disabled class="max-md:w-[calc(100%-3.25rem)]" title="The files are no longer on disk">
+						<Button size="rowMain" disabled class="max-md:w-[calc(100%-3.25rem)]" title="The files are no longer on disk">
 							<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? 'Read' : 'Play'}
 						</Button>
 					{/if}
 					<!-- The heart keeps the main action's row, on a phone too. -->
 					<FavoriteButton />
 					<RatingPill />
-					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} size="md" /></span>{/if}
+					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} variant="tonal" size="row" /></span>{/if}
 					<!-- D, as on a film's page; while selecting, D saves the selection instead. -->
-					<DownloadFileButton items={group.items} variant="ghost" size="md" label={t('download.all')} hotkey={!selecting} />
-					<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreEntries} variant="ghost" size="md" compact>
+					<DownloadFileButton items={group.items} variant="tonal" size="row" label={t('download.all')} hotkey={!selecting} />
+					<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreEntries} variant="tonal" size="row" compact>
 						{#snippet icon()}<Ellipsis class="size-4" aria-hidden="true" />{/snippet}
 					</Menu>
 				</div>

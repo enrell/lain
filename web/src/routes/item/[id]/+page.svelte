@@ -339,7 +339,7 @@
 			<button type="button" class="absolute left-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur md:hidden" aria-label="Back" onclick={() => history.back()}>
 				<ArrowLeft class="size-5" aria-hidden="true" />
 			</button>
-			<div class="relative mx-auto flex w-full max-w-[1800px] flex-col gap-5 px-5 pb-6 pt-16 sm:px-8 md:min-h-[26rem] md:flex-row md:items-end md:gap-10 md:pb-10 md:pt-32 lg:px-10">
+			<div class="relative flex w-full flex-col gap-5 pb-6 pt-16 md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
 				<div class="w-24 shrink-0 md:w-52">
 					<Poster {item} {enrichment} class="aspect-[2/3] rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10" priority />
 				</div>
@@ -365,21 +365,21 @@
 					     optional prose, so it is on screen on arrival at 320x568. -->
 					<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
 						{#if playable || (!item.missing && preferredPlayer !== 'browser')}
-							<LinkButton href={playHref(item.id)} size="lg" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
+							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
 								<Play class="size-4 fill-current" />
 								{reading ? (resumeAt > 0 ? `Continue from page ${Math.floor(resumeAt)}` : 'Read') : resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
 							</LinkButton>
 						{:else}
-							<Button size="lg" class="max-md:w-[calc(100%-3.25rem)]" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
+							<Button size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
 								<Play class="size-4" /> Play
 							</Button>
 						{/if}
 						<!-- The heart keeps the main action's row, on a phone too. -->
 						<FavoriteButton />
 						<RatingPill />
-						{#if !item.missing && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={item.id} size="md" /></span>{/if}
-						{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="ghost" size="md" label={t('download.one')} />{/if}
-						<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreSingle} variant="ghost" size="md">
+						{#if !item.missing && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={item.id} variant="tonal" size="row" /></span>{/if}
+						{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="tonal" size="row" label={t('download.one')} />{/if}
+						<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreSingle} variant="tonal" size="row" compact>
 							{#snippet icon()}<Ellipsis class="size-4" aria-hidden="true" />{/snippet}
 						</Menu>
 					</div>

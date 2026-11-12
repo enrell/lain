@@ -47,8 +47,9 @@
 		hint?: string;
 		/**
 		 * On a phone, the icon alone in a square the size of the icon buttons
-		 * beside it; the label stays for screen readers. Spelled out, it was
-		 * the word that pushed a row of actions onto a line of its own.
+		 * beside it, in the variant's own fill (an outline made it a fifth
+		 * kind of button); the label stays for screen readers. Spelled out,
+		 * it was the word that pushed a row of actions onto a line of its own.
 		 */
 		compact?: boolean;
 		class?: string;
@@ -60,7 +61,7 @@
 		<!-- At icon size the trigger is the icon alone (a card's ⋮), named for
 		     screen readers by its label; compact keeps the word on a wide screen only. -->
 		<DropdownMenu.Trigger
-			class={buttonClasses(variant, size, [compact ? 'max-md:size-11 max-md:border max-md:border-line max-md:px-0' : '', className].join(' '))}
+			class={buttonClasses(variant, size, [compact ? 'max-md:size-11 max-md:px-0' : '', className].join(' '))}
 			title={hint ?? (size === 'icon' ? label : undefined)}
 			aria-label={size === 'icon' ? label : undefined}
 		>

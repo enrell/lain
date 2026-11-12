@@ -226,8 +226,13 @@ details.settings-section > summary {
 }
 
 .title-hero {
-	/* Break out of the centred page column to the viewport edges. */
+	/* Break out of the centred page column to the viewport edges, and pad
+	   back by the same amount so the content sits exactly on the column.
+	   Both percentages are of the column; 100vw counts the scrollbar's
+	   gutter, so an inner column of its own (max-width + padding) landed
+	   half a scrollbar left of every other page edge. */
 	margin-inline: calc(50% - 50vw);
+	padding-inline: calc(50vw - 50%);
 }
 
 .title-hero-name {
@@ -467,13 +472,4 @@ select:not(.chrome-select, [multiple], [size]) {
 .bg-accent kbd {
 	color: inherit;
 	opacity: 0.8;
-}
-
-/* On a phone a title's quiet actions sit on a filled ground, as the app's
-   do: bare words in two columns were weak targets, and outlines on
-   near-black read as a wireframe. */
-@media (max-width: 767px) {
-	.title-actions > button {
-		background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
-	}
 }
