@@ -1,11 +1,10 @@
-import { languageMatches } from './track-language';
-
 /*
  * Sidecar subtitles (docs/slices/acquisition.md, A-29): files next to the
  * media, listed by GET /api/items/{id}/sidecars and served as WebVTT.
  * They share the player's subtitle menu with embedded tracks; their
  * option values carry a prefix so an embedded stream index never reaches
- * a sidecar URL and a sidecar never reaches a transcode request.
+ * a sidecar URL and a sidecar never reaches a transcode request. Which
+ * one plays by default is track-language.ts's rule over both (D-280).
  */
 
 export interface SidecarTrack {
@@ -42,18 +41,4 @@ export function sidecarLabel(s: SidecarTrack): string {
 	if (s.forced) parts.push('forced');
 	if (s.hi) parts.push('SDH');
 	return parts.join(' · ');
-}
-
-/**
- * D-071 extended to sidecars: when audio is not in the account language
- * and no embedded subtitle matches, show a matching full (not forced)
- * sidecar.
- */
-export function pickSidecar(
-	sidecars: SidecarTrack[],
-	language: string,
-	state: { audioMatches: boolean; embeddedFound: boolean }
-): number | undefined {
-	if (!language || state.audioMatches || state.embeddedFound) return undefined;
-	return sidecars.find((s) => !s.forced && languageMatches(s.language, language))?.index;
 }
