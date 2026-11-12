@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Enrichment } from '$lib/api/types';
 import { groupItems } from '$lib/utilities/grouping';
 import {
-	SAMPLE, STILLS_CAP, frameDecided, frameFor, frameOf, guessShape, measure, recordShape, sampleArt, shapeOf, showsOwnStill, stillKey,
-	tallyStill, usualStill
+	SAMPLE, STILLS_CAP, frameDecided, frameFor, frameOf, guessShape, knownShape, measure, recordShape, sampleArt, shapeOf, showsOwnStill,
+	stillKey, tallyStill, toldShape, usualStill
 } from './shapes.svelte';
 
 function item(id: string, title: string, kind = 'video', episode = 0, library = 'lib'): CatalogItem {
@@ -83,6 +83,37 @@ describe('shapes', () => {
 		expect(full[0] + full[1]).toBeLessThanOrEqual(STILLS_CAP);
 		expect(usualStill(full)).toBe('portrait');
 	});
+	it('takes what the server tells of a file\'s own picture (D-282)', () => {
+		const told = (id: string, source: string, aspect?: number, kind = 'video') => ({ ...item(id, id, kind, 0, 'told'), thumbnail: { source, aspect } });
+		expect(toldShape(told('p', 'sidecar', 0.667))).toBe('portrait');
+		expect(toldShape(told('w', 'sidecar', 1.778))).toBe('landscape');
+		// Near square is upright, as a measured picture is.
+		expect(toldShape(told('q', 'sidecar', 1.1))).toBe('portrait');
+		expect(toldShape(told('c', 'cover', undefined, 'comic'))).toBe('portrait');
+		// A frame is the video's shape, and a still whose header did not read says nothing.
+		expect(toldShape(told('f', 'frame'))).toBeUndefined();
+		expect(toldShape(told('s', 'sidecar'))).toBeUndefined();
+		expect(toldShape(item('o', 'Old server'))).toBeUndefined();
+		// Overlay art comes first, as the card shows it first.
+		expect(knownShape(told('p', 'sidecar', 0.667), banner('p'))).toBe('landscape');
+		expect(knownShape(told('f', 'frame'), null)).toBeUndefined();
+		expect(guessShape(told('p2', 'sidecar', 0.667), null)).toBe('portrait');
+		// Even in a library whose stills have been wide.
+		for (let n = 0; n < 4; n += 1) recordShape(`tw${n}`, 1280, 720, item(`tw${n}`, 'W', 'video', 0, 'told'));
+		expect(guessShape(told('p3', 'sidecar', 0.667), null)).toBe('portrait');
+	});
+	it('tallies a told frame apart from what was learned before the server told stills apart', () => {
+		const frame = (id: string) => ({ ...item(id, id, 'video', 0, 'mixed'), thumbnail: { source: 'frame' } });
+		expect(stillKey(frame('a'))).toBe('mixed/frames');
+		// Learned from posters before D-282: the library's old tally is upright.
+		for (let n = 0; n < 3; n += 1) recordShape(`mp${n}`, 600, 900, item(`mp${n}`, 'P', 'video', 0, 'mixed'));
+		expect(guessShape(item('old', 'Old', 'video', 0, 'mixed'), null)).toBe('portrait');
+		// A frame is not made upright by it.
+		expect(guessShape(frame('b'), null)).toBe('landscape');
+		// Upright phone clips are learned as frames.
+		for (let n = 0; n < 3; n += 1) recordShape(`mf${n}`, 720, 1280, frame(`mf${n}`));
+		expect(guessShape(frame('c'), null)).toBe('portrait');
+	});
 	it('tells a file\'s own still from overlay art and pages', () => {
 		expect(showsOwnStill(item('x', 'X'), null)).toBe(true);
 		expect(showsOwnStill(item('x', 'X'), art('x'))).toBe(false);
@@ -134,6 +165,16 @@ describe('frames', () => {
 		recordShape('u1', 600, 900);
 		// Two of four upright: a tie at worst, and a tie is portrait.
 		expect(frameDecided(upright)).toBe(true);
+	});
+	it('is decided by what is known before a picture is measured', () => {
+		const told = (id: string, aspect: number) => ({ ...item(id, id, 'video', 0, 'known'), thumbnail: { source: 'sidecar', aspect } });
+		const groups = groupItems([told('k0', 0.667), told('k1', 0.667), item('k2', 'K2', 'video', 0, 'known')]);
+		expect(frameDecided(groups)).toBe(true);
+		expect(frameOf(groups, () => null)).toBe('portrait');
+		const unknown = groupItems([told('k3', 0.667), item('k4', 'K4', 'video', 0, 'known'), item('k5', 'K5', 'video', 0, 'known')]);
+		expect(frameDecided(unknown)).toBe(false);
+		// Overlay art counts as known.
+		expect(frameDecided(unknown, (id) => (id === 'k4' ? art(id) : null))).toBe(true);
 	});
 	it('measures nothing outside a browser and nothing already known', async () => {
 		await expect(measure([{ id: 's1', src: 'x.jpg' }, { id: 'new', src: '' }])).resolves.toBeUndefined();

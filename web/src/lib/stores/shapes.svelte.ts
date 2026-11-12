@@ -11,19 +11,24 @@ import type { SeriesGroup } from '$lib/utilities/grouping';
  * frame over a blurred copy of itself, so nothing is cropped or
  * stretched and one row never mixes a poster with a widescreen card.
  *
- * A set is drawn as soon as its titles are known, in the frame guessed
- * from what is known before a picture loads (`guessShape`, `guessFrame`);
- * its first pictures are then measured (`measure`, `settleFrame`) and the
- * frame corrected once if the guess was wrong, then held: a grid that
- * voted with its pictures as they arrived changed shape under the eye,
- * and one that waited for them showed nothing for seconds on a cold cache.
+ * A set is drawn as soon as its titles are known, in the frame its
+ * pictures make by what is known before one loads (`guessShape`,
+ * `guessFrame`): the server says what each file's own picture is (D-282),
+ * and overlay art says what it is. Only pictures nothing is known about
+ * are then measured (`measure`, `settleFrame`) and the frame corrected
+ * once if the guess was wrong, then held: a grid that voted with its
+ * pictures as they arrived changed shape under the eye, and one that
+ * waited for them showed nothing for seconds on a cold cache.
  */
 export type Shape = 'portrait' | 'landscape';
 
 const measured = new SvelteMap<string, Shape>();
 
 /** The file a still belongs to, as far as its library's tally goes (see `stillKey`). */
-export type StillOf = Pick<CatalogItem, 'library_id' | 'season' | 'episode'>;
+export type StillOf = Pick<CatalogItem, 'library_id' | 'season' | 'episode' | 'thumbnail'>;
+
+/** Wider than this (width over height) is a wide picture; up to it, upright. */
+const WIDE = 1.15;
 
 /**
  * Records a loaded picture's shape. `still` is given when the picture is
@@ -32,22 +37,23 @@ export type StillOf = Pick<CatalogItem, 'library_id' | 'season' | 'episode'>;
  */
 export function recordShape(id: string, width: number, height: number, still?: StillOf): void {
 	if (width <= 0 || height <= 0) return;
-	const shape: Shape = width > height * 1.15 ? 'landscape' : 'portrait';
+	const shape: Shape = width > height * WIDE ? 'landscape' : 'portrait';
 	// Counted once a visit: a card drawn again loads the same picture again.
 	if (still && !measured.has(id)) noteStill(stillKey(still), shape);
 	if (measured.get(id) !== shape) measured.set(id, shape);
 }
 
 /*
- * What a library's files come with. A video's still is a poster when its
- * file came with one (the server serves that in place of a frame), and
- * nothing the client is given says which; but a library's files are
- * mostly alike: a films folder of posters, a clips folder of frames. So
- * the stills measured in each library are tallied, and the shape most of
- * them had is the guess for its stills not measured yet. The tallies are
- * kept in this browser, so a later visit guesses right before a single
- * picture has loaded; without them the guess is a frame, and the check
- * after drawing corrects it once.
+ * What a library's files come with, for what the server does not say. A
+ * server since D-282 tells a still that came with the file and its shape,
+ * and a frame, whose shape is the video's and not known; an older one says
+ * nothing. A library's files are mostly alike (a films folder of posters,
+ * a clips folder of wide frames, a folder of phone clips of upright
+ * ones), so the stills measured in each library are tallied, and the shape
+ * most of them had is the guess for its stills not measured yet. The
+ * tallies are kept in this browser, so a later visit guesses right before
+ * a single picture has loaded; without them the guess is wide, and the
+ * check after drawing corrects it once.
  */
 const STILLS_KEY = 'lain.frames.stills';
 /** Past this many stills a tally is halved, so what a library holds now outweighs what it held. */
@@ -67,6 +73,10 @@ const stills = readStills();
  * search, must not count against the posters the cards show.
  */
 export function stillKey(item: StillOf): string {
+	// A frame told as one is tallied with the library's frames only: a
+	// tally learned from posters before the server told them apart must
+	// not make its frames upright.
+	if (item.thumbnail?.source === 'frame') return `${item.library_id}/frames`;
 	return item.season > 1 || item.episode > 1 ? `${item.library_id}/later` : item.library_id;
 }
 
@@ -121,6 +131,31 @@ export function showsOwnStill(item: Pick<CatalogItem, 'kind'>, enrichment: Enric
 	return !enrichment?.poster && !enrichment?.cover && !isReadable(item.kind);
 }
 
+/**
+ * The shape of a file's own picture as the server tells it (D-282): a
+ * still that came with the file by the aspect of its header, a comic's
+ * cover page upright. `undefined` for a frame (the video's shape) and for
+ * what an older server does not say.
+ */
+export function toldShape(item: Pick<CatalogItem, 'thumbnail'>): Shape | undefined {
+	const told = item.thumbnail;
+	if (!told) return undefined;
+	if (typeof told.aspect === 'number' && told.aspect > 0) return told.aspect > WIDE ? 'landscape' : 'portrait';
+	return told.source === 'cover' ? 'portrait' : undefined;
+}
+
+/**
+ * The shape of the picture a card shows when it is known before the
+ * picture loads: overlay art (a poster upright, a banner wide) or what the
+ * server tells of the file's own picture. `undefined` leaves it to be
+ * measured.
+ */
+export function knownShape(item: Pick<CatalogItem, 'thumbnail'>, enrichment: Enrichment | null | undefined): Shape | undefined {
+	if (enrichment?.poster) return 'portrait';
+	if (enrichment?.cover) return 'landscape';
+	return toldShape(item);
+}
+
 /** The measured shape, or `guess` until the picture has loaded. */
 export function shapeOf(id: string, guess: Shape): Shape {
 	return measured.get(id) ?? guess;
@@ -132,16 +167,16 @@ export const RATIO: Record<Shape, number> = { portrait: 2 / 3, landscape: 16 / 9
 /**
  * What a card's picture is before it loads, in the order a card picks
  * one (poster, then cover, then the file's own still or first page):
- * poster art stands upright; a cover is the provider's wide banner; a
- * reading file's first page stands upright; a video's still is what its
- * library's stills have been in this browser, else a wide frame. The
- * library's type says no more than the kind does: a comics or manga
- * library holds reading files, and a films or series library does not say
- * whether its files came with posters.
+ * what is known (`knownShape`); else a reading file's first page stands
+ * upright, and a video's still is what its library's stills have been in
+ * this browser, else a wide frame. The library's type says no more than
+ * the kind does: a comics or manga library holds reading files, and a
+ * films or series library does not say whether its files came with
+ * posters.
  */
 export function guessShape(item: Pick<CatalogItem, 'kind'> & StillOf, enrichment: Enrichment | null | undefined): Shape {
-	if (enrichment?.poster) return 'portrait';
-	if (enrichment?.cover) return 'landscape';
+	const known = knownShape(item, enrichment);
+	if (known) return known;
 	if (isReadable(item.kind)) return 'portrait';
 	return usualStill(stills.get(stillKey(item))) ?? 'landscape';
 }
@@ -177,16 +212,17 @@ export function sampleArt(groups: SeriesGroup[]): CatalogItem[] {
 }
 
 /**
- * Whether the pictures measured so far decide a set's frame, whatever the
- * others turn out to be: more than half of its first titles measured wide,
- * or too few left to make them so. A check need not wait for the rest.
+ * Whether the pictures known or measured so far decide a set's frame,
+ * whatever the others turn out to be: more than half of its first titles
+ * wide, or too few left to make them so. A check need not wait for the
+ * rest.
  */
-export function frameDecided(groups: SeriesGroup[]): boolean {
+export function frameDecided(groups: SeriesGroup[], enrichment: (id: string) => Enrichment | null | undefined = () => null): boolean {
 	const art = sampleArt(groups);
 	let wide = 0;
 	let open = 0;
 	for (const item of art) {
-		const shape = measured.get(item.id);
+		const shape = measured.get(item.id) ?? knownShape(item, enrichment(item.id));
 		if (shape === undefined) open += 1;
 		else if (shape === 'landscape') wide += 1;
 	}

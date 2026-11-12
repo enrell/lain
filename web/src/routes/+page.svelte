@@ -17,7 +17,8 @@
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { ensureEnrichments, ensureItems, ensureLibraries } from '$lib/stores/media-cache.svelte';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
-	import { settleFrame } from '$lib/stores/frames';
+	import { frameNow, settleFrame } from '$lib/stores/frames';
+	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { groupItems } from '$lib/utilities/grouping';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -39,10 +40,15 @@
 	const nextUpWatching = $derived(nextUpItems.filter((i) => !isReadable(i.kind)));
 	const nextUpReading = $derived(nextUpItems.filter((i) => isReadable(i.kind)));
 	let recent = $state<CatalogItem[]>([]);
-	// Each library's row, in the frame its pictures decide (measured before it
-	// is drawn, see `settleFrame`): a films library of posters was cut into
-	// widescreen cards because its type said nothing of its pictures.
+	// Each library's row, in the frame its pictures make (see `guessFrame`):
+	// a films library of posters was cut into widescreen cards because its
+	// type said nothing of its pictures. Drawn with the page in the frame
+	// known before a picture loads, then checked once.
 	let libraryRows = $state<{ lib: Library; items: CatalogItem[]; layout: 'poster' | 'landscape' }[]>([]);
+	const layoutOf = (frame: Shape) => (frame === 'portrait' ? ('poster' as const) : ('landscape' as const));
+	// A row lists files, so each file is its own title here.
+	const titlesOf = (items: CatalogItem[]) => items.flatMap((i) => groupItems([i]));
+	let rowsRun = 0;
 	let catalogTotal = $state(0);
 
 	const NEXT_UP_TITLES = 6;
@@ -126,14 +132,17 @@
 				...shown.flatMap((r) => r.items.map((i) => i.id))
 			];
 			await ensureEnrichments(ids);
-			// Below the fold: the page is drawn meanwhile, and the rows come in together.
-			void Promise.all(
-				shown.map(async (r) => ({
-					...r,
-					// A row lists files, so each file is its own title here.
-					layout: (await settleFrame(r.items.flatMap((i) => groupItems([i])))) === 'portrait' ? ('poster' as const) : ('landscape' as const)
-				}))
-			).then((settled) => (libraryRows = settled));
+			// Drawn with the page, in the frame the server's word on each
+			// picture gives (D-282); a row of pictures nothing is known about is
+			// checked once and changes only if that was wrong.
+			const mine = ++rowsRun;
+			libraryRows = shown.map((r) => ({ ...r, layout: layoutOf(frameNow(titlesOf(r.items))) }));
+			shown.forEach((r, i) => {
+				void settleFrame(titlesOf(r.items)).then((settled) => {
+					const row = libraryRows[i];
+					if (mine === rowsRun && row && row.layout !== layoutOf(settled)) libraryRows[i] = { ...row, layout: layoutOf(settled) };
+				});
+			});
 		} catch (err) {
 			error = errorMessage(err);
 		} finally {

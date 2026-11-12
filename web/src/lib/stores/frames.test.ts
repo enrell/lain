@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CatalogItem } from '$lib/api/types';
 import { groupItems } from '$lib/utilities/grouping';
-import { guessFrame, settleFrame } from './frames';
+import { guessFrame, settleFrame, wideStill } from './frames';
 import { enrichmentCache, libraryCache } from './media-cache.svelte';
 import { guessShape, MEASURE_WAIT_MS, measure } from './shapes.svelte';
 
@@ -97,6 +97,49 @@ describe('a set drawn before its pictures', () => {
 		await Promise.all([pub, priv]);
 		expect(guessShape(video('p-next', 'pub'), null)).toBe('portrait');
 		expect(guessShape(video('q-next', 'priv'), null)).toBe('landscape');
+	});
+
+	it('draws a set the server told about in its final frame and measures none of it (D-282)', async () => {
+		const posters = Array.from({ length: 4 }, (_, i) => ({ ...video(`k${i}`, 'told'), thumbnail: { source: 'sidecar', aspect: 0.667 } }));
+		const frames = Array.from({ length: 3 }, (_, i) => ({ ...video(`kf${i}`, 'told'), thumbnail: { source: 'frame' } }));
+		for (const i of [...posters, ...frames]) enrichmentCache.set(i.id, null);
+		const groups = groupItems([...posters, ...frames]);
+		await expect(guessFrame(groups)).resolves.toBe('portrait');
+		// Four of seven upright are told: the frames cannot turn it, so nothing is loaded.
+		await expect(settleFrame(groups)).resolves.toBe('portrait');
+		expect(FakeImage.made).toHaveLength(0);
+		// Frames alone are measured: their shape is the video's.
+		const clips = groupItems(frames.map((f) => ({ ...f, id: `${f.id}-c`, title: `${f.title} c` })));
+		for (const g of clips) enrichmentCache.set(g.items[0].id, null);
+		const settled = settleFrame(clips);
+		await flush();
+		expect(FakeImage.made).toHaveLength(3);
+		for (const img of FakeImage.made) img.answer(1280, 720);
+		await expect(settled).resolves.toBe('landscape');
+	});
+
+	it('loads only the pictures nothing is known about when the known ones leave it open (D-282)', async () => {
+		// Two told posters and three frames: not decided before a frame answers.
+		const posters = Array.from({ length: 2 }, (_, i) => ({ ...video(`ok${i}`, 'open'), thumbnail: { source: 'sidecar', aspect: 0.667 } }));
+		const frames = Array.from({ length: 3 }, (_, i) => ({ ...video(`of${i}`, 'open'), thumbnail: { source: 'frame' } }));
+		for (const i of [...posters, ...frames]) enrichmentCache.set(i.id, null);
+		const settled = settleFrame(groupItems([...posters, ...frames]));
+		await flush();
+		// A told poster is never fetched to learn what the server already said.
+		expect(FakeImage.made.map((i) => i.src).filter((src) => src.includes('/ok'))).toEqual([]);
+		expect(FakeImage.made).toHaveLength(3);
+		for (const img of FakeImage.made) img.answer(1280, 720);
+		await expect(settled).resolves.toBe('landscape');
+	});
+
+	it('gives a wide slot an episode\'s frame in place of an upright still', () => {
+		const ep = { ...video('ep1', 'shows'), kind: 'episode', episode: 1 };
+		expect(wideStill({ ...ep, thumbnail: { source: 'sidecar', aspect: 0.667 } }, 480)).toContain('t=10');
+		expect(wideStill({ ...ep, thumbnail: { source: 'sidecar', aspect: 1.778 } }, 480)).not.toContain('t=');
+		expect(wideStill({ ...ep, thumbnail: { source: 'frame' } }, 480)).not.toContain('t=');
+		expect(wideStill(ep, 480)).not.toContain('t=');
+		// A book keeps its cover page.
+		expect(wideStill({ ...ep, kind: 'manga', thumbnail: { source: 'cover' } }, 480)).not.toContain('t=');
 	});
 
 	it('measures each picture once', async () => {

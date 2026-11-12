@@ -392,8 +392,29 @@ pub struct CatalogItem {
     pub root: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub rel_path: String,
+    /// D-282: what the item's thumbnail is, filled by the gateway on
+    /// catalog and search answers and never stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumbnail: Option<ThumbnailInfo>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
+}
+
+/// What `GET /api/items/{id}/thumbnail` serves without a time (D-269),
+/// said before it is fetched (D-282): a client draws the card in its
+/// final shape at once instead of measuring the picture first.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ThumbnailInfo {
+    /// `sidecar`: a still that came with the file (`<name>-poster.*`,
+    /// `<name>-thumb.*`, `.metadata/thumbs/`); `cover`: a comic
+    /// archive's cover page (the first upright page); `frame`: a frame
+    /// the server cuts from the video.
+    pub source: String,
+    /// Width over height, when the server read it from the picture's
+    /// header (a sidecar); absent when unknown (a frame is the video's
+    /// shape, which the catalog does not hold).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspect: Option<f64>,
 }
 
 /// The paged envelope of catalog reads (default limit 50, cap 500).
