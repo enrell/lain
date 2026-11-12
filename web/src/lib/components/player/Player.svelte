@@ -583,7 +583,12 @@
 		const url = api.playback.hlsUrl(item.id, session.token, transcodeSession, 'index.m3u8');
 		destroyHLS();
 		if (Hls.isSupported()) {
-			hls = new Hls({ enableWorker: true });
+			// A session's timeline starts where the viewer is (start_sec), so
+			// play starts at its 0. Left to itself hls.js reads the growing
+			// playlist (no ENDLIST yet) as live and starts near its edge: a
+			// fast session, such as an audio switch that copies the video,
+			// had an hour written by then and the viewer landed an hour on.
+			hls = new Hls({ enableWorker: true, startPosition: 0 });
 			let mediaRecoveries = 0;
 			hls.on(Hls.Events.ERROR, (_event, data) => {
 				if (!data.fatal) return;
