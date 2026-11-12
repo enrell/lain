@@ -47,6 +47,15 @@ export function formatLength(seconds: number | null | undefined): string {
 	return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
+/**
+ * What is left of a video under way, one rule for every card, hero and
+ * line: "9 sec left", "24 min left". An episode's card rounded to whole
+ * minutes ("1 min left") while the hero above it said "9 sec left".
+ */
+export function timeLeft(position: number, duration: number): string {
+	return i18n.t('title.left', { time: formatLength(Math.max(1, duration - position)) });
+}
+
 export function formatBytes(bytes: number | null | undefined): string {
 	if (!bytes || !Number.isFinite(bytes) || bytes <= 0) return '';
 	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
@@ -72,7 +81,11 @@ export function formatRelative(unixSeconds: number | null | undefined): string {
 	return i18n.formatRelative(unixSeconds * 1000);
 }
 
-/** "S02E05", "2023", or the library kind — whatever actually exists. */
+/**
+ * "S02E05", "2023", a book's volume — whatever actually exists, or
+ * nothing. Never the raw kind: "video" under a film said nothing a card
+ * does not show (see `lengthOf` for what a card says instead).
+ */
 export function mediaSubtitle(item: CatalogItem): string {
 	const parts: string[] = [];
 	if (isReadable(item.kind)) {
@@ -84,7 +97,6 @@ export function mediaSubtitle(item: CatalogItem): string {
 		parts.push(`EP ${item.episode}`);
 	}
 	if (item.year > 0) parts.push(String(item.year));
-	if (parts.length === 0 && item.kind) parts.push(item.kind);
 	return parts.join(' · ');
 }
 

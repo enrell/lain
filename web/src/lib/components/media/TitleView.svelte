@@ -33,7 +33,7 @@
 	import { framedGrid } from '$lib/components/media/grid';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
-	import { formatLength, formatTime } from '$lib/utilities/format';
+	import { formatLength, formatTime, timeLeft } from '$lib/utilities/format';
 	import { playTarget } from '$lib/utilities/progress';
 	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
 	import Settings2 from '@lucide/svelte/icons/settings-2';
@@ -257,12 +257,14 @@
 					]
 						.filter(Boolean)
 						.join(' · ')
-				: `${t('title.left', { time: formatLength(Math.max(1, resumeProgress!.duration_sec - resumeProgress!.position_sec)) })} · ${watched} of ${group.count} watched`
+				: [timeLeft(resumeProgress!.position_sec, resumeProgress!.duration_sec), watched > 0 ? t('title.watchedOf', { done: watched, count: group.count }) : '']
+						.filter(Boolean)
+						.join(' · ')
 			: available.length === 0
-				? 'All files missing'
+				? t('title.allMissing')
 				: watched > 0
-					? `${watched} of ${group.count} ${reading ? 'read' : 'watched'}`
-					: 'Not started'
+					? t(reading ? 'title.readOf' : 'title.watchedOf', { done: watched, count: group.count })
+					: t('title.notStarted')
 	);
 
 	// The title's own management joins what the page passed in.
@@ -282,7 +284,7 @@
 		if (progress && !progress.completed && progress.duration_sec > 0 && progress.position_sec > 0) {
 			return reading
 				? `Page ${Math.floor(progress.position_sec)} of ${Math.floor(progress.duration_sec)}`
-				: t('title.left', { time: formatLength(Math.max(60, progress.duration_sec - progress.position_sec)) });
+				: timeLeft(progress.position_sec, progress.duration_sec);
 		}
 		if (progress?.completed) return reading ? 'Read' : length ? t('title.watchedLength', { time: length }) : t('title.watched');
 		return length || (reading ? 'Unread' : 'Not watched');

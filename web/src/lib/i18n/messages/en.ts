@@ -913,6 +913,8 @@ const en = {
 		readingAt: '{part}: page {page} of {pages}',
 		readOf: '{done} of {count} read',
 		watchedOf: '{done} of {count} watched',
+		notStarted: 'Not started',
+		allMissing: 'All files missing',
 		partActions: 'More for {part}',
 		markWatched: 'Mark watched',
 		markUnwatched: 'Mark unwatched',

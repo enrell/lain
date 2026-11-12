@@ -6,7 +6,7 @@
 	import { t } from '$lib/i18n';
 	import { wideStill } from '$lib/stores/frames';
 	import { toldShape } from '$lib/stores/shapes.svelte';
-	import { formatLength, mediaSubtitle } from '$lib/utilities/format';
+	import { mediaSubtitle, timeLeft } from '$lib/utilities/format';
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	import { progressRatio } from '$lib/utilities/progress';
 	import ProgressBar from './ProgressBar.svelte';
@@ -46,7 +46,7 @@
 		progress && !progress.completed && progress.duration_sec - progress.position_sec > 0
 			? reading
 				? `Page ${Math.max(1, Math.floor(progress.position_sec))} of ${Math.floor(progress.duration_sec)}`
-				: t('title.left', { time: formatLength(progress.duration_sec - progress.position_sec) })
+				: timeLeft(progress.position_sec, progress.duration_sec)
 			: ''
 	);
 	const title = $derived(series);

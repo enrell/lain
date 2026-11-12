@@ -8,7 +8,7 @@
 	import { artItem as pickArt } from '$lib/utilities/browse';
 	import { readingLabel } from '$lib/reader/kinds';
 	import { episodeLabel } from '$lib/utilities/grouping';
-	import { formatLength } from '$lib/utilities/format';
+	import { formatLength, timeLeft } from '$lib/utilities/format';
 	import { t } from '$lib/i18n';
 	import ProgressBar from './ProgressBar.svelte';
 	import type { Shape } from '$lib/stores/shapes.svelte';
@@ -102,7 +102,7 @@
 				if (group.count === 1) {
 					return reading
 						? t('browse.pageOf', { page: Math.max(1, Math.floor(p.position_sec)), pages: Math.floor(p.duration_sec) })
-						: t('title.left', { time: formatLength(Math.max(1, p.duration_sec - p.position_sec)) });
+						: timeLeft(p.position_sec, p.duration_sec);
 				}
 				return reading
 					? t('browse.partPage', { part, page: Math.max(1, Math.floor(p.position_sec)), pages: Math.floor(p.duration_sec) })
