@@ -4,7 +4,9 @@
 	 * rail under the page. Fetched once per title; a failure or an empty
 	 * library shows nothing.
 	 */
+	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
+	import type { Progress } from '$lib/api/types';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
 	import { groupItems, type SeriesGroup } from '$lib/utilities/grouping';
 	import MediaCard from './MediaCard.svelte';
@@ -13,6 +15,16 @@
 	let { libraryId, exclude, heading }: { libraryId: string; exclude: string[]; heading: string } = $props();
 
 	let groups = $state<SeriesGroup[]>([]);
+	// The account's positions, so these cards say watched or under way as the
+	// same titles do on the library's shelves; without them a rail of bare
+	// posters read as titles never opened.
+	let progressMap = $state<Map<string, Progress>>(new Map());
+	onMount(() => {
+		void api.me
+			.continueWatching()
+			.then((list) => (progressMap = new Map(list.map((p) => [p.item_id, p]))))
+			.catch(() => {});
+	});
 	$effect(() => {
 		const id = libraryId;
 		const skip = new Set(exclude);
@@ -38,9 +50,14 @@
 			{#each groups as group (group.key)}
 				<div class="w-[40vw] max-w-44 shrink-0 snap-start sm:w-40 lg:w-44">
 					{#if group.count > 1}
-						<ShowCard {group} fit />
+						<ShowCard {group} fit progressOf={(id) => progressMap.get(id)} />
 					{:else}
-						<MediaCard item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} fit />
+						<MediaCard
+							item={group.items[0]}
+							enrichment={enrichmentCache.get(group.items[0].id) ?? null}
+							progress={progressMap.get(group.items[0].id) ?? null}
+							fit
+						/>
 					{/if}
 				</div>
 			{/each}
