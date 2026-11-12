@@ -16,6 +16,7 @@
 	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
 	import MediaCard from './MediaCard.svelte';
 	import { RAIL } from './grid';
+	import Rail from './Rail.svelte';
 	import ShowCard from './ShowCard.svelte';
 
 	let {
@@ -98,7 +99,7 @@
 	<section class={['space-y-4', className].join(' ')} aria-label={heading}>
 		<h2 class="section-title">{heading}</h2>
 		<!-- Through the gutter to the window's edge, as MediaRow's rails. -->
-		<div class={['-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-4 no-scrollbar sm:-mx-8 sm:scroll-px-8 sm:px-8 md:gap-4 lg:-mx-10 lg:scroll-px-10 lg:px-10', RAIL[frame]].join(' ')}>
+		<Rail class={RAIL[frame]}>
 			{#each groups as group (group.key)}
 				<div class="w-[var(--card-w)] shrink-0 snap-start">
 					{#if group.count > 1}
@@ -113,6 +114,6 @@
 					{/if}
 				</div>
 			{/each}
-		</div>
+		</Rail>
 	</section>
 {/if}

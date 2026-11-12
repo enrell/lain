@@ -12,9 +12,11 @@
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { wholeTitle } from '$lib/stores/titles';
 	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
+	import { scrollEdges } from '$lib/utilities/scroll-edges';
 	import { t } from '$lib/i18n';
 	import MediaCard from './MediaCard.svelte';
 	import { RAIL } from './grid';
+	import Rail from './Rail.svelte';
 	import ShowCard from './ShowCard.svelte';
 
 	const FETCH = 60;
@@ -68,16 +70,23 @@
 <!-- Where each shelf is and the view switch, under the header at every
      scroll position: the switch used to scroll away with the page top. The
      row is as tall as the first row of All titles' bar (LibraryBrowser), so
-     the switch stands at one place in both views. -->
+     the switch stands at one place in both views. On a phone the names get
+     a row of their own under it, as All titles' count and filters do: beside
+     the switch the fourth name was cut. -->
 <div
 	class={[
-		'sticky top-12 z-20 -mx-5 mb-6 box-content flex min-h-11 items-center gap-3 bg-background px-5 py-2 transition-shadow sm:-mx-3 sm:min-h-10 sm:px-3 md:top-20',
+		'sticky top-12 z-20 -mx-5 mb-6 box-content flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 bg-background px-5 py-2 transition-shadow sm:-mx-3 sm:min-h-10 sm:flex-nowrap sm:px-3 md:top-20',
 		scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''
 	].join(' ')}
 >
-	<!-- On a phone the names run past the view switch: the row scrolls, and its
-	     end fades so the cut name reads as "more this way", not as missing. -->
-	<nav class="-my-2 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-2 no-scrollbar max-sm:pe-6 max-sm:[mask-image:linear-gradient(to_right,black_calc(100%_-_2rem),transparent)]" aria-label={t('library.shelves')}>
+	<p class="text-sm text-muted sm:hidden">{t('library.shelfCount', { count: libraries.length })}</p>
+	<!-- More names than room: the row scrolls, and fades where names are
+	     hidden, at its end at rest and at its start once moved. -->
+	<nav
+		class="edge-fade -my-2 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-2 no-scrollbar max-sm:order-last max-sm:basis-full"
+		aria-label={t('library.shelves')}
+		{@attach scrollEdges(undefined, '2rem')}
+	>
 		{#each libraries as lib (lib.id)}
 			<a
 				href={`#shelf-${lib.id}`}
@@ -122,12 +131,7 @@
 				<p class="text-sm text-muted">{t('library.shelfEmpty')}</p>
 			{:else}
 				<!-- Through the gutter to the window's edge, as MediaRow's rails. -->
-				<div
-					class={[
-						'-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-4 pt-1 no-scrollbar sm:-mx-8 sm:scroll-px-8 sm:px-8 md:gap-4 lg:-mx-10 lg:scroll-px-10 lg:gap-5 lg:px-10',
-						RAIL[frame]
-					].join(' ')}
-				>
+				<Rail class={['pt-1 lg:gap-5', RAIL[frame]].join(' ')}>
 					{#each shelf.groups as group, i (group.key)}
 						<div class="w-[var(--card-w)] shrink-0 snap-start">
 							{#if group.count > 1}
@@ -155,7 +159,7 @@
 							{t('library.seeAll')}
 						</a>
 					{/if}
-				</div>
+				</Rail>
 			{/if}
 		</section>
 	{/each}
