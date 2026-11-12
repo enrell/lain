@@ -667,7 +667,8 @@
 							<!-- An icon of what it changes beside the word: a bare "LARGE" read as a label. -->
 							{#if dense}<Grid3x3 class="size-4" aria-hidden="true" />{:else}<Grid2x2 class="size-4" aria-hidden="true" />{/if}
 							<!-- Says what is set, as the sheet's "Tiles" does: "Large tiles" read as the size it would switch to. -->
-							{t('browse.tiles', { size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge') })}
+							<!-- Beside the view switch on a laptop's width the icon alone says it; the search keeps the room. -->
+							<span class={view ? 'hidden xl:inline' : ''}>{t('browse.tiles', { size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge') })}</span>
 						</button>
 						{#if !view}
 							{@render filtersButton('flex lg:hidden')}
