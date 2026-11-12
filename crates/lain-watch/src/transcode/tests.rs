@@ -3,7 +3,7 @@
 //! `lifecycle_model_test.go` intents. Real ffmpeg runs are covered by
 //! the server's gated end-to-end tests.
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::mpsc;
 
 use super::*;
@@ -629,4 +629,385 @@ fn closing_fails_queued_work() {
     let st = r.t.list_v3().into_iter().find(|x| x.session == b.session).unwrap();
     assert_eq!((st.state.as_str(), st.error.as_str()), (FAILED, "transcoder stopped"));
     assert_eq!(r.t.invoke_v3(&req(&r, ACTION_START)).unwrap_err().msg, "transcoder stopped");
+}
+
+// ---- capabilities: single flight, stale-while-revalidate, warm-up -------
+
+/// A transcoder whose capability probe counts its runs, answers with its
+/// run number as the ffmpeg (`probe-<n>`) and `effects` as the video
+/// effects, and lands only when the test lets one through
+/// ([`CapsRig::let_one`]).
+struct CapsRig {
+    t: Transcoder,
+    dir: PathBuf,
+    runs: Arc<AtomicI64>,
+    effects: Arc<AtomicBool>,
+    gate: Option<mpsc::Sender<()>>,
+}
+
+impl Drop for CapsRig {
+    fn drop(&mut self) {
+        // A closed gate lets every probe still waiting land.
+        self.gate.take();
+        self.t.close();
+        std::fs::remove_dir_all(&self.dir).ok();
+    }
+}
+
+impl CapsRig {
+    fn let_one(&self) {
+        self.gate.as_ref().unwrap().send(()).unwrap();
+    }
+
+    fn runs(&self) -> i64 {
+        self.runs.load(Ordering::SeqCst)
+    }
+
+    fn wait_runs(&self, n: i64) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while self.runs() < n {
+            assert!(Instant::now() < deadline, "{} probes started, want {n}", self.runs());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// `capabilities` for a caller that must not wait: fails instead of
+    /// hanging when it does.
+    fn caps_now(&self, s: &TranscodeSettings) -> Capabilities {
+        let (t, s) = (self.t.clone(), s.clone());
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(t.capabilities(&s));
+        });
+        rx.recv_timeout(Duration::from_secs(5)).expect("a caller with a set waits for no probe")
+    }
+
+    fn wait_for(&self, s: &TranscodeSettings, ffmpeg: &str) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while self.caps_now(s).ffmpeg != ffmpeg {
+            assert!(Instant::now() < deadline, "{ffmpeg} never landed");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn set_fresh(&self, d: Duration) {
+        self.t.inner.caps.lock().unwrap().fresh = d;
+    }
+
+    fn set_recheck(&self, d: Duration) {
+        self.t.inner.caps.lock().unwrap().recheck = d;
+    }
+}
+
+fn caps_rig(tag: &str) -> CapsRig {
+    let dir = lain_store::test_dir(tag);
+    std::fs::create_dir_all(&dir).unwrap();
+    let runs = Arc::new(AtomicI64::new(0));
+    let (tx, rx) = mpsc::channel::<()>();
+    let rx = Mutex::new(rx);
+    let effects = Arc::new(AtomicBool::new(false));
+    let (counter, fx) = (runs.clone(), effects.clone());
+    let hooks = Hooks {
+        caps: Some(Arc::new(move |_: &TranscodeSettings| {
+            let n = counter.fetch_add(1, Ordering::SeqCst) + 1;
+            let _ = rx.lock().unwrap().recv();
+            Capabilities {
+                ffmpeg: format!("probe-{n}"),
+                encoders: ["libx264".to_string()].into(),
+                effects: fx.load(Ordering::SeqCst),
+                ..Capabilities::default()
+            }
+        })),
+        ..Hooks::default()
+    };
+    CapsRig { t: Transcoder::with_hooks(&dir.join("transcodes"), hooks), dir, runs, effects, gate: Some(tx) }
+}
+
+#[test]
+fn concurrent_callers_share_one_probe() {
+    let r = caps_rig("tc-caps-flight");
+    let s = st::defaults();
+    let start = Arc::new(std::sync::Barrier::new(9));
+    let callers: Vec<_> = (0..8)
+        .map(|_| {
+            let (t, s, start) = (r.t.clone(), s.clone(), start.clone());
+            std::thread::spawn(move || {
+                start.wait();
+                t.capabilities(&s)
+            })
+        })
+        .collect();
+    start.wait();
+    r.wait_runs(1);
+    // Every caller is in by now, waiting on that one probe.
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(r.runs(), 1, "eight callers, one probe");
+    assert!(callers.iter().all(|c| !c.is_finished()), "no set yet: callers wait for the probe");
+    r.let_one();
+    for c in callers {
+        assert_eq!(c.join().unwrap().ffmpeg, "probe-1");
+    }
+    assert_eq!(r.runs(), 1);
+}
+
+#[test]
+fn a_stale_set_comes_back_at_once_while_one_probe_refreshes_it() {
+    let r = caps_rig("tc-caps-stale");
+    let s = st::defaults();
+    r.let_one();
+    assert_eq!(r.t.capabilities(&s).ffmpeg, "probe-1");
+    assert_eq!(r.caps_now(&s).ffmpeg, "probe-1");
+    assert_eq!(r.runs(), 1, "a current set is not probed again");
+    r.set_fresh(Duration::ZERO);
+    for _ in 0..5 {
+        assert_eq!(r.caps_now(&s).ffmpeg, "probe-1", "the stale set, without waiting");
+    }
+    r.wait_runs(2);
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(r.runs(), 2, "one refresh at a time");
+    r.set_fresh(CAP_FRESH);
+    r.let_one();
+    r.wait_for(&s, "probe-2");
+    assert_eq!(r.runs(), 2);
+}
+
+#[test]
+fn reprobe_forces_a_fresh_probe_nobody_waits_for() {
+    let r = caps_rig("tc-caps-reprobe");
+    let s = st::defaults();
+    r.let_one();
+    assert_eq!(r.t.capabilities(&s).ffmpeg, "probe-1");
+    r.t.reprobe(&s);
+    r.wait_runs(2);
+    // The one running may have started before what prompted these (a
+    // driver installed, then the settings saved): one more runs after
+    // it, however many were asked for, and nobody waits for either.
+    r.t.reprobe(&s);
+    r.t.reprobe(&s);
+    assert_eq!(r.caps_now(&s).ffmpeg, "probe-1");
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(r.runs(), 2, "single flight");
+    r.let_one();
+    r.wait_runs(3);
+    assert_eq!(r.caps_now(&s).ffmpeg, "probe-2");
+    r.let_one();
+    r.wait_for(&s, "probe-3");
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(r.runs(), 3);
+}
+
+#[test]
+fn the_warm_up_and_a_new_ffmpeg_each_probe_once() {
+    let r = caps_rig("tc-caps-key");
+    let s = st::defaults();
+    // The server's warm-up returns at once; a caller arriving before it
+    // lands waits for it instead of starting a probe of its own.
+    r.t.warm(&s);
+    r.wait_runs(1);
+    let (t, s2) = (r.t.clone(), s.clone());
+    let first = std::thread::spawn(move || t.capabilities(&s2));
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(!first.is_finished(), "no set yet: the caller waits");
+    assert_eq!(r.runs(), 1);
+    r.let_one();
+    assert_eq!(first.join().unwrap().ffmpeg, "probe-1");
+    r.t.warm(&s);
+    // `ffmpeg` is the default binary spelled out: the same set.
+    let same = TranscodeSettings { ffmpeg_path: "ffmpeg".into(), crf: 18, ..s.clone() };
+    assert_eq!(r.caps_now(&same).ffmpeg, "probe-1");
+    assert_eq!(r.runs(), 1, "a warm-up of a current set and other settings probe nothing");
+    // Another ffmpeg is another set, probed once while the first stays.
+    let other = TranscodeSettings { ffmpeg_path: "/opt/ffmpeg/bin/ffmpeg".into(), ..s.clone() };
+    let (t, o) = (r.t.clone(), other.clone());
+    let waiting = std::thread::spawn(move || t.capabilities(&o));
+    r.wait_runs(2);
+    assert_eq!(r.caps_now(&s).ffmpeg, "probe-1");
+    r.let_one();
+    assert_eq!(waiting.join().unwrap().ffmpeg, "probe-2");
+    assert_eq!(r.caps_now(&other).ffmpeg, "probe-2");
+    assert_eq!(r.runs(), 2);
+}
+
+#[test]
+fn a_set_that_lost_a_capability_is_probed_again_sooner() {
+    let r = caps_rig("tc-caps-recheck");
+    let s = st::defaults();
+    r.effects.store(true, Ordering::SeqCst);
+    r.let_one();
+    assert!(r.t.capabilities(&s).effects);
+    // A refresh on a busy machine misses the effects probe: the answer is
+    // served as probed, current for CAP_RECHECK instead of CAP_FRESH.
+    r.effects.store(false, Ordering::SeqCst);
+    r.t.reprobe(&s);
+    r.let_one();
+    r.wait_for(&s, "probe-2");
+    assert!(!r.caps_now(&s).effects);
+    assert_eq!(r.runs(), 2, "current for CAP_RECHECK");
+    r.set_recheck(Duration::ZERO);
+    r.effects.store(true, Ordering::SeqCst);
+    assert!(!r.caps_now(&s).effects, "the next caller still waits for nothing");
+    r.wait_runs(3);
+    r.let_one();
+    r.wait_for(&s, "probe-3");
+    assert!(r.caps_now(&s).effects);
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(r.runs(), 3, "a gain is current for CAP_FRESH");
+    // A loss the next probe confirms is then current as usual.
+    r.effects.store(false, Ordering::SeqCst);
+    r.t.reprobe(&s);
+    r.let_one();
+    r.wait_for(&s, "probe-4");
+    r.wait_runs(5);
+    r.let_one();
+    r.wait_for(&s, "probe-5");
+    assert!(!r.caps_now(&s).effects);
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(r.runs(), 5);
+}
+
+/// The first answer for a key has nothing to lose against, and it is
+/// probed while the server starts and the machine is busiest: one where
+/// a check timed out is current only for CAP_RECHECK, every time.
+#[test]
+fn an_answer_with_a_timed_out_check_is_probed_again_sooner() {
+    let mut c =
+        CapsCache { slots: HashMap::new(), fresh: CAP_FRESH, recheck: CAP_RECHECK, limit: policy::PROBE_TIMEOUT };
+    let caps = Capabilities { encoders: ["libx264".to_string()].into(), tone_map: true, ..Capabilities::default() };
+    assert!(c.claim("k", false));
+    assert!(c.store("k", caps.clone(), true).doubtful, "a first answer with a timed-out check");
+    assert!(!c.claim("k", false), "current for CAP_RECHECK");
+    c.recheck = Duration::ZERO;
+    assert!(c.claim("k", false), "then probed again");
+    assert!(c.store("k", caps.clone(), true).doubtful, "the same answer, timed out again: still in doubt");
+    assert!(c.claim("k", false));
+    assert!(!c.store("k", caps, false).doubtful, "every run ended");
+    assert!(!c.claim("k", false), "current for CAP_FRESH");
+}
+
+/// An answer with no ffmpeg there is in doubt: the operator may install
+/// it any time (the old 30 s cache found it then), and probing for a
+/// missing binary costs nothing.
+#[test]
+fn an_answer_with_no_ffmpeg_is_probed_again_sooner() {
+    let mut c =
+        CapsCache { slots: HashMap::new(), fresh: CAP_FRESH, recheck: Duration::ZERO, limit: policy::PROBE_TIMEOUT };
+    assert!(c.claim("k", false));
+    assert!(c.store("k", Capabilities::default(), false).doubtful);
+    assert!(c.claim("k", false), "probed again after CAP_RECHECK");
+    let found = Capabilities { encoders: ["libx264".to_string()].into(), ..Capabilities::default() };
+    assert!(!c.store("k", found, false).doubtful);
+    assert!(!c.claim("k", false), "current for CAP_FRESH");
+}
+
+/// The transcoder's own probe (no `caps` hook) over a stub ffmpeg whose
+/// video effects check hangs: the answer counts it as a no and is in
+/// doubt; once the check answers again, the next answer is not.
+#[cfg(unix)]
+#[test]
+fn the_real_probe_marks_a_timed_out_check_in_doubt() {
+    let dir = lain_store::test_dir("tc-caps-timeout");
+    std::fs::create_dir_all(&dir).unwrap();
+    let (bin, slow) = (dir.join("ffmpeg"), dir.join("slow"));
+    let script = r#"#!/bin/sh
+case "$2" in
+  -encoders) printf ' V..... = Video\n V....D libx264 H.264\n'; exit 0 ;;
+  -filters) printf ' ... libplacebo VV->V GPU filters\n'; exit 0 ;;
+  -hwaccels) exit 0 ;;
+esac
+case "$*" in
+  *libplacebo=w=*) [ -e 'SLOW' ] && exec sleep 30; exit 0 ;;
+esac
+exit 1
+"#
+    .replace("SLOW", &slow.to_string_lossy());
+    crate::transcode::write_stub(&bin, &script);
+    std::fs::write(&slow, b"").unwrap();
+    let t = Transcoder::with_hooks(&dir.join("transcodes"), Hooks::default());
+    t.inner.caps.lock().unwrap().limit = Duration::from_secs(3);
+    let s = TranscodeSettings { ffmpeg_path: bin.to_string_lossy().into_owned(), ..st::defaults() };
+    let doubtful = || t.inner.caps.lock().unwrap().slots[&caps_key(&s)].doubtful;
+    assert!(!t.capabilities(&s).effects);
+    assert!(doubtful(), "the effects check timed out");
+    std::fs::remove_file(&slow).unwrap();
+    t.reprobe(&s);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !t.capabilities(&s).effects {
+        assert!(Instant::now() < deadline, "the second probe never landed");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!doubtful(), "every run ended");
+    t.close();
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A probe that panics leaves no waiter behind and no lock poisoned: the
+/// callers waiting for the first answer get what an ffmpeg that does not
+/// run would answer, in doubt, and the next caller after CAP_RECHECK
+/// probes again.
+#[test]
+fn a_probe_that_panics_answers_nothing_available_and_is_probed_again() {
+    let dir = lain_store::test_dir("tc-caps-panic");
+    std::fs::create_dir_all(&dir).unwrap();
+    let runs = Arc::new(AtomicI64::new(0));
+    let counter = runs.clone();
+    let hooks = Hooks {
+        caps: Some(Arc::new(move |_: &TranscodeSettings| {
+            if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                std::thread::sleep(Duration::from_millis(100));
+                panic!("probe hook panics on purpose");
+            }
+            Capabilities { tone_map: true, ..Capabilities::default() }
+        })),
+        ..Hooks::default()
+    };
+    let t = Transcoder::with_hooks(&dir.join("transcodes"), hooks);
+    let s = st::defaults();
+    let (tx, rx) = mpsc::channel();
+    for _ in 0..4 {
+        let (t, s, tx) = (t.clone(), s.clone(), tx.clone());
+        std::thread::spawn(move || tx.send(t.capabilities(&s)).unwrap());
+    }
+    for _ in 0..4 {
+        let caps = rx.recv_timeout(Duration::from_secs(10)).expect("no waiter is left behind");
+        assert!(!caps.tone_map && caps.hardware.values().all(|ok| !ok), "{caps:?}");
+    }
+    assert_eq!(runs.load(Ordering::SeqCst), 1);
+    assert!(!t.inner.caps.is_poisoned());
+    assert!(t.inner.caps.lock().unwrap().slots[&caps_key(&s)].doubtful);
+    t.inner.caps.lock().unwrap().recheck = Duration::ZERO;
+    assert!(!t.capabilities(&s).tone_map, "the answer in doubt comes back at once");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !t.capabilities(&s).tone_map {
+        assert!(Instant::now() < deadline, "no probe after the panic");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    t.close();
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A refresh of the old ffmpeg still running when the operator moves
+/// ffmpeg lands on the old set only: a caller of the new one waits for
+/// the new one's own probe, never takes the old answer.
+#[test]
+fn a_refresh_of_the_old_ffmpeg_never_answers_for_the_new_one() {
+    let r = caps_rig("tc-caps-race");
+    let old = st::defaults();
+    r.let_one();
+    assert_eq!(r.t.capabilities(&old).ffmpeg, "probe-1");
+    r.t.reprobe(&old);
+    r.wait_runs(2);
+    // Let the old refresh reach the gate first, so it lands first.
+    std::thread::sleep(Duration::from_millis(50));
+    let new = TranscodeSettings { ffmpeg_path: "/opt/ffmpeg/bin/ffmpeg".into(), ..old.clone() };
+    let (t, n) = (r.t.clone(), new.clone());
+    let waiting = std::thread::spawn(move || t.capabilities(&n));
+    r.wait_runs(3);
+    r.let_one();
+    r.wait_for(&old, "probe-2");
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(!waiting.is_finished(), "the new ffmpeg's caller waits for its own probe");
+    r.let_one();
+    assert_eq!(waiting.join().unwrap().ffmpeg, "probe-3");
+    assert_eq!(r.caps_now(&old).ffmpeg, "probe-2");
+    assert_eq!(r.runs(), 3);
 }
