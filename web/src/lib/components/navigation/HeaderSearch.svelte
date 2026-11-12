@@ -12,7 +12,7 @@
 	import History from '@lucide/svelte/icons/rotate-ccw-clock';
 	import Search from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
-	import { afterNavigate, goto } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api } from '$lib/api';
 	import { t } from '$lib/i18n';
@@ -133,10 +133,21 @@
 	});
 
 	let urlTimer: ReturnType<typeof setTimeout> | undefined;
+	/*
+	 * A navigation away from /search drops the query still waiting to be
+	 * written: fired after a link was followed, it would replace that
+	 * navigation with /search again and pull the viewer back (a link
+	 * clicked, or a result opened, within the debounce of the last key).
+	 */
+	beforeNavigate((nav) => {
+		if (nav.to?.url.pathname !== '/search') clearTimeout(urlTimer);
+	});
+
 	/** On /search: put the typed query in the URL, which the page's results follow. */
 	function follow(now: boolean): void {
 		clearTimeout(urlTimer);
 		const go = (): void => {
+			if (page.url.pathname !== '/search') return;
 			const href = searchHref(text);
 			written = text.trim();
 			if (`${page.url.pathname}${page.url.search}` !== href) {
