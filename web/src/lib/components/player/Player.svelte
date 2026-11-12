@@ -668,6 +668,15 @@
 				video_copy_codecs: copyCodecs(),
 				video_effect: serverEffect || undefined
 			});
+			// Left while the start was on its way: onDestroy had no session
+			// to stop yet, and nothing will ever attach to this one, so it is
+			// released here instead of holding a runner until the idle timeout.
+			if (destroyed) {
+				if (status.state === 'queued' || status.state === 'running') {
+					void api.playback.cancelTranscode(item.id, status.session).catch(() => undefined);
+				}
+				return;
+			}
 			// The server answers a request it cannot honour with the plain
 			// session and the reason; say it instead of showing nothing.
 			if (serverEffect && !(status.reasons ?? []).some((reason) => reason.startsWith('video effect'))) {
