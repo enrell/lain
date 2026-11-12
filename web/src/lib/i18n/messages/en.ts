@@ -369,6 +369,12 @@ const en = {
 	toast: {
 		dismiss: 'Dismiss'
 	},
+	security: {
+		tooShort: 'At least 8 characters.',
+		mismatch: 'The two new passwords differ.',
+		wrongCurrent: 'That is not your current password.',
+		failed: 'Could not change the password.'
+	},
 	// An address the app does not know, or a page that failed to load (+error.svelte).
 	errorPage: {
 		notFoundTitle: 'Nothing at this address',

@@ -11,7 +11,10 @@
 	let oldPassword = $state('');
 	let newPassword = $state('');
 	let confirm = $state('');
-	let fieldErrors = $state<{ new?: string; confirm?: string }>({});
+	let fieldErrors = $state<{ old?: string; new?: string; confirm?: string }>({});
+	let oldInput = $state<HTMLInputElement>();
+	let newInput = $state<HTMLInputElement>();
+	let confirmInput = $state<HTMLInputElement>();
 	let error = $state<string | null>(null);
 	let busy = $state(false);
 
@@ -20,10 +23,12 @@
 		if (busy) return;
 		error = null;
 		const next: typeof fieldErrors = {};
-		if (newPassword.length < 8) next.new = 'At least 8 characters.';
-		if (confirm !== newPassword) next.confirm = 'Passwords do not match.';
+		if (newPassword.length < 8) next.new = t('security.tooShort');
+		if (confirm !== newPassword) next.confirm = t('security.mismatch');
 		fieldErrors = next;
-		if (Object.keys(next).length > 0) return;
+		// The cursor goes to the first field to fix, where its message is read out.
+		if (next.new) return void newInput?.focus();
+		if (next.confirm) return void confirmInput?.focus();
 
 		busy = true;
 		try {
@@ -36,7 +41,12 @@
 			confirm = '';
 			toasts.success('Password changed. Other sessions were signed out.');
 		} catch (err) {
-			error = errorMessage(err, 'Could not change the password.');
+			const message = errorMessage(err, t('security.failed'));
+			// The server's "invalid credentials" here can only mean the current password.
+			if (message === 'invalid credentials') {
+				fieldErrors = { old: t('security.wrongCurrent') };
+				oldInput?.select();
+			} else error = message;
 		} finally {
 			busy = false;
 		}
@@ -53,15 +63,16 @@
 			<p class="py-3 text-sm text-danger" role="alert">{error}</p>
 		{/if}
 		<SettingRow label="Current password">
-			<input class={field} type="password" bind:value={oldPassword} autocomplete="current-password" required aria-label="Current password" />
+			<input bind:this={oldInput} class={field} type="password" bind:value={oldPassword} autocomplete="current-password" required aria-label="Current password" aria-invalid={fieldErrors.old ? 'true' : undefined} aria-describedby={fieldErrors.old ? 'pw-old-error' : undefined} />
+			{#snippet below()}{#if fieldErrors.old}<p id="pw-old-error" class="text-xs text-danger sm:text-right">{fieldErrors.old}</p>{/if}{/snippet}
 		</SettingRow>
 		<SettingRow label="New password" hint="At least 8 characters.">
-			<input class={field} type="password" bind:value={newPassword} autocomplete="new-password" required aria-label="New password" aria-invalid={fieldErrors.new ? 'true' : undefined} />
-			{#snippet below()}{#if fieldErrors.new}<p class="text-xs text-danger sm:text-right">{fieldErrors.new}</p>{/if}{/snippet}
+			<input bind:this={newInput} class={field} type="password" bind:value={newPassword} autocomplete="new-password" required aria-label="New password" aria-invalid={fieldErrors.new ? 'true' : undefined} aria-describedby={fieldErrors.new ? 'pw-new-error' : undefined} />
+			{#snippet below()}{#if fieldErrors.new}<p id="pw-new-error" class="text-xs text-danger sm:text-right">{fieldErrors.new}</p>{/if}{/snippet}
 		</SettingRow>
 		<SettingRow label="Confirm new password">
-			<input class={field} type="password" bind:value={confirm} autocomplete="new-password" required aria-label="Confirm new password" aria-invalid={fieldErrors.confirm ? 'true' : undefined} />
-			{#snippet below()}{#if fieldErrors.confirm}<p class="text-xs text-danger sm:text-right">{fieldErrors.confirm}</p>{/if}{/snippet}
+			<input bind:this={confirmInput} class={field} type="password" bind:value={confirm} autocomplete="new-password" required aria-label="Confirm new password" aria-invalid={fieldErrors.confirm ? 'true' : undefined} aria-describedby={fieldErrors.confirm ? 'pw-confirm-error' : undefined} />
+			{#snippet below()}{#if fieldErrors.confirm}<p id="pw-confirm-error" class="text-xs text-danger sm:text-right">{fieldErrors.confirm}</p>{/if}{/snippet}
 		</SettingRow>
 		<div class="flex items-center justify-between gap-3 py-4">
 			<p class="text-xs text-muted">Every other session is signed out immediately.</p>
