@@ -534,7 +534,8 @@ const en = {
 			emptyTitle: 'Nothing from your friends yet',
 			emptyBody: 'Add friends to see what they watch, read and rate. Their privacy settings decide what shows here.',
 			findFriends: 'Find people',
-			more: 'Load older'
+			more: 'Load older',
+			titles: 'What your friends watch and read'
 		},
 		firstRun: {
 			eyebrow: 'First step',
@@ -550,7 +551,7 @@ const en = {
 		},
 		friends: {
 			searchLabel: 'Search people',
-			searchPlaceholder: 'Search people by name — press / from anywhere on this page',
+			searchPlaceholder: 'Search people by name',
 			searchFailed: 'Could not search people.',
 			noResults: 'Nobody matches.',
 			add: 'Add friend',

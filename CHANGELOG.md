@@ -21,6 +21,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   first row goes back to the field. The library grid answers the same keys.
   Before a query the page offers the libraries as chips, as it does after a
   short answer, and a rail of the newest titles.
+- **Social's feed opens with its titles** (web): what friends watch and
+  read is a rail of cards at Home's sizes over the activity list. The
+  people search shows its key in the field; spelled out in the
+  placeholder it ran off a phone's width.
 - **Home shows posters whole** (web): a library's row takes the frame its
   pictures decide (a films library of posters is a poster rail, not
   widescreen cards cropping each poster), and an upright picture in a
