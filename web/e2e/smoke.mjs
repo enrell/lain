@@ -595,14 +595,27 @@ try {
 	await fillLabel('Confirm password', ADMIN_PASS);
 	await clickText('Create account');
 	await waitText("You're in.");
+	// The welcome step lands on its one next step, so Enter takes it.
+	await waitFor(
+		`document.activeElement?.id === 'setup-add-library'`,
+		5000,
+		'focus on Add a media library after setup'
+	);
 	console.log('   setup account created and authenticated');
 
 	step('create and scan libraries');
+	// Add a media library opens Libraries with its Add dialog already open.
+	const addDialog = `document.querySelector('[role="dialog"] #library-path')`;
 	await clickText('Add a media library');
 	await waitFor(`location.pathname === '/settings/libraries'`, 10000, 'settings/libraries URL');
 	await waitText('Media libraries', 10000);
+	await waitFor(addDialog, 5000, 'the Add dialog opened from setup');
+	// The empty state's own button opens it too: Esc closes it, the button
+	// brings it back.
+	await pressKey('Escape', 'Escape', 27);
+	await waitFor(`!${addDialog}`, 5000, 'Esc closed the Add dialog');
 	await clickText('Add your first library');
-	await waitText('Add a media library', 5000);
+	await waitFor(addDialog, 5000, 'Add your first library opened the Add dialog');
 	await openFolder(`${MEDIA}/Anime`);
 	await fillLabel('Name', 'Anime');
 	await clickText('Add and scan');
