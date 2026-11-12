@@ -15,6 +15,10 @@
  * Usage:
  *   web/e2e/fixtures.sh /tmp/lain-fixtures          # synthetic media
  *   lain serve --data-dir /tmp/lain-e2e --port 9360 # fresh dir
+ *     (on a machine with network, point LAIN_METADATA_KITSU_URL,
+ *     _ANILIST_URL, _JIKAN_URL and _TVMAZE_URL at a closed port, e.g.
+ *     http://127.0.0.1:9, so the metadata step meets the local NFO
+ *     provider: online answers would win over it)
  *   node web/e2e/smoke.mjs \
  *     --base http://127.0.0.1:9360 \
  *     --media /tmp/lain-fixtures \
