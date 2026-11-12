@@ -7,6 +7,7 @@
 	import MobileNav from './MobileNav.svelte';
 	import CommandPalette from './CommandPalette.svelte';
 	import HeaderSearch from './HeaderSearch.svelte';
+	import KeyboardHelp from './KeyboardHelp.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { socialBadge } from '$lib/stores/social.svelte';
 	import { session } from '$lib/auth/session.svelte';
@@ -127,8 +128,9 @@
 		</div>
 	</header>
 
-	<!-- Quick find: Ctrl+K only, named in the search field's hints and the settings rail. -->
+	<!-- Quick find: Ctrl+K only, named in the field's hints, the `?` list and the settings rail. -->
 	<CommandPalette />
+	<KeyboardHelp />
 
 	<main id="main" tabindex="-1" class="overflow-x-clip">
 		<div class={page.url.pathname === '/' ? 'w-full pb-24 md:pb-0' : 'mx-auto w-full max-w-[1800px] px-5 sm:px-8 lg:px-10 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 md:pb-14 md:pt-28'}>
