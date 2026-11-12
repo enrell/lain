@@ -43,6 +43,7 @@
 	import { elapsedSince, formatTime } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
 	import { EFFECT_PRESETS, loadEffectsPolicy, resolveEffect, type EffectPreset } from '$lib/player/effects-policy';
+	import { episodeLabel } from '$lib/utilities/grouping';
 	import { detectBrowserProfile, type BrowserProfile, type RendererBackend } from '$lib/player/browser-profile';
 	import { VideoRenderer } from '$lib/player/webgpu/engine';
 	import type { WebGLAnime4KRenderer } from '$lib/player/webgl/engine';
@@ -261,7 +262,9 @@
 					? api.playback.transcodeUrl(item.id, session.token, transcodeSession)
 					: api.playback.streamUrl(item.id, session.token)
 	);
-	const title = $derived(item.title);
+	// The episode by name as well as its show: the bar said only "Paper Moon
+	// Station", so which episode was playing could be read only off the list.
+	const title = $derived(item.episode > 0 ? `${item.title} · ${episodeLabel(item)}` : item.title);
 	// Only a file with a video track can prove itself with a picture:
 	// audio-only direct play has no frame to wait for.
 	const expectsVideo = $derived((plan.streams ?? []).some((s) => s.type === 'video'));

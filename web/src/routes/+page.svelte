@@ -19,6 +19,7 @@
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { t } from '$lib/i18n';
 	import { isInProgress, nextUpAfter, sortByRecent } from '$lib/utilities/progress';
 
 	let loading = $state(true);
@@ -209,11 +210,11 @@
 				{/if}
 
 				{#if continueWatching.length > 0}
-					<MediaRow title="Continue watching" href="/library" actionLabel="Browse all" items={continueWatching} {progressMap} layout="landscape" />
+					<MediaRow title="Continue watching" href="/library" actionLabel={t('home.browseLibrary')} items={continueWatching} {progressMap} layout="landscape" />
 				{/if}
 
 				{#if continueReading.length > 0}
-					<MediaRow title="Continue reading" href="/library" actionLabel="Browse all" items={continueReading} {progressMap} layout="poster" />
+					<MediaRow title="Continue reading" href="/library" actionLabel={t('home.browseLibrary')} items={continueReading} {progressMap} layout="poster" />
 				{/if}
 
 				{#if favoriteItems.length > 0}
@@ -221,11 +222,11 @@
 				{/if}
 
 				{#if nextUpWatching.length > 0}
-					<MediaRow title="Next up" href="/library" actionLabel="Browse all" items={nextUpWatching} {progressMap} layout="landscape" />
+					<MediaRow title="Next up" href="/library" actionLabel={t('home.browseLibrary')} items={nextUpWatching} {progressMap} layout="landscape" />
 				{/if}
 
 				{#if nextUpReading.length > 0}
-					<MediaRow title="Read next" href="/library" actionLabel="Browse all" items={nextUpReading} {progressMap} layout="poster" />
+					<MediaRow title="Read next" href="/library" actionLabel={t('home.browseLibrary')} items={nextUpReading} {progressMap} layout="poster" />
 				{/if}
 
 				{#if recent.length > 0}

@@ -339,8 +339,8 @@
 			{:else if scan.status?.state === 'done' && scan.status.stats}
 				{@const stats = scan.status.stats}
 				<p class="text-muted">
-					<!-- The colon right after the last word: a line break before it printed "ago :". -->
-					Last scan {scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}{#if scan.status.trigger === 'watch'}{' '}by the filesystem watcher{/if}:
+					<!-- The colon on the last word: on its own line it printed "ago :". -->
+					{[`Last scan ${scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}`, scan.status.trigger === 'watch' ? 'by the filesystem watcher' : ''].filter(Boolean).join(' ')}:
 					<span class="text-foreground">{stats.identified}</span> identified ·
 					<span class="text-foreground">{stats.unidentified}</span> unidentified ·
 					<span class="text-foreground">{stats.enriched}</span> enriched

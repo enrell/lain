@@ -199,6 +199,15 @@ export function genreFacets(groups: SeriesGroup[], f: Filters, ctx: Context): Fa
 	return [...counts.values()].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 
+/**
+ * How many titles a single-choice axis leaves when nothing is picked on
+ * it: the count of its "Any" row, which is the way back to everything
+ * that does not also clear the other filters.
+ */
+export function anyCount(groups: SeriesGroup[], f: Filters, ctx: Context, axis: Exclude<Skip, 'genres' | null>): number {
+	return groups.filter((group) => matches(group, f, ctx, axis)).length;
+}
+
 /** Counts per option of one single-choice axis, ignoring that axis's own pick. */
 export function countBy(
 	groups: SeriesGroup[],

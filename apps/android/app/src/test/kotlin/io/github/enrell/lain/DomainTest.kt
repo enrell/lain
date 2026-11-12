@@ -9,6 +9,7 @@ import io.github.enrell.lain.domain.goOnWith
 import io.github.enrell.lain.domain.groupTitles
 import io.github.enrell.lain.domain.nextUp
 import io.github.enrell.lain.domain.skipSeconds
+import io.github.enrell.lain.domain.trackName
 import io.github.enrell.lain.domain.withoutFamily
 import io.github.enrell.lain.ui.destinations
 import org.junit.Assert.assertEquals
@@ -17,6 +18,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DomainTest {
+    @Test
+    fun trackNamesSayTheLanguageOnce() {
+        val en = java.util.Locale.ENGLISH
+        // A title that already names the language drops the code beside it.
+        assertEquals("English", trackName("English", "en", en))
+        assertEquals("Português", trackName("Português", "pt", en))
+        // A title that does not keeps it, and codec words go.
+        assertEquals("Commentary · EN", trackName("Commentary · AAC", "en", en))
+        // No title: the language in the device's words.
+        assertEquals("Japanese", trackName(null, "ja", en))
+        assertEquals("Signs", trackName("Signs", null, en))
+    }
+
     @Test
     fun titlesGroupByLibraryAndTitleInEpisodeOrder() {
         val items = listOf(

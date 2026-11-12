@@ -72,6 +72,9 @@ const en = {
 		settings: 'Settings',
 		accountMenu: 'Account menu',
 		palette: 'Open command palette (Ctrl+K)',
+		// The palette's trigger: it finds settings, actions and titles, so it is
+		// not a second "Search" beside the Search page's link.
+		quickFind: 'Quick find',
 		scanning: 'scanning',
 		scanningPercent: 'scanning {percent}',
 		skip: 'Skip to content'
@@ -107,6 +110,7 @@ const en = {
 			server: 'Server'
 		},
 		breadcrumb: 'settings / {scope} / {section}',
+		since: 'since {date}',
 		hints: {
 			find: 'find a setting',
 			jump: 'then a letter: open a section',
@@ -617,7 +621,44 @@ const en = {
 		episodes: { one: '{count} episode', other: '{count} episodes' },
 		volumes: { one: '{count} volume', other: '{count} volumes' },
 		issues: { one: '{count} issue', other: '{count} issues' },
-		length: 'Length'
+		length: 'Length',
+		continueFromPage: 'Continue from page {page}',
+		continueFromPageIn: 'Continue from page {page} · {part}',
+		readingAt: '{part}: page {page} of {pages}',
+		readOf: '{done} of {count} read',
+		watchedOf: '{done} of {count} watched',
+		partActions: 'More for {part}',
+		markWatched: 'Mark watched',
+		markUnwatched: 'Mark unwatched',
+		markRead: 'Mark read',
+		markUnread: 'Mark unread',
+		marked: '{part} marked.',
+		markFailed: 'Could not change the mark.'
+	},
+	browse: {
+		any: 'Any',
+		tiles: 'Tiles: {size}',
+		tilesLarge: 'large',
+		tilesSmall: 'small',
+		partLeft: '{part} · {time} left',
+		partPage: '{part} · page {page} of {pages}',
+		pageOf: 'Page {page} of {pages}'
+	},
+	home: {
+		browseLibrary: 'Browse library'
+	},
+	tracking: {
+		subtitle: 'Everything your connected accounts track — manga, comics, anime, films and shows in one place.',
+		films: 'Films',
+		shows: 'Shows',
+		emptyTitle: 'Nothing tracked yet',
+		emptyBody: 'Connect an account in Settings → Connections to import what you track. AniList is supported.',
+		openConnections: 'Open Connections'
+	},
+	playbackLanguage: {
+		label: 'Audio & subtitle language',
+		hint: 'Audio in this language when the file has it; otherwise the file’s audio with subtitles in it. Follows your account on every client.',
+		asFile: 'As the file has it'
 	},
 	download: {
 		file: 'Download file',
