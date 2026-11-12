@@ -1980,11 +1980,13 @@
 			<IconButton label={playing ? 'Pause' : 'Play'} class="size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={togglePlay}>
 				{#if playing}<Pause class="size-6 fill-current" />{:else}<Play class="size-6 fill-current" />{/if}
 			</IconButton>
+			<!-- The step inside the arrow's ring: at the bar's 24 px the two digits touched the
+			     ring, so the ring is a size up and the digits sit tight inside it. -->
 			<IconButton label={`Back ${skipSec} seconds`} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(-skipSec)}>
-				<SkipBack class="size-6" /><span class="absolute text-[9px] font-semibold">{skipSec}</span>
+				<SkipBack class="size-7" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span>
 			</IconButton>
 			<IconButton label={`Forward ${skipSec} seconds`} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(skipSec)}>
-				<SkipForward class="size-6" /><span class="absolute text-[9px] font-semibold">{skipSec}</span>
+				<SkipForward class="size-7" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span>
 			</IconButton>
 
 			<div class="flex items-center gap-1">
