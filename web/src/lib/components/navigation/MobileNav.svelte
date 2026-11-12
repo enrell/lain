@@ -18,7 +18,7 @@
 	import { session } from '$lib/auth/session.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import { socialBadge } from '$lib/stores/social.svelte';
-	import { MOBILE_NAV, visibleNav } from './nav-items';
+	import { MOBILE_BAR, MOBILE_NAV, visibleNav } from './nav-items';
 
 	const icons: Record<string, typeof House> = {
 		'/': House,
@@ -31,12 +31,11 @@
 		'/settings': Settings
 	};
 	// The heart's list is used every day; an imported tracking list sits under More.
-	const BAR = ['/', '/library', '/search', '/favorites'];
 	const all = $derived(
 		visibleNav(MOBILE_NAV, session.isAdmin).map((e) => ({ ...e, label: t(e.label), icon: icons[e.href] ?? House }))
 	);
-	const bar = $derived(BAR.map((href) => all.find((e) => e.href === href)).filter((e) => e !== undefined));
-	const rest = $derived(all.filter((e) => !BAR.includes(e.href)));
+	const bar = $derived(MOBILE_BAR.map((href) => all.find((e) => e.href === href)).filter((e) => e !== undefined));
+	const rest = $derived(all.filter((e) => !MOBILE_BAR.includes(e.href)));
 
 	function active(href: string, exact: boolean): boolean {
 		const path = page.url.pathname;
@@ -86,12 +85,12 @@
 			class={['flex h-[3.75rem] flex-col items-center justify-center gap-1.5 transition-colors', inRest ? 'text-accent' : 'text-muted active:text-foreground'].join(' ')}
 			onclick={() => (more = true)}
 		>
-			{@render tab('More', Ellipsis, inRest, socialBadge.unread > 0)}
+			{@render tab(t('nav.more'), Ellipsis, inRest, socialBadge.unread > 0)}
 		</button>
 	</div>
 </nav>
 
-<Modal bind:open={more} title="More">
+<Modal bind:open={more} title={t('nav.more')}>
 	<ul class="-mx-2">
 		{#each rest as item (item.href)}
 			{@const on = active(item.href, item.exact)}
