@@ -160,17 +160,17 @@ fn a_scan_asked_for_while_one_runs_follows_it_once() {
     assert!(s.status().queued);
     assert_eq!(json!(s.status())["queued"], true);
     drop(held);
-    let finished = || {
-        events.lock().unwrap().iter().filter(|e| matches!(e, ScanEvent::Finished(_))).count()
-    };
+    let finished = || events.lock().unwrap().iter().filter(|e| matches!(e, ScanEvent::Finished(_))).count();
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     while finished() < 2 && std::time::Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(10));
     }
     assert!(s.wait_idle(Duration::from_secs(5)));
     let got = events.lock().unwrap().clone();
-    let started: Vec<i64> =
-        got.iter().filter_map(|e| if let ScanEvent::Started { libraries, .. } = e { Some(*libraries) } else { None }).collect();
+    let started: Vec<i64> = got
+        .iter()
+        .filter_map(|e| if let ScanEvent::Started { libraries, .. } = e { Some(*libraries) } else { None })
+        .collect();
     assert_eq!(started, vec![1, 2], "the follow-up walked the library added meanwhile: {got:?}");
     let st = s.status();
     assert_eq!((st.state.as_str(), st.queued), ("done", false));

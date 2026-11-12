@@ -269,7 +269,10 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/me/continue", route(GET, Gate::User, me_continue))
         .route("/api/profile/mascots", route(GET, Gate::User, mascots))
         .route("/api/users", route(GET, Gate::Admin, users_list).merge(route(POST, Gate::Admin, users_create)))
-        .route("/api/users/{id}", route(PATCH, Gate::Admin, users_patch).merge(route(DELETE, Gate::Admin, users_delete)))
+        .route(
+            "/api/users/{id}",
+            route(PATCH, Gate::Admin, users_patch).merge(route(DELETE, Gate::Admin, users_delete)),
+        )
         .route(
             "/api/libraries",
             route(GET, Gate::User, libraries_list).merge(route(POST, Gate::Admin, libraries_create)),
@@ -405,7 +408,9 @@ fn me_password(app: &App, req: &Req, v: &Verified) -> Reply {
         Ok(()) => Reply::ok(json!({"status": "ok"})),
         // A stable code, so a client tells "wrong current password" from
         // a rejected new one without reading the message.
-        Err(e @ AuthError::WrongPassword) => Reply::json(400, json!({"error": e.to_string(), "code": "wrong-password"})),
+        Err(e @ AuthError::WrongPassword) => {
+            Reply::json(400, json!({"error": e.to_string(), "code": "wrong-password"}))
+        }
         Err(e) => Reply::err(400, &e.to_string()),
     }
 }

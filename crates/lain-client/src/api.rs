@@ -21,11 +21,11 @@ use lain_api::{
 };
 use lain_api::{
     AdminTranscodes, BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health,
-    IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryOrder, LibraryPatch, LocalPlayers, LoginReply, Mascots,
-    ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions, PlaybackPlan,
-    PluginsView, PreferencesPatch, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar,
-    Sidecars, StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings, TranscodeSettingsView,
-    TranscodeStatus, User, UserDeleted, UserPatch, WithdrawReply,
+    IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryOrder, LibraryPatch, LocalPlayers,
+    LoginReply, Mascots, ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions,
+    PlaybackPlan, PluginsView, PreferencesPatch, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus,
+    SetupStatus, Sidecar, Sidecars, StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings,
+    TranscodeSettingsView, TranscodeStatus, User, UserDeleted, UserPatch, WithdrawReply,
 };
 
 use crate::error::ClientError;
