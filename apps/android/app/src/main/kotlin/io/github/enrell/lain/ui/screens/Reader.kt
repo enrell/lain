@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.CircleShape
 import io.github.enrell.lain.graph
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.AnimatedVisibility
@@ -130,14 +132,31 @@ fun ReaderScreen(
     val readerPrefs = androidx.compose.ui.platform.LocalContext.current.graph.prefs
     val chosenWay = remember(title) { readerPrefs.readingWayOf(title) }
     var vertical by remember { mutableStateOf(chosenWay == "down") }
-    val list = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = state.page)
+    // A fresh list each time scroll mode is chosen, opening at the page being read, so a
+    // position left over from an earlier visit never reports itself as the reader's page.
+    val list = remember(vertical) { androidx.compose.foundation.lazy.LazyListState(firstVisibleItemIndex = state.page) }
+    // In scroll mode the page being read is the one across the middle of the screen: the
+    // first visible one is often only a sliver at the top, and the counter lagged a page.
+    val readingInList by remember(list, book.pages.size) {
+        androidx.compose.runtime.derivedStateOf {
+            val info = list.layoutInfo
+            pageAcrossMiddle(
+                info.visibleItemsInfo.map { it.index to it.offset },
+                (info.viewportStartOffset + info.viewportEndOffset) / 2,
+                book.pages.size,
+            ) ?: list.firstVisibleItemIndex
+        }
+    }
     LaunchedEffect(pager.settledPage) { if (!vertical && pager.settledPage < book.pages.size) model.goTo(pager.settledPage) }
-    LaunchedEffect(list.firstVisibleItemIndex) { if (vertical && list.firstVisibleItemIndex < book.pages.size) model.goTo(list.firstVisibleItemIndex) }
+    // Ahead of the effect below, so a page the list just reported is seen as its own, not a jump.
     LaunchedEffect(state.page, vertical) {
         if (vertical) {
-            if (list.firstVisibleItemIndex != state.page) list.scrollToItem(state.page)
+            // A jump (the slider, its ends, the keys) moves the list; while the reader is
+            // scrolling, the page changes because of the list and must not pull it back.
+            if (!list.isScrollInProgress && readingInList != state.page) list.scrollToItem(state.page)
         } else if (pager.settledPage != state.page) pager.scrollToPage(state.page)
     }
+    LaunchedEffect(readingInList) { if (vertical && readingInList < book.pages.size) model.goTo(readingInList) }
     val turns = androidx.compose.runtime.rememberCoroutineScope()
     val atEnd = if (vertical) false else pager.currentPage >= book.pages.size
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -193,9 +212,15 @@ fun ReaderScreen(
         ) {
             Text(stringResource(R.string.end_of_volume), color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Text(title, Modifier.padding(top = 4.dp), color = l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                WButton(stringResource(R.string.reader_leave), onBack, kind = Btn.Secondary)
-                if (next != null) WButton(stringResource(R.string.next_volume), { onNext(next) }, icon = Ic.ChevronRight)
+            // One under the other, the way on first: side by side on a phone the card had no
+            // room for both, and "Next volume" lost its end ("Next vo…"). Both as wide as the wider.
+            Column(
+                Modifier.padding(top = 18.dp).width(IntrinsicSize.Max),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                // The chevron points where the next page is: left in a right-to-left book.
+                if (next != null) WButton(stringResource(R.string.next_volume), { onNext(next) }, Modifier.fillMaxWidth(), icon = if (rtl && !vertical) Ic.ChevronLeft else Ic.ChevronRight)
+                WButton(stringResource(R.string.reader_leave), onBack, Modifier.fillMaxWidth(), kind = Btn.Secondary)
             }
         }
     }
@@ -390,4 +415,15 @@ fun ReaderScreen(
             }
         }
     }
+}
+
+/**
+ * The page being read in scroll mode: of the visible pages ([visible] holds each one's
+ * index and top offset, in order), the last one whose top is above [middle], the
+ * viewport's middle; null when no page is visible. Indexes from [pages] on (the end
+ * card) are not pages.
+ */
+internal fun pageAcrossMiddle(visible: List<Pair<Int, Int>>, middle: Int, pages: Int): Int? {
+    val shown = visible.filter { it.first < pages }
+    return (shown.lastOrNull { it.second <= middle } ?: shown.firstOrNull())?.first
 }
