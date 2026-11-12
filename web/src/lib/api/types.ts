@@ -127,7 +127,7 @@ export interface TranscodeSelection {
 	/** An effect the server renders into the session (D-274): one of
 	 * `PlaybackOptions.effects`. */
 	video_effect?: string;
-	/** This player's viewer id (D-281): attaches it to the session it
+	/** The viewer id of this start (D-281): attaches it to the session it
 	 * starts or joins, so its release stops the session only when it was
 	 * the last viewer. Never changes which session it is. */
 	viewer?: string;

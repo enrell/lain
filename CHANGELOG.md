@@ -25,6 +25,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   being prepared and no other player (another tab or device) is watching
   it, so the next title starts at once instead of waiting behind it for
   up to two minutes; a finished session stays cached.
+- **Web**: a session the player started for a seek, track or quality
+  change that a second change replaced before the server answered is
+  released too, instead of running on until the idle timeout.
 - **Web**: pausing (K, Space) before a just-started play has begun no
   longer shows "The browser blocked playback" and pins the controls.
 - **Server**: an HLS session whose hardware encode fails and is retried

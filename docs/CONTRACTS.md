@@ -514,9 +514,13 @@ delivery to authenticated players.
 
 **Viewers (D-281).** A session is keyed by source and options, not by
 client, so two players with the same options and start point (two
-tabs, two devices, two accounts) share one. A player names itself with
-a viewer id it makes once per player instance: 1 to 64 ASCII letters,
-digits, `-` or `_` (anything else is 400 `invalid-message`). `viewer` in
+tabs, two devices, two accounts) share one. A player names its hold with
+a viewer id it makes: 1 to 64 ASCII letters, digits, `-` or `_`
+(anything else is 400 `invalid-message`). A fresh id for every start is
+the safe choice, and the web player's: a player that leaves a session
+and starts the same one again (a rebuild with unchanged options, or two
+starts racing) would otherwise end its new hold with the release of the
+old one if the server saw that release last. `viewer` in
 the `POST /api/items/{id}/transcode` body attaches it to the session it
 starts or joins (a session served finished from the cache attaches
 nothing), and `DELETE /api/items/{id}/transcode?session=&viewer=`
