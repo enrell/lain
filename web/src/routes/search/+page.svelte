@@ -224,7 +224,7 @@
 			<ul class="mt-2 divide-y divide-line/50">
 				{#each browse as lib (lib.id)}
 					<li>
-						<a href={`/library/${lib.id}`} class="flex min-h-12 items-center justify-between gap-3 rounded-md px-1 text-sm font-medium text-foreground hover:bg-surface-hover">
+						<a href={`/library/${lib.id}`} class="-mx-2 flex min-h-12 items-center justify-between gap-3 rounded-md px-2 text-sm font-medium text-foreground hover:bg-surface-hover">
 							{lib.name}
 							<ChevronRight class="size-4 text-muted" aria-hidden="true" />
 						</a>

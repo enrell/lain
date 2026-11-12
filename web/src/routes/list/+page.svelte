@@ -77,7 +77,9 @@
 				type="button"
 				aria-pressed={typeFilter === t.id}
 				class={[
-					'rounded-full border px-3.5 py-2 text-sm font-medium transition-colors sm:px-3 sm:py-1.5 sm:text-xs',
+					// The size of every other chip (recent searches, browse links): at 12 px
+					// these were the one set of small chips in the product.
+					'inline-flex min-h-9 items-center rounded-full border px-3.5 text-sm font-medium transition-colors',
 					typeFilter === t.id
 						? 'border-accent bg-accent/15 text-foreground'
 						: 'border-line bg-surface/60 text-muted hover:text-foreground'
@@ -89,7 +91,7 @@
 		{/each}
 		<span class="mx-1 hidden h-4 w-px bg-line sm:inline" aria-hidden="true"></span>
 		<select
-			class="rounded-full border border-line bg-surface/60 px-3.5 py-2 text-sm font-medium text-muted hover:text-foreground sm:px-3 sm:py-1.5 sm:text-xs"
+			class="h-9 rounded-full border border-line bg-surface/60 ps-3.5 text-sm font-medium leading-none text-muted hover:text-foreground"
 			value={statusFilter}
 			aria-label="Status"
 			onchange={(e) => pickStatus(e.currentTarget.value)}
