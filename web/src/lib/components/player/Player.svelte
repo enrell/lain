@@ -34,8 +34,8 @@
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
-	import { resolveTracks } from '$lib/player/track-language';
-	import { embeddedChoice, pickSidecar, sidecarIndex, sidecarLabel, sidecarValue, type SidecarTrack } from '$lib/player/sidecars';
+	import { resolveTracks, trackPreferences } from '$lib/player/track-language';
+	import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, type SidecarTrack } from '$lib/player/sidecars';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
 	import { isCompleted } from '$lib/utilities/progress';
@@ -50,9 +50,11 @@
 		loadSkip,
 		loadSubtitleBackground,
 		loadSubtitleSize,
+		loadTitleTracks,
 		saveSkip,
 		saveSubtitleBackground,
 		saveSubtitleSize,
+		saveTitleTrack,
 		type SubtitleBackground,
 		type SubtitleSize
 	} from '$lib/player/player-prefs';
@@ -353,8 +355,11 @@
 	}
 
 	onMount(() => {
-		const language = session.user?.preferred_language ?? '';
-		const choice = resolveTracks(plan.streams ?? [], language);
+		// The account's audio and subtitle preferences (D-280); what was
+		// picked for this title last time wins over them.
+		const trackPrefs = trackPreferences(session.user);
+		const remembered = loadTitleTracks(item.title);
+		const choice = resolveTracks(plan.streams ?? [], trackPrefs, remembered);
 		languageMetadataKnown = choice.metadataKnown;
 		selectedAudio = choice.audioIndex === undefined ? '' : String(choice.audioIndex);
 		selectedSubtitle = choice.subtitleIndex === undefined ? '' : String(choice.subtitleIndex);
@@ -369,11 +374,11 @@
 			.sidecars(item.id)
 			.then((res) => {
 				sidecars = res.sidecars;
-				const pick = pickSidecar(sidecars, language, {
-					audioMatches: choice.audioMatches,
-					embeddedFound: choice.subtitleIndex !== undefined
-				});
-				if (pick !== undefined && selectedSubtitle === '') selectedSubtitle = sidecarValue(pick);
+				// The same rule over the files too, when nothing embedded was
+				// chosen and the viewer has not picked yet.
+				if (selectedSubtitle !== '' || subtitlePicked) return;
+				const pick = resolveTracks(plan.streams ?? [], trackPrefs, remembered, sidecars).sidecarIndex;
+				if (pick !== undefined) selectedSubtitle = sidecarValue(pick);
 			})
 			.catch(() => undefined); // no sidecars: embedded tracks only
 		void detectBrowserProfile().then((profile) => { browserProfile = profile; });
@@ -384,7 +389,10 @@
 		if (mode === 'transcode') {
 			transcodeSession = plan.session ?? '';
 			transcodeReasons = plan.reasons ?? [];
-			if (plan.state === 'ready' && !language) {
+			// The plan's session is the default one with the account's
+			// preferred audio (D-280): it fits when no embedded subtitle and no
+			// remembered audio asks for another.
+			if (plan.state === 'ready' && embeddedChoice(selectedSubtitle) === '' && remembered.audio === undefined) {
 				// A cached session was produced from the start of the source.
 				void adoptReadySession();
 			} else {
@@ -716,9 +724,29 @@
 	// Only an embedded choice rebuilds a transcode; a sidecar swap is a
 	// <track> change in every mode.
 	let lastEmbedded = '';
+	// The viewer chose subtitles here: late sidecars no longer pick one.
+	let subtitlePicked = false;
 	function onSubtitleChoice(): void {
+		subtitlePicked = true;
+		rememberSubtitle();
 		if (mode === 'transcode' && embeddedSubtitle !== lastEmbedded) void changeTracks();
 		lastEmbedded = embeddedSubtitle;
+	}
+
+	// A pick in the menu is kept for this title, so its next part opens
+	// with the same language (D-280), as the app does.
+	function rememberSubtitle(): void {
+		if (selectedSubtitle === '') return saveTitleTrack(item.title, 'subtitle', null);
+		const language =
+			chosenSidecar !== null
+				? sidecars.find((s) => s.index === chosenSidecar)?.language
+				: subtitleTracks.find((s) => String(s.index) === embeddedSubtitle)?.language;
+		saveTitleTrack(item.title, 'subtitle', language);
+	}
+
+	function onAudioChoice(): void {
+		saveTitleTrack(item.title, 'audio', audioTracks.find((s) => String(s.index) === selectedAudio)?.language);
+		void changeTracks();
 	}
 
 	async function changeTracks(): Promise<void> {
@@ -1855,7 +1883,7 @@
 					<select
 						class="chrome-select"
 						bind:value={selectedAudio}
-						onchange={() => void changeTracks()}
+						onchange={onAudioChoice}
 						aria-label="Audio track"
 					>
 						<option value="">Default</option>
