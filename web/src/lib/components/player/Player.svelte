@@ -37,6 +37,7 @@
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
+	import { nativeCueBoxMovable } from '$lib/player/cue-overlay';
 	import { defaultAudioStream, resolveTracks, trackName, trackPreferences } from '$lib/player/track-language';
 	import { offeredQualities } from '$lib/player/quality-ladder';
 	import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, toggledSubtitle, type SidecarTrack } from '$lib/player/sidecars';
@@ -173,6 +174,9 @@
 	// (less its transparent fade) instead of being drawn under the buttons.
 	let footHeight = $state(0);
 	const cueLift = $derived(controlsVisible ? Math.max(0, footHeight - 32) : 0);
+	// Firefox cannot move its own cue box (see nativeCueBoxMovable): there the
+	// player draws the cues, as it does over the GPU renderer's canvas.
+	const cueBoxMovable = nativeCueBoxMovable();
 	let scrubbing = $state(false);
 	let scrubValue = $state(0);
 	// True only between pointerdown and pointerup on the seek row. Used to
@@ -560,8 +564,10 @@
 	// While the renderer presents frames the sidecar track goes `hidden`:
 	// cues still parse and cuechange fires, but the CueOverlay paints them
 	// over the canvas; `showing` restores the native ::cue path (D-082). A
-	// rebuilt sidecar element clears the previous track's failure.
+	// rebuilt sidecar element clears the previous track's failure. Firefox
+	// takes the overlay path too (cueBoxMovable).
 	const cueTrack = $derived(trackEl?.track ?? null);
+	const drawCues = $derived((rendererActive || !cueBoxMovable) && !trackFailed);
 	let lastTrackEl: HTMLTrackElement | null = null;
 	$effect(() => {
 		const el = trackEl;
@@ -570,7 +576,7 @@
 			trackFailed = false;
 		}
 		if (!el) return;
-		el.track.mode = rendererActive && !trackFailed ? 'hidden' : 'showing';
+		el.track.mode = drawCues ? 'hidden' : 'showing';
 	});
 
 	async function loadPlaybackOptions(): Promise<void> {
@@ -1863,8 +1869,8 @@
 			].join(' ')}
 			aria-hidden="true"
 		></canvas>
-		{#if rendererActive && cueTrack}
-			<CueOverlay track={cueTrack} video={video} size={subtitleSize} />
+		{#if drawCues && cueTrack}
+			<CueOverlay track={cueTrack} video={video} size={subtitleSize} lift={cueLift} />
 		{/if}
 
 	{#if preparingTranscode}
