@@ -344,8 +344,8 @@
 				<div class="w-full shrink-0 md:w-52">
 					<Poster {item} {enrichment} class="aspect-[2/3] rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10" priority />
 				</div>
-				<div class="hero-monolith-copy min-w-0 flex-1 max-md:contents">
-					<div class="min-w-0">
+				<div class="hero-monolith-copy hero-monolith-split min-w-0 flex-1">
+					<div class="min-w-0 @container">
 					{#if library}
 						<a href={`/library/${library.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
 							<ChevronLeft class="size-4" aria-hidden="true" /> {library.name}
