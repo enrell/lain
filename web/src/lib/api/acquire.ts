@@ -24,7 +24,20 @@ export interface Release {
 	proper?: boolean;
 	repack?: boolean;
 	version?: number;
+	/** Other readings the provider considered, best first; only the parse
+	 * route returns them, since the server settles them everywhere else
+	 * (D-279). */
+	alternatives?: ReleaseIdentity[];
 	parser: string;
+}
+
+/** Another reading of who a release is (`Release.alternatives`, D-279). */
+export interface ReleaseIdentity {
+	title: string;
+	year?: number;
+	season?: number;
+	episodes?: number[];
+	absolute?: boolean;
 }
 
 export interface IndexerCaps {

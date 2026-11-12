@@ -15,6 +15,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `lain_<version>_android.apk` and its `.sha256` to the release, signed
   with the project's key; the version code comes from the tag
   (`v0.3.1` is 3001), so every release installs over the one before.
+- **Release alternatives** (D-279): a release name that reads more than
+  one way ("Show 2 - 03": episode 3 of the sequel, or of season 2) is
+  settled by the title the server expects. With lain-parser 1.3.0 the
+  `lain-release-model` provider asks for up to five other readings; a
+  search takes the one that names its query, automation and its grabs
+  the one that names the monitored title or an alias, and an import the
+  one that names the grabbed release; a reading whose year is more than
+  one from the expected year is never taken. A release the parser
+  answers as a monitored title stays that title's: with "Show" and
+  "Show 2" both monitored, "Show 2 - 03" never becomes season 2 of
+  "Show". A manual grab keeps the parser's answer, and a library's other
+  titles never pull a sequel into the show it follows.
+  `GET /api/acquire/parse` shows the readings (`alternatives`,
+  additive); they are never stored in a grab or returned in a search.
+  An older parser service, or the tokenizer, offers none and nothing
+  changes.
 
 ### Changed
 - **A server address typed without `http://` or `https://`** (D-277) is
@@ -24,6 +40,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   otherwise; an `https` that fails is never retried as `http`. This holds
   in the CLI, the desktop app and Android, whose connect field no longer
   starts at `http://`.
+
+### Fixed
+- **Years in acquisition** (D-279): a search with a year rejects a
+  release whose year is more than one away ("year does not match"); it
+  never compared years before. A model reading whose title holds the
+  year ("Blade.Runner.2049.1080p" read as "Blade Runner 2049") no longer
+  takes it as the release year, so a monitored "Blade Runner 2049"
+  (2017) no longer refuses that release.
 
 ## [0.3.0] - 2026-11-12
 
