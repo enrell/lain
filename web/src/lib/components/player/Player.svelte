@@ -32,6 +32,8 @@
 	import { session } from '$lib/auth/session.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Keyboard from '@lucide/svelte/icons/keyboard';
+	import PanelRightClose from '@lucide/svelte/icons/panel-right-close';
+	import PanelRightOpen from '@lucide/svelte/icons/panel-right-open';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
@@ -71,7 +73,8 @@
 		plan,
 		initialProgress,
 		onFinished,
-		next = null
+		next = null,
+		episodes = null
 	}: {
 		item: CatalogItem;
 		plan: PlaybackPlan;
@@ -80,6 +83,8 @@
 		onFinished?: () => void;
 		/** The episode after this one, if any: a button in the bar and Shift+N go to it. */
 		next?: { label: string; go: () => void } | null;
+		/** The episode list beside the player on a wide screen: E and a bar button show or hide it. */
+		episodes?: { shown: boolean; toggle: () => void } | null;
 	} = $props();
 
 	const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -1615,6 +1620,13 @@
 				consume(event);
 				stepRate(event.key === '>' ? 1 : -1);
 				break;
+			case 'e':
+			case 'E':
+				// Only where the list sits beside the picture (lg and up); below, it is under it.
+				if (!episodes || !window.matchMedia('(min-width: 1024px)').matches) break;
+				consume(event);
+				episodes.toggle();
+				break;
 			case 'N':
 				// Shift+N, as most web players have it: a bare N is too easy to hit by mistake.
 				if (!next) break;
@@ -2226,6 +2238,12 @@
 				<IconButton label="Keyboard shortcuts (?)" class="max-md:hidden" onclick={() => (keysOpen = true)}>
 					<Keyboard class="size-5" />
 				</IconButton>
+				{#if episodes}
+					<!-- The list beside the picture takes a quarter of a laptop's width: it can step aside. -->
+					<IconButton label={episodes.shown ? t('player.episodesHide') : t('player.episodesShow')} class="max-lg:hidden" onclick={episodes.toggle}>
+						{#if episodes.shown}<PanelRightClose class="size-5" />{:else}<PanelRightOpen class="size-5" />{/if}
+					</IconButton>
+				{/if}
 				<button bind:this={settingsButton} type="button" aria-label="Playback settings" aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
 					<Settings class="size-5" />
 					<span class="sr-only">Playback settings</span>
@@ -2244,7 +2262,7 @@
 
 <Modal bind:open={keysOpen} title="Keyboard shortcuts">
 	<dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-sm">
-		{#each [[['Space', 'K'], 'Play or pause'], [['←', '→'], 'Back or forward 5 seconds'], [['J', 'L'], `Back or forward ${skipSec} seconds`], [['↑', '↓'], 'Volume'], [['M'], 'Mute'], [['C'], t('player.keys.subtitles')], [['<', '>'], t('player.keys.speed')], [['F'], 'Full screen'], ...(next ? [[['Shift', 'N'], t('player.nextEpisode')] as [string[], string]] : []), [['Esc'], 'Close a panel, leave full screen'], [['?'], 'This list']] as [keys, what] (what)}
+		{#each [[['Space', 'K'], 'Play or pause'], [['←', '→'], 'Back or forward 5 seconds'], [['J', 'L'], `Back or forward ${skipSec} seconds`], [['↑', '↓'], 'Volume'], [['M'], 'Mute'], [['C'], t('player.keys.subtitles')], [['<', '>'], t('player.keys.speed')], [['F'], 'Full screen'], ...(episodes ? [[['E'], t('player.keys.episodes')] as [string[], string]] : []), ...(next ? [[['Shift', 'N'], t('player.nextEpisode')] as [string[], string]] : []), [['Esc'], 'Close a panel, leave full screen'], [['?'], 'This list']] as [keys, what] (what)}
 			<dt class="flex gap-1">{#each keys as key (key)}<kbd>{key}</kbd>{/each}</dt>
 			<dd class="text-muted">{what}</dd>
 		{/each}
