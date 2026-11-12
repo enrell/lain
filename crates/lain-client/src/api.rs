@@ -25,7 +25,7 @@ use lain_api::{
     ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions, PlaybackPlan,
     PluginsView, PreferencesPatch, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar,
     Sidecars, StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings, TranscodeSettingsView,
-    TranscodeStatus, User, UserPatch, WithdrawReply,
+    TranscodeStatus, User, UserDeleted, UserPatch, WithdrawReply,
 };
 
 use crate::error::ClientError;
@@ -356,6 +356,12 @@ impl Client {
 
     pub async fn update_user(&self, id: &str, patch: UserPatch) -> Result<User, ClientError> {
         self.call(Method::PATCH, &format!("/api/users/{}", encode(id)), json_body(&patch)).await
+    }
+
+    /// Deletes an account and everything it kept (progress, lists,
+    /// social rows); its private libraries pass to the caller.
+    pub async fn delete_user(&self, id: &str) -> Result<UserDeleted, ClientError> {
+        self.call(Method::DELETE, &format!("/api/users/{}", encode(id)), Body::None).await
     }
 
     // ---- libraries ----------------------------------------------------
