@@ -12,6 +12,7 @@
 	import { guessFrame, settleFrame } from '$lib/stores/frames';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import type { Shape } from '$lib/stores/shapes.svelte';
+	import { wholeTitle } from '$lib/stores/titles';
 	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
 	import MediaCard from './MediaCard.svelte';
 	import { RAIL } from './grid';
@@ -67,9 +68,14 @@
 		void files
 			.then(async (items) => {
 				const all = groupItems(items);
-				const found = (newest ? sortGroups(all, 'recent') : all)
+				const named = (newest ? sortGroups(all, 'recent') : all)
 					.filter((g) => !g.items.some((i) => skip.has(i.id)))
 					.slice(0, 12);
+				// A show among the newest files holds only its latest episodes:
+				// each gets all of its files, so its card counts them all and
+				// shows its poster, as the library does (see `wholeTitle`).
+				const found = await Promise.all(named.map((g) => (g.items.some((i) => i.episode > 0) ? wholeTitle(g) : g)));
+				if (mine !== run) return;
 				const guess = await guessFrame(found);
 				if (mine !== run) return;
 				frame = guess;
