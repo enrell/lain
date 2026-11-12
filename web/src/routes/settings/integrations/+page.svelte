@@ -4,10 +4,13 @@
 	import Clipboard from '@lucide/svelte/icons/clipboard';
 	import { api, type IntegrationPlatform } from '$lib/api';
 	import Button from '$lib/components/primitives/Button.svelte';
-	import Input from '$lib/components/primitives/Input.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
+	import SettingRow from '$lib/components/settings/SettingRow.svelte';
+	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
+	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import ApiKeys from './ApiKeys.svelte';
 
 	// The operator's OAuth application credentials (D-080). The secret is
 	// write-only: the server reports secret_set and keeps the stored one
@@ -65,70 +68,69 @@
 
 <svelte:head><title>Integrations — Settings — Lain</title></svelte:head>
 
-<div class="grid gap-6 lg:grid-cols-2">
-	<section id="integrations" class="settings-section scroll-mt-28 !border-t-0 !pt-0">
-		<h2 class="settings-heading">AniList</h2>
-		<p class="mt-1 max-w-2xl text-sm text-muted">
-			One OAuth application for the whole server (D-080). Register it in the
-			AniList developer settings, paste the client credentials below and set
-			the redirect URL to exactly the callback shown here. Users can then link
-			their own accounts from Settings → Account.
-		</p>
+<form
+	onsubmit={(e) => {
+		e.preventDefault();
+		void save();
+	}}
+>
+	<SettingsGroup id="integrations" title="AniList" description={t('settings.groups.integrations.anilist')}>
 		{#if !ready}
-			<div class="mt-6 flex justify-center"><Spinner class="size-5 text-muted" /></div>
+			<div class="flex justify-center py-8"><Spinner class="size-5 text-muted" /></div>
 		{:else}
-			<form
-				class="mt-5 max-w-xl space-y-4"
-				onsubmit={(e) => {
-					e.preventDefault();
-					void save();
-				}}
+			<p class="py-4 text-sm leading-6 text-muted">{t('settings.groups.integrations.anilistSteps')}</p>
+			<SettingRow
+				label="Callback URL to register"
+				hint={t('settings.groups.integrations.callbackHint')}
 			>
-				<div>
-					<label class="block text-sm font-medium text-foreground" for="anilist-callback"
-						>Callback URL to register</label
+				<div class="flex w-full items-center gap-2">
+					<input
+						id="anilist-callback"
+						class="h-9 min-w-0 flex-1 rounded-md border px-3 font-mono text-xs text-foreground"
+						type="text"
+						readonly
+						aria-label="Callback URL to register"
+						value={anilist?.callback_url ?? ''}
+					/>
+					<Button
+						variant="tonal"
+						size="field"
+						type="button"
+						class="shrink-0"
+						onclick={() => void copyCallback()}
+						aria-label="Copy callback URL"
 					>
-					<div class="mt-2 flex items-center gap-2">
-						<input
-							id="anilist-callback"
-							class="w-full rounded-md border border-line bg-background p-2 font-mono text-xs text-foreground"
-							type="text"
-							readonly
-							value={anilist?.callback_url ?? ''}
-						/>
-						<Button
-							variant="secondary"
-							type="button"
-							class="shrink-0 !px-3"
-							onclick={() => void copyCallback()}
-							aria-label="Copy callback URL"
-						>
-							{#if copied}<Check class="size-4" />{:else}<Clipboard class="size-4" />{/if}
-						</Button>
-					</div>
-					<p class="mt-2 text-xs text-muted">
-						AniList requires an exact match. If the server runs behind a reverse proxy, this
-						is the public URL users reach — not the internal bind address.
-					</p>
+						{#if copied}<Check class="size-4" />{:else}<Clipboard class="size-4" />{/if}
+					</Button>
 				</div>
-				<Input
-					label="Client ID"
+			</SettingRow>
+			<SettingRow label="Client ID" hint={t('settings.groups.integrations.clientIdHint')}>
+				<input
+					class="h-9 w-full rounded-md border px-3 font-mono text-sm text-foreground outline-none"
 					bind:value={clientId}
 					autocomplete="off"
 					spellcheck={false}
-					placeholder="The numeric id from the AniList app"
+					aria-label="Client ID"
 				/>
-				<Input
-					label="Client secret"
+			</SettingRow>
+			<SettingRow
+				label="Client secret"
+				hint={anilist?.secret_set
+					? 'A secret is stored — leave blank to keep it.'
+					: 'Stored on the server only; it is never shown again.'}
+			>
+				<input
+					class="h-9 w-full rounded-md border px-3 text-sm text-foreground outline-none"
 					type="password"
 					bind:value={clientSecret}
 					autocomplete="off"
-					hint={anilist?.secret_set
-						? 'A secret is stored — leave blank to keep it.'
-						: 'Stored on the server only; it is never shown again.'}
+					aria-label="Client secret"
 				/>
-				<Button type="submit" loading={saving}>Save</Button>
-			</form>
+			</SettingRow>
+			<div class="flex justify-end py-3">
+				<Button type="submit" size="field" loading={saving}>Save</Button>
+			</div>
 		{/if}
-	</section>
-</div>
+	</SettingsGroup>
+</form>
+<ApiKeys />

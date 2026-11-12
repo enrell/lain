@@ -1,5 +1,10 @@
 package io.github.enrell.lain.ui.screens
 
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -115,12 +120,62 @@ fun ErrorLine(e: Throwable?, modifier: Modifier = Modifier) {
 
 /** An item's art through the shared cache; a surface tile while loading or without art. */
 @Composable
-fun Art(itemId: String, modifier: Modifier = Modifier, scale: ContentScale = ContentScale.Crop) {
+fun Art(
+    itemId: String,
+    modifier: Modifier = Modifier,
+    scale: ContentScale = ContentScale.Crop,
+    alignment: Alignment = Alignment.Center,
+    /** Written on the card when there is no picture, or only a black frame. */
+    label: String? = null,
+) {
     val l = LocalLain.current
     val ctx = LocalContext.current
-    val bmp: ImageBitmap? by produceState<ImageBitmap?>(null, itemId) { value = ctx.graph.art(itemId) }
+    // What memory already holds paints in the first frame. (The picture's
+    // shape is recorded by the loader, never here: writing state while a
+    // lazy grid composes an item during its own measure pass crashes it.)
+    val cached = remember(itemId) { ctx.graph.artNow(itemId) }
+    var settled by remember(itemId) { mutableStateOf(cached != null) }
+    val bmp: ImageBitmap? by produceState(cached, itemId) {
+        if (value == null) value = ctx.graph.art(itemId)
+        settled = true
+    }
+    // A picture that had to be fetched fades in; one from memory is simply there.
+    val alpha by animateFloatAsState(if (bmp != null) 1f else 0f, tween(if (cached != null) 0 else 220), label = "art")
+    // A still taken from a dark frame is a picture of nothing: say what it is instead.
+    val blank = remember(bmp) { bmp?.let(::looksBlank) ?: false }
     Box(modifier.background(l.surface)) {
-        bmp?.let { Image(it, contentDescription = null, contentScale = scale, modifier = Modifier.fillMaxSize()) }
+        bmp?.let { Image(it, contentDescription = null, contentScale = scale, alignment = alignment, alpha = alpha, modifier = Modifier.fillMaxSize()) }
+        if (label != null && settled && (bmp == null || blank)) {
+            Box(
+                Modifier.fillMaxSize().background(Brush.linearGradient(listOf(l.raised, l.surface))).padding(12.dp),
+                contentAlignment = Alignment.BottomStart,
+            ) {
+                Text(label, color = l.text.copy(alpha = 0.85f), fontSize = 15.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/** True for a picture with nothing to see: every sampled point is near black. */
+private fun looksBlank(image: ImageBitmap): Boolean = runCatching {
+    val b = image.asAndroidBitmap()
+    if (b.width < 4 || b.height < 4) return@runCatching false
+    for (y in 1..5) for (x in 1..5) {
+        val c = b.getPixel(b.width * x / 6, b.height * y / 6)
+        val lum = (android.graphics.Color.red(c) * 3 + android.graphics.Color.green(c) * 6 + android.graphics.Color.blue(c)) / 10
+        if (lum > 26) return@runCatching false
+    }
+    true
+}.getOrDefault(false)
+
+/** The art's colours as a soft backdrop (see `AppGraph.ambient`). */
+@Composable
+fun Ambient(itemId: String, modifier: Modifier = Modifier, strength: Float = 0.75f) {
+    val ctx = LocalContext.current
+    val bmp: ImageBitmap? by produceState<ImageBitmap?>(null, itemId) { value = ctx.graph.ambient(itemId) }
+    val alpha by animateFloatAsState(if (bmp != null) strength else 0f, tween(420), label = "ambient")
+    Box(modifier) {
+        bmp?.let { Image(it, contentDescription = null, contentScale = ContentScale.FillBounds, alpha = alpha, filterQuality = androidx.compose.ui.graphics.FilterQuality.High, modifier = Modifier.fillMaxSize()) }
     }
 }
 
@@ -153,7 +208,7 @@ fun PosterCard(
                 .clip(l.cardShape)
                 .border(if (focused) 2.dp else 0.dp, if (focused) l.focus else Color.Transparent, l.cardShape),
         ) {
-            Art(artId, Modifier.fillMaxSize())
+            Art(artId, Modifier.fillMaxSize(), label = title)
             if (progress > 0f) {
                 LinearProgressIndicator(
                     progress = { progress },
@@ -191,12 +246,30 @@ fun episodeLabel(season: Long, episode: Long, reading: Boolean): String = when {
 }
 
 fun bytes(n: Long): String {
-    val units = listOf("B", "KiB", "MiB", "GiB", "TiB")
+    val units = listOf("B", "KB", "MB", "GB", "TB")
     var v = n.toDouble()
     var i = 0
     while (v >= 1024 && i < units.lastIndex) {
         v /= 1024
         i++
     }
-    return if (i == 0) "$n B" else "%.1f %s".format(v, units[i])
+    return when {
+        n == 0L -> "0 MB"
+        i == 0 -> "$n B"
+        v >= 100 || v % 1.0 < 0.05 -> "%.0f %s".format(v, units[i])
+        else -> "%.1f %s".format(v, units[i])
+    }
+}
+
+/** A length as people say it: `24 min`, `1 h 42 min`, `45 sec`. */
+fun length(sec: Double): String {
+    val s = sec.toLong().coerceAtLeast(0)
+    val h = s / 3600
+    val m = (s % 3600 + 30) / 60
+    return when {
+        s < 60 -> "$s sec"
+        h == 0L -> "$m min"
+        m == 0L -> "$h h"
+        else -> "$h h $m min"
+    }
 }

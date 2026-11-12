@@ -79,11 +79,11 @@
 
 <svelte:head><title>{t('offline.title')}</title></svelte:head>
 
-<div class="max-w-4xl pb-24">
+<div>
 	{#if !supported}
 		<p class="text-sm text-muted">{t('offline.unsupported')}</p>
 	{:else}
-		<SettingsGroup id="storage" title={t('offline.storage.group')}>
+		<SettingsGroup id="storage" title={t('offline.storage.group')} description={t('settings.groups.offline.storage')}>
 			<SettingRow label={t('offline.storage.used')} hint={t('offline.storage.usedHint')}>
 				<span class="font-mono text-xs text-foreground">
 					{Number.isFinite(budget)
@@ -96,25 +96,25 @@
 					type="number"
 					min="0"
 					step="1"
-					class="h-9 w-32 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
+					class="h-9 w-28 rounded-md border border-transparent bg-field px-3 text-end font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none"
 					aria-label={t('offline.storage.cap')}
 					value={cap}
 					onchange={(e) => applyCap(e.currentTarget.value)}
 				/>
 			</SettingRow>
 			<SettingRow label={t('offline.storage.clear')} hint={t('offline.storage.clearHint')}>
-				<Button variant="secondary" size="sm" disabled={items.length === 0} onclick={() => void clearAll()}>
+				<Button variant="tonal" size="field" disabled={items.length === 0} onclick={() => void clearAll()}>
 					{t('offline.storage.clear')}
 				</Button>
 			</SettingRow>
 		</SettingsGroup>
 
-		<SettingsGroup id="items" title={t('offline.items.group')}>
+		<SettingsGroup id="items" title={t('offline.items.group')} description={t('settings.groups.offline.items')}>
 			{#if items.length === 0}
-				<p class="py-6 text-sm text-muted">{t('offline.items.empty', { key: 'o' })}</p>
+				<p class="py-5 text-sm text-muted">{t('offline.items.empty', { key: 'o' })}</p>
 			{:else}
-				<p class="pt-4 text-xs text-muted">{t('offline.items.keys', { open: 'Enter', remove: 'Delete' })}</p>
-				<div class="mt-2 divide-y divide-hairline" role="grid" aria-label={t('offline.items.group')}>
+				<p class="settings-note">{t('offline.items.keys', { open: 'Enter', remove: 'Delete' })}</p>
+				<div class="settings-items" role="grid" aria-label={t('offline.items.group')}>
 					{#each items as s (s.item_id)}
 						<div
 							role="row"
@@ -129,10 +129,10 @@
 								</p>
 							</div>
 							<div class="flex items-center gap-1.5" role="gridcell">
-								<Button size="sm" variant="ghost" tabindex={-1} onclick={() => void goto(`/read/${encodeURIComponent(s.item_id)}`)}>
+								<Button size="field" variant="ghost" tabindex={-1} onclick={() => void goto(`/read/${encodeURIComponent(s.item_id)}`)}>
 									{t('offline.items.open')} <kbd class="ms-1 font-mono text-[10px] text-muted">Enter</kbd>
 								</Button>
-								<Button size="sm" variant="ghost" tabindex={-1} onclick={() => void remove(s)}>
+								<Button size="field" variant="ghost" tabindex={-1} onclick={() => void remove(s)}>
 									{t('offline.remove')} <kbd class="ms-1 font-mono text-[10px] text-muted">Delete</kbd>
 								</Button>
 							</div>

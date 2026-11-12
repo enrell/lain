@@ -1322,7 +1322,7 @@ async fn tls_front(target: std::net::SocketAddr) -> String {
     url
 }
 
-/// `https` (D-274): a certificate from an unknown CA is refused as
+/// `https` (D-277): a certificate from an unknown CA is refused as
 /// `Tls`, which counts as unreachable; once its root is trusted the
 /// same client logs in and reads through TLS. A port that does not
 /// speak TLS is `Tls` too, never a hang.

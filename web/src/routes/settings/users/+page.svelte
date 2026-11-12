@@ -11,13 +11,14 @@
 	import { session } from '$lib/auth/session.svelte';
 	import Badge from '$lib/components/primitives/Badge.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
-	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Input from '$lib/components/primitives/Input.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import Switch from '$lib/components/primitives/Switch.svelte';
+	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
+	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatDate } from '$lib/utilities/format';
@@ -183,80 +184,78 @@
 
 <svelte:head><title>Users — Settings — Lain</title></svelte:head>
 
-<div id="users" class="scroll-mt-28 space-y-5">
-	<div class="flex items-center justify-between gap-3">
-		<p class="text-sm text-muted">
-			{users.length} {users.length === 1 ? 'account' : 'accounts'}. Roles and disabling take effect
-			on the next request.
-		</p>
-		<Button variant="secondary" size="sm" onclick={() => (createOpen = true)}>
+<SettingsGroup
+	id="users"
+	title={t('settings.groups.users.title')}
+	description={loading ? undefined : t('settings.groups.users.accounts', { count: users.length })}
+>
+	{#snippet aside()}
+		<Button variant="tonal" size="field" onclick={() => (createOpen = true)}>
 			<Users class="size-4" /> Add user
 		</Button>
-	</div>
-
+	{/snippet}
 	{#if loading}
-		<div class="h-24 animate-pulse rounded-card bg-surface-active/50"></div>
+		<div class="py-4"><div class="h-12 animate-pulse rounded-md bg-field"></div></div>
 	{:else if error}
-		<ErrorState message={error} retry={() => void load()} />
+		<div class="py-4"><ErrorState message={error} retry={() => void load()} /></div>
 	{:else if users.length === 0}
-		<EmptyState title="No users" description="This should not happen: setup creates the first admin.">
-			{#snippet icon()}<UserRound class="size-6 text-muted" />{/snippet}
-		</EmptyState>
+		<div class="flex flex-col items-center px-6 py-10 text-center">
+			<UserRound class="size-6 text-muted" />
+			<p class="mt-3 text-base font-semibold text-foreground">No users</p>
+			<p class="mt-1 text-sm text-muted">This should not happen: setup creates the first admin.</p>
+		</div>
 	{:else}
-		<ul class="settings-list">
+		<!-- One table: who, then role, active, and the two per-account actions,
+		     in columns that line up from row to row. -->
+		<ul class="settings-items">
 			{#each users as user (user.id)}
-				<li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 py-2.5 md:gap-y-3 md:py-3.5">
-					<div class="flex min-w-0 flex-1 items-center gap-3">
-						<Avatar {user} class="size-9" />
+				<li class="flex flex-wrap items-center gap-x-4 gap-y-3 py-3.5 lg:grid lg:grid-cols-[minmax(0,1fr)_8rem_auto_auto]">
+					<div class="flex min-w-0 basis-full items-center gap-3">
+						<Avatar {user} class="size-9 shrink-0" />
 						<div class="min-w-0">
 							<div class="flex flex-wrap items-center gap-2">
-								<p class="truncate font-medium text-foreground">{displayName(user)}</p>
+								<p class="truncate text-sm font-medium text-foreground">{displayName(user)}</p>
 								{#if user.profile?.display_name}<span class="font-mono text-[11px] text-muted">@{user.username}</span>{/if}
 								{#if isSelf(user)}<Badge tone="accent">you</Badge>{/if}
 								{#if user.disabled}<Badge tone="danger">disabled</Badge>{/if}
+								{#if rowBusy === user.id}<Spinner class="size-3.5 text-muted" />{/if}
 							</div>
 							<p class="mt-0.5 text-xs text-muted">
 								{user.role} · joined {formatDate(user.created_at)}
 							</p>
 						</div>
 					</div>
-
-					<div class="flex flex-wrap items-center gap-3">
-						{#if rowBusy === user.id}
-							<Spinner class="size-4 text-muted" />
-						{/if}
-						<div class="w-32">
-							<Select
-								aria-label={`Role for ${user.username}`}
-								value={user.role}
-								options={roleOptions}
-								disabled={isSelf(user)}
-								onValueChange={(role) => void patch(user, { role: role as 'admin' | 'user' }, `Role updated for ${user.username}.`)}
-							/>
-						</div>
-						<div class="w-36">
-							<Switch
-								label="Active"
-								checked={!user.disabled}
-								disabled={isSelf(user)}
-								onCheckedChange={(enabled) =>
-									void patch(
-										user,
-										{ disabled: !enabled },
-										enabled ? `${user.username} enabled.` : `${user.username} disabled.`
-									)}
-							/>
-						</div>
-						<Button
-							variant="ghost"
-							size="sm"
-							onclick={() => openPlaybackLimits(user)}
-						>
+					<div class="w-32">
+						<Select
+							aria-label={`Role for ${user.username}`}
+							value={user.role}
+							options={roleOptions}
+							disabled={isSelf(user)}
+							onValueChange={(role) => void patch(user, { role: role as 'admin' | 'user' }, `Role updated for ${user.username}.`)}
+						/>
+					</div>
+					<div class="flex h-9 items-center gap-2 text-sm text-muted">
+						<Switch
+							bare
+							label="Active"
+							checked={!user.disabled}
+							disabled={isSelf(user)}
+							onCheckedChange={(enabled) =>
+								void patch(
+									user,
+									{ disabled: !enabled },
+									enabled ? `${user.username} enabled.` : `${user.username} disabled.`
+								)}
+						/>
+						<span>Active</span>
+					</div>
+					<div class="flex flex-wrap items-center gap-1">
+						<Button variant="ghost" size="field" onclick={() => openPlaybackLimits(user)}>
 							<SlidersHorizontal class="size-4" /> Playback
 						</Button>
 						<Button
 							variant="ghost"
-							size="sm"
+							size="field"
 							onclick={() => {
 								resetTarget = user;
 								resetOpen = true;
@@ -269,7 +268,7 @@
 			{/each}
 		</ul>
 	{/if}
-</div>
+</SettingsGroup>
 
 <!-- Create -->
 <Modal bind:open={createOpen} title="Add a user" description="Accounts are local to this server.">

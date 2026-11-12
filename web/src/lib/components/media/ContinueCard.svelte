@@ -3,7 +3,8 @@
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
-	import { mediaSubtitle } from '$lib/utilities/format';
+	import { t } from '$lib/i18n';
+	import { formatLength, mediaSubtitle } from '$lib/utilities/format';
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	import { progressRatio } from '$lib/utilities/progress';
 	import ProgressBar from './ProgressBar.svelte';
@@ -32,15 +33,21 @@
 				? `Episode ${item.episode}`
 				: series
 	);
-	const title = $derived(
-		reading ? epLabel : item.episode > 0 ? `Episode ${item.episode}` : series
+	// The title names the work and the line under it says where you are in
+	// it and what is left, each said once: "Paper Moon Station" over
+	// "Episode 3 · 9 sec left", as the app's cards read.
+	const left = $derived(
+		progress && !progress.completed && progress.duration_sec - progress.position_sec > 0
+			? reading
+				? `Page ${Math.max(1, Math.floor(progress.position_sec))} of ${Math.floor(progress.duration_sec)}`
+				: t('title.left', { time: formatLength(progress.duration_sec - progress.position_sec) })
+			: ''
 	);
+	const title = $derived(series);
 	const subtitle = $derived(
-		reading
-			? series
-			: item.episode > 0
-				? `${epLabel} - ${series}`
-				: mediaSubtitle(item) || series
+		[reading ? (epLabel !== series ? epLabel : '') : item.episode > 0 ? epLabel : '', left || (item.episode > 0 || reading ? '' : mediaSubtitle(item))]
+			.filter(Boolean)
+			.join(' · ') || mediaSubtitle(item)
 	);
 	const ratio = $derived(progress && !progress.completed ? progressRatio(progress) : 0);
 

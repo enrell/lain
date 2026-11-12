@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Cleartext is the user's choice per server (D-252, D-274). -->
+    <!-- Cleartext is the user's choice per server (D-252, D-277). -->
     <application
         android:name=".LainApp"
         android:allowBackup="false"
@@ -22,7 +22,7 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:exported="true"
-            android:supportsPictureInPicture="false"
+            android:supportsPictureInPicture="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

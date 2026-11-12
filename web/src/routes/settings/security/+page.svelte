@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api } from '$lib/api';
+	import { t } from '$lib/i18n';
 	import { session } from '$lib/auth/session.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
@@ -41,15 +42,15 @@
 		}
 	}
 
-	const field = 'h-9 w-full rounded-md border px-2.5 text-sm text-foreground outline-none sm:w-72';
+	const field = 'h-9 w-full rounded-md border px-3 text-sm text-foreground outline-none';
 </script>
 
 <svelte:head><title>Security — Settings — Lain</title></svelte:head>
 
 <form onsubmit={submit}>
-	<SettingsGroup id="password" title="Password">
+	<SettingsGroup id="password" title="Password" description={t('settings.groups.security.password')}>
 		{#if error}
-			<p class="border-b border-hairline py-3 text-sm text-danger" role="alert">{error}</p>
+			<p class="py-3 text-sm text-danger" role="alert">{error}</p>
 		{/if}
 		<SettingRow label="Current password">
 			<input class={field} type="password" bind:value={oldPassword} autocomplete="current-password" required aria-label="Current password" />
@@ -64,7 +65,7 @@
 		</SettingRow>
 		<div class="flex items-center justify-between gap-3 py-4">
 			<p class="text-xs text-muted">Every other session is signed out immediately.</p>
-			<Button type="submit" size="sm" loading={busy}>Update password</Button>
+			<Button type="submit" size="field" loading={busy}>Update password</Button>
 		</div>
 	</SettingsGroup>
 </form>

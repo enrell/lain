@@ -109,10 +109,14 @@ pub enum Bucket {
     AcqSubProviders,
     AcqSubtitles,
     AcqSubBlock,
+    /// Integration keys, by id (D-265).
+    Integrations,
+    /// What integrations said about files, `library\0relative path` (D-266).
+    Imports,
 }
 
 impl Bucket {
-    pub const ALL: [Bucket; 34] = [
+    pub const ALL: [Bucket; 36] = [
         Bucket::Users,
         Bucket::UsersByName,
         Bucket::Libraries,
@@ -147,6 +151,8 @@ impl Bucket {
         Bucket::AcqSubProviders,
         Bucket::AcqSubtitles,
         Bucket::AcqSubBlock,
+        Bucket::Integrations,
+        Bucket::Imports,
     ];
 
     /// The table name.
@@ -186,6 +192,8 @@ impl Bucket {
             Bucket::AcqSubProviders => "acq_subproviders",
             Bucket::AcqSubtitles => "acq_subtitles",
             Bucket::AcqSubBlock => "acq_subblock",
+            Bucket::Integrations => "integrations",
+            Bucket::Imports => "imports",
         }
     }
 

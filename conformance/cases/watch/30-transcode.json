@@ -26,6 +26,12 @@
        "expect": {"status": 400, "body": {"error": "unknown quality \"999p\"", "code": "invalid-message"}}},
       {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"video_codec": "hevc"}},
        "expect": {"status": 400, "body": {"error": "HEVC encoding is not allowed by server settings", "code": "invalid-message"}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"delivery": "progressive", "video_copy_codecs": ["hevc", "vvc"]}},
+       "expect": {"status_not": 400, "body": {"session": "$nonempty", "profile": "$prefix:web-mp4-v3-", "$open": true}}, "save": {"copy": "/session"}},
+      {"req": {"method": "DELETE", "path": "/api/items/{{w_beta}}/transcode?session={{copy}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"session": "{{copy}}", "state": "idle", "$open": true}}},
+      {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"video_effect": "sepia"}},
+       "expect": {"status": 400, "body": {"error": "unknown video_effect \"sepia\"", "code": "invalid-message"}}},
       {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "auth": "w_bob", "body": {"audio_stream": 2}},
        "expect": {"status": 400, "body": {"error": "audio_stream is not an audio track", "code": "invalid-message"}}},
       {"req": {"method": "POST", "path": "/api/items/{{w_beta}}/transcode", "body": {}}, "expect": {"status": 401}}

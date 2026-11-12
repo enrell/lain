@@ -6,6 +6,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **`https` servers in every native client** (D-277): `lain-client` speaks
+  TLS through `lain-http`'s rustls setup, so `lain login --server
+  https://...`, the desktop app and Android reach a server behind a reverse
+  proxy. A failed handshake is `ClientError::Tls` (its own message on
+  Android).
+- **Signed Android releases** (D-278): a `v*` tag attaches
+  `lain_<version>_android.apk` when the signing secrets are set.
+
+## [0.3.0] - 2026-11-12
+
+### Added
+- **The Android app, redesigned** (#39) in the web client's language: a
+  bottom bar of five places (Home, Library, Search, Downloads, Settings);
+  a Home hero that names what it resumes, then Continue watching, Continue
+  reading, Favorites, Recently added and a rail per library; library pages
+  with search and a filters sheet; title pages whose main button names the
+  episode, with the favourite heart, mark watched and downloads; a player
+  that opens on its side, with gestures, subtitles and audio by name,
+  picture in picture, kept speed, skip length, subtitle size and box, a
+  quality choice and the next episode; audio and subtitle languages
+  remembered per title; a full-screen reader (tap or swipe, pinch, three
+  reading directions, an end-of-volume page); a PIN sheet for private
+  libraries; downloads grouped by title. When the device's decoder fails,
+  the player asks the server to transcode instead of stopping (#36).
+- **The web client on a phone** (#38): a slim top bar, a bottom bar with
+  More, dialogs as bottom sheets, a library filters sheet, episode rows
+  and one section picker in Settings.
+- **The web client, refined** (#39): one title hero for series, comics
+  and films, with Manage, Open with and File details menus; favourites
+  (a heart beside the main action, a Favorites page with search, sort and
+  filters, a Home rail); anyone can mark a title watched or read; episode
+  lengths and time left; seek-bar previews; a search field in the header
+  with suggestions and recent searches (`/`), Quick find on Ctrl+K and the
+  shortcuts on `?`; the library's By library / All titles switch in its
+  sticky bar (`V`) with one card frame per grid; Settings in grouped
+  panels, with libraries, users and plugins as tables; undo in toasts.
+- **Server**: `GET /api/durations?ids=` (D-276) and
+  `GET /api/items/{id}/storyboard` (D-275); scan progress on
+  `GET /api/library/scan` (D-272); HEVC stream copy for browsers that
+  decode HEVC (D-273); Anime4K rendered by the server into a transcode
+  session (D-274); the NVENC probe uses a frame NVENC accepts.
+- **Integrations and private libraries** (#37): API keys for
+  integrations; a private library is enriched from local files only
+  (D-268); covers that come with the files (D-269); the `auto` library
+  type (D-270); composition version 9 (D-271); the optional
+  `lain-library-anything` bridge (D-265..D-267); the add-library dialog
+  has one path bar and a Private switch applied before the first scan.
 - **The Android app v1** (P5, D-245..D-253, `apps/android`): Kotlin +
   Compose + Media3 on `lain-client` through UniFFI (`lain-ffi`). Connect and
   log in, navigation from `/api/modules`, Home rails, Library, Read, title
@@ -14,13 +61,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   syncing progress; offline copies within the device budget that play and
   read without the server, with offline progress synced on reconnect; the
   shipped themes. CI builds the debug APK (`lain-android-debug`).
-- **`https` servers in every native client** (D-274): `lain-client` speaks
-  TLS through `lain-http`'s rustls setup, so `lain login --server
-  https://...`, the desktop app and Android reach a server behind a reverse
-  proxy. A failed handshake is `ClientError::Tls`. Android's connect field
-  starts at `https://`.
-- **Signed Android releases** (D-275): a `v*` tag attaches
-  `lain_<version>_android.apk` when the signing secrets are set.
 
 ### Removed
 - **The Go server** (D-235..D-243, DESIGN-v2 §13 step 5). `cmd/`,
@@ -247,6 +287,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   beginning, and the player offsets its clock and progress accordingly.
 
 ### Fixed
+- The web player wrote "0:00, not finished" over a finished title that
+  was only opened; it now writes nothing until the picture has played.
+- On Android, the next episode kept its picture and gestures on the
+  released player; it now shows and seeks.
+- The full-screen web player stopped 10 px short of the window.
 - The player's seek bar only ever reached as far as ffmpeg had encoded.
   An HLS session is an `EVENT` playlist listing just the produced
   segments, so under MSE the element's duration — and therefore

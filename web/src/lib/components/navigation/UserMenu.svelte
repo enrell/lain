@@ -2,12 +2,14 @@
 	import { t } from '$lib/i18n';
 	import { DropdownMenu } from 'bits-ui';
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
+	import Keyboard from '@lucide/svelte/icons/keyboard';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import Settings from '@lucide/svelte/icons/settings';
 	import Play from '@lucide/svelte/icons/play';
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import { goto } from '$app/navigation';
 	import { session } from '$lib/auth/session.svelte';
+	import { shortcutsDialog } from '$lib/stores/shortcuts.svelte';
 	import Avatar from '$lib/components/profile/Avatar.svelte';
 	import { displayName } from '$lib/profile/mascots';
 
@@ -74,6 +76,14 @@
 				onSelect={() => void goto('/settings')}
 			>
 				<span class="flex items-center gap-2"><Settings class="size-4 text-muted" /> {t('userMenu.allSettings')}</span>
+			</DropdownMenu.Item>
+			<!-- For whoever has not met `?` yet; a phone has no keys to list. -->
+			<DropdownMenu.Item
+				class="hidden cursor-default items-center justify-between gap-2 rounded-sm px-2.5 py-2 text-sm text-foreground outline-none data-[highlighted]:bg-surface-hover md:flex"
+				onSelect={() => (shortcutsDialog.open = true)}
+			>
+				<span class="flex items-center gap-2"><Keyboard class="size-4 text-muted" /> {t('userMenu.shortcuts')}</span>
+				<kbd class="font-mono text-[10px] text-muted">?</kbd>
 			</DropdownMenu.Item>
 			<DropdownMenu.Separator class="my-1 h-px bg-hairline" />
 			<DropdownMenu.Item

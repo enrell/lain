@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { nameable } from '$lib/stores/media-cache.svelte';
 	import { onMount } from 'svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
 	import { api } from '$lib/api';
 	import type { Library } from '$lib/api/types';
 	import { session } from '$lib/auth/session.svelte';
+	import Button from '$lib/components/primitives/Button.svelte';
+	import Select from '$lib/components/primitives/Select.svelte';
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
 	import { loadPreferredPlayer, savePreferredPlayer, type PreferredPlayer } from '$lib/player/external-player';
@@ -14,12 +17,25 @@
 		loadEffectsPolicy,
 		saveEffectsPolicy,
 		type EffectPreset,
+		type EffectRenderer,
 		type EffectRule,
 		type EffectsPolicy
 	} from '$lib/player/effects-policy';
+	import {
+		SKIP_CHOICES,
+		loadSkip,
+		loadSubtitleBackground,
+		loadSubtitleSize,
+		saveSkip,
+		saveSubtitleBackground,
+		saveSubtitleSize,
+		type SubtitleSize
+	} from '$lib/player/player-prefs';
+	import Switch from '$lib/components/primitives/Switch.svelte';
 	import { SavedFlash } from '$lib/settings/flash.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { t } from '$lib/i18n';
 
 	// Everything here applies on change: personal preferences never wait
 	// for a Save button (the YOU save model).
@@ -30,13 +46,20 @@
 	let languageError = $state('');
 	let policy = $state<EffectsPolicy>(defaultEffectsPolicy());
 	let libraries = $state<Library[]>([]);
+	// The player's own choices, kept in this browser: the same keys its menu writes.
+	let skip = $state(0);
+	let subtitleSize = $state<SubtitleSize>('medium');
+	let subtitleBox = $state(false);
 
 	onMount(() => {
 		if (!session.user) return;
 		player = loadPreferredPlayer(session.user.id);
 		language = session.user.preferred_language ?? '';
 		policy = loadEffectsPolicy(session.user.id);
-		void api.libraries.list().then((v) => (libraries = v)).catch(() => {});
+		skip = loadSkip();
+		subtitleSize = loadSubtitleSize();
+		subtitleBox = loadSubtitleBackground() === 'box';
+		void api.libraries.list().then((v) => (libraries = nameable(v))).catch(() => {});
 	});
 
 	function changePlayer(value: string): void {
@@ -45,6 +68,45 @@
 		savePreferredPlayer(session.user.id, value);
 		flash.mark('player');
 	}
+
+	function changeSkip(value: string): void {
+		const n = Number(value);
+		if (!(SKIP_CHOICES as readonly number[]).includes(n)) return;
+		skip = n;
+		saveSkip(n);
+		flash.mark('skip');
+	}
+	function changeSubtitleSize(value: string): void {
+		if (value !== 'small' && value !== 'medium' && value !== 'large') return;
+		subtitleSize = value;
+		saveSubtitleSize(value);
+		flash.mark('subtitle-size');
+	}
+	function changeSubtitleBox(on: boolean): void {
+		subtitleBox = on;
+		saveSubtitleBackground(on ? 'box' : 'none');
+		flash.mark('subtitle-box');
+	}
+
+	const LANGUAGES: [string, string][] = [
+		// Said as the app says it: one account setting, two names for it read as two settings.
+		['', t('playbackLanguage.asFile')],
+		['eng', 'English'],
+		['por', 'Portuguese'],
+		['spa', 'Spanish'],
+		['fra', 'French'],
+		['deu', 'German'],
+		['ita', 'Italian'],
+		['jpn', 'Japanese'],
+		['kor', 'Korean'],
+		['zho', 'Chinese']
+	];
+	// A code set elsewhere that the list does not name stays choosable.
+	const languageOptions = $derived(
+		[...LANGUAGES, ...(language && !LANGUAGES.some(([c]) => c === language) ? [[language, language] as [string, string]] : [])].map(
+			([value, label]) => ({ value, label })
+		)
+	);
 
 	async function commitLanguage(): Promise<void> {
 		const next = language.trim().toLowerCase();
@@ -83,14 +145,15 @@
 		return Number.isInteger(n) && n >= 0 ? n : undefined;
 	}
 
-	const field = 'h-9 rounded-md border px-2.5 text-sm text-foreground outline-none';
+	// The height of the Select trigger beside them (h-10): one row of pickers, one size.
+	const field = 'h-10 rounded-md border px-3 text-sm text-foreground outline-none';
 </script>
 
 <svelte:head><title>Playback — Settings — Lain</title></svelte:head>
 
-<SettingsGroup title="Playing">
-	<SettingRow id="player" label="Default player" hint="What Play opens from this browser." saved={flash.is('player')}>
-		<select class="{field} w-44" value={player} onchange={(e) => changePlayer(e.currentTarget.value)} aria-label="Default player">
+<SettingsGroup title="Playing" description={t('settings.groups.playback.playing')}>
+	<SettingRow id="player" label="Default player" hint="Which player opens when you press Play in this browser." saved={flash.is('player')}>
+		<select class="{field} w-full" value={player} onchange={(e) => changePlayer(e.currentTarget.value)} aria-label="Default player">
 			<option value="browser">Web player</option>
 			<option value="mpv">mpv</option>
 			<option value="vlc">VLC</option>
@@ -106,48 +169,86 @@
 	</SettingRow>
 	<SettingRow
 		id="language"
-		label="Audio & subtitle language"
-		hint="Audio in this language keeps subtitles off; otherwise subtitles in it. Follows your account."
+		label={t('playbackLanguage.label')}
+		hint={t('playbackLanguage.hint')}
 		saved={flash.is('language')}
 	>
-		<input
-			class="{field} w-28 font-mono uppercase"
-			type="text"
-			list="common-languages"
-			maxlength="3"
-			autocomplete="off"
-			spellcheck="false"
-			placeholder="auto"
-			aria-label="Language code"
-			aria-invalid={languageError ? 'true' : undefined}
-			bind:value={language}
-			onchange={() => void commitLanguage()}
-			onkeydown={(e) => e.key === 'Enter' && void commitLanguage()}
-		/>
-		<datalist id="common-languages">
-			<option value="por">Portuguese</option><option value="eng">English</option><option value="jpn">Japanese</option>
-			<option value="spa">Spanish</option><option value="fra">French</option><option value="deu">German</option>
-			<option value="ita">Italian</option><option value="kor">Korean</option><option value="zho">Chinese</option>
-		</datalist>
+		<!-- A language by name, from a list: a three-letter code to type was a thing to know first. -->
+		<!-- As wide as the native pickers on this page; the whole column on a phone, as they are. -->
+		<div class="w-full">
+			<Select
+				aria-label="Audio and subtitle language"
+				bind:value={language}
+				options={languageOptions}
+				onValueChange={() => void commitLanguage()}
+			/>
+		</div>
 		{#snippet below()}
 			{#if languageError}<p class="text-xs text-danger" role="alert">{languageError}</p>{/if}
 		{/snippet}
 	</SettingRow>
 </SettingsGroup>
 
-<SettingsGroup id="effects" title="Video effects · this browser">
+<!-- What the app keeps in its Settings too; on the web they were only in the player's menu,
+     and the subtitle ones only while a file with subtitles played. -->
+<SettingsGroup id="player-prefs" title={t('playerPrefs.group')} description={t('settings.groups.playback.prefs')}>
+	<SettingRow
+		id="skip"
+		label={t('playerPrefs.skip')}
+		hint={skip === 0 ? t('playerPrefs.skipAutoHint') : t('playerPrefs.skipFixedHint', { seconds: skip })}
+		saved={flash.is('skip')}
+	>
+		<select class="{field} w-full" value={String(skip)} onchange={(e) => changeSkip(e.currentTarget.value)} aria-label={t('playerPrefs.skip')}>
+			{#each SKIP_CHOICES as option (option)}
+				<option value={String(option)}>{option === 0 ? t('playerPrefs.skipAuto') : t('playerPrefs.skipSeconds', { seconds: option })}</option>
+			{/each}
+		</select>
+	</SettingRow>
+	<SettingRow id="subtitle-size" label={t('playerPrefs.subtitleSize')} saved={flash.is('subtitle-size')}>
+		<select
+			class="{field} w-full"
+			value={subtitleSize}
+			onchange={(e) => changeSubtitleSize(e.currentTarget.value)}
+			aria-label={t('playerPrefs.subtitleSize')}
+		>
+			<option value="small">{t('playerPrefs.sizeSmall')}</option>
+			<option value="medium">{t('playerPrefs.sizeMedium')}</option>
+			<option value="large">{t('playerPrefs.sizeLarge')}</option>
+		</select>
+	</SettingRow>
+	<SettingRow id="subtitle-box" label={t('playerPrefs.subtitleBox')} hint={t('playerPrefs.subtitleBoxHint')} saved={flash.is('subtitle-box')}>
+		<Switch bare label={t('playerPrefs.subtitleBox')} checked={subtitleBox} onCheckedChange={changeSubtitleBox} />
+	</SettingRow>
+</SettingsGroup>
+
+<SettingsGroup id="effects" title="Video effects · this browser" description={t('settings.groups.playback.effects')}>
 	<SettingRow
 		label="Default effect"
 		hint="Anime4K via WebGPU or WebGL2. The player can override it per session."
 		saved={flash.is('effect-default')}
 	>
 		<select
-			class="{field} w-56"
+			class="{field} w-full"
 			aria-label="Default effect"
 			value={policy.default}
 			onchange={(e) => persistEffects({ ...policy, default: e.currentTarget.value as EffectPreset }, 'effect-default')}
 		>
 			{#each EFFECT_PRESETS as preset (preset.id)}<option value={preset.id}>{preset.label}</option>{/each}
+		</select>
+	</SettingRow>
+	<SettingRow
+		label="Render on"
+		hint="Server renders the effect into the stream, for a device whose GPU cannot. Needs a GPU on the server."
+		saved={flash.is('effect-render')}
+	>
+		<select
+			class="{field} w-56"
+			aria-label="Where video effects are rendered"
+			value={policy.renderOn ?? 'client'}
+			onchange={(e) => persistEffects({ ...policy, renderOn: e.currentTarget.value as EffectRenderer }, 'effect-render')}
+		>
+			<option value="client">This device</option>
+			<option value="server">Server</option>
 		</select>
 	</SettingRow>
 	<SettingRow
@@ -197,8 +298,8 @@
 				</table>
 			</div>
 		{/if}
-		<button type="button" class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-foreground" onclick={addRule}>
+		<Button variant="tonal" size="field" onclick={addRule}>
 			<Plus class="size-4" /> Add override
-		</button>
+		</Button>
 	</SettingRow>
 </SettingsGroup>

@@ -2,7 +2,6 @@ package io.github.enrell.lain.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.github.enrell.lain.core.CopyState
 import io.github.enrell.lain.core.CoreEvent
 import io.github.enrell.lain.core.Item
 import io.github.enrell.lain.core.LainCoreInterface
@@ -28,6 +27,9 @@ import kotlinx.coroutines.withContext
 enum class Phase { Starting, Connect, Login, Main }
 
 /** The app's screens; the stack replaces a navigation library. */
+/** Not a library: the id of the favourites' page (see [Screen.LibraryDetail]). */
+const val FAVORITES = "@favorites"
+
 sealed interface Screen {
     data object Home : Screen
     data object Library : Screen
@@ -35,6 +37,8 @@ sealed interface Screen {
     data object Search : Screen
     data object Downloads : Screen
     data object Settings : Screen
+    /** A library's page; [FAVORITES] in place of a library's id is the page of the titles kept as favourites. */
+    data class LibraryDetail(val id: String) : Screen
     data class TitleDetail(val key: String) : Screen
     data class Player(val itemId: String) : Screen
     data class Reader(val itemId: String) : Screen
@@ -50,7 +54,6 @@ data class Dest(val id: String, val screen: Screen)
 private val KNOWN: List<Pair<String, Screen>> = listOf(
     "home" to Screen.Home,
     "library" to Screen.Library,
-    "read" to Screen.Read,
     "search" to Screen.Search,
     "settings" to Screen.Settings,
 )
@@ -84,15 +87,34 @@ data class AppState(
     val titles: List<Title> = emptyList(),
     val continues: List<ProgressInfo> = emptyList(),
     val progress: Map<String, ProgressInfo> = emptyMap(),
-    /** The offline copies of this server by item, for the title rows. */
-    val copies: Map<String, CopyState> = emptyMap(),
     val libraries: List<LibraryInfo> = emptyList(),
+    /** The account's favourites (its list); null while unknown or when the server has no such list. */
+    val favorites: List<io.github.enrell.lain.core.FavoriteInfo>? = null,
+    /** How long each video is, in seconds, for the items asked about so far. */
+    val durations: Map<String, Double> = emptyMap(),
+    /** Metadata overlays by item (genres, synopsis), when the server has them. */
+    val overlays: Map<String, io.github.enrell.lain.core.Overlay> = emptyMap(),
     val stack: List<Screen> = listOf(Screen.Home),
+    /** The deep place a bar destination was opened from, which Back returns to. */
+    val returnTo: List<Screen>? = null,
+    /** Where each destination of the bar was left (its own stack), so coming back to it lands there. */
+    val tabStacks: Map<Screen, List<Screen>> = emptyMap(),
     val query: String = "",
     val results: List<Item> = emptyList(),
     val searching: Boolean = false,
 ) {
     val screen: Screen get() = stack.last()
+
+    /**
+     * Whether [page] can still be returned to: it is in the stack on screen (under a player,
+     * say), in the stack a destination of the bar was left with, or in the deep place a
+     * destination was opened from. The open destination's own entry in [tabStacks] is old
+     * (it is only written on leaving), so it does not count: a page closed with Back is gone.
+     */
+    fun keeps(page: Screen): Boolean {
+        val here = stack.firstOrNull()
+        return page in stack || tabStacks.any { (root, kept) -> root != here && page in kept } || returnTo?.contains(page) == true
+    }
 }
 
 /** Session, navigation and the catalog: what every screen shares. */
@@ -177,14 +199,37 @@ class AppViewModel(
 
     // ---- navigation -----------------------------------------------------
 
+    /**
+     * Opens a screen. A destination of the bar replaces the stack, and
+     * remembers the place it was opened from when that was somewhere deep
+     * (a title, a library), so Back from Settings returns there, not Home.
+     */
     fun go(screen: Screen) = _state.update { s ->
-        if (s.destinations.any { it.screen == screen }) s.copy(stack = listOf(screen)) else s.copy(stack = s.stack + screen)
+        if (s.destinations.none { it.screen == screen }) return@update s.copy(stack = s.stack + screen)
+        // Each destination keeps its own stack: leaving Library from a title and coming back
+        // lands on that title again; the destination already open goes back to its top.
+        val here = s.stack.firstOrNull()
+        val kept = s.stack.filterNot { it is Screen.Player || it is Screen.Reader }
+        val stacks = if (here != null && kept.isNotEmpty()) s.tabStacks + (here to kept) else s.tabStacks
+        if (here == screen) return@update s.copy(stack = listOf(screen), tabStacks = stacks - screen, returnTo = null)
+        val from = if (kept.size > 1) kept else s.returnTo
+        val clean = if (screen == Screen.Search && s.screen != Screen.Search) s.copy(query = "", results = emptyList(), searching = false) else s
+        val target = stacks[screen]?.takeIf { it.isNotEmpty() } ?: listOf(screen)
+        // Home is where Back ends: it never leads back into another place.
+        clean.copy(stack = target, tabStacks = stacks, returnTo = if (screen != Screen.Home && target.size == 1 && from != null && from.first() != screen) from else null)
     }
+
+    /** Puts [screen] in place of the current one (the next episode takes the player's place). */
+    fun replace(screen: Screen) = _state.update { it.copy(stack = it.stack.dropLast(1) + screen) }
 
     /** Pops a screen; false when the stack is at its root (the system handles back). */
     fun back(): Boolean {
         val s = _state.value
         if (s.stack.size <= 1) {
+            s.returnTo?.let { place ->
+                _state.update { it.copy(stack = place, returnTo = null) }
+                return true
+            }
             if (s.screen != Screen.Home && s.phase == Phase.Main) {
                 _state.update { it.copy(stack = listOf(Screen.Home)) }
                 return true
@@ -236,6 +281,13 @@ class AppViewModel(
     }
 
     /** Reloads modules, the user, the catalog, libraries and Continue. */
+    /** Sets the account's audio and subtitle language (empty: the file's own choice); false when refused. */
+    suspend fun setPreferredLanguage(code: String): Boolean {
+        val u = runCatching { withContext(io) { core.setPreferredLanguage(code) } }.getOrNull() ?: return false
+        _state.update { it.copy(user = u) }
+        return true
+    }
+
     fun refresh() {
         viewModelScope.launch {
             _state.update { it.copy(busy = true) }
@@ -253,6 +305,7 @@ class AppViewModel(
                         error = null,
                     )
                 }
+                if (!snap.fromCache) loadOverlays(snap.items.map { it.id })
             } catch (e: LainException) {
                 if (e is LainException.Unauthorized) {
                     _state.update { AppState(phase = Phase.Login, server = it.server) }
@@ -261,8 +314,107 @@ class AppViewModel(
                 _state.update { it.copy(error = e, online = !offline(e)) }
             }
             runCatching { core.libraries() }.onSuccess { l -> _state.update { it.copy(libraries = l) } }
+            runCatching { withContext(io) { core.favorites() } }.onSuccess { f -> _state.update { it.copy(favorites = f) } }
             refreshProgressNow()
             _state.update { it.copy(busy = false) }
+        }
+    }
+
+    /**
+     * Unlocks every locked private library for this session with the
+     * account's PIN or password (D-156), then reads the catalog again.
+     * The error, when one refuses, is the first library's.
+     */
+    suspend fun unlock(secret: String, pin: Boolean): Throwable? {
+        val locked = _state.value.libraries.filter { it.private && it.locked }
+        for (lib in locked) {
+            try {
+                withContext(io) { core.unlockLibrary(lib.id, secret, pin) }
+            } catch (e: LainException) {
+                return e
+            }
+        }
+        refresh()
+        return null
+    }
+
+    /** Locks every private library again. */
+    fun lockAll() {
+        viewModelScope.launch {
+            // Hidden before the server answers: "locked" must be true the moment it is said.
+            val open = _state.value.libraries.filter { it.private && !it.locked }
+            val ids = open.map { it.id }.toSet()
+            _state.update { st -> st.copy(libraries = st.libraries.map { if (it.id in ids) it.copy(locked = true) else it }, titles = st.titles.filter { it.libraryId !in ids }) }
+            for (lib in open) {
+                runCatching { withContext(io) { core.lockLibrary(lib.id) } }
+            }
+            refresh()
+        }
+    }
+
+    /** Puts a title on the account's list, or takes it off; false when the server refused. */
+    suspend fun setFavorite(title: io.github.enrell.lain.domain.Title, on: Boolean): Boolean {
+        val id = title.items.firstOrNull()?.id ?: return false
+        val got = runCatching { withContext(io) { core.setFavorite(id, on) } }.getOrNull() ?: return false
+        _state.update { it.copy(favorites = got) }
+        return true
+    }
+
+    /** How a title is rated; null on a server without ratings, or when it did not answer. */
+    suspend fun rating(title: io.github.enrell.lain.domain.Title): io.github.enrell.lain.core.RatingInfo? {
+        val id = title.items.firstOrNull()?.id ?: return null
+        return runCatching { withContext(io) { core.rating(id) } }.getOrNull()
+    }
+
+    /** Scores a title 1 to 10, or takes the score back with 0; null when the server refused. */
+    suspend fun rate(title: io.github.enrell.lain.domain.Title, score: Int): io.github.enrell.lain.core.RatingInfo? {
+        val id = title.items.firstOrNull()?.id ?: return null
+        return runCatching { withContext(io) { core.rate(id, score.toUInt()) } }.getOrNull()
+    }
+
+    /** Asks how long these videos are (a title page's episodes, the rails' cards). */
+    fun loadDurations(ids: List<String>) {
+        val missing = ids.filter { it !in _state.value.durations }
+        if (missing.isEmpty()) return
+        viewModelScope.launch {
+            val got = runCatching { withContext(io) { core.durations(missing) } }.getOrNull() ?: return@launch
+            _state.update { it.copy(durations = it.durations + got.associate { d -> d.itemId to d.durationSec }) }
+        }
+    }
+
+    /**
+     * Marks items watched (or not): a finished record at the end, or one
+     * back at the start. The length is what is known of the item, so the
+     * mark does not invent one.
+     */
+    fun markWatched(ids: List<String>, watched: Boolean) {
+        viewModelScope.launch {
+            for (id in ids) {
+                val dur = _state.value.durations[id] ?: _state.value.progress[id]?.durationSec ?: 0.0
+                runCatching { withContext(io) { core.saveProgress(id, if (watched) dur else 0.0, dur, watched) } }
+            }
+            loadProgress(ids)
+            refreshProgressNow()
+        }
+    }
+
+    /** Puts a position back as it was (the undo of Start over). */
+    fun restoreProgress(p: io.github.enrell.lain.core.ProgressInfo) {
+        viewModelScope.launch {
+            runCatching { withContext(io) { core.saveProgress(p.itemId, p.positionSec, p.durationSec, p.completed) } }
+            loadProgress(listOf(p.itemId))
+            refreshProgressNow()
+        }
+    }
+
+    private var overlayJob: Job? = null
+
+    /** Genres and synopses for the catalog, in the background: the titles are usable before they arrive. */
+    private fun loadOverlays(ids: List<String>) {
+        overlayJob?.cancel()
+        overlayJob = viewModelScope.launch {
+            val got = runCatching { withContext(io) { core.overlays(ids) } }.getOrNull() ?: return@launch
+            _state.update { it.copy(overlays = got.associateBy { o -> o.itemId }) }
         }
     }
 
@@ -274,6 +426,10 @@ class AppViewModel(
         try {
             val list = core.continueWatching()
             _state.update { s -> s.copy(continues = list, progress = s.progress + list.associateBy { it.itemId }) }
+            // Finished ones too: a poster, a filter and a title page must count the same episodes.
+            runCatching { core.allProgress() }.onSuccess { all ->
+                _state.update { s -> s.copy(progress = s.progress + all.associateBy { it.itemId }) }
+            }
         } catch (e: LainException) {
             if (offline(e)) _state.update { it.copy(online = false) }
         }
@@ -314,15 +470,7 @@ class AppViewModel(
     }
 
     /** Queues an offline copy; the caller starts the download service. */
-    suspend fun download(itemId: String): Result<Unit> = runCatching { core.offlineAdd(itemId) }.map { loadCopies() }
-
-    /** Which items have an offline copy, and in what state. */
-    fun loadCopies() {
-        viewModelScope.launch {
-            val copies = withContext(io) { runCatching { core.offlineCopies() }.getOrDefault(emptyList()) }
-            _state.update { it.copy(copies = copies.associate { c -> c.itemId to c.state }) }
-        }
-    }
+    suspend fun download(itemId: String): Result<Unit> = runCatching { core.offlineAdd(itemId) }.map { }
 
     suspend fun queuedProgress(): Long = withContext(io) { runCatching { core.queuedProgress() }.getOrDefault(0) }
 

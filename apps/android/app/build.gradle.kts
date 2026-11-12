@@ -7,10 +7,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Release identity (D-275), all from the environment so nothing secret
+// Release identity (D-278), all from the environment so nothing secret
 // is ever in the tree: the version from the release tag, the version
 // code from the workflow run, and the signing key from a keystore file.
-// Without a keystore the release APK is built unsigned.
+// Without a keystore the release APK is signed with the debug key, so a
+// local build still installs over a debug one.
 fun env(name: String): String? = providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
 val releaseKeystore = env("LAIN_ANDROID_KEYSTORE")
 
@@ -22,8 +23,8 @@ android {
         applicationId = "io.github.enrell.lain"
         minSdk = 26
         targetSdk = 36
-        versionCode = env("LAIN_ANDROID_VERSION_CODE")?.toIntOrNull() ?: 1
-        versionName = env("LAIN_VERSION")?.removePrefix("v") ?: "0.1.0"
+        versionCode = env("LAIN_ANDROID_VERSION_CODE")?.toIntOrNull() ?: 2
+        versionName = env("LAIN_VERSION")?.removePrefix("v") ?: "0.3.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -42,9 +43,14 @@ android {
 
     buildTypes {
         release {
-            // No R8: JNA and the UniFFI bindings are reached by name.
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.findByName("release")
+            // The build to put on a phone: optimized and shrunk (R8), and not
+            // debuggable, which is what makes Compose scroll and start fast.
+            // Signed with the release key when one is given, else with the
+            // debug key (above).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -64,7 +70,14 @@ android {
         }
     }
 
+    // The Anime4K shader packs are the web player's own files: one copy in
+    // the repository, packaged here as assets (its TypeScript index is not).
+    androidResources {
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!*.ts"
+    }
+
     sourceSets.getByName("main") {
+        assets.srcDir("../../../web/src/lib/player/webgl/packs")
         java.srcDir("generated/uniffi")
         kotlin.srcDir("generated/uniffi")
         jniLibs.srcDir("build/rustJniLibs")
@@ -95,6 +108,8 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
+    // Video effects (the Anime4K shaders) run in Media3's frame processor.
+    implementation(libs.media3.effect)
     implementation(libs.kotlinx.coroutines.android)
     // UniFFI's Kotlin bindings call the Rust library through JNA.
     implementation(libs.jna) { artifact { type = "aar" } }

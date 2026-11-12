@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { defaultEffectsPolicy, loadEffectsPolicy, resolveEffect, saveEffectsPolicy, validateEffectsPolicy } from './effects-policy';
+import { defaultEffectsPolicy, loadEffectsPolicy, resolveEffect, saveEffectsPolicy, serverEffectFor, validateEffectsPolicy } from './effects-policy';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -41,5 +41,25 @@ describe('video effects policy', () => {
 		expect(saveEffectsPolicy('user-a', policy)).toBe(true);
 		expect(loadEffectsPolicy('user-a')).toEqual(policy);
 		expect(loadEffectsPolicy('user-b')).toEqual(defaultEffectsPolicy());
+	});
+});
+
+describe('server rendering', () => {
+	it('keeps the renderer choice only when it is the server', () => {
+		expect(validateEffectsPolicy({ default: 'off', rules: [], renderOn: 'server' })).toEqual({
+			default: 'off', rules: [], renderOn: 'server'
+		});
+		expect(validateEffectsPolicy({ default: 'off', rules: [], renderOn: 'client' })).toEqual({ default: 'off', rules: [] });
+		expect(validateEffectsPolicy({ default: 'off', rules: [], renderOn: 'cloud' })).toBeNull();
+	});
+
+	it('hands the server only a preset it offers', () => {
+		const offered = ['anime4k-a', 'anime4k-aa', 'anime4k-lite'];
+		expect(serverEffectFor('server', 'anime4k-a', offered)).toBe('anime4k-a');
+		expect(serverEffectFor('client', 'anime4k-a', offered)).toBe('');
+		expect(serverEffectFor('server', 'off', offered)).toBe('');
+		// Not a hook chain: this one stays on the device.
+		expect(serverEffectFor('server', 'anime4k-dog-x2', offered)).toBe('');
+		expect(serverEffectFor('server', 'anime4k-a', undefined)).toBe('');
 	});
 });

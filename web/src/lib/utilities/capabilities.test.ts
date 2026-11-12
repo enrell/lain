@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tokensFor, type CapabilityOracles } from './capabilities';
+import { copyCodecsFor, hevcCodecString, tokensFor, type CapabilityOracles } from './capabilities';
 
 /*
  * An oracle pair answering from fixed accept lists, so a test states
@@ -67,5 +67,23 @@ describe('tokensFor', () => {
 		// that is the claim that licenses a silent or black playback.
 		const tokens = await tokensFor(oracles(['video/x-matroska', 'video/x-matroska; codecs="avc1.64001f"']));
 		expect(tokens).toEqual(['mkv', 'mkv/h264']);
+	});
+});
+
+describe('copyCodecsFor', () => {
+	it('names the profile and level of the stream it asks about', () => {
+		expect(hevcCodecString({ codec: 'hevc', pixel_format: 'yuv420p', height: 1080 })).toBe('hvc1.1.6.L120.B0');
+		expect(hevcCodecString({ codec: 'hevc', pixel_format: 'yuv420p10le', height: 2160 })).toBe(
+			'hvc1.2.4.L153.B0'
+		);
+	});
+
+	it('claims HEVC only for an HEVC stream the browser accepts', () => {
+		const main = (type: string) => type === 'video/mp4; codecs="hvc1.1.6.L120.B0"';
+		expect(copyCodecsFor({ codec: 'hevc', pixel_format: 'yuv420p', height: 1080 }, main)).toEqual(['hevc']);
+		// A decoder proven for Main says nothing about Main 10.
+		expect(copyCodecsFor({ codec: 'hevc', pixel_format: 'yuv420p10le', height: 1080 }, main)).toEqual([]);
+		expect(copyCodecsFor({ codec: 'av1' }, () => true)).toEqual([]);
+		expect(copyCodecsFor(undefined, () => true)).toEqual([]);
 	});
 });

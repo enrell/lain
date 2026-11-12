@@ -17,7 +17,7 @@ use lain_http::{Client, Config};
 use lain_metadata::remote::{AniList, Jikan, Kitsu, TvMaze};
 use lain_metadata::{
     ANILIST_ID, CAP_METADATA_ENRICH, CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, DEFAULT_PROVIDERS, ENRICH_ID,
-    Endpoints, Enricher, JIKAN_ID, KITSU_ID, MetadataCandidate, MetadataRecord, Nfo, Remote, TVMAZE_ID,
+    Endpoints, Enricher, JIKAN_ID, KITSU_ID, MetadataCandidate, MetadataRecord, NFO_ID, Nfo, Remote, TVMAZE_ID,
 };
 
 fn upstream() -> Upstream {
@@ -231,6 +231,56 @@ fn enrich_merges_every_provider() {
     let e = reg.invoke_provider(CAP_METADATA_ENRICH, ENRICH_ID, "enrich", json!({"item": movie})).unwrap_err();
     assert_eq!(e.code, "not-found");
     assert_eq!(u.seen().len(), before);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A private library's titles stay on the machine: its items are
+/// enriched from the files next to them, and no network provider is
+/// asked, not even for a title one of them knows exactly, nor when a
+/// caller names one.
+#[test]
+fn a_private_library_is_enriched_from_local_files_only() {
+    let u = upstream();
+    let dir = lain_store::test_dir("meta-private");
+    let store = Arc::new(lain_store::Store::open(&dir).unwrap());
+    let lib = lain_api::Library { id: "lib-p".into(), private: true, owner: "u".into(), ..Default::default() };
+    store.write(|tx| tx.put_json(lain_store::Bucket::Libraries, lib.id.as_bytes(), &lib)).unwrap();
+    let reg = registry(&u, store);
+
+    let media = dir.join("media").join("Show Name");
+    std::fs::create_dir_all(&media).unwrap();
+    std::fs::write(
+        media.join("tvshow.nfo"),
+        "<tvshow><title>Show Name (my cut)</title><year>2019</year><genre>Drama</genre><plot>From the folder.</plot></tvshow>",
+    )
+    .unwrap();
+    let item = CatalogItem {
+        id: "item-p".into(),
+        library_id: "lib-p".into(),
+        kind: "episode".into(),
+        title: "Show Name".into(),
+        file_path: media.join("Show Name.mkv").to_string_lossy().into(),
+        ..Default::default()
+    };
+    let out = reg.invoke_provider(CAP_METADATA_ENRICH, ENRICH_ID, "enrich", json!({"item": item})).unwrap();
+    assert_eq!(out["provider"], NFO_ID);
+    assert_eq!((out["title"].as_str(), out["year"].as_i64()), (Some("Show Name (my cut)"), Some(2019)));
+    assert_eq!(out["genres"], json!(["Drama"]));
+    assert_eq!(out["synopsis"], "From the folder.");
+
+    // Nothing next to the file: no overlay, rather than a network answer.
+    let bare = CatalogItem {
+        id: "item-q".into(),
+        file_path: dir.join("Show Name.mkv").to_string_lossy().into(),
+        ..item.clone()
+    };
+    let e = reg.invoke_provider(CAP_METADATA_ENRICH, ENRICH_ID, "enrich", json!({"item": bare})).unwrap_err();
+    assert_eq!(e.code, "not-found");
+    let e = reg
+        .invoke_provider(CAP_METADATA_ENRICH, ENRICH_ID, "enrich", json!({"item": item, "only": TVMAZE_ID}))
+        .unwrap_err();
+    assert_eq!(e.code, "not-found");
+    assert!(u.seen().is_empty(), "a private title reached the network: {:?}", u.seen());
     std::fs::remove_dir_all(dir).ok();
 }
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import Folder from '@lucide/svelte/icons/folder';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
@@ -14,12 +14,12 @@
 	import UnlockLibraryDialog from '$lib/components/media/UnlockLibraryDialog.svelte';
 	import Badge from '$lib/components/primitives/Badge.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
-	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Input from '$lib/components/primitives/Input.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
+	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
 	import { ensureLibraries, forgetLibrary, rememberLibrary } from '$lib/stores/media-cache.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -33,7 +33,9 @@
 	let createOpen = $state(false);
 	let creating = $state(false);
 	let formError = $state<string | null>(null);
-	let form = $state({ name: '', type: 'anime', path: '' });
+	let form = $state({ name: '', type: 'auto', path: '', private: false });
+	// The name follows the folder until the user types one.
+	let nameTouched = $state(false);
 
 	let deleteTarget = $state<Library | null>(null);
 	let deleteOpen = $state(false);
@@ -119,17 +121,29 @@
 		}
 	}
 
+	// The folder picker: the path bar is the choice. Opening a folder moves
+	// the bar there; a typed path is checked by listing it.
 	let browsePath = $state('');
 	let browseParent = $state('');
 	let browseDirs = $state<BrowseDir[]>([]);
 	let browseLoading = $state(false);
 	let browseError = $state<string | null>(null);
+	let pathDraft = $state('');
+	let cursor = $state(0);
+	let listEl = $state<HTMLUListElement | null>(null);
+	let pathEl = $state<HTMLInputElement | null>(null);
 
 	function openCreate(): void {
 		createOpen = true;
 		formError = null;
-		form = { name: '', type: 'anime', path: '' };
+		form = { name: '', type: 'auto', path: '', private: false };
+		nameTouched = false;
+		pathDraft = '';
 		void loadBrowse();
+	}
+
+	function folderName(path: string): string {
+		return path.split(/[\\/]/).filter(Boolean).pop() ?? '';
 	}
 
 	async function loadBrowse(path?: string): Promise<void> {
@@ -140,22 +154,53 @@
 			browsePath = res.path;
 			browseParent = res.parent;
 			browseDirs = res.dirs;
+			cursor = 0;
+			pathDraft = res.path;
+			form.path = res.path;
+			formError = null;
+			if (!nameTouched) form.name = folderName(res.path);
+			// A long path keeps its end, the folder being chosen, in view.
+			requestAnimationFrame(() => {
+				if (pathEl && document.activeElement !== pathEl) pathEl.scrollLeft = pathEl.scrollWidth;
+			});
 		} catch (err) {
-			browseError = errorMessage(err, 'Could not list server folders.');
+			browseError = errorMessage(err, 'Could not list that folder.');
+			// Keep what was typed: the server has the last word on Add.
+			if (path) form.path = path;
 		} finally {
 			browseLoading = false;
 		}
 	}
 
-	function useFolder(dir?: BrowseDir): void {
-		const picked = dir ? dir.path : browsePath;
-		if (!picked) return;
-		form.path = picked;
-		formError = null;
-		if (!form.name.trim()) {
-			const base = (dir ? dir.name : picked.split('/').filter(Boolean).pop()) ?? '';
-			if (base) form.name = base;
+	function goUp(): void {
+		if (browseParent) void loadBrowse(browseParent);
+	}
+
+	function pathKey(e: KeyboardEvent): void {
+		if (e.key === 'Enter') {
+			// Enter here opens the typed path; it does not submit the form.
+			e.preventDefault();
+			void loadBrowse(pathDraft.trim() || undefined);
+		} else if (e.key === 'ArrowDown' && browseDirs.length > 0) {
+			e.preventDefault();
+			listEl?.focus();
 		}
+	}
+
+	function listKey(e: KeyboardEvent): void {
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		const last = browseDirs.length - 1;
+		if (e.key === 'ArrowDown') cursor = Math.min(last, cursor + 1);
+		else if (e.key === 'ArrowUp') cursor = Math.max(0, cursor - 1);
+		else if (e.key === 'Home') cursor = 0;
+		else if (e.key === 'End') cursor = Math.max(0, last);
+		else if (e.key === 'Enter' || e.key === 'ArrowRight') {
+			const dir = browseDirs[cursor];
+			if (dir) void loadBrowse(dir.path);
+		} else if (e.key === 'Backspace' || e.key === 'ArrowLeft') goUp();
+		else return;
+		e.preventDefault();
+		listEl?.querySelector(`[data-index="${cursor}"]`)?.scrollIntoView({ block: 'nearest' });
 	}
 
 	function askRemove(lib: Library): void {
@@ -180,26 +225,25 @@
 		if (new URL(window.location.href).searchParams.has('add')) openCreate();
 		void load();
 		void loadExtras();
-		void scan.refresh().then(() => {
-			if (scan.running) scan.follow();
-		});
+		void scan.watch();
 	});
-
-	onDestroy(() => scan.stop());
 
 	async function create(scanAfter: boolean): Promise<void> {
 		creating = true;
 		formError = null;
 		try {
-			const lib = await api.libraries.create({
+			let lib = await api.libraries.create({
 				name: form.name.trim(),
 				type: form.type,
 				path: form.path.trim()
 			});
+			// Private before the first scan: a scan of a public library may
+			// look its titles up online.
+			if (form.private) lib = await api.libraries.update(lib.id, { private: true });
 			libraries = [...libraries, lib].sort((a, b) => a.name.localeCompare(b.name));
 			rememberLibrary(lib);
 			createOpen = false;
-			form = { name: '', type: 'anime', path: '' };
+			form = { name: '', type: 'auto', path: '', private: false };
 			toasts.success(`Library “${lib.name}” added.`);
 			if (scanAfter) await scan.start();
 		} catch (err) {
@@ -235,7 +279,10 @@
 		}
 	}
 
+	// Auto takes videos and comic archives alike; the others only filter
+	// which files of the folder count.
 	const typeOptions = [
+		{ value: 'auto', label: 'Auto' },
 		{ value: 'anime', label: 'Anime' },
 		{ value: 'series', label: 'Series' },
 		{ value: 'movie', label: 'Movies' },
@@ -246,33 +293,46 @@
 
 <svelte:head><title>Libraries — Settings — Lain</title></svelte:head>
 
-<div class="space-y-6">
-	<!-- Scan -->
-	<section id="scan" class="settings-section scroll-mt-28 !border-t-0 !pt-0">
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<div>
-				<h2 class="settings-heading">Scan</h2>
-				<p class="mt-0.5 text-sm text-muted">
-					Walks every library root and updates the catalog. Safe to run while watching.
-				</p>
-			</div>
-			<Button onclick={() => void startScan()} loading={scan.running} disabled={scan.running}>
+<div>
+	<SettingsGroup id="scan" title="Scan" description={t('settings.groups.libraries.scan')}>
+		{#snippet aside()}
+			<Button size="field" onclick={() => void startScan()} loading={scan.running} disabled={scan.running}>
 				<ScanLine class="size-4" /> Scan now
 			</Button>
-		</div>
-
-		<div class="mt-4 text-sm">
+		{/snippet}
+		<div class="py-4 text-sm">
 			{#if scan.running}
-				<div class="flex items-center gap-2 text-accent">
-					<Spinner class="size-4" /> Scanning libraries…
+				{@const fraction = scan.fraction}
+				<div class="flex items-center gap-2 text-accent" role="status">
+					<Spinner class="size-4" />
+					<span class="tabular-nums">{scan.line}</span>
+					{#if scan.elapsed}
+						<span class="font-mono text-xs tabular-nums text-muted">
+							{t('scan.elapsed', { time: scan.elapsed })}
+						</span>
+					{/if}
+				</div>
+				<!-- Indeterminate (full, pulsing) until the phase has a total. -->
+				<div
+					class="mt-2 h-0.5 w-full max-w-md overflow-hidden rounded-full bg-hairline"
+					role="progressbar"
+					aria-label={t('scan.progress')}
+					aria-valuemin={0}
+					aria-valuemax={100}
+					aria-valuenow={fraction === null ? undefined : Math.round(fraction * 100)}
+				>
+					<div
+						class="h-full bg-accent transition-[width] duration-500 {fraction === null ? 'animate-pulse' : ''}"
+						style:width="{fraction === null ? 100 : fraction * 100}%"
+					></div>
 				</div>
 			{:else if scan.status?.state === 'error'}
 				<p class="text-danger" role="alert">Scan failed: {scan.status.error}</p>
 			{:else if scan.status?.state === 'done' && scan.status.stats}
 				{@const stats = scan.status.stats}
 				<p class="text-muted">
-					Last scan {scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}
-					{#if scan.status.trigger === 'watch'}by the filesystem watcher{/if}:
+					<!-- The colon on the last word: on its own line it printed "ago :". -->
+					{[`Last scan ${scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}`, scan.status.trigger === 'watch' ? 'by the filesystem watcher' : ''].filter(Boolean).join(' ')}:
 					<span class="text-foreground">{stats.identified}</span> identified ·
 					<span class="text-foreground">{stats.unidentified}</span> unidentified ·
 					<span class="text-foreground">{stats.enriched}</span> enriched
@@ -300,43 +360,46 @@
 				<p class="text-muted">No scan recorded yet.</p>
 			{/if}
 		</div>
-	</section>
+	</SettingsGroup>
 
-	<!-- Libraries -->
-	<section id="libraries" class="scroll-mt-28 space-y-4 pt-8">
-		<div class="flex items-center justify-between gap-3">
-			<h2 class="settings-heading">Media libraries</h2>
-			<Button variant="secondary" size="sm" onclick={() => openCreate()}>
+	<SettingsGroup id="libraries" title="Media libraries" description={t('settings.groups.libraries.libraries')}>
+		{#snippet aside()}
+			<Button variant="tonal" size="field" onclick={() => openCreate()}>
 				<FolderPlus class="size-4" /> Add library
 			</Button>
-		</div>
-
+		{/snippet}
 		{#if loading}
-			<div class="h-20 animate-pulse rounded-card bg-surface-active/50"></div>
+			<div class="py-4"><div class="h-12 animate-pulse rounded-md bg-field"></div></div>
 		{:else if error}
-			<ErrorState message={error} retry={() => void load()} />
+			<div class="py-4"><ErrorState message={error} retry={() => void load()} /></div>
 		{:else if libraries.length === 0}
-			<EmptyState
-				title="No libraries configured"
-				description="A library is a directory on the server Lain is allowed to read. Nothing is copied or moved."
-			>
-				{#snippet icon()}<FolderPlus class="size-6 text-muted" />{/snippet}
-				<Button onclick={() => openCreate()}>
+			<!-- The panel is the frame here: a boxed empty state inside it was a box in a box. -->
+			<div class="flex flex-col items-center px-6 py-10 text-center">
+				<FolderPlus class="size-6 text-muted" />
+				<p class="mt-3 text-base font-semibold text-foreground">No libraries configured</p>
+				<p class="mt-1 max-w-md text-sm text-muted">
+					A library is a directory on the server Lain is allowed to read. Nothing is copied or moved.
+				</p>
+				<Button class="mt-5" size="field" onclick={() => openCreate()}>
 					<FolderPlus class="size-4" /> Add your first library
 				</Button>
-			</EmptyState>
+			</div>
 		{:else}
-			<ul class="settings-list">
+			<!-- One table: name and path, then the Private switch, the Lock/Unlock
+			     slot (empty where there is none, so no switch is pushed out of its
+			     column) and Remove. The keys act on the focused row, so their caps
+			     show on that row only. -->
+			<ul class="settings-items">
 				{#each libraries as lib (lib.id)}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 					<li
-						class="flex flex-wrap items-center gap-3 bg-surface/40 px-4 py-3.5 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
+						class="group/row flex flex-wrap items-center gap-x-3 gap-y-2 py-3.5 outline-none focus-visible:bg-surface-active/40 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:gap-x-4"
 						tabindex="0"
 						onkeydown={(e) => rowKey(e, lib)}
 					>
-						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-2">
-								<p class="truncate font-medium text-foreground">{lib.name}</p>
+						<div class="min-w-0 basis-full">
+							<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+								<p class="truncate text-sm font-medium text-foreground">{lib.name}</p>
 								<Badge>{lib.type}</Badge>
 								{#if lib.private}
 									<Badge tone="warning">{t('privateLibrary.badge')} · {lib.locked ? t('privateLibrary.locked') : t('privateLibrary.unlocked')}</Badge>
@@ -348,57 +411,66 @@
 									<Badge tone="warning">unreadable</Badge>
 								{/if}
 							</div>
-							<p class="mt-0.5 truncate font-mono text-xs text-muted">{lib.path}</p>
+							<!-- A long path is cut at its start: the folder's own name is the part that tells libraries apart. -->
+							<details class="group/path mt-0.5 text-left font-mono text-xs text-muted">
+								<summary class="cursor-pointer list-none truncate hover:text-foreground [&::-webkit-details-marker]:hidden" title="Show the whole path">
+									<span class="group-open/path:hidden">…/{lib.path.split(/[\\/]/).filter(Boolean).slice(-2).join('/')}</span>
+									<span class="hidden break-all whitespace-normal group-open/path:inline">{lib.path}</span>
+								</summary>
+							</details>
 						</div>
-						{#if roots !== null}
-							<div class="flex items-center gap-2 text-sm text-muted">
-								<Switch
-									bare
-									label={t('privateLibrary.makePrivate')}
-									checked={!!lib.private}
-									onCheckedChange={(next) => void setPrivate(lib, next)}
-								/>
-								<span>{t('privateLibrary.makePrivate')}</span>
-								<kbd class="font-mono text-[10px] text-muted">P</kbd>
-							</div>
-						{/if}
-						{#if lib.private}
-							<Button variant="ghost" size="sm" onclick={() => void toggleLock(lib)}>
-								{#if lib.locked}
-									<LockOpen class="size-4" /> {t('privateLibrary.unlock')}
-								{:else}
-									<LockIcon class="size-4" /> {t('privateLibrary.lock')}
-								{/if}
-								<kbd class="ms-1 font-mono text-[10px] text-muted">U</kbd>
-							</Button>
-						{/if}
+						<div class="flex items-center max-sm:empty:hidden">
+							{#if roots !== null}
+								<div class="flex h-9 items-center gap-2 pe-2 text-sm text-muted">
+									<Switch
+										bare
+										label={t('privateLibrary.makePrivate')}
+										checked={!!lib.private}
+										onCheckedChange={(next) => void setPrivate(lib, next)}
+									/>
+									<span>{t('privateLibrary.makePrivate')}</span>
+									<kbd class="transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">P</kbd>
+								</div>
+							{/if}
+						</div>
+						<div class="max-sm:empty:hidden sm:w-28">
+							{#if lib.private}
+								<Button variant="ghost" size="field" onclick={() => void toggleLock(lib)}>
+									{#if lib.locked}
+										<LockOpen class="size-4" /> {t('privateLibrary.unlock')}
+									{:else}
+										<LockIcon class="size-4" /> {t('privateLibrary.lock')}
+									{/if}
+									<kbd class="ms-1 transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">U</kbd>
+								</Button>
+							{/if}
+						</div>
+						<!-- Quiet until pointed at: a red bin on every row made five destructive
+						     buttons the loudest things on the page, louder than Scan now. -->
 						<Button
 							variant="ghost"
-							size="sm"
+							size="field"
+							class="justify-self-start hover:text-danger! focus-visible:text-danger!"
 							aria-label={`Remove ${lib.name}`}
 							onclick={() => askRemove(lib)}
 						>
-							<Trash2 class="size-4 text-danger" /> Remove
-							<kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd>
+							<Trash2 class="size-4" /> Remove
+							<kbd class="ms-1 transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">Del</kbd>
 						</Button>
 					</li>
 				{/each}
 			</ul>
 		{/if}
-	</section>
+	</SettingsGroup>
 
 	{#if roots !== null}
-		<section id="roots" class="settings-section scroll-mt-28 space-y-3">
-			<div>
-				<h2 class="settings-heading">{t('roots.heading')}</h2>
-				<p class="mt-0.5 text-sm text-muted">{t('roots.hint')}</p>
-			</div>
+		<SettingsGroup id="roots" title={t('roots.heading')} description={t('roots.hint')}>
 			{#if roots.length === 0}
-				<p class="text-sm text-muted">{t('roots.none')}</p>
+				<p class="py-4 text-sm text-muted">{t('roots.none')}</p>
 			{:else}
-				<ul class="settings-list">
+				<ul class="settings-items">
 					{#each roots as r (r.name)}
-						<li class="bg-surface/40 px-4 py-3">
+						<li class="py-3">
 							<div class="flex items-center gap-2">
 								<span class="font-mono text-sm text-foreground">{r.name}</span>
 								{#if !r.available}<Badge tone="warning">{t('roots.unavailable')}</Badge>{/if}
@@ -413,18 +485,15 @@
 					{/each}
 				</ul>
 			{/if}
-		</section>
+		</SettingsGroup>
 
-		<section id="pin" class="settings-section scroll-mt-28 space-y-3">
-			<div>
-				<h2 class="settings-heading">{t('privateLibrary.pinHeading')}</h2>
-				<p class="mt-0.5 text-sm text-muted">
-					{t('privateLibrary.pinHint')}
-					{pinSet ? t('privateLibrary.pinSet') : t('privateLibrary.pinNotSet')}
-				</p>
-			</div>
+		<SettingsGroup
+			id="pin"
+			title={t('privateLibrary.pinHeading')}
+			description={`${t('privateLibrary.pinHint')} ${pinSet ? t('privateLibrary.pinSet') : t('privateLibrary.pinNotSet')}`}
+		>
 			<form
-				class="grid gap-3 sm:grid-cols-[1fr_1fr_auto]"
+				class="grid gap-3 py-4 sm:grid-cols-[1fr_1fr_auto]"
 				onsubmit={(e) => {
 					e.preventDefault();
 					void savePin(false);
@@ -445,17 +514,17 @@
 					required
 				/>
 				<div class="flex items-end gap-2">
-					<Button type="submit" loading={pinBusy} disabled={!pinForm.pin || !pinForm.password}>
+					<Button type="submit" size="field" loading={pinBusy} disabled={!pinForm.pin || !pinForm.password}>
 						{t('privateLibrary.pinSave')} <kbd class="ms-1 font-mono text-[10px] text-muted">Enter</kbd>
 					</Button>
 					{#if pinSet}
-						<Button type="button" variant="ghost" disabled={!pinForm.password} onclick={() => void savePin(true)}>
+						<Button type="button" variant="ghost" size="field" disabled={!pinForm.password} onclick={() => void savePin(true)}>
 							{t('privateLibrary.pinClear')}
 						</Button>
 					{/if}
 				</div>
 			</form>
-		</section>
+		</SettingsGroup>
 	{/if}
 </div>
 
@@ -468,78 +537,144 @@
 	description="Lain indexes files in place. Nothing is copied, moved or modified."
 >
 	<form
-		class="space-y-4"
+		class="space-y-5"
 		onsubmit={(e) => {
 			e.preventDefault();
 			void create(true);
 		}}
 	>
 		{#if formError}
-			<div
-				class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
-				role="alert"
-			>
+			<div class="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
 				{formError}
 			</div>
 		{/if}
-		<Input label="Name" bind:value={form.name} placeholder="Anime" required />
-		<Select label="Type" bind:value={form.type} options={typeOptions} />
-		<div>
-			<span class="mb-1 block text-sm font-medium text-foreground">Server folders</span>
-			{#if browseLoading}
-				<p class="py-2 text-sm text-muted">Listing server folders…</p>
-			{:else if browseError}
-				<div class="flex items-center gap-2 py-1 text-sm">
-					<p class="text-danger" role="alert">{browseError}</p>
-					<Button variant="ghost" size="sm" onclick={() => void loadBrowse()}>Retry</Button>
-				</div>
-			{:else}
-				<p class="truncate font-mono text-xs text-muted" title={browsePath}>{browsePath}</p>
-				<div class="mt-1 flex gap-2">
-					<Button
-						variant="ghost"
-						size="sm"
-						disabled={!browseParent}
-						onclick={() => void loadBrowse(browseParent || undefined)}
-					>
-						<ArrowUp class="size-4" /> Up
-					</Button>
-					<Button variant="secondary" size="sm" onclick={() => useFolder()}>
-						Use this folder
-					</Button>
-				</div>
-				{#if browseDirs.length === 0}
-					<p class="py-2 text-sm text-muted">No subfolders here.</p>
+
+		<!-- The folder: one path bar, and the folders inside it. -->
+		<div class="space-y-1.5">
+			<label for="library-path" class="block text-sm font-medium text-muted">Folder</label>
+			<div class="flex gap-2">
+				<input
+					id="library-path"
+					bind:this={pathEl}
+					bind:value={pathDraft}
+					onkeydown={pathKey}
+					onblur={() => {
+						if (pathDraft.trim() && pathDraft.trim() !== browsePath) void loadBrowse(pathDraft.trim());
+					}}
+					placeholder="/media/anime"
+					spellcheck="false"
+					autocomplete="off"
+					aria-invalid={browseError ? 'true' : undefined}
+					aria-describedby="library-path-hint"
+					class={[
+						'h-10 min-w-0 flex-1 rounded-md border bg-field px-3 font-mono text-sm text-foreground',
+						'placeholder:text-muted/60 focus:border-accent/60 focus:outline-none',
+						browseError ? 'border-danger/60' : 'border-transparent'
+					].join(' ')}
+				/>
+				<Button
+					variant="secondary"
+					disabled={!browseParent || browseLoading}
+					onclick={goUp}
+					title="Parent folder (Backspace in the list)"
+					aria-label="Parent folder"
+				>
+					<ArrowUp class="size-4" />
+				</Button>
+			</div>
+
+			<div class="overflow-hidden rounded-md border border-line bg-surface/40">
+				{#if browseLoading && browseDirs.length === 0}
+					<p class="flex h-56 items-center justify-center gap-2 text-sm text-muted"><Spinner /> Listing folders…</p>
+				{:else if browseError}
+					<div class="flex h-56 flex-col items-center justify-center gap-2 px-4 text-center text-sm">
+						<p class="text-danger" role="alert">{browseError}</p>
+						<Button variant="ghost" size="sm" onclick={() => void loadBrowse(browsePath || undefined)}>
+							Back to {folderName(browsePath) || 'the start'}
+						</Button>
+					</div>
+				{:else if browseDirs.length === 0}
+					<p class="flex h-56 items-center justify-center px-4 text-center text-sm text-muted">
+						No folders inside this one. It can still be the library.
+					</p>
 				{:else}
-					<ul class="settings-list mt-1 max-h-44 overflow-y-auto">
-						{#each browseDirs as dir (dir.path)}
-							<li class="flex items-center gap-2 bg-surface/40 px-3 py-2">
+					<ul
+						bind:this={listEl}
+						class="h-56 overflow-y-auto py-1 focus:outline-none"
+						tabindex="0"
+						role="listbox"
+						aria-label="Folders in {browsePath}"
+						aria-activedescendant="library-dir-{cursor}"
+						onkeydown={listKey}
+					>
+						{#each browseDirs as dir, index (dir.path)}
+							<li id="library-dir-{index}" data-index={index} role="option" aria-selected={index === cursor}>
 								<button
 									type="button"
-									class="flex min-w-0 flex-1 items-center gap-2 text-left"
+									tabindex="-1"
+									class={[
+										'flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm',
+										index === cursor ? 'bg-surface-hover text-foreground' : 'text-foreground/90 hover:bg-surface-hover'
+									].join(' ')}
 									onclick={() => void loadBrowse(dir.path)}
-									title={`Open ${dir.path}`}
+									onmousemove={() => (cursor = index)}
 								>
 									<Folder class="size-4 shrink-0 text-muted" />
-									<span class="truncate text-sm text-foreground">{dir.name}</span>
+									<span class="truncate">{dir.name}</span>
 								</button>
-								<Button variant="ghost" size="sm" onclick={() => useFolder(dir)}>Use</Button>
 							</li>
 						{/each}
 					</ul>
 				{/if}
-			{/if}
+			</div>
+			<p id="library-path-hint" class="text-xs text-muted">
+				The library is the folder in the bar. Click a folder to go into it, or type a path and press
+				<kbd class="font-mono text-[10px]">Enter</kbd>. In the list:
+				<kbd class="font-mono text-[10px]">↑↓</kbd> move,
+				<kbd class="font-mono text-[10px]">Enter</kbd> open,
+				<kbd class="font-mono text-[10px]">Backspace</kbd> up. In Docker, these are the container's paths.
+			</p>
 		</div>
-		<Input
-			label="Server directory path"
-			bind:value={form.path}
-			placeholder="/media/anime"
-			hint="Filled in by the folder picker above; type only for paths outside it. In Docker, use the container path."
-			required
-		/>
+
+		<div class="grid gap-4 sm:grid-cols-[1fr_11rem]">
+			<Input
+				label="Name"
+				bind:value={form.name}
+				oninput={() => (nameTouched = true)}
+				placeholder="Anime"
+				required
+			/>
+			<Select label="Type" bind:value={form.type} options={typeOptions} />
+		</div>
+		<p class="-mt-3 text-xs text-muted">
+			{form.type === 'auto'
+				? 'Auto reads videos and comic archives, and tells each file apart by itself.'
+				: form.type === 'manga' || form.type === 'comic'
+					? 'Only comic archives (cbz, cbr, cb7) in the folder are read.'
+					: 'Only video files in the folder are read.'}
+		</p>
+
+		{#if roots !== null}
+			<Switch
+				bind:checked={form.private}
+				label={t('privateLibrary.makePrivate')}
+				description={t('privateLibrary.makePrivateHint')}
+			/>
+		{/if}
+
 		<div class="flex justify-end gap-2 pt-1">
 			<Button type="button" variant="ghost" onclick={() => (createOpen = false)}>Cancel</Button>
-			<Button type="submit" loading={creating}>Add and scan</Button>
+			<Button
+				type="button"
+				variant="secondary"
+				disabled={creating || !form.path.trim() || !form.name.trim()}
+				onclick={() => void create(false)}
+			>
+				Add
+			</Button>
+			<Button type="submit" loading={creating} disabled={!form.path.trim() || !form.name.trim()}>
+				Add and scan <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
+			</Button>
 		</div>
 	</form>
 </Modal>

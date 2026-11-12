@@ -42,6 +42,20 @@ fun withoutFamily(claim: List<String>, family: String): List<String> {
     return (pairs.map { it.substringBefore('/') }.toSet() + pairs).sorted()
 }
 
+/**
+ * How far one skip goes (the double tap, the buttons, the arrow keys): the
+ * viewer's choice, or by the title's length when left to the player. Ten
+ * seconds is a step in an episode and nothing in a two hour film.
+ */
+fun skipSeconds(choice: Int, durationSec: Double): Int = when {
+    choice > 0 -> choice
+    durationSec >= 3600 -> 30
+    else -> 10
+}
+
+/** The choices offered; 0 is "by length". */
+val SKIP_CHOICES = listOf(0, 5, 10, 30, 60)
+
 /** The claim for a device that decodes [families]; sorted, without duplicates. */
 fun decodeClaim(families: Set<String>): List<String> {
     val out = sortedSetOf<String>()

@@ -48,6 +48,28 @@ class DownloadService : Service() {
             }
         }
         job = scope.launch {
+            // Wi-Fi only: on a metered network the queue waits, said in the notification, until one that is not.
+            if (graph.prefs.wifiOnly) {
+                val cm = getSystemService(android.net.ConnectivityManager::class.java)
+                if (cm.isActiveNetworkMetered) {
+                    manager().notify(ID, notification(getString(R.string.download_wait_wifi), 0, 0))
+                    kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+                        val request = android.net.NetworkRequest.Builder()
+                            .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                            .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                            .build()
+                        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+                            override fun onAvailable(network: android.net.Network) {
+                                runCatching { cm.unregisterNetworkCallback(this) }
+                                if (cont.isActive) cont.resumeWith(Result.success(Unit))
+                            }
+                        }
+                        cm.registerNetworkCallback(request, cb)
+                        cont.invokeOnCancellation { runCatching { cm.unregisterNetworkCallback(cb) } }
+                    }
+                    manager().notify(ID, notification(getString(R.string.download_running), 0, 0))
+                }
+            }
             tracker.started()
             val stopped = runCatching { graph.core.offlineRun(tracker).stopped }.getOrElse { it.message ?: it.toString() }
             tracker.finished(stopped)

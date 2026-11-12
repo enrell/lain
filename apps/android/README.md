@@ -1,6 +1,6 @@
 # lain for Android
 
-The Android client (DESIGN-v2 §8.5, P5; decisions D-245..D-253, D-274, D-275): Kotlin +
+The Android client (DESIGN-v2 §8.5, P5; decisions D-245..D-253, D-277, D-278): Kotlin +
 Jetpack Compose for the UI, Media3/ExoPlayer for video, and the shared Rust
 client core (`crates/lain-client`) through UniFFI bindings.
 
@@ -15,7 +15,7 @@ apps/android/
 ## What it does
 
 - **Connect and log in**: a server URL and an account; the session is kept
-  for the next start. `https://` is the default (D-274): public certificates
+  for the next start. `https://` is the default (D-277): public certificates
   are checked against the root set compiled into the core. A server on your
   own network is typed as `http://host:9360` or as a bare address.
 - **Navigation from `/api/modules`** (D-250): Home, Library, Read, Search and
@@ -84,7 +84,7 @@ JVM unit tests: `./gradlew :app:testDebugUnitTest`; add
 `-PlainHostLib=<path to the host liblain_ffi.so>` to run the bindings smoke
 test through JNA.
 
-## Releases (D-275)
+## Releases (D-278)
 
 A `v*` tag attaches `lain_<version>_android.apk` to the GitHub release when
 the repository has these secrets; without them the job is skipped:

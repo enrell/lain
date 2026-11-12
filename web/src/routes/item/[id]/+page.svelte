@@ -1,4 +1,10 @@
 <script lang="ts">
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
+	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
+	import RatingPill from '$lib/components/social/RatingPill.svelte';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -12,7 +18,9 @@
 	import type { CatalogItem, Enrichment, Library, PlaybackPlan, Progress } from '$lib/api/types';
 	import { api, ApiError } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
-	import Badge from '$lib/components/primitives/Badge.svelte';
+	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
+	import Settings2 from '@lucide/svelte/icons/settings-2';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
@@ -36,7 +44,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { groupFromEpisodes, type SeriesGroup } from '$lib/utilities/grouping';
-	import { formatBytes, formatDate, formatRelative, formatTime, mediaSubtitle } from '$lib/utilities/format';
+	import { formatBytes, formatDate, formatLength, formatTime } from '$lib/utilities/format';
 	import { progressRatio } from '$lib/utilities/progress';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable } from '$lib/reader/kinds';
@@ -77,17 +85,16 @@
 			(item ? api.thumbnail.url(item.id, session.token, { at: 30, width: 960 }) : '')
 	);
 
-	/*
-	 * The metadata line only renders fields that exist, so the separators
-	 * have to be emitted between them rather than in front of each field:
-	 * a leading middot used to show whenever the year was missing.
-	 */
+	// The picture's size, as people name it (1080p), from the file's own video stream.
+	const videoHeight = $derived(plan?.streams?.find((st) => st.type === 'video')?.height ?? 0);
+
+	// One line of what it is: year, length, picture size. Each fact once; the
+	// file's size and path are an admin's business (File details).
 	const metaSegments = $derived(
 		[
 			enrichment?.year || item?.year ? String(enrichment?.year || item?.year) : '',
-			item ? mediaSubtitle(item) : '',
-			library?.name ?? '',
-			item && item.size > 0 ? formatBytes(item.size) : ''
+			formatLength(plan?.duration_sec),
+			videoHeight ? `${videoHeight}p` : ''
 		].filter((segment) => segment !== '')
 	);
 
@@ -155,6 +162,41 @@
 	}
 	const ratio = $derived(progress ? progressRatio(progress) : 0);
 
+	// What an admin can do with the title, behind one "Manage" menu. The
+	// entries act on the item the route opened, so removing one overlay can
+	// never strip a sibling episode's metadata.
+	const manage = $derived<MenuEntry[]>(
+		session.isAdmin
+			? [
+					{ label: t(enrichment ? 'title.refetchMetadata' : 'title.fetchMetadata'), icon: Sparkles, disabled: enriching, onSelect: () => void fetchMetadata() },
+					...(subtitleItems.length ? [{ label: t('acquire.subtitles.itemAction'), icon: Captions, kbd: 't', onSelect: () => (subtitlesOpen = true) }] : []),
+					...(enrichment ? [{ label: t('title.removeMetadata'), icon: Trash2, onSelect: () => (confirmRemove = true) }] : [])
+				]
+			: []
+	);
+	const manageSingle = $derived<MenuEntry[]>(
+		session.isAdmin && item && !item.missing
+			? [...manage, { label: t('title.deleteFile'), icon: Trash2, danger: true, separated: true, onSelect: () => (confirmDeleteFile = true) }]
+			: manage
+	);
+	/*
+	 * One "More" holds what is done now and then: starting over and the
+	 * marks, then (for administrators, below a line) the file's own
+	 * management. The row keeps the main action, the heart, the score,
+	 * Open with and Download: eight controls in four styles wrapped.
+	 */
+	const moreSingle = $derived<MenuEntry[]>([
+		...(progress && (progress.position_sec > 0 || progress.completed)
+			? [{ label: t('title.startOver'), icon: RotateCcw, onSelect: () => void resetProgress() }]
+			: []),
+		{
+			label: progress?.completed ? (reading ? 'Mark unread' : 'Mark unwatched') : reading ? 'Mark read' : 'Mark watched',
+			icon: CircleCheck,
+			onSelect: () => void markWatched(!progress?.completed)
+		},
+		...manageSingle.map((e, i) => (i === 0 ? { ...e, separated: true } : e))
+	]);
+
 	async function fetchMetadata(): Promise<void> {
 		if (!item || enriching) return;
 		enriching = true;
@@ -203,16 +245,41 @@
 		}
 	}
 
+	// Marking watched (or not) by hand: anyone may, for a title seen elsewhere.
+	let marking = $state(false);
+	async function markWatched(done: boolean): Promise<void> {
+		if (!item || marking) return;
+		marking = true;
+		try {
+			const dur = plan?.duration_sec ?? progress?.duration_sec ?? 0;
+			progress = await api.progress.put(item.id, { position_sec: done ? dur : 0, duration_sec: dur, completed: done });
+			toasts.success(done ? (reading ? 'Marked as read.' : 'Marked as watched.') : 'Mark removed.');
+		} catch (err) {
+			toasts.error(errorMessage(err, 'Could not change the mark.'));
+		} finally {
+			marking = false;
+		}
+	}
+
 	async function resetProgress(): Promise<void> {
 		if (!item || resetting) return;
 		resetting = true;
+		const was = progress;
+		const id = item.id;
 		try {
 			progress = await api.progress.put(item.id, {
 				position_sec: 0,
 				duration_sec: progress?.duration_sec ?? 0,
 				completed: false
 			});
-			toasts.success('Progress reset.');
+			toasts.undoable('Back to the start.', () => {
+				if (!was) return;
+				void api.progress
+					.put(id, { position_sec: was.position_sec, duration_sec: was.duration_sec, completed: was.completed })
+					.then((p) => {
+						if (item?.id === id) progress = p;
+					});
+			});
 		} catch (err) {
 			toasts.error(errorMessage(err, 'Could not reset progress.'));
 		} finally {
@@ -223,32 +290,6 @@
 
 <svelte:head><title>{title || series?.title || 'Item'} — Lain</title></svelte:head>
 <svelte:window onkeydown={pageKey} />
-
-<!-- Admin overlay controls, shared by the title page (in the poster rail)
-     and the single-title page. They act on the item the route opened, so
-     removing one overlay can never strip a sibling episode's metadata. -->
-{#snippet adminActions()}
-	{#if session.isAdmin}
-		<Button variant="secondary" size="sm" loading={enriching} onclick={() => void fetchMetadata()}>
-			<Sparkles class="size-3.5" /> {enrichment ? 'Refetch metadata' : 'Fetch metadata'}
-		</Button>
-		{#if subtitleItems.length}
-			<Button variant="secondary" size="sm" onclick={() => (subtitlesOpen = true)}>
-				<Captions class="size-3.5" /> {t('acquire.subtitles.itemAction')} <kbd class="ms-1 font-mono text-[10px] text-muted">t</kbd>
-			</Button>
-		{/if}
-		{#if enrichment}
-			<Button variant="secondary" size="sm" onclick={() => (confirmRemove = true)}>
-				<Trash2 class="size-3.5" /> Remove
-			</Button>
-		{/if}
-		{#if !series && !item?.missing}
-			<Button variant="danger" size="sm" onclick={() => (confirmDeleteFile = true)}>
-				<Trash2 class="size-3.5" /> Delete file
-			</Button>
-		{/if}
-	{/if}
-{/snippet}
 
 {#if loading}
 	<div class="space-y-6">
@@ -276,138 +317,141 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if series}
 	{#key series.key}
-		<TitleView group={series} {progressMap} {libraries} actions={adminActions} />
+		<TitleView group={series} {progressMap} {libraries} {manage} onProgressChanged={() => void load()} />
 	{/key}
 	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} /></div>{/if}
 {:else if item}
-	<article class="space-y-8">
-		<!-- Artwork backdrop: cover, else poster, else a generated still. It is
-		     decorative, so phones drop it: at 320x568 the height it and its
-		     negative overlap cost is the difference between the Play button
-		     being visible on arrival and being hidden behind the fixed bottom
-		     nav. From md up the layered look is unchanged. -->
-		<div class="relative hidden overflow-hidden md:-mx-8 md:-mt-8 md:block md:h-60">
-			{#if item && backdropSrc && backdropFailedId !== item.id}
+	<article class="space-y-6">
+		<!-- The same hero as a series: the art across the top, fading into
+		     the page, with the title, what it is and everything it can do. -->
+		<header class="title-hero relative -mx-5 -mt-5 overflow-hidden sm:-mx-8 md:mx-0 md:-mt-28">
+			{#if backdropSrc && backdropFailedId !== item.id}
 				<img
 					src={backdropSrc}
 					alt=""
-					class="size-full object-cover opacity-40"
+					aria-hidden="true"
+					class="hero-monolith-art absolute inset-0 size-full scale-125 object-cover opacity-50 blur-3xl"
 					referrerpolicy="no-referrer"
 					onerror={() => (backdropFailedId = item?.id ?? null)}
 				/>
-			{:else}
-				<div class="lattice size-full opacity-50"></div>
 			{/if}
-			<div class="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent"></div>
-		</div>
-
-		<div class="relative flex flex-col gap-4 md:-mt-36 md:flex-row md:gap-8">
-			<div class="w-24 shrink-0 sm:w-36 md:w-52">
-				<Poster {item} {enrichment} class="aspect-[2/3] rounded-card border border-line shadow-2xl" priority />
-			</div>
-
-			<div class="min-w-0 flex-1 space-y-3 pt-1 md:space-y-4 md:pt-16">
-				<div>
-					<h1 class="text-2xl font-semibold leading-tight tracking-tight text-foreground md:text-3xl">
-						{title}
-					</h1>
-					{#if enrichment?.title && enrichment.title !== item.title}
-						<p class="mt-1 text-sm text-muted">Indexed as “{item.title}”</p>
-					{/if}
+			<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
+			<button type="button" class="absolute left-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur md:hidden" aria-label="Back" onclick={() => history.back()}>
+				<ArrowLeft class="size-5" aria-hidden="true" />
+			</button>
+			<div class="relative flex w-full flex-col gap-5 pb-6 pt-16 md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
+				<div class="w-24 shrink-0 md:w-52">
+					<Poster {item} {enrichment} class="aspect-[2/3] rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10" priority />
 				</div>
-
-				<div class="flex flex-wrap items-center gap-2 text-sm text-muted">
-					{#each metaSegments as segment, i (i)}
-						{#if i > 0}<span aria-hidden="true">·</span>{/if}
-						<span>{segment}</span>
-					{/each}
-				</div>
-
-				<!-- The primary action sits directly under the title, above the
-				     optional prose. Below it, a full metadata block (two-line
-				     title, synopsis, badges) pushed Play under the fixed bottom
-				     nav at 320x568; the title and meta line above it are the only
-				     bounded content. -->
-				<div class="flex flex-wrap items-center gap-3 pt-1">
-					{#if playable || (!item.missing && preferredPlayer !== 'browser')}
-						<LinkButton href={playHref(item.id)} size="lg" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
-							<Play class="size-4" />
-							{reading ? (resumeAt > 0 ? `Continue from page ${Math.floor(resumeAt)}` : 'Read') : resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
-						</LinkButton>
-					{:else}
-						<Button size="lg" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
-							<Play class="size-4" /> Play
-						</Button>
+				<div class="hero-monolith-copy min-w-0 flex-1">
+					{#if library}
+						<a href={`/library/${library.id}`} class="mb-3 inline-flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground max-md:hidden">
+							<ChevronLeft class="size-4" aria-hidden="true" /> {library.name}
+						</a>
 					{/if}
-					{#if progress && (progress.position_sec > 0 || progress.completed)}
-						<Button variant="ghost" size="sm" loading={resetting} onclick={() => void resetProgress()}>
-							<RotateCcw class="size-3.5" /> Start over
-						</Button>
+					{#if metaSegments.length > 0}
+						<p class="text-sm font-medium text-foreground/80">{metaSegments.join(' · ')}</p>
 					{/if}
-					{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="ghost" />{/if}
-					{#if session.isAdmin}
-						<div class="flex items-center gap-2 md:ml-auto">
-							{@render adminActions()}
+					<h1 class="title-hero-name mt-3 text-foreground">{title}</h1>
+					{#if enrichment?.genres?.length}
+						<ul class="mt-4 flex flex-wrap gap-x-2 gap-y-1 text-sm text-foreground/70" aria-label="Genres">
+							{#each enrichment.genres.slice(0, 4) as genre, i (genre)}
+								<li>{#if i > 0}<span class="mr-2 text-muted" aria-hidden="true">·</span>{/if}{genre}</li>
+							{/each}
+						</ul>
+					{/if}
+
+					<!-- The primary action sits directly under the title, above the
+					     optional prose, so it is on screen on arrival at 320x568. -->
+					<div class="title-actions mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
+						{#if playable || (!item.missing && preferredPlayer !== 'browser')}
+							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
+								<Play class="size-4 fill-current" />
+								{reading ? (resumeAt > 0 ? `Continue from page ${Math.floor(resumeAt)}` : 'Read') : resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
+							</LinkButton>
+						{:else}
+							<Button size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
+								<Play class="size-4" /> Play
+							</Button>
+						{/if}
+						<!-- The heart keeps the main action's row, on a phone too. -->
+						<FavoriteButton />
+						<RatingPill />
+						{#if !item.missing && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={item.id} variant="tonal" size="row" /></span>{/if}
+						{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="tonal" size="row" label={t('download.one')} />{/if}
+						<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreSingle} variant="tonal" size="row" compact>
+							{#snippet icon()}<Ellipsis class="size-4" aria-hidden="true" />{/snippet}
+						</Menu>
+					</div>
+
+					{#if progress && ratio > 0 && !progress.completed}
+						<div class="mt-4 max-w-sm space-y-1.5">
+							<ProgressBar {ratio} class="bg-surface-active" />
+							<p class="text-xs text-muted">
+								{#if reading}
+									Page {Math.floor(progress.position_sec)} of {Math.floor(progress.duration_sec)}
+								{:else}
+									{t('title.left', { time: formatLength(Math.max(1, progress.duration_sec - progress.position_sec)) })}
+								{/if}
+							</p>
 						</div>
 					{/if}
+
+					{#if enrichment?.synopsis}
+						<p class="mt-5 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{enrichment.synopsis}</p>
+					{/if}
 				</div>
-				{#if !item.missing && !reading}<ExternalPlayers itemId={item.id} />{/if}
-
-				{#if item.missing}
-					<div class="max-w-2xl rounded-card border border-danger/25 bg-danger/5 px-4 py-3 text-sm">
-						<p class="font-medium text-danger">The file is no longer on disk.</p>
-						<p class="mt-1 text-muted">
-							It stays in the catalog so progress and metadata are preserved. If the file comes
-							back under {library?.name ?? 'its library'}, it becomes playable again on its own.
-						</p>
-					</div>
-				{:else if !playable && !reading}
-					<div class="max-w-2xl rounded-card border border-warning/25 bg-warning/5 px-4 py-3 text-sm">
-						<p class="font-medium text-warning">The browser cannot play this file directly.</p>
-						<p class="mt-1 text-muted">
-							{plan?.reason ?? 'No compatible playback plan is available.'}
-							{#if session.isAdmin}
-								The transcoder is unavailable; the desktop/CLI client plays it as-is.
-							{:else}
-								Ask an administrator, or use the desktop/CLI client.
-							{/if}
-						</p>
-					</div>
-				{/if}
-
-				{#if enrichment?.genres?.length}
-					<div class="flex flex-wrap gap-1.5">
-						{#each enrichment.genres as genre (genre)}
-							<Badge>{genre}</Badge>
-						{/each}
-					</div>
-				{/if}
-
-				{#if enrichment?.synopsis}
-					<p class="max-w-3xl text-sm leading-relaxed text-muted">{enrichment.synopsis}</p>
-				{/if}
-				{#if reading}<ComicInfoPanel {item} />{/if}
-
-				{#if progress && ratio > 0 && !progress.completed}
-					<div class="max-w-md space-y-1.5">
-						<ProgressBar {ratio} class="bg-surface-active" />
-						<p class="text-xs text-muted">
-							{formatTime(progress.position_sec)} watched
-							{#if progress.updated_at}· {formatRelative(progress.updated_at)}{/if}
-						</p>
-					</div>
-				{/if}
-
-				{#if enrichment}
-					<p class="text-xs text-muted">
-						Metadata from <span class="text-foreground">{enrichment.provider}</span>
-						{#if enrichment.fetched_at}· {formatDate(enrichment.fetched_at)}{/if}
-					</p>
-				{/if}
-				<p class="break-all font-mono text-[11px] text-muted/70">{item.file_path}</p>
 			</div>
-		</div>
+		</header>
+
+		{#if item.missing}
+			<div class="max-w-2xl rounded-card border border-danger/25 bg-danger/5 px-4 py-3 text-sm">
+				<p class="font-medium text-danger">The file is no longer on disk.</p>
+				<p class="mt-1 text-muted">
+					It stays in the catalog so progress and metadata are preserved. If the file comes
+					back under {library?.name ?? 'its library'}, it becomes playable again on its own.
+				</p>
+			</div>
+		{:else if !playable && !reading}
+			<div class="max-w-2xl rounded-card border border-warning/25 bg-warning/5 px-4 py-3 text-sm">
+				<p class="font-medium text-warning">The browser cannot play this file directly.</p>
+				<p class="mt-1 text-muted">
+					{plan?.reason ?? 'No compatible playback plan is available.'}
+					{#if session.isAdmin}
+						The transcoder is unavailable; the desktop/CLI client plays it as-is.
+					{:else}
+						Ask an administrator, or use the desktop/CLI client.
+					{/if}
+				</p>
+			</div>
+		{/if}
+
+		{#if reading}<ComicInfoPanel {item} />{/if}
+
+		<!-- Where the file is and where its metadata came from: an admin's
+		     business, folded away from the page everyone reads. -->
+		{#if session.isAdmin}
+			<details class="max-w-3xl text-sm text-muted">
+				<summary class="group/sum inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-md px-1 font-mono text-[11px] uppercase tracking-[0.16em] text-foreground/75 hover:text-foreground [&::-webkit-details-marker]:hidden">
+					<ChevronRight class="size-3.5 transition-transform [details[open]_&]:rotate-90" aria-hidden="true" />{t('title.fileDetails')}
+				</summary>
+				<dl class="mt-2 space-y-1.5 border-l border-line pl-4 text-xs">
+					{#if enrichment?.title && enrichment.title !== item.title}
+						<div><dt class="inline text-muted">Indexed as</dt> <dd class="inline text-foreground">“{item.title}”</dd></div>
+					{/if}
+					{#if enrichment}
+						<div><dt class="inline text-muted">Metadata from</dt> <dd class="inline text-foreground">{enrichment.provider}{#if enrichment.fetched_at} · {formatDate(enrichment.fetched_at)}{/if}</dd></div>
+					{/if}
+					{#if item.size > 0}<div><dt class="inline text-muted">Size</dt> <dd class="inline text-foreground">{formatBytes(item.size)}</dd></div>{/if}
+					<div><dt class="sr-only">Path</dt> <dd class="break-all font-mono text-[11px]">{item.file_path}</dd></div>
+				</dl>
+			</details>
+		{/if}
 	</article>
+{/if}
+
+{#if !loading && !notFound && !error && item}
+	<RelatedRow libraryId={item.library_id} exclude={series ? series.items.map((i) => i.id) : [item.id]} heading={library ? `More in ${library.name}` : 'More like this'} />
 {/if}
 
 <!-- Social slice (docs/slices/social.md): ratings, comments, sharing for the work. -->

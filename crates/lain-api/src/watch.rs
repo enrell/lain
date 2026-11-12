@@ -181,6 +181,9 @@ pub struct TranscodeCapabilities {
     pub encoders: Option<Vec<String>>,
     pub tone_mapping: bool,
     pub tone_mapping_bt2390: bool,
+    /// The libplacebo shader path executes (D-274).
+    #[serde(default)]
+    pub video_effects: bool,
     #[serde(default)]
     pub hardware: BTreeMap<String, bool>,
 }
@@ -198,6 +201,36 @@ pub struct PlaybackOptions {
     pub default_delivery: String,
     pub deliveries: Vec<String>,
     pub qualities: Vec<TranscodeQuality>,
+    /// Video effects this server can render into a session (D-274);
+    /// empty when its ffmpeg cannot.
+    #[serde(default)]
+    pub effects: Vec<String>,
+}
+
+/// One video's length (`GET /api/durations`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ItemDuration {
+    pub item_id: String,
+    pub duration_sec: f64,
+}
+
+/// The envelope of `GET /api/durations`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ItemDurations {
+    #[serde(default)]
+    pub items: Vec<ItemDuration>,
+}
+
+/// How an item's storyboard is laid out (`GET /api/items/{id}/storyboard`):
+/// tile `i`, row by row, is the frame near `i * interval_sec`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StoryboardLayout {
+    pub interval_sec: i64,
+    pub count: i64,
+    pub columns: i64,
+    pub rows: i64,
+    pub tile_width: i64,
+    pub tile_height: i64,
 }
 
 /// A transcode session as clients see it: never a filesystem path.
@@ -296,6 +329,15 @@ pub struct TranscodeSelection {
     pub allow_video_stream_copy: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow_audio_stream_copy: Option<bool>,
+    /// Video codecs beyond H.264 the client decodes in fMP4 (D-273):
+    /// a source in one of them is copied instead of re-encoded. Only
+    /// `hevc` is known; other values are ignored.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub video_copy_codecs: Vec<String>,
+    /// A video effect the server renders into the session (D-274): one
+    /// of `PlaybackOptions.effects`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub video_effect: String,
 }
 
 /// `GET /api/localplay`: players that can open on the server's own

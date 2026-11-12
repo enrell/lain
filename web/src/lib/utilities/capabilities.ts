@@ -199,3 +199,50 @@ async function decodingSupported(mime: string, codec: string | null): Promise<bo
 		return false;
 	}
 }
+
+/*
+ * Stream copy beyond H.264 (D-273). A transcode session copies an HEVC
+ * source into fragmented MP4 instead of re-encoding it when the client
+ * says it decodes HEVC there. Unlike the plan's vocabulary this question
+ * is asked per file — the session starts after the plan, so the stream's
+ * bit depth and size are known — and of the pipeline that will play the
+ * session: Media Source Extensions where hls.js runs, the media element
+ * where the browser plays HLS itself.
+ */
+export interface CopyCandidate {
+	codec: string;
+	pixel_format?: string;
+	height?: number;
+}
+
+/** The RFC 6381 string of an HEVC stream: Main or Main 10, level 4 up to 1080 lines and 5.1 above. */
+export function hevcCodecString(video: CopyCandidate): string {
+	const main10 = (video.pixel_format ?? '').includes('10');
+	const level = (video.height ?? 0) > 1088 ? 'L153' : 'L120';
+	return main10 ? `hvc1.2.4.${level}.B0` : `hvc1.1.6.${level}.B0`;
+}
+
+/** The pure half: which codecs may the server copy for this stream? */
+export function copyCodecsFor(
+	video: CopyCandidate | undefined,
+	supports: (type: string) => boolean
+): string[] {
+	if (!video) return [];
+	const codec = video.codec.toLowerCase();
+	if (codec !== 'hevc' && codec !== 'h265') return [];
+	return supports(`video/mp4; codecs="${hevcCodecString(video)}"`) ? ['hevc'] : [];
+}
+
+export function reportCopyCodecs(video: CopyCandidate | undefined): string[] {
+	if (typeof document === 'undefined') return [];
+	const scope = globalThis as {
+		MediaSource?: { isTypeSupported?: (type: string) => boolean };
+		ManagedMediaSource?: { isTypeSupported?: (type: string) => boolean };
+	};
+	const mse = scope.MediaSource ?? scope.ManagedMediaSource;
+	if (typeof mse?.isTypeSupported === 'function') {
+		return copyCodecsFor(video, (type) => mse.isTypeSupported!(type));
+	}
+	const media = document.createElement('video');
+	return copyCodecsFor(video, (type) => media.canPlayType(type) !== '');
+}

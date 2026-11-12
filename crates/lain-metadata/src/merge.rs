@@ -3,7 +3,7 @@
 //! do not plausibly answer the search are dropped, so a fuzzy upstream
 //! hit never replaces the real identity.
 
-use crate::nfo::NFO_ID;
+use crate::LOCAL_PROVIDERS;
 use crate::types::MetadataCandidate;
 
 /// Lower-case letters and digits only: "Darling in the FranXX" and
@@ -24,10 +24,10 @@ fn plausible_match(want: &str, have: &str) -> bool {
 }
 
 /// An exact title, or a title or synonym that prefixes the other
-/// (season and edition variants). Local NFO hits are curated: they
-/// always pass.
+/// (season and edition variants). Local hits (NFO) are
+/// curated: they always pass.
 fn plausible(want: &str, c: &MetadataCandidate) -> bool {
-    if want.is_empty() || c.provider == NFO_ID {
+    if want.is_empty() || LOCAL_PROVIDERS.contains(&c.provider.as_str()) {
         return true;
     }
     std::iter::once(&c.title).chain(&c.synonyms).any(|t| plausible_match(want, &normalize_title(t)))
@@ -67,6 +67,7 @@ pub fn merge_candidates(query: &str, outputs: &[Vec<MetadataCandidate>], limit: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::NFO_ID;
 
     fn c(p: &str, t: &str) -> MetadataCandidate {
         MetadataCandidate { provider: p.into(), remote_id: t.into(), title: t.into(), ..Default::default() }

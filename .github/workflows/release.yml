@@ -122,7 +122,7 @@ jobs:
             dist/*.tar.gz dist/*.zip dist/*.sha256 dist/checksums.txt \
             --generate-notes --verify-tag
 
-  # The signed Android APK (D-275), attached to the release once it
+  # The signed Android APK (D-278), attached to the release once it
   # exists. It runs only when the signing secrets are set, and after the
   # release, so the server's assets never wait for it.
   android:

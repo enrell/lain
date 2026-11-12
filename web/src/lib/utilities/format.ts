@@ -36,6 +36,17 @@ export function formatRuntime(seconds: number | null | undefined): string {
 	return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
+/** A length as people say it: `24 min`, `1 h 42 min`, `45 sec`. */
+export function formatLength(seconds: number | null | undefined): string {
+	if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) return '';
+	const total = Math.floor(seconds);
+	if (total < 60) return `${total} sec`;
+	const h = Math.floor(total / 3600);
+	const m = Math.round((total % 3600) / 60);
+	if (h === 0) return `${m} min`;
+	return m === 0 ? `${h} h` : `${h} h ${m} min`;
+}
+
 export function formatBytes(bytes: number | null | undefined): string {
 	if (!bytes || !Number.isFinite(bytes) || bytes <= 0) return '';
 	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];

@@ -21,7 +21,7 @@
 //! callers (registry providers run on blocking threads) through
 //! [`Request::send_blocking`] and async callers through
 //! [`Request::send`] alike. It holds no server types, so `lain-client`
-//! uses its TLS setup ([`tls::Connector`]) for `https` servers (D-274).
+//! uses its TLS setup ([`tls::Connector`]) for `https` servers (D-277).
 
 mod conn;
 mod pace;

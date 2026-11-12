@@ -16,9 +16,15 @@ pub const CAP_SOURCE_ENUMERATE: &str = "lain.source.enumerate@1";
 
 const VIDEO: &[&str] = &["mkv", "mp4", "avi", "mov", "m4v", "webm"];
 
+/// A folder that holds more than one kind: every video and reading
+/// extension. Each file is still identified by its own extension.
+const AUTO: &[&str] = &["mkv", "mp4", "avi", "mov", "m4v", "webm", "cbz", "cbr", "cb7"];
+
 /// The extensions a library type recognizes; unknown types are video.
+/// `auto` takes videos and comic archives alike (D-269).
 pub fn extensions(kind: &str) -> &'static [&'static str] {
     match kind.to_lowercase().as_str() {
+        "auto" => AUTO,
         "music" => &["mp3", "flac", "m4a", "aac", "ogg", "opus", "wav"],
         "book" => &["pdf", "epub", "mobi", "azw3"],
         "comic" | "manga" => &["cbz", "cbr", "cb7"],
@@ -206,6 +212,14 @@ mod tests {
         })
         .unwrap();
         assert_eq!(manga.candidates.len(), 1);
+        // A mixed folder: videos and archives together, text still left out.
+        let auto = enumerate(&EnumerateInput {
+            root: d.to_string_lossy().into(),
+            library_id: "l".into(),
+            kind: "auto".into(),
+        })
+        .unwrap();
+        assert_eq!(auto.candidates.len(), 4);
         std::fs::remove_dir_all(d).ok();
     }
 

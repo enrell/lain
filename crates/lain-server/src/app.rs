@@ -33,7 +33,26 @@ use crate::roots::{self, Roots};
 use lain_ingest::{ScanEvent, Scanner, SourceWatch};
 
 /// The composition document version.
-pub const COMPOSITION_VERSION: u32 = 8;
+pub const COMPOSITION_VERSION: u32 = 9;
+
+/// `Composition::upgrade` adds capabilities a saved document lacks, but
+/// keeps the provider list of the ones it has (an operator's override).
+/// A provider the defaults gained for an existing capability is placed
+/// here, once, when the document is older than the version that
+/// introduced it: version 9 put the import identifier (D-267) first.
+/// An operator who removes it afterwards keeps it removed, since the
+/// document is then saved at the new version.
+fn adopt_new_providers(saved: &mut Composition, from: u32) {
+    use crate::integration::IDENTIFY_ID;
+    if from >= 9 {
+        return;
+    }
+    let Some(b) = saved.bindings.get_mut(lain_identify::CAP_MEDIA_IDENTIFY) else { return };
+    if !b.providers.iter().any(|p| p == IDENTIFY_ID) {
+        b.providers.insert(0, IDENTIFY_ID.to_string());
+        tracing::info!(provider = IDENTIFY_ID, "new default provider adopted");
+    }
+}
 
 /// Providers that only ever run as components, so a binding may name
 /// them before their manifest is installed (unregistered, they are
@@ -58,8 +77,10 @@ pub fn default_composition() -> Composition {
     bindings.insert(lain_ingest::CAP_SOURCE_ENUMERATE.into(), one(lain_ingest::SOURCE_ID));
     bindings.insert(lain_ingest::CAP_INGEST_SCAN.into(), one(lain_ingest::INGEST_ID));
     bindings.insert(lain_ingest::CAP_SOURCE_WATCH.into(), one(lain_ingest::WATCH_ID));
-    bindings
-        .insert(CAP_MEDIA_IDENTIFY.into(), Binding::new(BindingMode::OrderedMany, &[COMIC_ID, ANIME_ID, GENERIC_ID]));
+    bindings.insert(
+        CAP_MEDIA_IDENTIFY.into(),
+        Binding::new(BindingMode::OrderedMany, &[crate::integration::IDENTIFY_ID, COMIC_ID, ANIME_ID, GENERIC_ID]),
+    );
     // The lain-parser model (D-225) answers first when its component is
     // installed and healthy; the tokenizer answers whenever it declines.
     bindings.insert(
@@ -237,7 +258,9 @@ impl App {
             let mut saved: Composition =
                 serde_json::from_slice(&raw).map_err(|e| format!("corrupt document composition.json: {e}"))?;
             if !saved.bindings.is_empty() {
+                let from = saved.version;
                 let added = saved.upgrade(&default_composition());
+                adopt_new_providers(&mut saved, from);
                 if !added.is_empty() {
                     tracing::info!(added = %added.join(","), "new capabilities from defaults");
                 }
@@ -248,6 +271,7 @@ impl App {
         let registry = Arc::new(Registry::new(comp.clone()));
         registry.register(Arc::new(Catalog::with_roots(store.clone(), roots.clone())));
         registry.register(Arc::new(Userstate::new(store.clone())));
+        registry.register(Arc::new(crate::integration::ImportIdentifier::new(store.clone(), roots.clone())));
         for id in lain_identify::Identifier::ALL {
             registry.register(Arc::new(id));
         }
@@ -260,9 +284,10 @@ impl App {
             Arc::new(move || Libraries::new(libs_store.0.clone(), libs_store.1.clone()).list().unwrap_or_default());
         let scanner = Scanner::new(&registry, library_source, cfg.auto_enrich);
         let weak_scanner = Arc::downgrade(&scanner);
-        let progress: lain_ingest::scan::Progress = Arc::new(move |done: &lain_ingest::LibraryDone| {
+        let enrich_scanner = weak_scanner.clone();
+        let progress: lain_ingest::scan::Progress = Arc::new(move |step: lain_ingest::Step<'_>| {
             if let Some(s) = weak_scanner.upgrade() {
-                s.library_done(done);
+                s.step(step);
             }
         });
         registry.register(Arc::new(lain_ingest::Runner::new(&registry, Some(progress))));
@@ -281,7 +306,13 @@ impl App {
         let links = Arc::new(lain_lists::Links::open(&store, registry.clone())?);
         let social = Arc::new(lain_social::Social::new(store.clone()));
         registry.register(social.clone());
-        registry.register(Arc::new(lain_metadata::Enricher::new(&registry, store.clone())));
+        registry.register(Arc::new(lain_metadata::Enricher::new(&registry, store.clone()).with_progress(Arc::new(
+            move |done, total| {
+                if let Some(s) = enrich_scanner.upgrade() {
+                    s.enrich_progress(done, total);
+                }
+            },
+        ))));
         registry.register(Arc::new(theme_mod::Theme));
         registry.register(Arc::new(backup_mod::Bundle));
         registry.register(Arc::new(ComicArchive::new()));
@@ -440,7 +471,7 @@ impl App {
                 }
                 ("running".to_string(), trigger, libraries, libraries_done, None)
             }
-            ScanEvent::Finished(st) => (st.state.clone(), st.trigger.clone(), 0, 0, Some(st)),
+            ScanEvent::Finished(st) => (st.state.clone(), st.trigger.clone(), 0, 0, Some(*st)),
         };
         let mut data =
             json!({"state": state, "trigger": trigger, "libraries": libraries, "libraries_done": libraries_done});
@@ -646,32 +677,43 @@ impl App {
         if let Some(m) = self.acquire.get() {
             m.start();
         }
-        // First boot probes ffmpeg for a hardware backend: never on the
-        // boot path (D-192).
+        // ffmpeg is probed for a hardware backend off the boot path
+        // (D-192): the first boot saves the policy with the best one, and a
+        // later boot moves a policy nobody tuned to today's best (a GPU that
+        // was added, or one a fixed probe now finds).
         // The probe holds only the transcoder, never the App (and its
         // store), so a server that stops meanwhile closes at once.
         let weak = Arc::downgrade(self);
         std::thread::Builder::new()
-            .name("transcode-first-boot".into())
+            .name("transcode-hardware".into())
             .spawn(move || {
-                let Some(transcoder) = weak
-                    .upgrade()
-                    .filter(|a| !a.media.settings.has().unwrap_or(true))
-                    .map(|a| a.media.transcoder.clone())
-                else {
+                let Some(transcoder) = weak.upgrade().map(|a| a.media.transcoder.clone()) else {
                     return;
                 };
                 let base = lain_watch::settings::defaults();
                 let hw = transcoder.probe(&base).hardware;
-                let chosen = lain_watch::settings::with_automatic_hardware(&base, &hw);
-                if let Some(app) = weak.upgrade() {
-                    match app.media.settings.ensure(&chosen) {
-                        Ok(false) => {
-                            tracing::info!(hardware = %chosen.hardware_acceleration, "transcode settings initialized")
+                let Some(app) = weak.upgrade() else { return };
+                if app.media.settings.has().unwrap_or(true) {
+                    let saved = app.media.settings.get();
+                    if let Some(next) = lain_watch::settings::repick_hardware(&saved, &hw) {
+                        match app.media.settings.put(&next) {
+                            Ok(_) => tracing::info!(
+                                from = %saved.hardware_acceleration,
+                                hardware = %next.hardware_acceleration,
+                                "transcode hardware re-picked"
+                            ),
+                            Err(e) => tracing::warn!(err = %e, "transcode hardware not re-picked"),
                         }
-                        Ok(true) => {}
-                        Err(e) => tracing::warn!(err = %e, "transcode settings not initialized"),
                     }
+                    return;
+                }
+                let chosen = lain_watch::settings::with_automatic_hardware(&base, &hw);
+                match app.media.settings.ensure(&chosen) {
+                    Ok(false) => {
+                        tracing::info!(hardware = %chosen.hardware_acceleration, "transcode settings initialized")
+                    }
+                    Ok(true) => {}
+                    Err(e) => tracing::warn!(err = %e, "transcode settings not initialized"),
                 }
             })
             .ok();
