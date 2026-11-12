@@ -68,12 +68,19 @@
 
 	// ---- leaving with changes staged -------------------------------------
 	let leaveTo = $state<URL | null>(null);
+	// A Back or Forward that was held, replayed as one: a push in its place
+	// left the page being left in the history, so the next Back returned to it.
+	let leaveDelta = 0;
 	let asking = $state(false);
-	// Set while the guard lets its own navigation through.
+	// Set while the guard lets its own navigation through (the next one only).
 	let passing = false;
 
 	beforeNavigate((nav) => {
-		if (count === 0 || passing) return;
+		if (passing) {
+			passing = false;
+			return;
+		}
+		if (count === 0) return;
 		// Closing the tab, reloading or an external link: cancelling asks the browser's own question.
 		if (nav.willUnload || !nav.to) {
 			nav.cancel();
@@ -81,6 +88,7 @@
 		}
 		nav.cancel();
 		leaveTo = nav.to.url;
+		leaveDelta = nav.type === 'popstate' ? nav.delta : 0;
 		asking = true;
 		// The dialog opens on its primary action, so Enter applies and leaves.
 		focusSoon(() => document.getElementById('staged-apply-leave'));
@@ -92,11 +100,14 @@
 
 	function proceed(): void {
 		const to = leaveTo;
+		const delta = leaveDelta;
 		asking = false;
 		leaveTo = null;
+		leaveDelta = 0;
 		if (!to) return;
 		passing = true;
-		void goto(to.pathname + to.search + to.hash).finally(() => (passing = false));
+		if (delta) history.go(delta);
+		else void goto(to.pathname + to.search + to.hash);
 	}
 
 	function discardAndLeave(): void {
