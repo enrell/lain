@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **API**: a player can name itself with a `viewer` id when it starts or
+  joins a transcode session and when it releases it (D-281). Two players
+  with the same options share one session; it now stops only when the
+  last of them leaves, and a finished one stays cached. Requests without
+  a viewer behave as before. The web player sends one; `lain-client` has
+  `release_transcode`.
+
 ### Fixed
 - **Web**: a link clicked within a moment of typing in the header's
   search field on the Search page no longer bounces back to Search with
@@ -14,8 +22,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   used Settings in the same browser it used to bounce between two pages
   forever.
 - **Web**: leaving the player stops its transcode session if it is still
-  being prepared, so the next title starts at once instead of waiting
-  behind it for up to two minutes; a finished session stays cached.
+  being prepared and no other player (another tab or device) is watching
+  it, so the next title starts at once instead of waiting behind it for
+  up to two minutes; a finished session stays cached.
 - **Web**: pausing (K, Space) before a just-started play has begun no
   longer shows "The browser blocked playback" and pins the controls.
 - **Server**: an HLS session whose hardware encode fails and is retried

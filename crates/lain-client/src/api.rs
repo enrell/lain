@@ -655,6 +655,8 @@ impl Client {
 
     /// Starts (or joins) a transcode session; ready or not, the answer
     /// is its status (poll [`Client::transcode_status`] until `ready`).
+    /// A player that sets `sel.viewer` (D-281) leaves with
+    /// [`Client::release_transcode`] and the same id.
     pub async fn start_transcode(
         &self,
         item_id: &str,
@@ -668,9 +670,24 @@ impl Client {
         self.call(Method::GET, &path, Body::None).await
     }
 
-    /// Stops a session this account started.
+    /// Stops a session this account started, whoever else watches it.
     pub async fn cancel_transcode(&self, item_id: &str, session: &str) -> Result<TranscodeStatus, ClientError> {
-        let path = format!("/api/items/{}/transcode{}", encode(item_id), query(&[("session", session.into())]));
+        self.release_transcode(item_id, session, "").await
+    }
+
+    /// Leaves a session joined with `viewer` (D-281): it stops only when
+    /// no other viewer holds it and it is still being produced; a
+    /// finished one stays cached. The answer is the session afterwards
+    /// (`idle` once stopped). An empty `viewer` is
+    /// [`Client::cancel_transcode`].
+    pub async fn release_transcode(
+        &self,
+        item_id: &str,
+        session: &str,
+        viewer: &str,
+    ) -> Result<TranscodeStatus, ClientError> {
+        let q = query(&[("session", session.into()), ("viewer", viewer.into())]);
+        let path = format!("/api/items/{}/transcode{q}", encode(item_id));
         self.call(Method::DELETE, &path, Body::None).await
     }
 

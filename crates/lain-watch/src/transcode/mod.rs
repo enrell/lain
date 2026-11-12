@@ -61,6 +61,8 @@ const MAX_QUEUE_CAPACITY: i64 = 64;
 const MAX_TRACKED_JOBS: usize = 128;
 const RECENT_ACCESS_GRACE: i64 = 60;
 const CAP_TTL: Duration = Duration::from_secs(30);
+/// Named viewers one session tracks; past that, joins count as unnamed.
+const MAX_VIEWERS: usize = 32;
 
 pub(crate) fn unsupported(msg: &str) -> Error {
     Error::new("unsupported-media", msg)
@@ -111,6 +113,11 @@ pub struct V3Request {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub video_effect: String,
     pub policy: Option<Policy>,
+    /// The client instance asking (D-281): `start` attaches it to the
+    /// session, `cancel` releases its hold. Not part of the session's
+    /// identity; empty is a client that does not name itself.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub viewer: String,
     /// Opaque account reference: per-user stream counts and the admin
     /// list.
     pub user_id: String,
@@ -232,6 +239,44 @@ pub fn valid_session_id(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
 }
 
+/// A client-made viewer id (D-281): 1 to 64 ASCII letters, digits, `-`
+/// or `_` (a UUID or random hex fits).
+pub fn valid_viewer_id(s: &str) -> bool {
+    (1..=64).contains(&s.len()) && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+}
+
+/// Who holds a session while it is produced (D-281). A viewer is its
+/// id under the account that sent it, so one account cannot release
+/// another's viewer. A client that joins without an id, or past
+/// [`MAX_VIEWERS`], is an unnamed hold no viewer's release can end:
+/// only a release without a viewer id or the idle timeout stops the
+/// session then.
+#[derive(Debug, Default)]
+struct Viewers {
+    named: std::collections::HashSet<(String, String)>,
+    unnamed: bool,
+}
+
+impl Viewers {
+    fn attach(&mut self, user: &str, viewer: &str) {
+        let key = (user.to_string(), viewer.to_string());
+        if viewer.is_empty() || (self.named.len() >= MAX_VIEWERS && !self.named.contains(&key)) {
+            self.unnamed = true;
+        } else {
+            self.named.insert(key);
+        }
+    }
+
+    /// Ends one viewer's hold; true when it held the session.
+    fn release(&mut self, user: &str, viewer: &str) -> bool {
+        self.named.remove(&(user.to_string(), viewer.to_string()))
+    }
+
+    fn held(&self) -> bool {
+        self.unnamed || !self.named.is_empty()
+    }
+}
+
 fn file_identity(path: &str) -> Option<(i64, i64)> {
     let m = std::fs::metadata(path).ok().filter(|m| m.is_file())?;
     let mtime = m.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_nanos() as i64;
@@ -351,6 +396,7 @@ struct Job {
     encoder: String,
     hw_backend: String,
     fallback: String,
+    viewers: Viewers,
 }
 
 impl Job {
@@ -384,6 +430,7 @@ impl Job {
             encoder: String::new(),
             hw_backend: String::new(),
             fallback: String::new(),
+            viewers: Viewers::default(),
         }
     }
 
@@ -417,6 +464,8 @@ type CapsFn = Arc<dyn Fn(&TranscodeSettings) -> Capabilities + Send + Sync>;
 type RunFn = Arc<dyn Fn(&RunCtx) -> Result<(), String> + Send + Sync>;
 type ClockFn = Arc<dyn Fn() -> i64 + Send + Sync>;
 type ChangeFn = Box<dyn Fn(&V3Status) + Send + Sync>;
+/// A job taken out of the map: its ffmpeg, its artifacts, its last status.
+type Taken = (Option<process::Handle>, Paths, V3Status);
 
 /// Test seams: a fake probe, capability set, run or clock.
 #[derive(Default, Clone)]
@@ -719,8 +768,15 @@ impl Transcoder {
         let need_session = || {
             if req.session.is_empty() { Err(Error::invalid("session required")) } else { Ok(()) }
         };
+        if !req.viewer.is_empty() && !valid_viewer_id(&req.viewer) {
+            return Err(Error::invalid("viewer must be 1 to 64 letters, digits, '-' or '_'"));
+        }
         match req.action.as_str() {
             ACTION_SUBTITLES => return self.subtitles_v3(req),
+            ACTION_CANCEL if !req.viewer.is_empty() => {
+                need_session()?;
+                return Ok(self.release_v3(&req.session, &req.file_path, &req.user_id, &req.viewer));
+            }
             ACTION_CANCEL => {
                 need_session()?;
                 return Ok(self.cancel_v3(&req.session, &req.file_path, &req.user_id));
@@ -823,7 +879,7 @@ impl Transcoder {
     /// Stops a session and drops its artifacts. Only its owner (or an
     /// admin cancel, which names no user) may.
     fn cancel_v3(&self, session: &str, path: &str, user_id: &str) -> V3Status {
-        let (handle, paths, status) = {
+        let taken = {
             let mut g = self.lock();
             let Some(j) = g.jobs.get(session) else {
                 drop(g);
@@ -835,16 +891,76 @@ impl Transcoder {
             if refuse {
                 return V3Status::idle(session, "");
             }
-            let mut j = g.jobs.remove(session).unwrap_or_else(|| unreachable!("checked above"));
-            self.inner.cv.notify_all();
-            let paths = self.paths_for(session, &j.settings);
-            let status = V3Status {
-                user_id: j.user_id.clone(),
-                item_id: j.item_id.clone(),
-                ..V3Status::idle(session, &j.spec.profile)
-            };
-            (j.handle.take(), paths, status)
+            self.take_job(&mut g, session)
         };
+        match taken {
+            Some(t) => self.drop_taken(session, t),
+            None => V3Status::idle(session, ""),
+        }
+    }
+
+    /// Ends one viewer's hold on a session (D-281). The session stops
+    /// and is dropped, as a cancel without a viewer drops it, only when
+    /// this viewer held it, nothing holds it any more and it is still
+    /// being produced. Otherwise the answer is the session as it stands:
+    /// another viewer keeps it running, and a finished session stays in
+    /// the cache for a replay (the LRU evicts it), because it no longer
+    /// holds a runner.
+    fn release_v3(&self, session: &str, path: &str, user_id: &str, viewer: &str) -> V3Status {
+        let taken = {
+            let mut g = self.lock();
+            let Some(j) = g.jobs.get_mut(session) else {
+                drop(g);
+                return self.finished_v3(session, path);
+            };
+            if (!path.is_empty() && j.spec.path != path) || !j.v3 {
+                return V3Status::idle(session, "");
+            }
+            let released = j.viewers.release(user_id, viewer);
+            if !released || j.viewers.held() || !j.active() {
+                return self.status_from_job(j);
+            }
+            // Decided and taken under one lock: a viewer joining now
+            // finds no session and starts a new one.
+            self.take_job(&mut g, session)
+        };
+        tracing::info!(session = %session, "last viewer left");
+        match taken {
+            Some(t) => self.drop_taken(session, t),
+            None => V3Status::idle(session, ""),
+        }
+    }
+
+    /// A session no job tracks: its cache record when it has one for
+    /// `path`, else idle. Nothing is removed.
+    fn finished_v3(&self, session: &str, path: &str) -> V3Status {
+        if !valid_session_id(session) {
+            return V3Status::idle(session, "");
+        }
+        match read_entry(&self.meta_path(session)) {
+            Some(e) if path.is_empty() || e.source_path == path => self.status_from_entry(&e),
+            _ => V3Status::idle(session, ""),
+        }
+    }
+
+    /// Removes a job from the map (under the caller's lock) and returns
+    /// what [`Transcoder::drop_taken`] needs to finish the stop.
+    fn take_job(&self, g: &mut State, session: &str) -> Option<Taken> {
+        let mut j = g.jobs.remove(session)?;
+        self.inner.cv.notify_all();
+        let paths = self.paths_for(session, &j.settings);
+        let status = V3Status {
+            user_id: j.user_id.clone(),
+            item_id: j.item_id.clone(),
+            ..V3Status::idle(session, &j.spec.profile)
+        };
+        Some((j.handle.take(), paths, status))
+    }
+
+    /// Kills a taken job's ffmpeg and drops its artifacts, outside the
+    /// lock.
+    fn drop_taken(&self, session: &str, taken: Taken) -> V3Status {
+        let (handle, paths, status) = taken;
         if let Some(h) = handle {
             h.resume();
             h.kill();
@@ -962,9 +1078,10 @@ impl Transcoder {
             return Err(unavailable("transcoder stopped"));
         }
         g.ffmpeg = policy::ffmpeg_binary(settings);
-        if let Some(old) = g.jobs.get(&spec.session) {
+        if let Some(old) = g.jobs.get_mut(&spec.session) {
             if old.state != FAILED {
                 policy_allows_method(req.policy.as_ref(), &old.method)?;
+                old.viewers.attach(&req.user_id, &req.viewer);
                 return Ok(self.status_from_job(old));
             }
             g.jobs.remove(&spec.session);
@@ -996,6 +1113,7 @@ impl Transcoder {
         j.fallback = plan.fallback.clone();
         j.method = plan.method.clone();
         j.plan = Some(plan);
+        j.viewers.attach(&req.user_id, &req.viewer);
         let status = self.status_from_job(&j);
         g.jobs.insert(spec.session.clone(), j);
         g.pending += 1;
