@@ -32,15 +32,16 @@ const FRAME_AT = 10;
 
 /**
  * The still for a 16:9 slot that stands for one video file (an episode's
- * row, a continue card): the file's own picture, unless the server says
- * that is an upright still (D-282), which beside a show's first episode is
- * the show's poster: then the file's frame, as its neighbours show. Cut
- * to the slot the poster lost its title; it was the show's, not the
- * episode's.
+ * row, a continue card): the file's own picture (`art=still`, D-284), never
+ * the show's poster kept beside its first episode, which cut to the slot
+ * lost its title and was the show's, not the episode's. When the server
+ * says the file's cover is upright (D-282) the frame is asked for by time,
+ * which a server before D-284 also understands.
  */
 export function wideStill(item: Pick<CatalogItem, 'id' | 'kind' | 'thumbnail'>, width: number): string {
-	const upright = !isReadable(item.kind) && toldShape(item) === 'portrait';
-	return api.thumbnail.url(item.id, session.token, upright ? { at: FRAME_AT, width } : { width });
+	if (isReadable(item.kind)) return api.thumbnail.url(item.id, session.token, { width });
+	const upright = toldShape(item) === 'portrait';
+	return api.thumbnail.url(item.id, session.token, upright ? { at: FRAME_AT, width } : { art: 'still', width });
 }
 
 /*

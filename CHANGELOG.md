@@ -12,6 +12,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   title on the page, so a title is never split and a search says how many
   titles match. `sort=recent&group=title` lists the newest titles.
   `lain-client`: `CatalogQuery.group`, `SearchQuery.group`.
+- **An episode's own picture** (D-284): `GET /api/items/{id}/thumbnail`
+  takes `art=still`, the file's own picture (`<name>-thumb.*`, else its
+  frame), never the show's poster kept beside its first episode. The web
+  asks for it in every episode row and Continue watching card, so Episode
+  1 no longer shows the show's poster cut to 16:9. `lain-client`:
+  `Client::still`.
 
 ## [0.3.1] - 2026-11-12
 

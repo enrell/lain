@@ -9,6 +9,12 @@ export interface ThumbnailOptions {
 	at?: number;
 	/** Output width in pixels (the server clamps to 32..1280). */
 	width?: number;
+	/**
+	 * `still`: the file's own picture (D-284), its `-thumb` still or its
+	 * frame, never the show's poster kept beside a first episode. Left out,
+	 * the cover that stands for the title. An older server ignores it.
+	 */
+	art?: 'still';
 }
 
 /**
@@ -24,6 +30,7 @@ export const thumbnail = {
 	url: (id: string, token: string | null, opts: ThumbnailOptions = {}) =>
 		mediaUrl(`/api/items/${encodeURIComponent(id)}/thumbnail`, token, {
 			...(opts.at === undefined ? {} : { t: String(opts.at) }),
+			...(opts.art ? { art: opts.art } : {}),
 			w: String(opts.width ?? 480)
 		})
 };

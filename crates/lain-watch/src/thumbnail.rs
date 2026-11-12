@@ -113,6 +113,18 @@ pub fn local_cover(media_file: &Path) -> Option<PathBuf> {
     names.into_iter().find(|p| still_file(p))
 }
 
+/// The picture of the file itself (D-284), for a slot that stands for that
+/// one file (an episode's row, a continue card): `<name>-thumb.*` next to
+/// it, never its `-poster` or the folder's `.metadata/thumbs/` still,
+/// which beside an episode are its show's art (downloaders keep a show's
+/// poster next to its first episode). `None` when there is none: the
+/// file's frame (or a comic archive's cover page) is then its picture.
+pub fn own_still(media_file: &Path) -> Option<PathBuf> {
+    let dir = media_file.parent()?;
+    let stem = media_file.file_stem()?.to_string_lossy();
+    ["jpg", "jpeg", "png", "webp"].iter().map(|ext| dir.join(format!("{stem}-thumb.{ext}"))).find(|p| still_file(p))
+}
+
 /// A folder's stills, in `.metadata/thumbs/`, after the file's own.
 const FOLDER_STILLS: [&str; 2] = ["thumbnail.jpg", "banner.jpg"];
 
@@ -573,6 +585,13 @@ mod cover_tests {
         std::fs::write(dir.join("item-poster.webp"), b"RIFF\x10\0\0\0WEBPVP8 ").unwrap();
         assert_eq!(local_cover(&media), Some(dir.join("item-poster.webp")));
         assert_eq!(image_type(&dir.join("item-poster.webp")), "image/webp");
+        // The file's own picture is never a poster or the folder's still.
+        assert_eq!(own_still(&media), None);
+        std::fs::write(dir.join("item-thumb.png"), b"").unwrap();
+        assert_eq!(own_still(&media), None, "an empty file is no still");
+        std::fs::write(dir.join("item-thumb.png"), b"\x89PNG\r\n\x1a\n").unwrap();
+        assert_eq!(own_still(&media), Some(dir.join("item-thumb.png")));
+        assert_eq!(local_cover(&media), Some(dir.join("item-poster.webp")), "the cover still prefers the poster");
         assert_eq!(image_type(&dir.join("missing.jpg")), "image/jpeg");
         std::fs::remove_dir_all(dir).ok();
     }
