@@ -550,3 +550,65 @@ fn a_set_that_lost_a_capability_is_probed_again_sooner() {
     std::thread::sleep(Duration::from_millis(50));
     assert_eq!(r.runs(), 5);
 }
+
+/// The first answer for a key has nothing to lose against, and it is
+/// probed while the server starts and the machine is busiest: one where
+/// a check timed out is current only for CAP_RECHECK, every time.
+#[test]
+fn an_answer_with_a_timed_out_check_is_probed_again_sooner() {
+    let mut c =
+        CapsCache { slots: HashMap::new(), fresh: CAP_FRESH, recheck: CAP_RECHECK, limit: policy::PROBE_TIMEOUT };
+    let caps = Capabilities { tone_map: true, ..Capabilities::default() };
+    assert!(c.claim("k", false));
+    assert!(c.store("k", caps.clone(), true).doubtful, "a first answer with a timed-out check");
+    assert!(!c.claim("k", false), "current for CAP_RECHECK");
+    c.recheck = Duration::ZERO;
+    assert!(c.claim("k", false), "then probed again");
+    assert!(c.store("k", caps.clone(), true).doubtful, "the same answer, timed out again: still in doubt");
+    assert!(c.claim("k", false));
+    assert!(!c.store("k", caps, false).doubtful, "every run ended");
+    assert!(!c.claim("k", false), "current for CAP_FRESH");
+}
+
+/// The transcoder's own probe (no `caps` hook) over a stub ffmpeg whose
+/// video effects check hangs: the answer counts it as a no and is in
+/// doubt; once the check answers again, the next answer is not.
+#[cfg(unix)]
+#[test]
+fn the_real_probe_marks_a_timed_out_check_in_doubt() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = lain_store::test_dir("tc-caps-timeout");
+    std::fs::create_dir_all(&dir).unwrap();
+    let (bin, slow) = (dir.join("ffmpeg"), dir.join("slow"));
+    let script = r#"#!/bin/sh
+case "$2" in
+  -encoders) printf ' V..... = Video\n V....D libx264 H.264\n'; exit 0 ;;
+  -filters) printf ' ... libplacebo VV->V GPU filters\n'; exit 0 ;;
+  -hwaccels) exit 0 ;;
+esac
+case "$*" in
+  *libplacebo=w=*) [ -e 'SLOW' ] && exec sleep 30; exit 0 ;;
+esac
+exit 1
+"#
+    .replace("SLOW", &slow.to_string_lossy());
+    std::fs::write(&bin, script).unwrap();
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(&slow, b"").unwrap();
+    let t = Transcoder::with_hooks(&dir.join("transcodes"), Hooks::default());
+    t.inner.caps.lock().unwrap().limit = Duration::from_secs(3);
+    let s = TranscodeSettings { ffmpeg_path: bin.to_string_lossy().into_owned(), ..st::defaults() };
+    let doubtful = || t.inner.caps.lock().unwrap().slots[&caps_key(&s)].doubtful;
+    assert!(!t.capabilities(&s).effects);
+    assert!(doubtful(), "the effects check timed out");
+    std::fs::remove_file(&slow).unwrap();
+    t.reprobe(&s);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !t.capabilities(&s).effects {
+        assert!(Instant::now() < deadline, "the second probe never landed");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!doubtful(), "every run ended");
+    t.close();
+    std::fs::remove_dir_all(&dir).ok();
+}
