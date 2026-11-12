@@ -927,8 +927,11 @@ const en = {
 		nextEpisodeNamed: 'Next episode: {name} (Shift+N)',
 		keys: {
 			subtitles: 'Subtitles on or off',
-			speed: 'Slower or faster'
+			speed: 'Slower or faster',
+			episodes: 'Episode list beside the picture'
 		},
+		episodesHide: 'Hide the episode list (E)',
+		episodesShow: 'Show the episode list (E)',
 		osd: {
 			subtitlesOn: 'Subtitles: {name}',
 			subtitlesOff: 'Subtitles off',
