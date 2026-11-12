@@ -55,6 +55,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   AniList, or sync a linked account that came back empty; find people and
   the privacy settings; add an indexer, or a library first), over art from
   the server's own library, in place of a grey box.
+- **`?` lists the keys of the screen in view** (web), above the keys that
+  work everywhere: a title's P (play or resume, new), F, R, S, C, M, D and
+  T, the library's filters and grid keys, Social's and Acquire's tabs, the
+  settings chords and row keys, each only while it does something. A page
+  filter that takes `/` hides the header's `/` cap.
+- **More keys** (web): Left and Right walk a row of cards (Home, the
+  library's shelves, "More in"); the arrows move between a title's
+  episodes and volumes; Ctrl+Z takes the newest toast's Undo; in the
+  player, C turns subtitles on and off, < and > set the speed and E hides
+  the episode list beside the picture (also a bar button, remembered).
+- **A page for unknown addresses** (web), with Home focused and the
+  library beside it, in place of a bare "404 Not Found"; `/tracking`
+  opens Tracking.
 
 ### Changed
 - **A server address typed without `http://` or `https://`** (D-277) is
@@ -160,6 +173,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   missing title or profile).
 - **The Kind filter names kinds** (web): Films and clips, Episodes, Manga,
   Comics, where it listed the catalog's raw words.
+- **Staged server settings are not lost by accident** (web): Escape
+  discards them only when pressed twice, and leaving the section with
+  changes staged asks to apply, discard or stay; Profile's unsaved name
+  and bio ask the same.
+- **Confirmations before what cannot be undone** (web): revoking an API
+  key and deleting a comment ask first; disabling a user offers Undo.
+- **Dialogs open on what they are for** (web): the first field, or the
+  primary action (Cancel when the action destroys something), never the
+  close button; the player's key list closes on Escape and no longer
+  lets keys through to the video; the reader's takes the focus.
+- **Marking a title's episodes keeps the page where it was** (web): the
+  refresh no longer swaps the page for its skeleton, which jumped to the
+  top and dropped the focus.
+- **Backup's restore steps work as written** (web): they named a `.db`
+  file and restored into the live, non-empty data folder; they now move
+  it aside first and name the archive just downloaded.
+- **Accessibility** (web): a switch beside its label is named by it, and
+  row switches by their row; Social's and Acquire's tabs follow the tabs
+  pattern (arrows, one Tab stop) and are 44 px tall on a phone; switches
+  take a 56 x 44 px press; the password form points at the field to fix;
+  sign-in focuses the username; `/library?view=all` opens All titles.
 
 ## [0.3.0] - 2026-11-12
 
