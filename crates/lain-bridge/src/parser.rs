@@ -143,7 +143,7 @@ struct ParseAnswer {
 }
 
 impl ParseAnswer {
-    fn alternatives(&mut self) -> Vec<ModelRecord> {
+    fn take_alternatives(&mut self) -> Vec<ModelRecord> {
         match self.alternatives.take() {
             Value::Array(list) => list.into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect(),
             _ => Vec::new(),
@@ -273,7 +273,7 @@ impl Provider for ReleaseModel {
         }
         let mut ans: ParseAnswer =
             serde_json::from_slice(&res.body).map_err(|_| Self::unavailable("parser sent bad json"))?;
-        let others = ans.alternatives();
+        let others = ans.take_alternatives();
         match ans.record {
             Some(rec) if rec.title.as_deref().is_some_and(|t| !t.trim().is_empty()) => {
                 let tok = tokenize(&i.name, &i.kind);
