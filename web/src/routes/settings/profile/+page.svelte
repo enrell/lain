@@ -11,7 +11,8 @@
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
 	import LogOut from '@lucide/svelte/icons/log-out';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import Modal from '$lib/components/primitives/Modal.svelte';
 	import { SavedFlash } from '$lib/settings/flash.svelte';
 	import { i18n, localeInfo, t } from '$lib/i18n';
 	import { MASCOTS, displayName } from '$lib/profile/mascots';
@@ -55,23 +56,59 @@
 	}
 
 	function signOut(): void {
+		passing = true;
 		session.logout();
 		void goto('/login');
 	}
 
 	async function save(e: SubmitEvent): Promise<void> {
 		e.preventDefault();
+		await saveDetails();
+	}
+
+	async function saveDetails(): Promise<boolean> {
 		saving = true;
 		try {
 			apply(await api.me.updateProfile({ display_name: name, bio }));
 			name = session.user?.profile?.display_name || session.user?.username || '';
 			bio = session.user?.profile?.bio ?? '';
 			flash.mark('details');
+			return true;
 		} catch (err) {
 			toasts.error(errorMessage(err, 'Could not save the profile.'));
+			return false;
 		} finally {
 			saving = false;
 		}
+	}
+
+	/*
+	 * The name and bio wait for Save; leaving with them changed asks first
+	 * (Save and leave, Leave without saving, Stay), as staged server settings
+	 * do, instead of dropping what was typed. Closing the tab gets the
+	 * browser's own question.
+	 */
+	let leaveTo = $state<URL | null>(null);
+	let asking = $state(false);
+	let passing = false;
+	beforeNavigate((nav) => {
+		if (!dirty || passing) return;
+		nav.cancel();
+		if (nav.willUnload || !nav.to) return;
+		leaveTo = nav.to.url;
+		asking = true;
+	});
+	function leave(): void {
+		const to = leaveTo;
+		asking = false;
+		leaveTo = null;
+		if (!to) return;
+		passing = true;
+		void goto(to.pathname + to.search + to.hash).finally(() => (passing = false));
+	}
+	async function saveAndLeave(): Promise<void> {
+		asking = false;
+		if (await saveDetails()) leave();
 	}
 
 	async function pickMascot(id: string): Promise<void> {
@@ -260,3 +297,11 @@
 		</SettingRow>
 	</SettingsGroup>
 {/if}
+
+<Modal bind:open={asking} title={t('settings.profileLeave.title')} description={t('settings.profileLeave.body')}>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (asking = false)}>{t('settings.staged.stay')} <kbd class="ml-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
+		<Button variant="secondary" onclick={leave}>{t('settings.profileLeave.discard')}</Button>
+		<Button loading={saving} onclick={() => void saveAndLeave()}>{t('settings.profileLeave.save')} <kbd class="ml-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
+	{/snippet}
+</Modal>
