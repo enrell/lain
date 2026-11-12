@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Release alternatives** (D-279): a release name that reads more than
+  one way ("Show 2 - 03": episode 3 of the sequel, or of season 2) is
+  settled by the title the server expects. With lain-parser 1.3.0 the
+  `lain-release-model` provider asks for up to five other readings; a
+  search takes the one that names its query, automation and its grabs
+  the one that names the monitored title or an alias, and an import the
+  one that names the grabbed release. A manual grab keeps the parser's
+  answer, and a library's other titles never pull a sequel into the show
+  it follows. `GET /api/acquire/parse` shows the readings
+  (`alternatives`, additive); they are never stored in a grab or
+  returned in a search. An older parser service, or the tokenizer,
+  offers none and nothing changes.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added

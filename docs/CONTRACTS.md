@@ -979,22 +979,25 @@ to offer (the tokenizer, an older parser service) omits the field.
   answer when `known` accepts its title; otherwise it takes the first
   alternative whose title `known` accepts, moving the identity as a
   whole (title, year, season, episodes, `absolute`; `season_pack` is
-  cleared when episodes come with it) and keeping every other field. It
+  cleared when episodes come with it) and keeping every other field. An
+  alternative whose title has no word names nothing and is skipped. It
   always drops the list: alternatives are advice for one decision and
   are never stored in a grab or returned in a search candidate.
 - **Where.** A search settles against its query; automation and its
   grabs against the monitored title and its aliases; an import settles
   each file against the title of the grabbed release. A manual grab and
   a library's other titles settle nothing (a sequel must not land in
-  the folder of the show it follows). `POST /api/acquire/parse` returns
+  the folder of the show it follows). `GET /api/acquire/parse` returns
   the list as the provider gave it.
 - **From the model.** `lain-release-model` posts `{filename,
   alternatives: 5}` (lain-parser 1.3.0; an older service ignores the key
-  and answers none). Each alternative is cleaned like the answer,
-  compared with the model's own reading (so the answer is not listed
-  again) and carries the model's numbers only, never the tokenizer's. A
-  year the model did not read is the tokenizer's, unless the
-  alternative's title holds it ("Blade Runner 2049").
+  and answers none). The list is read entry by entry: a list or an
+  entry that does not read is left out, never failing the answer. Each
+  alternative is cleaned like the answer, compared with the model's own
+  reading (so the answer is not listed again) and carries the model's
+  numbers only, never the tokenizer's. A year the model did not read is
+  the tokenizer's, unless the alternative's title holds it ("Blade
+  Runner 2049").
 
 ### lain.subtitle.translate@1 (ordered-many; `unsupported-format` declines; D-228)
 
