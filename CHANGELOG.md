@@ -96,6 +96,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   title page's sections were 18 px. Acquire and Social keep their one-line
   lead on every tab: hidden on the first-run tab only, it made the tabs
   under it jump each time that tab was left.
+- **Episode and volume cards look like every other card** (web): the
+  picture in a rounded frame with a faint ring, the words under it, and
+  the inset progress bar the library's cards wear; a bordered box around
+  picture and words made them a second kind of card. Volumes are sized as
+  every poster grid is: two a row on a phone, where three were cramped.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a

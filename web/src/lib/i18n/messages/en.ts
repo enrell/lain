@@ -758,6 +758,8 @@ const en = {
 		deleteFile: 'Delete file',
 		deleteTitle: 'Delete title',
 		startOver: 'Start over',
+		watchProgress: 'Watch progress',
+		readProgress: 'Reading progress',
 		left: '{time} left',
 		watched: 'Watched',
 		watchedLength: 'Watched · {time}',
