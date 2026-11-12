@@ -970,6 +970,12 @@ fn settings_put(app: &App, w: &WReq, _: &Verified) -> Out {
         return Reply::json(400, json!({"error": e.to_string(), "code": "invalid-message"})).into();
     }
     tracing::info!("transcode settings updated");
+    // A save is when the operator looks at the machine again (a driver
+    // installed, ffmpeg replaced in place): probe it afresh, off this
+    // request. The answer carries the set as last probed (or waits for
+    // the first probe of a new ffmpeg or device); the next load shows
+    // the new one.
+    app.media.transcoder.reprobe(&settings(app));
     Reply::ok(settings_view(app)).into()
 }
 
