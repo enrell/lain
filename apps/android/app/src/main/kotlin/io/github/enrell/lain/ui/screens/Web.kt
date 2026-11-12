@@ -247,10 +247,6 @@ fun Sheet(
                     Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = if (footer != null) 28.dp else 20.dp),
                     content = content,
                 )
-                // What scrolls under the footer fades into it: a row half out of view reads as "more below", not as cut.
-                if (footer != null) {
-                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(24.dp).background(Brush.verticalGradient(listOf(Color.Transparent, l.surface))))
-                }
             }
             if (footer != null) {
                 // A ground of its own, so the list scrolls under an edge and not under the buttons.

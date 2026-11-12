@@ -42,6 +42,8 @@ data class PlayerState(
     val burnStream: Long? = null,
     /** What the quality menu offers (a transcode only). */
     val qualities: List<QualityInfo> = emptyList(),
+    /** The server first chose to send the file itself: "Original" goes back to it. */
+    val directFirst: Boolean = false,
 )
 
 /** A seek this close to the range a session holds is still a player seek. */
@@ -75,8 +77,10 @@ class PlayerModel(
         scope.launch {
             try {
                 val src = core.playSource(itemId, claim)
-                _state.update { it.copy(loading = false, source = src) }
-                if (src.kind == SourceKind.HLS) {
+                _state.update { it.copy(loading = false, source = src, directFirst = src.kind == SourceKind.DIRECT) }
+                // Offered whatever the first delivery: a file played as it is can still be
+                // asked for at a lower quality (a slow network, a data plan).
+                if (src.kind != SourceKind.OFFLINE) {
                     runCatching { core.playQualities() }.onSuccess { q -> _state.update { it.copy(qualities = q) } }
                 }
             } catch (e: LainException) {
@@ -128,6 +132,21 @@ class PlayerModel(
      * burn-in all keep the viewer where they were (the web player's
      * `rebuildAt`). The length and the subtitle list carry over.
      */
+    /** Back to the delivery the server first chose (the file itself, when the device plays it), from [fromSec]. */
+    fun original(fromSec: Double) {
+        val previous = _state.value.source
+        _state.update { it.copy(loading = true, error = null, quality = "") }
+        scope.launch {
+            try {
+                val src = core.playSource(itemId, claim)
+                stopSession(previous)
+                _state.update { it.copy(loading = false, source = src.copy(startSec = fromSec, offsetSec = 0.0)) }
+            } catch (e: LainException) {
+                _state.update { it.copy(loading = false, error = e) }
+            }
+        }
+    }
+
     fun rebuild(fromSec: Double, quality: String = _state.value.quality, burnStream: Long? = _state.value.burnStream) {
         val previous = _state.value.source
         _state.update { it.copy(loading = true, error = null, quality = quality, burnStream = burnStream) }

@@ -174,6 +174,7 @@ fun PlayerScreen(
     var bufferedMs by remember { mutableStateOf(0L) }
     var muted by remember { mutableStateOf(false) }
     var speed by remember { mutableStateOf(graph.prefs.speed) }
+    var fill by remember { mutableStateOf(false) }
     LaunchedEffect(player) {
         if (speed != 1f) {
             player.setPlaybackSpeed(speed)
@@ -469,7 +470,11 @@ fun PlayerScreen(
                 }
             },
             // Subtitles sit above the bar while it is up, and near the edge when it is not.
-            update = { view -> view.subtitleView?.setBottomPaddingFraction(if (controls || pinned) 0.36f else 0.08f) },
+            update = { view ->
+                view.subtitleView?.setBottomPaddingFraction(if (controls || pinned) 0.36f else 0.08f)
+                // Fill crops the picture to the screen; Fit shows it whole with bars.
+                view.resizeMode = if (fill) androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM else androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+            },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -787,6 +792,11 @@ fun PlayerScreen(
                     IconBtn(Ic.Close, "Close", { settings = false }, tint = l.text)
                 }
                 PickRow(
+                    stringResource(R.string.player_picture),
+                    stringResource(if (fill) R.string.player_fill else R.string.player_fit),
+                    listOf(stringResource(R.string.player_fit) to !fill, stringResource(R.string.player_fill) to fill),
+                ) { i -> fill = i == 1 }
+                PickRow(
                     stringResource(R.string.player_speed),
                     if (speed == 1f) stringResource(R.string.player_normal) else "$speed×",
                     SPEEDS.map { (if (it == 1f) stringResource(R.string.player_normal) else "$it×") to (it == speed) },
@@ -795,8 +805,10 @@ fun PlayerScreen(
                     graph.prefs.speed = speed
                     player.setPlaybackSpeed(speed)
                 }
-                if (src?.kind == SourceKind.HLS && state.qualities.isNotEmpty()) {
-                    val auto = stringResource(R.string.player_auto)
+                if (src != null && src.kind != SourceKind.OFFLINE && state.qualities.isNotEmpty()) {
+                    // The file as it is ("Original") while it plays directly; else the server's choice ("Auto").
+                    val direct = state.directFirst
+                    val auto = stringResource(if (direct) R.string.player_original_short else R.string.player_auto)
                     PickRow(
                         stringResource(R.string.player_quality),
                         state.quality.ifEmpty { auto },
@@ -811,7 +823,7 @@ fun PlayerScreen(
                         val pick = if (i == 0) "" else state.qualities[i - 1].name
                         if (pick != state.quality) {
                             pendingSec = nowSec()
-                            model.rebuild(nowSec(), quality = pick)
+                            if (pick.isEmpty() && direct) model.original(nowSec()) else model.rebuild(nowSec(), quality = pick)
                         }
                     }
                 }

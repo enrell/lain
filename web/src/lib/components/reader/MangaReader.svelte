@@ -61,7 +61,9 @@
 				<ArrowLeftRight class="size-4" aria-hidden="true" />
 				{settings.direction}
 			</ReaderToggle>
-			<!-- Direction, then how pages are laid out, then the strip: three questions, kept apart. -->
+			<!-- Direction, then how pages are laid out, then the strip: three questions, kept apart.
+			     Spreads exist only on a screen wider than tall, so an upright one does not offer them. -->
+			<span class="flex items-center gap-1 portrait:hidden">
 			<span class="mx-0.5 h-5 w-px shrink-0 bg-hairline" aria-hidden="true"></span>
 			<ReaderToggle
 				label="Two-page spreads (D)"
@@ -83,6 +85,7 @@
 					<span class="hidden max-md:inline">Cover</span><span class="hidden xl:inline">Cover alone</span>
 				</ReaderToggle>
 			{/if}
+			</span>
 		{/if}
 		<span class="mx-0.5 h-5 w-px shrink-0 bg-hairline" aria-hidden="true"></span>
 		<ReaderToggle

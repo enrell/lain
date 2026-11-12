@@ -344,4 +344,10 @@
     <string name="search_or_browse">Or browse</string>
     <string name="undo">Undo</string>
     <string name="started_over">Back to the start</string>
+    <string name="player_original_short">Original</string>
+    <string name="all_read">All %1$d read</string>
+    <string name="all_watched">All %1$d watched</string>
+    <string name="player_picture">Picture</string>
+    <string name="player_fit">Fit</string>
+    <string name="player_fill">Fill the screen</string>
 </resources>

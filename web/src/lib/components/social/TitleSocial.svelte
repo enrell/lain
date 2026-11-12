@@ -17,7 +17,7 @@
 	import RatingDialog from './RatingDialog.svelte';
 	import ShareDialog from './ShareDialog.svelte';
 	import UserChip from './UserChip.svelte';
-	import { favoriteState } from '$lib/social/favorite.svelte';
+	import { favoriteState, ratingState } from '$lib/social/favorite.svelte';
 	import { FIELD } from './styles';
 
 	let { target }: { target: WorkTarget } = $props();
@@ -26,12 +26,24 @@
 	$effect(() => {
 		void targetKey;
 		favoriteState.clear();
-		return () => favoriteState.clear();
+		ratingState.clear();
+		return () => {
+			favoriteState.clear();
+			ratingState.clear();
+		};
 	});
 
 	let view = $state<WorkView | null>(null);
 	let loadError = $state('');
 	let rateOpen = $state(false);
+	// The score pill at the top of the page asks for this same dialog.
+	let seenAsk = ratingState.asked;
+	$effect(() => {
+		if (ratingState.asked !== seenAsk) {
+			seenAsk = ratingState.asked;
+			rateOpen = true;
+		}
+	});
 	let shareOpen = $state(false);
 	let collectOpen = $state(false);
 	let body = $state('');
@@ -54,6 +66,7 @@
 			view = await api.social.work(target);
 			const st = await api.social.settings();
 			favoriteState.set(view.work, st.favorites);
+			ratingState.set(view.mine?.score ?? 0, view.average ?? 0, view.scored ?? 0);
 		} catch (err) {
 			loadError = socialError(err, t('social.title.loadFailed'));
 		}

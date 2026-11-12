@@ -14,6 +14,7 @@
 	import { session } from '$lib/auth/session.svelte';
 	import { prefs } from '$lib/auth/storage';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import LogOut from '@lucide/svelte/icons/log-out';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import { sectionFor, sectionHint, sectionLabel, visibleSections } from '$lib/settings/sections';
 
@@ -156,6 +157,17 @@
 				</ul>
 			{/if}
 		{/each}
+		<!-- Leaving the account sits where accounts are managed, not only behind the avatar's menu. -->
+		<button
+			type="button"
+			class="mt-6 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+			onclick={() => {
+				session.logout();
+				void goto('/login');
+			}}
+		>
+			<LogOut class="size-4" aria-hidden="true" /> Sign out
+		</button>
 		<p class="mt-8 hidden font-mono text-[10px] leading-5 text-muted/70 md:block">
 			<kbd class="text-muted">Ctrl K</kbd> {t('settings.hints.find')}<br />
 			<kbd class="text-muted">g</kbd> {t('settings.hints.jump')}<br />

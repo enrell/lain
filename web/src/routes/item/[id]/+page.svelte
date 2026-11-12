@@ -2,6 +2,7 @@
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
 	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
+	import RatingPill from '$lib/components/social/RatingPill.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -357,6 +358,7 @@
 						{/if}
 						<!-- The heart keeps the main action's row, on a phone too. -->
 						<FavoriteButton />
+						<RatingPill />
 						{#if progress && (progress.position_sec > 0 || progress.completed)}
 							<Button variant="ghost" size="md" loading={resetting} onclick={() => void resetProgress()}>
 								<RotateCcw class="size-4" /> {t('title.startOver')}

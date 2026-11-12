@@ -1,6 +1,7 @@
 <script lang="ts">
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
+	import RatingPill from '$lib/components/social/RatingPill.svelte';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import BookOpen from '@lucide/svelte/icons/book-open';
@@ -363,6 +364,7 @@
 					{/if}
 					<!-- The heart keeps the main action's row, on a phone too. -->
 					<FavoriteButton />
+					<RatingPill />
 					{#if resuming && resumeTarget}
 						<!-- The one under way goes back to its start, as on a film's page and in the app. -->
 						<Button variant="ghost" size="md" loading={restarting} onclick={() => void startOver()}>
