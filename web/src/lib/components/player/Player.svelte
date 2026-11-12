@@ -37,7 +37,7 @@
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
-	import { defaultAudioStream, resolveTracks, trackPreferences } from '$lib/player/track-language';
+	import { defaultAudioStream, resolveTracks, trackName, trackPreferences } from '$lib/player/track-language';
 	import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, toggledSubtitle, type SidecarTrack } from '$lib/player/sidecars';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
@@ -61,7 +61,7 @@
 		type SubtitleBackground,
 		type SubtitleSize
 	} from '$lib/player/player-prefs';
-	import { t } from '$lib/i18n';
+	import { i18n, t } from '$lib/i18n';
 	import { detectBrowserProfile, type BrowserProfile, type RendererBackend } from '$lib/player/browser-profile';
 	import { VideoRenderer } from '$lib/player/webgpu/engine';
 	import type { WebGLAnime4KRenderer } from '$lib/player/webgl/engine';
@@ -167,6 +167,11 @@
 	let headerEl = $state<HTMLElement | null>(null);
 	let chromeTailEl = $state<HTMLElement | null>(null);
 	let chromeFootEl = $state<HTMLElement | null>(null);
+	// Subtitles sit on the picture's bottom edge, which is where the control
+	// bar is drawn: while it shows, the browser's cues move up by its height
+	// (less its transparent fade) instead of being drawn under the buttons.
+	let footHeight = $state(0);
+	const cueLift = $derived(controlsVisible ? Math.max(0, footHeight - 32) : 0);
 	let scrubbing = $state(false);
 	let scrubValue = $state(0);
 	// True only between pointerdown and pointerup on the seek row. Used to
@@ -259,6 +264,12 @@
 	const mode = $derived(forcedTranscode ? 'transcode' : plan.mode);
 
 	const audioTracks = $derived((plan.streams ?? []).filter((s) => s.type === 'audio'));
+	// The ladder up to the file's own height: a 2160p rung for a 360p file
+	// only upscales it.
+	const sourceHeight = $derived((plan.streams ?? []).find((s) => s.type === 'video')?.height ?? 0);
+	const qualities = $derived(
+		(playbackOptions?.qualities ?? []).filter((q) => !sourceHeight || !q.max_height || q.max_height <= sourceHeight)
+	);
 	const subtitleTracks = $derived(
 		(plan.streams ?? []).filter((s) => s.type === 'subtitle' && s.convertible)
 	);
@@ -577,7 +588,12 @@
 		const url = api.playback.hlsUrl(item.id, session.token, transcodeSession, 'index.m3u8');
 		destroyHLS();
 		if (Hls.isSupported()) {
-			hls = new Hls({ enableWorker: true });
+			// A session's timeline starts where the viewer is (start_sec), so
+			// play starts at its 0. Left to itself hls.js reads the growing
+			// playlist (no ENDLIST yet) as live and starts near its edge: a
+			// fast session, such as an audio switch that copies the video,
+			// had an hour written by then and the viewer landed an hour on.
+			hls = new Hls({ enableWorker: true, startPosition: 0 });
 			let mediaRecoveries = 0;
 			hls.on(Hls.Events.ERROR, (_event, data) => {
 				if (!data.fatal) return;
@@ -809,7 +825,17 @@
 			if (index !== undefined) selectedAudio = String(index);
 		}
 		saveTitleTrack(item.title, 'audio', audioTracks.find((s) => String(s.index) === selectedAudio)?.language);
-		void changeTracks();
+		if (mode === 'transcode') void changeTracks();
+		// The browser plays a file's default audio and cannot switch it: another
+		// track is a session, entered at the viewer's place.
+		else if (selectedAudio !== String(audioTracks.find((s) => s.default)?.index ?? audioTracks[0]?.index)) void leaveDirectPlay();
+	}
+
+	// A quality is a session too: from direct play, choosing one leaves it;
+	// "Original" is the direct play itself.
+	function onQualityChoice(): void {
+		if (mode === 'transcode') void changeTracks();
+		else if (selectedQuality !== '') void leaveDirectPlay();
 	}
 
 	async function changeTracks(): Promise<void> {
@@ -914,6 +940,13 @@
 		const el = video;
 		const at = el && el.currentTime > 1 ? el.currentTime : resumePosition();
 		el?.pause();
+		// Drop the direct stream before the offset moves, as a rebuild's
+		// destroyHLS does. Its pause and timeupdate events run after this
+		// function, and read against the new offset its still-current time
+		// counted twice: the bar jumped to twice the place, and the forced
+		// save on pause kept that (or marked the title watched).
+		el?.removeAttribute('src');
+		el?.load();
 		transcodeReady = false;
 		baseOffset = at;
 		resumeApplied = true;
@@ -927,6 +960,19 @@
 	/* ---------------------------------------------------------------- */
 	/* media element events                                              */
 	/* ---------------------------------------------------------------- */
+
+	// Play means play: the title page's Play and Autoplay next both open this
+	// player, and it used to wait paused for a second press, so Autoplay next
+	// counted down into a paused episode. Once per player: a later reload of
+	// the source (a track change) keeps whatever the viewer chose since. A
+	// browser that refuses (a deep link with no gesture behind it) leaves the
+	// big play button, as before.
+	let autoStarted = false;
+	function autoStart(el: HTMLVideoElement): void {
+		if (autoStarted) return;
+		autoStarted = true;
+		if (el.paused) void el.play().catch(() => undefined);
+	}
 
 	function onLoadedMetadata(): void {
 		const el = video;
@@ -942,16 +988,17 @@
 				resumedFrom = baseOffset;
 				showResume = true;
 				resumeTimer = setTimeout(() => (showResume = false), 7000);
-				return;
-			}
-			const resume = resumePosition();
-			if (resume > 0 && duration > 0 && resume < duration - 5) {
-				el.currentTime = resume;
-				resumedFrom = resume;
-				showResume = true;
-				resumeTimer = setTimeout(() => (showResume = false), 7000);
+			} else {
+				const resume = resumePosition();
+				if (resume > 0 && duration > 0 && resume < duration - 5) {
+					el.currentTime = resume;
+					resumedFrom = resume;
+					showResume = true;
+					resumeTimer = setTimeout(() => (showResume = false), 7000);
+				}
 			}
 		}
+		autoStart(el);
 	}
 
 	function onDurationChange(): void {
@@ -1699,6 +1746,7 @@
 		subtitleBgClass,
 		subtitleSizeClass
 	].join(' ')}
+	style:--cue-lift={`${cueLift}px`}
 	role="region"
 	aria-label={`Player — ${title}`}
 	onpointermove={onStagePointerMove}
@@ -1991,17 +2039,20 @@
 			{/if}
 			{#if effectError && selectedEffect !== 'off'}<p class="mt-1 text-xs text-danger" role="status">Anime4K unavailable: {effectError}</p>{/if}
 			<a class="mt-1 block text-xs text-accent hover:underline" href="/settings/playback#effects">Set default effects and overrides</a>
-			{#if mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}
+			<!-- Offered in direct play as well: the file's audio and size were
+			     fixed there, and a second language or a smaller stream had no
+			     way in short of a setting nobody would find. -->
+			{#if expectsVideo && qualities.length > 0}
 				<label class="chrome-chip">
 					Quality
 					<select
 						class="chrome-select"
 						bind:value={selectedQuality}
-						onchange={() => void changeTracks()}
+						onchange={onQualityChoice}
 						aria-label="Transcode quality"
 					>
-						<option value="">Auto</option>
-						{#each playbackOptions?.qualities ?? [] as quality (quality.name)}
+						<option value="">{t(mode === 'transcode' ? 'player.qualityAuto' : 'player.qualityOriginal')}</option>
+						{#each qualities as quality (quality.name)}
 							<option value={quality.name}>
 								{quality.name}{quality.bitrate_kbps ? ` · ${Math.round(quality.bitrate_kbps / 1000)} Mbps` : ''}
 							</option>
@@ -2009,7 +2060,7 @@
 					</select>
 				</label>
 			{/if}
-			{#if mode === 'transcode' && audioTracks.length > 1}
+			{#if audioTracks.length > 1}
 				<label class="chrome-chip">
 					Audio
 					<select
@@ -2021,7 +2072,7 @@
 						<option value="">Default</option>
 						{#each audioTracks as track (track.index)}
 							<option value={String(track.index)}>
-								{track.language || track.title || `Track ${track.index}`}
+								{trackName(track, i18n.locale, `Track ${track.index}`)}
 							</option>
 						{/each}
 					</select>
@@ -2039,7 +2090,7 @@
 						<option value="">Off</option>
 						{#each subtitleTracks as track (track.index)}
 							<option value={String(track.index)}>
-								{track.language || track.title || `Track ${track.index}`}
+								{trackName(track, i18n.locale, `Track ${track.index}`)}
 							</option>
 						{/each}
 						{#each sidecars as file (file.index)}
@@ -2102,6 +2153,7 @@
 	<!-- Transport deck: transparent to keep subtitles visible (D-065/D-066). -->
 	<footer
 		bind:this={chromeFootEl}
+		bind:clientHeight={footHeight}
 		class={[
 			// On the picture the controls are white, not the page's muted grey.
 			'relative z-20 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-3 pb-3 pt-10 sm:px-6 sm:pb-4 [&_button:not(.bg-accent)]:text-white/90 [&_button:not(.bg-accent):hover]:text-white',
@@ -2321,6 +2373,7 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		header, footer { transition: none; }
+		:global(video::-webkit-media-text-track-container) { transition: none; }
 	}
 
 	:global(video::cue) {
@@ -2338,6 +2391,12 @@
 		font-family: inherit;
 		font-weight: 600;
 		line-height: 1.35;
+	}
+
+	/* Chromium and Safari: the box the cues are laid out in. */
+	:global(video::-webkit-media-text-track-container) {
+		transform: translateY(calc(-1 * var(--cue-lift, 0px)));
+		transition: transform 150ms ease-out;
 	}
 
 	:global(.subtitles-bg-box video::cue) {

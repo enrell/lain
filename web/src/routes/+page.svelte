@@ -20,7 +20,7 @@
 	import { frameNow, settleFrame } from '$lib/stores/frames';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
-	import { groupItems } from '$lib/utilities/grouping';
+	import { compareEpisodes, groupItems } from '$lib/utilities/grouping';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { t } from '$lib/i18n';
 	import { isInProgress, nextUpAfter, sortByRecent } from '$lib/utilities/progress';
@@ -37,8 +37,15 @@
 	let nextUpItems = $state<CatalogItem[]>([]);
 	// The titles kept as favourites (the social module's list), newest first.
 	let favoriteItems = $state<CatalogItem[]>([]);
-	const nextUpWatching = $derived(nextUpItems.filter((i) => !isReadable(i.kind)));
-	const nextUpReading = $derived(nextUpItems.filter((i) => isReadable(i.kind)));
+	// With nothing under way the hero offers the first Next up, so its rail
+	// starts after it, as Continue watching does.
+	const nextUpShown = $derived(continueItems.length > 0 ? nextUpItems : nextUpItems.slice(1));
+	const nextUpWatching = $derived(nextUpShown.filter((i) => !isReadable(i.kind)));
+	const nextUpReading = $derived(nextUpShown.filter((i) => isReadable(i.kind)));
+	// Nothing begun and nothing next: the newest title, from its start. The
+	// newest file of a fresh scan was any episode (Glass Garden's third),
+	// and Play started a show in its middle.
+	let heroStart = $state<CatalogItem | null>(null);
 	let recent = $state<CatalogItem[]>([]);
 	// Each library's row, in the frame its pictures make (see `guessFrame`):
 	// a films library of posters was cut into widescreen cards because its
@@ -85,6 +92,16 @@
 		}
 	}
 
+	async function firstOfTitle(item: CatalogItem): Promise<CatalogItem> {
+		if (item.episode <= 0 && item.season <= 0) return item;
+		try {
+			const { items } = await api.catalog.episodes(item.id);
+			return items.filter((i) => !i.missing).sort(compareEpisodes)[0] ?? item;
+		} catch {
+			return item;
+		}
+	}
+
 	async function load(): Promise<void> {
 		loading = true;
 		error = null;
@@ -113,6 +130,7 @@
 			continueItems = started.map((row) => row.item);
 			nextUpItems = await loadNextUp(progressList);
 			favoriteItems = await loadFavorites();
+			heroStart = continueItems.length === 0 && nextUpItems.length === 0 && recent[0] ? await firstOfTitle(recent[0]) : null;
 
 			// One row per library when there is more than one: the
 			// catalog filter runs server-side, nothing is preloaded.
@@ -125,6 +143,7 @@
 			const shown = libs.length > 1 ? rows.filter((r) => r.items.length > 0) : [];
 
 			const ids = [
+				...(heroStart ? [heroStart.id] : []),
 				...continueItems.map((i) => i.id),
 				...nextUpItems.map((i) => i.id),
 				...favoriteItems.map((i) => i.id),
@@ -214,12 +233,13 @@
 			</EmptyState>
 		</div>
 	{:else}
-		{@const hero = continueItems[0] ?? recent[0]}
+		{@const hero = continueItems[0] ?? nextUpItems[0] ?? heroStart ?? recent[0]}
 		{#if hero}
 			<Hero
 				item={hero}
 				enrichment={enrichmentCache.get(hero.id) ?? null}
 				resume={progressMap.has(hero.id)}
+				next={!continueItems[0] && hero.id === nextUpItems[0]?.id}
 				progress={progressMap.get(hero.id) ?? null}
 			/>
 		{/if}

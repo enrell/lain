@@ -17,6 +17,37 @@ const en = {
 		close: 'Close',
 		signOut: 'Sign out'
 	},
+	auth: {
+		username: 'Username',
+		password: 'Password',
+		showPassword: 'Show password',
+		hidePassword: 'Hide password',
+		setup: {
+			pageTitle: 'Welcome — Lain',
+			heading: 'A quiet place for your media.',
+			lead: 'Lain indexes your files, streams them with byte-range seeking, and keeps everyone’s progress separate. Everything runs on this machine.',
+			title: 'Create your account',
+			subtitle: 'The first account is the administrator. You can add more people later.',
+			confirm: 'Confirm password',
+			passwordHint: 'At least 8 characters.',
+			pickUsername: 'Pick a username.',
+			tooShort: 'At least 8 characters.',
+			mismatch: 'Passwords do not match.',
+			submit: 'Create account',
+			failed: 'Could not create the account.',
+			doneTitle: 'You’re in.',
+			doneBody: 'Next, point Lain at a directory on this server so it can index your files.',
+			addLibrary: 'Add a media library',
+			explore: 'Explore Lain'
+		},
+		login: {
+			pageTitle: 'Sign in — Lain',
+			tagline: 'Your media. Your machine. Your rules.',
+			submit: 'Sign in',
+			failed: 'Sign in failed.',
+			mismatch: 'That username and password do not match. Check both and try again.'
+		}
+	},
 	privateLibrary: {
 		badge: 'private',
 		locked: 'locked',
@@ -87,7 +118,13 @@ const en = {
 		enrich: 'Fetching metadata · {done}/{total}',
 		enrichStarting: 'Fetching metadata…',
 		elapsed: '{time} elapsed',
-		progress: 'Scan progress'
+		progress: 'Scan progress',
+		queued: 'A scan is running. Another starts when it ends, for what was added meanwhile.',
+		queuedLine: 'Another scan follows this one, for libraries added since it started.',
+		enrichHint: 'The titles are already in the library. This step looks up posters and descriptions, title by title, and can take a while.',
+		libraryAdded: 'Library “{name}” added.',
+		libraryAddedQueued: 'Library “{name}” added. A scan is running; it is scanned when that one ends.',
+		startFailed: 'Could not start the scan.'
 	},
 	boot: {
 		connecting: 'Connecting to your server…',
@@ -700,7 +737,7 @@ const en = {
 			title: 'Rate {title}',
 			description: 'Your friends see it unless your privacy settings say otherwise.',
 			score: 'Score',
-			keys: '1–9 pick a score, 0 is 10, Ctrl+Enter saves',
+			keys: '1–9 pick a score, 0 is 10, Enter saves (Ctrl+Enter in the review)',
 			review: 'Review (optional)',
 			reviewPlaceholder: 'What stayed with you?',
 			spoiler: 'Contains spoilers',
@@ -868,6 +905,7 @@ const en = {
 		volumes: { one: '{count} volume', other: '{count} volumes' },
 		issues: { one: '{count} issue', other: '{count} issues' },
 		length: 'Length',
+		playPart: 'Play · {part}',
 		continueFromPage: 'Continue from page {page}',
 		continueFromPageIn: 'Continue from page {page} · {part}',
 		readingAt: '{part}: page {page} of {pages}',
@@ -927,7 +965,8 @@ const en = {
 		loadFailed: 'Could not load your favorites.'
 	},
 	home: {
-		browseLibrary: 'Browse library'
+		browseLibrary: 'Browse library',
+		upNext: 'Up next'
 	},
 	tracking: {
 		subtitle: 'Everything your connected accounts track — manga, comics, anime, films and shows in one place.',
@@ -981,7 +1020,11 @@ const en = {
 			noSubtitles: 'No subtitles for this file',
 			speed: 'Speed {rate}',
 			speedNormal: 'Normal speed'
-		}
+		},
+		// The quality menu's first choice: the server's pick in a prepared
+		// stream, the file itself in direct play.
+		qualityAuto: 'Auto',
+		qualityOriginal: 'Original'
 	},
 	playerPrefs: {
 		group: 'Skipping and subtitles · this browser',

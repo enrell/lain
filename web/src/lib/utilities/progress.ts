@@ -56,3 +56,30 @@ export function nextUpAfter(
 	const next = nextEpisode(episodes, finishedId);
 	return next && !progress.has(next.id) ? next : null;
 }
+
+/**
+ * What a title's main button opens: the file under way (past `minResume`);
+ * else the first unfinished one after the most recently finished, as Home's
+ * Next up; else the first unfinished; else the first, to watch it again.
+ * Plain "the first file" played Episode 1 again on a show whose first
+ * episodes were done, while Home offered Episode 4.
+ */
+export function playTarget(
+	items: CatalogItem[],
+	progress: Map<string, Progress> | null | undefined,
+	minResume: number
+): CatalogItem | undefined {
+	const of = (item: CatalogItem) => progress?.get(item.id);
+	const going = items.find((i) => {
+		const p = of(i);
+		return p !== undefined && !p.completed && p.position_sec >= minResume;
+	});
+	if (going) return going;
+	const finished = sortByRecent(items.map(of).filter((p): p is Progress => p !== undefined && p.completed));
+	if (finished.length > 0) {
+		for (let next = nextEpisode(items, finished[0].item_id); next; next = nextEpisode(items, next.id)) {
+			if (!of(next)?.completed) return next;
+		}
+	}
+	return items.find((i) => !of(i)?.completed) ?? items[0];
+}
