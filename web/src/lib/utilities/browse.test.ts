@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
-import { NO_FILTERS, activeCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState, type Context, type Filters } from './browse';
+import { NO_FILTERS, activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState, type Context, type Filters } from './browse';
 import { groupItems } from './grouping';
 
 const NOW = 1_000_000;
@@ -63,6 +63,10 @@ describe('facets', () => {
 	it('ignore their own axis', () => {
 		const counts = countBy(groups, f({ watch: 'watched' }), ctx, 'watch', (g) => [watchState(g, ctx.progress)]);
 		expect(Object.fromEntries(counts)).toEqual({ in_progress: 1, watched: 1, unwatched: 1 });
+	});
+	it('count an axis left open as everything the other filters keep', () => {
+		expect(anyCount(groups, f({ watch: 'watched' }), ctx, 'watch')).toBe(3);
+		expect(anyCount(groups, f({ watch: 'watched', genres: ['Mystery'] }), ctx, 'watch')).toBe(2);
 	});
 });
 

@@ -103,7 +103,7 @@
 					onclick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
 					aria-label={t('nav.palette')}
 				>
-					<Search class="size-3.5" aria-hidden="true" /> {t('nav.search')} <span class="ml-2 flex gap-1"><kbd>Ctrl</kbd><kbd>K</kbd></span>
+					<Search class="size-3.5" aria-hidden="true" /> {t('nav.quickFind')} <span class="ml-2 flex gap-1"><kbd>Ctrl</kbd><kbd>K</kbd></span>
 				</button>
 				<UserMenu side="bottom" compact />
 			</div>

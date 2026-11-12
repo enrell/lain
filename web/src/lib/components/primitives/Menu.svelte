@@ -50,10 +50,14 @@
 
 {#if entries.length > 0}
 	<DropdownMenu.Root>
-		<DropdownMenu.Trigger class={buttonClasses(variant, size, className)} title={hint}>
+		<!-- At icon size the trigger is the icon alone (a card's ⋮), named for
+		     screen readers by its label. -->
+		<DropdownMenu.Trigger class={buttonClasses(variant, size, className)} title={hint ?? (size === 'icon' ? label : undefined)} aria-label={size === 'icon' ? label : undefined}>
 			{@render icon?.()}
-			{label}
-			<ChevronDown class="size-3.5 opacity-70" aria-hidden="true" />
+			{#if size !== 'icon'}
+				{label}
+				<ChevronDown class="size-3.5 opacity-70" aria-hidden="true" />
+			{/if}
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Portal>
 			<DropdownMenu.Content {align} sideOffset={6} class="z-50 min-w-56 rounded-lg border border-line bg-surface p-1 shadow-2xl">

@@ -142,7 +142,8 @@
 		<div class="min-w-0">
 			<p class="truncate text-2xl font-black uppercase tracking-[-0.04em] text-foreground">{displayName(preview)}</p>
 			<p class="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-				@{user.username} · {user.role}{#if user.created_at} · since {formatDate(user.created_at)}{/if}
+				<!-- One joined string: a block's leading space was trimmed into "ADMIN· SINCE". -->
+				{[`@${user.username}`, user.role, user.created_at ? t('settings.since', { date: formatDate(user.created_at) }) : ''].filter(Boolean).join(' · ')}
 			</p>
 			{#if bio.trim()}<p class="mt-2 max-w-xl whitespace-pre-line text-sm text-muted">{bio.trim()}</p>{/if}
 		</div>

@@ -22,6 +22,7 @@
 	import { SavedFlash } from '$lib/settings/flash.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { t } from '$lib/i18n';
 
 	// Everything here applies on change: personal preferences never wait
 	// for a Save button (the YOU save model).
@@ -49,7 +50,8 @@
 	}
 
 	const LANGUAGES: [string, string][] = [
-		['', 'Automatic'],
+		// Said as the app says it: one account setting, two names for it read as two settings.
+		['', t('playbackLanguage.asFile')],
 		['eng', 'English'],
 		['por', 'Portuguese'],
 		['spa', 'Spanish'],
@@ -127,8 +129,8 @@
 	</SettingRow>
 	<SettingRow
 		id="language"
-		label="Audio & subtitle language"
-		hint="Audio in this language keeps subtitles off; otherwise subtitles in it. Follows your account."
+		label={t('playbackLanguage.label')}
+		hint={t('playbackLanguage.hint')}
 		saved={flash.is('language')}
 	>
 		<!-- A language by name, from a list: a three-letter code to type was a thing to know first. -->
