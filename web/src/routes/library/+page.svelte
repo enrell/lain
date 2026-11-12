@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
+	import { page } from '$app/state';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import LockOpen from '@lucide/svelte/icons/lock-open';
 	import type { Library } from '$lib/api/types';
@@ -38,6 +39,11 @@
 		await tick();
 		document.querySelector<HTMLElement>('#library-view [aria-pressed="true"]')?.focus();
 	}
+	// A link can ask for a view (/library?view=all): it wins over the one remembered.
+	$effect(() => {
+		const asked = page.url.searchParams.get('view');
+		if ((asked === 'all' || asked === 'shelves') && asked !== untrack(() => view)) void setView(asked);
+	});
 	let unlockOpen = $state(false);
 	// Re-mounts the browser so it refetches once a library unlocks.
 	let generation = $state(0);
@@ -67,7 +73,7 @@
 
 	onMount(() => {
 		try {
-			if (localStorage.getItem(VIEW_KEY) === 'all') view = 'all';
+			if (localStorage.getItem(VIEW_KEY) === 'all' && !page.url.searchParams.has('view')) view = 'all';
 		} catch {
 			/* default view */
 		}
@@ -84,9 +90,9 @@
 		if (!session.isAdmin || scan.running) return;
 		try {
 			await scan.start();
-			toasts.success('Scan started.');
+			toasts.success(t('palette.action.scanStarted'));
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not start the scan.'));
+			toasts.error(errorMessage(err, t('palette.action.scanFailed')));
 		}
 	}
 
@@ -121,13 +127,13 @@
 
 <svelte:window onkeydown={onKey} />
 
-<svelte:head><title>Library — Lain</title></svelte:head>
+<svelte:head><title>{t('nav.library')} — Lain</title></svelte:head>
 
 <div class="space-y-6">
 	<header class="flex flex-wrap items-end justify-between gap-3">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-foreground">Library</h1>
-			<p class="mt-0.5 text-sm text-muted max-md:hidden">Everything Lain has indexed.</p>
+			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('nav.library')}</h1>
+			<p class="mt-0.5 text-sm text-muted max-md:hidden">{t('library.lead')}</p>
 		</div>
 		{#if session.isAdmin || locked.length > 0 || open.length > 0}
 			<div class="flex items-center gap-1 text-sm max-md:w-full max-md:gap-2 max-md:[&>*]:min-h-10 max-md:[&>*]:rounded-lg max-md:[&>*]:border max-md:[&>*]:border-line max-md:[&>*]:px-3.5 max-md:[&>a]:flex max-md:[&>a]:items-center">
@@ -151,10 +157,10 @@
 						disabled={scan.running}
 						onclick={() => void rescan()}
 					>
-						{scan.running ? 'Scanning…' : 'Scan'} <kbd class="text-muted/70">S</kbd>
+						{scan.running ? t('library.scanning') : t('library.scan')} <kbd class="text-muted/70">S</kbd>
 					</button>
 					<a href="/settings/libraries" class="rounded-md px-2.5 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground">
-						Manage libraries
+						{t('library.manage')}
 					</a>
 				{/if}
 			</div>

@@ -864,7 +864,11 @@ const en = {
 		viewAll: 'View all',
 		seeAll: 'See all',
 		shelfFailed: 'Could not load this library.',
-		shelfEmpty: 'Nothing indexed here yet.'
+		shelfEmpty: 'Nothing indexed here yet.',
+		lead: 'Everything Lain has indexed.',
+		scan: 'Scan',
+		scanning: 'Scanning…',
+		manage: 'Manage libraries'
 	},
 	favorites: {
 		title: 'Favorites',
