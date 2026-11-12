@@ -35,7 +35,7 @@
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
-	import { defaultAudioStream, resolveTracks, trackPreferences } from '$lib/player/track-language';
+	import { defaultAudioStream, resolveTracks, trackName, trackPreferences } from '$lib/player/track-language';
 	import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, type SidecarTrack } from '$lib/player/sidecars';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
@@ -59,7 +59,7 @@
 		type SubtitleBackground,
 		type SubtitleSize
 	} from '$lib/player/player-prefs';
-	import { t } from '$lib/i18n';
+	import { i18n, t } from '$lib/i18n';
 	import { detectBrowserProfile, type BrowserProfile, type RendererBackend } from '$lib/player/browser-profile';
 	import { VideoRenderer } from '$lib/player/webgpu/engine';
 	import type { WebGLAnime4KRenderer } from '$lib/player/webgl/engine';
@@ -259,6 +259,12 @@
 	const mode = $derived(forcedTranscode ? 'transcode' : plan.mode);
 
 	const audioTracks = $derived((plan.streams ?? []).filter((s) => s.type === 'audio'));
+	// The ladder up to the file's own height: a 2160p rung for a 360p file
+	// only upscales it.
+	const sourceHeight = $derived((plan.streams ?? []).find((s) => s.type === 'video')?.height ?? 0);
+	const qualities = $derived(
+		(playbackOptions?.qualities ?? []).filter((q) => !sourceHeight || !q.max_height || q.max_height <= sourceHeight)
+	);
 	const subtitleTracks = $derived(
 		(plan.streams ?? []).filter((s) => s.type === 'subtitle' && s.convertible)
 	);
@@ -809,7 +815,17 @@
 			if (index !== undefined) selectedAudio = String(index);
 		}
 		saveTitleTrack(item.title, 'audio', audioTracks.find((s) => String(s.index) === selectedAudio)?.language);
-		void changeTracks();
+		if (mode === 'transcode') void changeTracks();
+		// The browser plays a file's default audio and cannot switch it: another
+		// track is a session, entered at the viewer's place.
+		else if (selectedAudio !== String(audioTracks.find((s) => s.default)?.index ?? audioTracks[0]?.index)) void leaveDirectPlay();
+	}
+
+	// A quality is a session too: from direct play, choosing one leaves it;
+	// "Original" is the direct play itself.
+	function onQualityChoice(): void {
+		if (mode === 'transcode') void changeTracks();
+		else if (selectedQuality !== '') void leaveDirectPlay();
 	}
 
 	async function changeTracks(): Promise<void> {
@@ -1944,17 +1960,20 @@
 			{/if}
 			{#if effectError && selectedEffect !== 'off'}<p class="mt-1 text-xs text-danger" role="status">Anime4K unavailable: {effectError}</p>{/if}
 			<a class="mt-1 block text-xs text-accent hover:underline" href="/settings/playback#effects">Set default effects and overrides</a>
-			{#if mode === 'transcode' && (playbackOptions?.qualities.length ?? 0) > 0}
+			<!-- Offered in direct play as well: the file's audio and size were
+			     fixed there, and a second language or a smaller stream had no
+			     way in short of a setting nobody would find. -->
+			{#if expectsVideo && qualities.length > 0}
 				<label class="chrome-chip">
 					Quality
 					<select
 						class="chrome-select"
 						bind:value={selectedQuality}
-						onchange={() => void changeTracks()}
+						onchange={onQualityChoice}
 						aria-label="Transcode quality"
 					>
-						<option value="">Auto</option>
-						{#each playbackOptions?.qualities ?? [] as quality (quality.name)}
+						<option value="">{mode === 'transcode' ? 'Auto' : 'Original'}</option>
+						{#each qualities as quality (quality.name)}
 							<option value={quality.name}>
 								{quality.name}{quality.bitrate_kbps ? ` · ${Math.round(quality.bitrate_kbps / 1000)} Mbps` : ''}
 							</option>
@@ -1962,7 +1981,7 @@
 					</select>
 				</label>
 			{/if}
-			{#if mode === 'transcode' && audioTracks.length > 1}
+			{#if audioTracks.length > 1}
 				<label class="chrome-chip">
 					Audio
 					<select
@@ -1974,7 +1993,7 @@
 						<option value="">Default</option>
 						{#each audioTracks as track (track.index)}
 							<option value={String(track.index)}>
-								{track.language || track.title || `Track ${track.index}`}
+								{trackName(track, i18n.locale, `Track ${track.index}`)}
 							</option>
 						{/each}
 					</select>
@@ -1992,7 +2011,7 @@
 						<option value="">Off</option>
 						{#each subtitleTracks as track (track.index)}
 							<option value={String(track.index)}>
-								{track.language || track.title || `Track ${track.index}`}
+								{trackName(track, i18n.locale, `Track ${track.index}`)}
 							</option>
 						{/each}
 						{#each sidecars as file (file.index)}
