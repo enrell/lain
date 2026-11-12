@@ -264,8 +264,10 @@ video::cue {
 	}
 }
 /* A phone stacks a row's control under its label, except a lone switch or
-   number: those stay beside the label, where a thumb expects a toggle. */
-@media (max-width: 639px) {
+   number: those stay beside the label, where a thumb expects a toggle. A
+   tablet beside the settings rail (768 to 959 px) stacks the same way
+   (SettingRow). */
+@media (max-width: 639px), (min-width: 768px) and (max-width: 959px) {
 	.setting-row:has(> :nth-child(2) > :only-child:is(input[type='number'], .contents)) {
 		grid-template-columns: minmax(0, 1fr) auto;
 		align-items: center;

@@ -33,12 +33,16 @@
 	} = $props();
 </script>
 
+<!-- From 768 px the settings rail takes 15rem of the window: up to 960 px
+     a 16rem control column left the label a hundred pixels and five-line
+     hints, so a row stacks there as on a phone (app.css keeps a lone switch
+     or number beside its label in both ranges). -->
 <div
 	{id}
 	data-setting-row
 	class="setting-row scroll-mt-28 py-4 {stack
 		? 'space-y-3'
-		: 'grid gap-x-8 gap-y-3 sm:min-h-16 sm:grid-cols-[minmax(0,1fr)_minmax(0,16rem)] sm:items-center lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]'}"
+		: 'grid gap-x-8 gap-y-3 sm:min-h-16 sm:grid-cols-[minmax(0,1fr)_minmax(0,16rem)] sm:items-center md:grid-cols-1 min-[60rem]:grid-cols-[minmax(0,1fr)_minmax(0,16rem)] lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]'}"
 >
 	<div class="min-w-0">
 		<p class="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -52,13 +56,13 @@
 		{#if hint}<p class="mt-0.5 text-[13px] leading-5 text-muted">{hint}</p>{/if}
 	</div>
 	{#if children}
-		<div class="flex min-w-0 flex-wrap items-center gap-2 {stack ? '' : 'sm:justify-end'}">
+		<div class="flex min-w-0 flex-wrap items-center gap-2 {stack ? '' : 'sm:justify-end md:justify-start min-[60rem]:justify-end'}">
 			{@render children()}
 		</div>
 	{/if}
 	{#if below}
 		<!-- Hidden while the snippet renders nothing (an error that is not
 		     there): an empty grid row still took the row gap. -->
-		<div class="min-w-0 empty:hidden sm:col-span-2">{@render below()}</div>
+		<div class="min-w-0 empty:hidden sm:col-span-2 md:col-span-1 min-[60rem]:col-span-2">{@render below()}</div>
 	{/if}
 </div>
