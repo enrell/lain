@@ -113,6 +113,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   words on one line ("Manage libraries" broke inside its chip), and the
   row of library names fades at its end, so a name scrolled past the view
   switch reads as more to swipe to rather than missing.
+- **Acquire's empty Queue and Wanted tabs** (web) show the app's empty
+  state (an icon, what the tab holds, how to fill it) instead of one grey
+  line.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a
