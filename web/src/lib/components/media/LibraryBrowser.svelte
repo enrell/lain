@@ -44,7 +44,7 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { gridKeys } from '$lib/utilities/grid-nav';
 	import { groupItems } from '$lib/utilities/grouping';
-	import { t } from '$lib/i18n';
+	import { t, type Key } from '$lib/i18n';
 
 	const FETCH = 500;
 	const ENRICH = 150;
@@ -326,6 +326,9 @@
 	const shapeCounts = $derived(countBy(all, filters, ctx, 'shape', (g) => [g.count > 1 ? 'series' : 'single']));
 	const kindCounts = $derived(countBy(all, filters, ctx, 'kind', (g) => [...new Set(g.items.map((i) => i.kind))]));
 	const kinds = $derived([...new Set(items.map((i) => i.kind))].filter(Boolean).sort());
+	// A kind by name; one the catalog adds later shows as stored until it has one.
+	const KIND_NAMES: Record<string, Key> = { video: 'browse.kind.video', episode: 'browse.kind.episode', manga: 'browse.kind.manga', comic: 'browse.kind.comic' };
+	const kindName = (k: string) => (KIND_NAMES[k] ? t(KIND_NAMES[k]) : k);
 	const addedCounts = $derived(
 		new Map(ADDED.map((a) => [a.value, all.filter((g) => apply([g], { ...filters, added: a.value }, ctx).length > 0).length]))
 	);
@@ -335,7 +338,7 @@
 		...filters.exclude.map((g) => ({ label: `not ${g}`, off: () => genre(g, 'not') })),
 		...(filters.watch ? [{ label: WATCH.find((w) => w.value === filters.watch)!.label, off: () => set({ watch: '' }) }] : []),
 		...(filters.shape ? [{ label: SHAPES.find((s) => s.value === filters.shape)!.label, off: () => set({ shape: '' }) }] : []),
-		...(filters.kind ? [{ label: filters.kind, off: () => set({ kind: '' }) }] : []),
+		...(filters.kind ? [{ label: kindName(filters.kind), off: () => set({ kind: '' }) }] : []),
 		...(filters.added ? [{ label: `Added: ${ADDED.find((a) => a.value === filters.added)!.label.toLowerCase()}`, off: () => set({ added: 0 }) }] : [])
 	]);
 	const narrowed = $derived(active > 0 || filters.q.trim() !== '');
@@ -507,7 +510,7 @@
 				{@render heading('Kind')}
 				{@render option(t('browse.any'), anyCount(all, filters, ctx, 'kind'), !filters.kind, () => set({ kind: '' }))}
 				{#each kinds as k (k)}
-					{@render option(k, kindCounts.get(k), filters.kind === k, () => toggle('kind', k))}
+					{@render option(kindName(k), kindCounts.get(k), filters.kind === k, () => toggle('kind', k))}
 				{/each}
 			</div>
 		{/if}

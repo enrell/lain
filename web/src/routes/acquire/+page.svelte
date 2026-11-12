@@ -305,21 +305,21 @@
 	{:else if tab === 'search'}
 		<form class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_6rem_6rem_auto] sm:items-end" onsubmit={search}>
 			<label class="block space-y-1.5">
-				<span class="flex items-center gap-2 text-xs text-muted">{t('acquire.search.query')} <kbd class="font-mono text-[10px]">/</kbd></span>
+				<span class="flex h-5 items-center gap-2 text-xs text-muted">{t('acquire.search.query')} <kbd class="font-mono text-[10px]">/</kbd></span>
 				<input bind:this={queryInput} bind:value={query} class="{field} w-full" placeholder={t('acquire.search.placeholder')} spellcheck={false} autocomplete="off" />
 			</label>
 			<label class="block space-y-1.5">
-				<span class="text-xs text-muted">{t('acquire.search.library')}</span>
+				<span class="flex h-5 items-center text-xs text-muted">{t('acquire.search.library')}</span>
 				<select bind:value={libraryId} class="{field} w-full">
 					{#each libraries as l (l.id)}<option value={l.id}>{l.name} · {l.type}</option>{/each}
 				</select>
 			</label>
 			<label class="block space-y-1.5">
-				<span class="text-xs text-muted">{library?.type === 'manga' || library?.type === 'comic' ? t('acquire.search.volume') : t('acquire.search.season')}</span>
+				<span class="flex h-5 items-center text-xs text-muted">{library?.type === 'manga' || library?.type === 'comic' ? t('acquire.search.volume') : t('acquire.search.season')}</span>
 				<input bind:value={season} type="number" min="0" class="{field} w-full font-mono" />
 			</label>
 			<label class="block space-y-1.5">
-				<span class="text-xs text-muted">{library?.type === 'manga' || library?.type === 'comic' ? t('acquire.search.chapter') : t('acquire.search.episode')}</span>
+				<span class="flex h-5 items-center text-xs text-muted">{library?.type === 'manga' || library?.type === 'comic' ? t('acquire.search.chapter') : t('acquire.search.episode')}</span>
 				<input bind:value={episode} type="number" min="0" class="{field} w-full font-mono" />
 			</label>
 			<Button type="submit" loading={searching} disabled={!query.trim() || indexers.length === 0} title={indexers.length === 0 ? t('acquire.search.noIndexers') : undefined}>{t('acquire.search.submit')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
@@ -365,14 +365,16 @@
 	{:else if tab === 'subtitles'}
 		<SubtitlesTab />
 	{:else}
-		<form class="flex flex-wrap items-end gap-3" onsubmit={grabLink}>
-			<label class="block min-w-0 flex-1 space-y-1.5">
-				<span class="flex items-center gap-2 text-xs text-muted">{t('acquire.queue.link')} <kbd class="font-mono text-[10px]">/</kbd></span>
+		<!-- One column on a phone, where the link field was squeezed beside the
+		     library to a few letters; the labels share one height, key cap or not. -->
+		<form class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end" onsubmit={grabLink}>
+			<label class="block min-w-0 space-y-1.5">
+				<span class="flex h-5 items-center gap-2 text-xs text-muted">{t('acquire.queue.link')} <kbd class="font-mono text-[10px]">/</kbd></span>
 				<input bind:this={linkInput} bind:value={link} class="{field} w-full font-mono text-xs" placeholder="magnet:?xt=… / https://…/file.torrent" spellcheck={false} autocomplete="off" />
 			</label>
 			<label class="block space-y-1.5">
-				<span class="text-xs text-muted">{t('acquire.search.library')}</span>
-				<select bind:value={libraryId} class={field}>
+				<span class="flex h-5 items-center text-xs text-muted">{t('acquire.search.library')}</span>
+				<select bind:value={libraryId} class="{field} w-full">
 					{#each libraries as l (l.id)}<option value={l.id}>{l.name} · {l.type}</option>{/each}
 				</select>
 			</label>

@@ -782,7 +782,14 @@ const en = {
 		tilesSmall: 'small',
 		partLeft: '{part} · {time} left',
 		partPage: '{part} · page {page} of {pages}',
-		pageOf: 'Page {page} of {pages}'
+		pageOf: 'Page {page} of {pages}',
+		// A catalog kind as the Kind filter names it.
+		kind: {
+			video: 'Films and clips',
+			episode: 'Episodes',
+			manga: 'Manga',
+			comic: 'Comics'
+		}
 	},
 	library: {
 		view: 'View',
