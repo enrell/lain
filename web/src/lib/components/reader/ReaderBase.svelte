@@ -292,6 +292,10 @@
 			if (e.key === 'Escape' || e.key === '?') {
 				e.preventDefault();
 				help = false;
+			} else if (e.key === 'Tab') {
+				// A modal list with nothing to press: Tab stays on it instead of
+				// walking the reader's controls behind the backdrop.
+				e.preventDefault();
 			}
 			return;
 		}
