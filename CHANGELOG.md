@@ -9,6 +9,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Web**: a link clicked within a moment of typing in the header's
   search field on the Search page no longer bounces back to Search with
   the field focused.
+- **Web**: an account without the admin role that opens an admin
+  settings page lands on its own Profile settings; when an admin had last
+  used Settings in the same browser it used to bounce between two pages
+  forever.
 
 ## [0.3.0] - 2026-11-12
 

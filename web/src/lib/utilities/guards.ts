@@ -34,9 +34,15 @@ export function routeRedirect(state: GuardState): string | null {
 		return pathname === '/login' ? null : '/login';
 	}
 	if (pathname === '/login') return '/';
-	if (isAdminRoute(pathname) && !admin) return '/settings';
+	// A section every account has, never /settings itself: /settings
+	// reopens the last section visited in this browser, which can be an
+	// admin's, and bouncing between the two never settled.
+	if (isAdminRoute(pathname) && !admin) return ACCOUNT_SETTINGS;
 	return null;
 }
+
+/** A settings section every account has: where a non-admin lands from an admin route. */
+export const ACCOUNT_SETTINGS = '/settings/profile';
 
 export const ADMIN_ROUTES = [
 	'/settings/libraries',
