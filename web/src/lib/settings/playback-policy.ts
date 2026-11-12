@@ -86,3 +86,19 @@ export function applySafeAutomaticPolicy(
 	next.hardware_decode_10bit_vp9 = false;
 	return next;
 }
+
+/**
+ * Whether saved settings are what Auto would stage from this probe. A
+ * BT.2390 tone map the probe cannot run is the Hable one the server falls
+ * back to, so a fresh server's defaults read as Auto, not as a choice
+ * nobody made.
+ */
+export function isAutomatic(settings: TranscodeSettings, capabilities: TranscodeCapabilities | null): boolean {
+	const saved = cloneTranscodeSettings(settings);
+	if (saved.tone_mapping_algorithm === 'bt2390' && capabilities && !capabilities.tone_mapping_bt2390) {
+		saved.tone_mapping_algorithm = 'hable';
+	}
+	// An older server leaves the switch out; absent means on.
+	if (saved.allow_subtitle_extraction === undefined) saved.allow_subtitle_extraction = true;
+	return settingsEqual(applySafeAutomaticPolicy(cloneTranscodeSettings(settings), capabilities), saved);
+}
