@@ -366,6 +366,9 @@ const en = {
 		here: 'On this page',
 		everywhere: 'Everywhere'
 	},
+	toast: {
+		dismiss: 'Dismiss'
+	},
 	// An address the app does not know, or a page that failed to load (+error.svelte).
 	errorPage: {
 		notFoundTitle: 'Nothing at this address',
