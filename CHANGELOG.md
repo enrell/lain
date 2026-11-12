@@ -116,6 +116,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Acquire's empty Queue and Wanted tabs** (web) show the app's empty
   state (an icon, what the tab holds, how to fill it) instead of one grey
   line.
+- **Settings controls** (web): Transcoding's video engine is one segmented
+  choice like the policy above it (the engine in use, the ones the probe
+  passed, software), where a mono word sat beside two bare "Use …" buttons;
+  Playback's Render on is as wide as every other picker in its column; a
+  plugin job's description wraps to two lines instead of stopping mid-word.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a

@@ -201,7 +201,7 @@
 					<li class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 py-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]">
 						<div class="min-w-0">
 							{#if purpose}
-								<p class="text-sm text-foreground lg:truncate" title={purpose}>{purpose}</p>
+								<p class="text-sm text-foreground lg:line-clamp-2" title={purpose}>{purpose}</p>
 							{/if}
 							<p class="truncate font-mono text-xs {purpose ? 'text-muted' : 'text-foreground'}">
 								{shortCapability(binding.capability)}<span>{capabilityVersion(binding.capability)}</span>
