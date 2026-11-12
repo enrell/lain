@@ -18,6 +18,9 @@
 		onCheckedChange?: (checked: boolean) => void;
 	} = $props();
 
+	// With its label beside it, the switch is named by that label (and described by the hint).
+	const uid = $props.id();
+
 	const handleChange = (next: boolean): void => {
 		checked = next;
 		onCheckedChange?.(next);
@@ -27,8 +30,8 @@
 <div class={bare ? 'contents' : 'flex items-start justify-between gap-4'}>
 	{#if !bare}
 		<div>
-			<p class="text-sm font-medium text-foreground">{label}</p>
-			{#if description}<p class="mt-0.5 text-xs text-muted">{description}</p>{/if}
+			<p id="{uid}-label" class="text-sm font-medium text-foreground">{label}</p>
+			{#if description}<p id="{uid}-hint" class="mt-0.5 text-xs text-muted">{description}</p>{/if}
 		</div>
 	{/if}
 	<!-- Off is a visible track with a small, dim knob; on is the accent track with a
@@ -39,6 +42,8 @@
 	     The press area reaches past the drawn track to 56 x 44 px, a thumb's size. -->
 	<Switch.Root
 		aria-label={bare ? label : undefined}
+		aria-labelledby={bare ? undefined : `${uid}-label`}
+		aria-describedby={!bare && description ? `${uid}-hint` : undefined}
 		checked={checked}
 		onCheckedChange={handleChange}
 		{disabled}
