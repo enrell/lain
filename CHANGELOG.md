@@ -29,6 +29,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   carry to its next episode; the pick was kept per episode. A forced
   (signs) subtitle track is listed apart from the full one in its
   language.
+- Android: on a video the server converts (HLS), the audio menu lists the
+  file's audio tracks and a pick plays from where you are in the chosen
+  language; an episode opens in the audio language last picked for its
+  title instead of the account's. A converted stream carries one audio
+  track, so the pick could not switch inside it.
 
 ## [0.3.0] - 2026-11-12
 
