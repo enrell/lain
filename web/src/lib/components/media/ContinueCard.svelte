@@ -52,6 +52,10 @@
 	const ratio = $derived(progress && !progress.completed ? progressRatio(progress) : 0);
 
 	let stillFailed = $state(false);
+	// An upright picture (a file that came with its poster, a page) is shown
+	// whole over a blurred copy of itself, as a grid's frame treats it; cut
+	// to 16:9 a poster lost its title.
+	let upright = $state(false);
 </script>
 
 <a
@@ -60,15 +64,22 @@
 	aria-label={`${title}, ${subtitle}${ratio > 0 ? (reading ? ', reading' : ', watching') : ''}`}
 >
 	<div class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/14">
-		<div class="aspect-video">
+		<div class="relative aspect-video">
 			{#if !stillFailed}
+				{#if upright}
+					<img src={still} alt="" aria-hidden="true" decoding="async" class="absolute inset-0 size-full scale-125 object-cover opacity-50 blur-2xl" />
+				{/if}
 				<img
 					src={still}
 					alt=""
 					aria-hidden="true"
 					loading="lazy"
 					decoding="async"
-					class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
+					class="relative size-full {upright ? 'object-contain' : 'object-cover'} {reading && !upright ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
+					onload={(e) => {
+						const img = e.currentTarget as HTMLImageElement;
+						upright = img.naturalWidth > 0 && img.naturalWidth <= img.naturalHeight * 1.15;
+					}}
 					onerror={() => (stillFailed = true)}
 				/>
 			{/if}

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { CatalogItem, Enrichment } from '$lib/api/types';
-	import { api } from '$lib/api';
-	import { session } from '$lib/auth/session.svelte';
+	import { cardThumb, stillOf } from '$lib/stores/frames';
 	import { isReadable } from '$lib/reader/kinds';
 	import { guessShape, recordShape, shapeOf, type Shape } from '$lib/stores/shapes.svelte';
 	import PlaceholderPoster from './PlaceholderPoster.svelte';
@@ -11,7 +10,6 @@
 		enrichment = null,
 		class: className = '',
 		priority = false,
-		eager = false,
 		frame = undefined
 	}: {
 		item: CatalogItem;
@@ -19,8 +17,6 @@
 		class?: string;
 		/** Above-the-fold posters load eagerly; the rest are lazy. */
 		priority?: boolean;
-		/** Load now without jumping the queue: a picture whose shape decides its grid's frame. */
-		eager?: boolean;
 		/** The shape of the frame this is drawn in, shared by its grid or rail. */
 		frame?: Shape;
 	} = $props();
@@ -30,9 +26,8 @@
 
 	// poster -> cover -> still frame (extracted and cached by the server).
 	const artwork = $derived(!artworkFailed ? enrichment?.poster || enrichment?.cover || '' : '');
-	const thumb = $derived(
-		!thumbFailed ? api.thumbnail.url(item.id, session.token, { width: isReadable(item.kind) ? 480 : 320 }) : ''
-	);
+	// The same address a grid's check measures (`settleFrame`), so one load serves both.
+	const thumb = $derived(!thumbFailed ? cardThumb(item) : '');
 	const src = $derived(artwork || thumb);
 	const alt = $derived(enrichment?.title || item.title);
 	/*
@@ -49,6 +44,11 @@
 		frame ? shapeOf(item.id, guessShape(item, artwork ? enrichment : null)) !== frame : isStill
 	);
 
+	// A card is drawn before its picture has loaded (see `guessFrame`): until
+	// it has, the frame pulses as a skeleton does instead of standing empty.
+	let loadedSrc = $state('');
+	const waiting = $derived(src !== '' && loadedSrc !== src);
+
 	function handleError(): void {
 		if (artwork) artworkFailed = true;
 		else thumbFailed = true;
@@ -57,13 +57,16 @@
 
 <div class={['relative overflow-hidden bg-surface', className].join(' ')}>
 	{#if src}
+		{#if waiting}
+			<div class="absolute inset-0 animate-pulse bg-surface-active/70" aria-hidden="true"></div>
+		{/if}
 		{#if contained}
 			<!-- Fills the bars of a picture that does not match the frame. -->
 			<img
 				{src}
 				alt=""
 				aria-hidden="true"
-				loading={priority || eager ? 'eager' : 'lazy'}
+				loading={priority ? 'eager' : 'lazy'}
 				decoding="async"
 				referrerpolicy="no-referrer"
 				class="absolute inset-0 size-full scale-125 object-cover opacity-50 blur-2xl"
@@ -72,14 +75,16 @@
 		<img
 			{src}
 			{alt}
-			loading={priority || eager ? 'eager' : 'lazy'}
+			loading={priority ? 'eager' : 'lazy'}
 			decoding="async"
 			fetchpriority={priority ? 'high' : 'auto'}
 			referrerpolicy="no-referrer"
 			class={['relative size-full', contained ? 'object-contain' : 'object-cover'].join(' ')}
 			onload={(e) => {
 				const img = e.currentTarget as HTMLImageElement;
-				recordShape(item.id, img.naturalWidth, img.naturalHeight);
+				loadedSrc = src;
+				// A file's own still also teaches what its library's stills are (see `guessShape`).
+				recordShape(item.id, img.naturalWidth, img.naturalHeight, isStill ? stillOf(item) : undefined);
 			}}
 			onerror={handleError}
 		/>

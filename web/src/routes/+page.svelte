@@ -17,7 +17,9 @@
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { ensureEnrichments, ensureItems, ensureLibraries } from '$lib/stores/media-cache.svelte';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
+	import { settleFrame } from '$lib/stores/frames';
 	import { scan } from '$lib/stores/scan.svelte';
+	import { groupItems } from '$lib/utilities/grouping';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { t } from '$lib/i18n';
 	import { isInProgress, nextUpAfter, sortByRecent } from '$lib/utilities/progress';
@@ -37,7 +39,10 @@
 	const nextUpWatching = $derived(nextUpItems.filter((i) => !isReadable(i.kind)));
 	const nextUpReading = $derived(nextUpItems.filter((i) => isReadable(i.kind)));
 	let recent = $state<CatalogItem[]>([]);
-	let libraryRows = $state<{ lib: Library; items: CatalogItem[] }[]>([]);
+	// Each library's row, in the frame its pictures decide (measured before it
+	// is drawn, see `settleFrame`): a films library of posters was cut into
+	// widescreen cards because its type said nothing of its pictures.
+	let libraryRows = $state<{ lib: Library; items: CatalogItem[]; layout: 'poster' | 'landscape' }[]>([]);
 	let catalogTotal = $state(0);
 
 	const NEXT_UP_TITLES = 6;
@@ -111,16 +116,24 @@
 					items: (await api.catalog.list({ libraryId: lib.id, limit: 12 })).items
 				}))
 			);
-			libraryRows = libs.length > 1 ? rows.filter((r) => r.items.length > 0) : [];
+			const shown = libs.length > 1 ? rows.filter((r) => r.items.length > 0) : [];
 
 			const ids = [
 				...continueItems.map((i) => i.id),
 				...nextUpItems.map((i) => i.id),
 				...favoriteItems.map((i) => i.id),
 				...recent.map((i) => i.id),
-				...libraryRows.flatMap((r) => r.items.map((i) => i.id))
+				...shown.flatMap((r) => r.items.map((i) => i.id))
 			];
 			await ensureEnrichments(ids);
+			// Below the fold: the page is drawn meanwhile, and the rows come in together.
+			void Promise.all(
+				shown.map(async (r) => ({
+					...r,
+					// A row lists files, so each file is its own title here.
+					layout: (await settleFrame(r.items.flatMap((i) => groupItems([i])))) === 'portrait' ? ('poster' as const) : ('landscape' as const)
+				}))
+			).then((settled) => (libraryRows = settled));
 		} catch (err) {
 			error = errorMessage(err);
 		} finally {
@@ -234,7 +247,7 @@
 				{/if}
 
 				{#each libraryRows as row (row.lib.id)}
-					<MediaRow title={row.lib.name} href={`/library/${row.lib.id}`} items={row.items} {progressMap} layout={row.lib.type === 'movie' || isReadable(row.lib.type) ? 'poster' : 'landscape'} />
+					<MediaRow title={row.lib.name} href={`/library/${row.lib.id}`} items={row.items} {progressMap} layout={row.layout} />
 				{/each}
 			</div>
 		</section>

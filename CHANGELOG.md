@@ -49,6 +49,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   last of them leaves, and a finished one stays cached. Requests without
   a viewer behave as before. The web player sends one; `lain-client` has
   `release_transcode`.
+- **First-run pages for Tracking, Social and Acquire** (web): on a server
+  with nothing of yours there yet, each says in a line or two what it is
+  for and offers the first step as its main action, with a key (connect
+  AniList, or sync a linked account that came back empty; find people and
+  the privacy settings; add an indexer, or a library first), over art from
+  the server's own library, in place of a grey box.
 
 ### Changed
 - **A server address typed without `http://` or `https://`** (D-277) is
@@ -61,6 +67,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `preferred_language` stays for older clients: setting it sets both
   languages, and it now reads as the subtitle language when one is set.
   Accounts saved before keep exactly their old behaviour.
+- **Search results look like a library** (web): one card frame per answer,
+  the library's sizes (those of Home's rails) and the same treatment of
+  stills and posters, where results were rows of mixed shapes. Arrow keys
+  move between results and from the header's field into them; up from the
+  first row goes back to the field. The library grid answers the same keys.
+  Before a query the page offers the libraries as chips, as it does after a
+  short answer, and a rail of the newest titles.
+- **Social's feed opens with its titles** (web): what friends watch and
+  read is a rail of cards at Home's sizes over the activity list. The
+  people search shows its key in the field; spelled out in the
+  placeholder it ran off a phone's width.
+- **Home shows posters whole** (web): a library's row takes the frame its
+  pictures decide (a films library of posters is a poster rail, not
+  widescreen cards cropping each poster), and an upright picture in a
+  widescreen card is shown whole over a blurred copy of itself.
+- **Tracking's grid uses the library's card sizes** (web), and a wide
+  cover is shown whole instead of cropped to a poster.
+- **The library's view switch stays put** (web): By library and All titles
+  hold it at the same place, at the end of the bar's first row; in All
+  titles it sat a row lower, under the search. With the switch beside the
+  search, sort and tile size join the filters sheet below a wide screen.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a
@@ -105,6 +132,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (a viewer joining as the last one leaves, or a play after an idle
   stop) waits for the stopped one to finish cleaning up, instead of
   losing its files to that cleanup.
+- **Grids no longer change shape while they load, nor wait for their
+  pictures** (web): a library grid, a shelf, the rail under a title and
+  search results are drawn as soon as their titles are here, in the frame
+  guessed from what is known before a picture loads (posters in the
+  overlays, reading files, and what this browser has seen of each public
+  library's stills), then checked once against their first pictures and
+  changed only if the guess was wrong, and held after that.
+  A grid opened in one shape and turned to the other as its posters came
+  in; measuring first instead left a query or a library on a cold
+  thumbnail cache with nothing on screen for up to 2.5 s. A card's
+  picture pulses until it loads. A provider's cover (a wide banner) is no
+  longer taken for a poster.
+- **Acquire no longer flashes "no library"** (web) while its libraries load.
+- **Acquire's forms on a phone** (web): the link field of the Queue had
+  shrunk beside the library picker to a few letters; the form stacks, and
+  the labels of both forms line up whether or not they carry a key.
+- **Activity rows on a phone** (web): the person and the time take one
+  line and what they did the next, where the name and verb columns left
+  the title a few letters; an episode of a show without seasons reads E5,
+  not S0E5.
+- **`/` finds people on Social again** (web): the header's search had taken
+  the key since it became a field; the page now moves focus on to its
+  people search once the Friends tab has drawn it, as other pages do.
+- **Empty states sit open on the page** (web), an icon and a line or two
+  with no grey panel around them (no search match, an empty library, a
+  missing title or profile).
+- **The Kind filter names kinds** (web): Films and clips, Episodes, Manga,
+  Comics, where it listed the catalog's raw words.
 
 ## [0.3.0] - 2026-11-12
 
