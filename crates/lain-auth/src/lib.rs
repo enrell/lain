@@ -132,6 +132,10 @@ pub enum AuthError {
     Msg(String),
     /// "unknown user" (gateways map it to 404 where Go does).
     UnknownUser,
+    /// "invalid credentials" from a password change: the current password
+    /// given was not the account's. Its own variant so a gateway can give
+    /// it a stable code instead of clients matching the message.
+    WrongPassword,
     Store(StoreError),
 }
 
@@ -140,6 +144,7 @@ impl std::fmt::Display for AuthError {
         match self {
             AuthError::Msg(m) => f.write_str(m),
             AuthError::UnknownUser => f.write_str("unknown user"),
+            AuthError::WrongPassword => f.write_str("invalid credentials"),
             AuthError::Store(e) => e.fmt(f),
         }
     }
@@ -155,6 +160,17 @@ impl From<StoreError> for AuthError {
             other => AuthError::Store(other),
         }
     }
+}
+
+/// What a deleted account leaves behind: the password version its
+/// tokens carry (see [`Auth::delete`]).
+#[derive(Serialize, Deserialize)]
+struct Tombstone {
+    pwd_ver: u64,
+}
+
+fn tombstone_key(id: &str) -> Vec<u8> {
+    format!("deleted-user\0{id}").into_bytes()
 }
 
 fn msg(m: &str) -> AuthError {
@@ -330,17 +346,55 @@ impl<'s> Auth<'s> {
         if self.store.read(|tx| tx.get(Bucket::UsersByName, username.as_bytes()))?.is_some() {
             return Err(msg("username taken"));
         }
-        let u = Self::new_user(format!("user-{username}"), username, password, role)?;
+        let mut u = Self::new_user(format!("user-{username}"), username, password, role)?;
         self.store
             .write(|tx| {
                 if tx.get(Bucket::UsersByName, username.as_bytes())?.is_some() {
                     return Err(abort("username taken"));
+                }
+                // The id derives from the name, so a deleted account's
+                // tokens name this one too: start past the version they
+                // carry, and they fail the password-version check.
+                if let Some(t) = tx.get_json::<Tombstone>(Bucket::Meta, &tombstone_key(&u.id))? {
+                    u.pwd_ver = t.pwd_ver + 1;
+                    tx.delete(Bucket::Meta, &tombstone_key(&u.id))?;
                 }
                 tx.put_json(Bucket::Users, u.id.as_bytes(), &u)?;
                 tx.put(Bucket::UsersByName, username.as_bytes(), u.id.as_bytes())
             })
             .map_err(AuthError::from)?;
         Ok(u.public())
+    }
+
+    /// Deletes an account, its name and its library PIN, and leaves a
+    /// tombstone so a later account of the same name (the same id) does
+    /// not accept the deleted one's tokens. The account's data in other
+    /// tables is the caller's to remove. The last admin cannot go.
+    pub fn delete(&self, id: &str) -> Result<User, AuthError> {
+        let mut gone = None;
+        self.store.write(|tx| {
+            let Some(u) = tx.get_json::<User>(Bucket::Users, id.as_bytes())? else {
+                return Err(abort("unknown user"));
+            };
+            if u.role == ROLE_ADMIN {
+                let admins = tx
+                    .all(Bucket::Users)?
+                    .iter()
+                    .filter_map(|(_, v)| serde_json::from_slice::<User>(v).ok())
+                    .filter(|o| o.role == ROLE_ADMIN && !o.disabled)
+                    .count();
+                if admins <= 1 && !u.disabled {
+                    return Err(abort("cannot delete the last admin"));
+                }
+            }
+            tx.delete(Bucket::Users, id.as_bytes())?;
+            tx.delete(Bucket::UsersByName, u.username.as_bytes())?;
+            tx.delete(Bucket::UserPins, id.as_bytes())?;
+            tx.put_json(Bucket::Meta, &tombstone_key(id), &Tombstone { pwd_ver: u.pwd_ver })?;
+            gone = Some(u);
+            Ok(())
+        })?;
+        Ok(gone.expect("committed").public())
     }
 
     /// All users without hashes, sorted by username. Undecodable
@@ -462,7 +516,7 @@ impl<'s> Auth<'s> {
     pub fn change_password(&self, id: &str, old: &str, new: &str) -> Result<(), AuthError> {
         let u = self.get(id)?.ok_or(AuthError::UnknownUser)?;
         if !u.password_ok(old) {
-            return Err(msg("invalid credentials"));
+            return Err(AuthError::WrongPassword);
         }
         self.set_password(u, new)
     }
@@ -705,6 +759,30 @@ mod tests {
         a.set_role("user-bob", "admin").unwrap();
         assert_eq!(a.verify(&tok).unwrap().role, "admin", "role is read live");
         assert_eq!(a.set_disabled("user-ghost", true).unwrap_err(), AuthError::UnknownUser);
+    }
+
+    #[test]
+    fn deleted_accounts_go_with_their_tokens_and_pin() {
+        let f = Fixture::new();
+        let a = f.auth();
+        a.setup("admin", "password123").unwrap();
+        a.create("bob", "bobpassword", "user").unwrap();
+        a.set_pin("user-bob", "1234", "bobpassword").unwrap();
+        let old = a.login("bob", "bobpassword").unwrap();
+        assert_eq!(a.delete("user-admin").unwrap_err().to_string(), "cannot delete the last admin");
+        assert_eq!(a.delete("user-nobody").unwrap_err(), AuthError::UnknownUser);
+        assert_eq!(a.delete("user-bob").unwrap().username, "bob");
+        assert!(a.get_public("user-bob").is_none() && !a.has_pin("user-bob"));
+        assert!(a.verify(&old).is_err());
+        assert_eq!(a.login("bob", "bobpassword").unwrap_err().to_string(), "invalid credentials");
+        // The same name is the same id: the old token must not open the new account.
+        let bob = a.create("bob", "otherpassword", "user").unwrap();
+        assert_eq!(bob.pwd_ver, 2);
+        assert_eq!(a.verify(&old).unwrap_err().to_string(), "password rotated");
+        assert!(a.verify(&a.login("bob", "otherpassword").unwrap()).is_ok());
+        // A second admin can be deleted while one remains.
+        a.create("carol", "carolpassword", "admin").unwrap();
+        a.delete("user-carol").unwrap();
     }
 
     #[test]

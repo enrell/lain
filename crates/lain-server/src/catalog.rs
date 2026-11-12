@@ -421,6 +421,22 @@ impl Userstate {
             .unwrap_or_default()
     }
 
+    /// Removes every progress row of `user_id` (a deleted account: its
+    /// id comes back with the next account of the same name, which must
+    /// not inherit them). Answers how many went.
+    pub fn forget_user(&self, user_id: &str) -> Result<i64, Error> {
+        self.store
+            .write(|tx| {
+                let mut n = 0;
+                for (k, _) in tx.scan_prefix(Bucket::Progress, &key_prefix(user_id))? {
+                    tx.delete(Bucket::Progress, &k)?;
+                    n += 1;
+                }
+                Ok(n)
+            })
+            .map_err(store_err)
+    }
+
     /// All of one user's progress, in key order.
     pub fn list(&self, user_id: &str) -> Vec<Progress> {
         self.store
@@ -459,6 +475,13 @@ impl Provider for Userstate {
             "list" => {
                 let i: ListInput = input(v, "ListInput")?;
                 Ok(json!(self.list(&i.user_id)))
+            }
+            "forget-user" => {
+                let i: ListInput = input(v, "ForgetUserInput")?;
+                if i.user_id.is_empty() {
+                    return Err(Error::invalid("user_id required"));
+                }
+                Ok(json!(self.forget_user(&i.user_id)?))
             }
             _ => Err(Error::invalid("PutInput, GetInput or ListInput required")),
         }

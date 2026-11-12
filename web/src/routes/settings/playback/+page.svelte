@@ -32,6 +32,7 @@
 		type SubtitleSize
 	} from '$lib/player/player-prefs';
 	import Switch from '$lib/components/primitives/Switch.svelte';
+	import Segmented from '$lib/components/primitives/Segmented.svelte';
 	import { SavedFlash } from '$lib/settings/flash.svelte';
 	import { trackPreferences, type SubtitleMode } from '$lib/player/track-language';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -148,7 +149,7 @@
 	function persistEffects(next: EffectsPolicy, row: string): void {
 		policy = next;
 		if (!session.user || !saveEffectsPolicy(session.user.id, next)) {
-			toasts.error('Could not save video effects in this browser.');
+			toasts.error(t('settings.playbackPage.effectsFailed'));
 			return;
 		}
 		flash.mark(row);
@@ -169,19 +170,19 @@
 	const field = 'h-10 rounded-md border px-3 text-sm text-foreground outline-none';
 </script>
 
-<svelte:head><title>Playback — Settings — Lain</title></svelte:head>
+<svelte:head><title>{t('settings.playbackPage.pageTitle')}</title></svelte:head>
 
-<SettingsGroup title="Playing" description={t('settings.groups.playback.playing')}>
-	<SettingRow id="player" label="Default player" hint="Which player opens when you press Play in this browser." saved={flash.is('player')}>
-		<select class="{field} w-full" value={player} onchange={(e) => changePlayer(e.currentTarget.value)} aria-label="Default player">
-			<option value="browser">Web player</option>
+<SettingsGroup title={t('settings.playbackPage.playing')} description={t('settings.groups.playback.playing')}>
+	<SettingRow id="player" label={t('settings.entry.player')} hint={t('settings.playbackPage.playerHint')} saved={flash.is('player')}>
+		<select class="{field} w-full" value={player} onchange={(e) => changePlayer(e.currentTarget.value)} aria-label={t('settings.entry.player')}>
+			<option value="browser">{t('settings.playbackPage.webPlayer')}</option>
 			<option value="mpv">mpv</option>
 			<option value="vlc">VLC</option>
 		</select>
 		{#snippet below()}
 			{#if player !== 'browser'}
 				<p class="font-mono text-[11px] text-muted">
-					Same machine: opens directly. Elsewhere: <code class="text-foreground">lain login</code> ·
+					{t('settings.playbackPage.localHint')} <code class="text-foreground">lain login</code> ·
 					<code class="text-foreground">lain install-player-handler</code>
 				</p>
 			{/if}
@@ -248,15 +249,15 @@
 	</SettingRow>
 </SettingsGroup>
 
-<SettingsGroup id="effects" title="Video effects · this browser" description={t('settings.groups.playback.effects')}>
+<SettingsGroup id="effects" title={t('settings.playbackPage.effects')} description={t('settings.groups.playback.effects')}>
 	<SettingRow
-		label="Default effect"
-		hint="Anime4K via WebGPU or WebGL2. The player can override it per session."
+		label={t('settings.playbackPage.defaultEffect')}
+		hint={t('settings.playbackPage.defaultEffectHint')}
 		saved={flash.is('effect-default')}
 	>
 		<select
 			class="{field} w-full"
-			aria-label="Default effect"
+			aria-label={t('settings.playbackPage.defaultEffect')}
 			value={policy.default}
 			onchange={(e) => persistEffects({ ...policy, default: e.currentTarget.value as EffectPreset }, 'effect-default')}
 		>
@@ -264,23 +265,25 @@
 		</select>
 	</SettingRow>
 	<SettingRow
-		label="Render on"
-		hint="Server renders the effect into the stream, for a device whose GPU cannot. Needs a GPU on the server."
+		label={t('settings.playbackPage.renderOn')}
+		hint={t('settings.playbackPage.renderOnHint')}
 		saved={flash.is('effect-render')}
 	>
-		<select
-			class="{field} w-full"
-			aria-label="Where video effects are rendered"
+		<!-- Two places, one choice: the app's segmented control, not a select
+		     narrower than every other one on the page. -->
+		<Segmented
+			label={t('settings.playbackPage.renderOnLabel')}
 			value={policy.renderOn ?? 'client'}
-			onchange={(e) => persistEffects({ ...policy, renderOn: e.currentTarget.value as EffectRenderer }, 'effect-render')}
-		>
-			<option value="client">This device</option>
-			<option value="server">Server</option>
-		</select>
+			options={[
+				{ value: 'client', label: t('settings.playbackPage.thisDevice') },
+				{ value: 'server', label: t('settings.playbackPage.server') }
+			]}
+			onchange={(v) => persistEffects({ ...policy, renderOn: v as EffectRenderer }, 'effect-render')}
+		/>
 	</SettingRow>
 	<SettingRow
-		label="Overrides"
-		hint="Track → resolution → library → type → default. Later rows win ties."
+		label={t('settings.playbackPage.overrides')}
+		hint={t('settings.playbackPage.overridesHint')}
 		saved={flash.is('overrides')}
 		stack
 	>
@@ -289,33 +292,33 @@
 				<table class="w-full min-w-[46rem] text-sm">
 					<thead>
 						<tr class="text-left font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-							<th class="pb-2 font-normal">Effect</th><th class="pb-2 font-normal">Type</th><th class="pb-2 font-normal">Library</th>
-							<th class="pb-2 font-normal">Min h</th><th class="pb-2 font-normal">Max h</th><th class="pb-2 font-normal">Track</th><th></th>
+							<th class="pb-2 text-start font-normal">{t('settings.playbackPage.colEffect')}</th><th class="pb-2 text-start font-normal">{t('settings.playbackPage.colType')}</th><th class="pb-2 text-start font-normal">{t('settings.playbackPage.colLibrary')}</th>
+							<th class="pb-2 text-start font-normal">{t('settings.playbackPage.colMin')}</th><th class="pb-2 text-start font-normal">{t('settings.playbackPage.colMax')}</th><th class="pb-2 text-start font-normal">{t('settings.playbackPage.colTrack')}</th><th><span class="sr-only">{t('settings.transcode.encoding.colRemove')}</span></th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each policy.rules as rule, index (index)}
 							<tr class="border-t border-hairline">
 								<td class="py-1.5 pr-2">
-									<select class="{field} w-full" aria-label="Effect for override {index + 1}" value={rule.preset} onchange={(e) => updateRule(index, { preset: e.currentTarget.value as EffectPreset })}>
+									<select class="{field} w-full" aria-label={t('settings.playbackPage.ruleEffect', { n: index + 1 })} value={rule.preset} onchange={(e) => updateRule(index, { preset: e.currentTarget.value as EffectPreset })}>
 										{#each EFFECT_PRESETS as preset (preset.id)}<option value={preset.id}>{preset.label}</option>{/each}
 									</select>
 								</td>
 								<td class="py-1.5 pr-2">
-									<select class="{field} w-full" aria-label="Library type for override {index + 1}" value={rule.libraryType ?? ''} onchange={(e) => updateRule(index, { libraryType: e.currentTarget.value || undefined })}>
-										<option value="">any</option><option value="anime">anime</option><option value="movie">movie</option><option value="series">series</option>
+									<select class="{field} w-full" aria-label={t('settings.playbackPage.ruleType', { n: index + 1 })} value={rule.libraryType ?? ''} onchange={(e) => updateRule(index, { libraryType: e.currentTarget.value || undefined })}>
+										<option value="">{t('settings.playbackPage.any')}</option><option value="anime">{t('settings.librariesPage.types.anime')}</option><option value="movie">{t('settings.librariesPage.types.movie')}</option><option value="series">{t('settings.librariesPage.types.series')}</option>
 									</select>
 								</td>
 								<td class="py-1.5 pr-2">
-									<select class="{field} w-full" aria-label="Library for override {index + 1}" value={rule.libraryId ?? ''} onchange={(e) => updateRule(index, { libraryId: e.currentTarget.value || undefined })}>
-										<option value="">any</option>{#each libraries as library (library.id)}<option value={library.id}>{library.name}</option>{/each}
+									<select class="{field} w-full" aria-label={t('settings.playbackPage.ruleLibrary', { n: index + 1 })} value={rule.libraryId ?? ''} onchange={(e) => updateRule(index, { libraryId: e.currentTarget.value || undefined })}>
+										<option value="">{t('settings.playbackPage.any')}</option>{#each libraries as library (library.id)}<option value={library.id}>{library.name}</option>{/each}
 									</select>
 								</td>
-								<td class="py-1.5 pr-2"><input type="number" min="0" class="{field} w-20 font-mono" aria-label="Minimum height" value={rule.minHeight ?? ''} onchange={(e) => updateRule(index, { minHeight: nonnegative(e.currentTarget.value) })} /></td>
-								<td class="py-1.5 pr-2"><input type="number" min="0" class="{field} w-20 font-mono" aria-label="Maximum height" value={rule.maxHeight ?? ''} onchange={(e) => updateRule(index, { maxHeight: nonnegative(e.currentTarget.value) })} /></td>
-								<td class="py-1.5 pr-2"><input type="number" min="0" class="{field} w-16 font-mono" aria-label="Video track" value={rule.streamIndex ?? ''} onchange={(e) => updateRule(index, { streamIndex: nonnegative(e.currentTarget.value) })} /></td>
+								<td class="py-1.5 pr-2"><input type="number" min="0" class="{field} w-20 font-mono" aria-label={t('settings.playbackPage.minHeight')} value={rule.minHeight ?? ''} onchange={(e) => updateRule(index, { minHeight: nonnegative(e.currentTarget.value) })} /></td>
+								<td class="py-1.5 pr-2"><input type="number" min="0" class="{field} w-20 font-mono" aria-label={t('settings.playbackPage.maxHeight')} value={rule.maxHeight ?? ''} onchange={(e) => updateRule(index, { maxHeight: nonnegative(e.currentTarget.value) })} /></td>
+								<td class="py-1.5 pr-2"><input type="number" min="0" class="{field} w-16 font-mono" aria-label={t('settings.playbackPage.track')} value={rule.streamIndex ?? ''} onchange={(e) => updateRule(index, { streamIndex: nonnegative(e.currentTarget.value) })} /></td>
 								<td class="py-1.5 text-right">
-									<button type="button" class="inline-flex size-8 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-danger" aria-label="Remove override {index + 1}" onclick={() => removeRule(index)}>
+									<button type="button" class="inline-flex size-8 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-danger" aria-label={t('settings.playbackPage.ruleRemove', { n: index + 1 })} onclick={() => removeRule(index)}>
 										<X class="size-4" />
 									</button>
 								</td>
@@ -326,7 +329,7 @@
 			</div>
 		{/if}
 		<Button variant="tonal" size="field" onclick={addRule}>
-			<Plus class="size-4" /> Add override
+			<Plus class="size-4" /> {t('settings.playbackPage.addOverride')}
 		</Button>
 	</SettingRow>
 </SettingsGroup>

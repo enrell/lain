@@ -72,6 +72,8 @@ export interface Library {
 	/** lain-rs (D-157): the named root and the path inside it. */
 	root?: string;
 	root_path?: string;
+	/** The admin's order, 1 first; absent for a library never ordered. */
+	position?: number;
 }
 
 /** GET /api/roots (lain-rs): this machine's root mapping. */
@@ -350,6 +352,8 @@ export interface ScanStatus {
 	error?: string;
 	/** What started this scan: a button press or the filesystem watcher. */
 	trigger?: 'manual' | 'watch';
+	/** D-286: a scan asked for while this one runs; it starts by itself after. */
+	queued?: boolean;
 }
 
 /** internal/contracts.Enrichment (media.go). */
@@ -430,6 +434,8 @@ export interface BindingView {
 	mode: 'exactly-one' | 'ordered-many' | 'first-accepted' | 'merge-many' | 'fan-out' | string;
 	providers: string[];
 	generation: number;
+	/** D-285: what the job is, in one sentence, when the server can say. */
+	summary?: string;
 }
 
 /** core.Event (registry.go). */

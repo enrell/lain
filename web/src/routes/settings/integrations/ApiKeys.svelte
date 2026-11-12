@@ -37,7 +37,7 @@
 				api.libraries.list()
 			]);
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not load the keys.'));
+			toasts.error(errorMessage(err, t('settings.integrationsPage.keysLoadFailed')));
 		} finally {
 			ready = true;
 		}
@@ -57,7 +57,7 @@
 			name = '';
 			picked = [];
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not create the key.'));
+			toasts.error(errorMessage(err, t('settings.integrationsPage.createFailed')));
 		} finally {
 			creating = false;
 		}
@@ -78,9 +78,9 @@
 			await api.apiKeys.remove(key.id);
 			keys = keys.filter((k) => k.id !== key.id);
 			if (fresh?.id === key.id) fresh = null;
-			toasts.success(`Key “${key.name}” revoked.`);
+			toasts.success(t('settings.integrationsPage.keyRevoked', { name: key.name }));
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not revoke the key.'));
+			toasts.error(errorMessage(err, t('settings.integrationsPage.revokeFailed')));
 		}
 	}
 
@@ -90,24 +90,22 @@
 			await navigator.clipboard.writeText(fresh.key);
 			copied = true;
 		} catch {
-			toasts.error('Could not copy to the clipboard.');
+			toasts.error(t('settings.integrationsPage.copyFailed'));
 		}
 	}
 </script>
 
-<SettingsGroup id="api-keys" title="API keys" description={t('settings.groups.integrations.apiKeys')}>
+<SettingsGroup id="api-keys" title={t('settings.integrationsPage.apiKeys')} description={t('settings.groups.integrations.apiKeys')}>
 	{#if !ready}
-		<div class="flex items-center gap-2 py-4 text-sm text-muted"><Spinner /> Loading…</div>
+		<div class="flex items-center gap-2 py-4 text-sm text-muted"><Spinner /> {t('settings.integrationsPage.loading')}</div>
 	{:else}
 		{#if fresh?.key}
 			<div class="bg-accent/5 py-4" role="status">
-				<p class="text-sm text-foreground">
-					Key for “{fresh.name}”. Copy it now: it is not shown again.
-				</p>
+				<p class="text-sm text-foreground">{t('settings.integrationsPage.freshKey', { name: fresh.name })}</p>
 				<div class="mt-2 flex items-center gap-2">
 					<code class="min-w-0 flex-1 truncate rounded-md bg-field px-3 py-2 font-mono text-xs">{fresh.key}</code>
 					<Button variant="tonal" size="field" onclick={() => void copy()}>
-						{#if copied}<Check class="size-4" /> Copied{:else}<Clipboard class="size-4" /> Copy{/if}
+						{#if copied}<Check class="size-4" /> {t('settings.integrationsPage.copied')}{:else}<Clipboard class="size-4" /> {t('settings.integrationsPage.copy')}{/if}
 					</Button>
 				</div>
 			</div>
@@ -123,8 +121,8 @@
 								{key.libraries.map(libraryName).join(', ')}
 							</p>
 						</div>
-						<Button variant="ghost" size="field" class="hover:text-danger!" onclick={() => askRevoke(key)} aria-label={`Revoke ${key.name}`}>
-							<Trash2 class="size-4" /> Revoke
+						<Button variant="ghost" size="field" class="hover:text-danger!" onclick={() => askRevoke(key)} aria-label={t('settings.integrationsPage.revokeFor', { name: key.name })}>
+ 							<Trash2 class="size-4" /> {t('settings.groups.integrations.revoke')}
 						</Button>
 					</li>
 				{/each}
@@ -138,20 +136,20 @@
 				void create();
 			}}
 		>
-			<SettingRow label="Name" hint={t('settings.groups.integrations.keyNameHint')}>
+			<SettingRow label={t('settings.integrationsPage.keyName')} hint={t('settings.groups.integrations.keyNameHint')}>
 				<input
 					class="h-9 w-full rounded-md border px-3 text-sm text-foreground outline-none placeholder:text-muted/60"
 					bind:value={name}
-					placeholder="Downloader"
+					placeholder={t('settings.integrationsPage.keyNamePlaceholder')}
 					required
-					aria-label="Name"
+					aria-label={t('settings.integrationsPage.keyName')}
 				/>
 			</SettingRow>
-			<SettingRow label="Libraries" hint={t('settings.groups.integrations.apiKeysScope')} stack>
+			<SettingRow label={t('settings.integrationsPage.keyLibraries')} hint={t('settings.groups.integrations.apiKeysScope')} stack>
 				{#if libraries.length === 0}
-					<p class="text-sm text-muted">Add a library first.</p>
+					<p class="text-sm text-muted">{t('settings.integrationsPage.noLibraries')}</p>
 				{:else}
-					<div class="flex flex-wrap gap-2" role="group" aria-label="Libraries">
+					<div class="flex flex-wrap gap-2" role="group" aria-label={t('settings.integrationsPage.keyLibraries')}>
 						{#each libraries as lib (lib.id)}
 							<label
 								class={[
@@ -173,7 +171,7 @@
 			</SettingRow>
 			<div class="flex justify-end py-3">
 				<Button type="submit" size="field" loading={creating} disabled={!name.trim() || picked.length === 0}>
-					Create key <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
+					{t('settings.integrationsPage.createKey')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
 				</Button>
 			</div>
 		</form>

@@ -15,7 +15,15 @@ export interface PatchUserInput {
 	playback?: UserPlaybackPolicy;
 }
 
-/** Gateway routes: GET/POST /api/users, PATCH /api/users/{id} (admin). */
+/** What a deleted account took with it. */
+export interface UserDeleted {
+	status: string;
+	rows_removed: number;
+	/** Private libraries it owned, now the deleting admin's. */
+	libraries_reassigned: string[];
+}
+
+/** Gateway routes: GET/POST /api/users, PATCH and DELETE /api/users/{id} (admin). */
 export const users = {
 	list: () => request<User[]>('/api/users'),
 
@@ -23,5 +31,7 @@ export const users = {
 		request<User>('/api/users', { method: 'POST', body: input }),
 
 	patch: (id: string, input: PatchUserInput) =>
-		request<User>(`/api/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: input })
+		request<User>(`/api/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: input }),
+
+	remove: (id: string) => request<UserDeleted>(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' })
 };
