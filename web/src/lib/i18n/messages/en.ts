@@ -507,6 +507,7 @@ const en = {
 		},
 		unit: {
 			episode: 'S{season}E{episode}',
+			episodeOnly: 'E{episode}',
 			chapter: 'Ch {n}',
 			volume: 'Vol {n}'
 		},

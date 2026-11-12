@@ -46,6 +46,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Acquire's forms on a phone** (web): the link field of the Queue had
   shrunk beside the library picker to a few letters; the form stacks, and
   the labels of both forms line up whether or not they carry a key.
+- **Activity rows on a phone** (web): the person and the time take one
+  line and what they did the next, where the name and verb columns left
+  the title a few letters; an episode of a show without seasons reads E5,
+  not S0E5.
 - **`/` finds people on Social again** (web): the header's search had taken
   the key since it became a field; the page now moves focus on to its
   people search once the Friends tab has drawn it, as other pages do.

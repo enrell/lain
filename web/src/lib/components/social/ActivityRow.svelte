@@ -28,16 +28,21 @@
 			if (a.season) return t('social.unit.volume', { n: a.season });
 			return '';
 		}
-		if (a.episode) return t('social.unit.episode', { season: a.season ?? 0, episode: a.episode });
+		// A show without seasons says E5, not S0E5.
+		if (a.episode) return a.season ? t('social.unit.episode', { season: a.season, episode: a.episode }) : t('social.unit.episodeOnly', { episode: a.episode });
 		return '';
 	});
 </script>
 
-<li class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-hairline py-3">
+<!-- A phone gives the person and the time one line and what they did the
+     next: in one row the name and verb columns left the title a few letters. -->
+<li class="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-hairline py-3">
 	{#if showUser}
-		<span class="w-44 min-w-0 shrink-0"><UserChip {user} /></span>
+		<span class="min-w-0 flex-1 sm:w-44 sm:flex-none sm:shrink-0"><UserChip {user} /></span>
 	{/if}
-	<span class="w-24 shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-accent">{verb}</span>
-	<span class="min-w-0 flex-1"><WorkLink work={activity.work} {detail} /></span>
+	<span class={['flex min-w-0 items-baseline gap-3 sm:flex-1 sm:gap-4', showUser ? 'max-sm:order-last max-sm:basis-full' : 'flex-1'].join(' ')}>
+		<span class="shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-accent sm:w-24">{verb}</span>
+		<span class="min-w-0 flex-1"><WorkLink work={activity.work} {detail} /></span>
+	</span>
 	<time class="ms-auto shrink-0 font-mono text-[10px] text-muted">{formatRelative(activity.at)}</time>
 </li>
