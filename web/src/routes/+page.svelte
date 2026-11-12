@@ -20,9 +20,9 @@
 	import { frameNow, settleFrame } from '$lib/stores/frames';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
-	import { compareEpisodes, type SeriesGroup } from '$lib/utilities/grouping';
+	import { compareEpisodes, normalizeSeriesTitle, type SeriesGroup } from '$lib/utilities/grouping';
 	import { artItem } from '$lib/utilities/browse';
-	import { listTitles, pagedTitles } from '$lib/stores/titles';
+	import { listTitles, pagedTitles, titlesOf } from '$lib/stores/titles';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { t } from '$lib/i18n';
 	import { isInProgress, nextUpAfter, sortByRecent } from '$lib/utilities/progress';
@@ -37,8 +37,9 @@
 	const continueReading = $derived(continueItems.slice(1).filter((i) => isReadable(i.kind)));
 	let progressMap = $state<Map<string, Progress>>(new Map());
 	let nextUpItems = $state<CatalogItem[]>([]);
-	// The titles kept as favourites (the social module's list), newest first.
-	let favoriteItems = $state<CatalogItem[]>([]);
+	// The titles kept as favourites (the social module's list), newest first,
+	// each whole: a favourite kept on an episode is its show.
+	let favoriteTitles = $state<SeriesGroup[]>([]);
 	// With nothing under way the hero offers the first Next up, so its rail
 	// starts after it, as Continue watching does.
 	const nextUpShown = $derived(continueItems.length > 0 ? nextUpItems : nextUpItems.slice(1));
@@ -90,10 +91,10 @@
 	}
 
 	// A server without the social module, or an account with no favourites, has no such rail.
-	async function loadFavorites(): Promise<CatalogItem[]> {
+	async function loadFavorites(): Promise<SeriesGroup[]> {
 		try {
 			const ids = (await api.social.settings()).favorites.map((f) => f.item_id ?? '').filter((id) => id !== '');
-			return (await ensureItems(ids.reverse())).filter((item): item is CatalogItem => item !== undefined);
+			return await titlesOf((await ensureItems(ids.reverse())).filter((item): item is CatalogItem => item !== undefined));
 		} catch {
 			return [];
 		}
@@ -131,14 +132,24 @@
 				progressList.filter((p) => p.item_id !== '' && !p.completed && p.position_sec >= 1)
 			).slice(0, 36);
 			const touchedItems = await ensureItems(touched.map((p) => p.item_id));
+			// One card a title, the part touched last: a show with two episodes
+			// left half-way had two cards, and the title's own Resume picks that
+			// one too (`playTarget`).
+			const titles = new Set<string>();
 			const started = touched
 				.map((p, i) => ({ p, item: touchedItems[i] }))
 				.filter((row): row is { p: Progress; item: CatalogItem } => row.item !== undefined && (isReadable(row.item.kind) || isInProgress(row.p)))
+				.filter((row) => {
+					const key = normalizeSeriesTitle(row.item.title);
+					if (titles.has(key)) return false;
+					titles.add(key);
+					return true;
+				})
 				.slice(0, 12);
 			progressMap = new Map(started.map((row) => [row.p.item_id, row.p]));
 			continueItems = started.map((row) => row.item);
 			nextUpItems = await loadNextUp(progressList);
-			favoriteItems = await loadFavorites();
+			favoriteTitles = await loadFavorites();
 			heroStart =
 				continueItems.length === 0 && nextUpItems.length === 0 && recent[0]
 					? pagedTitles(recentPage)
@@ -157,7 +168,7 @@
 				...(heroStart ? [heroStart.id] : []),
 				...continueItems.map((i) => i.id),
 				...nextUpItems.map((i) => i.id),
-				...favoriteItems.map((i) => i.id),
+				...favoriteTitles.map((g) => artItem(g).id),
 				...recent.map((i) => i.id),
 				// A card's picture is its title's first episode's (see `artItem`).
 				...shown.flatMap((r) => r.groups.map((g) => artItem(g).id))
@@ -271,8 +282,8 @@
 					<MediaRow title="Continue reading" href="/library" actionLabel={t('home.browseLibrary')} items={continueReading} {progressMap} layout="poster" />
 				{/if}
 
-				{#if favoriteItems.length > 0}
-					<MediaRow title="Favorites" href="/favorites" actionLabel="All favorites" items={favoriteItems} {progressMap} layout="poster" />
+				{#if favoriteTitles.length > 0}
+					<MediaRow title="Favorites" href="/favorites" actionLabel="All favorites" groups={favoriteTitles} progressMap={allProgress} layout="poster" />
 				{/if}
 
 				{#if nextUpWatching.length > 0}

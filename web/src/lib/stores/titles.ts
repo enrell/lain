@@ -1,7 +1,7 @@
 import { api } from '$lib/api';
 import type { CatalogListOptions } from '$lib/api/catalog';
-import type { CatalogPage } from '$lib/api/types';
-import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
+import type { CatalogItem, CatalogPage } from '$lib/api/types';
+import { groupItems, normalizeSeriesTitle, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
 
 /**
  * A title with every one of its files. A page of the newest files names
@@ -46,4 +46,25 @@ export async function listTitles(opts: Omit<CatalogListOptions, 'group' | 'offse
 	const cut = page.total > page.items.length;
 	const groups = cut ? await Promise.all(listed.map((g) => (g.items.some((i) => i.episode > 0) ? wholeTitle(g) : g))) : listed;
 	return { groups, total: -1 };
+}
+
+/**
+ * The titles some files belong to, whole and in the files' order, each
+ * once: a favourite kept on an episode is its show, two episodes of one
+ * show kept apart are one title. A part of a series is asked for its
+ * title's files; a lookup that fails keeps the file alone.
+ */
+export async function titlesOf(items: CatalogItem[]): Promise<SeriesGroup[]> {
+	const seen = new Set<string>();
+	const firsts = items.filter((item) => {
+		const key = normalizeSeriesTitle(item.title);
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+	return Promise.all(
+		firsts.map((item) =>
+			item.episode > 0 || item.season > 0 ? wholeTitle(groupItems([item])[0]) : Promise.resolve(groupItems([item])[0])
+		)
+	);
 }
