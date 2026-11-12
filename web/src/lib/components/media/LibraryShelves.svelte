@@ -10,21 +10,21 @@
 	import { guessFrame, settleFrame } from '$lib/stores/frames';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import type { Shape } from '$lib/stores/shapes.svelte';
-	import { wholeTitle } from '$lib/stores/titles';
-	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
+	import { listTitles } from '$lib/stores/titles';
+	import type { SeriesGroup } from '$lib/utilities/grouping';
 	import { t } from '$lib/i18n';
 	import MediaCard from './MediaCard.svelte';
 	import { RAIL } from './grid';
 	import ShowCard from './ShowCard.svelte';
 
-	const FETCH = 60;
 	const SHOWN = 14;
 
 	let { libraries, view }: { libraries: Library[]; /** The view switch, kept in reach in the sticky band. */ view?: Snippet } = $props();
 
 	interface Shelf {
 		groups: SeriesGroup[];
-		total: number;
+		/** Whether the library has titles past these. */
+		more: boolean;
 		failed: boolean;
 		/** Guessed when the shelf is drawn, checked once against its pictures, then kept (see `guessFrame`). */
 		frame: Shape;
@@ -34,21 +34,19 @@
 
 	async function load(lib: Library): Promise<void> {
 		try {
-			const page = await api.catalog.list({ libraryId: lib.id, limit: FETCH, sort: 'recent' });
-			const recent = sortGroups(groupItems(page.items), 'recent').slice(0, SHOWN);
-			// The newest files name the titles; each title then gets all of its
-			// files (see `wholeTitle`).
-			const groups = await Promise.all(recent.map(wholeTitle));
+			// The newest titles, each with all of its files (D-283; see `listTitles`).
+			const page = await listTitles({ libraryId: lib.id, limit: SHOWN, sort: 'recent' });
+			const groups = page.groups;
 			// A card needs its picture's overlay only; a long show's every episode
 			// would not fit in one request. Drawn without waiting for a picture,
 			// then checked once: the frame changes only if the guess was wrong.
 			const frame = await guessFrame(groups);
-			shelves[lib.id] = { groups, total: page.total, failed: false, frame };
+			shelves[lib.id] = { groups, more: page.total < 0 ? true : page.total > groups.length, failed: false, frame };
 			void settleFrame(groups).then((settled) => {
 				if (settled !== frame) shelves[lib.id].frame = settled;
 			});
 		} catch {
-			shelves[lib.id] = { groups: [], total: 0, failed: true, frame: 'portrait' };
+			shelves[lib.id] = { groups: [], more: false, failed: true, frame: 'portrait' };
 		}
 	}
 
@@ -147,7 +145,7 @@
 							{/if}
 						</div>
 					{/each}
-					{#if shelf.total > shelf.groups.reduce((n, g) => n + g.count, 0)}
+					{#if shelf.more}
 						<a
 							href={`/library/${lib.id}`}
 							class="flex h-[calc(var(--card-w)/var(--r))] w-28 shrink-0 snap-start items-center justify-center rounded-xl border border-dashed border-line text-sm text-muted transition-colors hover:border-white/25 hover:text-foreground"
