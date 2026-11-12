@@ -19,6 +19,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   stills and posters, where results were rows of mixed shapes. Arrow keys
   move between results and from the header's field into them; up from the
   first row goes back to the field. The library grid answers the same keys.
+- **Home shows posters whole** (web): a library's row takes the frame its
+  pictures decide (a films library of posters is a poster rail, not
+  widescreen cards cropping each poster), and an upright picture in a
+  widescreen card is shown whole over a blurred copy of itself.
 - **Tracking's grid uses the library's card sizes** (web), and a wide
   cover is shown whole instead of cropped to a poster.
 - **The library's view switch stays put** (web): By library and All titles
