@@ -1984,7 +1984,7 @@
 						onchange={onQualityChoice}
 						aria-label="Transcode quality"
 					>
-						<option value="">{mode === 'transcode' ? 'Auto' : 'Original'}</option>
+						<option value="">{t(mode === 'transcode' ? 'player.qualityAuto' : 'player.qualityOriginal')}</option>
 						{#each qualities as quality (quality.name)}
 							<option value={quality.name}>
 								{quality.name}{quality.bitrate_kbps ? ` · ${Math.round(quality.bitrate_kbps / 1000)} Mbps` : ''}

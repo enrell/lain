@@ -894,7 +894,11 @@ const en = {
 	},
 	player: {
 		nextEpisode: 'Next episode',
-		nextEpisodeNamed: 'Next episode: {name} (Shift+N)'
+		nextEpisodeNamed: 'Next episode: {name} (Shift+N)',
+		// The quality menu's first choice: the server's pick in a prepared
+		// stream, the file itself in direct play.
+		qualityAuto: 'Auto',
+		qualityOriginal: 'Original'
 	},
 	playerPrefs: {
 		group: 'Skipping and subtitles · this browser',
