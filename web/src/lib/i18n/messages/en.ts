@@ -17,6 +17,11 @@ const en = {
 		close: 'Close',
 		signOut: 'Sign out'
 	},
+	// A row of cards' buttons for a mouse (Rail); the keyboard walks it with the arrows.
+	rail: {
+		previous: 'Earlier in this row',
+		next: 'Further in this row'
+	},
 	auth: {
 		username: 'Username',
 		password: 'Password',
@@ -45,7 +50,9 @@ const en = {
 			tagline: 'Your media. Your machine. Your rules.',
 			submit: 'Sign in',
 			failed: 'Sign in failed.',
-			mismatch: 'That username and password do not match. Check both and try again.'
+			mismatch: 'That username and password do not match. Check both and try again.',
+			disabled: 'This account is disabled. An administrator of this server can turn it back on.',
+			forgot: 'Forgot your password? An administrator of this server can set a new one.'
 		}
 	},
 	privateLibrary: {
@@ -128,6 +135,7 @@ const en = {
 	},
 	boot: {
 		connecting: 'Connecting to your server…',
+		redirecting: 'Redirecting',
 		retry: 'Try again'
 	},
 	userMenu: {
@@ -1002,11 +1010,14 @@ const en = {
 	},
 	// An address the app does not know, or a page that failed to load (+error.svelte).
 	errorPage: {
+		notFoundEyebrow: '404 · Not a page of Lain',
 		notFoundTitle: 'Nothing at this address',
-		notFoundBody: '{path} is not a page of Lain. The link may be mistyped, or the page has moved.',
+		notFoundBody: 'The link may be mistyped, or the page has moved.',
+		failedEyebrow: '{status} · Did not load',
 		failedTitle: 'This page did not load',
 		failedBody: 'Something went wrong while opening it.',
 		home: 'Go to Home',
+		back: 'Go back',
 		reload: 'Try again',
 		searchHint: 'Looking for a title? Press / to search.'
 	},
@@ -1329,7 +1340,6 @@ const en = {
 			eyebrow: 'First step',
 			title: 'Watch alongside the people on this server.',
 			body: 'Friends see what you watch, read and rate, and you see theirs: their activity in the Feed, their ratings on each title, collections they share with you.',
-			privacy: 'Privacy settings',
 			stepAdd: 'Add a friend',
 			stepAddText: 'Open Friends, find them by name and add them; they accept from their notifications.',
 			stepFollow: 'Follow along',
@@ -1354,7 +1364,8 @@ const en = {
 			outgoing: 'Sent requests',
 			blocked: 'Blocked',
 			list: { one: '{count} friend', other: '{count} friends' },
-			none: 'No friends yet.',
+			none: 'No friends yet',
+			noneBody: 'Find someone by name above and add them; they accept from their notifications.',
 			since: 'friends since {when}'
 		},
 		notify: {
@@ -1366,7 +1377,7 @@ const en = {
 			openCollection: 'Open the collection',
 			unread: { one: '{count} unread', other: '{count} unread' },
 			markAll: 'Mark all read',
-			empty: 'No notifications.',
+			empty: 'No notifications',
 			emptyBody: 'Friend requests, and what friends share with you, arrive here.',
 			failed: 'Could not update notifications.'
 		},
@@ -1452,7 +1463,7 @@ const en = {
 			visibility: 'Who can see it',
 			create: 'Create',
 			createFailed: 'Could not create the collection.',
-			empty: 'No collections yet.',
+			empty: 'No collections yet',
 			emptyBody: 'Yours and the ones friends share with you appear here.',
 			sharedBy: 'shared by {name}',
 			edit: 'Edit',
@@ -1611,6 +1622,7 @@ const en = {
 		allTitles: 'All titles',
 		viewKey: 'Switch view (V)',
 		shelves: 'Libraries on this page',
+		shelfCount: { one: '{count} library', other: '{count} libraries' },
 		viewAll: 'View all',
 		seeAll: 'See all',
 		shelfFailed: 'Could not load this library.',
@@ -1639,6 +1651,9 @@ const en = {
 		upNext: 'Up next'
 	},
 	tracking: {
+		pageTitle: 'Tracking — Lain',
+		typeFilter: 'Media type',
+		statusFilter: 'Status',
 		subtitle: 'Everything your connected accounts track — manga, comics, anime, films and shows in one place.',
 		films: 'Films',
 		shows: 'Shows',
@@ -1921,7 +1936,7 @@ const en = {
 		},
 		wanted: {
 			loadFailed: 'Could not load monitored titles.',
-			empty: 'Nothing is monitored.',
+			empty: 'Nothing is monitored',
 			emptyBody: 'Press m to monitor a title, or m on a search result.',
 			keys: 's search now · t subtitles · e edit · Space pause/resume · Delete stop · j/k move · m monitor · r RSS now',
 			subtitles: 'Subtitles',
@@ -1947,7 +1962,8 @@ const en = {
 		},
 		blocklist: {
 			group: 'Blocked releases',
-			empty: 'Nothing is blocked.',
+			empty: 'Nothing is blocked',
+			emptyBody: 'A grab that fails is blocked here by its hash and title, so no search takes it again.',
 			keys: 'Delete unblocks · j/k move · Shift+P purges held files',
 			unblock: 'Unblock',
 			loadFailed: 'Could not load the blocklist.',
@@ -2017,9 +2033,11 @@ const en = {
 			submit: 'Search',
 			failed: 'Search failed.',
 			indexerFailed: '{name} did not answer: {error}',
-			empty: 'No releases found.',
+			empty: 'No releases found',
+			emptyBody: 'Try fewer words, or leave the season and episode out.',
 			noIndexers: 'No indexer is configured yet.',
-			keys: { one: '{count} release · Enter grabs · j/k move', other: '{count} releases · Enter grabs · j/k move' },
+			count: { one: '{count} release', other: '{count} releases' },
+			keys: 'Enter grabs · m monitors · j/k move',
 			seedersPeers: 'Seeders / peers',
 			grab: 'Grab',
 			grabbed: 'Grabbed {title}.',
@@ -2034,9 +2052,9 @@ const en = {
 			link: 'Magnet or .torrent link',
 			addLink: 'Add',
 			loadFailed: 'Could not load the queue.',
-			empty: 'Nothing in the queue.',
+			empty: 'Nothing in the queue',
 			emptyBody: 'A release grabbed from Search, or a link added above, waits here until its files are in a library.',
-			keys: 'p pause/resume · i retry import · Delete remove · j/k move · / add a link',
+			keys: 'p pause/resume · i retry import · Delete remove · j/k move · L add a link',
 			usage: 'Torrents use {used}; with downloads {shared} of {max}',
 			usageUnlimited: 'Torrents use {used} (no budget set)',
 			peers: { one: '{count} peer', other: '{count} peers' },
@@ -2205,10 +2223,10 @@ const en = {
 			downloadFailed: 'Could not fetch the subtitle',
 			itemAction: 'Subtitles',
 			tabWritten: 'Written by Lain',
-			tabWrittenEmpty: 'No subtitle fetched yet.',
+			tabWrittenEmpty: 'No subtitle fetched yet',
 			tabWrittenHint: 'Sidecars Lain placed next to library files. Remove one from its title’s subtitle panel.',
 			tabRefused: 'Refused',
-			tabRefusedEmpty: 'Nothing refused.',
+			tabRefusedEmpty: 'Nothing refused',
 			tabRefusedHint: 'Files the sync check refused are never taken again until cleared.',
 			tabKeys: 'j/k move · Del clear a refusal · Shift+C clear all',
 			clear: 'Clear',

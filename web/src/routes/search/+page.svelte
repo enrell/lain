@@ -278,7 +278,8 @@
 <div class="space-y-6">
 	<header class="space-y-3">
 		<h1 class="page-title">{t('search.heading')}</h1>
-		<!-- A phone's field: from md up the header holds the search bar (HeaderSearch). -->
+		<!-- A phone's field: from md up the header holds the search bar (HeaderSearch).
+		     Filled, as the library's and the favourites' search fields are. -->
 		<form class="relative md:hidden" onsubmit={submit} role="search">
 			<Search
 				class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
@@ -303,7 +304,7 @@
 				aria-label={t('search.label')}
 				autocapitalize="none"
 				spellcheck={false}
-				class="h-12 w-full rounded-card border border-line bg-surface pl-10 pr-12 text-sm text-foreground placeholder:text-muted/60 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+				class="h-11 w-full rounded-md border border-transparent bg-field pl-10 pr-12 text-sm text-foreground transition-colors placeholder:text-muted/70 hover:border-hairline focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
 			/>
 			{#if query !== ''}
 				<button

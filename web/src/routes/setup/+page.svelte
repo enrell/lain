@@ -63,12 +63,6 @@
 			busy = false;
 		}
 	}
-
-	// The sign-in page's fields: with an edge of their own, the card's
-	// surface does not swallow them. The edge overrides the field's own
-	// border, so it carries the focus colour too: without it the focused
-	// field looked like the others (the field has no outline).
-	const FIELD = 'h-11! border-line! focus:border-accent!';
 </script>
 
 <svelte:head><title>{t('auth.setup.pageTitle')}</title></svelte:head>
@@ -111,6 +105,7 @@
 							{error}
 						</div>
 					{/if}
+					<!-- The sign-in page's fields (Input's `edged`): the card's surface does not swallow them. -->
 					<Input
 						id="setup-username"
 						label={t('auth.username')}
@@ -119,7 +114,7 @@
 						autocomplete="username"
 						autocapitalize="none"
 						spellcheck={false}
-						class={fieldErrors.username ? 'h-11!' : FIELD}
+						edged
 					/>
 					<Input
 						id="setup-password"
@@ -129,7 +124,7 @@
 						error={fieldErrors.password ?? null}
 						hint={t('auth.setup.passwordHint')}
 						autocomplete="new-password"
-						class={fieldErrors.password ? 'h-11!' : FIELD}
+						edged
 					/>
 					<Input
 						id="setup-confirm"
@@ -138,7 +133,7 @@
 						bind:value={confirm}
 						error={fieldErrors.confirm ?? null}
 						autocomplete="new-password"
-						class={fieldErrors.confirm ? 'h-11!' : FIELD}
+						edged
 					/>
 					<Button type="submit" size="lg" class="w-full" loading={busy}>{t('auth.setup.submit')}</Button>
 				</form>
