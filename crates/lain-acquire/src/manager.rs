@@ -777,7 +777,7 @@ impl Manager {
         // (D-279); a manual grab names no title, so the answer stands.
         let known = match g.monitored_id.as_str() {
             "" => Default::default(),
-            id => self.st.monitored().iter().find(|m| m.id == id).map(crate::monitored::names).unwrap_or_default(),
+            id => self.monitored(id).map(|m| crate::monitored::names(&m)).unwrap_or_default(),
         };
         g.release = settle((self.d.parse)(&g.title, &lib.kind), |t| known.contains(&loose_key(t)));
         let (paused, dir, c) = {
