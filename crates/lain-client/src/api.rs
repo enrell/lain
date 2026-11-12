@@ -23,9 +23,9 @@ use lain_api::{
     AdminTranscodes, BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health,
     IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryPatch, LocalPlayers, LoginReply, Mascots,
     ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions, PlaybackPlan,
-    PluginsView, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar, Sidecars,
-    StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings, TranscodeSettingsView, TranscodeStatus,
-    User, UserPatch, WithdrawReply,
+    PluginsView, PreferencesPatch, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar,
+    Sidecars, StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings, TranscodeSettingsView,
+    TranscodeStatus, User, UserPatch, WithdrawReply,
 };
 
 use crate::error::ClientError;
@@ -288,9 +288,19 @@ impl Client {
         self.call(Method::GET, "/api/me", Body::None).await
     }
 
-    /// A three-letter ISO 639-2 code, or `""` to clear it.
+    /// D-071's one language: a three-letter ISO 639-2 code, or `""` to
+    /// clear it. On a server with D-280 it sets the audio and the
+    /// subtitle language both.
     pub async fn set_preferred_language(&self, language: &str) -> Result<User, ClientError> {
         self.call(Method::PATCH, "/api/me/preferences", json_body(&json!({"preferred_language": language}))).await
+    }
+
+    /// D-280's track preferences: only the fields present change. A
+    /// server before D-280 ignores the new fields and answers 400 for a
+    /// patch without `preferred_language`; read the result with
+    /// [`User::track_preferences`].
+    pub async fn update_preferences(&self, patch: &PreferencesPatch) -> Result<User, ClientError> {
+        self.call(Method::PATCH, "/api/me/preferences", json_body(patch)).await
     }
 
     /// Changes the password; every session of the account, this one
