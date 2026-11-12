@@ -26,6 +26,8 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatBytes, formatRelative } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
+	import { tabStep } from '$lib/utilities/tabs';
 	import BlocklistTab from '$lib/components/acquire/BlocklistTab.svelte';
 	import SubtitlesTab from '$lib/components/acquire/SubtitlesTab.svelte';
 	import WantedTab from '$lib/components/acquire/WantedTab.svelte';
@@ -231,9 +233,24 @@
 		void goto(url, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 
+	function onTabKey(e: KeyboardEvent): void {
+		const next = tabStep(e.key, TABS, tab);
+		if (!next) return;
+		e.preventDefault();
+		setTab(next);
+		document.getElementById(`acquire-tab-${next}`)?.focus();
+	}
+
 	// Nothing to search with: the page says what it is for and offers the first step.
 	const noLibrary = $derived(loaded && libraries.length === 0);
 	const firstRun = $derived(noLibrary || (loaded && tab === 'search' && indexers.length === 0));
+
+	usePageKeys(() => [
+		{ keys: ['1', '…', '5'], label: t('pageKeys.tabs') },
+		...(tab === 'search' && !firstRun ? [{ keys: ['/'], label: t('pageKeys.releaseSearch') }] : []),
+		...(tab === 'queue' ? [{ keys: ['/'], label: t('acquire.queue.link') }] : []),
+		...(firstRun ? [{ keys: [noLibrary ? 'L' : 'I'], label: noLibrary ? t('acquire.noLibrariesAction') : t('acquire.firstRun.addIndexer') }] : [])
+	]);
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
 		if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
@@ -275,10 +292,10 @@
 		</div>
 	</header>
 
-	<div class="flex gap-6 border-b border-hairline" role="tablist" aria-label={t('acquire.heading')}>
+	<div class="flex gap-6 border-b border-hairline" role="tablist" aria-label={t('acquire.heading')} tabindex="-1" onkeydown={onTabKey}>
 		{#each [{ id: 'search', key: '1', label: t('acquire.tab.search') }, { id: 'queue', key: '2', label: t('acquire.tab.queue') }, { id: 'wanted', key: '3', label: t('acquire.tab.wanted') }, { id: 'blocklist', key: '4', label: t('acquire.tab.blocklist') }, { id: 'subtitles', key: '5', label: t('acquire.tab.subtitles') }] as x (x.id)}
-			<button type="button" role="tab" aria-selected={tab === x.id} onclick={() => setTab(x.id as Tab)}
-				class="-mb-px flex items-center gap-2 border-b-2 pb-2 text-sm transition-colors {tab === x.id ? 'border-accent text-foreground' : 'border-transparent text-muted hover:text-foreground'}">
+			<button type="button" role="tab" id="acquire-tab-{x.id}" aria-selected={tab === x.id} tabindex={tab === x.id ? 0 : -1} onclick={() => setTab(x.id as Tab)}
+				class="-mb-px flex min-h-11 items-center gap-2 border-b-2 pb-2 text-sm transition-colors md:min-h-0 {tab === x.id ? 'border-accent text-foreground' : 'border-transparent text-muted hover:text-foreground'}">
 				<kbd class="text-muted">{x.key}</kbd>
 				{x.label}
 				{#if x.id === 'queue' && grabs && grabs.filter((g) => isActiveGrab(g.state)).length > 0}<span class="rounded-full bg-accent px-1.5 font-mono text-[10px] text-background">{grabs.filter((g) => isActiveGrab(g.state)).length}</span>{/if}

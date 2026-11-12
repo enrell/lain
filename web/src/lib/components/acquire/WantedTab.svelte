@@ -18,6 +18,7 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatRelative } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import MonitorDialog from './MonitorDialog.svelte';
 	import SubtitlePanel from './SubtitlePanel.svelte';
 
@@ -148,6 +149,11 @@
 		}
 		e.preventDefault();
 	}
+
+	usePageKeys(() => [
+		{ keys: ['M'], label: t('acquire.wanted.monitor') },
+		{ keys: ['R'], label: t('acquire.wanted.rss') }
+	]);
 
 	function pageKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;

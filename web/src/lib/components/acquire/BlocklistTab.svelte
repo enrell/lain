@@ -15,6 +15,7 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatBytes, formatRelative } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 
 	let entries = $state<BlockEntry[] | null>(null);
 	let held = $state<HeldFile[]>([]);
@@ -71,6 +72,8 @@
 		else return;
 		e.preventDefault();
 	}
+
+	usePageKeys(() => (held.length > 0 ? [{ keys: ['Shift', 'P'], label: t('acquire.blocklist.purge') }] : []));
 
 	function pageKey(e: KeyboardEvent): void {
 		if (e.key !== 'P' || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;

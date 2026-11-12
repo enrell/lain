@@ -50,6 +50,7 @@
 	import { isReadable } from '$lib/reader/kinds';
 	import ComicInfoPanel from '$lib/components/reader/ComicInfoPanel.svelte';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	function playHref(itemId: string): string { return playbackHref(origin, itemId, preferredPlayer, item?.kind); }
@@ -98,10 +99,18 @@
 		].filter((segment) => segment !== '')
 	);
 
-	async function load(): Promise<void> {
-		loading = true;
-		error = null;
-		notFound = false;
+	/*
+	 * `quiet` refreshes what is on screen after an action (a mark, Start
+	 * over): the page stays as it is meanwhile, so the focus, the scroll
+	 * position and the menu that was used stay where they were, and a
+	 * failed refresh says so without replacing the page.
+	 */
+	async function load(quiet = false): Promise<void> {
+		if (!quiet) {
+			loading = true;
+			error = null;
+			notFound = false;
+		}
 		try {
 			const [it, pl, enr, libs, eps, allProgress] = await Promise.all([
 				api.catalog.get(id),
@@ -124,7 +133,9 @@
 			series = eps.items.length > 1 ? groupFromEpisodes(eps.items) : null;
 			if (series) await ensureEnrichments(series.items.map((episode) => episode.id));
 		} catch (err) {
-			if (err instanceof ApiError && err.kind === 'not-found') {
+			if (quiet) {
+				toasts.error(errorMessage(err, t('title.refreshFailed')));
+			} else if (err instanceof ApiError && err.kind === 'not-found') {
 				notFound = true;
 			} else {
 				error = errorMessage(err);
@@ -155,11 +166,24 @@
 		reading || !item ? [] : (series ? series.items : [item]).filter((it) => !it.missing).map((it) => it.id)
 	);
 	function pageKey(e: KeyboardEvent): void {
-		if (e.key !== 't' || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if ((e.key !== 't' && e.key !== 'p') || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+		if (isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if (e.key === 'p') {
+			// The hero's own Play (or Resume, Read) link, so an external player still opens as a click would.
+			const play = document.querySelector<HTMLAnchorElement>('a[data-title-play]');
+			if (!play) return;
+			e.preventDefault();
+			play.click();
+			return;
+		}
 		if (!session.isAdmin || subtitleItems.length === 0) return;
 		e.preventDefault();
 		subtitlesOpen = true;
 	}
+	usePageKeys(() => [
+		{ keys: ['P'], label: t(reading ? 'pageKeys.titleRead' : 'pageKeys.titlePlay') },
+		...(session.isAdmin && subtitleItems.length > 0 ? [{ keys: ['T'], label: t('pageKeys.subtitles') }] : [])
+	]);
 	const ratio = $derived(progress ? progressRatio(progress) : 0);
 
 	// What an admin can do with the title, behind one "Manage" menu. The
@@ -317,7 +341,7 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if series}
 	{#key series.key}
-		<TitleView group={series} {progressMap} {libraries} {manage} onProgressChanged={() => void load()} />
+		<TitleView group={series} {progressMap} {libraries} {manage} onProgressChanged={() => void load(true)} />
 	{/key}
 	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} /></div>{/if}
 {:else if item}
@@ -369,7 +393,7 @@
 					     optional prose, so it is on screen on arrival at 320x568. -->
 					<div class="title-actions flex flex-wrap items-center gap-x-2 gap-y-3 md:mt-6">
 						{#if playable || (!item.missing && preferredPlayer !== 'browser')}
-							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
+							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
 								<Play class="size-4 fill-current" />
 								{reading ? (resumeAt > 0 ? `Continue from page ${Math.floor(resumeAt)}` : 'Read') : resumeAt > 0 ? `Resume from ${formatTime(resumeAt)}` : 'Play'}
 							</LinkButton>

@@ -14,6 +14,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { t } from '$lib/i18n';
 
 	// The unified tracking list (D-078): everything a linked account
@@ -105,6 +106,8 @@
 	}
 
 	// The first step's key: C connects an account, S syncs the one linked.
+	usePageKeys(() => (firstRun ? [link ? { keys: ['S'], label: t('pageKeys.sync') } : { keys: ['C'], label: t('pageKeys.connect') }] : []));
+
 	function onKey(e: KeyboardEvent): void {
 		if (!firstRun || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
 		if (isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;

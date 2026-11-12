@@ -32,11 +32,13 @@
 	import { session } from '$lib/auth/session.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Keyboard from '@lucide/svelte/icons/keyboard';
+	import PanelRightClose from '@lucide/svelte/icons/panel-right-close';
+	import PanelRightOpen from '@lucide/svelte/icons/panel-right-open';
 	import IconButton from '$lib/components/primitives/IconButton.svelte';
 	import ExternalPlayers from './ExternalPlayers.svelte';
 	import CueOverlay from './CueOverlay.svelte';
 	import { defaultAudioStream, resolveTracks, trackPreferences } from '$lib/player/track-language';
-	import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, type SidecarTrack } from '$lib/player/sidecars';
+	import { embeddedChoice, sidecarIndex, sidecarLabel, sidecarValue, toggledSubtitle, type SidecarTrack } from '$lib/player/sidecars';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { prefs } from '$lib/auth/storage';
 	import { isCompleted } from '$lib/utilities/progress';
@@ -71,7 +73,8 @@
 		plan,
 		initialProgress,
 		onFinished,
-		next = null
+		next = null,
+		episodes = null
 	}: {
 		item: CatalogItem;
 		plan: PlaybackPlan;
@@ -80,6 +83,8 @@
 		onFinished?: () => void;
 		/** The episode after this one, if any: a button in the bar and Shift+N go to it. */
 		next?: { label: string; go: () => void } | null;
+		/** The episode list beside the player on a wide screen: E and a bar button show or hide it. */
+		episodes?: { shown: boolean; toggle: () => void } | null;
 	} = $props();
 
 	const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -1413,6 +1418,41 @@
 	}
 
 	/*
+	 * What a key changed, said on the picture for a moment: a key has no
+	 * button to light up, and the settings panel is closed. Inside the
+	 * player, so it shows in fullscreen too.
+	 */
+	let osd = $state<{ text: string; key: number } | null>(null);
+	let osdTimer: ReturnType<typeof setTimeout> | null = null;
+	function showOsd(text: string): void {
+		osd = { text, key: Date.now() };
+		if (osdTimer) clearTimeout(osdTimer);
+		osdTimer = setTimeout(() => (osd = null), 1200);
+	}
+
+	function stepRate(direction: 1 | -1): void {
+		const at = RATES.indexOf(rate);
+		const next = RATES[Math.min(RATES.length - 1, Math.max(0, (at < 0 ? RATES.indexOf(1) : at) + direction))];
+		setRate(next);
+		showOsd(next === 1 ? t('player.osd.speedNormal') : t('player.osd.speed', { rate: `${next}×` }));
+	}
+
+	// C turns subtitles off, and on again with the track that was on (or the first there is).
+	let subtitleBefore = '';
+	function toggleSubtitles(): void {
+		const choices = [...subtitleTracks.map((track) => String(track.index)), ...sidecars.map((file) => sidecarValue(file.index))];
+		if (choices.length === 0) return showOsd(t('player.osd.noSubtitles'));
+		if (selectedSubtitle !== '') subtitleBefore = selectedSubtitle;
+		selectedSubtitle = toggledSubtitle(selectedSubtitle, subtitleBefore, choices);
+		onSubtitleChoice();
+		if (selectedSubtitle === '') return showOsd(t('player.osd.subtitlesOff'));
+		const file = sidecars.find((f) => sidecarValue(f.index) === selectedSubtitle);
+		const track = subtitleTracks.find((tr) => String(tr.index) === selectedSubtitle);
+		const name = file ? sidecarLabel(file) : track?.language || track?.title || selectedSubtitle;
+		showOsd(t('player.osd.subtitlesOn', { name }));
+	}
+
+	/*
 	 * Fullscreen is a request, not a guarantee: a browser can refuse it (a
 	 * permission policy, a container that forbids it) or not offer the API at
 	 * all. A refusal is reported in the player instead of swallowed (D-011),
@@ -1523,6 +1563,9 @@
 	}
 
 	function onKeydown(event: KeyboardEvent): void {
+		// A dialog over the player (its key list) owns the keyboard: Escape
+		// closes it, and no key reaches the video behind it.
+		if (keysOpen || document.querySelector('[role="dialog"]')) return;
 		if (event.key === 'Escape') {
 			onEscape(event);
 			return;
@@ -1566,6 +1609,23 @@
 			case 'f':
 			case 'F':
 				void toggleFullscreen();
+				break;
+			case 'c':
+			case 'C':
+				consume(event);
+				toggleSubtitles();
+				break;
+			case '<':
+			case '>':
+				consume(event);
+				stepRate(event.key === '>' ? 1 : -1);
+				break;
+			case 'e':
+			case 'E':
+				// Only where the list sits beside the picture (lg and up); below, it is under it.
+				if (!episodes || !window.matchMedia('(min-width: 1024px)').matches) break;
+				consume(event);
+				episodes.toggle();
 				break;
 			case 'N':
 				// Shift+N, as most web players have it: a bare N is too easy to hit by mistake.
@@ -1667,6 +1727,13 @@
 				<span class="rounded-full bg-black/55 px-3.5 py-1.5 text-sm font-semibold tabular-nums text-white backdrop-blur">
 					{skipFlash.side < 0 ? '−' : '+'}{skipFlash.total}s
 				</span>
+			</div>
+		{/key}
+	{/if}
+	{#if osd}
+		{#key osd.key}
+			<div class="pointer-events-none absolute inset-x-0 top-20 z-20 flex justify-center" role="status">
+				<span class="rounded-full bg-black/65 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur">{osd.text}</span>
 			</div>
 		{/key}
 	{/if}
@@ -2171,6 +2238,12 @@
 				<IconButton label="Keyboard shortcuts (?)" class="max-md:hidden" onclick={() => (keysOpen = true)}>
 					<Keyboard class="size-5" />
 				</IconButton>
+				{#if episodes}
+					<!-- The list beside the picture takes a quarter of a laptop's width: it can step aside. -->
+					<IconButton label={episodes.shown ? t('player.episodesHide') : t('player.episodesShow')} class="max-lg:hidden" onclick={episodes.toggle}>
+						{#if episodes.shown}<PanelRightClose class="size-5" />{:else}<PanelRightOpen class="size-5" />{/if}
+					</IconButton>
+				{/if}
 				<button bind:this={settingsButton} type="button" aria-label="Playback settings" aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
 					<Settings class="size-5" />
 					<span class="sr-only">Playback settings</span>
@@ -2187,9 +2260,9 @@
 	</footer>
 </div>
 
-<Modal bind:open={keysOpen} title="Keyboard shortcuts">
+<Modal bind:open={keysOpen} title={t('shortcuts.title')}>
 	<dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-sm">
-		{#each [[['Space', 'K'], 'Play or pause'], [['←', '→'], 'Back or forward 5 seconds'], [['J', 'L'], `Back or forward ${skipSec} seconds`], [['↑', '↓'], 'Volume'], [['M'], 'Mute'], [['F'], 'Full screen'], ...(next ? [[['Shift', 'N'], t('player.nextEpisode')] as [string[], string]] : []), [['Esc'], 'Close a panel, leave full screen'], [['?'], 'This list']] as [keys, what] (what)}
+		{#each [[['Space', 'K'], t('player.keys.play')], [['←', '→'], t('player.keys.seek', { seconds: 5 })], [['J', 'L'], t('player.keys.seek', { seconds: skipSec })], [['↑', '↓'], t('player.keys.volume')], [['M'], t('player.keys.mute')], [['C'], t('player.keys.subtitles')], [['<', '>'], t('player.keys.speed')], [['F'], t('player.keys.fullscreen')], ...(episodes ? [[['E'], t('player.keys.episodes')] as [string[], string]] : []), ...(next ? [[['Shift', 'N'], t('player.nextEpisode')] as [string[], string]] : []), [['Esc'], t('player.keys.escape')], [['?'], t('shortcuts.help')]] as [keys, what] (what)}
 			<dt class="flex gap-1">{#each keys as key (key)}<kbd>{key}</kbd>{/each}</dt>
 			<dd class="text-muted">{what}</dd>
 		{/each}

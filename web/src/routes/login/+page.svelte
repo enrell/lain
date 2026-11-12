@@ -43,6 +43,11 @@
 	$effect(() => {
 		host = window.location.host;
 	});
+	// Keyboard first: the cursor waits in the username on arrival.
+	let usernameInput = $state<HTMLInputElement>();
+	$effect(() => {
+		usernameInput?.focus();
+	});
 </script>
 
 <svelte:head><title>Sign in — Lain</title></svelte:head>
@@ -76,6 +81,7 @@
 				<label for="login-username" class="block text-sm font-medium text-muted">Username</label>
 				<input
 					id="login-username"
+					bind:this={usernameInput}
 					bind:value={username}
 					autocomplete="username"
 					autocapitalize="none"

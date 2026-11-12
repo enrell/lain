@@ -9,6 +9,8 @@
 	import { session } from '$lib/auth/session.svelte';
 	import { i18n, t } from '$lib/i18n';
 	import Button from '$lib/components/primitives/Button.svelte';
+	import Modal from '$lib/components/primitives/Modal.svelte';
+	import { focusSoon } from './focus';
 	import { pageKey, socialError, workKey } from '$lib/social/format';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { formatRelative } from '$lib/utilities/format';
@@ -19,6 +21,7 @@
 	import UserChip from './UserChip.svelte';
 	import { favoriteState, ratingState } from '$lib/social/favorite.svelte';
 	import { FIELD } from './styles';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 
 	let { target }: { target: WorkTarget } = $props();
 
@@ -113,7 +116,17 @@
 		}
 	}
 
+	// A deleted comment cannot come back: the button asks first.
+	let deleting = $state<Comment | null>(null);
+	let deleteOpen = $state(false);
+	function askDelete(c: Comment): void {
+		deleting = c;
+		deleteOpen = true;
+		focusSoon(() => document.getElementById('confirm-delete-comment'));
+	}
+
 	async function removeComment(c: Comment): Promise<void> {
+		deleteOpen = false;
 		try {
 			await api.social.deleteComment(c.id);
 			await load();
@@ -136,6 +149,18 @@
 			composer?.blur();
 		}
 	}
+
+	usePageKeys(() =>
+		view
+			? [
+					{ keys: ['F'], label: t('pageKeys.favorite') },
+					{ keys: ['R'], label: t('pageKeys.rate') },
+					{ keys: ['S'], label: t('pageKeys.share') },
+					{ keys: ['C'], label: t('pageKeys.collect') },
+					{ keys: ['M'], label: t('pageKeys.comment') }
+				]
+			: []
+	);
 
 	function onKey(e: KeyboardEvent): void {
 		if (!view) return;
@@ -232,7 +257,7 @@
 								<div class="flex gap-3 font-mono text-[10px] uppercase tracking-[0.16em]">
 									<button type="button" class="text-muted hover:text-foreground" onclick={() => reply(th.root)}>{t('social.comments.reply')}</button>
 									{#if canDelete(c)}
-										<button type="button" class="text-muted hover:text-danger" onclick={() => void removeComment(c)}>{t('social.comments.delete')}</button>
+										<button type="button" class="text-muted hover:text-danger" onclick={() => askDelete(c)}>{t('social.comments.delete')}</button>
 									{/if}
 								</div>
 							</div>
@@ -281,4 +306,11 @@
 		}}
 	/>
 	<CollectDialog bind:open={collectOpen} work={view.work} />
+	<Modal bind:open={deleteOpen} title={t('social.comments.deleteTitle')} description={t('social.comments.deleteBody')}>
+		{#if deleting}<p class="line-clamp-3 whitespace-pre-line rounded-md bg-field px-3 py-2 text-sm text-foreground/85">{deleting.body}</p>{/if}
+		{#snippet footer()}
+			<Button variant="ghost" onclick={() => (deleteOpen = false)}>{t('common.cancel')} <Kbd>Esc</Kbd></Button>
+			<Button id="confirm-delete-comment" variant="danger" onclick={() => deleting && void removeComment(deleting)}>{t('social.comments.delete')} <Kbd>↵</Kbd></Button>
+		{/snippet}
+	</Modal>
 {/if}

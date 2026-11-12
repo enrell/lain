@@ -42,3 +42,13 @@ export function sidecarLabel(s: SidecarTrack): string {
 	if (s.hi) parts.push('SDH');
 	return parts.join(' · ');
 }
+
+/**
+ * C in the player: off while a track is on; otherwise on again with the
+ * track that was on before (`before`), or the menu's first track. `choices`
+ * are menu values, embedded and sidecar alike; with none it stays off.
+ */
+export function toggledSubtitle(current: string, before: string, choices: string[]): string {
+	if (current !== '') return '';
+	return choices.includes(before) ? before : (choices[0] ?? '');
+}
