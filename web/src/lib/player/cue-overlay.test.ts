@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { cuePlacement, pictureRect, stackBottom, type Rect } from './cue-overlay';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cuePlacement, nativeCueBoxMovable, pictureRect, stackBottom, type Rect } from './cue-overlay';
 
 const BOX: Rect = { left: 0, top: 0, width: 800, height: 450 };
 
@@ -87,5 +87,27 @@ describe('stackBottom', () => {
 
 	it('stays put when the controls end below a letterboxed picture', () => {
 		expect(stackBottom(boxed, 1000, 90)).toBeCloseTo(288.5);
+	});
+});
+
+describe('nativeCueBoxMovable', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	// Only what each engine answers about the Gecko-only property.
+	const engine = (gecko: boolean) => ({ supports: (property: string) => gecko && property === '-moz-appearance' });
+
+	it('lifts the browser\'s own cue box in Chromium and Safari', () => {
+		vi.stubGlobal('CSS', engine(false));
+		expect(nativeCueBoxMovable()).toBe(true);
+	});
+
+	it('draws the cues itself in Firefox, whose cue box cannot move', () => {
+		vi.stubGlobal('CSS', engine(true));
+		expect(nativeCueBoxMovable()).toBe(false);
+	});
+
+	it('keeps the browser\'s cues where CSS cannot be asked', () => {
+		vi.stubGlobal('CSS', undefined);
+		expect(nativeCueBoxMovable()).toBe(true);
 	});
 });
