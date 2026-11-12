@@ -390,6 +390,8 @@ const en = {
 		emptyTitle: 'No matches for “{query}”',
 		emptyBody: 'Try a shorter title, or check whether a scan has indexed the library.',
 		loadMore: 'Load more',
+		// The second rail of "New in your library": the newest titles of another shape, by their libraries.
+		newestIn: 'New in {names}',
 		// The header's field: what it finds is titles; settings and actions are Ctrl+K's.
 		field: {
 			label: 'Search titles',
@@ -927,6 +929,9 @@ const en = {
 		partLeft: '{part} · {time} left',
 		partPage: '{part} · page {page} of {pages}',
 		pageOf: 'Page {page} of {pages}',
+		// The parts of a grid whose pictures differ in shape (TitleGrid).
+		partPortrait: 'Posters and covers',
+		partLandscape: 'Widescreen',
 		// A catalog kind as the Kind filter names it.
 		kind: {
 			video: 'Films and clips',
