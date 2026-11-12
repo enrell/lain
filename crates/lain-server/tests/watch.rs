@@ -331,9 +331,14 @@ fn local_play_reports_progress_to_the_user() {
     let server = Server::start(&data);
     let (_admin, bob) = accounts(&server);
     let bin = root.join("mpv");
+    // The stub also keeps its arguments, to see the track preferences.
+    let argv = root.join("mpv-args");
     std::fs::write(
         &bin,
-        "#!/bin/sh\nstate=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    --script-opt=lain-state_dir=*) state=\"${arg#--script-opt=lain-state_dir=}\" ;;\n  esac\ndone\nprintf '{\"position_sec\":42,\"duration_sec\":120}' > \"$state/0.json\"\nsleep 1\n",
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nstate=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    --script-opt=lain-state_dir=*) state=\"${{arg#--script-opt=lain-state_dir=}}\" ;;\n  esac\ndone\nprintf '{{\"position_sec\":42,\"duration_sec\":120}}' > \"$state/0.json\"\nsleep 1\n",
+            argv.display()
+        ),
     )
     .unwrap();
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -348,6 +353,11 @@ fn local_play_reports_progress_to_the_user() {
     assert_eq!(stream.events.recv_timeout(Duration::from_secs(5)).unwrap().event, "ready");
     let r = post(&b, "/api/items/item-alpha/play-local", Some(&bob), json!({"player": "vlc"}));
     assert_eq!((r.status, json_of(&r)), (400, json!({"error": "invalid-message: player must be one of: mpv"})));
+    // The account's track preferences reach the player apart (D-280).
+    let h = [("Authorization".to_string(), auth.clone()), ("Content-Type".to_string(), "application/json".to_string())];
+    let body = br#"{"preferred_audio_language":"jpn","preferred_subtitle_language":"por"}"#;
+    let prefs = http::request(&b, "PATCH", "/api/me/preferences", &h, Some(body)).unwrap();
+    assert_eq!(prefs.status, 200);
     let r = post(&b, "/api/items/item-alpha/play-local", Some(&bob), json!({}));
     assert_eq!((r.status, json_of(&r)), (200, json!({"status": "playing", "player": "mpv", "count": 1})));
     let r = post(&b, "/api/items/item-alpha/play-local", Some(&bob), json!({}));
@@ -362,6 +372,10 @@ fn local_play_reports_progress_to_the_user() {
     assert_eq!((d["item_id"].as_str(), d["progress"]["position_sec"].as_f64()), (Some("item-alpha"), Some(42.0)));
     let p = json_of(&get(&b, "/api/items/item-alpha/progress", &[("Authorization", &auth)]));
     assert_eq!(p["position_sec"], 42.0);
+    let args = std::fs::read_to_string(&argv).unwrap();
+    for want in ["lain-audio_language=jpn", "lain-subtitle_language=por", "lain-subtitle_mode=auto"] {
+        assert!(args.lines().any(|a| a.ends_with(want)), "{want} in {args}");
+    }
     // A vanished file is a conflict, not a crash (D-068).
     let r = post(&b, "/api/items/item-beta/play-local", Some(&bob), json!({}));
     assert_eq!((r.status, json_of(&r)), (409, json!({"error": "not-found: the file is no longer on disk"})));

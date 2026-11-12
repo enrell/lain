@@ -119,6 +119,30 @@ async fn watch_offline_and_sync_back() {
     assert_eq!(core.set_preferred_language("jpn".into()).await.unwrap().preferred_language, "jpn");
     assert_eq!(core.me().await.unwrap().preferred_language, "jpn");
     assert_eq!(core.set_preferred_language(String::new()).await.unwrap().preferred_language, "");
+    // D-280: the one language reads as both; the three are set apart.
+    let both = core.set_preferred_language("jpn".into()).await.unwrap();
+    assert_eq!(
+        (
+            both.preferred_audio_language.as_str(),
+            both.preferred_subtitle_language.as_str(),
+            both.preferred_subtitle_mode.as_str()
+        ),
+        ("jpn", "jpn", "auto")
+    );
+    let split = core.set_track_preferences("jpn".into(), " POR ".into(), "always".into()).await.unwrap();
+    assert_eq!(
+        (
+            split.preferred_audio_language.as_str(),
+            split.preferred_subtitle_language.as_str(),
+            split.preferred_subtitle_mode.as_str(),
+            split.preferred_language.as_str()
+        ),
+        ("jpn", "por", "always", "por")
+    );
+    assert_eq!(core.me().await.unwrap(), split);
+    assert!(core.set_track_preferences("jpn".into(), "por".into(), "sometimes".into()).await.is_err());
+    let cleared = core.set_track_preferences(String::new(), String::new(), String::new()).await.unwrap();
+    assert_eq!((cleared.preferred_language.as_str(), cleared.preferred_subtitle_mode.as_str()), ("", "auto"));
 
     // A score: given, seen in the average, changed, and taken back.
     let unrated = core.rating(ITEM1.into()).await.unwrap();
@@ -136,7 +160,7 @@ async fn watch_offline_and_sync_back() {
     assert_eq!(core.all_progress().await.unwrap()[0].item_id, ITEM1);
     // Online, an mkv this server cannot probe needs a transcode, which
     // needs ffmpeg: an honest error, never a panic.
-    match core.play_source(ITEM1.into(), vec!["mp4".into(), "mp4/h264".into()]).await {
+    match core.play_source(ITEM1.into(), vec!["mp4".into(), "mp4/h264".into()], String::new()).await {
         Ok(src) => assert_eq!((src.kind, src.start_sec), (SourceKind::Hls, 600.)),
         Err(e) => assert!(!matches!(e, LainError::Internal { .. }), "{e:?}"),
     }
@@ -155,7 +179,7 @@ async fn watch_offline_and_sync_back() {
 
     // The network goes away: the copy plays, from the saved position.
     proxy.set_online(false);
-    let src = core.play_source(ITEM1.into(), Vec::new()).await.unwrap();
+    let src = core.play_source(ITEM1.into(), Vec::new(), String::new()).await.unwrap();
     assert_eq!((src.kind, src.start_sec, src.offset_sec), (SourceKind::Offline, 600., 0.));
     assert_eq!(std::fs::read(&src.url).unwrap(), bytes);
     let offline = core.catalog().await.unwrap();
@@ -180,6 +204,186 @@ async fn watch_offline_and_sync_back() {
     assert!(core.offline_copy(ITEM1.into()).unwrap().is_none());
     core.logout().unwrap();
     assert!(core.session().is_none());
+    drop(core);
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// ffmpeg and ffprobe on PATH, or a skip (a failure under
+/// `LAIN_REQUIRE_FFMPEG`, as the server's watch tests do).
+fn require_ffmpeg() -> bool {
+    let ok = ["ffmpeg", "ffprobe"]
+        .iter()
+        .all(|t| std::process::Command::new(t).arg("-version").output().map(|o| o.status.success()).unwrap_or(false));
+    if !ok {
+        assert!(
+            std::env::var("LAIN_REQUIRE_FFMPEG").is_err(),
+            "LAIN_REQUIRE_FFMPEG is set but ffmpeg/ffprobe are not on PATH"
+        );
+        eprintln!("skipping: ffmpeg/ffprobe not installed");
+    }
+    ok
+}
+
+fn ffmpeg(args: &[&str]) -> std::process::Output {
+    let out = std::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-loglevel", "error", "-nostdin"])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "ffmpeg {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    out
+}
+
+/// The tone of a played file's audio, in Hz, from its zero crossings: the
+/// clip's English track is 440 Hz and its Japanese one 660 Hz.
+fn tone(file: &std::path::Path) -> f64 {
+    let f = file.to_string_lossy();
+    let out = ffmpeg(&["-i", &f, "-map", "0:a:0", "-ac", "1", "-ar", "8000", "-t", "1", "-f", "s16le", "-"]);
+    let s: Vec<i16> = out.stdout.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect();
+    let crossings = s.windows(2).filter(|w| (w[0] < 0) != (w[1] < 0)).count();
+    crossings as f64 / 2. / (s.len() as f64 / 8000.)
+}
+
+/// The first seconds an HLS session made (its init and first segment),
+/// fetched over its playlist URL into `out`.
+async fn hls_head(url: &str, out: &std::path::Path) {
+    let get = |u: String| async move {
+        let (base, path) = u.split_at(u.find("/api/").unwrap());
+        let (base, path) = (lain_conformance::http::Base::parse(base).unwrap(), path.to_string());
+        let r = tokio::task::spawn_blocking(move || lain_conformance::http::request(&base, "GET", &path, &[], None))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+        r.body
+    };
+    let dir = &url[..url.rfind('/').unwrap() + 1];
+    let playlist = String::from_utf8(get(url.to_string()).await).unwrap();
+    let init = playlist.split("URI=\"").nth(1).and_then(|r| r.split('"').next()).expect("an fMP4 init segment");
+    let first = playlist.lines().find(|l| !l.is_empty() && !l.starts_with('#')).expect("a segment");
+    let mut bytes = get(format!("{dir}{init}")).await;
+    bytes.extend(get(format!("{dir}{first}")).await);
+    std::fs::write(out, bytes).unwrap();
+}
+
+/// Probes the server's encoders with a patient client before a transcode
+/// call: on a busy machine the first probe can outlast the app's 20 s
+/// request timeout, and the server keeps its answer for 30 s.
+async fn warm(admin: &lain_client::Client) {
+    admin.transcode_settings().await.unwrap();
+}
+
+/// D-280 on a transcode: the session carries one audio stream, the one the
+/// app asks for, by the title's language or by its index.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_transcode_plays_the_audio_asked_for() {
+    if !require_ffmpeg() {
+        return;
+    }
+    let root = temp("ffi-audio");
+    let server = watch_server(&root).await;
+    // English (default, 440 Hz) and Japanese (660 Hz) over a picture in a
+    // codec no claim names, so the plan transcodes.
+    let file = root.join("media/Frieren/[Fansub-A] Frieren - 01 [1080p].mkv");
+    ffmpeg(&[
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc=size=160x120:rate=10:duration=8",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:sample_rate=48000:duration=8",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=660:sample_rate=48000:duration=8",
+        "-map",
+        "0:v",
+        "-map",
+        "1:a",
+        "-map",
+        "2:a",
+        "-c:v",
+        "mpeg4",
+        "-c:a",
+        "aac",
+        "-metadata:s:a:0",
+        "language=eng",
+        "-metadata:s:a:1",
+        "language=jpn",
+        "-disposition:a:0",
+        "default",
+        "-disposition:a:1",
+        "0",
+        "-y",
+        &file.to_string_lossy(),
+    ]);
+    let (admin, _bob) = admin_and_bob(&server.url).await;
+    admin
+        .create_library(NewLibrary {
+            name: "Anime".into(),
+            root: "media".into(),
+            path: "Frieren".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let patient = lain_client::Client::new(
+        lain_client::ClientConfig { server: server.url.clone(), timeout_ms: 180_000 },
+        Arc::new(lain_client::MemoryTokenStore::new()),
+    )
+    .unwrap();
+    patient.login("admin", &pw(0)).await.unwrap();
+    let core = core(&root);
+    core.set_server(server.url.clone()).unwrap();
+    core.login("bob".into(), pw(2)).await.unwrap();
+    let claim = vec!["mkv".into(), "mkv/h264".into(), "mkv/aac".into()];
+
+    // No language: the server's choice, the file's default.
+    warm(&patient).await;
+    let plain = core.play_source(ITEM1.into(), claim.clone(), String::new()).await.unwrap();
+    assert_eq!((plain.kind, plain.audio_stream), (SourceKind::Hls, None));
+    let listed: Vec<(i64, &str, bool)> =
+        plain.audio.iter().map(|a| (a.stream, a.language.as_str(), a.default)).collect();
+    assert_eq!(listed, [(1, "eng", true), (2, "jpn", false)]);
+    let head = root.join("head.mp4");
+    hls_head(&plain.url, &head).await;
+    assert!((tone(&head) - 440.).abs() < 30., "default audio: {} Hz", tone(&head));
+
+    // The title's language: its stream, from the start. (Session ids are
+    // not compared: the server's profile can change once it has run its
+    // first encode, and the id hashes it.)
+    warm(&patient).await;
+    let japanese = core.play_source(ITEM1.into(), claim.clone(), "jpn".into()).await.unwrap();
+    assert_eq!(japanese.audio_stream, Some(2));
+    hls_head(&japanese.url, &head).await;
+    assert!((tone(&head) - 660.).abs() < 30., "Japanese audio: {} Hz", tone(&head));
+    // A language the file lacks leaves the server's choice.
+    warm(&patient).await;
+    let korean = core.play_source(ITEM1.into(), claim.clone(), "kor".into()).await.unwrap();
+    assert_eq!(korean.audio_stream, None);
+    hls_head(&korean.url, &head).await;
+    assert!((tone(&head) - 440.).abs() < 30., "no Korean, the default: {} Hz", tone(&head));
+
+    // A pick in the player names the stream, from where the viewer is.
+    warm(&patient).await;
+    let picked = core.play_transcoded(ITEM1.into(), 2., String::new(), None, Some(2)).await.unwrap();
+    assert_eq!((picked.audio_stream, picked.offset_sec), (Some(2), 2.));
+    hls_head(&picked.url, &head).await;
+    assert!((tone(&head) - 660.).abs() < 30., "picked Japanese: {} Hz", tone(&head));
+    warm(&patient).await;
+    let back = core.play_transcoded(ITEM1.into(), 2., String::new(), None, Some(1)).await.unwrap();
+    hls_head(&back.url, &head).await;
+    assert!((tone(&head) - 440.).abs() < 30., "English again: {} Hz", tone(&head));
+    // A stream that is not audio is the server's refusal, not a panic.
+    warm(&patient).await;
+    let refused = core.play_transcoded(ITEM1.into(), 0., String::new(), None, Some(9)).await.unwrap_err();
+    assert!(!matches!(refused, LainError::Internal { .. }), "{refused:?}");
+    for s in [plain, japanese, korean, picked, back] {
+        core.stop_transcode(ITEM1.into(), s.session).await.ok();
+    }
     drop(core);
     drop(server);
     std::fs::remove_dir_all(root).ok();

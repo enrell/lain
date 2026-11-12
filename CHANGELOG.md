@@ -31,6 +31,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   additive); they are never stored in a grab or returned in a search.
   An older parser service, or the tokenizer, offers none and nothing
   changes.
+- **Audio language and subtitle language apart** (D-280): Japanese audio
+  with Portuguese subtitles, and no subtitles over a film dubbed in
+  Portuguese. The account keeps an audio language, a subtitle language
+  and when subtitles show (Auto: when the audio is not in your subtitle
+  language; Always; Forced only; Off). Settings > Playback on the web and
+  Settings in the Android app have the three rows; the web player, the
+  Android player, mpv and VLC opened by the server and `lain watch` pick
+  tracks with them, and a choice made in the player for a title still
+  wins (the web player now remembers it per title too). A transcode
+  started without a track choice plays the preferred audio language, so
+  the Android app hears it in an HLS session. `lain language` gains
+  `--audio`, `--subtitles` and `--subtitle-mode`.
 
 ### Changed
 - **A server address typed without `http://` or `https://`** (D-277) is
@@ -40,6 +52,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   otherwise; an `https` that fails is never retried as `http`. This holds
   in the CLI, the desktop app and Android, whose connect field no longer
   starts at `http://`.
+- `preferred_language` stays for older clients: setting it sets both
+  languages, and it now reads as the subtitle language when one is set.
+  Accounts saved before keep exactly their old behaviour.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a
@@ -48,6 +63,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   year ("Blade.Runner.2049.1080p" read as "Blade Runner 2049") no longer
   takes it as the release year, so a monitored "Blade Runner 2049"
   (2017) no longer refuses that release.
+- Android: the audio and subtitles picked in the player for a title now
+  carry to its next episode; the pick was kept per episode. A forced
+  (signs) subtitle track is listed apart from the full one in its
+  language.
+- Android: on a video the server converts (HLS), the audio menu lists the
+  file's audio tracks and a pick plays from where you are in the chosen
+  language; an episode opens in the audio language last picked for its
+  title instead of the account's. A converted stream carries one audio
+  track, so the pick could not switch inside it.
 
 ## [0.3.0] - 2026-11-12
 

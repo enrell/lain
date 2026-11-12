@@ -32,7 +32,7 @@ pub const MASCOTS: [&str; 8] = ["wired", "moth", "static", "orbit", "glyph", "sh
 const MAX_DISPLAY_NAME: usize = 40;
 const MAX_BIO: usize = 160;
 
-pub use lain_api::{Avatar, PlaybackPolicy, Profile, ProfilePatch};
+pub use lain_api::{Avatar, PlaybackPolicy, PreferencesPatch, Profile, ProfilePatch, SUBTITLE_MODES, TrackPreferences};
 
 /// A local account. `pass_hash` is an Argon2id PHC string; `null` in
 /// every response.
@@ -49,8 +49,23 @@ pub struct User {
     pub pwd_ver: u64,
     #[serde(default)]
     pub created_at: i64,
+    /// D-071's one language. Since D-280 every write keeps it equal to
+    /// [`TrackPreferences::legacy_language`] of the split fields, so an
+    /// older client reading it gets the closest single answer.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub preferred_language: String,
+    /// D-280's split preferences. A record with none of the three was
+    /// written before D-280 (or never set any) and reads as
+    /// `preferred_language` for both languages, subtitles `auto`
+    /// ([`TrackPreferences::read`]); no migration pass rewrites old
+    /// records, the first preferences write does. `auto` is stored as
+    /// an empty mode, so a fresh account stores and answers nothing new.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preferred_audio_language: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preferred_subtitle_language: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub preferred_subtitle_mode: String,
     #[serde(default)]
     pub playback: PlaybackPolicy,
     #[serde(default)]
@@ -58,10 +73,33 @@ pub struct User {
 }
 
 impl User {
-    /// The record without its hash.
+    /// The record without its hash. A record from before D-280 answers
+    /// its one language as both split ones too, so a client reads the
+    /// D-280 fields alone (D-280).
     pub fn public(mut self) -> User {
         self.pass_hash = None;
+        let t = self.track_preferences();
+        self.set_tracks(&t);
         self
+    }
+
+    /// The account's track preferences (D-280), read the same way for
+    /// old and new records.
+    pub fn track_preferences(&self) -> TrackPreferences {
+        TrackPreferences::read(
+            &self.preferred_language,
+            &self.preferred_audio_language,
+            &self.preferred_subtitle_language,
+            &self.preferred_subtitle_mode,
+        )
+    }
+
+    /// Stores `t` in the record's shape, D-071's language included.
+    fn set_tracks(&mut self, t: &TrackPreferences) {
+        self.preferred_audio_language = t.audio_language.clone();
+        self.preferred_subtitle_language = t.subtitle_language.clone();
+        self.preferred_subtitle_mode = if t.subtitle_mode == "auto" { String::new() } else { t.subtitle_mode.clone() };
+        self.preferred_language = t.legacy_language().to_string();
     }
 
     fn password_ok(&self, password: &str) -> bool {
@@ -358,17 +396,61 @@ impl<'s> Auth<'s> {
         .map(|_| ())
     }
 
-    /// Sets the ISO 639-2 viewing preference; empty clears it.
+    /// Sets D-071's one language (an older client): both D-280
+    /// languages become it; empty clears both.
     pub fn set_preferred_language(&self, id: &str, language: &str) -> Result<(), AuthError> {
-        let language = language.trim().to_lowercase();
-        if !language.is_empty() && (language.len() != 3 || !language.bytes().all(|c| c.is_ascii_lowercase())) {
-            return Err(msg("preferred_language must be a three-letter ISO 639-2 code"));
-        }
+        let patch = PreferencesPatch { preferred_language: Some(language.into()), ..PreferencesPatch::default() };
+        self.update_preferences(id, &patch).map(|_| ())
+    }
+
+    /// Applies a preferences patch (D-071, D-280) and returns the public
+    /// record. Languages are ISO 639-2 codes, lowercased; empty clears.
+    /// `preferred_language` sets both languages and leaves the subtitle
+    /// mode alone; the D-280 fields present then override it. Nothing
+    /// is written when any value is refused.
+    pub fn update_preferences(&self, id: &str, p: &PreferencesPatch) -> Result<User, AuthError> {
+        let language = |v: &Option<String>, field: &str| -> Result<Option<String>, AuthError> {
+            let Some(raw) = v else { return Ok(None) };
+            let l = raw.trim().to_lowercase();
+            if !l.is_empty() && (l.len() != 3 || !l.bytes().all(|c| c.is_ascii_lowercase())) {
+                return Err(AuthError::Msg(format!("{field} must be a three-letter ISO 639-2 code")));
+            }
+            Ok(Some(l))
+        };
+        let both = language(&p.preferred_language, "preferred_language")?;
+        let audio = language(&p.preferred_audio_language, "preferred_audio_language")?;
+        let subtitle = language(&p.preferred_subtitle_language, "preferred_subtitle_language")?;
+        let mode = match p.preferred_subtitle_mode.as_deref().map(|m| m.trim().to_lowercase()) {
+            None => None,
+            Some(m) if m.is_empty() => Some("auto".to_string()),
+            Some(m) if SUBTITLE_MODES.contains(&m.as_str()) => Some(m),
+            Some(_) => return Err(msg("preferred_subtitle_mode must be auto, always, forced or off")),
+        };
         self.update(id, |u| {
-            u.preferred_language = language;
+            let mut t = u.track_preferences();
+            if let Some(l) = both {
+                t.audio_language = l.clone();
+                t.subtitle_language = l;
+            }
+            if let Some(l) = audio {
+                t.audio_language = l;
+            }
+            if let Some(l) = subtitle {
+                t.subtitle_language = l;
+            }
+            if let Some(m) = mode {
+                t.subtitle_mode = m;
+            }
+            u.set_tracks(&t);
             Ok(())
         })
-        .map(|_| ())
+        .map(User::public)
+    }
+
+    /// The account's track preferences (D-280); the defaults for an
+    /// unknown account.
+    pub fn track_preferences(&self, id: &str) -> TrackPreferences {
+        self.get(id).ok().flatten().map(|u| u.track_preferences()).unwrap_or_default()
     }
 
     pub fn playback_policy(&self, id: &str) -> PlaybackPolicy {
@@ -715,6 +797,111 @@ mod tests {
         assert!(a.set_preferred_language("user-admin", "j1n").is_err());
         let e = a.set_playback("user-admin", PlaybackPolicy { max_streams: 40, ..Default::default() }).unwrap_err();
         assert_eq!(e.to_string(), "max_streams must be 0..32");
+    }
+
+    fn prefs(audio: &str, subtitle: &str, mode: &str) -> TrackPreferences {
+        TrackPreferences {
+            audio_language: audio.into(),
+            subtitle_language: subtitle.into(),
+            subtitle_mode: mode.into(),
+        }
+    }
+
+    #[test]
+    fn a_record_from_before_d280_reads_as_its_one_language() {
+        let f = Fixture::new();
+        let a = f.auth();
+        a.setup("admin", "password123").unwrap();
+        // The shape D-071 stored: one language, none of the D-280 fields.
+        let old = br#"{"id":"user-old","username":"old","pass_hash":null,"role":"user","pwd_ver":1,"created_at":1,"preferred_language":"jpn","playback":{},"profile":{}}"#;
+        f.store
+            .as_ref()
+            .unwrap()
+            .write(|tx| {
+                tx.put(Bucket::Users, b"user-old", old)?;
+                tx.put(Bucket::UsersByName, b"old", b"user-old")
+            })
+            .unwrap();
+        assert_eq!(a.track_preferences("user-old"), prefs("jpn", "jpn", "auto"));
+        // Answered with both split fields, so a client reads those alone.
+        let u = a.get_public("user-old").unwrap();
+        assert_eq!(
+            (
+                u.preferred_language.as_str(),
+                u.preferred_audio_language.as_str(),
+                u.preferred_subtitle_language.as_str(),
+                u.preferred_subtitle_mode.as_str()
+            ),
+            ("jpn", "jpn", "jpn", "")
+        );
+        // Another write to the record keeps it old-shaped and reading the same.
+        a.set_disabled("user-old", false).unwrap();
+        let raw: serde_json::Value =
+            f.store.as_ref().unwrap().read(|tx| tx.get_json(Bucket::Users, b"user-old")).unwrap().unwrap();
+        assert!(raw.get("preferred_audio_language").is_none(), "{raw}");
+        assert_eq!(a.track_preferences("user-old"), prefs("jpn", "jpn", "auto"));
+        // A fresh account and an unknown one have no preference at all.
+        assert_eq!(a.track_preferences("user-admin"), prefs("", "", "auto"));
+        assert_eq!(a.track_preferences("user-ghost"), TrackPreferences::default());
+    }
+
+    #[test]
+    fn split_preferences_and_the_one_language_of_older_clients() {
+        let f = Fixture::new();
+        let a = f.auth();
+        a.setup("admin", "password123").unwrap();
+        let patch = |audio: Option<&str>, subtitle: Option<&str>, mode: Option<&str>| PreferencesPatch {
+            preferred_audio_language: audio.map(str::to_string),
+            preferred_subtitle_language: subtitle.map(str::to_string),
+            preferred_subtitle_mode: mode.map(str::to_string),
+            ..PreferencesPatch::default()
+        };
+        // Japanese audio, Portuguese subtitles: an older client reads the
+        // language the viewer reads.
+        let u = a.update_preferences("user-admin", &patch(Some(" JPN "), Some("por"), None)).unwrap();
+        assert_eq!(u.track_preferences(), prefs("jpn", "por", "auto"));
+        assert_eq!(u.preferred_language, "por");
+        // Only the fields present change.
+        let u = a.update_preferences("user-admin", &patch(None, None, Some("Forced"))).unwrap();
+        assert_eq!(u.track_preferences(), prefs("jpn", "por", "forced"));
+        let u = a.update_preferences("user-admin", &patch(None, Some(""), None)).unwrap();
+        assert_eq!((u.track_preferences(), u.preferred_language.as_str()), (prefs("jpn", "", "forced"), "jpn"));
+        // An older client's one language sets both and leaves the mode.
+        a.set_preferred_language("user-admin", "eng").unwrap();
+        assert_eq!(a.track_preferences("user-admin"), prefs("eng", "eng", "forced"));
+        // Both at once: the old field first, the new ones over it.
+        let both = PreferencesPatch {
+            preferred_language: Some("por".into()),
+            preferred_audio_language: Some("jpn".into()),
+            ..PreferencesPatch::default()
+        };
+        assert_eq!(
+            a.update_preferences("user-admin", &both).unwrap().track_preferences(),
+            prefs("jpn", "por", "forced")
+        );
+        // An empty mode is auto again; clearing both clears the old field.
+        let u = a.update_preferences("user-admin", &patch(Some(""), Some(""), Some(""))).unwrap();
+        assert_eq!((u.track_preferences(), u.preferred_language.as_str()), (prefs("", "", "auto"), ""));
+        // Refusals name the field and write nothing.
+        a.update_preferences("user-admin", &patch(Some("jpn"), Some("por"), Some("off"))).unwrap();
+        for (p, e) in [
+            (patch(Some("ja"), Some("eng"), None), "preferred_audio_language must be a three-letter ISO 639-2 code"),
+            (
+                patch(Some("eng"), Some("p0r"), None),
+                "preferred_subtitle_language must be a three-letter ISO 639-2 code",
+            ),
+            (
+                patch(Some("eng"), None, Some("sometimes")),
+                "preferred_subtitle_mode must be auto, always, forced or off",
+            ),
+        ] {
+            assert_eq!(a.update_preferences("user-admin", &p).unwrap_err().to_string(), e);
+        }
+        assert_eq!(a.track_preferences("user-admin"), prefs("jpn", "por", "off"));
+        assert_eq!(
+            a.update_preferences("user-ghost", &patch(Some("jpn"), None, None)).unwrap_err(),
+            AuthError::UnknownUser
+        );
     }
 
     #[test]

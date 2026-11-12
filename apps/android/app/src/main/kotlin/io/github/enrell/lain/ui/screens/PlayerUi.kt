@@ -44,7 +44,15 @@ internal class PlayerUi(prefs: Prefs) {
     val note: MutableState<String?> = mutableStateOf(null)
     var textTracks by mutableStateOf(listOf<TextTrack>())
     var textOff by mutableStateOf(false)
+    /** The account's subtitle rule (D-280) ran on this source's tracks; it runs once, and never over a pick. */
+    var textDecided = false
     var audioTracks by mutableStateOf(listOf<TextTrack>())
+    /**
+     * The file's audio streams while an HLS session plays (D-280): the session
+     * carries one, so Media3 lists only it; these are what a pick chooses from,
+     * each pick a new session. Empty for a direct or offline play.
+     */
+    var streamAudio by mutableStateOf(listOf<StreamAudio>())
 
     // Which list is open over the picture: 0 none, 1 subtitles, 2 audio.
     var tracksPanel by mutableStateOf(0)
@@ -130,3 +138,6 @@ internal class PlayerMoves(
 }
 
 internal class TextTrack(val group: Tracks.Group, val index: Int, val label: String, val selected: Boolean)
+
+/** One of the file's audio streams on a transcode: its index, its name, its language tag, whether the session plays it. */
+internal class StreamAudio(val stream: Long, val label: String, val language: String, val selected: Boolean)

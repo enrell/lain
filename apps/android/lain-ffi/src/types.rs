@@ -25,18 +25,31 @@ pub struct UserInfo {
     pub username: String,
     pub role: String,
     pub display_name: String,
-    /// ISO 639-2/T, empty when unset: the default subtitle language.
+    /// D-071's one language (ISO 639-2/T, empty when unset), kept for
+    /// callers before D-280: the subtitle language when one is set, else
+    /// the audio language.
     pub preferred_language: String,
+    /// D-280: ISO 639-2; empty plays the file's default audio.
+    pub preferred_audio_language: String,
+    /// D-280: ISO 639-2; empty when none is preferred.
+    pub preferred_subtitle_language: String,
+    /// D-280: `auto`, `always`, `forced` or `off`.
+    pub preferred_subtitle_mode: String,
 }
 
 impl From<User> for UserInfo {
     fn from(u: User) -> Self {
+        // An older server's one language reads as both (D-071).
+        let t = u.track_preferences();
         UserInfo {
             id: u.id,
             username: u.username,
             role: u.role,
             display_name: u.profile.display_name,
             preferred_language: u.preferred_language,
+            preferred_audio_language: t.audio_language,
+            preferred_subtitle_language: t.subtitle_language,
+            preferred_subtitle_mode: t.subtitle_mode,
         }
     }
 }
@@ -201,6 +214,21 @@ pub struct SubtitleTrack {
     pub stream: i64,
 }
 
+/// One audio stream of the file. An HLS session carries only one, so the
+/// player asks for another by its `stream` (D-280); a direct play holds
+/// them all and switches by itself.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct AudioTrack {
+    /// The stream index in the file: `play_transcoded`'s `audio_stream`.
+    pub stream: i64,
+    /// As the file tags it (ISO 639-2, `fre` or `fra`), `und` when it does not.
+    pub language: String,
+    pub label: String,
+    /// The file's default audio, which a session plays when neither the
+    /// app nor the account's audio language names another.
+    pub default: bool,
+}
+
 /// Everything the player needs to start.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct PlaySource {
@@ -218,6 +246,12 @@ pub struct PlaySource {
     pub subtitles: Vec<SubtitleTrack>,
     /// The transcode session, empty for direct and offline plays.
     pub session: String,
+    /// The file's audio streams, from the server's plan: empty offline and
+    /// from `play_transcoded`, whose caller already holds them.
+    pub audio: Vec<AudioTrack>,
+    /// The audio stream an HLS session was asked for; `None` is the
+    /// server's choice (the account's audio language, else the default).
+    pub audio_stream: Option<i64>,
 }
 
 /// A work kept as a favourite: its kind and title, and the catalog item it

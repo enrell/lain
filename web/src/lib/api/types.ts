@@ -346,8 +346,17 @@ export interface Enrichment {
 /** internal/auth.User (auth.go); PassHash is nulled by Public(). */
 export interface User {
 	id: string;
-	/** ISO 639-2 code used to prefer audio, then subtitles (D-071). */
+	/**
+	 * D-071's one language, kept for older clients: since D-280 the
+	 * subtitle language when one is set, else the audio language.
+	 */
 	preferred_language?: string;
+	/** D-280: ISO 639-2; absent plays the file's default audio. */
+	preferred_audio_language?: string;
+	/** D-280: ISO 639-2; absent when none is preferred. */
+	preferred_subtitle_language?: string;
+	/** D-280: absent is `auto`. Read all three with `trackPreferences()`. */
+	preferred_subtitle_mode?: 'auto' | 'always' | 'forced' | 'off';
 	username: string;
 	role: 'admin' | 'user';
 	disabled: boolean;
