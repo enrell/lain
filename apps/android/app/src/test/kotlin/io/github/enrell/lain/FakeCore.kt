@@ -84,9 +84,17 @@ class FakeCore : LainCoreInterface {
         sessionInfo = null
     }
     var language = "jpn"
-    override suspend fun me(): UserInfo = UserInfo(sessionInfo?.userId ?: "", sessionInfo?.username ?: "", "user", "", language)
+    var tracks = Triple("jpn", "jpn", "auto")
+    override suspend fun me(): UserInfo =
+        UserInfo(sessionInfo?.userId ?: "", sessionInfo?.username ?: "", "user", "", language, tracks.first, tracks.second, tracks.third)
     override suspend fun setPreferredLanguage(language: String): UserInfo {
         this.language = language
+        tracks = Triple(language, language, tracks.third)
+        return me()
+    }
+    override suspend fun setTrackPreferences(audioLanguage: String, subtitleLanguage: String, subtitleMode: String): UserInfo {
+        tracks = Triple(audioLanguage, subtitleLanguage, subtitleMode.ifEmpty { "auto" })
+        language = subtitleLanguage.ifEmpty { audioLanguage }
         return me()
     }
     override suspend fun modules(): List<ModuleInfo> {

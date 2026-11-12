@@ -60,7 +60,7 @@ internal fun PanelScrim(ui: PlayerUi) {
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).pointerInput(Unit) { detectTapGestures { ui.settings = false; ui.tracksPanel = 0 } })
 }
 
-/** The subtitle or the audio list ([PlayerUi.tracksPanel]), above the bar. */
+/** The subtitle or the audio list ([PlayerUi.tracksPanel]), above the bar; a pick is kept under [title] (the work's). */
 @Composable
 internal fun BoxScope.TracksPanel(ui: PlayerUi, player: ExoPlayer, title: String) {
     val l = LocalLain.current

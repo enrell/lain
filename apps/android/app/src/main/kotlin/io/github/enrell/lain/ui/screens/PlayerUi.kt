@@ -44,6 +44,8 @@ internal class PlayerUi(prefs: Prefs) {
     val note: MutableState<String?> = mutableStateOf(null)
     var textTracks by mutableStateOf(listOf<TextTrack>())
     var textOff by mutableStateOf(false)
+    /** The account's subtitle rule (D-280) ran on this source's tracks; it runs once, and never over a pick. */
+    var textDecided = false
     var audioTracks by mutableStateOf(listOf<TextTrack>())
 
     // Which list is open over the picture: 0 none, 1 subtitles, 2 audio.
