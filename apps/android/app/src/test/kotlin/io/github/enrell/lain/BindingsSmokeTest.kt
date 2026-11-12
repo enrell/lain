@@ -56,6 +56,9 @@ class BindingsSmokeTest {
             } catch (e: LainException.NoServer) {
                 // expected
             }
+            // No scheme typed: http for a LAN address, https for a public name (D-277).
+            assertEquals("http://10.0.2.2:9369", core.setServer("10.0.2.2:9369"))
+            assertEquals("https://lain.example.org:443", core.setServer("lain.example.org"))
             // Port 9 (discard) on loopback: refused at once.
             assertEquals("http://127.0.0.1:9", core.setServer("http://127.0.0.1:9"))
             try {

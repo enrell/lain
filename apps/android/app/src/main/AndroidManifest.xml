@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Cleartext is the user's choice per server (D-252, D-277). -->
+    <!-- Cleartext for servers on the LAN, which have no certificate (D-252, D-277). -->
     <application
         android:name=".LainApp"
         android:allowBackup="false"

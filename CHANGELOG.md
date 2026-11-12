@@ -14,6 +14,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Signed Android releases** (D-278): a `v*` tag attaches
   `lain_<version>_android.apk` when the signing secrets are set.
 
+### Changed
+- **A server address typed without `http://` or `https://`** (D-277) is
+  `http` on port 9360 when it is local (a private, loopback, link-local
+  or tailnet address, a one-word name, or a `.local`, `.lan`,
+  `.home.arpa`, `.internal` or `.localhost` name) and `https` on port 443
+  otherwise; an `https` that fails is never retried as `http`. This holds
+  in the CLI, the desktop app and Android, whose connect field no longer
+  starts at `http://`.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added

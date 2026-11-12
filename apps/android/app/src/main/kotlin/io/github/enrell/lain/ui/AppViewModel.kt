@@ -143,8 +143,9 @@ class AppViewModel(
         if (session != null) enterMain()
     }
 
+    /** Connects to [url] as typed: without a scheme, the core picks http or https by the host (D-277). */
     fun connect(url: String) {
-        val raw = url.trim().let { if ("://" in it) it else "http://$it" }
+        val raw = url.trim()
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             try {
