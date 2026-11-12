@@ -282,6 +282,70 @@ fn viewer_ids_are_checked_and_bounded() {
     r.gate.as_ref().unwrap().send(true).unwrap();
 }
 
+/// The session's state, unwrapped.
+fn state_of(r: &Rig, session: &str) -> String {
+    r.t.invoke_v3(&V3Request { session: session.into(), ..req(r, ACTION_STATUS) }).unwrap().state
+}
+
+/// Waits until `n` runs and stops are working on `session`'s files.
+fn wait_busy(r: &Rig, session: &str, n: u32) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while r.t.lock().busy.get(session).copied().unwrap_or(0) != n {
+        assert!(Instant::now() < deadline, "{session} never had {n} runs and stops at work");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// A viewer joining just as the last one left gets a fresh job with the
+/// same id and paths. Its run must not start while the stopped run is
+/// still exiting: that run deletes what it leaves behind, which would
+/// be the fresh run's files.
+#[test]
+fn a_fresh_run_waits_for_the_stopped_run_of_its_session() {
+    let r = rig("tc-settle-run", true);
+    let gate = r.gate.as_ref().unwrap();
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-a", "")).unwrap();
+    wait_state(&r, &a.session, RUNNING);
+    // The run is held in the gate, as a killed ffmpeg is held until it exits.
+    assert_eq!(r.t.invoke_v3(&as_viewer(&r, ACTION_CANCEL, "u1", "tab-a", &a.session)).unwrap().state, IDLE);
+    let b = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-b", "")).unwrap();
+    assert_eq!(b.session, a.session);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(state_of(&r, &b.session), QUEUED, "the fresh run started beside the stopped one");
+    // The stopped run exits; only then does the fresh one start.
+    gate.send(true).unwrap();
+    wait_state(&r, &b.session, RUNNING);
+    gate.send(true).unwrap();
+    wait_state(&r, &b.session, READY);
+    assert!(r.t.meta_path(&b.session).exists());
+}
+
+/// The same for the stop itself: it removes the session's files after it
+/// took the job out of the map, outside the lock.
+#[test]
+fn a_fresh_run_waits_for_a_stop_still_removing_files() {
+    let r = rig("tc-settle-drop", true);
+    let gate = r.gate.as_ref().unwrap();
+    let a = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-a", "")).unwrap();
+    wait_state(&r, &a.session, RUNNING);
+    // A stop between taking the job and removing its files.
+    let taken = r.t.take_job(&mut r.t.lock(), &a.session).unwrap();
+    gate.send(true).unwrap();
+    // The stopped run has exited; only the stop is left at work.
+    wait_busy(&r, &a.session, 1);
+    let b = r.t.invoke_v3(&as_viewer(&r, ACTION_START, "u1", "tab-b", "")).unwrap();
+    assert_eq!(b.session, a.session);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(state_of(&r, &b.session), QUEUED, "the fresh run started before the stop removed the files");
+    r.t.drop_taken(&a.session, taken);
+    wait_state(&r, &b.session, RUNNING);
+    gate.send(true).unwrap();
+    wait_state(&r, &b.session, READY);
+    let hls_dir = r.t.paths_for(&b.session, &st::defaults()).hls_dir;
+    assert!(hls::playable(&hls_dir), "the fresh run's files are in place");
+    wait_busy(&r, &b.session, 0);
+}
+
 #[test]
 fn queue_and_stream_limits() {
     let r = rig("tc-limits", true);
