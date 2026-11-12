@@ -51,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -237,10 +238,16 @@ fun Sheet(
                 Text(title, Modifier.weight(1f), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = l.text)
                 IconBtn(Ic.Close, "Close", onDismiss)
             }
-            Column(
-                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 20.dp),
-                content = content,
-            )
+            Box(Modifier.weight(1f, fill = false)) {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = if (footer != null) 28.dp else 20.dp),
+                    content = content,
+                )
+                // What scrolls under the footer fades into it: a row half out of view reads as "more below", not as cut.
+                if (footer != null) {
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(24.dp).background(Brush.verticalGradient(listOf(Color.Transparent, l.surface))))
+                }
+            }
             if (footer != null) {
                 // A ground of its own, so the list scrolls under an edge and not under the buttons.
                 Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.7f)))

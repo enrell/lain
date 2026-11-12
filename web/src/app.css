@@ -430,3 +430,10 @@ details.settings-section > summary {
 		padding: 0.5rem 0.875rem;
 	}
 }
+
+/* A key cap inside an accent-filled button takes the button's own ink:
+   the muted grey it wears elsewhere vanished on the accent. */
+.bg-accent kbd {
+	color: inherit;
+	opacity: 0.8;
+}

@@ -174,7 +174,13 @@ fun PlayerScreen(
     var bufferedMs by remember { mutableStateOf(0L) }
     var muted by remember { mutableStateOf(false) }
     var speed by remember { mutableStateOf(graph.prefs.speed) }
-    LaunchedEffect(player) { if (speed != 1f) player.setPlaybackSpeed(speed) }
+    LaunchedEffect(player) {
+        if (speed != 1f) {
+            player.setPlaybackSpeed(speed)
+            // Said once as it opens: a speed kept from another video is a surprise otherwise.
+            android.widget.Toast.makeText(context, context.getString(R.string.player_speed_kept, "$speed×"), android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
     var textTracks by remember { mutableStateOf(listOf<TextTrack>()) }
     var textOff by remember { mutableStateOf(false) }
     var audioTracks by remember { mutableStateOf(listOf<TextTrack>()) }
@@ -233,6 +239,8 @@ fun PlayerScreen(
         settings = false
         tracksPanel = 0
         controls = false
+        // The corner is for watching: a paused picture sent there plays.
+        if (!player.isPlaying) player.play()
         runCatching {
             activity?.enterPictureInPictureMode(
                 android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational((ratio * 1000).toInt(), 1000)).build(),
@@ -508,7 +516,7 @@ fun PlayerScreen(
         // The transport, in the middle of the picture where a thumb lands: back,
         // play or pause, forward. It is the one play target; the bar below keeps
         // time and options. Over a paused picture it stays, and the picture dims.
-        if ((shown || idle) && countdown == null) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (idle) 0.38f else 0.26f)))
+        if ((shown || idle) && countdown == null && !inPip) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (idle) 0.38f else 0.26f)))
         if (shown && !buffering && !state.loading && countdown == null && scrub == null && !settings && tracksPanel == 0) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(36.dp)) {

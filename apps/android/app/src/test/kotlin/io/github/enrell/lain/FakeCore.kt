@@ -59,6 +59,11 @@ class FakeCore : LainCoreInterface {
         reachable()
         return progress.values.filter { !it.completed }.sortedByDescending { it.updatedAt }
     }
+
+    override suspend fun allProgress(): List<ProgressInfo> {
+        reachable()
+        return progress.values.sortedByDescending { it.updatedAt }
+    }
     override suspend fun episodes(itemId: String): List<Item> = items
     override suspend fun flushProgress() = FlushSummary(0, 0, 0, 0, null)
     override suspend fun health(): String {
@@ -107,6 +112,20 @@ class FakeCore : LainCoreInterface {
         favoriteIds.remove(itemId)
         if (on) favoriteIds.add(itemId)
         return favoriteList()
+    }
+
+    val scores = mutableMapOf<String, UInt>()
+
+    private fun ratingOf(itemId: String): io.github.enrell.lain.core.RatingInfo {
+        val mine = scores[itemId] ?: 0u
+        return io.github.enrell.lain.core.RatingInfo(mine, mine.toDouble(), if (mine > 0u) 1u else 0u)
+    }
+
+    override suspend fun rating(itemId: String): io.github.enrell.lain.core.RatingInfo = ratingOf(itemId)
+
+    override suspend fun rate(itemId: String, score: UInt): io.github.enrell.lain.core.RatingInfo {
+        if (score == 0u) scores.remove(itemId) else scores[itemId] = score
+        return ratingOf(itemId)
     }
 
     override suspend fun durations(itemIds: List<String>): List<io.github.enrell.lain.core.DurationInfo> = emptyList()

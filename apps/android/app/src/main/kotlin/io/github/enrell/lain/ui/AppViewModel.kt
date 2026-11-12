@@ -329,6 +329,18 @@ class AppViewModel(
         return true
     }
 
+    /** How a title is rated; null on a server without ratings, or when it did not answer. */
+    suspend fun rating(title: io.github.enrell.lain.domain.Title): io.github.enrell.lain.core.RatingInfo? {
+        val id = title.items.firstOrNull()?.id ?: return null
+        return runCatching { withContext(io) { core.rating(id) } }.getOrNull()
+    }
+
+    /** Scores a title 1 to 10, or takes the score back with 0; null when the server refused. */
+    suspend fun rate(title: io.github.enrell.lain.domain.Title, score: Int): io.github.enrell.lain.core.RatingInfo? {
+        val id = title.items.firstOrNull()?.id ?: return null
+        return runCatching { withContext(io) { core.rate(id, score.toUInt()) } }.getOrNull()
+    }
+
     /** Asks how long these videos are (a title page's episodes, the rails' cards). */
     fun loadDurations(ids: List<String>) {
         val missing = ids.filter { it !in _state.value.durations }
@@ -374,6 +386,10 @@ class AppViewModel(
         try {
             val list = core.continueWatching()
             _state.update { s -> s.copy(continues = list, progress = s.progress + list.associateBy { it.itemId }) }
+            // Finished ones too: a poster, a filter and a title page must count the same episodes.
+            runCatching { core.allProgress() }.onSuccess { all ->
+                _state.update { s -> s.copy(progress = s.progress + all.associateBy { it.itemId }) }
+            }
         } catch (e: LainException) {
             if (offline(e)) _state.update { it.copy(online = false) }
         }

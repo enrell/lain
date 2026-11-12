@@ -345,6 +345,19 @@ impl LainCore {
         .await
     }
 
+    /// Every position this account has on the server, finished ones
+    /// included: what a library's posters and filters are marked from.
+    /// Newest first.
+    pub async fn all_progress(&self) -> Result<Vec<ProgressInfo>, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let mut v: Vec<ProgressInfo> = b.client.continue_watching().await?.into_iter().map(Into::into).collect();
+            v.sort_by_key(|p| std::cmp::Reverse(p.updated_at));
+            Ok(v)
+        })
+        .await
+    }
+
     /// `GET /api/search`; offline, a title match over the snapshot.
     pub async fn search(&self, query: String, limit: i64) -> Result<Vec<Item>, LainError> {
         let b = self.backend()?;
@@ -483,6 +496,38 @@ impl LainCore {
             }
             let patch = lain_api::SocialSettingsPatch { favorites: Some(next), ..Default::default() };
             Ok(b.client.update_social_settings(patch).await?.favorites.into_iter().map(favorite_info).collect())
+        })
+        .await
+    }
+
+    /// How the work an item belongs to is rated (the social module's
+    /// ratings, the ones the web client shows).
+    pub async fn rating(&self, item_id: String) -> Result<RatingInfo, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let target = lain_api::WorkRef { item_id, ..Default::default() };
+            Ok(rating_info(&b.client.work(&target).await?))
+        })
+        .await
+    }
+
+    /// Scores the work an item belongs to, 1 to 10, or takes the score
+    /// back with 0; answers how the work is then rated. A review written
+    /// on the web is kept as it is.
+    pub async fn rate(&self, item_id: String, score: u32) -> Result<RatingInfo, LainError> {
+        let b = self.backend()?;
+        self.run(async move {
+            let target = lain_api::WorkRef { item_id, ..Default::default() };
+            let mine = b.client.work(&target).await?.mine;
+            let (review, spoiler) = mine.map(|m| (m.review, m.spoiler)).unwrap_or_default();
+            if score == 0 && review.is_empty() {
+                b.client.delete_rating(&target).await?;
+            } else {
+                let input =
+                    lain_api::RatingInput { work: target.clone(), score: i64::from(score.min(10)), review, spoiler };
+                b.client.rate(input).await?;
+            }
+            Ok(rating_info(&b.client.work(&target).await?))
         })
         .await
     }
@@ -732,6 +777,14 @@ impl LainCore {
     /// Ends the event stream (the app went to the background).
     pub fn stop_events(&self) {
         self.close_events();
+    }
+}
+
+fn rating_info(view: &lain_api::WorkView) -> RatingInfo {
+    RatingInfo {
+        mine: view.mine.as_ref().map_or(0, |m| m.score.clamp(0, 10) as u32),
+        average: view.average,
+        scored: view.scored.max(0) as u32,
     }
 }
 

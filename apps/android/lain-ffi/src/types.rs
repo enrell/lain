@@ -229,6 +229,15 @@ pub struct FavoriteInfo {
     pub title: String,
 }
 
+/// How a work is rated: this account's own score (0 when it gave none),
+/// the average of everyone's and how many scored it. Scores run 1 to 10.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct RatingInfo {
+    pub mine: u32,
+    pub average: f64,
+    pub scored: u32,
+}
+
 /// One video's length, in seconds.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct DurationInfo {

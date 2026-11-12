@@ -1972,8 +1972,9 @@
 
 		<!-- Transport -->
 		<div class="mt-1 flex items-center gap-1.5">
-			<IconButton label={playing ? 'Pause' : 'Play'} class="size-11 bg-accent text-accent-fg hover:bg-accent-hover hover:text-accent-fg" onclick={togglePlay}>
-				{#if playing}<Pause class="size-6" />{:else}<Play class="size-6" />{/if}
+			<!-- One of the bar's buttons, drawn like them: the accent block read as a second kind of play button beside the one on the picture. -->
+			<IconButton label={playing ? 'Pause' : 'Play'} class="size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={togglePlay}>
+				{#if playing}<Pause class="size-6 fill-current" />{:else}<Play class="size-6 fill-current" />{/if}
 			</IconButton>
 			<IconButton label={`Back ${skipSec} seconds`} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(-skipSec)}>
 				<SkipBack class="size-6" /><span class="absolute text-[9px] font-semibold">{skipSec}</span>

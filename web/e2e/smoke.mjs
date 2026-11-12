@@ -237,6 +237,7 @@ async function clickText(text, selector = 'button, a') {
 	await settle();
 	const deadline = Date.now() + 5000;
 	let info = null;
+	let prev = null;
 	while (Date.now() < deadline) {
 		info = await evalValue(`(() => {
 			const els = [...document.querySelectorAll(${JSON.stringify(selector)})];
@@ -247,7 +248,8 @@ async function clickText(text, selector = 'button, a') {
 			const x = rect.left + rect.width / 2;
 			const y = rect.top + rect.height / 2;
 			const hit = document.elementFromPoint(x, y);
-			const hitEl = hit ? hit.closest('a, button') : null;
+			// What is hit must be the element looked for: a link or button, or whatever the selector names (a menu item is neither).
+			const hitEl = hit ? (hit.closest(${JSON.stringify(selector)}) ?? hit.closest('a, button')) : null;
 			return {
 				tag: el.tagName,
 				href: el.getAttribute('href'),
@@ -256,7 +258,12 @@ async function clickText(text, selector = 'button, a') {
 				hit: hitEl ? (hitEl.textContent || '').trim().slice(0, 60) : (hit ? hit.tagName : null)
 			};
 		})()`);
-		if (info && info.hit && info.hit.includes(text)) break;
+		// Twice at the same point: scrolling an element into view moves a
+		// floating menu a frame later, and a click measured in between lands
+		// where the entry no longer is.
+		const steady = info && prev && prev.x === info.x && prev.y === info.y;
+		if (info && info.hit && info.hit.includes(text) && steady) break;
+		prev = info;
 		await sleep(100);
 	}
 	assert(info, `no clickable element with text ${JSON.stringify(text)}`);
@@ -292,6 +299,19 @@ async function fillLabel(labelText, value) {
 		return true;
 	})()`);
 	assert(filled, `no input for label ${JSON.stringify(labelText)}`);
+}
+
+// The add-library dialog has one path bar: a typed path is opened when the
+// field is left (or on Enter), and the Add buttons wait for the server to
+// have listed that folder.
+async function openFolder(path) {
+	await fillLabel('Folder', path);
+	await evalValue(`document.getElementById('library-path').dispatchEvent(new FocusEvent('blur'))`);
+	await waitFor(
+		`[...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('Add and scan') && !b.disabled) && document.getElementById('library-path').value === ${JSON.stringify(path)}`,
+		10000,
+		'the typed folder was opened'
+	);
 }
 
 async function fillPlaceholder(placeholder, value) {
@@ -436,15 +456,15 @@ try {
 	await waitText('Media libraries', 10000);
 	await clickText('Add your first library');
 	await waitText('Add a media library', 5000);
+	await openFolder(`${MEDIA}/Anime`);
 	await fillLabel('Name', 'Anime');
-	await fillLabel('Server directory path', `${MEDIA}/Anime`);
 	await clickText('Add and scan');
 	await waitFor(`document.body.innerText.includes('identified')`, 20000, 'first scan finished');
 
 	await clickText('Add library');
 	await waitText('Add a media library', 5000);
+	await openFolder(`${MEDIA}/Movies`);
 	await fillLabel('Name', 'Movies');
-	await fillLabel('Server directory path', `${MEDIA}/Movies`);
 	await clickText('Add and scan');
 	await waitFor(`document.body.innerText.includes('identified')`, 20000, 'second scan finished');
 	console.log('   two libraries scanned');
@@ -465,7 +485,8 @@ try {
 	await waitText('Search', 10000);
 	await fillPlaceholder('Titles, not filenames', 'frieren');
 	await waitFor(
-		`document.body.innerText.includes('2 results') || document.body.innerText.includes('1 result')`,
+		// A search answers with titles: the two episodes of the fixture's show are one title.
+		`document.body.innerText.includes('1 title for')`,
 		15000,
 		'search results'
 	);
