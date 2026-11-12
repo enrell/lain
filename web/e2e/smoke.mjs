@@ -1213,12 +1213,17 @@ try {
 	const shippedSettings = await readSettings();
 	// Measured on this fixture: veryslow with a single thread encodes about
 	// 64 fps, so ten minutes of source needs ~110s — comfortably longer than
-	// this step, which is what keeps the session partial.
+	// this step, which is what keeps the session partial. In software: a
+	// server that picked a hardware encoder on first boot (NVENC on a
+	// workstation) ignores the preset and finishes the rest of the source
+	// in under a second, and the session is no longer partial.
 	await writeTranscodeSettings({
 		h264_preset: 'veryslow',
 		thread_count: 1,
 		hls_segment_seconds: 2,
-		throttle_ahead_sec: 5
+		throttle_ahead_sec: 5,
+		hardware_acceleration: 'none',
+		hardware_encode: false
 	});
 	await navigate(`${BASE}/library`);
 	await clickText('Long Show');
@@ -1372,20 +1377,38 @@ try {
 		h264_preset: shippedSettings.h264_preset,
 		thread_count: shippedSettings.thread_count,
 		hls_segment_seconds: shippedSettings.hls_segment_seconds,
-		throttle_ahead_sec: shippedSettings.throttle_ahead_sec
+		throttle_ahead_sec: shippedSettings.throttle_ahead_sec,
+		hardware_acceleration: shippedSettings.hardware_acceleration,
+		hardware_encode: shippedSettings.hardware_encode
 	});
-	// The deliberately slow session has served its purpose: leaving it
-	// encoding would queue every later transcode behind it, because the
-	// worker count this step pinned to one is the whole server's budget.
+	// The deliberately slow session has served its purpose, and it is still
+	// being produced. Leaving the player through the app (Back, a client
+	// navigation that unmounts it) has to stop it: left running, it would
+	// hold one of the server's runners until the idle timeout and queue
+	// every later transcode behind it. The player's own release is what is
+	// checked here, not a cleanup by the test.
 	{
 		const last = [...requests].reverse().find((r) => r.url.includes('/transcode/status'));
 		const session = last?.url.match(/session=([0-9a-f]+)/)?.[1];
-		if (session) {
-			await fetch(`${BASE}/api/items/${longShowId}/transcode?session=${session}`, {
-				method: 'DELETE',
+		assert(session, 'no session observed for the far seek');
+		const state = await sessionState(longShowId, session);
+		assert(state === 'queued' || state === 'running', `the far-seek session is ${state}, want it still being produced`);
+		await evalValue('history.back()');
+		await waitFor(`!location.pathname.startsWith('/player/') && !document.querySelector('video')`, 10000, 'Back left the player');
+		const statusCode = async () => {
+			const res = await fetch(`${BASE}/api/items/${longShowId}/transcode/status?session=${session}`, {
 				headers: { Authorization: 'Bearer ' + adminToken }
 			});
+			await res.arrayBuffer();
+			return res.status;
+		};
+		let code = await statusCode();
+		for (const until = Date.now() + 15000; code !== 404 && Date.now() < until; ) {
+			await sleep(200);
+			code = await statusCode();
 		}
+		assert(code === 404, `leaving the player left its unfinished session in place (status ${code})`);
+		console.log('   leaving the player stopped the session it was still producing');
 	}
 
 	/* ---------------- direct Matroska (D-058) ---------------- */
