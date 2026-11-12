@@ -1,5 +1,6 @@
 import { ApiError, api } from '$lib/api';
 import { prefs } from '$lib/auth/storage';
+import { t } from '$lib/i18n';
 import { toasts } from '$lib/stores/toasts.svelte';
 import { isReadable } from '$lib/reader/kinds';
 import { errorMessage } from '$lib/utilities/errors';
@@ -75,11 +76,11 @@ export async function playExternalClick(
 		const player = players.includes(preferred) ? preferred : players[0];
 		try {
 			const result = await api.localplay.play(itemId, player);
-			toasts.success(`Playing in ${result.player} on this machine.`);
+			toasts.success(t('openWith.playing', { player: result.player }));
 			return;
 		} catch (err) {
 			if (!(err instanceof ApiError) || (err.kind !== 'forbidden' && err.kind !== 'unavailable')) {
-				toasts.error(errorMessage(err, 'Could not start playback.'));
+				toasts.error(errorMessage(err, t('openWith.failed')));
 				return;
 			}
 		}
