@@ -815,6 +815,8 @@ const en = {
 			favorites: 'Favorites',
 			favoritesHint: 'Up to 12, shown on your profile. Press F on any title page to add one.',
 			removeFavorite: 'Remove',
+			removeFavoriteNamed: 'Remove {title} from your profile',
+			favoriteRemoved: '{title} is off your profile.',
 			noFavorites: 'No favorites yet.',
 			viewProfile: 'Your public profile',
 			viewProfileHint: 'See it as others do.',
