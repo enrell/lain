@@ -27,6 +27,7 @@
 		TranscodeStatus
 	} from '$lib/api/types';
 	import { api } from '$lib/api';
+	import { newViewerId } from '$lib/api/playback';
 	import type { StoryboardLayout } from '$lib/api/thumbnail';
 	import { session } from '$lib/auth/session.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
@@ -170,6 +171,10 @@
 	let transcodeReady = $state(false);
 	let preparingTranscode = $state(false);
 	let transcodeSession = $state('');
+	// This player's viewer id (D-281). Sessions are shared by everyone
+	// asking for the same options, so a release names the viewer leaving:
+	// the server stops the session only when no other viewer holds it.
+	const viewer = newViewerId();
 	let transcodeError = $state<string | null>(null);
 	let prepareProgress = $state(0);
 	let prepareStartedAt = $state(0);
@@ -416,27 +421,22 @@
 	});
 
 	/*
-	 * Leaving the player for good stops a session still being produced.
-	 * Nobody can use it: coming back starts a new session at the saved
-	 * position, and only a finished session is replayed. Left running,
+	 * Leaving the player for good releases its session. One still being
+	 * produced that nobody else watches is stopped by the server: coming
+	 * back starts a new session at the saved position, and left running,
 	 * the throttle pauses it once it is ahead of a viewer who is gone,
 	 * and it holds one of the server's few runners (max_concurrent) until
 	 * the idle timeout, two minutes, while the next title waits queued
-	 * behind it. A finished session stays: it is the cache a replay
-	 * attaches to.
+	 * behind it. Another tab or device on the same session keeps it, and
+	 * a finished session stays: it is the cache a replay attaches to
+	 * (D-281). The server decides both, so there is no state to ask first.
 	 */
 	function releaseSession(): void {
-		const sid = transcodeSession;
-		if (!sid) return;
-		const id = item.id;
-		void api.playback
-			.transcodeStatus(id, sid)
-			.then((status) => {
-				if (status.state === 'queued' || status.state === 'running') {
-					return api.playback.cancelTranscode(id, sid);
-				}
-			})
-			.catch(() => undefined);
+		if (transcodeSession) releaseTranscode(transcodeSession);
+	}
+
+	function releaseTranscode(sid: string): void {
+		void api.playback.releaseTranscode(item.id, sid, viewer).catch(() => undefined);
 	}
 
 	/* ---------------------------------------------------------------- */
@@ -666,15 +666,15 @@
 				subtitle_mode: (languageMetadataKnown || chosenSidecar !== null) && embeddedSubtitle === '' ? 'off' : undefined,
 				start_sec: baseOffset || undefined,
 				video_copy_codecs: copyCodecs(),
-				video_effect: serverEffect || undefined
+				video_effect: serverEffect || undefined,
+				viewer
 			});
 			// Left while the start was on its way: onDestroy had no session
-			// to stop yet, and nothing will ever attach to this one, so it is
-			// released here instead of holding a runner until the idle timeout.
+			// to release yet, and this player will never attach to it, so it
+			// is released here instead of holding a runner until the idle
+			// timeout.
 			if (destroyed) {
-				if (status.state === 'queued' || status.state === 'running') {
-					void api.playback.cancelTranscode(item.id, status.session).catch(() => undefined);
-				}
+				releaseTranscode(status.session);
 				return;
 			}
 			// The server answers a request it cannot honour with the plain
@@ -771,7 +771,7 @@
 		transcodeReady = false;
 		resumeApplied = true;
 		baseOffset = position;
-		if (oldSession) void api.playback.cancelTranscode(item.id, oldSession).catch(() => undefined);
+		if (oldSession) releaseTranscode(oldSession);
 		try {
 			await prepareTranscode({
 				audio_stream: selectedAudio === '' ? undefined : Number(selectedAudio),
