@@ -87,7 +87,8 @@ fun buildRails(
     rails += Rail(RailLabel.Recent, titles.sortedByDescending { it.latest }.take(30).map { Card.Show(it) })
     val byLibrary = titles.groupBy { it.libraryId }
     val named = libraries.associateBy { it.id }
-    for ((id, list) in byLibrary) {
+    // The fullest library first: the one most likely wanted is not left to the alphabet.
+    for ((id, list) in byLibrary.entries.sortedByDescending { it.value.size }) {
         val name = named[id]?.name ?: continue
         rails += Rail(RailLabel.Library(name), list.map { Card.Show(it) })
     }

@@ -3,6 +3,8 @@ package io.github.enrell.lain.ui.screens
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -123,12 +125,20 @@ fun ReaderScreen(
     // One page past the last is the end of the volume: a swipe reaches it as a tap does.
     val pager = rememberPagerState(initialPage = state.page) { book.pages.size + 1 }
     // The page that came to rest is the page being read (the ones a jump passes over are not).
-    LaunchedEffect(pager.settledPage) { if (pager.settledPage < book.pages.size) model.goTo(pager.settledPage) }
-    LaunchedEffect(state.page) {
-        if (pager.settledPage != state.page) pager.scrollToPage(state.page)
+    // Scroll mode: the pages one under the other at the screen's width, for
+    // strips made to be read downwards. Kept from one book to the next.
+    val readerPrefs = androidx.compose.ui.platform.LocalContext.current.graph.prefs
+    var vertical by remember { mutableStateOf(readerPrefs.readerScroll) }
+    val list = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = state.page)
+    LaunchedEffect(pager.settledPage) { if (!vertical && pager.settledPage < book.pages.size) model.goTo(pager.settledPage) }
+    LaunchedEffect(list.firstVisibleItemIndex) { if (vertical && list.firstVisibleItemIndex < book.pages.size) model.goTo(list.firstVisibleItemIndex) }
+    LaunchedEffect(state.page, vertical) {
+        if (vertical) {
+            if (list.firstVisibleItemIndex != state.page) list.scrollToItem(state.page)
+        } else if (pager.settledPage != state.page) pager.scrollToPage(state.page)
     }
     val turns = androidx.compose.runtime.rememberCoroutineScope()
-    val atEnd = pager.currentPage >= book.pages.size
+    val atEnd = if (vertical) false else pager.currentPage >= book.pages.size
     LaunchedEffect(Unit) { focus.requestFocus() }
     var chrome by remember { mutableStateOf(true) }
     val prefs = androidx.compose.ui.platform.LocalContext.current.graph.prefs
@@ -150,11 +160,19 @@ fun ReaderScreen(
     }
     fun forward() {
         hint = false
+        if (vertical) {
+            turns.launch { list.animateScrollBy(list.layoutInfo.viewportSize.height * 0.85f) }
+            return
+        }
         if (atEnd) return
         turns.launch { pager.animateScrollToPage(pager.currentPage + 1) }
     }
     fun backward() {
         hint = false
+        if (vertical) {
+            turns.launch { list.animateScrollBy(-list.layoutInfo.viewportSize.height * 0.85f) }
+            return
+        }
         if (pager.currentPage > 0) turns.launch { pager.animateScrollToPage(pager.currentPage - 1) }
     }
     // The book's own direction, which the reader may turn around.
@@ -165,6 +183,20 @@ fun ReaderScreen(
         bars?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         bars?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
         onDispose { bars?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars()) }
+    }
+    // The end of the volume: said, with where to go from here.
+    val endCard: @Composable () -> Unit = {
+        Column(
+            Modifier.padding(horizontal = 32.dp).clip(RoundedCornerShape(16.dp)).background(l.surface).border(1.dp, l.line, RoundedCornerShape(16.dp)).padding(22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(stringResource(R.string.end_of_volume), color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(title, Modifier.padding(top = 4.dp), color = l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                WButton(stringResource(R.string.player_back), onBack, kind = Btn.Secondary)
+                if (next != null) WButton(stringResource(R.string.next_volume), { onNext(next) }, icon = Ic.ChevronRight)
+            }
+        }
     }
     Box(
         Modifier
@@ -186,21 +218,38 @@ fun ReaderScreen(
                 true
             },
     ) {
+        if (vertical) {
+            // A tap in the middle shows or hides the bars; above and below it moves most of a screen.
+            androidx.compose.foundation.lazy.LazyColumn(
+                state = list,
+                modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+                    detectTapGestures { o ->
+                        val y = o.y / size.height
+                        when {
+                            y in 0.3f..0.7f -> chrome = !chrome
+                            y > 0.7f -> forward()
+                            else -> backward()
+                        }
+                    }
+                },
+            ) {
+                items(book.pages.size, key = { it }) { i ->
+                    val bmp: ImageBitmap? by produceState<ImageBitmap?>(null, i) {
+                        val bytes = model.page(i)
+                        value = bytes?.let { withContext(Dispatchers.Default) { decode(it, 2400) } }
+                    }
+                    bmp?.let { Image(it, contentDescription = stringResource(R.string.progress_page, i + 1, book.pages.size), contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth()) }
+                        // A page not here yet holds a page's room, so the strip does not jump as it arrives.
+                        ?: Box(Modifier.fillMaxWidth().aspectRatio(0.7f), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(36.dp), color = l.muted, strokeWidth = 2.dp) }
+                }
+                item(key = "end") { Box(Modifier.fillMaxWidth().padding(vertical = 96.dp), contentAlignment = Alignment.Center) { endCard() } }
+            }
+        } else
         HorizontalPager(state = pager, reverseLayout = rtl, beyondViewportPageCount = 1, modifier = Modifier.fillMaxSize()) { i ->
             if (i >= book.pages.size) {
                 // The end of the volume: said, with where to go from here.
                 Box(Modifier.fillMaxSize().pointerInput(rtl) { detectTapGestures { o -> if ((o.x / size.width > 0.7f) == rtl || (o.x / size.width < 0.3f) != rtl) backward() } }, contentAlignment = Alignment.Center) {
-                    Column(
-                        Modifier.padding(horizontal = 32.dp).clip(RoundedCornerShape(16.dp)).background(l.surface).border(1.dp, l.line, RoundedCornerShape(16.dp)).padding(22.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(stringResource(R.string.end_of_volume), color = l.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                        Text(title, Modifier.padding(top = 4.dp), color = l.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            WButton(stringResource(R.string.player_back), onBack, kind = Btn.Secondary)
-                            if (next != null) WButton(stringResource(R.string.next_volume), { onNext(next) }, icon = Ic.ChevronRight)
-                        }
-                    }
+                    endCard()
                 }
                 return@HorizontalPager
             }
@@ -254,7 +303,7 @@ fun ReaderScreen(
                     ?: CircularProgressIndicator(Modifier.size(36.dp), color = l.muted, strokeWidth = 2.dp)
             }
         }
-        if (directionNote && !hint && !atEnd) {
+        if (directionNote && !hint && !atEnd && !vertical) {
             Row(
                 Modifier.align(Alignment.Center).clip(CircleShape).background(Color.Black.copy(alpha = 0.75f)).padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -288,12 +337,18 @@ fun ReaderScreen(
                 Column(Modifier.padding(end = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Mono(stringResource(R.string.reader_direction), Modifier.padding(bottom = 3.dp), size = 8)
                 Row(Modifier.height(32.dp).clip(l.buttonShape).border(1.dp, l.line, l.buttonShape)) {
-                    for ((toRtl, label) in listOf(false to "L \u2192 R", true to "R \u2190 L")) {
-                        val on = rtl == toRtl
+                    // Left to right, right to left, or down the page.
+                    for ((way, label) in listOf(0 to "L \u2192 R", 1 to "R \u2190 L", 2 to "\u2193")) {
+                        val on = if (way == 2) vertical else !vertical && rtl == (way == 1)
+                        val name = stringResource(when (way) { 0 -> R.string.reader_ltr; 1 -> R.string.reader_rtl; else -> R.string.reader_scroll })
                         Box(
                             Modifier.fillMaxHeight().background(if (on) l.accent.copy(alpha = 0.22f) else Color.Transparent)
-                                .clickable(onClickLabel = stringResource(if (toRtl) R.string.reader_rtl else R.string.reader_ltr)) { rtl = toRtl }
-                                .semantics { contentDescription = if (toRtl) "Right to left" else "Left to right"; stateDescription = if (on) "selected" else "not selected" }
+                                .clickable(onClickLabel = name) {
+                                    vertical = way == 2
+                                    readerPrefs.readerScroll = vertical
+                                    if (way != 2) rtl = way == 1
+                                }
+                                .semantics { contentDescription = name; stateDescription = if (on) "selected" else "not selected" }
                                 .padding(horizontal = 11.dp),
                             contentAlignment = Alignment.Center,
                         ) { Text(label, color = if (on) l.text else l.muted, fontSize = 12.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
@@ -310,6 +365,7 @@ fun ReaderScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val last = book.pages.size - 1
+                val rtl = rtl && !vertical
                 Text(
                     if (rtl) book.pages.size.toString() else "1",
                     Modifier.clip(CircleShape).clickable { model.goTo(if (rtl) last else 0) }.padding(horizontal = 8.dp, vertical = 10.dp),

@@ -225,7 +225,7 @@
     <string name="reader_pages">%1$d / %2$d</string>
     <string name="reader_rtl">Right to left</string>
     <string name="reader_ltr">Left to right</string>
-    <string name="hero_continue">Continue watching</string>
+    <string name="hero_continue">Where you left off</string>
     <string name="action_resume_short">Resume</string>
     <string name="home_empty_title">Nothing here yet</string>
     <string name="library_empty_title">No titles in this library</string>
@@ -301,13 +301,13 @@
     <string name="player_source">Source</string>
     <string name="continue_page_short">Continue · page %1$d</string>
     <string name="reader_rtl_note">Right to left: the next page is on the left</string>
-    <string name="hero_continue_reading">Continue reading</string>
+    <string name="hero_continue_reading">Where you left off</string>
     <string name="fact_download_size">Download size</string>
-    <string name="rail_my_list">My list</string>
-    <string name="fav_add">Add to my list</string>
-    <string name="fav_remove">Remove from my list</string>
-    <string name="fav_added">Added to your list</string>
-    <string name="fav_removed">Removed from your list</string>
+    <string name="rail_my_list">Favorites</string>
+    <string name="fav_add">Add to favorites</string>
+    <string name="fav_remove">Remove from favorites</string>
+    <string name="fav_added">Added to favorites</string>
+    <string name="fav_removed">Removed from favorites</string>
     <string name="mark_all_watched_q">Mark all as watched?</string>
     <string name="mark_all_read_q">Mark all as read?</string>
     <string name="mark_all_unwatched_q">Mark all as not watched?</string>
@@ -322,4 +322,8 @@
     <string name="player_audio_now">Audio: %1$s</string>
     <string name="player_subtitles_now">Subtitles: %1$s</string>
     <string name="reader_direction">Direction</string>
+    <string name="player_pip">Picture in picture</string>
+    <string name="reader_scroll">Scroll down</string>
+    <string name="download_rest">Download the rest</string>
+    <string name="action_continue">Continue</string>
 </resources>

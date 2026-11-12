@@ -221,6 +221,37 @@ fun PlayerScreen(
             activity?.requestedOrientation = restOrientation(activity)
         }
     }
+    // Picture in picture: the picture alone in a corner while something else is
+    // on screen. Leaving the app while it plays goes there by itself; a video
+    // nobody can see (the app stopped, the corner closed) pauses.
+    var inPip by remember { mutableStateOf(false) }
+    val main = activity as? io.github.enrell.lain.MainActivity
+    val canPip = remember { context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE) }
+    val enterPip = {
+        val v = player.videoSize
+        val ratio = (if (v.width > 0 && v.height > 0) v.width.toFloat() / v.height else 16f / 9f).coerceIn(0.45f, 2.3f)
+        settings = false
+        tracksPanel = 0
+        controls = false
+        runCatching {
+            activity?.enterPictureInPictureMode(
+                android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational((ratio * 1000).toInt(), 1000)).build(),
+            )
+        }
+        Unit
+    }
+    DisposableEffect(main) {
+        val changed = androidx.core.util.Consumer<androidx.core.app.PictureInPictureModeChangedInfo> { inPip = it.isInPictureInPictureMode }
+        val seen = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP) player.pause() }
+        main?.addOnPictureInPictureModeChangedListener(changed)
+        main?.lifecycle?.addObserver(seen)
+        onDispose {
+            main?.removeOnPictureInPictureModeChangedListener(changed)
+            main?.lifecycle?.removeObserver(seen)
+            main?.leaveToPip = null
+        }
+    }
+    androidx.compose.runtime.SideEffect { main?.leaveToPip = if (canPip && playing) enterPip else null }
     LaunchedEffect(itemId) { model.load() }
     DisposableEffect(itemId) {
         val listener = object : Player.Listener {
@@ -434,8 +465,8 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        // The picture's gestures.
-        Row(Modifier.fillMaxSize()) {
+        // The picture's gestures (none in the corner: the system owns that window).
+        if (!inPip) Row(Modifier.fillMaxSize()) {
             for (side in listOf(-1, 0, 1)) {
                 Box(
                     Modifier.weight(if (side == 0) 0.28f else 0.36f).fillMaxHeight().pointerInput(side) {
@@ -473,7 +504,7 @@ fun PlayerScreen(
             CircularProgressIndicator(Modifier.align(Alignment.Center).size(44.dp), color = Color.White, strokeWidth = 3.dp)
         }
 
-        val shown = controls || pinned
+        val shown = (controls || pinned) && !inPip
         // The transport, in the middle of the picture where a thumb lands: back,
         // play or pause, forward. It is the one play target; the bar below keeps
         // time and options. Over a paused picture it stays, and the picture dims.
@@ -520,7 +551,7 @@ fun PlayerScreen(
             }
         }
         // The gestures, said once.
-        if (hint && playing && !pinned) {
+        if (hint && playing && !pinned && !inPip) {
             Text(
                 stringResource(R.string.player_hint),
                 Modifier.align(Alignment.Center).padding(horizontal = 32.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black.copy(alpha = 0.7f)).padding(horizontal = 16.dp, vertical = 10.dp),
@@ -668,6 +699,7 @@ fun PlayerScreen(
                         BarAction(Ic.Audio, stringResource(R.string.player_audio), tracksPanel == 2) { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }
                     }
                     IconBtn(Ic.Gear, "Settings", { tracksPanel = 0; settings = !settings }, tint = if (settings) l.accent else Color.White)
+                    if (canPip) IconBtn(Ic.Pip, stringResource(R.string.player_pip), { enterPip() }, tint = Color.White)
                     IconBtn(Ic.Maximize, "Fullscreen", {
                         landscape = !landscape
                         activity?.requestedOrientation =
@@ -688,7 +720,10 @@ fun PlayerScreen(
                 Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, bottom = 104.dp).width(264.dp).heightIn(max = 360.dp).clip(RoundedCornerShape(10.dp))
                     .verticalScroll(rememberScrollState()).background(l.bg).border(1.dp, l.line.copy(alpha = 0.6f), RoundedCornerShape(10.dp)).padding(8.dp),
             ) {
-                Text(stringResource(if (subs) R.string.player_subtitles else R.string.player_audio), Modifier.padding(start = 8.dp, top = 6.dp, bottom = 8.dp), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(if (subs) R.string.player_subtitles else R.string.player_audio), Modifier.weight(1f).padding(start = 8.dp), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    IconBtn(Ic.Close, "Close", { tracksPanel = 0 }, tint = l.text)
+                }
                 if (subs) {
                     OptionRow(stringResource(R.string.player_off), null, textOff || textTracks.none { it.selected }, {
                         textOff = true

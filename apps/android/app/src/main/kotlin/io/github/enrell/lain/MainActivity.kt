@@ -97,6 +97,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    /** Set by the player while a video plays: leaving the app then keeps the picture in a corner. */
+    var leaveToPip: (() -> Unit)? = null
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        leaveToPip?.invoke()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // The app is dark whatever the system's mode: light icons on both
