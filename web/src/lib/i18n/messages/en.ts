@@ -133,6 +133,7 @@ const en = {
 	},
 	boot: {
 		connecting: 'Connecting to your server…',
+		redirecting: 'Redirecting',
 		retry: 'Try again'
 	},
 	userMenu: {
@@ -978,6 +979,9 @@ const en = {
 		upNext: 'Up next'
 	},
 	tracking: {
+		pageTitle: 'Tracking — Lain',
+		typeFilter: 'Media type',
+		statusFilter: 'Status',
 		subtitle: 'Everything your connected accounts track — manga, comics, anime, films and shows in one place.',
 		films: 'Films',
 		shows: 'Shows',
