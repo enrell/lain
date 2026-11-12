@@ -658,6 +658,20 @@ const en = {
 		shelfFailed: 'Could not load this library.',
 		shelfEmpty: 'Nothing indexed here yet.'
 	},
+	favorites: {
+		title: 'Favorites',
+		lead: 'Kept with the heart.',
+		gone: {
+			one: '{count} more is no longer in a library you can see.',
+			other: '{count} more are no longer in a library you can see.'
+		},
+		search: 'Search favorites',
+		sortListed: 'Recently kept',
+		emptyTitle: 'No favorites yet',
+		emptyBody: 'The heart beside a title’s main action keeps it here and on Home.',
+		browse: 'Browse the library',
+		loadFailed: 'Could not load your favorites.'
+	},
 	home: {
 		browseLibrary: 'Browse library'
 	},

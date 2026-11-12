@@ -31,7 +31,14 @@ export const SORTS = [
 	{ value: 'size_desc', label: 'Largest' },
 	{ value: 'episodes_desc', label: 'Most episodes' }
 ] as const;
-export type Sort = (typeof SORTS)[number]['value'];
+/**
+ * The order the titles came in, offered only where that order means
+ * something of its own (favourites: the one kept last first). Its label is
+ * the caller's, since it says what the order is.
+ */
+export const LISTED = 'listed';
+export type Sort = (typeof SORTS)[number]['value'] | typeof LISTED;
+const SORT_VALUES: readonly Sort[] = SORTS.map((s) => s.value);
 
 export const WATCH = [
 	{ value: 'unwatched', label: 'Not started' },
@@ -69,14 +76,15 @@ export const NO_FILTERS: Filters = { q: '', sort: 'title', genres: [], exclude: 
 
 const list = (v: string | null): string[] => (v ? v.split('|').map((s) => s.trim()).filter(Boolean) : []);
 
-export function filtersFromParams(p: URLSearchParams, defaultSort: Sort = 'title'): Filters {
+/** `sorts`: the orders this page offers; another in the URL falls back to the default. */
+export function filtersFromParams(p: URLSearchParams, defaultSort: Sort = 'title', sorts: readonly Sort[] = SORT_VALUES): Filters {
 	const sort = p.get('sort');
 	const watch = p.get('watch');
 	const shape = p.get('shape');
 	const added = Number(p.get('added'));
 	return {
 		q: p.get('q') ?? '',
-		sort: SORTS.some((s) => s.value === sort) ? (sort as Sort) : defaultSort,
+		sort: sorts.includes(sort as Sort) ? (sort as Sort) : defaultSort,
 		genres: list(p.get('genre')),
 		exclude: list(p.get('not')),
 		watch: WATCH.some((w) => w.value === watch) ? (watch as Watch) : '',
@@ -167,6 +175,7 @@ export function sortBy(groups: SeriesGroup[], sort: Sort): SeriesGroup[] {
 		case 'year': return then((a, b) => (year(a) || 9999) - (year(b) || 9999));
 		case 'size_desc': return then((a, b) => size(b) - size(a));
 		case 'episodes_desc': return then((a, b) => b.count - a.count);
+		case LISTED: return out;
 		default: return out.sort(byTitle);
 	}
 }

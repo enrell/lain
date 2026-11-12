@@ -50,6 +50,8 @@ describe('filters', () => {
 		expect(titles({ sort: 'year' })).toEqual(['Alpha', 'Beta', 'Gamma']);
 		expect(titles({ sort: 'size_desc' })[0]).toBe('Beta');
 		expect(titles({ sort: 'episodes_desc' })[0]).toBe('Alpha');
+		// The order they came in: what favourites were kept in, newest first.
+		expect(apply([...groups].reverse(), f({ sort: 'listed' }), ctx).map((g) => g.title)).toEqual(['Gamma', 'Beta', 'Alpha']);
 	});
 });
 
@@ -80,5 +82,12 @@ describe('URL', () => {
 	});
 	it('ignores values it does not know', () => {
 		expect(filtersFromParams(new URLSearchParams('sort=bogus&watch=x&added=5&shape=y'))).toEqual(NO_FILTERS);
+	});
+	it('takes the listed order only where it is offered', () => {
+		expect(filtersFromParams(new URLSearchParams('sort=listed')).sort).toBe('title');
+		const offered = ['listed', 'title'] as const;
+		expect(filtersFromParams(new URLSearchParams(''), 'listed', offered).sort).toBe('listed');
+		expect(filtersFromParams(new URLSearchParams('sort=title'), 'listed', offered).sort).toBe('title');
+		expect(filtersToParams(f({ sort: 'listed' }), 'listed').toString()).toBe('');
 	});
 });
