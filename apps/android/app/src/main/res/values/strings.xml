@@ -128,7 +128,7 @@
     <string name="episode_n">Episode %1$d</string>
     <string name="volume_n">Vol %1$d</string>
     <string name="search_library">Search this library</string>
-    <string name="filters">Filters</string>
+    <string name="filters">Sort &amp; filter</string>
     <string name="count_of">%1$d of %2$d titles</string>
     <string name="clear">Clear</string>
     <string name="clear_all">Clear search and filters</string>

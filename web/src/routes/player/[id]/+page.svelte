@@ -48,6 +48,7 @@
 	// switch episodes without going back to the title page.
 	let episodes = $state<CatalogItem[]>([]);
 	let progressMap = $state<Map<string, Progress>>(new Map());
+	let durations = $state<Map<string, number>>(new Map());
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let notFound = $state(false);
@@ -111,6 +112,8 @@
 			progress = prog;
 			episodes = eps.items;
 			progressMap = new Map(allProgress.map((p) => [p.item_id, p]));
+			// How long each one is, for the list beside the picture.
+			void api.playback.durations(eps.items.map((e) => e.id)).then((d) => (durations = d));
 		} catch (err) {
 			if (err instanceof ApiError && err.kind === 'not-found') notFound = true;
 			else error = errorMessage(err);
@@ -140,12 +143,15 @@
 	function progressLine(episode: CatalogItem): string {
 		if (episode.missing) return 'Missing from disk';
 		const p = progressMap.get(episode.id);
-		if (!p) return 'Not watched';
-		if (p.completed) return 'Watched';
-		if (p.duration_sec > 0)
+		// Its length, then its state, as the title page's cards say it.
+		const length = formatLength(durations.get(episode.id));
+		const with_ = (state: string): string => (length ? `${length} · ${state}` : state);
+		if (!p) return length || 'Not watched';
+		if (p.completed) return with_('Watched');
+		if (p.duration_sec > 0 && p.position_sec > 0)
 			// What is left, as every other place says it (not a percentage here and a time there).
 			return `${formatLength(Math.max(1, p.duration_sec - p.position_sec))} left`;
-		return 'Not watched';
+		return length || 'Not watched';
 	}
 </script>
 

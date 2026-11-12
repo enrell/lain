@@ -333,7 +333,11 @@
 		].join(' ')}
 		onclick={pick}
 	>
-		<span class="truncate">{label}</span>
+		<!-- A ring that fills: these are choices of one, and say so before they are touched. -->
+		<span class="flex min-w-0 items-center gap-2.5">
+			<span class={['size-3.5 shrink-0 rounded-full border', on ? 'border-accent bg-accent shadow-[inset_0_0_0_2.5px_var(--color-background)]' : 'border-foreground/35'].join(' ')} aria-hidden="true"></span>
+			<span class="truncate">{label}</span>
+		</span>
 		<span class="font-mono text-[11px] tabular-nums opacity-70">{count ?? 0}</span>
 	</button>
 {/snippet}
@@ -455,7 +459,11 @@
 								].join(' ')}
 								onclick={() => genre(g.value, 'want')}
 							>
-								<span class="truncate">{g.value}</span>
+								<!-- A square that fills: several genres can be picked together. -->
+								<span class="flex min-w-0 items-center gap-2.5">
+									<span class={['size-3.5 shrink-0 rounded-[4px] border', want ? 'border-accent bg-accent' : 'border-foreground/35'].join(' ')} aria-hidden="true"></span>
+									<span class="truncate">{g.value}</span>
+								</span>
 								<span class="font-mono text-[11px] tabular-nums opacity-70">{g.count}</span>
 							</button>
 							<button
@@ -549,7 +557,7 @@
 				>
 					<SlidersHorizontal class="size-4" />
 					<!-- Named, as in the app: the sliders alone did not say "filters". -->
-					Filters{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
+					<span class="sm:hidden">Sort &amp; filter</span><span class="max-sm:hidden">Filters</span>{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
 				</button>
 			</div>
 

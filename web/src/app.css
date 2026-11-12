@@ -49,6 +49,14 @@
 		scrollbar-gutter: stable;
 	}
 
+	/* A fullscreen element owns the whole screen: the gutter kept for the
+	   page's scrollbar is given back, or the player sat ten pixels short of
+	   the right edge. */
+	html:has(:fullscreen) {
+		scrollbar-gutter: auto;
+		overflow: hidden;
+	}
+
 	body {
 		background: var(--color-background);
 		color: var(--color-foreground);

@@ -305,13 +305,19 @@ async function fillLabel(labelText, value) {
 // field is left (or on Enter), and the Add buttons wait for the server to
 // have listed that folder.
 async function openFolder(path) {
-	await fillLabel('Folder', path);
-	await evalValue(`document.getElementById('library-path').dispatchEvent(new FocusEvent('blur'))`);
-	await waitFor(
-		`[...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('Add and scan') && !b.disabled) && document.getElementById('library-path').value === ${JSON.stringify(path)}`,
-		10000,
-		'the typed folder was opened'
-	);
+	// The dialog lists its starting folder as it opens, and that answer can
+	// land after the typed path's: the path is typed again until it holds.
+	const opened = `[...document.querySelectorAll('button')].some((b) => (b.textContent || '').includes('Add and scan') && !b.disabled) && document.getElementById('library-path').value === ${JSON.stringify(path)}`;
+	const deadline = Date.now() + 10000;
+	while (Date.now() < deadline) {
+		await fillLabel('Folder', path);
+		await evalValue(`document.getElementById('library-path').dispatchEvent(new FocusEvent('blur'))`);
+		for (let i = 0; i < 8; i++) {
+			if (await evalValue(opened)) return;
+			await sleep(120);
+		}
+	}
+	assert(false, 'the typed folder was not opened');
 }
 
 async function fillPlaceholder(placeholder, value) {
@@ -509,7 +515,15 @@ try {
 	await waitText('Manage', 15000);
 	await clickText('Manage');
 	await waitFor(`document.querySelectorAll('[role="menuitem"]').length > 0`, 5000, 'manage menu');
-	if (await menuHas('Refetch metadata')) {
+	// The overlay arrives after the item, and the entry turns from "Fetch"
+	// into "Refetch" under the pointer when it does: give it a moment to say
+	// which one this title has before acting on either.
+	let enriched = false;
+	for (const until = Date.now() + 3000; Date.now() < until && !enriched; ) {
+		enriched = await menuHas('Refetch metadata');
+		if (!enriched) await sleep(150);
+	}
+	if (enriched) {
 		await clickText('Remove metadata', '[role="menuitem"]');
 		await clickText('Remove overlay');
 		await waitText('Metadata overlay removed', 10000);
@@ -518,7 +532,13 @@ try {
 	}
 	await clickText('Fetch metadata', '[role="menuitem"]');
 	await waitText('Metadata added from', 15000);
-	await waitText("Frieren: Beyond Journey's End", 10000);
+	// The title hero is set in capitals by the stylesheet, and innerText
+	// reports text as styled: the enriched name is looked for in any case.
+	await waitFor(
+		`document.body.innerText.toLowerCase().includes("frieren: beyond journey's end")`,
+		10000,
+		'the enriched title is shown'
+	);
 	console.log('   local NFO overlay applied without network providers');
 
 	/* ---------------- title page + watch sidebar ---------------- */
@@ -790,10 +810,17 @@ try {
 		'switch toggled'
 	);
 	const flippedState = await evalValue(`(${firstSwitch}).getAttribute('data-state')`);
-	const saveSettings = () =>
-		evalValue(
-			`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save').click()`
+	// Settings stage their changes; the bar that appears applies them.
+	const saveSettings = async () => {
+		await waitFor(
+			`[...document.querySelectorAll('button')].some((b) => b.textContent.trim().startsWith('Apply') && !b.disabled)`,
+			5000,
+			'the staged-changes bar offers Apply'
 		);
+		await evalValue(
+			`[...document.querySelectorAll('button')].find((b) => b.textContent.trim().startsWith('Apply')).click()`
+		);
+	};
 	await saveSettings();
 	await waitUntil(
 		() =>
@@ -1278,12 +1305,20 @@ try {
 	assert(ranged.length > 0, 'no Range header observed on stream requests');
 	evidence.rangeRequests = ranged.length;
 
+	// Keys go to the focused page: earlier steps open other targets (downloads,
+	// external players), so this one is brought to the front and nothing in it
+	// holds the focus before the player's keys are pressed.
+	await page.send('Page.bringToFront');
+	await evalValue('document.activeElement?.blur?.()');
+	const beforeSeek = await evalValue(`document.querySelector('video').currentTime`);
 	await pressKey('ArrowRight', 'ArrowRight', 39);
-	await waitFor(`document.querySelector('video').currentTime > 6`, 10000, 'keyboard seek forward');
+	await waitFor(`document.querySelector('video').currentTime > ${beforeSeek} + 4`, 10000, 'keyboard seek forward');
+	// The key changes the player's state and the element follows on the next
+	// update, as the player-controls checks already wait for.
 	await pressKey('m', 'KeyM', 77);
-	assert(await evalValue(`document.querySelector('video').muted === true`), 'M did not mute');
+	await waitFor(`document.querySelector('video').muted === true`, 3000, 'M mutes');
 	await pressKey('m', 'KeyM', 77);
-	assert(await evalValue(`document.querySelector('video').muted === false`), 'M did not unmute');
+	await waitFor(`document.querySelector('video').muted === false`, 3000, 'M unmutes');
 	await pressKey(' ', 'Space', 32);
 	await waitFor(`document.querySelector('video').paused === true`, 5000, 'Space paused');
 	await pressKey(' ', 'Space', 32);
@@ -1685,7 +1720,9 @@ try {
 
 	await navigate(`${BASE}/settings/plugins`);
 	await waitText('Capabilities');
-	await clickText('Replace');
+	// The first capability whose job an installed provider can do (a
+	// component bound before its install offers nothing to replace with).
+	await clickText('Replace', 'button:not([disabled])');
 	await waitText('Replace providers', 5000);
 	const beforeGen = await evalValue(`(() => {
 		const dialog = [...document.querySelectorAll('[role=dialog]')][0];
@@ -1705,15 +1742,16 @@ try {
 	evidence.swap = `${beforeGen} -> ${afterGen}`;
 
 	await navigate(`${BASE}/settings/backup`);
-	await waitText('Download lain.db');
-	await clickText('Download lain.db');
+	await waitText('Download a backup');
+	await clickText('Download a backup');
 	await waitUntil(
 		() => requests.some((r) => r.url.includes('/api/admin/backup')),
 		5000,
 		'backup request'
 	);
 	await sleep(1500);
-	const downloaded = readdirSync(DOWNLOADS).filter((f) => f.endsWith('.db'));
+	// A backup is the lain.backup@1 tar (D-238).
+	const downloaded = readdirSync(DOWNLOADS).filter((f) => f.endsWith('.tar'));
 	assert(downloaded.length > 0, 'no backup file reached the download directory');
 	evidence.backupFile = downloaded[0];
 	console.log(`   ${downloaded[0]} downloaded`);
