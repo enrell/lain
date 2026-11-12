@@ -136,8 +136,19 @@ struct ParseAnswer {
     #[serde(default)]
     record: Option<ModelRecord>,
     /// Other identities the model considered (service 1.3.0 and later).
+    /// Read entry by entry: they are advice, so a list or an entry that
+    /// does not read is left out instead of costing the answer.
     #[serde(default)]
-    alternatives: Vec<ModelRecord>,
+    alternatives: Value,
+}
+
+impl ParseAnswer {
+    fn alternatives(&mut self) -> Vec<ModelRecord> {
+        match self.alternatives.take() {
+            Value::Array(list) => list.into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -260,14 +271,15 @@ impl Provider for ReleaseModel {
         if res.status != 200 {
             return Err(Self::unavailable("parser error"));
         }
-        let ans: ParseAnswer =
+        let mut ans: ParseAnswer =
             serde_json::from_slice(&res.body).map_err(|_| Self::unavailable("parser sent bad json"))?;
+        let others = ans.alternatives();
         match ans.record {
             Some(rec) if rec.title.as_deref().is_some_and(|t| !t.trim().is_empty()) => {
                 let tok = tokenize(&i.name, &i.kind);
                 let (own, tok_year) = (identity(&rec), tok.year);
                 let mut r = merge(rec, tok);
-                r.alternatives = alternatives(ans.alternatives, own, tok_year);
+                r.alternatives = alternatives(others, own, tok_year);
                 Ok(json!(r))
             }
             // Abstained: the zero Release is a decline.
