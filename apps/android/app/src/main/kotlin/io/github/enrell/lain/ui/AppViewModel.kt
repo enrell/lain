@@ -104,6 +104,17 @@ data class AppState(
     val searching: Boolean = false,
 ) {
     val screen: Screen get() = stack.last()
+
+    /**
+     * Whether [page] can still be returned to: it is in the stack on screen (under a player,
+     * say), in the stack a destination of the bar was left with, or in the deep place a
+     * destination was opened from. The open destination's own entry in [tabStacks] is old
+     * (it is only written on leaving), so it does not count: a page closed with Back is gone.
+     */
+    fun keeps(page: Screen): Boolean {
+        val here = stack.firstOrNull()
+        return page in stack || tabStacks.any { (root, kept) -> root != here && page in kept } || returnTo?.contains(page) == true
+    }
 }
 
 /** Session, navigation and the catalog: what every screen shares. */
