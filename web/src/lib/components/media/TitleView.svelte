@@ -78,8 +78,12 @@
 	const player = $derived<PreferredPlayer>(reading ? 'browser' : preferredPlayer);
 	function playHref(id: string): string { return playbackHref(origin, id, player, group.items[0]?.kind); }
 	function label(item: CatalogItem): string { return reading ? readingLabel(item) : episodeLabel(item); }
+	// A comic split into volumes (Vol 1, Vol 2, no issue numbers) is counted
+	// in volumes, as its library card does; the page said "3 issues" and
+	// "Seasons 3" under a card that said "3 volumes".
+	const byVolume = $derived(reading && group.items.every((i) => i.season > 0 && i.episode <= 0));
 	const unitPlural = $derived(
-		!reading ? 'episodes' : group.items[0]?.kind !== 'manga' ? 'issues' : group.items.some((i) => i.episode > 0) ? 'volumes & chapters' : 'volumes'
+		!reading ? 'episodes' : group.items[0]?.kind !== 'manga' ? (byVolume ? 'volumes' : 'issues') : group.items.some((i) => i.episode > 0) ? 'volumes & chapters' : 'volumes'
 	);
 
 	const seasons = $derived(
@@ -110,7 +114,7 @@
 	);
 
 	const countLabel = $derived(
-		t(!reading ? 'title.episodes' : group.items[0]?.kind === 'manga' ? 'title.volumes' : 'title.issues', { count: group.count })
+		t(!reading ? 'title.episodes' : group.items[0]?.kind === 'manga' || byVolume ? 'title.volumes' : 'title.issues', { count: group.count })
 	);
 	const totalLength = $derived(group.items.reduce((sum, i) => sum + (durations.get(i.id) ?? 0), 0));
 	const meta = $derived([group.year > 0 ? String(group.year) : '', countLabel].filter(Boolean).join('  ·  '));
@@ -605,14 +609,15 @@
 							<dd class="mt-1 font-semibold text-foreground">{group.year}</dd>
 						</div>
 					{/if}
-					{#if seasons.length > 0}
+					<!-- A reading file's season is its volume: the count below says it. -->
+					{#if seasons.length > 0 && !reading}
 						<div class="border-t border-line/60 py-3">
 							<dt class="text-xs uppercase tracking-wider text-muted">Seasons</dt>
 							<dd class="mt-1 font-semibold text-foreground">{seasons.length}</dd>
 						</div>
 					{/if}
 					<div class="border-t border-line/60 py-3">
-						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? (group.items[0]?.kind === 'manga' ? 'Volumes' : 'Issues') : 'Episodes'}</dt>
+						<dt class="text-xs uppercase tracking-wider text-muted">{reading ? (group.items[0]?.kind === 'manga' || byVolume ? 'Volumes' : 'Issues') : 'Episodes'}</dt>
 						<dd class="mt-1 font-semibold text-foreground">{group.count}</dd>
 					</div>
 					{#if totalLength > 0}
