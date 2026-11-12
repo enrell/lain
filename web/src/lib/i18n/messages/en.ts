@@ -345,6 +345,62 @@ const en = {
 				subtitles: 'Where missing subtitles are searched, with your own API keys.'
 			}
 		},
+		// Settings › Plugins. Job sentences come from the server (D-285);
+		// `purpose` is the fallback for a server from before it.
+		pluginsPage: {
+			pageTitle: 'Plugins — Settings — Lain',
+			capabilities: 'Capabilities',
+			note: 'Each row is one job this server does, and the plugin doing it. Replacing a plugin is safe: a new plugin that is unhealthy is refused, and one that fails later falls back to the one that worked. The id under each sentence is the job’s technical name.',
+			healthy: 'healthy',
+			unhealthy: 'unhealthy',
+			notInstalled: 'not installed',
+			installHint: 'Not installed on this server. To add it, run',
+			generation: 'generation {n}',
+			replace: 'Replace',
+			replaceFor: 'Replace the providers of {capability}',
+			replaceNone: 'Install a component that does this job first',
+			events: 'Recent composition events',
+			noEvents: 'No swaps or fallbacks since the server started.',
+			registered: { one: '{count} provider registered at start.', other: '{count} providers registered at start.' },
+			family: {
+				library: 'Library and catalog',
+				playback: 'Playback',
+				metadata: 'Metadata',
+				acquire: 'Acquire and subtitles',
+				people: 'People: progress, lists, social',
+				server: 'Server',
+				misc: 'Other'
+			},
+			swapTitle: 'Replace providers',
+			pickOne: 'Choose the one provider',
+			order: 'Serving order',
+			pickAtLeast: 'Pick at least one provider below.',
+			moveUp: 'Move {id} up',
+			moveDown: 'Move {id} down',
+			removeProvider: 'Remove {id}',
+			addProvider: 'Add {id}',
+			available: 'Can also do this job',
+			allPicked: 'Every provider that can do this job is already picked.',
+			apply: 'Apply as generation {n}',
+			swapped: '{capability} is now at generation {n}.',
+			stale: '{error}. Someone changed it first; the current composition is loaded again.',
+			unhealthyCandidate: '{error}. The new provider failed its health check; the previous generation keeps serving.',
+			purpose: {
+				source_enumerate: 'Lists the media files in a library folder.',
+				media_identify: 'Turns a file name and its folders into a title, season and episode.',
+				ingest_scan: 'Walks every library folder and updates the catalog.',
+				search_query: 'Answers searches over this server’s catalog.',
+				catalog_read: 'Serves the catalog to the apps: lists, rails, search and item pages.',
+				catalog_write: 'Stores scanned items in the catalog and marks the ones that are gone.',
+				userstate_progress: 'Remembers where each account stopped in every file.',
+				media_probe: 'Reads a file’s streams: codecs, tracks, resolution and length.',
+				playback_plan: 'Decides whether a file plays as it is or has to be converted first.',
+				playback_transcode: 'Converts a file a device cannot play and streams the result.',
+				metadata_search: 'Searches an external source for the title a file belongs to.',
+				metadata_resolve: 'Fetches the poster, synopsis and year of a matched title.',
+				transform_thumbnail: 'Cuts the still frames used as thumbnails.'
+			}
+		},
 		// Settings › Transcoding (round 20: one screen, honest about the machine).
 		transcode: {
 			pageTitle: 'Transcoding — Settings — Lain',
