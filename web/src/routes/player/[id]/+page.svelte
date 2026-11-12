@@ -105,10 +105,39 @@
 				else document.querySelector<HTMLElement>('[data-episodes-toggle] button')?.focus();
 				return;
 			}
+			// Put away from its own Hide button, the list would take the focus
+			// with it to the page body: it goes to the bar's button instead.
+			const fromList = !!listEl?.contains(document.activeElement);
 			listShown = !listShown;
 			prefs.set('player.episode_list', String(listShown));
+			if (!listShown && fromList) document.querySelector<HTMLElement>('[data-episodes-toggle] button')?.focus();
 		}
 	};
+	/*
+	 * The drawer covers the picture behind a backdrop, so it holds the
+	 * keyboard as a dialog does: Tab and Shift+Tab go round its own controls
+	 * instead of walking into the player's bar under the backdrop.
+	 */
+	$effect(() => {
+		const drawer = listEl;
+		if (!drawer || !overlay || !drawerOpen) return;
+		const onTab = (event: KeyboardEvent): void => {
+			if (event.key !== 'Tab') return;
+			const stops = [...drawer.querySelectorAll<HTMLElement>('button, a[href]')].filter((el) => el.getClientRects().length > 0);
+			const first = stops[0];
+			const last = stops.at(-1);
+			if (!first || !last) return;
+			if (event.shiftKey && document.activeElement === first) {
+				event.preventDefault();
+				last.focus();
+			} else if (!event.shiftKey && document.activeElement === last) {
+				event.preventDefault();
+				first.focus();
+			}
+		};
+		drawer.addEventListener('keydown', onTab);
+		return () => drawer.removeEventListener('keydown', onTab);
+	});
 	/*
 	 * The episode playing is in view in the list: playing episode 12 of 12,
 	 * the list opened on 1 to 11 with 12 cut off at the bottom. Scrolled only
