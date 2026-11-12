@@ -6,7 +6,8 @@
 	 * sorting and every filter answer at once and the counts next to each
 	 * option are exact. What is set lives in the URL: a view can be
 	 * bookmarked, and Back returns to it. The grid lists titles, one card
-	 * per show (it opens the show's page) or per single file.
+	 * per show (it opens the show's page) or per single file, all in one
+	 * frame (see `frameOf`).
 	 */
 	import { onMount, tick, type Snippet } from 'svelte';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
@@ -20,7 +21,7 @@
 	import X from '@lucide/svelte/icons/x';
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { api } from '$lib/api';
-	import { FIT, FIT_DENSE } from '$lib/components/media/MediaGrid.svelte';
+	import { framedGrid } from '$lib/components/media/MediaGrid.svelte';
 	import MediaCard from '$lib/components/media/MediaCard.svelte';
 	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
@@ -30,6 +31,7 @@
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { SAMPLE, frameOf } from '$lib/stores/shapes.svelte';
 	import {
 		ADDED, NO_FILTERS, SHAPES, SORTS, WATCH,
 		activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState,
@@ -237,6 +239,8 @@
 	const results = $derived(apply(all, filters, ctx));
 	let shown = $state(RENDER);
 	const visible = $derived(results.slice(0, shown));
+	// One frame for the whole grid, from its first titles' pictures.
+	const frame = $derived(frameOf(results, (id) => enrichmentCache.get(id)));
 	let sentinel = $state<HTMLElement | null>(null);
 	$effect(() => {
 		const node = sentinel;
@@ -631,9 +635,9 @@
 		{#if error && items.length === 0}
 			<ErrorState message={error} retry={() => void load()} />
 		{:else if loading && items.length === 0}
-			<div class={dense ? FIT_DENSE : FIT}>
+			<div class={framedGrid('portrait', dense)}>
 				{#each Array(8) as _}
-					<div class="fit-card" data-shape="landscape" style="--r: 1.7778"><Skeleton class="fit-frame w-full" /></div>
+					<Skeleton class="aspect-[2/3] w-full rounded-xl" />
 				{/each}
 			</div>
 		{:else if all.length === 0}
@@ -650,14 +654,15 @@
 				</div>
 			</div>
 		{:else}
-			<div class={dense ? FIT_DENSE : FIT}>
+			<div class={framedGrid(frame, dense)}>
 				{#each visible as group, i (group.key)}
 					{#if group.count > 1}
 						<ShowCard
 							{group}
-							fit
+							{frame}
 							progressOf={(id) => progressMap.get(id)}
 							priority={i < 6}
+							eager={i < SAMPLE}
 						/>
 					{:else}
 						<MediaCard
@@ -665,7 +670,8 @@
 							enrichment={enrichmentCache.get(group.items[0].id) ?? null}
 							progress={progressMap.get(group.items[0].id) ?? null}
 							priority={i < 6}
-							fit
+							eager={i < SAMPLE}
+							{frame}
 						/>
 					{/if}
 				{/each}

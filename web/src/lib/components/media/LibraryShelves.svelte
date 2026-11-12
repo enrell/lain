@@ -8,8 +8,12 @@
 	import type { Library, Progress } from '$lib/api/types';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { frameOf } from '$lib/stores/shapes.svelte';
+	import { artItem } from '$lib/utilities/browse';
 	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
+	import { t } from '$lib/i18n';
 	import MediaCard from './MediaCard.svelte';
+	import { RAIL } from './MediaGrid.svelte';
 	import ShowCard from './ShowCard.svelte';
 
 	const FETCH = 60;
@@ -25,12 +29,30 @@
 	let shelves = $state<Record<string, Shelf>>({});
 	let progressMap = $state<Map<string, Progress>>(new Map());
 
+	/*
+	 * The newest files name the titles; each title then gets all of its
+	 * files. From the newest 60 alone a show held only its latest episodes:
+	 * its card counted 16 of 26 and showed an episode's still where the
+	 * library page shows the show's poster.
+	 */
+	async function whole(group: SeriesGroup): Promise<SeriesGroup> {
+		try {
+			const { items } = await api.catalog.episodes(group.items[0].id);
+			return groupItems(items)[0] ?? group;
+		} catch {
+			return group;
+		}
+	}
+
 	async function load(lib: Library): Promise<void> {
 		try {
 			const page = await api.catalog.list({ libraryId: lib.id, limit: FETCH, sort: 'recent' });
-			const groups = sortGroups(groupItems(page.items), 'recent').slice(0, SHOWN);
+			const recent = sortGroups(groupItems(page.items), 'recent').slice(0, SHOWN);
+			const groups = await Promise.all(recent.map(whole));
+			// A card needs its picture's overlay only; a long show's every episode
+			// would not fit in one request.
+			await ensureEnrichments(groups.map((g) => artItem(g).id));
 			shelves[lib.id] = { groups, total: page.total, failed: false };
-			await ensureEnrichments(groups.flatMap((g) => g.items.map((i) => i.id)));
 		} catch {
 			shelves[lib.id] = { groups: [], total: 0, failed: true };
 		}
@@ -43,45 +65,54 @@
 			.then((list) => (progressMap = new Map(list.map((p) => [p.item_id, p]))))
 			.catch(() => {});
 	});
+
+	const lookup = (id: string) => enrichmentCache.get(id);
 </script>
 
-<div class="space-y-10">
+<div class="space-y-12 md:space-y-14">
 	{#each libraries as lib (lib.id)}
 		{@const shelf = shelves[lib.id]}
-		<section class="space-y-3" aria-labelledby={`shelf-${lib.id}`}>
+		{@const frame = shelf ? frameOf(shelf.groups, lookup) : 'portrait'}
+		<section class="space-y-4" aria-labelledby={`shelf-${lib.id}`}>
 			<div class="flex items-baseline justify-between gap-4">
 				<h2 id={`shelf-${lib.id}`} class="min-w-0">
 					<a
 						href={`/library/${lib.id}`}
-						class="group/title flex items-center gap-1 text-lg font-semibold tracking-[-0.02em] text-foreground hover:text-accent"
+						class="group/title flex items-center gap-1 text-xl font-semibold tracking-[-0.025em] text-foreground hover:text-accent sm:text-2xl"
 					>
 						<span class="truncate">{lib.name}</span>
 						<ChevronRight class="size-4 shrink-0 text-muted transition-transform group-hover/title:translate-x-0.5" aria-hidden="true" />
 					</a>
 				</h2>
 				{#if shelf && !shelf.failed}
-					<a href={`/library/${lib.id}`} class="inline-flex shrink-0 items-center gap-1 text-sm text-foreground/70 hover:text-foreground">
-						View all <ChevronRight class="size-3.5" aria-hidden="true" />
+					<a href={`/library/${lib.id}`} class="inline-flex min-h-6 shrink-0 items-center gap-1 text-sm text-foreground/70 transition-colors hover:text-foreground">
+						{t('library.viewAll')} <ChevronRight class="size-3.5" aria-hidden="true" />
 					</a>
 				{/if}
 			</div>
 			{#if !shelf}
-				<div class="flex gap-4 overflow-hidden">
-					{#each Array(6) as _}<Skeleton class="aspect-[2/3] w-40 shrink-0" />{/each}
+				<div class="flex gap-3.5 overflow-hidden md:gap-4 lg:gap-5">
+					{#each Array(6) as _}<Skeleton class="aspect-[2/3] w-40 shrink-0 rounded-xl lg:w-44" />{/each}
 				</div>
 			{:else if shelf.failed}
-				<p class="text-sm text-muted">Could not load this library.</p>
+				<p class="text-sm text-muted">{t('library.shelfFailed')}</p>
 			{:else if shelf.groups.length === 0}
-				<p class="text-sm text-muted">Nothing indexed here yet.</p>
+				<p class="text-sm text-muted">{t('library.shelfEmpty')}</p>
 			{:else}
 				<!-- Through the gutter to the window's edge, as MediaRow's rails. -->
-				<div class="-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-3 pt-1 no-scrollbar [--card-h:9.5rem] sm:-mx-8 sm:scroll-px-8 sm:px-8 sm:[--card-h:12rem] lg:-mx-10 lg:scroll-px-10 lg:px-10 lg:[--card-h:14rem]">
+				<div
+					class={[
+						'-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-4 pt-1 no-scrollbar sm:-mx-8 sm:scroll-px-8 sm:px-8 md:gap-4 lg:-mx-10 lg:scroll-px-10 lg:gap-5 lg:px-10',
+						RAIL[frame]
+					].join(' ')}
+				>
 					{#each shelf.groups as group, i (group.key)}
-						<div class="shrink-0 snap-start">
+						<div class="w-[var(--card-w)] shrink-0 snap-start">
 							{#if group.count > 1}
 								<ShowCard
 									{group}
-									fit
+									{frame}
+									eager
 									progressOf={(id) => progressMap.get(id)}
 									priority={i < 4}
 								/>
@@ -90,7 +121,8 @@
 									item={group.items[0]}
 									enrichment={enrichmentCache.get(group.items[0].id) ?? null}
 									progress={progressMap.get(group.items[0].id) ?? null}
-									fit
+									{frame}
+									eager
 								/>
 							{/if}
 						</div>
@@ -98,9 +130,9 @@
 					{#if shelf.total > shelf.groups.reduce((n, g) => n + g.count, 0)}
 						<a
 							href={`/library/${lib.id}`}
-							class="flex h-[var(--card-h)] w-28 shrink-0 snap-start items-center justify-center rounded-xl border border-dashed border-line text-sm text-muted transition-colors hover:border-white/25 hover:text-foreground"
+							class="flex h-[calc(var(--card-w)/var(--r))] w-28 shrink-0 snap-start items-center justify-center rounded-xl border border-dashed border-line text-sm text-muted transition-colors hover:border-white/25 hover:text-foreground"
 						>
-							See all
+							{t('library.seeAll')}
 						</a>
 					{/if}
 				</div>

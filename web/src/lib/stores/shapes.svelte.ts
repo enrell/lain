@@ -1,9 +1,15 @@
 import { SvelteMap } from 'svelte/reactivity';
+import type { CatalogItem, Enrichment } from '$lib/api/types';
+import { isReadable } from '$lib/reader/kinds';
+import { artItem } from '$lib/utilities/browse';
+import type { SeriesGroup } from '$lib/utilities/grouping';
 
 /**
- * The shape of each title's picture, learned when it loads. A card takes
- * the shape of what it shows (a portrait cover or a landscape still), so a
- * library that holds both never forces one into the other's frame.
+ * The shape of each title's picture, learned when it loads. A set of
+ * cards (a grid, a rail) shares one frame, the shape most of its
+ * pictures have; a picture of the other shape is contained inside that
+ * frame over a blurred copy of itself, so nothing is cropped or
+ * stretched and one row never mixes a poster with a widescreen card.
  */
 export type Shape = 'portrait' | 'landscape';
 
@@ -22,3 +28,37 @@ export function shapeOf(id: string, guess: Shape): Shape {
 
 /** Width over height of the frame each shape gets. */
 export const RATIO: Record<Shape, number> = { portrait: 2 / 3, landscape: 16 / 9 };
+
+/**
+ * What a file's picture is before it loads: poster art, a cover or a
+ * reading file's first page stand upright; a video's still is wide.
+ */
+export function guessShape(item: Pick<CatalogItem, 'kind'>, enrichment: Enrichment | null | undefined): Shape {
+	return enrichment?.poster || enrichment?.cover || isReadable(item.kind) ? 'portrait' : 'landscape';
+}
+
+/** The shape of the picture a title's card shows (see `artItem`). */
+export function pictureShape(group: SeriesGroup, enrichment: (id: string) => Enrichment | null | undefined): Shape {
+	const art = artItem(group);
+	return shapeOf(art.id, guessShape(art, enrichment(art.id)));
+}
+
+/**
+ * How many titles from the start of a set decide its frame: about the
+ * first screen. Pictures further down load only when scrolled to, so
+ * letting them vote would reshape the whole grid mid-scroll; the sample's
+ * pictures are loaded at once instead (cards get `eager`).
+ */
+export const SAMPLE = 24;
+
+/** The frame a set of cards shares: the shape most of its first pictures have; portrait on a tie. */
+export function frameFor(shapes: Shape[]): Shape {
+	const sample = shapes.slice(0, SAMPLE);
+	const wide = sample.filter((s) => s === 'landscape').length;
+	return wide * 2 > sample.length ? 'landscape' : 'portrait';
+}
+
+/** `frameFor` over titles, from their pictures as measured so far. */
+export function frameOf(groups: SeriesGroup[], enrichment: (id: string) => Enrichment | null | undefined): Shape {
+	return frameFor(groups.slice(0, SAMPLE).map((g) => pictureShape(g, enrichment)));
+}

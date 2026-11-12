@@ -6,12 +6,12 @@
 	import type { SeriesGroup } from '$lib/utilities/grouping';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { artItem as pickArt } from '$lib/utilities/browse';
-	import { isReadable as readable, readingLabel } from '$lib/reader/kinds';
+	import { readingLabel } from '$lib/reader/kinds';
 	import { episodeLabel } from '$lib/utilities/grouping';
 	import { formatLength } from '$lib/utilities/format';
 	import { t } from '$lib/i18n';
 	import ProgressBar from './ProgressBar.svelte';
-	import { RATIO, shapeOf } from '$lib/stores/shapes.svelte';
+	import { RATIO, guessShape, shapeOf, type Shape } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
 
 	/**
@@ -26,23 +26,28 @@
 		progress = null,
 		progressOf = undefined,
 		priority = false,
-		fit = false
+		eager = false,
+		fit = false,
+		frame = undefined
 	}: {
 		group: SeriesGroup;
 		progress?: Progress | null;
 		/** Each part's progress: the card then marks the title as a whole. */
 		progressOf?: (id: string) => Progress | undefined;
 		priority?: boolean;
+		/** Load the picture now: its shape decides the grid's frame (see `frameOf`). */
+		eager?: boolean;
 		/** Take the shape of the picture: the card sets its own width from
 		 * `--card-h`, for a row of cards of one height (see MediaGrid). */
 		fit?: boolean;
+		/** Fill the container's width in the frame its grid or rail shares
+		 * (see `frameOf`); a picture of the other shape is contained. */
+		frame?: Shape;
 	} = $props();
 
 	const artItem = $derived(pickArt(group));
 	const art = $derived(enrichmentCache.get(artItem.id));
-	const shape = $derived(
-		shapeOf(artItem.id, art?.poster || art?.cover || readable(artItem.kind) ? 'portrait' : 'landscape')
-	);
+	const shape = $derived(shapeOf(artItem.id, guessShape(artItem, art)));
 
 	/*
 	 * One rule for every card: a title under way says Watching (or Reading)
@@ -128,11 +133,13 @@
 	<div
 		class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/15"
 	>
-		<div class={fit ? 'fit-frame' : 'aspect-[2/3]'}>
+		<div class={fit ? 'fit-frame' : frame === 'landscape' ? 'aspect-video' : 'aspect-[2/3]'}>
 			<Poster
 				item={artItem}
 				enrichment={enrichmentCache.get(artItem.id) ?? null}
 				{priority}
+				{eager}
+				{frame}
 				class="size-full transition-transform duration-500 ease-out group-hover:scale-[1.035]"
 			/>
 		</div>
