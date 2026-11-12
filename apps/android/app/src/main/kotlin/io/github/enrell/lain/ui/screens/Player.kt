@@ -575,7 +575,8 @@ fun PlayerScreen(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(36.dp)) {
                     SkipButton(Ic.Back10, skipSec(), stringResource(R.string.player_skip_back, skipSec())) { seekBy(-skipMs()); touched++ }
                     Box(
-                        Modifier.size(76.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.72f)).border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                        // Size, not a ring, sets it apart from the skips: the three discs are one family.
+                        Modifier.size(76.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.72f))
                             .clickable(onClickLabel = stringResource(if (playing) R.string.action_pause else R.string.action_play)) { togglePlay() },
                         contentAlignment = Alignment.Center,
                     ) { Icon(if (ended) Ic.RotateCcw else if (playing) Ic.Pause else Ic.Play, stringResource(if (playing) R.string.action_pause else R.string.action_play), tint = Color.White, modifier = Modifier.size(32.dp)) }
@@ -760,7 +761,8 @@ fun PlayerScreen(
                     }
                     if (audioTracks.size > 1) {
                         val heard = audioTracks.firstOrNull { it.selected }?.label?.substringBefore(" · ")
-                        BarAction(Ic.Audio, stringResource(R.string.player_audio) + (heard?.let { " · $it" } ?: ""), tracksPanel == 2) { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }
+                        // A track always plays, so the button is never "off": dimmed, it read as disabled.
+                        BarAction(Ic.Audio, stringResource(R.string.player_audio) + (heard?.let { " · $it" } ?: ""), heard != null || tracksPanel == 2) { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }
                     }
                     IconBtn(Ic.Gear, "Settings", { tracksPanel = 0; settings = !settings }, tint = if (settings) l.accent else Color.White)
                     if (canPip) IconBtn(Ic.Pip, stringResource(R.string.player_pip), { enterPip() }, tint = Color.White)
@@ -789,14 +791,14 @@ fun PlayerScreen(
                     IconBtn(Ic.Close, "Close", { tracksPanel = 0 }, tint = l.text)
                 }
                 if (subs) {
-                    OptionRow(stringResource(R.string.player_off), null, textOff || textTracks.none { it.selected }, {
+                    OptionRow(stringResource(R.string.player_off), null, textOff || textTracks.none { it.selected }, inset = 0.dp, onClick = {
                         textOff = true
                         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
                         tracksPanel = 0
                     })
                 }
                 for (t in if (subs) textTracks else audioTracks) {
-                    OptionRow(t.label, null, t.selected && !(subs && textOff), {
+                    OptionRow(t.label, null, t.selected && !(subs && textOff), inset = 0.dp, onClick = {
                         val type = if (subs) C.TRACK_TYPE_TEXT else C.TRACK_TYPE_AUDIO
                         if (subs) textOff = false
                         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(type, false)

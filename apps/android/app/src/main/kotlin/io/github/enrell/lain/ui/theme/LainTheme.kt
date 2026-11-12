@@ -47,12 +47,20 @@ class Lain(val tokens: ThemeTokens, val web: WebPalette = WebPalette.Default) {
     val danger = web.danger
     val ok = web.success
     val warn = web.warning
-    /** A field's fill: the foreground at 6 % over the background, as on the web. */
-    val field = Color(
-        red = web.background.red + (web.foreground.red - web.background.red) * 0.06f,
-        green = web.background.green + (web.foreground.green - web.background.green) * 0.06f,
-        blue = web.background.blue + (web.foreground.blue - web.background.blue) * 0.06f,
+    /** The foreground at [f] over the background, opaque. */
+    private fun lift(f: Float) = Color(
+        red = web.background.red + (web.foreground.red - web.background.red) * f,
+        green = web.background.green + (web.foreground.green - web.background.green) * f,
+        blue = web.background.blue + (web.foreground.blue - web.background.blue) * f,
     )
+    /** A field's fill: the foreground at 6 % over the background, as on the web. */
+    val field = lift(0.06f)
+    /**
+     * A sheet's ground, one step above the page. A theme's `surface` is often
+     * the background itself, and a sheet on it read as a hole in the scrim,
+     * not as something raised.
+     */
+    val sheet = lift(0.045f)
     /**
      * A control's or a row's ground: the foreground at 8 % and 5 % over the
      * page. Surfaces are told apart by fill, not by hairlines: outlines on
