@@ -18,6 +18,7 @@
 	const everywhere = $derived<KeyHint[]>([
 		...(pageKeys.has('/') ? [] : [{ keys: ['/'], label: t('shortcuts.search') }]),
 		{ keys: ['Ctrl', 'K'], label: t('shortcuts.quickFind') },
+		{ keys: ['←', '→'], label: t('shortcuts.rail') },
 		{ keys: ['Esc'], label: t('shortcuts.escape') },
 		{ keys: ['?'], label: t('shortcuts.help') }
 	]);

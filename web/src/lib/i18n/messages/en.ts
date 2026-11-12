@@ -361,6 +361,7 @@ const en = {
 		title: 'Keyboard shortcuts',
 		search: 'Search titles',
 		quickFind: 'Quick find: settings, actions and titles',
+		rail: 'Along a row of cards',
 		escape: 'Close a dialog, clear a field',
 		help: 'This list',
 		here: 'On this page',
