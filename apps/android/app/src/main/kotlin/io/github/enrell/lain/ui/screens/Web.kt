@@ -349,23 +349,33 @@ fun OptionRow(label: String, count: Int?, on: Boolean, onClick: () -> Unit, enab
     }
 }
 
-/** A choice among a few, as outlined tiles: the one that is on has the accent's outline and a check. */
+/**
+ * A choice among a few, as tiles. The one that is on is tinted and carries the list rows'
+ * filled round mark; the others an empty ring when [ring] (a choice of one says so before it
+ * is touched). An accent outline with a bare check was a third way of saying "chosen" in
+ * the sheet that also has radio and check rows.
+ */
 @Composable
-fun ChoiceTile(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ChoiceTile(label: String, on: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, ring: Boolean = true) {
     val l = LocalLain.current
     Row(
         modifier
             .heightIn(min = 46.dp)
             .clip(l.buttonShape)
             .background(if (on) l.accent.copy(alpha = 0.18f) else l.tonal)
-            .border(1.5.dp, if (on) l.accent else Color.Transparent, l.buttonShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp)
             .semantics { stateDescription = if (on) "selected" else "not selected" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, Modifier.weight(1f), color = if (on) l.text else l.muted, fontSize = 14.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (on) Icon(Ic.Check, null, tint = l.accent, modifier = Modifier.size(16.dp))
+        if (on || ring) {
+            Box(
+                Modifier.padding(start = 8.dp).size(20.dp).clip(CircleShape).background(if (on) l.accent else Color.Transparent)
+                    .border(1.5.dp, if (on) l.accent else l.muted.copy(alpha = 0.55f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { if (on) Icon(Ic.Check, null, tint = l.onAccent, modifier = Modifier.size(12.dp)) }
+        }
     }
 }
 
@@ -524,17 +534,22 @@ fun Modifier.dashedBorder(color: Color, radius: Dp): Modifier = drawBehind {
     drawRoundRect(color, style = stroke, cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius.toPx()))
 }
 
-/** The web client's switch: a pill with a knob, the accent when on. */
+/**
+ * The web client's switch: a pill with a knob, the accent when on. Off, the knob is
+ * small and dim; an off knob as big and bright as the on one made the switches that
+ * were off the loudest thing in their rows.
+ */
 @Composable
 fun Toggle(checked: Boolean, onChange: (Boolean) -> Unit, label: String) {
     val l = LocalLain.current
-    val x by androidx.compose.animation.core.animateDpAsState(if (checked) 22.dp else 2.dp, label = "toggle")
+    val x by androidx.compose.animation.core.animateDpAsState(if (checked) 22.dp else 6.dp, label = "toggle")
+    val knob by androidx.compose.animation.core.animateDpAsState(if (checked) 24.dp else 16.dp, label = "toggle-knob")
     Box(
         Modifier.width(48.dp).height(28.dp).clip(CircleShape).background(if (checked) l.accent else l.raised).border(1.dp, if (checked) Color.Transparent else l.line, CircleShape)
             .clickable(onClickLabel = label) { onChange(!checked) }
             .semantics { contentDescription = label; stateDescription = if (checked) "on" else "off" },
         contentAlignment = Alignment.CenterStart,
-    ) { Box(Modifier.padding(start = x).size(24.dp).clip(CircleShape).background(if (checked) l.onAccent else l.muted)) }
+    ) { Box(Modifier.padding(start = x).size(knob).clip(CircleShape).background(if (checked) l.onAccent else l.muted.copy(alpha = 0.6f))) }
 }
 
 /** A group of settings: a mono heading over rows separated by hairlines. */
