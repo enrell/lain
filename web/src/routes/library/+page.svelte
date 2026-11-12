@@ -82,10 +82,9 @@
 	async function rescan(): Promise<void> {
 		if (!session.isAdmin || scan.running) return;
 		try {
-			await scan.start();
-			toasts.success('Scan started.');
+			toasts.success(t((await scan.start()) === 'queued' ? 'scan.queued' : 'palette.action.scanStarted'));
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not start the scan.'));
+			toasts.error(errorMessage(err, t('scan.startFailed')));
 		}
 	}
 

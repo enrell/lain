@@ -244,8 +244,19 @@
 			rememberLibrary(lib);
 			createOpen = false;
 			form = { name: '', type: 'auto', path: '', private: false };
-			toasts.success(`Library “${lib.name}” added.`);
-			if (scanAfter) await scan.start();
+			if (!scanAfter) {
+				toasts.success(t('scan.libraryAdded', { name: lib.name }));
+				return;
+			}
+			// The dialog is closed by now: a failed scan says so in a toast,
+			// not in the form nobody can see.
+			try {
+				const how = await scan.start();
+				toasts.success(t(how === 'queued' ? 'scan.libraryAddedQueued' : 'scan.libraryAdded', { name: lib.name }));
+			} catch (err) {
+				toasts.success(t('scan.libraryAdded', { name: lib.name }));
+				toasts.error(errorMessage(err, t('scan.startFailed')));
+			}
 		} catch (err) {
 			formError = errorMessage(err);
 		} finally {
@@ -273,9 +284,9 @@
 
 	async function startScan(): Promise<void> {
 		try {
-			await scan.start();
+			if ((await scan.start()) === 'queued') toasts.success(t('scan.queued'));
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not start the scan.'));
+			toasts.error(errorMessage(err, t('scan.startFailed')));
 		}
 	}
 
@@ -312,6 +323,9 @@
 						</span>
 					{/if}
 				</div>
+				{#if scan.queued}
+					<p class="mt-1 text-xs text-muted">{t('scan.queuedLine')}</p>
+				{/if}
 				<!-- Indeterminate (full, pulsing) until the phase has a total. -->
 				<div
 					class="mt-2 h-0.5 w-full max-w-md overflow-hidden rounded-full bg-hairline"
