@@ -1389,6 +1389,29 @@ try {
 	console.log(
 		`   dragged past the produced edge: rebuilt at ${seekTarget.toFixed(1)}s and played on from there`
 	);
+	// A second viewer joins the far-seek session the way another tab of
+	// the same account would: the player's own request with a viewer id of
+	// its own (D-281). Joined while the slow settings hold, since they are
+	// part of the session's identity.
+	const secondViewer = 'smoke-second-viewer';
+	const joinedSession = await (async () => {
+		const farSeek = [...requests]
+			.reverse()
+			.find(
+				(r) =>
+					r.method === 'POST' &&
+					Number(((r.postData ?? '').match(/"start_sec":\s*(\d+(\.\d+)?)/) ?? [0, 0])[1]) > 300
+			);
+		const body = JSON.parse(farSeek.postData);
+		assert(typeof body.viewer === 'string' && body.viewer !== '', 'the player started its session without a viewer id');
+		const res = await fetch(`${BASE}/api/items/${longShowId}/transcode`, {
+			method: 'POST',
+			headers: { Authorization: 'Bearer ' + adminToken, 'Content-Type': 'application/json' },
+			body: JSON.stringify({ ...body, viewer: secondViewer })
+		});
+		assert(res.status === 200 || res.status === 202, `the second viewer's join answered ${res.status}`);
+		return (await res.json()).session;
+	})();
 	await writeTranscodeSettings({
 		h264_preset: shippedSettings.h264_preset,
 		thread_count: shippedSettings.thread_count,
@@ -1399,32 +1422,74 @@ try {
 	});
 	// The deliberately slow session has served its purpose, and it is still
 	// being produced. Leaving the player through the app (Back, a client
-	// navigation that unmounts it) has to stop it: left running, it would
-	// hold one of the server's runners until the idle timeout and queue
-	// every later transcode behind it. The player's own release is what is
-	// checked here, not a cleanup by the test.
+	// navigation that unmounts it) releases the player's hold on it. The
+	// second viewer still holds it, so it keeps running; once that viewer
+	// leaves too it has to stop: left running, it would hold one of the
+	// server's runners until the idle timeout and queue every later
+	// transcode behind it. The player's own releases are what is checked
+	// here (the one its rebuild made and the one leaving made); the test
+	// only plays the second viewer.
 	{
 		const last = [...requests].reverse().find((r) => r.url.includes('/transcode/status'));
 		const session = last?.url.match(/session=([0-9a-f]+)/)?.[1];
 		assert(session, 'no session observed for the far seek');
+		assert(joinedSession === session, `the second viewer joined ${joinedSession}, not the far-seek session ${session}`);
 		const state = await sessionState(longShowId, session);
 		assert(state === 'queued' || state === 'running', `the far-seek session is ${state}, want it still being produced`);
-		await evalValue('history.back()');
-		await waitFor(`!location.pathname.startsWith('/player/') && !document.querySelector('video')`, 10000, 'Back left the player');
-		const statusCode = async () => {
-			const res = await fetch(`${BASE}/api/items/${longShowId}/transcode/status?session=${session}`, {
+		const statusCode = async (sid) => {
+			const res = await fetch(`${BASE}/api/items/${longShowId}/transcode/status?session=${sid}`, {
 				headers: { Authorization: 'Bearer ' + adminToken }
 			});
 			await res.arrayBuffer();
 			return res.status;
 		};
-		let code = await statusCode();
-		for (const until = Date.now() + 15000; code !== 404 && Date.now() < until; ) {
-			await sleep(200);
-			code = await statusCode();
-		}
-		assert(code === 404, `leaving the player left its unfinished session in place (status ${code})`);
-		console.log('   leaving the player stopped the session it was still producing');
+		const gone = async (sid) => {
+			let code = await statusCode(sid);
+			for (const until = Date.now() + 15000; code !== 404 && Date.now() < until; ) {
+				await sleep(200);
+				code = await statusCode(sid);
+			}
+			return code;
+		};
+		// The session the far seek replaced was still being produced and
+		// only this player held it: the rebuild's release stopped it.
+		const replaced = requests.find((r) => r.url.includes('/transcode/status'))?.url.match(/session=([0-9a-f]+)/)?.[1];
+		assert(replaced && replaced !== session, 'no session observed before the far seek');
+		const replacedCode = await gone(replaced);
+		assert(replacedCode === 404, `the rebuild left the session it replaced in place (status ${replacedCode})`);
+		console.log('   the rebuild stopped the unfinished session it replaced');
+		await evalValue('history.back()');
+		await waitFor(`!location.pathname.startsWith('/player/') && !document.querySelector('video')`, 10000, 'Back left the player');
+		await waitUntil(
+			() =>
+				requests.some(
+					(r) =>
+						r.method === 'DELETE' &&
+						r.url.includes(`session=${session}`) &&
+						r.url.includes('viewer=') &&
+						r.status === 200
+				),
+			15000,
+			"the player's release of its viewer"
+		);
+		const kept = await sessionState(longShowId, session);
+		assert(
+			kept === 'queued' || kept === 'running',
+			`the player's release stopped a session another viewer holds (state ${kept})`
+		);
+		console.log('   leaving the player kept the session the second viewer holds');
+		const release = await fetch(
+			`${BASE}/api/items/${longShowId}/transcode?session=${session}&viewer=${secondViewer}`,
+			{ method: 'DELETE', headers: { Authorization: 'Bearer ' + adminToken } }
+		);
+		const released = await release.json();
+		assert(
+			release.status === 200 && released.state === 'idle',
+			`the last viewer's release answered ${release.status} ${released.state}, want 200 idle`
+		);
+		const code = await gone(session);
+		assert(code === 404, `the last viewer leaving left the unfinished session in place (status ${code})`);
+		console.log('   the last viewer leaving stopped the session it was still producing');
 	}
 
 	/* ---------------- direct Matroska (D-058) ---------------- */
