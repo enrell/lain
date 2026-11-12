@@ -34,6 +34,7 @@
 		size = 'sm',
 		align = 'end',
 		hint = undefined,
+		compact = false,
 		class: className = ''
 	}: {
 		label: string;
@@ -44,16 +45,25 @@
 		align?: 'start' | 'end';
 		/** What the menu is for, as a tooltip. */
 		hint?: string;
+		/**
+		 * On a phone, the icon alone in a square the size of the icon buttons
+		 * beside it; the label stays for screen readers. Spelled out, it was
+		 * the word that pushed a row of actions onto a line of its own.
+		 */
+		compact?: boolean;
 		class?: string;
 	} = $props();
 </script>
 
 {#if entries.length > 0}
 	<DropdownMenu.Root>
-		<DropdownMenu.Trigger class={buttonClasses(variant, size, className)} title={hint}>
+		<DropdownMenu.Trigger
+			class={buttonClasses(variant, size, [compact ? 'max-md:size-11 max-md:border max-md:border-line max-md:px-0' : '', className].join(' '))}
+			title={hint}
+		>
 			{@render icon?.()}
-			{label}
-			<ChevronDown class="size-3.5 opacity-70" aria-hidden="true" />
+			{#if compact}<span class="max-md:sr-only">{label}</span>{:else}{label}{/if}
+			<ChevronDown class={['size-3.5 opacity-70', compact ? 'max-md:hidden' : ''].join(' ')} aria-hidden="true" />
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Portal>
 			<DropdownMenu.Content {align} sideOffset={6} class="z-50 min-w-56 rounded-lg border border-line bg-surface p-1 shadow-2xl">
