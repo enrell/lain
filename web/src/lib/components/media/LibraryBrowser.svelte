@@ -448,7 +448,7 @@
 {#snippet filtersButton(place: string)}
 	<button
 		type="button"
-		class={['h-11 shrink-0 items-center gap-2 rounded-md border px-3.5 text-sm sm:h-10', place, active > 0 ? 'border-accent/60 text-foreground' : 'border-line text-muted'].join(' ')}
+		class={['h-11 shrink-0 items-center gap-2 rounded-md border bg-field px-3.5 text-sm transition-colors sm:h-10', place, active > 0 ? 'border-accent/60 text-foreground' : 'border-transparent text-muted hover:border-hairline hover:text-foreground'].join(' ')}
 		aria-label={active > 0 ? `Filters (${active} active)` : 'Filters'}
 		onclick={() => (sheet = true)}
 	>
@@ -503,16 +503,19 @@
 		{#if showLibraryFilter}
 			<div>
 				{@render heading('Library')}
-				<Select
-					aria-label="Library"
-					bind:value={selectedLibrary}
-					options={libraryOptions}
-					placeholder="All libraries"
-					onValueChange={() => {
-						clearAll();
-						void load();
-					}}
-				/>
+				<!-- As wide as the rows under it, so the counts and the picker end together. -->
+				<div class="w-[calc(100%-2.875rem)] lg:w-[calc(100%-1.875rem)]">
+					<Select
+						aria-label="Library"
+						bind:value={selectedLibrary}
+						options={libraryOptions}
+						placeholder="All libraries"
+						onValueChange={() => {
+							clearAll();
+							void load();
+						}}
+					/>
+				</div>
 			</div>
 		{/if}
 		<!-- Each choice of one starts with "Any": a ring that was picked had no
@@ -565,7 +568,7 @@
 						aria-label="Find a genre"
 						autocomplete="off"
 						spellcheck="false"
-						class="mb-1.5 h-8 w-full rounded-md border border-line bg-field px-2 text-sm text-foreground placeholder:text-muted/70 focus:border-accent/60 focus:outline-none"
+						class="mb-1.5 h-8 w-[calc(100%-2.875rem)] rounded-md border border-transparent bg-field px-2 text-sm text-foreground placeholder:text-muted/70 hover:border-hairline focus:border-accent/60 focus:outline-none lg:w-[calc(100%-1.875rem)]"
 					/>
 				{/if}
 				<ul>
@@ -662,7 +665,9 @@
 								spellcheck="false"
 								enterkeyhint="search"
 								class={[
-									'h-11 w-full text-ellipsis rounded-md border border-line bg-field pl-9 text-sm sm:h-10 md:pr-12 text-foreground placeholder:text-muted/70 transition-colors hover:border-white/15 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden',
+									// A filled field like the sort and tile controls beside it (the Select
+									// primitive's look), not a second, outlined kind of control.
+									'h-11 w-full text-ellipsis rounded-md border border-transparent bg-field pl-9 text-sm sm:h-10 md:pr-12 text-foreground placeholder:text-muted/70 transition-colors hover:border-hairline focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden',
 									// Room on the right only for what sits there: the clear button, or
 									// from md up the `/` cap. On a phone, beside the view switch, the
 									// empty field's placeholder lost its last word to that room.
@@ -689,7 +694,7 @@
 						</div>
 						<button
 							type="button"
-							class={['hidden h-10 shrink-0 items-center gap-2 rounded-md border border-line px-3 text-sm text-muted transition-colors hover:border-white/15 hover:text-foreground', view ? 'lg:flex' : 'sm:flex'].join(' ')}
+							class={['hidden h-10 shrink-0 items-center gap-2 rounded-md border border-transparent bg-field px-3 text-sm text-muted transition-colors hover:border-hairline hover:text-foreground', view ? 'lg:flex' : 'sm:flex'].join(' ')}
 							aria-pressed={dense}
 							aria-label={dense ? 'Tile size: small. Switch to large.' : 'Tile size: large. Switch to small.'}
 							title="Tile size"
