@@ -16,6 +16,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Web**: leaving the player stops its transcode session if it is still
   being prepared, so the next title starts at once instead of waiting
   behind it for up to two minutes; a finished session stays cached.
+- **Web**: pausing (K, Space) before a just-started play has begun no
+  longer shows "The browser blocked playback" and pins the controls.
 
 ## [0.3.0] - 2026-11-12
 
