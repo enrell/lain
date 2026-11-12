@@ -2,7 +2,7 @@
 	// The Library page's front: one shelf per library, newest first, so
 	// collections of different kinds are not poured into one grid. A shelf
 	// opens its library, where sorting and genres live.
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { api } from '$lib/api';
 	import type { Library, Progress } from '$lib/api/types';
@@ -19,7 +19,7 @@
 	const FETCH = 60;
 	const SHOWN = 14;
 
-	let { libraries }: { libraries: Library[] } = $props();
+	let { libraries, view }: { libraries: Library[]; /** The view switch, kept in reach in the sticky band. */ view?: Snippet } = $props();
 
 	interface Shelf {
 		groups: SeriesGroup[];
@@ -67,15 +67,41 @@
 	});
 
 	const lookup = (id: string) => enrichmentCache.get(id);
+
+	let scrollY = $state(0);
 </script>
+
+<svelte:window bind:scrollY />
+
+<!-- Where each shelf is and the view switch, under the header at every
+     scroll position: the switch used to scroll away with the page top. -->
+<div
+	class={[
+		'sticky top-12 z-20 -mx-5 mb-6 flex items-center gap-3 bg-background px-5 py-2 transition-shadow sm:-mx-3 sm:px-3 md:top-20',
+		scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''
+	].join(' ')}
+>
+	<nav class="-my-2 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-2 no-scrollbar" aria-label={t('library.shelves')}>
+		{#each libraries as lib (lib.id)}
+			<a
+				href={`#shelf-${lib.id}`}
+				class="shrink-0 rounded-md px-2 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors first:-ml-2 hover:bg-surface-hover hover:text-foreground"
+			>
+				{lib.name}
+			</a>
+		{/each}
+	</nav>
+	{@render view?.()}
+</div>
 
 <div class="space-y-12 md:space-y-14">
 	{#each libraries as lib (lib.id)}
 		{@const shelf = shelves[lib.id]}
 		{@const frame = shelf ? frameOf(shelf.groups, lookup) : 'portrait'}
-		<section class="space-y-4" aria-labelledby={`shelf-${lib.id}`}>
+		<!-- Lands below the header and the band when jumped to. -->
+		<section id={`shelf-${lib.id}`} class="scroll-mt-28 space-y-4 md:scroll-mt-40" aria-labelledby={`shelf-title-${lib.id}`}>
 			<div class="flex items-baseline justify-between gap-4">
-				<h2 id={`shelf-${lib.id}`} class="min-w-0">
+				<h2 id={`shelf-title-${lib.id}`} class="min-w-0">
 					<a
 						href={`/library/${lib.id}`}
 						class="group/title flex items-center gap-1 text-xl font-semibold tracking-[-0.025em] text-foreground hover:text-accent sm:text-2xl"

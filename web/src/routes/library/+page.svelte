@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import LockOpen from '@lucide/svelte/icons/lock-open';
 	import type { Library } from '$lib/api/types';
@@ -24,13 +24,18 @@
 	// is a per-browser convenience; shelves need more than one library.
 	const VIEW_KEY = 'lain.library.view';
 	let view = $state<'shelves' | 'all'>('shelves');
-	function setView(next: 'shelves' | 'all'): void {
+	async function setView(next: 'shelves' | 'all', refocus = false): Promise<void> {
 		view = next;
 		try {
 			localStorage.setItem(VIEW_KEY, next);
 		} catch {
 			/* private window: the choice lasts for this visit */
 		}
+		// The other view brings its own copy of the switch; focus follows it
+		// rather than falling back to the page.
+		if (!refocus) return;
+		await tick();
+		document.querySelector<HTMLElement>('#library-view [aria-pressed="true"]')?.focus();
 	}
 	let unlockOpen = $state(false);
 	// Re-mounts the browser so it refetches once a library unlocks.
@@ -85,10 +90,17 @@
 	}
 
 	function onKey(e: KeyboardEvent): void {
-		if (e.ctrlKey || e.metaKey || e.altKey || (e.key !== 's' && e.key !== 'u')) return;
+		if (e.ctrlKey || e.metaKey || e.altKey || (e.key !== 's' && e.key !== 'u' && e.key !== 'v')) return;
 		const target = e.target as HTMLElement | null;
 		if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
 		if (document.querySelector('[role="dialog"]')) return;
+		if (e.key === 'v') {
+			if (visible.length > 1) {
+				e.preventDefault();
+				void setView(view === 'shelves' ? 'all' : 'shelves');
+			}
+			return;
+		}
 		if (e.key === 'u') {
 			if (locked.length > 0 || open.length > 0) {
 				e.preventDefault();
@@ -141,30 +153,36 @@
 			</div>
 		{/if}
 	</header>
-	{#if visible.length > 1}
-		<!-- The track is the field colour with a hairline: on host palettes where the
-		     surface is the page colour, a surface track vanished and the unpicked half
-		     read as loose text beside a button. -->
-		<div class="inline-flex gap-1 rounded-lg bg-field p-1 text-sm ring-1 ring-hairline" role="group" aria-label="View">
-			{#each [['shelves', 'By library'], ['all', 'All titles']] as const as [id, label] (id)}
+	{#key `${generation}:${visible.map((l) => l.id).join(',')}`}
+		{#if visible.length > 1 && view === 'shelves'}
+			<LibraryShelves libraries={visible} view={viewSwitch} />
+		{:else}
+			<LibraryBrowser libraries={visible} showLibraryFilter={visible.length > 1} view={visible.length > 1 ? viewSwitch : undefined} />
+		{/if}
+	{/key}
+</div>
+
+<!-- Rides at the right end of each view's sticky bar, so it stays in reach
+     however far the page is scrolled; above the content it scrolled away. The
+     track is the field colour with a hairline: on host palettes where the
+     surface is the page colour, a surface track vanished and the unpicked half
+     read as loose text beside a button. -->
+{#snippet viewSwitch()}
+	<div class="ms-auto flex shrink-0 items-center gap-2">
+		<div id="library-view" class="inline-flex gap-0.5 rounded-lg bg-field p-0.5 text-[13px] ring-1 ring-hairline" role="group" aria-label={t('library.view')}>
+			{#each [['shelves', t('library.byLibrary')], ['all', t('library.allTitles')]] as const as [id, label] (id)}
 				<button
 					type="button"
 					aria-pressed={view === id}
-					class={['rounded-md px-3 py-2 transition-colors md:px-3 md:py-1.5', view === id ? 'bg-surface-active font-semibold text-foreground ring-1 ring-accent/50' : 'text-muted hover:bg-surface-hover hover:text-foreground'].join(' ')}
-					onclick={() => setView(id)}
+					class={['rounded-md px-2.5 py-2 transition-colors md:py-1', view === id ? 'bg-surface-active font-semibold text-foreground ring-1 ring-accent/50' : 'text-muted hover:bg-surface-hover hover:text-foreground'].join(' ')}
+					onclick={() => void setView(id, true)}
 				>
 					{label}
 				</button>
 			{/each}
 		</div>
-	{/if}
-	{#key `${generation}:${visible.map((l) => l.id).join(',')}`}
-		{#if visible.length > 1 && view === 'shelves'}
-			<LibraryShelves libraries={visible} />
-		{:else}
-			<LibraryBrowser libraries={visible} showLibraryFilter={visible.length > 1} />
-		{/if}
-	{/key}
-</div>
+		<kbd class="hidden text-muted/70 md:inline-flex" title={t('library.viewKey')}>V</kbd>
+	</div>
+{/snippet}
 
 <UnlockLibraryDialog bind:open={unlockOpen} libraries={locked} onunlocked={() => void unlocked()} />

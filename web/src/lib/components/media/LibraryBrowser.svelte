@@ -53,7 +53,8 @@
 		showLibraryFilter = false,
 		name = '',
 		backHref = '',
-		header
+		header,
+		view
 	}: {
 		libraries?: Library[];
 		libraryId?: string;
@@ -67,6 +68,8 @@
 		 * of nothing over the toolbar.
 		 */
 		header?: Snippet;
+		/** A control kept at the right end of the sticky bar (the Library page's view switch). */
+		view?: Snippet;
 	} = $props();
 
 	let selectedLibrary = $state('');
@@ -628,6 +631,7 @@
 						Clear <kbd class="ml-0.5 hidden opacity-70 md:inline-flex">C</kbd>
 					</button>
 				{/if}
+				{@render view?.()}
 			</div>
 		</div>
 
