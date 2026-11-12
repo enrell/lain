@@ -24,7 +24,8 @@
 	const MAX_BYTES = 2 * 1024 * 1024;
 
 	// svelte-ignore state_referenced_locally
-	let name = $state(session.user?.profile?.display_name ?? '');
+	// The field starts with the name in use (the username when none was set), not with a placeholder that reads as empty.
+	let name = $state(session.user?.profile?.display_name || session.user?.username || '');
 	// svelte-ignore state_referenced_locally
 	let bio = $state(session.user?.profile?.bio ?? '');
 	let saving = $state(false);
@@ -35,7 +36,7 @@
 	const user = $derived(session.user);
 	const avatar = $derived(user?.profile?.avatar);
 	const dirty = $derived(
-		name.trim() !== (user?.profile?.display_name ?? '') || bio.trim() !== (user?.profile?.bio ?? '')
+		name.trim() !== (user?.profile?.display_name || user?.username || '') || bio.trim() !== (user?.profile?.bio ?? '')
 	);
 	// A preview of the header with the unsaved name, so the change is visible before saving.
 	const preview = $derived<User | null>(
@@ -63,7 +64,7 @@
 		saving = true;
 		try {
 			apply(await api.me.updateProfile({ display_name: name, bio }));
-			name = session.user?.profile?.display_name ?? '';
+			name = session.user?.profile?.display_name || session.user?.username || '';
 			bio = session.user?.profile?.bio ?? '';
 			flash.mark('details');
 		} catch (err) {

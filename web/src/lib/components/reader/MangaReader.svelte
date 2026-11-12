@@ -6,6 +6,7 @@
 	 * and a webtoon strip for long-scroll releases.
 	 */
 	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
+	import BookImage from '@lucide/svelte/icons/book-image';
 	import Columns2 from '@lucide/svelte/icons/columns-2';
 	import GalleryVertical from '@lucide/svelte/icons/gallery-vertical';
 	import type { CatalogItem, ReaderView } from '$lib/api/types';
@@ -74,7 +75,9 @@
 					active={settings.coverAlone}
 					onclick={() => settings.toggleCoverAlone()}
 				>
-					Cover
+					<!-- An icon like its neighbours, the word where there is room for all the words. -->
+					<BookImage class="size-4" aria-hidden="true" />
+					<span class="hidden xl:inline">Cover</span>
 				</ReaderToggle>
 			{/if}
 		{/if}

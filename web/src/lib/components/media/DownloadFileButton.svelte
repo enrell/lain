@@ -65,5 +65,5 @@
 <Button {variant} {size} loading={busy} disabled={ready.length === 0} onclick={() => void start()}>
 	<Download class="size-3.5" aria-hidden="true" />
 	{label ?? (ready.length > 1 ? t('download.files', { count: ready.length }) : t('download.file'))}
-	{#if hotkey}<kbd class="ms-1 opacity-70">d</kbd>{/if}
+	{#if hotkey}<kbd class="ms-1 opacity-70">D</kbd>{/if}
 </Button>

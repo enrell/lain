@@ -86,12 +86,19 @@
 			recent = recentPage.items;
 			catalogTotal = recentPage.total;
 
-			const active = sortByRecent(progressList.filter(isInProgress)).slice(0, 12);
-			progressMap = new Map(active.map((p) => [p.item_id, p]));
-			const activeItems = (await ensureItems(active.map((p) => p.item_id))).filter(
-				(item): item is CatalogItem => item !== undefined
-			);
-			continueItems = activeItems;
+			// A video counts as started after a few seconds; a book counts from its
+			// first page (its position is a page number, not seconds), so what is
+			// started is decided once the items are known.
+			const touched = sortByRecent(
+				progressList.filter((p) => p.item_id !== '' && !p.completed && p.position_sec >= 1)
+			).slice(0, 36);
+			const touchedItems = await ensureItems(touched.map((p) => p.item_id));
+			const started = touched
+				.map((p, i) => ({ p, item: touchedItems[i] }))
+				.filter((row): row is { p: Progress; item: CatalogItem } => row.item !== undefined && (isReadable(row.item.kind) || isInProgress(row.p)))
+				.slice(0, 12);
+			progressMap = new Map(started.map((row) => [row.p.item_id, row.p]));
+			continueItems = started.map((row) => row.item);
 			nextUpItems = await loadNextUp(progressList);
 			favoriteItems = await loadFavorites();
 

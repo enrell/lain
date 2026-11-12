@@ -17,14 +17,20 @@
 	import RatingDialog from './RatingDialog.svelte';
 	import ShareDialog from './ShareDialog.svelte';
 	import UserChip from './UserChip.svelte';
+	import { favoriteState } from '$lib/social/favorite.svelte';
 	import { FIELD } from './styles';
 
 	let { target }: { target: WorkTarget } = $props();
 
+	// Another title's answer never shows on this one.
+	$effect(() => {
+		void targetKey;
+		favoriteState.clear();
+		return () => favoriteState.clear();
+	});
+
 	let view = $state<WorkView | null>(null);
 	let loadError = $state('');
-	let favorite = $state(false);
-	let favBusy = $state(false);
 	let rateOpen = $state(false);
 	let shareOpen = $state(false);
 	let collectOpen = $state(false);
@@ -47,8 +53,7 @@
 		try {
 			view = await api.social.work(target);
 			const st = await api.social.settings();
-			const key = workKey(view.work);
-			favorite = st.favorites.some((f) => workKey(f) === key);
+			favoriteState.set(view.work, st.favorites);
 		} catch (err) {
 			loadError = socialError(err, t('social.title.loadFailed'));
 		}
@@ -69,21 +74,14 @@
 		await load();
 	}
 
+	// The heart itself sits beside the title's main action (FavoriteButton); the F key lives here with the other keys.
 	async function toggleFavorite(): Promise<void> {
-		if (!view || favBusy) return;
-		favBusy = true;
+		if (!view) return;
 		try {
-			const st = await api.social.settings();
-			const key = workKey(view.work);
-			const rest = st.favorites.filter((f) => workKey(f) !== key).map(targetOf);
-			const next = favorite ? rest : [...rest, targetOf(view.work)];
-			const saved = await api.social.updateSettings({ favorites: next });
-			favorite = saved.favorites.some((f) => workKey(f) === key);
-			toasts.success(favorite ? t('social.title.favorited') : t('social.title.unfavorited'));
+			const on = await favoriteState.toggle();
+			toasts.success(on ? t('social.title.favorited') : t('social.title.unfavorited'));
 		} catch (err) {
 			toasts.error(socialError(err, t('social.title.favoriteFailed')));
-		} finally {
-			favBusy = false;
 		}
 	}
 
@@ -176,9 +174,6 @@
 				</Button>
 				<Button size="sm" variant="secondary" onclick={() => (shareOpen = true)}>{t('social.title.share')} <Kbd>S</Kbd></Button>
 				<Button size="sm" variant="secondary" onclick={() => (collectOpen = true)}>{t('social.title.collect')} <Kbd>C</Kbd></Button>
-				<Button size="sm" variant="secondary" aria-pressed={favorite} loading={favBusy} onclick={() => void toggleFavorite()}>
-					{favorite ? t('social.title.favorite') : t('social.title.addFavorite')} <Kbd>F</Kbd>
-				</Button>
 			</div>
 		{/if}
 	</div>

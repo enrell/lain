@@ -108,6 +108,7 @@ const en = {
 		breadcrumb: 'settings / {scope} / {section}',
 		hints: {
 			find: 'find a setting',
+			jump: 'then a letter: open a section',
 			move: 'move',
 			section: 'section'
 		},

@@ -26,9 +26,6 @@
 	<div class="flex items-baseline justify-between gap-4">
 		<h2 class="flex items-center gap-1 text-xl font-semibold tracking-[-0.025em] text-foreground sm:text-2xl">
 			{title}
-			{#if href}
-				<ChevronRight class="size-4 text-muted" aria-hidden="true" />
-			{/if}
 		</h2>
 		{#if href}
 			<a

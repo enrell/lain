@@ -1,4 +1,5 @@
 <script lang="ts">
+	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import BookOpen from '@lucide/svelte/icons/book-open';
@@ -193,7 +194,8 @@
 	// the show from the top like a fresh watch. Missing episodes can never
 	// be the target — the plan refuses them at play time anyway.
 	// Reading progress stores the 1-based page: page 1 is "just opened".
-	const minResume = $derived(reading ? 2 : 5);
+	// A book left on its first page is being read, as Home and the library already say.
+	const minResume = $derived(reading ? 1 : 5);
 	const available = $derived(group.items.filter((i) => !isGone(i)));
 	const resumeTarget = $derived(
 		available.find((i) => {
@@ -327,14 +329,16 @@
 				     already is; the rail below keeps the cover and the facts. -->
 				<div class="mt-6 flex flex-wrap items-center gap-x-2 gap-y-3">
 					{#if resumeTarget}
-						<LinkButton href={playHref(resumeTarget.id)} size="lg" class="max-md:w-full" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
+						<LinkButton href={playHref(resumeTarget.id)} size="lg" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
 						</LinkButton>
 					{:else}
-						<Button size="lg" disabled class="max-md:w-full" title="The files are no longer on disk">
+						<Button size="lg" disabled class="max-md:w-[calc(100%-3.25rem)]" title="The files are no longer on disk">
 							<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? 'Read' : 'Play'}
 						</Button>
 					{/if}
+					<!-- The heart keeps the main action's row, on a phone too. -->
+					<FavoriteButton />
 					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} size="md" /></span>{/if}
 					<Button variant="ghost" size="md" onclick={() => (confirmMark = true)}>
 						<CircleCheck class="size-4" aria-hidden="true" /> {allDone ? (reading ? 'Mark all unread' : 'Mark all unwatched') : reading ? 'Mark all read' : 'Mark all watched'}
