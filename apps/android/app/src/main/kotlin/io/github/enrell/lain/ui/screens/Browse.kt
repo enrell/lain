@@ -88,6 +88,7 @@ import io.github.enrell.lain.domain.watchState
 import io.github.enrell.lain.graph
 import io.github.enrell.lain.ui.AppState
 import io.github.enrell.lain.ui.AppViewModel
+import io.github.enrell.lain.domain.goOnWith
 import io.github.enrell.lain.ui.Screen
 import io.github.enrell.lain.ui.theme.LocalLain
 import kotlinx.coroutines.launch
@@ -188,8 +189,9 @@ private fun RailHeader(title: String, action: String?, onClick: (() -> Unit)?) {
 @Composable
 fun HomeScreen(state: AppState, vm: AppViewModel) {
     val l = LocalLain.current
-    val rails = remember(state.titles, state.continues, state.libraries) {
-        buildRails(state.titles, state.continues, state.items, state.libraries, favoriteTitles(state.titles, state.favorites.orEmpty()))
+    val rails = remember(state.titles, state.continues, state.progress, state.libraries, state.favorites) {
+        val goOn = goOnWith(state.titles, state.continues, state.continues.associateBy { it.itemId } + state.progress)
+        buildRails(state.titles, goOn, state.items, state.libraries, favoriteTitles(state.titles, state.favorites.orEmpty()))
     }
     if (rails.isEmpty()) {
         if (state.busy && state.error == null) {
@@ -235,11 +237,14 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                     )
                     // What it is, in words: the episode you are on and what is left of it, or the
                     // size of the thing; then up to two genres. Tokens drop before anything is cut.
-                    val left = resumeHero?.progress?.takeIf { !hero.reading }?.let { p -> (p.durationSec - p.positionSec).takeIf { it > 0 && p.durationSec > 0 } }
+                    // A next part not begun yet (the one after the last finished) is "up next", not time left.
+                    val fresh = resumeHero != null && resumeHero.progress.positionSec < 1
+                    val left = resumeHero?.progress?.takeIf { !hero.reading && !fresh }?.let { p -> (p.durationSec - p.positionSec).takeIf { it > 0 && p.durationSec > 0 } }
                     val facts = listOfNotNull(
                         resumeHero?.takeIf { hero.reading && it.progress.durationSec > 0 }?.let { stringResource(R.string.progress_page, it.progress.positionSec.toInt().coerceAtLeast(1), it.progress.durationSec.toInt()) },
                         resumeHero?.item?.takeIf { it.episode > 0 && !hero.reading }?.let { stringResource(R.string.episode_n, it.episode.toInt()) },
                         left?.let { stringResource(R.string.time_left, length(it)) },
+                        if (fresh && !hero.reading) stringResource(R.string.up_next) else null,
                         if (resumeHero == null && hero.items.size > 1) titleSubtitle(hero) else null,
                         hero.year.takeIf { it > 0 }?.toString(),
                     ) + state.genresOf(hero).take(2)
@@ -263,6 +268,7 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                                 when {
                                     resumeHero != null && hero.reading && resumeHero.progress.positionSec >= 1 -> stringResource(R.string.continue_page_short, resumeHero.progress.positionSec.toInt())
                                     hero.reading -> stringResource(R.string.action_read)
+                                    fresh && resumeHero != null && resumeHero.item.episode > 0 -> stringResource(R.string.action_play) + " · " + stringResource(R.string.episode_n, resumeHero.item.episode.toInt())
                                     resumeHero != null && resumeHero.item.episode > 0 -> stringResource(R.string.action_resume_short) + " · " + stringResource(R.string.episode_n, resumeHero.item.episode.toInt())
                                     resumeHero != null -> stringResource(R.string.action_resume_short)
                                     hero.reading -> stringResource(R.string.action_read)
@@ -316,7 +322,8 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                                 } else {
                                     listOfNotNull(
                                         card.item.takeIf { it.episode > 0 }?.let { episodeText(it) },
-                                        (card.progress.durationSec - card.progress.positionSec).takeIf { it > 0 }?.let { stringResource(R.string.time_left, length(it)) },
+                                        if (card.progress.positionSec < 1) stringResource(R.string.up_next)
+                                        else (card.progress.durationSec - card.progress.positionSec).takeIf { it > 0 }?.let { stringResource(R.string.time_left, length(it)) },
                                     ).joinToString(" · ").ifEmpty { episodeText(card.item) }
                                 },
                                 onClick = { vm.open(card.item) },

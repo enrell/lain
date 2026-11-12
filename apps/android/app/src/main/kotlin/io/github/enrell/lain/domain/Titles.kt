@@ -71,6 +71,28 @@ sealed interface Card {
 
 data class Rail(val label: RailLabel, val cards: List<Card>)
 
+/**
+ * What there is to go on with, newest first, one per title: the parts
+ * left half-way, and the part after the last one finished when nothing
+ * of that title is half-way (finishing episode 4 puts episode 5 here, as
+ * a fresh start). Watching a series to the end of an episode no longer
+ * drops it from Home.
+ */
+fun goOnWith(titles: List<Title>, continues: List<ProgressInfo>, all: Map<String, ProgressInfo>): List<ProgressInfo> {
+    val byItem = titles.flatMap { t -> t.items.map { it.id to t } }.toMap()
+    val started = continues.filter { !it.completed }
+    val busy = started.mapNotNull { byItem[it.itemId]?.key }.toSet()
+    val next = all.values.filter { it.completed }.sortedByDescending { it.updatedAt }.mapNotNull { done ->
+        val t = byItem[done.itemId] ?: return@mapNotNull null
+        if (t.key in busy || t.items.size < 2) return@mapNotNull null
+        val at = t.items.indexOfFirst { it.id == done.itemId }
+        val after = t.items.drop(at + 1).firstOrNull { all[it.id]?.completed != true } ?: return@mapNotNull null
+        ProgressInfo(after.id, 0.0, all[after.id]?.durationSec ?: 0.0, false, done.updatedAt)
+    }
+    val seen = mutableSetOf<String>()
+    return (started + next).sortedByDescending { it.updatedAt }.filter { p -> byItem[p.itemId]?.key?.let { seen.add(it) } ?: true }
+}
+
 /** Home: Continue, Recently added (30), then one rail per library. Empty rails are dropped. */
 fun buildRails(
     titles: List<Title>,

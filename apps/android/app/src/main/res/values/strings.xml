@@ -350,4 +350,5 @@
     <string name="player_picture">Picture</string>
     <string name="player_fit">Fit</string>
     <string name="player_fill">Fill the screen</string>
+    <string name="up_next">Up next</string>
 </resources>
