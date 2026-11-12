@@ -93,7 +93,8 @@ const en = {
 	userMenu: {
 		profile: 'Profile',
 		playback: 'Playback',
-		allSettings: 'All settings'
+		allSettings: 'All settings',
+		shortcuts: 'Keyboard shortcuts'
 	},
 	time: {
 		justNow: 'just now'
@@ -252,6 +253,13 @@ const en = {
 			close: 'close',
 			quickFind: 'quick find'
 		}
+	},
+	shortcuts: {
+		title: 'Keyboard shortcuts',
+		search: 'Search titles, or the page’s own filter where it has one',
+		quickFind: 'Quick find: settings, actions and titles',
+		escape: 'Close a dialog, clear a field',
+		help: 'This list'
 	},
 	downloads: {
 		title: 'Downloads — Settings — Lain',
