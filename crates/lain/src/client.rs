@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use lain_client::{Client, ClientConfig, ClientDb, FileTokenStore, OfflineConfig, OfflineStore, ProgressSync};
 
-use crate::args::{flag, positional};
+use crate::args::{flag, has, positional};
 
 pub const DEFAULT_SERVER: &str = "http://127.0.0.1:9360";
 pub const FORMAT: &str = "lain.cli@1";
@@ -257,28 +257,80 @@ pub fn parse_language(raw: &str) -> Result<String, String> {
     Ok(l)
 }
 
-pub fn language(args: &[String]) -> Result<(), String> {
-    let set: Vec<&String> = args.iter().filter(|a| *a == "--clear" || !a.starts_with("--")).collect();
-    if set.len() > 1 {
-        return Err("usage: lain language [three-letter-code|--clear]".into());
+/// A subtitle mode (D-280).
+pub fn parse_subtitle_mode(raw: &str) -> Result<String, String> {
+    let m = raw.trim().to_ascii_lowercase();
+    if !lain_api::SUBTITLE_MODES.contains(&m.as_str()) {
+        return Err("subtitle mode must be auto, always, forced or off".into());
     }
-    let s = Session::open(&[])?;
-    let rt = runtime()?;
-    let user = match set.first() {
-        None => {
-            let me = rt.block_on(s.client.me()).map_err(|e| e.to_string())?;
-            println!("{}", if me.preferred_language.is_empty() { "player default" } else { &me.preferred_language });
-            return Ok(());
-        }
-        Some(raw) => {
-            let l = parse_language(raw)?;
-            rt.block_on(s.client.set_preferred_language(&l)).map_err(|e| e.to_string())?
+    Ok(m)
+}
+
+/// The preferences as `lain language` prints them: D-071's one line
+/// while both languages are one and subtitles are `auto`, the split
+/// otherwise (D-280).
+pub fn describe_tracks(t: &lain_api::TrackPreferences) -> String {
+    let or = |l: &str, none: &str| if l.is_empty() { none.to_string() } else { l.to_string() };
+    if t.audio_language == t.subtitle_language && matches!(t.subtitle_mode.as_str(), "" | "auto") {
+        return or(&t.audio_language, "player default");
+    }
+    format!(
+        "audio: {}\nsubtitles: {} ({})",
+        or(&t.audio_language, "file default"),
+        or(&t.subtitle_language, "none"),
+        if t.subtitle_mode.is_empty() { "auto" } else { &t.subtitle_mode }
+    )
+}
+
+pub fn language(args: &[String]) -> Result<(), String> {
+    let usage = "usage: lain language [three-letter-code|--clear] [--audio CODE|none] [--subtitles CODE|none] \
+                 [--subtitle-mode auto|always|forced|off]";
+    let set: Vec<String> = positional(args);
+    let clear = has(args, "clear");
+    if set.len() + usize::from(clear) > 1 {
+        return Err(usage.into());
+    }
+    // `none` clears one language; a code is checked like the positional one.
+    let split = |name: &str| -> Result<Option<String>, String> {
+        match flag(args, name) {
+            None => Ok(None),
+            Some(v) if v.trim().eq_ignore_ascii_case("none") => Ok(Some(String::new())),
+            Some(v) => parse_language(&v).map(Some),
         }
     };
-    if user.preferred_language.is_empty() {
-        println!("preferred language cleared");
+    let patch = lain_api::PreferencesPatch {
+        preferred_language: match set.first() {
+            Some(raw) => Some(parse_language(raw)?),
+            None => clear.then(String::new),
+        },
+        preferred_audio_language: split("audio")?,
+        preferred_subtitle_language: split("subtitles")?,
+        preferred_subtitle_mode: flag(args, "subtitle-mode").map(|m| parse_subtitle_mode(&m)).transpose()?,
+    };
+    let s = Session::open(&[])?;
+    let rt = runtime()?;
+    if patch.is_empty() {
+        let me = rt.block_on(s.client.me()).map_err(|e| e.to_string())?;
+        println!("{}", describe_tracks(&me.track_preferences()));
+        return Ok(());
+    }
+    // Only the one language: the request an older server understands too.
+    let only_language = patch.preferred_audio_language.is_none()
+        && patch.preferred_subtitle_language.is_none()
+        && patch.preferred_subtitle_mode.is_none();
+    let user = if only_language {
+        let l = patch.preferred_language.clone().unwrap_or_default();
+        rt.block_on(s.client.set_preferred_language(&l)).map_err(|e| e.to_string())?
     } else {
-        println!("preferred language: {}", user.preferred_language);
+        rt.block_on(s.client.update_preferences(&patch)).map_err(|e| e.to_string())?
+    };
+    let t = user.track_preferences();
+    if only_language && user.preferred_language.is_empty() {
+        println!("preferred language cleared");
+    } else if t.audio_language == t.subtitle_language && matches!(t.subtitle_mode.as_str(), "" | "auto") {
+        println!("preferred language: {}", describe_tracks(&t));
+    } else {
+        println!("{}", describe_tracks(&t));
     }
     Ok(())
 }
@@ -293,6 +345,21 @@ mod tests {
         assert_eq!(parse_language("--clear").unwrap(), "");
         assert!(parse_language("ja").is_err());
         assert!(parse_language("j1n").is_err());
+        assert_eq!(parse_subtitle_mode(" Forced ").unwrap(), "forced");
+        assert!(parse_subtitle_mode("sometimes").is_err());
+    }
+
+    #[test]
+    fn track_preferences_read_as_one_line_until_split() {
+        let t = |a: &str, s: &str, m: &str| lain_api::TrackPreferences {
+            audio_language: a.into(),
+            subtitle_language: s.into(),
+            subtitle_mode: m.into(),
+        };
+        assert_eq!(describe_tracks(&t("jpn", "jpn", "auto")), "jpn");
+        assert_eq!(describe_tracks(&t("", "", "auto")), "player default");
+        assert_eq!(describe_tracks(&t("jpn", "por", "auto")), "audio: jpn\nsubtitles: por (auto)");
+        assert_eq!(describe_tracks(&t("", "", "off")), "audio: file default\nsubtitles: none (off)");
     }
 
     #[test]

@@ -67,6 +67,35 @@ async fn auth_session_and_account() {
         .unwrap();
     assert_eq!((u.profile.display_name.as_str(), u.profile.avatar.mascot.as_str()), ("The Admin", "moth"));
     assert_eq!(c.set_preferred_language(" JPN ").await.unwrap().preferred_language, "jpn");
+    // D-280: the one language is both; the split fields change apart.
+    let both = c.me().await.unwrap().track_preferences();
+    assert_eq!(
+        (both.audio_language.as_str(), both.subtitle_language.as_str(), both.subtitle_mode.as_str()),
+        ("jpn", "jpn", "auto")
+    );
+    let u = c
+        .update_preferences(&lain_api::PreferencesPatch {
+            preferred_subtitle_language: Some("por".into()),
+            preferred_subtitle_mode: Some("always".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let t = u.track_preferences();
+    assert_eq!(
+        (t.audio_language.as_str(), t.subtitle_language.as_str(), t.subtitle_mode.as_str()),
+        ("jpn", "por", "always")
+    );
+    assert_eq!(u.preferred_language, "por", "older clients read the language the viewer reads");
+    assert_mirrors::<User>(&raw_get(&server.url, &s.token, "/api/me").await);
+    let refused = c
+        .update_preferences(&lain_api::PreferencesPatch {
+            preferred_subtitle_mode: Some("sometimes".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+    assert!(refused.to_string().contains("auto, always, forced or off"), "{refused}");
     assert!(c.mascots().await.unwrap().contains(&"moth".to_string()));
     assert!(!c.pin_status().await.unwrap());
     c.set_pin(&pin(0), &pw(0)).await.unwrap();

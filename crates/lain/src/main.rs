@@ -41,7 +41,9 @@ client
             [--server URL] [--dry-run]); episodes queue the rest of their title
   download  keep offline copies (add, run, list, pause, resume, cancel, rm, play, sync, gc, config)
   player    show or set the default player (player [mpv|vlc])
-  language  show or set your account's preferred language (language [ISO 639-2 code|--clear])
+  language  show or set your account's track preferences: one ISO 639-2 code (or --clear) for audio
+            and subtitles both, or --audio CODE|none, --subtitles CODE|none and
+            --subtitle-mode auto|always|forced|off apart (D-280)
   open-url  play a lain://play link from the web UI
   install-player-handler  register this binary for the web UI's external-player links
 

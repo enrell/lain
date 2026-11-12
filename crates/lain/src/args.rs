@@ -25,6 +25,9 @@ const VALUE_FLAGS: &[&str] = &[
     "--os",
     "--watch",
     "--list-sync",
+    "--audio",
+    "--subtitles",
+    "--subtitle-mode",
 ];
 
 /// The value of `--name value` or `--name=value`.
