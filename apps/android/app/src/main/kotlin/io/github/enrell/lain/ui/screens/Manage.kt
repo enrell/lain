@@ -92,7 +92,7 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
             Text(stringResource(R.string.downloads_hint), Modifier.padding(top = 4.dp), color = l.muted, fontSize = 14.sp, lineHeight = 20.sp)
             // What the copies take of the room they were given.
             state.usage?.let { u ->
-                Column(Modifier.padding(top = 18.dp).fillMaxWidth().clip(l.panelShape).border(1.dp, l.line.copy(alpha = 0.7f), l.panelShape).background(l.surface.copy(alpha = 0.4f)).padding(16.dp)) {
+                Column(Modifier.padding(top = 18.dp).fillMaxWidth().clip(l.panelShape).background(l.tonalLow).padding(16.dp)) {
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(bytes(u.usedBytes), color = l.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                         if (u.maxBytes > 0) Text(stringResource(R.string.downloads_of, bytes(u.maxBytes)), Modifier.padding(start = 6.dp, bottom = 2.dp), color = l.muted, fontSize = 13.sp)
@@ -131,7 +131,7 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
             val item = vm.state.value.items[c.itemId]
             val reading = c.kind in io.github.enrell.lain.domain.READING_KINDS
             Row(
-                Modifier.padding(vertical = 4.dp).fillMaxWidth().clip(l.cardShape).border(1.dp, l.line.copy(alpha = 0.6f), l.cardShape).background(l.surface.copy(alpha = 0.3f))
+                Modifier.padding(vertical = 4.dp).fillMaxWidth().clip(l.cardShape).background(l.tonalLow)
                     .then(if (c.state == CopyState.DONE && item != null) Modifier.clickable { vm.open(item) } else Modifier),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

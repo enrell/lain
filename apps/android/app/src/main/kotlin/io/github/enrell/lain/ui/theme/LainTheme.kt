@@ -53,6 +53,13 @@ class Lain(val tokens: ThemeTokens, val web: WebPalette = WebPalette.Default) {
         green = web.background.green + (web.foreground.green - web.background.green) * 0.06f,
         blue = web.background.blue + (web.foreground.blue - web.background.blue) * 0.06f,
     )
+    /**
+     * A control's or a row's ground: the foreground at 8 % and 5 % over the
+     * page. Surfaces are told apart by fill, not by hairlines: outlines on
+     * near-black made every screen read as a wireframe.
+     */
+    val tonal = web.foreground.copy(alpha = 0.08f)
+    val tonalLow = web.foreground.copy(alpha = 0.05f)
     val scrim = web.background.copy(alpha = 0.8f)
     val focus = web.accent
     val controlsBg = c(tokens.colors.controlsBg)

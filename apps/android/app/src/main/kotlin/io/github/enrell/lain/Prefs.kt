@@ -24,7 +24,8 @@ class Prefs(private val sp: SharedPreferences) {
     fun setSortOf(scope: String, v: String) = sp.edit().putString("library_sort:$scope", v).apply()
 
     var smallTiles: Boolean
-        get() = sp.getBoolean("small_tiles", false)
+        // Three posters a row by default: two showed hardly more than two titles a screen.
+        get() = sp.getBoolean("small_tiles", true)
         set(v) = sp.edit().putBoolean("small_tiles", v).apply()
 
     var libraryShelves: Boolean

@@ -339,12 +339,13 @@
 						<ChevronLeft class="size-4" aria-hidden="true" /> {homeLibrary.name}
 					</a>
 				{/if}
-				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">{meta}</p>
+				<!-- The facts a title is chosen by, in type that reads: tiny spaced capitals were the hardest text on the page. -->
+				<p class="text-sm font-medium text-foreground/80">{meta}</p>
 				<h1 class="title-hero-name mt-4 text-foreground">{displayTitle}</h1>
 				{#if genres.length > 0}
-					<ul class="mt-5 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground/75" aria-label="Genres">
+					<ul class="mt-4 flex flex-wrap gap-x-2 gap-y-1 text-sm text-foreground/70" aria-label="Genres">
 						{#each genres as genre, i (genre)}
-							<li>{#if i > 0}<span class="mr-4 text-muted" aria-hidden="true">/</span>{/if}{genre}</li>
+							<li>{#if i > 0}<span class="mr-2 text-muted" aria-hidden="true">·</span>{/if}{genre}</li>
 						{/each}
 					</ul>
 				{/if}
@@ -592,7 +593,7 @@
 		{/if}
 	</div>
 	<div class="episode-text min-w-0 p-3">
-		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">{label(item)}</p>
+		<p class="text-xs font-semibold text-accent">{label(item)}</p>
 		{#if item.title !== group.title}
 			<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>
 		{/if}

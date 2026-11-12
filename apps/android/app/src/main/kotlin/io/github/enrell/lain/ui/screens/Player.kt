@@ -893,7 +893,7 @@ private fun PickRow(label: String, value: String, options: List<Pair<String, Boo
     Column {
         Row(Modifier.fillMaxWidth().height(40.dp).clickable { open = !open }, verticalAlignment = Alignment.CenterVertically) {
             Text(label, Modifier.weight(1f), color = l.text, fontSize = 13.sp)
-            Text(value, Modifier.clip(l.buttonShape).border(1.dp, l.line, l.buttonShape).padding(horizontal = 8.dp, vertical = 4.dp), color = l.text, fontSize = 13.sp, maxLines = 1)
+            Text(value, Modifier.clip(l.buttonShape).background(l.tonal).padding(horizontal = 8.dp, vertical = 4.dp), color = l.text, fontSize = 13.sp, maxLines = 1)
         }
         if (open) {
             options.forEachIndexed { i, (name, on) ->

@@ -331,13 +331,13 @@
 						</a>
 					{/if}
 					{#if metaSegments.length > 0}
-						<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-accent sm:text-[11px]">{metaSegments.join('  ·  ')}</p>
+						<p class="text-sm font-medium text-foreground/80">{metaSegments.join(' · ')}</p>
 					{/if}
 					<h1 class="title-hero-name mt-3 text-foreground">{title}</h1>
 					{#if enrichment?.genres?.length}
-						<ul class="mt-4 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground/75" aria-label="Genres">
+						<ul class="mt-4 flex flex-wrap gap-x-2 gap-y-1 text-sm text-foreground/70" aria-label="Genres">
 							{#each enrichment.genres.slice(0, 4) as genre, i (genre)}
-								<li>{#if i > 0}<span class="mr-4 text-muted" aria-hidden="true">/</span>{/if}{genre}</li>
+								<li>{#if i > 0}<span class="mr-2 text-muted" aria-hidden="true">·</span>{/if}{genre}</li>
 							{/each}
 						</ul>
 					{/if}
