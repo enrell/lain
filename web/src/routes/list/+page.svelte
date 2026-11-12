@@ -7,6 +7,7 @@
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import ListEntryCard from '$lib/components/media/ListEntryCard.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { t } from '$lib/i18n';
 
 	// The unified tracking list (D-078): everything a linked account
 	// imported, browsable by media type and status.
@@ -14,8 +15,9 @@
 		{ id: '', label: 'All' },
 		{ id: 'anime', label: 'Anime' },
 		{ id: 'manga', label: 'Manga' },
-		{ id: 'movie', label: 'Movies' },
-		{ id: 'series', label: 'Series' },
+		// The libraries' words for the same things.
+		{ id: 'movie', label: t('tracking.films') },
+		{ id: 'series', label: t('tracking.shows') },
 		{ id: 'comic', label: 'Comics' }
 	];
 	const statuses = [
@@ -65,11 +67,8 @@
 
 <div class="space-y-6">
 	<header>
-		<h1 class="text-xl font-semibold tracking-tight text-foreground">Tracking</h1>
-		<p class="mt-0.5 text-sm text-muted">
-			Everything your connected accounts track — manga, comics, anime, movies and series in
-			one place.
-		</p>
+		<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('nav.list')}</h1>
+		<p class="mt-0.5 text-sm text-muted">{t('tracking.subtitle')}</p>
 	</header>
 
 	<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Media type">
@@ -113,14 +112,14 @@
 		</div>
 	{:else if entries.length === 0}
 		<EmptyState
-			title="Nothing on your list yet"
-			description="Connect an account in Settings → Connections to import what you track. AniList is supported."
+			title={t('tracking.emptyTitle')}
+			description={t('tracking.emptyBody')}
 		>
 			{#snippet icon()}<ListChecks class="size-6 text-muted" />{/snippet}
 			<a
-				href="/settings"
+				href="/settings/connections"
 				class="inline-flex h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg hover:bg-accent-hover"
-				>Open account settings</a
+				>{t('tracking.openConnections')}</a
 			>
 		</EmptyState>
 	{:else}
