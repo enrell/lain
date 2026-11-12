@@ -164,8 +164,18 @@ pub const SOURCE_FRAME: &str = "frame";
 /// A folder is listed once for all its files instead of trying ten names
 /// per file: a page of 500 episodes costs a listing per season folder,
 /// which matters on a network share where every failed lookup is a round
-/// trip.
+/// trip. Headers not read before are read for `ASPECT_BUDGET` at most
+/// (see `describe_within`).
 pub fn describe(files: &[&Path]) -> Vec<Option<ThumbnailInfo>> {
+    describe_within(files, ASPECT_BUDGET)
+}
+
+/// `describe`, reading stills' headers not already known for `budget` at
+/// most: past it a still's aspect is left out (unknown, which a client
+/// measures) and read on a later answer. The first page of a library of
+/// posters on a cold spinning disk would otherwise wait a seek per poster.
+pub fn describe_within(files: &[&Path], budget: Duration) -> Vec<Option<ThumbnailInfo>> {
+    let until = std::time::Instant::now() + budget;
     let mut folders: HashMap<PathBuf, Folder> = HashMap::new();
     files
         .iter()
@@ -182,7 +192,10 @@ pub fn describe(files: &[&Path]) -> Vec<Option<ThumbnailInfo>> {
                 .map(|n| dir.join(n))
                 .find(|p| still_file(p));
             if let Some(still) = own.or_else(|| folder.still.clone()) {
-                return Some(ThumbnailInfo { source: SOURCE_SIDECAR.into(), aspect: aspect_of(&still) });
+                return Some(ThumbnailInfo {
+                    source: SOURCE_SIDECAR.into(),
+                    aspect: aspect_until(&still, Some(until)),
+                });
             }
             let source = if lain_read::archive::format(file).is_empty() { SOURCE_FRAME } else { SOURCE_COVER };
             Some(ThumbnailInfo { source: source.into(), aspect: None })
@@ -218,6 +231,9 @@ const ASPECT_HEAD: usize = 64 << 10;
 /// Aspects kept in memory, keyed by path and checked against size and
 /// time, so a replaced still is read again and an unchanged one never.
 const ASPECTS_KEPT: usize = 8192;
+/// How long one answer spends reading stills' headers it has not read
+/// before (see `describe_within`).
+pub const ASPECT_BUDGET: Duration = Duration::from_millis(150);
 
 /// A still's size and time, which a replaced still changes.
 type Stamp = (u64, Option<std::time::SystemTime>);
@@ -231,12 +247,20 @@ fn aspects() -> &'static Aspects {
 /// A still's width over its height from its header, three decimals;
 /// `None` when the header does not read.
 pub fn aspect_of(still: &Path) -> Option<f64> {
+    aspect_until(still, None)
+}
+
+/// `aspect_of`, but a header not read before is read only before `until`.
+fn aspect_until(still: &Path, until: Option<std::time::Instant>) -> Option<f64> {
     let meta = std::fs::metadata(still).ok()?;
     let stamp: Stamp = (meta.len(), meta.modified().ok());
     if let Some((s, a)) = aspects().lock().unwrap_or_else(|e| e.into_inner()).get(still)
         && *s == stamp
     {
         return *a;
+    }
+    if until.is_some_and(|t| std::time::Instant::now() >= t) {
+        return None;
     }
     let read = |limit: usize| -> Option<f64> {
         use std::io::Read;
@@ -611,6 +635,16 @@ mod cover_tests {
         // A replaced still is read again.
         std::fs::write(show.join("Show 01-poster.png"), lain_read::image::test_png(1280, 720)).unwrap();
         assert_eq!(aspect_of(&show.join("Show 01-poster.png")), Some(1.778));
+        // Out of time, a header not read yet is left unknown, and read on a
+        // later answer; one already read is still told.
+        std::fs::write(show.join("Show 02-thumb.png"), lain_read::image::test_png(640, 360)).unwrap();
+        let two = [show.join("Show 01.mkv"), show.join("Show 02.mkv")];
+        let two: Vec<&Path> = two.iter().map(PathBuf::as_path).collect();
+        assert_eq!(
+            describe_within(&two, Duration::ZERO),
+            vec![info(SOURCE_SIDECAR, Some(1.778)), info(SOURCE_SIDECAR, None)]
+        );
+        assert_eq!(describe(&two)[1], info(SOURCE_SIDECAR, Some(1.778)));
         std::fs::remove_dir_all(dir).ok();
     }
 }
