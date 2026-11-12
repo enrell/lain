@@ -476,22 +476,32 @@ fn legacy_prepare_waits_for_the_file() {
 /// A fake ffmpeg for the hardware fallback: a hardware encode writes
 /// three segments and a playlist, then fails when the test says so; the
 /// software retry announces itself, waits for the test, then writes one
-/// segment of its own and ends the playlist. POSIX sh (CI's dash).
+/// segment of its own and ends the playlist. Both write under the init
+/// and segment names they are given. POSIX sh (CI's dash).
 #[cfg(unix)]
 const FALLBACK_FFMPEG: &str = r#"#!/bin/sh
 ctl="$LAIN_TEST_CTL"
 enc=""
+init=""
+seg=""
 prev=""
 for last; do
-  if [ "$prev" = "-c:v" ]; then enc="$last"; fi
+  case "$prev" in
+  -c:v) enc="$last" ;;
+  -hls_fmp4_init_filename) init="$last" ;;
+  -hls_segment_filename) seg=$(basename "$last") ;;
+  esac
   prev="$last"
 done
 dir=$(dirname "$last")
+seg0=$(printf '%s' "$seg" | sed 's/%05d/00000/')
+seg1=$(printf '%s' "$seg" | sed 's/%05d/00001/')
+seg2=$(printf '%s' "$seg" | sed 's/%05d/00002/')
 case "$enc" in
 *_nvenc)
-  printf 'hw-init' > "$dir/init.mp4"
-  for n in 0 1 2; do printf 'hw' > "$dir/seg0000$n.m4s"; done
-  printf '#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:2.0,\nseg00000.m4s\n#EXTINF:2.0,\nseg00001.m4s\n#EXTINF:2.0,\nseg00002.m4s\n' > "$dir/raw.m3u8"
+  printf 'hw-init' > "$dir/$init"
+  for f in "$seg0" "$seg1" "$seg2"; do printf 'hw' > "$dir/$f"; done
+  printf '#EXTM3U\n#EXT-X-MAP:URI="%s"\n#EXTINF:2.0,\n%s\n#EXTINF:2.0,\n%s\n#EXTINF:2.0,\n%s\n' "$init" "$seg0" "$seg1" "$seg2" > "$dir/raw.m3u8"
   while [ ! -e "$ctl/fail" ]; do sleep 0.05; done
   echo "the device went away" >&2
   exit 1
@@ -499,9 +509,9 @@ case "$enc" in
 *)
   : > "$ctl/software"
   while [ ! -e "$ctl/go" ]; do sleep 0.05; done
-  printf 'sw-init' > "$dir/init.mp4"
-  printf 'sw' > "$dir/seg00000.m4s"
-  printf '#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:2.0,\nseg00000.m4s\n#EXT-X-ENDLIST\n' > "$dir/raw.m3u8"
+  printf 'sw-init' > "$dir/$init"
+  printf 'sw' > "$dir/$seg0"
+  printf '#EXTM3U\n#EXT-X-MAP:URI="%s"\n#EXTINF:2.0,\n%s\n#EXT-X-ENDLIST\n' "$init" "$seg0" > "$dir/raw.m3u8"
   ;;
 esac
 "#;
@@ -593,11 +603,15 @@ fn a_software_retry_starts_from_a_clean_hls_directory() {
     let done = status();
     assert_eq!((done.encoder.as_str(), done.hardware.as_str()), ("libx264", ""));
     assert!(done.fallback.contains("hardware encode failed; used software"), "{}", done.fallback);
-    assert_eq!(hls_files(&hls_dir), ["index.m3u8", "init.mp4", "raw.m3u8", "seg00000.m4s"]);
-    assert_eq!(std::fs::read(hls_dir.join("init.mp4")).unwrap(), b"sw-init");
+    // The retry's init segment and segments have names (so URLs) of
+    // their own: a viewer of the failed attempt keeps that attempt's
+    // init segment, and its browser caches the segments it fetched.
+    assert_eq!(hls_files(&hls_dir), ["index.m3u8", "raw.m3u8", "sw-init.mp4", "sw-seg00000.m4s"]);
+    assert_eq!(std::fs::read(hls_dir.join("sw-init.mp4")).unwrap(), b"sw-init");
     let index = std::fs::read_to_string(hls_dir.join(hls::INDEX_PLAYLIST)).unwrap();
-    assert!(index.contains("seg00000.m4s\n#EXT-X-ENDLIST"), "{index}");
-    assert!(!index.contains("seg00001"), "{index}");
+    assert!(index.contains("#EXT-X-MAP:URI=\"sw-init.mp4\""), "{index}");
+    assert!(index.contains("\nsw-seg00000.m4s\n#EXT-X-ENDLIST"), "{index}");
+    assert!(!index.contains("\nseg0000") && !index.contains("\"init.mp4\""), "{index}");
     t.close();
     drop(_release);
     std::fs::remove_dir_all(&dir).ok();

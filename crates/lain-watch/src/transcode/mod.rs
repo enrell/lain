@@ -1510,11 +1510,13 @@ impl Transcoder {
             return first;
         }
         tracing::warn!(session = %session, err = %e, "hardware transcode failed; retrying in software");
-        // The retry writes the same file names into the same directory.
-        // Left in place, the failed attempt's segments would be served
-        // under the retry's playlist and init segment (a different
-        // encoder's bytes), and its playlist would stay published until
-        // the retry's first segment replaced it.
+        // The retry writes into the same directory. Left in place, the
+        // failed attempt's playlist would stay published (and playable)
+        // until the retry's first segment replaced it, and its segments
+        // would stay servable beside the retry's. The retry also writes
+        // under names of its own (`hls::RETRY_PREFIX`), so no URL a
+        // viewer fetched from the failed attempt ever answers with the
+        // retry's bytes.
         if p.is_hls()
             && let Some(dir) = output.parent()
             && let Err(e) = self.clear_attempt(session, epoch, dir)
@@ -1536,8 +1538,12 @@ impl Transcoder {
     /// over: not playable until the retry's first segment, and no client
     /// position carried over (it counted the old attempt's segments, so
     /// segment deletion would remove the retry's early ones). A viewer
-    /// that already plays the failed attempt finds its playlist gone
-    /// rather than another encoder's segments behind its init segment.
+    /// that already plays the failed attempt finds the playlist gone
+    /// until the retry's first segment, then the retry's playlist, whose
+    /// segments name their own init segment: a player keeps an init
+    /// segment whose URI did not change (hls.js does), and a browser
+    /// caches the segments it fetched, so reused names would pair one
+    /// encoder's segments with the other's init segment.
     fn clear_attempt(&self, session: &str, epoch: u64, dir: &Path) -> std::io::Result<()> {
         let _io = self.playlist_lock();
         hls::clear_output(dir)?;

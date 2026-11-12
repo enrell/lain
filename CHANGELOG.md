@@ -33,7 +33,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Server**: an HLS session whose hardware encode fails and is retried
   in software starts that retry from an empty directory: the failed
   attempt's playlist is withdrawn and its segments are no longer served
-  next to the retry's init segment.
+  next to the retry's init segment. The retry's init segment and
+  segments have names of their own (`sw-init.mp4`, `sw-seg…`), so a
+  player that was watching the failed attempt never decodes the retry's
+  segments with the failed attempt's init segment it kept or cached.
 - **Server**: a transcode session started again just as it was stopped
   (a viewer joining as the last one leaves, or a play after an idle
   stop) waits for the stopped one to finish cleaning up, instead of
