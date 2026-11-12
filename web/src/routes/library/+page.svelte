@@ -142,7 +142,10 @@
 		{/if}
 	</header>
 	{#if visible.length > 1}
-		<div class="inline-flex gap-1 rounded-lg bg-surface/60 p-1 text-sm" role="group" aria-label="View">
+		<!-- The track is the field colour with a hairline: on host palettes where the
+		     surface is the page colour, a surface track vanished and the unpicked half
+		     read as loose text beside a button. -->
+		<div class="inline-flex gap-1 rounded-lg bg-field p-1 text-sm ring-1 ring-hairline" role="group" aria-label="View">
 			{#each [['shelves', 'By library'], ['all', 'All titles']] as const as [id, label] (id)}
 				<button
 					type="button"

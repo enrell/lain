@@ -336,7 +336,9 @@
 		aria-pressed={on}
 		disabled={!on && !count}
 		class={[
-			'flex min-h-11 w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition-colors disabled:opacity-35 lg:min-h-0',
+			// As wide as a genre's row beside its hide button (44 px, 28 on a wide screen,
+			// plus the gap), so every count in the panel stands in one column.
+			'flex min-h-11 w-[calc(100%-2.875rem)] items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition-colors disabled:opacity-35 lg:min-h-0 lg:w-[calc(100%-1.875rem)]',
 			on ? 'bg-accent/15 text-foreground' : 'text-muted hover:bg-surface-hover hover:text-foreground'
 		].join(' ')}
 		onclick={pick}
