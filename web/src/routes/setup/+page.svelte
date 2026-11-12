@@ -23,8 +23,16 @@
 		if (password.length < 8) next.password = 'At least 8 characters.';
 		if (confirm !== password) next.confirm = 'Passwords do not match.';
 		fieldErrors = next;
-		return Object.keys(next).length === 0;
+		// The cursor goes to the first field to fix, where its message is read out.
+		const first = next.username ? 'setup-username' : next.password ? 'setup-password' : next.confirm ? 'setup-confirm' : null;
+		if (first) document.getElementById(first)?.focus();
+		return first === null;
 	}
+
+	// Keyboard first: the cursor waits in the username on arrival.
+	$effect(() => {
+		document.getElementById('setup-username')?.focus();
+	});
 
 	async function submit(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
@@ -89,6 +97,7 @@
 						</div>
 					{/if}
 					<Input
+						id="setup-username"
 						label="Username"
 						bind:value={username}
 						error={fieldErrors.username ?? null}
@@ -97,6 +106,7 @@
 						spellcheck={false}
 					/>
 					<Input
+						id="setup-password"
 						label="Password"
 						type="password"
 						bind:value={password}
@@ -105,6 +115,7 @@
 						autocomplete="new-password"
 					/>
 					<Input
+						id="setup-confirm"
 						label="Confirm password"
 						type="password"
 						bind:value={confirm}
