@@ -160,8 +160,9 @@
 				{armed ? t('settings.staged.armed') : t('settings.staged.count', { count })}
 			</p>
 			<div class="flex items-center gap-2">
-				<Button variant="ghost" size="sm" disabled={saving} onclick={discard} class={armed ? 'text-danger' : ''}>
-					{t('settings.staged.discard')} <kbd class="ml-1 font-mono text-[10px] text-muted">Esc</kbd>
+				<Button variant="ghost" size="sm" disabled={saving} onclick={discard} class={armed ? 'text-danger!' : ''}>
+					<!-- Two caps: one Escape only arms the discard (the `?` list shows the same pair). -->
+					{t('settings.staged.discard')} <kbd class="ml-1 font-mono text-[10px] text-muted">Esc</kbd><kbd class="ml-0.5 font-mono text-[10px] text-muted">Esc</kbd>
 				</Button>
 				<Button size="sm" loading={saving} onclick={onapply}>
 					{t('settings.staged.apply')} <kbd class="ml-1 font-mono text-[10px] opacity-70">Ctrl+S</kbd>
