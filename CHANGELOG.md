@@ -39,6 +39,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   opened in one shape and turned to the other as its posters came in. A
   provider's cover (a wide banner) is no longer taken for a poster.
 - **Acquire no longer flashes "no library"** (web) while its libraries load.
+- **Acquire's forms on a phone** (web): the link field of the Queue had
+  shrunk beside the library picker to a few letters; the form stacks, and
+  the labels of both forms line up whether or not they carry a key.
+- **The Kind filter names kinds** (web): Films and clips, Episodes, Manga,
+  Comics, where it listed the catalog's raw words.
 
 ## [0.3.0] - 2026-11-12
 
