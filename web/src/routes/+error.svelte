@@ -93,7 +93,8 @@
 
 		<div class="mt-7 flex flex-wrap items-center gap-3">
 			{#if missing}
-				<LinkButton href="/" size="rowMain" data-error-main>{t('errorPage.home')}</LinkButton>
+				<!-- Focused on arrival, so Enter takes it: the key is shown, as the other ways on show theirs. -->
+				<LinkButton href="/" size="rowMain" data-error-main>{t('errorPage.home')} <kbd>Enter</kbd></LinkButton>
 			{:else}
 				<Button size="rowMain" data-error-main onclick={() => location.reload()}>{t('errorPage.reload')} <kbd>R</kbd></Button>
 			{/if}
