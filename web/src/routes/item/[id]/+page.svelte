@@ -99,10 +99,18 @@
 		].filter((segment) => segment !== '')
 	);
 
-	async function load(): Promise<void> {
-		loading = true;
-		error = null;
-		notFound = false;
+	/*
+	 * `quiet` refreshes what is on screen after an action (a mark, Start
+	 * over): the page stays as it is meanwhile, so the focus, the scroll
+	 * position and the menu that was used stay where they were, and a
+	 * failed refresh says so without replacing the page.
+	 */
+	async function load(quiet = false): Promise<void> {
+		if (!quiet) {
+			loading = true;
+			error = null;
+			notFound = false;
+		}
 		try {
 			const [it, pl, enr, libs, eps, allProgress] = await Promise.all([
 				api.catalog.get(id),
@@ -125,7 +133,9 @@
 			series = eps.items.length > 1 ? groupFromEpisodes(eps.items) : null;
 			if (series) await ensureEnrichments(series.items.map((episode) => episode.id));
 		} catch (err) {
-			if (err instanceof ApiError && err.kind === 'not-found') {
+			if (quiet) {
+				toasts.error(errorMessage(err, t('title.refreshFailed')));
+			} else if (err instanceof ApiError && err.kind === 'not-found') {
 				notFound = true;
 			} else {
 				error = errorMessage(err);
@@ -331,7 +341,7 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if series}
 	{#key series.key}
-		<TitleView group={series} {progressMap} {libraries} {manage} onProgressChanged={() => void load()} />
+		<TitleView group={series} {progressMap} {libraries} {manage} onProgressChanged={() => void load(true)} />
 	{/key}
 	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} /></div>{/if}
 {:else if item}
