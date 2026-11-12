@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Web**: a link clicked within a moment of typing in the header's
+  search field on the Search page no longer bounces back to Search with
+  the field focused.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added
