@@ -6,6 +6,7 @@
 	import { api } from '$lib/api';
 	import type { Library } from '$lib/api/types';
 	import { session } from '$lib/auth/session.svelte';
+	import Button from '$lib/components/primitives/Button.svelte';
 	import Select from '$lib/components/primitives/Select.svelte';
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
@@ -144,14 +145,14 @@
 	}
 
 	// The height of the Select trigger beside them (h-10): one row of pickers, one size.
-	const field = 'h-10 rounded-md border px-2.5 text-sm text-foreground outline-none';
+	const field = 'h-10 rounded-md border px-3 text-sm text-foreground outline-none';
 </script>
 
 <svelte:head><title>Playback — Settings — Lain</title></svelte:head>
 
-<SettingsGroup title="Playing">
+<SettingsGroup title="Playing" description={t('settings.groups.playback.playing')}>
 	<SettingRow id="player" label="Default player" hint="Which player opens when you press Play in this browser." saved={flash.is('player')}>
-		<select class="{field} w-56" value={player} onchange={(e) => changePlayer(e.currentTarget.value)} aria-label="Default player">
+		<select class="{field} w-full" value={player} onchange={(e) => changePlayer(e.currentTarget.value)} aria-label="Default player">
 			<option value="browser">Web player</option>
 			<option value="mpv">mpv</option>
 			<option value="vlc">VLC</option>
@@ -173,7 +174,7 @@
 	>
 		<!-- A language by name, from a list: a three-letter code to type was a thing to know first. -->
 		<!-- As wide as the native pickers on this page; the whole column on a phone, as they are. -->
-		<div class="w-full md:w-56">
+		<div class="w-full">
 			<Select
 				aria-label="Audio and subtitle language"
 				bind:value={language}
@@ -189,14 +190,14 @@
 
 <!-- What the app keeps in its Settings too; on the web they were only in the player's menu,
      and the subtitle ones only while a file with subtitles played. -->
-<SettingsGroup id="player-prefs" title={t('playerPrefs.group')}>
+<SettingsGroup id="player-prefs" title={t('playerPrefs.group')} description={t('settings.groups.playback.prefs')}>
 	<SettingRow
 		id="skip"
 		label={t('playerPrefs.skip')}
 		hint={skip === 0 ? t('playerPrefs.skipAutoHint') : t('playerPrefs.skipFixedHint', { seconds: skip })}
 		saved={flash.is('skip')}
 	>
-		<select class="{field} w-56" value={String(skip)} onchange={(e) => changeSkip(e.currentTarget.value)} aria-label={t('playerPrefs.skip')}>
+		<select class="{field} w-full" value={String(skip)} onchange={(e) => changeSkip(e.currentTarget.value)} aria-label={t('playerPrefs.skip')}>
 			{#each SKIP_CHOICES as option (option)}
 				<option value={String(option)}>{option === 0 ? t('playerPrefs.skipAuto') : t('playerPrefs.skipSeconds', { seconds: option })}</option>
 			{/each}
@@ -204,7 +205,7 @@
 	</SettingRow>
 	<SettingRow id="subtitle-size" label={t('playerPrefs.subtitleSize')} saved={flash.is('subtitle-size')}>
 		<select
-			class="{field} w-56"
+			class="{field} w-full"
 			value={subtitleSize}
 			onchange={(e) => changeSubtitleSize(e.currentTarget.value)}
 			aria-label={t('playerPrefs.subtitleSize')}
@@ -219,14 +220,14 @@
 	</SettingRow>
 </SettingsGroup>
 
-<SettingsGroup id="effects" title="Video effects · this browser">
+<SettingsGroup id="effects" title="Video effects · this browser" description={t('settings.groups.playback.effects')}>
 	<SettingRow
 		label="Default effect"
 		hint="Anime4K via WebGPU or WebGL2. The player can override it per session."
 		saved={flash.is('effect-default')}
 	>
 		<select
-			class="{field} w-56"
+			class="{field} w-full"
 			aria-label="Default effect"
 			value={policy.default}
 			onchange={(e) => persistEffects({ ...policy, default: e.currentTarget.value as EffectPreset }, 'effect-default')}
@@ -281,8 +282,8 @@
 				</table>
 			</div>
 		{/if}
-		<button type="button" class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-foreground" onclick={addRule}>
+		<Button variant="tonal" size="field" onclick={addRule}>
 			<Plus class="size-4" /> Add override
-		</button>
+		</Button>
 	</SettingRow>
 </SettingsGroup>

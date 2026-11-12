@@ -136,9 +136,10 @@
 <svelte:head><title>Profile — Settings — Lain</title></svelte:head>
 
 {#if user}
-	<!-- Identity: the live preview of what other people see. -->
-	<header class="flex items-center gap-5 pb-8">
-		<Avatar user={preview} class="size-20" />
+	<!-- Identity: the live preview of what other people see, in a panel of
+	     its own above the groups that change it. -->
+	<div class="mb-10 flex items-center gap-5 rounded-card bg-panel p-5">
+		<Avatar user={preview} class="size-16 shrink-0" />
 		<div class="min-w-0">
 			<p class="truncate text-2xl font-black uppercase tracking-[-0.04em] text-foreground">{displayName(preview)}</p>
 			<p class="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
@@ -147,16 +148,16 @@
 			</p>
 			{#if bio.trim()}<p class="mt-2 max-w-xl whitespace-pre-line text-sm text-muted">{bio.trim()}</p>{/if}
 		</div>
-	</header>
+	</div>
 
 	<form onsubmit={save}>
-		<SettingsGroup title="Details">
+		<SettingsGroup title="Details" description={t('settings.groups.profile.details')}>
 			<SettingRow id="display-name" label="Display name" hint={`Shown instead of @${user.username}.`} saved={flash.is('details')}>
 				<!-- The count sits inside its field's end: beside it, it floated in a column of its
 				     own and the field stopped short of every other control's right edge. -->
-				<div class="relative w-full sm:w-72">
+				<div class="relative w-full">
 					<input
-						class="h-9 w-full rounded-md border px-2.5 pe-12 text-sm text-foreground outline-none"
+						class="h-9 w-full rounded-md border px-3 pe-12 text-sm text-foreground outline-none"
 						bind:value={name}
 						maxlength={MAX_NAME}
 						placeholder={user.username}
@@ -168,13 +169,13 @@
 				</div>
 			</SettingRow>
 			<SettingRow id="bio" label="Bio" hint="One or two lines.">
-				<div class="relative w-full sm:w-72">
+				<div class="relative w-full">
 					<textarea
 						bind:value={bio}
 						maxlength={MAX_BIO}
 						rows="2"
 						aria-label="Bio"
-						class="block w-full resize-none rounded-md border px-2.5 pb-5 pt-2 text-sm text-foreground outline-none placeholder:text-muted"
+						class="block w-full resize-none rounded-md border px-3 pb-5 pt-2 text-sm text-foreground outline-none placeholder:text-muted"
 						placeholder="A line about you."
 						onkeydown={(e) => {
 							if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit();
@@ -185,20 +186,20 @@
 			</SettingRow>
 			{#if dirty}
 				<div class="flex items-center justify-end gap-3 py-3">
-					<span class="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">Ctrl+Enter</span>
-					<Button type="submit" size="sm" loading={saving}>Save details</Button>
+					<kbd class="text-muted">Ctrl Enter</kbd>
+					<Button type="submit" size="field" loading={saving}>Save details</Button>
 				</div>
 			{/if}
 		</SettingsGroup>
 	</form>
 
-	<SettingsGroup id="avatar" title="Avatar">
+	<SettingsGroup id="avatar" title="Avatar" description={t('settings.groups.profile.avatar')}>
 		<SettingRow label="Picture" hint="PNG, JPEG, GIF or WebP · up to 2 MB." saved={flash.is('avatar')}>
-			<Button variant="secondary" size="sm" loading={uploading} onclick={() => fileInput?.click()}>
+			<Button variant="tonal" size="field" loading={uploading} onclick={() => fileInput?.click()}>
 				<ImageUp class="size-4" /> Upload
 			</Button>
 			{#if avatar?.kind}
-				<Button variant="ghost" size="sm" onclick={remove}>
+				<Button variant="ghost" size="field" onclick={remove}>
 					<Trash2 class="size-4" /> Use initials
 				</Button>
 			{/if}
@@ -229,10 +230,10 @@
 		</SettingRow>
 	</SettingsGroup>
 
-	<SettingsGroup id="interface" title={t('settings.interface.group')}>
+	<SettingsGroup id="interface" title={t('settings.interface.group')} description={t('settings.groups.profile.interface')}>
 		<SettingRow label={t('settings.interface.language')} hint={t('settings.interface.languageHint')} saved={flash.is('locale')}>
 			<select
-				class="h-10 w-56 rounded-md border px-2.5 text-sm text-foreground outline-none"
+				class="h-10 w-full rounded-md border px-3 text-sm text-foreground outline-none"
 				aria-label={t('settings.interface.language')}
 				value={i18n.choice}
 				onchange={(e) => void changeLocale(e.currentTarget.value)}
@@ -245,7 +246,7 @@
 		</SettingRow>
 	</SettingsGroup>
 
-	<SettingsGroup id="account" title="Account">
+	<SettingsGroup id="account" title="Account" description={t('settings.groups.profile.account')}>
 		<SettingRow label="Username" hint="Used to sign in. Only an admin can change it.">
 			<span class="font-mono text-sm text-foreground">@{user.username}</span>
 		</SettingRow>
@@ -255,7 +256,7 @@
 			</span>
 		</SettingRow>
 		<SettingRow label="Session" hint="Signs out of this browser only.">
-			<Button variant="ghost" size="sm" onclick={signOut}><LogOut class="size-4" /> Sign out</Button>
+			<Button variant="tonal" size="field" onclick={signOut}><LogOut class="size-4" /> Sign out</Button>
 		</SettingRow>
 	</SettingsGroup>
 {/if}

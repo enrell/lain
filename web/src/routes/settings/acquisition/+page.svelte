@@ -154,11 +154,11 @@
 
 <svelte:head><title>{t('acquire.settings.title')}</title></svelte:head>
 
-<div class="max-w-4xl pb-24">
+<div>
 	{#if !view || !draft}
 		<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
 	{:else}
-		<SettingsGroup id="engine" title={t('acquire.settings.engineGroup')}>
+		<SettingsGroup id="engine" title={t('acquire.settings.engineGroup')} description={t('settings.groups.acquisition.engine')}>
 			<SettingRow id="acquire-status" label={t('acquire.settings.status')} hint={t('acquire.settings.statusHint')}>
 				<span class="font-mono text-xs text-foreground">
 					{t('acquire.settings.statusValue', { port: String(view.port), used: formatBytes(view.usage.used_bytes) || '0 B' })}
@@ -170,7 +170,7 @@
 				</span>
 			</SettingRow>
 			<SettingRow id="acquire-dir" label={t('acquire.settings.dir')} hint={t('acquire.settings.dirHint')}>
-				<input class="h-9 w-full max-w-sm rounded-md border border-transparent bg-field px-3 font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none" aria-label={t('acquire.settings.dir')} spellcheck={false} bind:value={draft.dir} />
+				<input class="h-9 w-full rounded-md border border-transparent bg-field px-3 font-mono text-xs text-foreground focus:border-accent/60 focus:outline-none" aria-label={t('acquire.settings.dir')} spellcheck={false} bind:value={draft.dir} />
 			</SettingRow>
 			<SettingRow id="acquire-port" label={t('acquire.settings.port')} hint={t('acquire.settings.portHint')}>
 				<input type="number" min="0" max="65535" class={num} aria-label={t('acquire.settings.port')} bind:value={draft.listen_port} />
@@ -193,7 +193,7 @@
 			</SettingRow>
 		</SettingsGroup>
 
-		<SettingsGroup id="seeding" title={t('acquire.settings.seedingGroup')}>
+		<SettingsGroup id="seeding" title={t('acquire.settings.seedingGroup')} description={t('settings.groups.acquisition.seeding')}>
 			<SettingRow id="acquire-ratio" label={t('acquire.settings.ratio')} hint={t('acquire.settings.ratioHint')}>
 				<input type="number" min="0" max="100" step="0.1" class={num} aria-label={t('acquire.settings.ratio')} bind:value={draft.seed_ratio} />
 			</SettingRow>
@@ -205,12 +205,12 @@
 			</SettingRow>
 		</SettingsGroup>
 
-		<SettingsGroup id="import" title={t('acquire.settings.importGroup')}>
+		<SettingsGroup id="import" title={t('acquire.settings.importGroup')} description={t('settings.groups.acquisition.import')}>
 			<SettingRow id="acquire-import" label={t('acquire.settings.importMode')} hint={t('acquire.settings.importModeHint')}>
-				<Select aria-label={t('acquire.settings.importMode')} options={importOptions} bind:value={draft.import_mode} />
+				<div class="w-full"><Select aria-label={t('acquire.settings.importMode')} options={importOptions} bind:value={draft.import_mode} /></div>
 			</SettingRow>
 			<SettingRow id="acquire-budget" label={t('acquire.settings.budget')} hint={t('acquire.settings.budgetHint')}>
-				<a href="/settings/downloads#limits" class="font-mono text-[10px] uppercase tracking-[0.2em] text-muted hover:text-foreground">
+				<a href="/settings/downloads#limits" class="font-mono text-xs text-foreground underline decoration-hairline underline-offset-4 hover:text-accent">
 					{view.usage.max_bytes > 0
 						? t('acquire.settings.budgetValue', { used: formatBytes(view.usage.used_bytes + view.usage.downloads_bytes) || '0 B', max: formatBytes(view.usage.max_bytes) })
 						: t('acquire.settings.budgetUnlimited')}
@@ -218,7 +218,7 @@
 			</SettingRow>
 		</SettingsGroup>
 
-		<SettingsGroup id="automation" title={t('acquire.settings.automationGroup')}>
+		<SettingsGroup id="automation" title={t('acquire.settings.automationGroup')} description={t('settings.groups.acquisition.automation')}>
 			<SettingRow id="acquire-automation" label={t('acquire.settings.automation')} hint={t('acquire.settings.automationHint')}>
 				<Switch bare label={t('acquire.settings.automation')} bind:checked={draft.automation} />
 			</SettingRow>
@@ -236,12 +236,12 @@
 			</SettingRow>
 		</SettingsGroup>
 
-		<SettingsGroup id="profiles" title={t('acquire.profiles.group')}>
+		<SettingsGroup id="profiles" title={t('acquire.profiles.group')} description={t('settings.groups.acquisition.profiles')}>
 			{#snippet aside()}
-				<Button size="sm" variant="secondary" onclick={() => editProfile(null)}>{t('acquire.profiles.add')}</Button>
+				<Button size="field" variant="tonal" onclick={() => editProfile(null)}>{t('acquire.profiles.add')}</Button>
 			{/snippet}
-			<p class="pt-3 text-xs text-muted">{t('acquire.profiles.keys')}</p>
-			<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.profiles.group')}>
+			<p class="settings-note">{t('acquire.profiles.keys')}</p>
+			<div class="settings-items" role="grid" aria-label={t('acquire.profiles.group')}>
 				{#each profiles as p (p.id)}
 					<div role="row" tabindex="0" onkeydown={(e) => profileKey(e, p)} class="flex flex-wrap items-center justify-between gap-3 py-3 outline-none focus-visible:bg-surface-active/40">
 						<div class="min-w-0" role="gridcell">
@@ -249,9 +249,9 @@
 							<p class="font-mono text-[10px] text-muted">{t('acquire.profiles.summary', { resolutions: p.resolutions.join(' › '), cutoff: p.cutoff, seeders: p.min_seeders })}</p>
 						</div>
 						<div class="flex gap-1.5" role="gridcell">
-							<Button size="sm" variant="ghost" tabindex={-1} onclick={() => editProfile(p)}>{t('acquire.indexers.edit')} <kbd class="ms-1 font-mono text-[10px] text-muted">e</kbd></Button>
+							<Button size="field" variant="ghost" tabindex={-1} onclick={() => editProfile(p)}>{t('acquire.indexers.edit')} <kbd class="ms-1 font-mono text-[10px] text-muted">e</kbd></Button>
 							{#if p.id !== 'default'}
-								<Button size="sm" variant="ghost" tabindex={-1} onclick={() => askDeleteProfile(p)}>{t('acquire.indexers.remove')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
+								<Button size="field" variant="ghost" tabindex={-1} onclick={() => askDeleteProfile(p)}>{t('acquire.indexers.remove')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
 							{/if}
 						</div>
 					</div>
@@ -259,15 +259,15 @@
 			</div>
 		</SettingsGroup>
 
-		<SettingsGroup id="subtitles" title={t('acquire.subtitles.group')}>
+		<SettingsGroup id="subtitles" title={t('acquire.subtitles.group')} description={t('settings.groups.acquisition.subtitles')}>
 			{#snippet aside()}
-				<Button size="sm" variant="secondary" onclick={() => editSub(null)}>{t('acquire.subtitles.add')}</Button>
+				<Button size="field" variant="tonal" onclick={() => editSub(null)}>{t('acquire.subtitles.add')}</Button>
 			{/snippet}
 			{#if subProviders.length === 0}
-				<p class="py-3 text-xs text-muted">{t('acquire.subtitles.none')}</p>
+				<p class="py-5 text-sm text-muted">{t('acquire.subtitles.none')}</p>
 			{:else}
-				<p class="pt-3 text-xs text-muted">{t('acquire.subtitles.keys')}</p>
-				<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.subtitles.group')}>
+				<p class="settings-note">{t('acquire.subtitles.keys')}</p>
+				<div class="settings-items" role="grid" aria-label={t('acquire.subtitles.group')}>
 					{#each subProviders as p (p.id)}
 						<div role="row" tabindex="0" onkeydown={(e) => subKey(e, p)} class="flex flex-wrap items-center justify-between gap-3 py-3 outline-none focus-visible:bg-surface-active/40">
 							<div class="min-w-0" role="gridcell">
@@ -278,8 +278,8 @@
 								</p>
 							</div>
 							<div class="flex gap-1.5" role="gridcell">
-								<Button size="sm" variant="ghost" tabindex={-1} onclick={() => editSub(p)}>{t('acquire.indexers.edit')} <kbd class="ms-1 font-mono text-[10px] text-muted">e</kbd></Button>
-								<Button size="sm" variant="ghost" tabindex={-1} onclick={() => askDeleteSub(p)}>{t('acquire.subtitles.remove')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
+								<Button size="field" variant="ghost" tabindex={-1} onclick={() => editSub(p)}>{t('acquire.indexers.edit')} <kbd class="ms-1 font-mono text-[10px] text-muted">e</kbd></Button>
+								<Button size="field" variant="ghost" tabindex={-1} onclick={() => askDeleteSub(p)}>{t('acquire.subtitles.remove')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
 							</div>
 						</div>
 					{/each}
