@@ -582,6 +582,7 @@ const en = {
 			unread: { one: '{count} unread', other: '{count} unread' },
 			markAll: 'Mark all read',
 			empty: 'No notifications.',
+			emptyBody: 'Friend requests, and what friends share with you, arrive here.',
 			failed: 'Could not update notifications.'
 		},
 		title: {
@@ -664,7 +665,8 @@ const en = {
 			visibility: 'Who can see it',
 			create: 'Create',
 			createFailed: 'Could not create the collection.',
-			empty: 'No collections yet — yours and the ones friends share with you appear here.',
+			empty: 'No collections yet.',
+			emptyBody: 'Yours and the ones friends share with you appear here.',
 			sharedBy: 'shared by {name}',
 			edit: 'Edit',
 			save: 'Save',

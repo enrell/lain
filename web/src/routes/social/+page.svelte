@@ -8,6 +8,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Users from '@lucide/svelte/icons/users';
+	import Bell from '@lucide/svelte/icons/bell';
+	import FolderHeart from '@lucide/svelte/icons/folder-heart';
 	import type { CatalogItem } from '$lib/api/types';
 	import {
 		api,
@@ -438,13 +440,18 @@
 			<p class="text-sm text-muted">{t('social.notify.unread', { count: unread })}</p>
 			<Button size="sm" variant="ghost" disabled={unread === 0} onclick={() => void markAllRead()}>{t('social.notify.markAll')} <Kbd>R</Kbd></Button>
 		</div>
+		<!-- An empty tab is drawn as the app's empty state, not one grey line. -->
+		{#if notes.length === 0}
+			<EmptyState title={t('social.notify.empty')} description={t('social.notify.emptyBody')}>
+				{#snippet icon()}<Bell class="size-6 text-muted" aria-hidden="true" />{/snippet}
+			</EmptyState>
+		{:else}
 		<ul>
 			{#each notes as n (n.id)}
 				<NotificationRow {n} users={noteUsers} onChange={() => void loadNotes()} />
-			{:else}
-				<li class="py-3 text-sm text-muted">{t('social.notify.empty')}</li>
 			{/each}
 		</ul>
+		{/if}
 	{:else if tab === 'collections'}
 		<div class="flex justify-end">
 			<Button size="sm" onclick={openNew}>{t('social.collections.new')} <Kbd>N</Kbd></Button>
@@ -461,10 +468,13 @@
 						{/if}
 					</a>
 				</li>
-			{:else}
-				<li class="py-3 text-sm text-muted">{t('social.collections.empty')}</li>
 			{/each}
 		</ul>
+		{#if collections.length === 0}
+			<EmptyState title={t('social.collections.empty')} description={t('social.collections.emptyBody')}>
+				{#snippet icon()}<FolderHeart class="size-6 text-muted" aria-hidden="true" />{/snippet}
+			</EmptyState>
+		{/if}
 	{/if}
 </div>
 
