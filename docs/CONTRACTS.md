@@ -1279,6 +1279,15 @@ Operator surfaces can list registered providers with their
 capabilities and live health (`provider_info` on `GET /api/plugins`) so
 a swap UI only ever offers candidates that can serve the capability.
 
+Each binding of `composition` (on `GET /api/plugins` and the swap and
+withdraw answers) carries `summary` (D-285, additive, omitted when
+empty): what the job is, in one plain sentence. The server describes
+the capabilities it knows (`lain_core::capabilities`, matched without
+the version, so a new version keeps its sentence); for one it does not
+know, the first bound provider that describes it does
+(`Provider::describe`; a component manifest's optional
+`summaries: {capability: sentence}`).
+
 ## Private libraries and portable roots (lain-rs, D-156, D-157, D-175)
 
 Served by the Rust server only (P1b); the Go server is unchanged.

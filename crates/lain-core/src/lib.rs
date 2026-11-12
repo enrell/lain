@@ -6,6 +6,7 @@
 //! understand anime, seasons or metadata: those are provider policy.
 //! This is the Rust port of `internal/core` (D-171).
 
+pub mod capabilities;
 mod composition;
 mod error;
 pub mod modules;

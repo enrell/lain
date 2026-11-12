@@ -1121,6 +1121,10 @@ pub struct BindingView {
     pub mode: String,
     pub providers: Vec<String>,
     pub generation: u64,
+    /// D-285: what the job is, in one plain sentence; left out when
+    /// neither the server nor a bound provider describes it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub summary: String,
 }
 
 /// One registered provider for operator surfaces.
