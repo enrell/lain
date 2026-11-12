@@ -881,7 +881,7 @@ are core code (`internal/torrent`, `internal/acquire`), not plugins
 
 | Capability | Mode | Built-ins | Input → output |
 |---|---|---|---|
-| `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides; in lain-rs a component, see "P4 components"), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain) |
+| `lain.release.parse@1` | ordered-many, first accepted | `lain-release-model` (lain-parser over `<data-dir>/parser.sock`, `LAIN_PARSER_SOCKET` overrides; in lain-rs a component, see "P4 components"), `lain-release-tokenizer` | `ReleaseParseInput{name, kind}` → `Release` (zero `title` = abstain; optional `alternatives`, D-275) |
 | `lain.indexer@1` | ordered-many; `unsupported-protocol` declines | `lain-indexer-torznab` (Torznab + Newznab) | `IndexerCapsInput` → `IndexerCaps`; `IndexerSearchInput` → `IndexerSearchOutput` |
 | `lain.subtitle@1` | ordered-many; `unsupported-provider` declines | `lain-subtitle-opensubtitles` (OpenSubtitles.com REST v1) | `SubtitleSearchInput` → `SubtitleSearchOutput`; `SubtitleDownloadInput` → `SubtitleDownloadOutput` (a link; the core fetches it, D-150). In lain-rs the ops are `search` and `download` (D-202) |
 
@@ -945,6 +945,39 @@ season), release group and resolution, and the tokenizer for every other
 tag (Go's `merge`); `parser` is `lain-release-model`. Default binding:
 `[lain-release-model, lain-release-tokenizer]` (V-5,
 `docs/benchmarks/parser-v5.md`, D-226).
+
+### Release.alternatives (D-275)
+
+A name can be read more than one way and nothing in it says which is
+right: "Show 2 - 03" is episode 3 of the sequel "Show 2", or of season 2
+of "Show". `Release` gains the additive, optional
+`alternatives: ReleaseIdentity[]`: other identities the provider
+considered, best first, at most five. A `ReleaseIdentity` is
+`{title, year, season, episodes, absolute}` with `Release`'s meanings
+and zeros. The answer itself is unchanged, and a provider with nothing
+to offer (the tokenizer, an older parser service) omits the field.
+
+- **Who decides.** The caller that knows which title it expects, never
+  the parser. `lain_acquire::util::settle(release, known)` keeps the
+  answer when `known` accepts its title; otherwise it takes the first
+  alternative whose title `known` accepts, moving the identity as a
+  whole (title, year, season, episodes, `absolute`; `season_pack` is
+  cleared when episodes come with it) and keeping every other field. It
+  always drops the list: alternatives are advice for one decision and
+  are never stored in a grab or returned in a search candidate.
+- **Where.** A search settles against its query; automation and its
+  grabs against the monitored title and its aliases; an import settles
+  each file against the title of the grabbed release. A manual grab and
+  a library's other titles settle nothing (a sequel must not land in
+  the folder of the show it follows). `POST /api/acquire/parse` returns
+  the list as the provider gave it.
+- **From the model.** `lain-release-model` posts `{filename,
+  alternatives: 5}` (lain-parser 1.3.0; an older service ignores the key
+  and answers none). Each alternative is cleaned like the answer,
+  compared with the model's own reading (so the answer is not listed
+  again) and carries the model's numbers only, never the tokenizer's. A
+  year the model did not read is the tokenizer's, unless the
+  alternative's title holds it ("Blade Runner 2049").
 
 ### lain.subtitle.translate@1 (ordered-many; `unsupported-format` declines; D-228)
 

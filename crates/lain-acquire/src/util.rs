@@ -3,6 +3,8 @@
 use std::path::{Component, Path};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use lain_api::Release;
+
 use crate::error::{AcqError, CODE_INVALID, Result};
 
 /// Unix seconds.
@@ -43,6 +45,31 @@ pub fn loose_key(s: &str) -> String {
         .filter(|w| !w.is_empty())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Reads `rel` as the first of its alternatives whose title `known`
+/// accepts, when its own title is not one (D-275). A parser cannot tell
+/// "Show 2" the sequel from episode 2 of "Show"; the caller that searched
+/// for a title, monitors one or imports into a library can. The identity
+/// moves as a whole (title, year, season, episodes, numbering) and every
+/// other field stays. The alternatives are dropped either way: they are
+/// advice for this decision, never part of a stored release.
+pub fn settle(mut rel: Release, known: impl Fn(&str) -> bool) -> Release {
+    let alternatives = std::mem::take(&mut rel.alternatives);
+    if rel.title.is_empty() || known(&rel.title) {
+        return rel;
+    }
+    if let Some(alt) = alternatives.into_iter().find(|a| !a.title.is_empty() && known(&a.title)) {
+        if !alt.episodes.is_empty() {
+            rel.season_pack = false;
+        }
+        rel.title = alt.title;
+        rel.year = alt.year;
+        rel.season = alt.season;
+        rel.episodes = alt.episodes;
+        rel.absolute = alt.absolute;
+    }
+    rel
 }
 
 /// At most `n` bytes, cut at a character boundary (Go cuts bytes and can
@@ -122,6 +149,50 @@ pub fn url_host(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lain_api::ReleaseIdentity;
+
+    fn alt(title: &str, season: i64, episodes: &[i64]) -> ReleaseIdentity {
+        ReleaseIdentity {
+            title: title.into(),
+            season,
+            episodes: episodes.to_vec(),
+            absolute: season == 0 && !episodes.is_empty(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn settle_takes_the_first_alternative_with_a_known_title() {
+        let wanted = |t: &str| loose_key(t) == "quiet harbor";
+        let read = Release {
+            title: "Quiet Harbor 2".into(),
+            year: 2014,
+            group: "Fansub-A".into(),
+            resolution: "1080p".into(),
+            season_pack: true,
+            alternatives: vec![alt("Quiet", 0, &[]), alt("Quiet.Harbor", 0, &[2]), alt("Quiet Harbor", 2, &[])],
+            ..Default::default()
+        };
+        let r = settle(read.clone(), wanted);
+        assert_eq!((r.title.as_str(), r.season, r.episodes.clone(), r.absolute), ("Quiet.Harbor", 0, vec![2], true));
+        assert_eq!(r.year, 0, "the identity moves as a whole");
+        assert!(!r.season_pack, "an episode is not a pack");
+        assert_eq!((r.group.as_str(), r.resolution.as_str()), ("Fansub-A", "1080p"), "the rest stays");
+        assert!(r.alternatives.is_empty());
+
+        // The stated title is known: nothing moves, even with a known alternative.
+        let r = settle(read.clone(), |t| t.starts_with("Quiet Harbor"));
+        assert_eq!((r.title.as_str(), r.year, r.season_pack), ("Quiet Harbor 2", 2014, true));
+        assert!(r.alternatives.is_empty());
+
+        // No alternative is known: the answer stands, the advice is dropped.
+        let r = settle(read.clone(), |t| t == "Silver Tide");
+        assert_eq!(r, Release { alternatives: Vec::new(), ..read.clone() });
+
+        // A decline stays a decline.
+        let declined = Release { alternatives: vec![alt("Quiet Harbor", 0, &[2])], ..Default::default() };
+        assert_eq!(settle(declined, wanted), Release::default());
+    }
 
     #[test]
     fn keys_and_names() {

@@ -564,6 +564,59 @@ fn search_skips_units_already_being_grabbed() {
     m.close();
 }
 
+/// A parser that reads the world's release as the title "Show 01" and
+/// offers the right identity only as an alternative (D-275).
+fn misreading(name: &str, kind: &str) -> lain_api::Release {
+    let mut r = lain_identify::tokenize(name, kind);
+    if r.title == "Show" && !r.episodes.is_empty() {
+        r.alternatives = vec![
+            lain_api::ReleaseIdentity { title: "Show 01 02".into(), ..Default::default() },
+            lain_api::ReleaseIdentity {
+                title: "Show".into(),
+                episodes: std::mem::take(&mut r.episodes),
+                absolute: true,
+                ..Default::default()
+            },
+        ];
+        r.title = "Show 01".into();
+    }
+    r
+}
+
+#[test]
+fn a_search_reads_a_release_as_the_title_it_asked_for() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt1"), settings(0.0), |d| d.parse = Arc::new(misreading));
+    add_indexer(&m, &w);
+    let res = m.search(&SearchQuery { query: "Show".into(), kind: "anime".into(), ..Default::default() }).unwrap();
+    let best = &res.candidates[0];
+    assert_eq!((best.release.title.as_str(), best.release.episodes.len()), ("Show", 2), "{:?}", res.candidates);
+    assert!(best.rejections.is_empty() && best.release.alternatives.is_empty(), "{best:?}");
+    assert!(!res.candidates[1].rejections.is_empty(), "another show still does not match");
+    // Asked for another title, no reading fits: the answer stands and is refused.
+    let res =
+        m.search(&SearchQuery { query: "Silver Tide".into(), kind: "anime".into(), ..Default::default() }).unwrap();
+    assert!(res.candidates.iter().all(|c| c.rejections.iter().any(|r| r == "title does not match")));
+    assert!(res.candidates.iter().any(|c| c.release.title == "Show 01"), "{:?}", res.candidates);
+    m.close();
+}
+
+#[test]
+fn a_monitored_title_decides_between_readings() {
+    let w = World::new();
+    let m = w.manager_with(&tmp("acq-alt2"), settings(0.0), |d| d.parse = Arc::new(misreading));
+    add_indexer(&m, &w);
+    let mo = monitor(&m, &w, mon("Show", 0, 0));
+    let rep = m.rss_sync().unwrap();
+    assert_eq!(rep.grabbed.len(), 1, "{rep:?}");
+    let g = wait_grab(&m, &rep.grabbed[0], &[GRAB_DONE]);
+    assert_eq!(g.release.title, "Show", "the grab is stored as the monitored title");
+    assert!(g.release.alternatives.is_empty());
+    w.assert_imported();
+    assert_eq!(m.wanted_for(&mo.id).unwrap().open_from, Some(Unit { season: 0, number: 3 }));
+    m.close();
+}
+
 #[test]
 fn rss_sync_feeds_monitored_titles() {
     let w = World::new();
