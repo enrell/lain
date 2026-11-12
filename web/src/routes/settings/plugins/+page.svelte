@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
 	import type { BindingView, PluginsInfo, ProviderInfo } from '$lib/api/types';
@@ -109,12 +110,39 @@
 		return map[word] ?? 'other';
 	}
 	const families = $derived(
-		FAMILIES.map(([id, title]) => ({
-			id,
-			title,
-			bindings: (info?.composition ?? []).filter((b) => familyOf(b.capability) === id)
-		})).filter((f) => f.bindings.length > 0)
+		FAMILIES.map(([id, title]) => {
+			const bindings = (info?.composition ?? []).filter((b) => familyOf(b.capability) === id);
+			const providers = bindings.flatMap((b) => b.providers);
+			return {
+				id,
+				title,
+				bindings,
+				missing: bindings.filter((b) => b.providers.some((p) => !providerInfo(p))).length,
+				unhealthy: new Set(providers.filter((p) => providerInfo(p)?.healthy === false)).size
+			};
+		}).filter((f) => f.bindings.length > 0)
 	);
+	// Opened by hand stays opened across a reload after a swap. A family
+	// with an unhealthy provider starts open; one with a component bound
+	// ahead of its install does not (the bridges are optional, and the
+	// server serves the job without them where it can).
+	let openFamilies = $state<Record<string, boolean>>({});
+	$effect(() => {
+		for (const f of families) if (openFamilies[f.id] === undefined) openFamilies[f.id] = f.unhealthy > 0;
+	});
+	function familyLine(f: { bindings: unknown[]; missing: number; unhealthy: number }): string {
+		return [
+			t('settings.pluginsPage.jobs', { count: f.bindings.length }),
+			f.missing ? t('settings.pluginsPage.missingCount', { count: f.missing }) : '',
+			f.unhealthy ? t('settings.pluginsPage.unhealthyCount', { count: f.unhealthy }) : '',
+			f.missing + f.unhealthy === 0 ? t('settings.pluginsPage.allHealthy') : ''
+		]
+			.filter(Boolean)
+			.join(' · ');
+	}
+	// The bridges to the owner's standalone apps (lain-bridge's catalog):
+	// `lain component install` knows these ids, and no others.
+	const BRIDGES = ['lain-release-model', 'lain-subtitle-animesubs', 'lain-acquire-anything'];
 	const availableList = $derived(candidateList.filter((p) => !selected.includes(p.id)));
 	const exactlyOne = $derived(swapTarget?.mode === 'exactly-one');
 	const canSwap = $derived(exactlyOne ? selected.length === 1 : selected.length >= 1);
@@ -240,81 +268,100 @@
 	{:else if info}
 		<SettingsGroup id="capabilities" title={t('settings.pluginsPage.capabilities')} description={t('settings.groups.plugins.capabilities')}>
 			<p class="settings-note">{t('settings.pluginsPage.note')}</p>
-			<!-- A table: the job, who does it, how they are bound, and the swap.
-			     Read across one line per job on a desktop; stacked on a phone. -->
+			<!-- The jobs in families, each closed to one line (how many, and
+			     whether any needs a look) until opened: thirty-four rows made a
+			     page of 4,000 px that read as one wall. A family with an unhealthy
+			     provider opens by itself. Inside, a table: the job,
+			     who does it, how they are bound, and the swap; stacked on a phone. -->
 			<ul class="settings-items" aria-label={t('settings.pluginsPage.capabilities')}>
-				<li class="hidden gap-x-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]" aria-hidden="true">
-					<span>{t('settings.groups.plugins.colJob')}</span>
-					<span>{t('settings.groups.plugins.colProviders')}</span>
-					<span>{t('settings.groups.plugins.colMode')}</span>
-					<span></span>
-				</li>
 				{#each families as family (family.id)}
-				<li class="pb-2 pt-5 font-mono text-[10px] uppercase tracking-[0.2em] text-muted first:pt-3" role="presentation">{t(family.title)}</li>
-				{#each family.bindings as binding (binding.capability)}
-					{@const installed = (info.provider_info ?? []).some((p) => p.capabilities.includes(binding.capability))}
-					{@const purpose = purposeOf(binding)}
-					{@const missing = binding.providers.filter((id) => !providerInfo(id))}
-					<li class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 py-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]">
-						<div class="min-w-0">
-							<!-- Wrapped, never clamped: a sentence cut at "item p…" said less than the id. -->
-							{#if purpose}
-								<p class="text-sm leading-5 text-foreground">{purpose}</p>
-							{/if}
-							<p class="truncate font-mono text-xs {purpose ? 'text-muted' : 'text-foreground'}">
-								{shortCapability(binding.capability)}<span>{capabilityVersion(binding.capability)}</span>
-							</p>
-						</div>
-						<div class="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 lg:col-span-1 lg:row-start-auto">
-							{#each binding.providers as id, index (id + index)}
-								{@const provider = providerInfo(id)}
-								<span class="inline-flex max-w-full items-center gap-2 rounded-full bg-field px-2.5 py-1 font-mono text-[11px] text-foreground">
-									{#if !exactlyOne && binding.providers.length > 1}
-										<span class="text-muted">{index + 1}</span>
-									{/if}
-									<span class="truncate">{id}</span>
-									{#if provider}
-										<span
-											class={['size-1.5 shrink-0 rounded-full', provider.healthy ? 'bg-success' : 'bg-danger'].join(' ')}
-											role="img"
-											aria-label={provider.healthy ? t('settings.pluginsPage.healthy') : t('settings.pluginsPage.unhealthy')}
-										></span>
-									{:else}
-										<!-- Bound ahead of its install (a component): named, and said not to be here yet. -->
-										<span class="shrink-0 font-sans text-muted">{t('settings.pluginsPage.notInstalled')}</span>
-									{/if}
-								</span>
-							{/each}
-							<span class="lg:hidden"><Badge tone={modeTone(binding.mode)}>{binding.mode}</Badge></span>
-							{#if missing.length > 0}
-								<!-- What to do about it, on the server: the bridges install as components. -->
-								<p class="basis-full text-xs leading-5 text-muted">
-									{t('settings.pluginsPage.installHint')} <code class="font-mono text-[11px] text-foreground">lain component install {missing[0]}</code>
-								</p>
-							{/if}
-						</div>
-						<!-- On a phone the binding rides at the end of the providers' line
-						     (the generation is a desktop detail): a line of its own under
-						     every job made the list a third longer. -->
-						<div class="hidden lg:flex lg:flex-col lg:items-start lg:gap-1">
-							<Badge tone={modeTone(binding.mode)}>{binding.mode}</Badge>
-							<span class="text-xs text-muted">{t('settings.pluginsPage.generation', { n: binding.generation })}</span>
-						</div>
-						<!-- Nothing installed can do this job yet: there is nothing to replace with. -->
-						<!-- Ghost: thirty filled buttons down one column outweighed the jobs. -->
-						<Button
-							variant="ghost"
-							size="field"
-							class="col-start-2 row-start-1 justify-self-end lg:col-start-auto lg:row-start-auto"
-							disabled={!installed}
-								title={installed ? undefined : t('settings.pluginsPage.replaceNone')}
-								onclick={() => openSwap(binding)}
-								aria-label={t('settings.pluginsPage.replaceFor', { capability: binding.capability })}
-							>
-								{t('settings.pluginsPage.replace')}
-							</Button>
+					<li class="px-0!">
+						<details class="group/family" bind:open={openFamilies[family.id]}>
+							<summary class="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5 outline-offset-[-2px] hover:bg-surface-hover/40 max-sm:px-4 [&::-webkit-details-marker]:hidden">
+								<ChevronRight class="size-4 shrink-0 text-muted transition-transform group-open/family:rotate-90" aria-hidden="true" />
+								<span class="text-sm font-medium text-foreground">{t(family.title)}</span>
+								<span class="ms-auto text-end text-xs {family.unhealthy > 0 ? 'text-warning' : 'text-muted'}">{familyLine(family)}</span>
+							</summary>
+							<ul class="settings-items border-t border-hairline">
+								<li class="hidden gap-x-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]" aria-hidden="true">
+									<span>{t('settings.groups.plugins.colJob')}</span>
+									<span>{t('settings.groups.plugins.colProviders')}</span>
+									<span>{t('settings.groups.plugins.colMode')}</span>
+									<span></span>
+								</li>
+								{#each family.bindings as binding (binding.capability)}
+									{@const installed = (info.provider_info ?? []).some((p) => p.capabilities.includes(binding.capability))}
+									{@const purpose = purposeOf(binding)}
+									{@const missing = binding.providers.filter((id) => !providerInfo(id))}
+									<li class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-2 py-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]">
+										<div class="min-w-0">
+											<!-- Wrapped, never clamped: a sentence cut at "item p…" said less than the id. -->
+											{#if purpose}
+												<p class="text-sm leading-5 text-foreground">{purpose}</p>
+											{/if}
+											<p class="truncate font-mono text-xs {purpose ? 'text-muted' : 'text-foreground'}">
+												{shortCapability(binding.capability)}<span>{capabilityVersion(binding.capability)}</span>
+											</p>
+										</div>
+										<div class="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 lg:col-span-1 lg:row-start-auto">
+											{#each binding.providers as id, index (id + index)}
+												{@const provider = providerInfo(id)}
+												<span class="inline-flex max-w-full items-center gap-2 rounded-full bg-field px-2.5 py-1 font-mono text-[11px] text-foreground">
+													{#if !exactlyOne && binding.providers.length > 1}
+														<span class="text-muted">{index + 1}</span>
+													{/if}
+													<span class="truncate">{id}</span>
+													{#if provider}
+														<span
+															class={['size-1.5 shrink-0 rounded-full', provider.healthy ? 'bg-success' : 'bg-danger'].join(' ')}
+															role="img"
+															aria-label={provider.healthy ? t('settings.pluginsPage.healthy') : t('settings.pluginsPage.unhealthy')}
+														></span>
+													{:else}
+														<!-- Bound ahead of its install (a component): named, and said not to be here yet. -->
+														<span class="shrink-0 font-sans text-muted">{t('settings.pluginsPage.notInstalled')}</span>
+													{/if}
+												</span>
+											{/each}
+											<span class="lg:hidden"><Badge tone={modeTone(binding.mode)}>{binding.mode}</Badge></span>
+											{#if missing.length > 0}
+												<!-- What to do about it, on the server: the bridges to the owner's
+												     apps install with one command; any other component is a
+												     manifest in the plugins folder. -->
+												<p class="basis-full text-xs leading-5 text-muted">
+													{#if BRIDGES.includes(missing[0])}
+														{t('settings.pluginsPage.installHint')} <code class="font-mono text-[11px] text-foreground">lain component install {missing[0]}</code>
+													{:else}
+														{t('settings.pluginsPage.installOther')}
+													{/if}
+												</p>
+											{/if}
+										</div>
+										<!-- On a phone the binding rides at the end of the providers' line
+										     (the generation is a desktop detail): a line of its own under
+										     every job made the list a third longer. -->
+										<div class="hidden lg:flex lg:flex-col lg:items-start lg:gap-1">
+											<Badge tone={modeTone(binding.mode)}>{binding.mode}</Badge>
+											<span class="text-xs text-muted">{t('settings.pluginsPage.generation', { n: binding.generation })}</span>
+										</div>
+										<!-- Nothing installed can do this job yet: there is nothing to replace with. -->
+										<!-- Ghost: thirty filled buttons down one column outweighed the jobs. -->
+										<Button
+											variant="ghost"
+											size="field"
+											class="col-start-2 row-start-1 justify-self-end lg:col-start-auto lg:row-start-auto"
+											disabled={!installed}
+											title={installed ? undefined : t('settings.pluginsPage.replaceNone')}
+											onclick={() => openSwap(binding)}
+											aria-label={t('settings.pluginsPage.replaceFor', { capability: binding.capability })}
+										>
+											{t('settings.pluginsPage.replace')}
+										</Button>
+									</li>
+								{/each}
+							</ul>
+						</details>
 					</li>
-				{/each}
 				{/each}
 			</ul>
 		</SettingsGroup>
