@@ -21,6 +21,7 @@
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { episodeLabel, type SeriesGroup } from '$lib/utilities/grouping';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
+	import { wideStill } from '$lib/stores/frames';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -640,7 +641,7 @@
 {#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false)}
 	<div class="episode-thumb relative {reading ? 'aspect-[3/4]' : 'aspect-video'} overflow-hidden bg-surface">
 		<img
-			src={stillUrl(item.id)}
+			src={wideStill(item, 480)}
 			alt=""
 			aria-hidden="true"
 			loading="lazy"

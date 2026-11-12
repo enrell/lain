@@ -10,6 +10,7 @@
 	import { guessFrame, settleFrame } from '$lib/stores/frames';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import type { Shape } from '$lib/stores/shapes.svelte';
+	import { wholeTitle } from '$lib/stores/titles';
 	import { groupItems, sortGroups, type SeriesGroup } from '$lib/utilities/grouping';
 	import { t } from '$lib/i18n';
 	import MediaCard from './MediaCard.svelte';
@@ -31,26 +32,13 @@
 	let shelves = $state<Record<string, Shelf>>({});
 	let progressMap = $state<Map<string, Progress>>(new Map());
 
-	/*
-	 * The newest files name the titles; each title then gets all of its
-	 * files. From the newest 60 alone a show held only its latest episodes:
-	 * its card counted 16 of 26 and showed an episode's still where the
-	 * library page shows the show's poster.
-	 */
-	async function whole(group: SeriesGroup): Promise<SeriesGroup> {
-		try {
-			const { items } = await api.catalog.episodes(group.items[0].id);
-			return groupItems(items)[0] ?? group;
-		} catch {
-			return group;
-		}
-	}
-
 	async function load(lib: Library): Promise<void> {
 		try {
 			const page = await api.catalog.list({ libraryId: lib.id, limit: FETCH, sort: 'recent' });
 			const recent = sortGroups(groupItems(page.items), 'recent').slice(0, SHOWN);
-			const groups = await Promise.all(recent.map(whole));
+			// The newest files name the titles; each title then gets all of its
+			// files (see `wholeTitle`).
+			const groups = await Promise.all(recent.map(wholeTitle));
 			// A card needs its picture's overlay only; a long show's every episode
 			// would not fit in one request. Drawn without waiting for a picture,
 			// then checked once: the frame changes only if the guess was wrong.

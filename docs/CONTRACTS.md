@@ -48,6 +48,18 @@ enrichment documents are never swept.
 
 Portable document `lain.catalog-export@1` is the replacement contract.
 
+`CatalogItem.thumbnail` (D-282, additive, omitted when absent) says what
+`GET /api/items/{id}/thumbnail` serves the item without `t`, so a client
+lays out its card before the picture loads: `{source, aspect?}`, where
+`source` is `sidecar` (a still that came with the file, D-269), `cover` (a
+comic archive's cover page, upright) or `frame` (cut from the video), and
+`aspect` is width over height to three decimals when the server read it
+from the picture's header (a sidecar's; a frame's is the video's and is
+not known). The gateway fills it on `GET /api/catalog`,
+`/api/catalog/{id}`, `/api/catalog/{id}/episodes` and `/api/search` on
+every read; it is never stored or exported, and a catalog provider never
+sets it. An item with no resolved `file_path` has none.
+
 ### Gateway read: one title's files
 
 `GET /api/catalog/{id}/episodes` (auth) → `{items: CatalogItem[]}`, 404
@@ -697,7 +709,9 @@ A seek past the end retries at 0. The gateway streams the file with
 `Cache-Control: private, max-age=86400` and `GET /api/items/{id}/thumbnail?t=&w=`
 accepts `?token=` (image elements cannot attach headers). ffmpeg is
 spawned by the provider with a 20s timeout and at most 2 concurrent
-processes; absence degrades this capability, never the boot.
+processes; absence degrades this capability, never the boot. Without `t`
+the gateway serves a still that came with the file instead (D-269), and
+catalog answers say which it will be (`CatalogItem.thumbnail`, D-282).
 
 `GET /api/items/{id}/storyboard` (D-275) is how a seek bar previews
 without a request per position: `{interval_sec, count, columns, rows,

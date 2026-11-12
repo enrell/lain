@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Catalog answers say what each thumbnail is** (D-282): `GET
+  /api/catalog`, `/api/catalog/{id}`, `/api/catalog/{id}/episodes` and
+  `/api/search` give every item an additive `thumbnail`: `sidecar` (a
+  still that came with the file, D-269, with its `aspect` read from the
+  picture's header), `cover` (a comic archive's cover page) or `frame`
+  (cut from the video). Filled on each read, never stored, so a poster
+  added next to a file counts at once.
 - **`https` servers in every native client** (D-277): `lain-client` speaks
   TLS through `lain-http`'s rustls setup, so `lain login --server
   https://...`, the desktop app and Android reach a server behind a reverse
@@ -90,6 +97,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   search, sort and tile size join the filters sheet below a wide screen.
 
 ### Fixed
+- **A first visit draws in its final frame** (web, D-282): a films or
+  shows library, All titles, search results and Home's library rows no
+  longer draw wide cards that turn upright a moment later (or after
+  seconds on a cold server); the frame comes from what the server says
+  of each picture, and only pictures it knows nothing about are measured.
+  Home's library rows are drawn with the page instead of after their
+  pictures.
+- **Back to a search page returns to the same spot** (web), with as many
+  results loaded as before, as a library grid does.
+- **An episode's still is the episode's** (web): where a show's poster
+  sits next to its first episode, the episode lists of the title page and
+  the player, and Continue watching, show that episode's frame instead of
+  the poster cut to 16:9.
+- **Home's hero shows an upright poster whole** (web): a film whose only
+  art is its poster had it blown up across the hero, its lettering cut
+  away; it is now shown beside the title over a blurred copy, as a book's
+  cover is.
+- **"New in your library" lists whole shows** (web): a show among the
+  newest files counted only those files ("5 of 21 watched") and showed a
+  later episode's still instead of its poster.
 - **Years in acquisition** (D-279): a search with a year rejects a
   release whose year is more than one away ("year does not match"); it
   never compared years before. A model reading whose title holds the

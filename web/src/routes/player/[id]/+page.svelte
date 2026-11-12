@@ -18,6 +18,7 @@
 	import { episodeLabel, nextEpisode } from '$lib/utilities/grouping';
 	import { prefs } from '$lib/auth/storage';
 	import { itemCache } from '$lib/stores/media-cache.svelte';
+	import { wideStill } from '$lib/stores/frames';
 	import { loadPreferredPlayer, playbackHref, type PreferredPlayer } from '$lib/player/external-player';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
@@ -140,10 +141,6 @@
 		cancelUpNext();
 		void load();
 	});
-
-	function stillUrl(episodeId: string): string {
-		return api.thumbnail.url(episodeId, session.token, { width: 320 });
-	}
 
 	function progressLine(episode: CatalogItem): string {
 		if (episode.missing) return 'Missing from disk';
@@ -282,7 +279,7 @@
 							>
 								<span class="relative block h-12 w-20 shrink-0 overflow-hidden border border-line/40 bg-surface">
 									<img
-										src={stillUrl(episode.id)}
+										src={wideStill(episode, 320)}
 										alt=""
 										aria-hidden="true"
 										loading="lazy"

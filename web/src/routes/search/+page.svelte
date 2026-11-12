@@ -2,8 +2,8 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { ensureLibraries } from '$lib/stores/media-cache.svelte';
 	import X from '@lucide/svelte/icons/x';
-	import { onMount, untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { onMount, tick, untrack } from 'svelte';
+	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import Search from '@lucide/svelte/icons/search';
@@ -47,6 +47,45 @@
 	let searchedFor = $state('');
 	let controller: AbortController | null = null;
 
+	// ---- where you were ----------------------------------------------------
+	// Back from a result lands where the viewer was, as a library grid does.
+	// SvelteKit restores the scroll before the results are fetched, when the
+	// page is only as tall as its header, so the spot and how many results
+	// were loaded are kept per URL and restored once they are drawn again.
+	const PLACE = 'lain.search.place:';
+	const placeKey = (url: URL) => PLACE + url.pathname + url.search;
+	let restoreTo: { y: number; count: number } | null = null;
+	beforeNavigate((nav) => {
+		if (!nav.from) return;
+		try {
+			sessionStorage.setItem(placeKey(nav.from.url), JSON.stringify({ y: window.scrollY, count: items.length }));
+		} catch {
+			/* no storage: Back lands at the top */
+		}
+	});
+	afterNavigate((nav) => {
+		if (nav.type !== 'popstate') return;
+		try {
+			const saved = JSON.parse(sessionStorage.getItem(placeKey(page.url)) ?? 'null');
+			if (saved && saved.y > 0) restoreTo = { y: Number(saved.y), count: Number(saved.count) || 0 };
+		} catch {
+			/* stay at the top */
+		}
+	});
+	/** Scrolls back to the saved spot once as many results as there were are drawn. */
+	async function restorePlace(term: string): Promise<void> {
+		const place = restoreTo;
+		if (!place) return;
+		if (items.length < place.count && items.length < total) {
+			// The viewer had loaded more: the same pages come back first.
+			await run(term, false);
+			return;
+		}
+		restoreTo = null;
+		await tick();
+		window.scrollTo({ top: place.y });
+	}
+
 	async function run(q: string, reset: boolean): Promise<void> {
 		const term = q.trim();
 		controller?.abort();
@@ -54,6 +93,7 @@
 		controller = abort;
 
 		if (term === '') {
+			restoreTo = null;
 			checking += 1;
 			items = [];
 			total = 0;
@@ -86,6 +126,7 @@
 			items = next;
 			total = result.total;
 			searchedFor = term;
+			void restorePlace(term);
 			if (reset) {
 				// Then checked once against its first pictures: the frame changes
 				// only if the guess was wrong, and is held after that.
@@ -114,6 +155,7 @@
 	}
 
 	function onInput(event: Event): void {
+		restoreTo = null;
 		query = (event.currentTarget as HTMLInputElement).value;
 		syncUrl(query);
 		debounced(query);
@@ -142,6 +184,7 @@
 	$effect(() => {
 		const q = page.url.searchParams.get('q') ?? '';
 		if (q === untrack(() => query.trim())) return;
+		restoreTo = null;
 		query = q;
 		debounced.cancel();
 		void run(q, true);
