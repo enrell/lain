@@ -60,9 +60,13 @@ internal fun PanelScrim(ui: PlayerUi) {
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).pointerInput(Unit) { detectTapGestures { ui.settings = false; ui.tracksPanel = 0 } })
 }
 
-/** The subtitle or the audio list ([PlayerUi.tracksPanel]), above the bar; a pick is kept under [title] (the work's). */
+/**
+ * The subtitle or the audio list ([PlayerUi.tracksPanel]), above the bar; a pick is kept under [title] (the work's).
+ * On a transcode the audio list is the file's streams ([PlayerUi.streamAudio]) and a pick goes to [onStreamAudio],
+ * which asks for a session with it: the session carries only the one it plays.
+ */
 @Composable
-internal fun BoxScope.TracksPanel(ui: PlayerUi, player: ExoPlayer, title: String) {
+internal fun BoxScope.TracksPanel(ui: PlayerUi, player: ExoPlayer, title: String, onStreamAudio: (Long) -> Unit) {
     val l = LocalLain.current
     val context = LocalContext.current
     val graph = context.graph
@@ -83,7 +87,18 @@ internal fun BoxScope.TracksPanel(ui: PlayerUi, player: ExoPlayer, title: String
                 ui.tracksPanel = 0
             })
         }
-        for (t in if (subs) ui.textTracks else ui.audioTracks) {
+        if (!subs && ui.streamAudio.size > 1) {
+            for (a in ui.streamAudio) {
+                OptionRow(a.label, null, a.selected, inset = 0.dp, onClick = {
+                    if (!a.selected) onStreamAudio(a.stream)
+                    // Kept for this title as a direct pick is, so its next part opens with it.
+                    a.language.takeIf { it.isNotEmpty() && it != "und" }?.let { graph.prefs.setTrackLanguageOf(title, "audio", it) }
+                    ui.note.value = context.getString(R.string.player_audio_now, a.label)
+                    ui.tracksPanel = 0
+                })
+            }
+        }
+        for (t in if (subs) ui.textTracks else if (ui.streamAudio.size > 1) emptyList() else ui.audioTracks) {
             OptionRow(t.label, null, t.selected && !(subs && ui.textOff), inset = 0.dp, onClick = {
                 val type = if (subs) C.TRACK_TYPE_TEXT else C.TRACK_TYPE_AUDIO
                 if (subs) ui.textOff = false
