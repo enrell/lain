@@ -333,6 +333,15 @@ reaches `libraries`, since roots walk in parallel), `commit`
 (`libraries_done` of `libraries`) and `enrich` (the metadata backfill,
 `enrich_done` of `enrich_total`). It is absent in every other state.
 
+`POST /api/library/scan` (admin) answers 202 `{state: "running"}` when
+it starts a scan. While one runs it queues one follow-up scan of every
+library instead of refusing (D-286; it answered 409 before): 202
+`{state: "running", queued: true}`, and `GET /api/library/scan` carries
+`queued: true` until the running scan ends and the follow-up starts by
+itself. Asked again while queued, it stays one follow-up. The running
+scan walks only the libraries it started with, so a library added
+meanwhile is read by the follow-up.
+
 ## lain.playback.transcode@1 (exactly-one)
 
 Input: `{file_path}` → `Transcode{path, method?, cached?}`. The ffmpeg

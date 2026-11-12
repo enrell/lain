@@ -130,3 +130,49 @@ fn a_running_scan_reports_its_position() {
     assert_eq!(st.state, "done");
     assert!(st.progress.is_none(), "a finished scan has no position");
 }
+
+/// D-286: a scan asked for while one runs is queued, once, and starts
+/// by itself when the running one ends, over the libraries there are
+/// then (one added meanwhile included).
+#[test]
+fn a_scan_asked_for_while_one_runs_follows_it_once() {
+    use lain_ingest::scanner::ScanRequest;
+    let (reg, gate, _) = setup(false);
+    let added = Arc::new(Mutex::new(false));
+    let seen = added.clone();
+    let source: lain_ingest::scanner::LibrarySource = Arc::new(move || {
+        let mut l = vec![Library { id: "lib-a".into(), path: "/m/a".into(), ..Library::default() }];
+        if *seen.lock().unwrap() {
+            l.push(Library { id: "lib-b".into(), path: "/m/b".into(), ..Library::default() });
+        }
+        l
+    });
+    let s = Scanner::new(&reg, source, false);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let ev = events.clone();
+    s.set_sink(Arc::new(move |e| ev.lock().unwrap().push(e)));
+    let held = gate.lock().unwrap();
+    assert_eq!(s.request_all("manual"), ScanRequest::Started);
+    assert!(!s.status().queued);
+    *added.lock().unwrap() = true;
+    assert_eq!(s.request_all("manual"), ScanRequest::Queued);
+    assert_eq!(s.request_all("manual"), ScanRequest::Queued, "asked twice, still one follow-up");
+    assert!(s.status().queued);
+    assert_eq!(json!(s.status())["queued"], true);
+    drop(held);
+    let finished = || {
+        events.lock().unwrap().iter().filter(|e| matches!(e, ScanEvent::Finished(_))).count()
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while finished() < 2 && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(s.wait_idle(Duration::from_secs(5)));
+    let got = events.lock().unwrap().clone();
+    let started: Vec<i64> =
+        got.iter().filter_map(|e| if let ScanEvent::Started { libraries, .. } = e { Some(*libraries) } else { None }).collect();
+    assert_eq!(started, vec![1, 2], "the follow-up walked the library added meanwhile: {got:?}");
+    let st = s.status();
+    assert_eq!((st.state.as_str(), st.queued), ("done", false));
+    assert!(json!(st).get("queued").is_none(), "false is left out of the answer");
+}

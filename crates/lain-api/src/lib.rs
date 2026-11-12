@@ -677,6 +677,10 @@ pub struct ScanStatus {
     pub error: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub trigger: String,
+    /// D-286: a manual scan asked for while this one runs; it starts by
+    /// itself when this one ends.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub queued: bool,
 }
 
 // ---- metadata and sidecars --------------------------------------------------

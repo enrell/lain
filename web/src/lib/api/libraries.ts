@@ -37,7 +37,8 @@ export const libraries = {
 			method: 'DELETE'
 		}),
 
-	scanStart: () => request<{ state: string }>('/api/library/scan', { method: 'POST' }),
+	/** Starts a scan; while one runs the server queues one follow-up (D-286). */
+	scanStart: () => request<{ state: string; queued?: boolean }>('/api/library/scan', { method: 'POST' }),
 
 	scanStatus: () => request<ScanStatus>('/api/library/scan'),
 

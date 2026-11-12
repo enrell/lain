@@ -476,7 +476,8 @@ impl Client {
     // ---- catalog population -----------------------------------------
 
     /// Starts a scan of every library (admin); answers when it starts.
-    /// A scan already running is `Api { status: 409, .. }`.
+    /// While one runs, one follow-up is queued behind it (D-286) and
+    /// [`ScanStatus::queued`] says so.
     pub async fn start_scan(&self) -> Result<(), ClientError> {
         self.raw(Method::POST, "/api/library/scan", Body::None, true).await.map(|_| ())
     }

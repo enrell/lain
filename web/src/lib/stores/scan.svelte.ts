@@ -20,12 +20,12 @@ class ScanStore {
 	/** Wall clock of the last poll, for the elapsed time. */
 	now = $state(Date.now());
 	/**
-	 * A scan was asked for while one ran. The server answers that with a
-	 * 409 and keeps walking only the libraries it started with, so one
-	 * added meanwhile ("Add and scan" on the second of five) was never
-	 * scanned. The store asks again once the running scan ends.
+	 * A scan was asked for while one ran, and an older server (before
+	 * D-286) answered 409: the store asks again once the running scan
+	 * ends. A current server queues the follow-up itself and says so in
+	 * its status, which survives a reload; see `queued`.
 	 */
-	queued = $state(false);
+	localQueue = $state(false);
 
 	#timer: ReturnType<typeof setInterval> | null = null;
 
@@ -37,8 +37,8 @@ class ScanStore {
 			this.error = null;
 			if (this.status.state !== 'running') {
 				this.stop();
-				if (this.queued) {
-					this.queued = false;
+				if (this.localQueue) {
+					this.localQueue = false;
 					void this.start().catch((err: unknown) => (this.error = errorMessage(err)));
 				}
 			}
@@ -56,19 +56,25 @@ class ScanStore {
 	 */
 	async start(): Promise<'started' | 'queued'> {
 		this.error = null;
+		let queued = false;
 		try {
-			await api.libraries.scanStart();
+			queued = (await api.libraries.scanStart()).queued === true;
 		} catch (err) {
 			if (!(err instanceof ApiError && err.kind === 'conflict')) throw err;
-			this.queued = true;
+			this.localQueue = true;
 			await this.refresh();
 			// The scan may have ended between the 409 and this read.
-			if (this.queued) this.follow();
-			return this.queued ? 'queued' : 'started';
+			if (this.localQueue) this.follow();
+			return this.localQueue ? 'queued' : 'started';
 		}
 		await this.refresh();
 		this.follow();
-		return 'started';
+		return queued ? 'queued' : 'started';
+	}
+
+	/** A follow-up scan waits behind the running one (the server's, or this tab's). */
+	get queued(): boolean {
+		return this.running && (this.status?.queued === true || this.localQueue);
 	}
 
 	/** Read the status once and keep polling if a scan is running. */
