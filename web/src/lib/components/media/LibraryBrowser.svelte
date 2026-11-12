@@ -32,11 +32,12 @@
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
 	import {
 		ADDED, NO_FILTERS, SHAPES, SORTS, WATCH,
-		activeCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState,
+		activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState,
 		type Context, type Filters, type Sort
 	} from '$lib/utilities/browse';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { groupItems } from '$lib/utilities/grouping';
+	import { t } from '$lib/i18n';
 
 	const FETCH = 500;
 	const ENRICH = 150;
@@ -405,8 +406,11 @@
 				/>
 			</div>
 		{/if}
+		<!-- Each choice of one starts with "Any": a ring that was picked had no
+		     visible way back to everything short of clearing every filter. -->
 		<div>
 			{@render heading('Progress')}
+			{@render option(t('browse.any'), anyCount(all, filters, ctx, 'watch'), !filters.watch, () => set({ watch: '' }))}
 			{#each WATCH as w (w.value)}
 				{@render option(w.label, watchCounts.get(w.value), filters.watch === w.value, () => toggle('watch', w.value))}
 			{/each}
@@ -414,6 +418,7 @@
 		{#if (shapeCounts.get('series') ?? 0) > 0 && (shapeCounts.get('single') ?? 0) > 0}
 			<div>
 				{@render heading('Shape')}
+				{@render option(t('browse.any'), anyCount(all, filters, ctx, 'shape'), !filters.shape, () => set({ shape: '' }))}
 				{#each SHAPES as s (s.value)}
 					{@render option(s.label, shapeCounts.get(s.value), filters.shape === s.value, () => toggle('shape', s.value))}
 				{/each}
@@ -422,6 +427,7 @@
 		{#if kinds.length > 1}
 			<div>
 				{@render heading('Kind')}
+				{@render option(t('browse.any'), anyCount(all, filters, ctx, 'kind'), !filters.kind, () => set({ kind: '' }))}
 				{#each kinds as k (k)}
 					{@render option(k, kindCounts.get(k), filters.kind === k, () => toggle('kind', k))}
 				{/each}
@@ -432,6 +438,7 @@
 		{#if filters.added || ADDED.some((a) => addedCounts.get(a.value) !== all.length)}
 			<div>
 				{@render heading('Added')}
+				{@render option(t('browse.any'), anyCount(all, filters, ctx, 'added'), !filters.added, () => set({ added: 0 }))}
 				{#each ADDED as a (a.value)}
 					{@render option(a.label, addedCounts.get(a.value), filters.added === a.value, () => toggle('added', a.value))}
 				{/each}
@@ -563,7 +570,8 @@
 				>
 					<!-- An icon of what it changes beside the word: a bare "LARGE" read as a label. -->
 					{#if dense}<Grid3x3 class="size-4" aria-hidden="true" />{:else}<Grid2x2 class="size-4" aria-hidden="true" />{/if}
-					{dense ? 'Small tiles' : 'Large tiles'}
+					<!-- Says what is set, as the sheet's "Tiles" does: "Large tiles" read as the size it would switch to. -->
+					{t('browse.tiles', { size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge') })}
 				</button>
 				<button
 					type="button"

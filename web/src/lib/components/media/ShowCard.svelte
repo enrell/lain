@@ -73,12 +73,13 @@
 		};
 	});
 
-	// The part under way: the first one begun and not finished.
-	const under = $derived.by(() => {
-		if (!progressOf) return null;
+	// Begun with nothing finished yet: the part under way and how far into it.
+	// "0 of 12 watched" under a Watching badge read as a contradiction.
+	const current = $derived.by(() => {
+		if (!progressOf || state.done > 0) return null;
 		for (const it of group.items) {
 			const p = progressOf(it.id);
-			if (p && !p.completed && p.position_sec > 0 && p.duration_sec > 0) return { item: it, p };
+			if (p && !p.completed && p.position_sec > 0 && p.duration_sec > 0) return { item: it, progress: p };
 		}
 		return null;
 	});
@@ -96,16 +97,22 @@
 		} else if (seasons.length === 1) parts.push(`Season ${seasons[0]}`);
 		else if (seasons.length > 1) parts.push(`Seasons ${Math.min(...seasons)}–${Math.max(...seasons)}`);
 		if (group.year > 0) parts.push(String(group.year));
-		// Under way, the line says how far: "2 of 12 watched", as the app's cards do. With
-		// nothing finished yet it names the part under way and what is left of it:
-		// "0 of 12 watched" under a Watching badge said nothing had happened.
+		// Under way, the line says how far, as the app's cards do: the part and
+		// what is left of it while none is finished, then "2 of 12 watched".
 		if (progressOf && state.started && !state.finished) {
-			if (state.done === 0 && under) {
+			if (current) {
+				const { item, progress: p } = current;
+				const part = reading ? readingLabel(item) : episodeLabel(item);
+				if (group.count === 1) {
+					return reading
+						? t('browse.pageOf', { page: Math.max(1, Math.floor(p.position_sec)), pages: Math.floor(p.duration_sec) })
+						: t('title.left', { time: formatLength(Math.max(1, p.duration_sec - p.position_sec)) });
+				}
 				return reading
-					? `${readingLabel(under.item)} · ${Math.floor(under.p.position_sec)}/${Math.floor(under.p.duration_sec)}`
-					: `${episodeLabel(under.item)} · ${t('title.left', { time: formatLength(Math.max(1, under.p.duration_sec - under.p.position_sec)) })}`;
+					? t('browse.partPage', { part, page: Math.max(1, Math.floor(p.position_sec)), pages: Math.floor(p.duration_sec) })
+					: t('browse.partLeft', { part, time: formatLength(Math.max(1, p.duration_sec - p.position_sec)) });
 			}
-			return `${state.done} of ${group.count} ${reading ? 'read' : 'watched'}`;
+			return t(reading ? 'title.readOf' : 'title.watchedOf', { done: state.done, count: group.count });
 		}
 		return parts.join(' · ');
 	});

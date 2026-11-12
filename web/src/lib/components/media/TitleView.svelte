@@ -1,5 +1,9 @@
 <script lang="ts">
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import EllipsisVertical from '@lucide/svelte/icons/ellipsis-vertical';
+	import Circle from '@lucide/svelte/icons/circle';
+	import Download from '@lucide/svelte/icons/download';
+	import { downloadUrl } from '$lib/download/files';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
 	import RatingPill from '$lib/components/social/RatingPill.svelte';
@@ -219,7 +223,10 @@
 	const resumeLabel = $derived(
 		reading
 			? resuming
-				? `Continue from page ${Math.floor(resumeProgress!.position_sec)}`
+				? // Which book it continues, on a title of several: "page 3" alone did not say.
+					group.items.length > 1
+					? t('title.continueFromPageIn', { page: Math.floor(resumeProgress!.position_sec), part: label(resumeTarget!) })
+					: t('title.continueFromPage', { page: Math.floor(resumeProgress!.position_sec) })
 				: resumeTarget && group.items.length > 1
 					? `Read · ${label(resumeTarget)}`
 					: 'Read'
@@ -231,7 +238,13 @@
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
 			? reading
-				? `Up next · ${label(resumeTarget!)} · page ${Math.floor(resumeProgress!.position_sec)} of ${Math.floor(resumeProgress!.duration_sec)}`
+				? // A book begun is where you are, not "Up next" (the app reads "Vol 1: Page 3 of 8").
+					[
+						t('title.readingAt', { part: label(resumeTarget!), page: Math.floor(resumeProgress!.position_sec), pages: Math.floor(resumeProgress!.duration_sec) }),
+						watched > 0 ? t('title.readOf', { done: watched, count: group.count }) : ''
+					]
+						.filter(Boolean)
+						.join(' · ')
 				: `${t('title.left', { time: formatLength(Math.max(1, resumeProgress!.duration_sec - resumeProgress!.position_sec)) })} · ${watched} of ${group.count} watched`
 			: available.length === 0
 				? 'All files missing'
@@ -261,6 +274,41 @@
 		}
 		if (progress?.completed) return reading ? 'Read' : length ? t('title.watchedLength', { time: length }) : t('title.watched');
 		return length || (reading ? 'Unread' : 'Not watched');
+	}
+
+	// One part's own actions, as the app's ⋮ on each row: its mark, its start
+	// and its file, without selecting it or marking the whole title.
+	async function markOne(item: CatalogItem, done: boolean): Promise<void> {
+		const dur = durations.get(item.id) ?? progressMap?.get(item.id)?.duration_sec ?? 0;
+		try {
+			await api.progress.put(item.id, { position_sec: done ? dur : 0, duration_sec: dur, completed: done });
+			toasts.success(t('title.marked', { part: label(item) }));
+			onProgressChanged?.();
+		} catch (err) {
+			toasts.error(errorMessage(err, t('title.markFailed')));
+		}
+	}
+	function downloadOne(item: CatalogItem): void {
+		const a = document.createElement('a');
+		a.href = downloadUrl(item.id, session.token);
+		a.download = '';
+		a.rel = 'noopener';
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+	}
+	function partEntries(item: CatalogItem, progress: Progress | null): MenuEntry[] {
+		const done = !!progress?.completed;
+		const begun = !done && !!progress && progress.position_sec >= minResume;
+		return [
+			...(begun ? [{ label: t('title.startOver'), icon: RotateCcw, onSelect: () => void markOne(item, false) }] : []),
+			{
+				label: t(done ? (reading ? 'title.markUnread' : 'title.markUnwatched') : reading ? 'title.markRead' : 'title.markWatched'),
+				icon: done ? Circle : CircleCheck,
+				onSelect: () => void markOne(item, !done)
+			},
+			{ label: t('download.one'), icon: Download, onSelect: () => downloadOne(item) }
+		];
 	}
 
 	// Marking the whole title watched (or not): asked first, since every part changes at once.
@@ -384,7 +432,8 @@
 					<FavoriteButton />
 					<RatingPill />
 					{#if resumeTarget && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} size="md" /></span>{/if}
-					<DownloadFileButton items={group.items} variant="ghost" size="md" label={t('download.all')} />
+					<!-- D, as on a film's page; while selecting, D saves the selection instead. -->
+					<DownloadFileButton items={group.items} variant="ghost" size="md" label={t('download.all')} hotkey={!selecting} />
 					<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreEntries} variant="ghost" size="md" compact>
 						{#snippet icon()}<Ellipsis class="size-4" aria-hidden="true" />{/snippet}
 					</Menu>
@@ -486,7 +535,7 @@
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
 					{@const gone = isGone(item)}
-					<li>
+					<li class="relative">
 						{#if selecting}
 							<!-- Selection mode turns the card into a toggle so the
 							     click never reaches a play link. -->
@@ -532,8 +581,14 @@
 								class="group block overflow-hidden rounded-xl border border-line/60 bg-surface/30 transition duration-300 hover:-translate-y-1 hover:border-white/15"
 								aria-label={`${reading ? 'Read' : 'Play'} ${label(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 							>
-								{@render episodeCard(item, progress, ratio, gone)}
+								{@render episodeCard(item, progress, ratio, gone, true)}
 							</a>
+							<!-- Beside the link, not in it: a button inside a link is not a button. -->
+							<span class="absolute bottom-1.5 end-1.5">
+								<Menu label={t('title.partActions', { part: label(item) })} entries={partEntries(item, progress)} variant="ghost" size="icon">
+									{#snippet icon()}<EllipsisVertical class="size-4" aria-hidden="true" />{/snippet}
+								</Menu>
+							</span>
 						{/if}
 					</li>
 				{/each}
@@ -580,7 +635,7 @@
 	</div>
 </article>
 
-{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean)}
+{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false)}
 	<div class="episode-thumb relative {reading ? 'aspect-[3/4]' : 'aspect-video'} overflow-hidden bg-surface">
 		<img
 			src={stillUrl(item.id)}
@@ -608,7 +663,8 @@
 			</div>
 		{/if}
 	</div>
-	<div class="episode-text min-w-0 p-3">
+	<!-- Room at the end for the card's ⋮, which sits over this corner. -->
+	<div class="episode-text min-w-0 p-3" style:padding-inline-end={menu ? '3rem' : undefined}>
 		<p class="text-xs font-semibold text-accent">{label(item)}</p>
 		{#if item.title !== group.title}
 			<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>

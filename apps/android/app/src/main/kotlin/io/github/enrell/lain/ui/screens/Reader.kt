@@ -344,7 +344,8 @@ fun ReaderScreen(
                 Column(Modifier.padding(end = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Mono(stringResource(R.string.reader_direction), Modifier.padding(bottom = 4.dp))
                 Row(Modifier.height(34.dp).clip(l.buttonShape).background(l.tonal).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    for ((way, icon) in listOf(0 to Ic.ArrowRight, 1 to Ic.ArrowLeft, 2 to Ic.ArrowDown)) {
+                    // Named in words, as the web reader's toggles are: three bare arrows had to be guessed.
+                    for ((way, label) in listOf(0 to stringResource(R.string.reader_way_ltr), 1 to stringResource(R.string.reader_way_rtl), 2 to stringResource(R.string.reader_way_down))) {
                         val on = if (way == 2) vertical else !vertical && rtl == (way == 1)
                         val name = stringResource(when (way) { 0 -> R.string.reader_ltr; 1 -> R.string.reader_rtl; else -> R.string.reader_scroll })
                         Box(
@@ -357,7 +358,7 @@ fun ReaderScreen(
                                 .semantics { contentDescription = name; stateDescription = if (on) "selected" else "not selected" }
                                 .padding(horizontal = 13.dp),
                             contentAlignment = Alignment.Center,
-                        ) { Icon(icon, null, tint = if (on) l.onAccent else l.muted, modifier = Modifier.size(18.dp)) }
+                        ) { Text(label, color = if (on) l.onAccent else l.muted, fontSize = 13.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1) }
                     }
                 }
                 }

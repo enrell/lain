@@ -99,4 +99,6 @@ object Ic {
     val CheckCircle by lazy { stroke("M21.8 10A10 10 0 1 1 17 3.34", "m9 11 3 3L22 4") }
     val Swap by lazy { stroke("M8 3 4 7l4 4", "M4 7h16", "m16 21 4-4-4-4", "M20 17H4") }
     val Check by lazy { stroke("M20 6 9 17l-5-5") }
+    // The ring without its tick: what "mark unwatched" leaves.
+    val Circle by lazy { stroke("M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20") }
 }
