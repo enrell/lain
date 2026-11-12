@@ -477,6 +477,11 @@ struct CapsSlot {
     /// A probe for this key is running. Other callers keep the last
     /// answer or wait for this one; none starts a second (single flight).
     running: bool,
+    /// A forced probe was asked for while one ran. The running one may
+    /// have started before what prompted it (a driver installed, ffmpeg
+    /// replaced in place, then the settings saved), so one more runs
+    /// when it lands.
+    again: bool,
 }
 
 /// Whether the probe `now` lost an execution probe `before` passed (a
@@ -494,19 +499,26 @@ struct Stored {
     changed: bool,
     /// A check timed out, or it lost something the answer before had.
     doubtful: bool,
+    /// A forced probe was asked for while this one ran: the key stays
+    /// claimed and the prober probes again.
+    again: bool,
 }
 
 impl CapsCache {
     /// Whether the caller starts a probe for `key`: none is running, and
     /// there is no answer yet, a stale one, or `force`. Claiming marks
-    /// the probe running.
+    /// the probe running. A forced claim while one runs queues one more
+    /// after it instead.
     fn claim(&mut self, key: &str, force: bool) -> bool {
         let (fresh, recheck) = (self.fresh, self.recheck);
         let slot = self.slots.entry(key.to_string()).or_default();
+        if slot.running {
+            slot.again |= force;
+            return false;
+        }
         let life = if slot.doubtful { fresh.min(recheck) } else { fresh };
-        let start = !slot.running && (force || slot.value.as_ref().is_none_or(|(at, _)| at.elapsed() >= life));
-        slot.running |= start;
-        start
+        slot.running = force || slot.value.as_ref().is_none_or(|(at, _)| at.elapsed() >= life);
+        slot.running
     }
 
     fn current(&self, key: &str) -> Option<Capabilities> {
@@ -518,13 +530,15 @@ impl CapsCache {
     /// its timeout, so a no in it may be a yes on a calmer machine.
     fn store(&mut self, key: &str, caps: Capabilities, timed_out: bool) -> Stored {
         let slot = self.slots.entry(key.to_string()).or_default();
-        let stored = Stored {
+        let mut stored = Stored {
             changed: slot.value.as_ref().is_none_or(|(_, old)| *old != caps),
             doubtful: timed_out || slot.value.as_ref().is_some_and(|(_, old)| lost(old, &caps)),
+            again: false,
         };
         slot.value = Some((Instant::now(), caps));
         slot.doubtful = stored.doubtful;
-        slot.running = false;
+        slot.running = std::mem::take(&mut slot.again);
+        stored.again = slot.running;
         while self.slots.len() > CAP_KEYS {
             // The idle set probed longest ago goes first.
             let oldest = self
@@ -800,8 +814,9 @@ impl Transcoder {
     }
 
     /// Starts a fresh probe for these settings in the background even when
-    /// the set is current, unless one is already running (then that one
-    /// is the fresh probe). Callers keep the last set until it lands.
+    /// the set is current. One already running may have started before
+    /// what prompted this call, so another runs once it lands. Callers
+    /// keep the last set meanwhile.
     pub fn reprobe(&self, s: &TranscodeSettings) {
         self.start_probe(s, true);
     }
@@ -827,11 +842,17 @@ impl Transcoder {
         }
     }
 
-    /// Probes and hands the answer to every waiter. A probe that panics
-    /// answers what an ffmpeg that does not run would, in doubt, so no
-    /// waiter is left behind and the next caller after [`CAP_RECHECK`]
-    /// probes again.
+    /// Runs the probe claimed for `key`, and again while a forced probe
+    /// was asked for during the last one.
     fn run_probe(&self, key: &str, s: &TranscodeSettings) {
+        while self.probe_once(key, s) {}
+    }
+
+    /// Probes and hands the answer to every waiter; true when the key
+    /// stays claimed for one more probe. A probe that panics answers what
+    /// an ffmpeg that does not run would, in doubt, so no waiter is left
+    /// behind and the next caller after [`CAP_RECHECK`] probes again.
+    fn probe_once(&self, key: &str, s: &TranscodeSettings) -> bool {
         let began = Instant::now();
         let limit = self.caps_lock().limit;
         let probed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match &self.inner.hooks.caps {
@@ -864,6 +885,7 @@ impl Transcoder {
         } else {
             tracing::debug!(ffmpeg = %ffmpeg, ms, "transcode capabilities unchanged");
         }
+        stored.again
     }
 
     /// The settings UI's report (D-031: probing is visible).
