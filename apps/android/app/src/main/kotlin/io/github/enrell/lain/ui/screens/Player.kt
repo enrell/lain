@@ -474,7 +474,29 @@ fun PlayerScreen(
         )
 
         // The picture's gestures (none in the corner: the system owns that window).
-        if (!inPip) Row(Modifier.fillMaxSize()) {
+        if (!inPip) Row(
+            // A drag across the picture seeks: the bar and its preview follow the
+            // finger, and letting go lands there. The whole width is two minutes
+            // (a tenth of a long film, all of a short clip), so it is a fine control.
+            Modifier.fillMaxSize().pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { if (totalSec() > 0) { settings = false; tracksPanel = 0; scrub = (nowSec() / totalSec()).toFloat().coerceIn(0f, 1f) } },
+                    onDragEnd = {
+                        scrub?.let { seekToSec(it * totalSec()) }
+                        scrub = null
+                    },
+                    onDragCancel = { scrub = null },
+                ) { change, dx ->
+                    val total = totalSec()
+                    val from = scrub
+                    if (total > 0 && from != null) {
+                        val span = minOf(total, maxOf(120.0, total * 0.1))
+                        scrub = (from + dx / size.width * (span / total).toFloat()).coerceIn(0f, 1f)
+                        change.consume()
+                    }
+                }
+            },
+        ) {
             for (side in listOf(-1, 0, 1)) {
                 Box(
                     Modifier.weight(if (side == 0) 0.28f else 0.36f).fillMaxHeight().pointerInput(side) {
@@ -701,10 +723,13 @@ fun PlayerScreen(
                     // Named, not only drawn: a waveform alone does not say "audio track".
                     if (textTracks.isNotEmpty()) {
                         val on = tracksPanel == 1 || (!textOff && textTracks.any { it.selected })
-                        BarAction(Ic.Captions, stringResource(R.string.player_subtitles), on) { settings = false; tracksPanel = if (tracksPanel == 1) 0 else 1 }
+                        // The button names what is on: "Subtitles · English", or just "Subtitles" when they are off.
+                        val shown = textTracks.firstOrNull { it.selected }?.takeIf { !textOff }?.label?.substringBefore(" · ")
+                        BarAction(Ic.Captions, stringResource(R.string.player_subtitles) + (shown?.let { " · $it" } ?: ""), on) { settings = false; tracksPanel = if (tracksPanel == 1) 0 else 1 }
                     }
                     if (audioTracks.size > 1) {
-                        BarAction(Ic.Audio, stringResource(R.string.player_audio), tracksPanel == 2) { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }
+                        val heard = audioTracks.firstOrNull { it.selected }?.label?.substringBefore(" · ")
+                        BarAction(Ic.Audio, stringResource(R.string.player_audio) + (heard?.let { " · $it" } ?: ""), tracksPanel == 2) { settings = false; tracksPanel = if (tracksPanel == 2) 0 else 2 }
                     }
                     IconBtn(Ic.Gear, "Settings", { tracksPanel = 0; settings = !settings }, tint = if (settings) l.accent else Color.White)
                     if (canPip) IconBtn(Ic.Pip, stringResource(R.string.player_pip), { enterPip() }, tint = Color.White)

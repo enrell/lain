@@ -345,7 +345,8 @@ private fun BottomBar(dests: List<Dest>, current: Screen, vm: AppViewModel) {
     val bar = BAR.mapNotNull { id -> dests.firstOrNull { it.id == id } }
     // A screen opened from a destination keeps that destination lit.
     val root = when (current) {
-        is Screen.LibraryDetail, is Screen.TitleDetail, Screen.Read -> Screen.Library
+        is Screen.LibraryDetail -> if (current.id == io.github.enrell.lain.ui.FAVORITES) Screen.Home else Screen.Library
+        is Screen.TitleDetail, Screen.Read -> Screen.Library
         else -> current
     }
     Column(Modifier.background(l.bg)) {

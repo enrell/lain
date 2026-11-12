@@ -251,7 +251,7 @@
     <string name="player_next">Next episode</string>
     <string name="player_next_in">Next episode in %1$d</string>
     <string name="player_cancel">Cancel</string>
-    <string name="player_hint">Double tap a side to skip · tap to show or hide the controls</string>
+    <string name="player_hint">Double tap a side to skip · drag sideways to seek · tap for the controls</string>
     <string name="player_stats">%1$s</string>
     <string name="view">View</string>
     <string name="done">Done</string>
@@ -341,4 +341,5 @@
     <string name="discard_changes">Discard the changes</string>
     <string name="player_speed_kept">Playing at %1$s</string>
     <string name="reader_leave">Close the book</string>
+    <string name="search_or_browse">Or browse</string>
 </resources>

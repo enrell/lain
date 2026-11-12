@@ -295,7 +295,8 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                         is RailLabel.Library -> lab.name
                     },
                     null,
-                    libId?.let { id -> { openLibrary(vm, id) } },
+                    // A rail is a sample: a library's opens the library, the favourites' their own page.
+                    libId?.let { id -> { openLibrary(vm, id) } } ?: if (rail.label == RailLabel.MyList) ({ vm.go(Screen.LibraryDetail(io.github.enrell.lain.ui.FAVORITES)) }) else null,
                 )
                 LazyRow(Modifier.padding(top = 8.dp), contentPadding = PaddingValues(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(rail.cards.take(20)) { card ->
@@ -312,8 +313,9 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                                     ).joinToString(" · ").ifEmpty { episodeText(card.item) }
                                 },
                                 onClick = { vm.open(card.item) },
-                                modifier = Modifier.width(RAIL_H * Shapes.LANDSCAPE),
-                                landscape = true,
+                                // A book resumes from its cover, at a cover's shape; a video from a still.
+                                modifier = Modifier.width(RAIL_H * (if (card.item.reading()) Shapes.PORTRAIT else Shapes.LANDSCAPE)),
+                                landscape = !card.item.reading(),
                                 progress = fraction(card.progress),
                             )
                             is Card.Show -> RailCard(card.title, vm, seen = titleFraction(card.title, allProgressOf(state)))
@@ -446,11 +448,15 @@ fun LibraryScreen(state: AppState, vm: AppViewModel, readingOnly: Boolean) {
 fun LibraryDetailScreen(state: AppState, vm: AppViewModel, id: String) {
     val l = LocalLain.current
     val lib = state.libraries.firstOrNull { it.id == id }
-    val titles = remember(state.titles, id) { state.titles.filter { it.libraryId == id } }
+    // The favourites have a page like a library's: searched, ordered and narrowed the same way.
+    val favorites = id == io.github.enrell.lain.ui.FAVORITES
+    val titles = remember(state.titles, state.favorites, id) {
+        if (favorites) favoriteTitles(state.titles, state.favorites.orEmpty()) else state.titles.filter { it.libraryId == id }
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = GUTTER, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             IconBtn(Ic.ArrowLeft, stringResource(R.string.nav_library), { vm.back() }, tint = l.text)
-            Text(lib?.name ?: "", Modifier.padding(start = 4.dp), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (favorites) stringResource(R.string.rail_my_list) else lib?.name ?: "", Modifier.padding(start = 4.dp), color = l.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Box(Modifier.padding(top = 8.dp)) { LibraryBrowser(titles, state, vm, searchHint = stringResource(R.string.search_library), sortScope = id) }
     }
@@ -900,7 +906,8 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                             Icon(Ic.Star, null, tint = if (mine > 0) l.accent else l.text, modifier = Modifier.size(15.dp))
                             Text(if (mine > 0) stringResource(R.string.rate_yours, mine) else stringResource(R.string.rate_action), color = l.text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                         }
-                        if (r.scored.toInt() > 0) {
+                        // An average of one, when the one is yours, would say your score twice.
+                        if (r.scored.toInt() > 1 || (r.scored.toInt() == 1 && mine == 0)) {
                             Text(
                                 pluralStringResource(R.plurals.rate_average, r.scored.toInt(), java.lang.String.format(java.util.Locale.US, "%.1f", r.average), r.scored.toInt()),
                                 color = l.muted, fontSize = 13.sp, maxLines = 1,
@@ -1292,6 +1299,23 @@ fun SearchScreen(state: AppState, vm: AppViewModel) {
                                 )
                             }
                             Icon(Ic.ChevronRight, null, tint = l.muted, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    // A short answer leaves somewhere to go on to: the libraries, as before a query.
+                    if (found.size <= 6) {
+                        item(key = "@browse") {
+                            Column(Modifier.padding(top = 18.dp)) {
+                                Mono(stringResource(R.string.search_or_browse), Modifier.padding(horizontal = GUTTER, vertical = 6.dp))
+                                for (lib in state.libraries.filter { !it.locked }) {
+                                    Row(
+                                        Modifier.fillMaxWidth().clickable { keyboard?.hide(); openLibrary(vm, lib.id) }.padding(horizontal = GUTTER, vertical = 13.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(lib.name, Modifier.weight(1f), color = l.text, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                                        Icon(Ic.ChevronRight, null, tint = l.muted, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
                         }
                     }
                 }

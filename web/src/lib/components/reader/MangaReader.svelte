@@ -61,6 +61,8 @@
 				<ArrowLeftRight class="size-4" aria-hidden="true" />
 				{settings.direction}
 			</ReaderToggle>
+			<!-- Direction, then how pages are laid out, then the strip: three questions, kept apart. -->
+			<span class="mx-0.5 h-5 w-px shrink-0 bg-hairline" aria-hidden="true"></span>
 			<ReaderToggle
 				label="Two-page spreads (D)"
 				active={settings.dual}
@@ -77,10 +79,12 @@
 				>
 					<!-- An icon like its neighbours, the word where there is room for all the words. -->
 					<BookImage class="size-4" aria-hidden="true" />
-					<span class="hidden max-md:inline xl:inline">Cover</span>
+					<!-- An option of the spread, named as one: "Cover" beside "Spread" read as a third layout. -->
+					<span class="hidden max-md:inline">Cover</span><span class="hidden xl:inline">Cover alone</span>
 				</ReaderToggle>
 			{/if}
 		{/if}
+		<span class="mx-0.5 h-5 w-px shrink-0 bg-hairline" aria-hidden="true"></span>
 		<ReaderToggle
 			label="Webtoon strip"
 			active={settings.mode === 'strip'}
