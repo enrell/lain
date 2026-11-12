@@ -316,7 +316,7 @@ const en = {
 				revoke: 'Revoke'
 			},
 			plugins: {
-				capabilities: 'One job per row, and the plugin doing it.',
+				capabilities: 'Every job this server does, in families: open one to see who does each job.',
 				colJob: 'Job',
 				colProviders: 'Providers',
 				colMode: 'Binding',
@@ -644,11 +644,16 @@ const en = {
 		pluginsPage: {
 			pageTitle: 'Plugins — Settings — Lain',
 			capabilities: 'Capabilities',
-			note: 'Each row is one job this server does, and the plugin doing it. Replacing a plugin is safe: a new plugin that is unhealthy is refused, and one that fails later falls back to the one that worked. The id under each sentence is the job’s technical name.',
+			note: 'Replacing a plugin is safe: a new plugin that is unhealthy is refused, and one that fails later falls back to the one that worked. The id under each sentence is the job’s technical name.',
 			healthy: 'healthy',
 			unhealthy: 'unhealthy',
 			notInstalled: 'not installed',
 			installHint: 'Not installed on this server. To add it, run',
+			installOther: 'Not installed on this server: add its component’s manifest to the plugins folder of the data directory.',
+			jobs: { one: '{count} job', other: '{count} jobs' },
+			allHealthy: 'all healthy',
+			missingCount: { one: '{count} not installed', other: '{count} not installed' },
+			unhealthyCount: { one: '{count} provider unhealthy', other: '{count} providers unhealthy' },
 			generation: 'generation {n}',
 			replace: 'Replace',
 			replaceFor: 'Replace the providers of {capability}',
