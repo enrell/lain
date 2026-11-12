@@ -7,6 +7,25 @@ use std::path::Path;
 
 pub const RAW_PLAYLIST: &str = "raw.m3u8";
 pub const INDEX_PLAYLIST: &str = "index.m3u8";
+pub const INIT_SEGMENT: &str = "init.mp4";
+/// The name prefix of a software retry's init segment and media segments
+/// (`sw-init.mp4`, `sw-seg00000.m4s`). A retry's files never take a URL
+/// the failed hardware attempt served: a player keeps an init segment
+/// whose URI did not change (hls.js reuses it across playlist reloads)
+/// and the browser caches segments for an hour, so under the old names a
+/// viewer of the failed attempt would decode one encoder's segments with
+/// the other's init segment.
+pub const RETRY_PREFIX: &str = "sw-";
+
+/// The init segment's name for a first attempt or a software retry.
+pub fn init_name(retry: bool) -> String {
+    if retry { format!("{RETRY_PREFIX}{INIT_SEGMENT}") } else { INIT_SEGMENT.to_string() }
+}
+
+/// `init.mp4` or `sw-init.mp4`.
+pub fn is_init(name: &str) -> bool {
+    name.strip_prefix(RETRY_PREFIX).unwrap_or(name) == INIT_SEGMENT
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Segment {
@@ -195,12 +214,12 @@ pub fn delete_consumed(dir: &Path, client_segment: i64, keep_sec: i64, fallback_
 /// session keeps its subtitle sidecar and burn-in file in the same
 /// directory; those are not.
 fn is_output(name: &str) -> bool {
-    let product = |n: &str| n == RAW_PLAYLIST || n == INDEX_PLAYLIST || n == "init.mp4" || segment_index(n).is_some();
+    let product = |n: &str| n == RAW_PLAYLIST || n == INDEX_PLAYLIST || is_init(n) || segment_index(n).is_some();
     // `<name>.tmp` (ffmpeg) or `<name>.<pid>-<n>.tmp` (write_atomic).
     product(name)
-        || name.strip_suffix(".tmp").is_some_and(|n| {
-            product(n) || [RAW_PLAYLIST, INDEX_PLAYLIST, "init.mp4"].iter().any(|p| n.starts_with(&format!("{p}.")))
-        })
+        || name
+            .strip_suffix(".tmp")
+            .is_some_and(|n| product(n) || n.rsplit_once('.').is_some_and(|(stem, _)| product(stem)))
 }
 
 /// Removes an encode's HLS output from a session directory, so another
@@ -234,9 +253,10 @@ pub fn dir_size(dir: &Path) -> i64 {
     rd.flatten().filter_map(|e| e.metadata().ok()).filter(|m| m.is_file()).map(|m| m.len() as i64).sum()
 }
 
-/// N of `segNNNNN.m4s` or `segNNNNN.ts`.
+/// N of `segNNNNN.m4s` or `segNNNNN.ts`, with or without a software
+/// retry's prefix.
 pub fn segment_index(name: &str) -> Option<i64> {
-    let rest = name.strip_prefix("seg")?;
+    let rest = name.strip_prefix(RETRY_PREFIX).unwrap_or(name).strip_prefix("seg")?;
     let digits = rest.strip_suffix(".m4s").or_else(|| rest.strip_suffix(".ts"))?;
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
@@ -245,9 +265,10 @@ pub fn segment_index(name: &str) -> Option<i64> {
 }
 
 /// The servable names of a session: the playlist, the init segment and
-/// media segments; nothing else (no raw playlist, no traversal).
+/// media segments (a software retry's too); nothing else (no raw
+/// playlist, no traversal).
 pub fn valid_file(name: &str) -> bool {
-    name == INDEX_PLAYLIST || name == "init.mp4" || segment_index(name).is_some()
+    name == INDEX_PLAYLIST || is_init(name) || segment_index(name).is_some()
 }
 
 #[cfg(test)]
@@ -305,9 +326,13 @@ mod tests {
             "index.m3u8",
             "index.m3u8.42-7.tmp",
             "init.mp4",
+            "init.mp4.tmp",
             "seg00000.m4s",
             "seg00001.m4s.tmp",
             "seg00002.ts",
+            "sw-init.mp4",
+            "sw-seg00000.m4s",
+            "sw-seg00001.m4s.tmp",
         ];
         // A relocated session keeps its sidecars beside the segments.
         let kept = ["subs.vtt", "subs.vtt.tmp", "burn.ass", "media.mp4", "media.mp4.tmp", "notes.txt"];
@@ -329,7 +354,15 @@ mod tests {
 
     #[test]
     fn names() {
-        for ok in ["index.m3u8", "init.mp4", "seg00000.m4s", "seg00042.ts"] {
+        for ok in [
+            "index.m3u8",
+            "init.mp4",
+            "seg00000.m4s",
+            "seg00042.ts",
+            "sw-init.mp4",
+            "sw-seg00003.m4s",
+            "sw-seg00004.ts",
+        ] {
             assert!(valid_file(ok), "{ok}");
         }
         for bad in [
@@ -341,9 +374,17 @@ mod tests {
             "index.m3u8/../x",
             "seg00000.ts.tmp",
             "seg+1.ts",
+            "sw-index.m3u8",
+            "sw-raw.m3u8",
+            "sw-sw-seg00000.m4s",
+            "sw-sw-init.mp4",
+            "sw-",
         ] {
             assert!(!valid_file(bad), "{bad}");
         }
         assert_eq!(segment_index("seg00007.m4s"), Some(7));
+        assert_eq!(segment_index("sw-seg00007.m4s"), Some(7));
+        assert_eq!((init_name(false).as_str(), init_name(true).as_str()), ("init.mp4", "sw-init.mp4"));
+        assert!(is_init("init.mp4") && is_init("sw-init.mp4") && !is_init("seg00000.m4s"));
     }
 }

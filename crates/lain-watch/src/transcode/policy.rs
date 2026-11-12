@@ -82,6 +82,10 @@ pub struct EncodePlan {
     /// none, and its shader file once the runner has written it.
     pub effect: String,
     pub effect_file: String,
+    /// The software retry of a failed hardware encode: as HLS it writes
+    /// its init segment and segments under their own names
+    /// (`hls::RETRY_PREFIX`), never the failed attempt's URLs.
+    pub software_retry: bool,
 }
 
 impl EncodePlan {

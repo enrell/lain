@@ -843,7 +843,7 @@ fn transcode_hls(app: &App, w: &WReq, v: &Verified) -> Out {
             tracing::debug!(err = %e, "transcode position update failed");
         }
     }
-    let ct = if name == "init.mp4" { "video/mp4" } else { "video/iso.segment" };
+    let ct = if transcode::hls::is_init(name) { "video/mp4" } else { "video/iso.segment" };
     file(path, ct, vec![("cache-control", "private, max-age=3600".into())], "unknown hls file")
 }
 

@@ -432,10 +432,14 @@ probe — or fails at runtime — falls back to software with a visible
 failure starts over: the failed attempt's playlists and segments are
 removed first and `playable` is false again until the retry's first
 segment, so no segment of one encoder is ever served beside the other's
-init segment. Software encoders stay the default; there is no
-silent opportunistic switching. The backend list mirrors Jellyfin's
-documented methods: `vaapi`, `nvenc`, `qsv`, `amf`, `v4l2m2m`,
-`videotoolbox` and `rkmpp` (Rockchip). `hardware_low_power` selects
+init segment. The retry writes `sw-init.mp4` and `sw-segNNNNN.*`, never
+a name the failed attempt used: a player keeps an init segment whose
+URI did not change, and a browser caches the segments it fetched, so a
+viewer of the failed attempt would otherwise decode one encoder's
+segments with the other's init segment. Software encoders stay the
+default; there is no silent opportunistic switching. The backend list
+mirrors Jellyfin's documented methods: `vaapi`, `nvenc`, `qsv`, `amf`,
+`v4l2m2m`, `videotoolbox` and `rkmpp` (Rockchip). `hardware_low_power` selects
 QSV's low-power H.264/HEVC encoder (Jellyfin's "Intel Low-Power
 hardware encoder"); only QSV honours it.
 
@@ -503,7 +507,8 @@ releases one viewer's hold; see **Viewers** below), `GET
 /api/items/{id}/transcode/status?session=` polls, `GET
 /api/items/{id}/transcode?session=` serves the progressive MP4 (409 for
 an HLS session), `GET /api/items/{id}/transcode/hls/{file}` serves
-`index.m3u8`, `init.mp4`, `segNNNNN.m4s` and `segNNNNN.ts` (every other
+`index.m3u8`, `init.mp4`, `segNNNNN.m4s` and `segNNNNN.ts`, and a
+software retry's `sw-init.mp4` and `sw-segNNNNN.*` (every other
 name is 404;
 the served playlist signs each media URI with `session` and `token`,
 because a relative URI in an m3u8 drops the playlist's query string and
