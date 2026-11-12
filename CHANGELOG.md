@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Pages of titles** (D-283): `GET /api/catalog` and `GET /api/search`
+  take `group=title`, which pages titles instead of files: `total`,
+  `limit` and `offset` count titles and `items` holds every file of each
+  title on the page, so a title is never split and a search says how many
+  titles match. `sort=recent&group=title` lists the newest titles.
+  `lain-client`: `CatalogQuery.group`, `SearchQuery.group`.
+
 ## [0.3.1] - 2026-11-12
 
 ### Added

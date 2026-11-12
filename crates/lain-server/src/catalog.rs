@@ -13,7 +13,9 @@ use lain_store::{Bucket, Store, StoreError, join_key, key_prefix};
 
 use lain_ingest::{CommitScanInput, CommitScanOutput};
 
-use crate::contracts::{CatalogItem, CatalogPage, EXPORT_FORMAT, EXPORT_VERSION, ExportDoc, PageParams, Progress};
+use crate::contracts::{
+    CatalogItem, CatalogPage, EXPORT_FORMAT, EXPORT_VERSION, ExportDoc, GROUP_TITLE, PageParams, Progress,
+};
 use crate::roots::Roots;
 
 pub const CAP_CATALOG_READ: &str = "lain.catalog.read@1";
@@ -51,6 +53,40 @@ fn title_order(a: &CatalogItem, b: &CatalogItem) -> std::cmp::Ordering {
 
 fn watch_order(a: &CatalogItem, b: &CatalogItem) -> std::cmp::Ordering {
     a.season.cmp(&b.season).then(a.episode.cmp(&b.episode)).then(a.year.cmp(&b.year)).then(a.id.cmp(&b.id))
+}
+
+/// A page of titles from files already filtered and sorted (D-283): the
+/// files sharing a `title_key` are one title, placed where its first file
+/// stands in the sort (the newest file for `recent`, the first by title
+/// otherwise), with its files in watch order. The total counts titles and
+/// a title is never split across pages, so a card counts all its episodes
+/// and a search says how many titles match, not how many were loaded.
+fn page_titles(files: Vec<CatalogItem>, p: &PageParams) -> (Vec<CatalogItem>, i64) {
+    let mut at: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut titles: Vec<Vec<CatalogItem>> = Vec::new();
+    for it in files {
+        let key = title_key(&it.title);
+        match at.get(&key) {
+            Some(&i) => titles[i].push(it),
+            None => {
+                at.insert(key, titles.len());
+                titles.push(vec![it]);
+            }
+        }
+    }
+    let total = titles.len() as i64;
+    let (start, end) = if p.limit >= 0 {
+        let start = p.offset.clamp(0, total) as usize;
+        (start, (p.offset.max(0) + p.limit).min(total) as usize)
+    } else {
+        (0, titles.len())
+    };
+    let mut out = Vec::new();
+    for mut title in titles.into_iter().take(end).skip(start) {
+        title.sort_by(watch_order);
+        out.extend(title);
+    }
+    (out, total)
 }
 
 /// The catalog provider. Items with a root are resolved against this
@@ -128,6 +164,7 @@ impl Catalog {
 
     /// Filters by library, substring and kind, sorts, then pages; the
     /// total counts the filtered set. A negative limit is unbounded.
+    /// Grouped by title (D-283), the page and the total count titles.
     pub fn query(&self, q: &str, kind: &str, p: &PageParams) -> Result<(Vec<CatalogItem>, i64), Error> {
         let ql = q.trim().to_lowercase();
         let kl = kind.trim().to_lowercase();
@@ -145,6 +182,9 @@ impl Catalog {
         } else {
             out.sort_by(title_order);
         }
+        if p.group == GROUP_TITLE {
+            return Ok(page_titles(out, p));
+        }
         let total = out.len() as i64;
         if p.limit >= 0 {
             if p.offset >= total {
@@ -158,7 +198,7 @@ impl Catalog {
 
     pub fn page(&self, p: &PageParams) -> Result<CatalogPage, Error> {
         let (items, total) = self.query("", "", p)?;
-        Ok(CatalogPage { items, total, limit: p.limit, offset: p.offset })
+        Ok(CatalogPage { items, total, limit: p.limit, offset: p.offset, group: p.group.clone() })
     }
 
     /// Every file of the item's title in watch order, across libraries.
@@ -305,7 +345,7 @@ impl Provider for Catalog {
             (CAP_CATALOG_READ, "query") => {
                 let i: QueryInput = input(v, "QueryInput")?;
                 let (items, total) = self.query(&i.q, &i.kind, &i.page)?;
-                json!(CatalogPage { items, total, limit: i.page.limit, offset: i.page.offset })
+                json!(CatalogPage { items, total, limit: i.page.limit, offset: i.page.offset, group: i.page.group })
             }
             (CAP_CATALOG_READ, "episodes") => {
                 let i: IdInput = input(v, "EpisodesInput")?;
@@ -481,6 +521,55 @@ mod tests {
         let mut hidden = PageParams::normalize(0, 0, "");
         hidden.exclude_libraries = vec!["l1".into()];
         assert_eq!(cat.page(&hidden).unwrap().total, 0, "excluded before counting");
+        drop(cat);
+        drop(store);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn titles_page_whole_titles() {
+        let dir = lain_store::test_dir("catalog-titles");
+        let store = Arc::new(Store::open(&dir).unwrap());
+        let cat = Catalog::new(store.clone());
+        let mut doc = ExportDoc { format: EXPORT_FORMAT.into(), version: EXPORT_VERSION, ..ExportDoc::default() };
+        for it in [
+            item("f2", "l1", "Frieren", 2, 5),
+            item("f1", "l1", "Frieren", 1, 3),
+            item("f3", "l2", "frieren ", 3, 1),
+            item("ak", "l2", "Akira", 0, 4),
+            item("m1", "l1", "Monster", 1, 2),
+            item("m2", "l1", "Monster", 2, 9),
+        ] {
+            doc.items.insert(it.id.clone(), it);
+        }
+        cat.import(&doc).unwrap();
+        let ids = |v: &[CatalogItem]| v.iter().map(|i| i.id.as_str()).collect::<Vec<_>>().join(" ");
+        let titled = |limit: i64, offset: i64, sort: &str| {
+            let mut p = PageParams::normalize(limit, offset, sort);
+            p.group = GROUP_TITLE.into();
+            p
+        };
+        // By title: each title where its first file stands, its files in watch order.
+        let page = cat.page(&titled(0, 0, "")).unwrap();
+        assert_eq!((ids(&page.items).as_str(), page.total, page.group.as_str()), ("ak f1 f2 f3 m1 m2", 3, "title"));
+        // A page of one title holds all of it; the total still counts titles.
+        let page = cat.page(&titled(1, 1, "")).unwrap();
+        assert_eq!((ids(&page.items).as_str(), page.total), ("f1 f2 f3", 3));
+        assert!(cat.page(&titled(5, 3, "")).unwrap().items.is_empty());
+        // Newest first: a title by its newest file.
+        assert_eq!(ids(&cat.page(&titled(0, 0, "recent")).unwrap().items), "m1 m2 f1 f2 f3 ak");
+        // A library's part of a title is that library's title.
+        let mut lib = titled(0, 0, "");
+        lib.library_id = "l2".into();
+        assert_eq!(ids(&cat.page(&lib).unwrap().items), "ak f3");
+        // Search: the matching titles, whole, and how many there are.
+        let (items, total) = cat.query("fri", "", &titled(1, 0, "")).unwrap();
+        assert_eq!((ids(&items).as_str(), total), ("f1 f2 f3", 1));
+        let out = cat.invoke(CAP_CATALOG_READ, "query", json!({"q": "o", "page": titled(1, 0, "")})).unwrap();
+        assert_eq!((out["total"].as_i64(), out["group"].as_str()), (Some(1), Some("title")));
+        // Without the group, files as before and no group in the envelope.
+        let out = cat.invoke(CAP_CATALOG_READ, "page", json!({"page": PageParams::normalize(0, 0, "")})).unwrap();
+        assert_eq!((out["total"].as_i64(), out.get("group")), (Some(6), None));
         drop(cat);
         drop(store);
         std::fs::remove_dir_all(dir).ok();
