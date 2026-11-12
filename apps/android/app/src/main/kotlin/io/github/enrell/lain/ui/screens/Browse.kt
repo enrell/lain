@@ -776,6 +776,9 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
     // The title's ratings (the social module's, shared with the web); absent on a server without them.
     var rating by remember(title.key) { mutableStateOf<io.github.enrell.lain.core.RatingInfo?>(null) }
     var rateSheet by remember { mutableStateOf(false) }
+    // Start over is one tap, and one tap takes it back: the position it cleared, offered back for a while.
+    var undone by remember(title.key) { mutableStateOf<io.github.enrell.lain.core.ProgressInfo?>(null) }
+    LaunchedEffect(undone) { if (undone != null) { kotlinx.coroutines.delay(8000); undone = null } }
     LaunchedEffect(title.key) { rating = vm.rating(title) }
     var menu by remember { mutableStateOf<Item?>(null) }
     var confirmAll by remember { mutableStateOf(false) }
@@ -863,7 +866,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                 // What else can be done with the title, at one weight below the main action.
                 // One row of columns, icon over word; each takes room by the length of its word, so none wraps alone.
                 Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (resume != null) QuietAction(this, Ic.RotateCcw, stringResource(R.string.start_over)) { vm.markWatched(listOf(next.id), false) }
+                    if (resume != null) QuietAction(this, Ic.RotateCcw, stringResource(R.string.start_over)) { undone = resume; vm.markWatched(listOf(next.id), false) }
                     QuietAction(this, 
                         Ic.CheckCircle,
                         stringResource(
@@ -1012,6 +1015,19 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
             Box(Modifier.fillMaxWidth().height(1.dp).background(l.line.copy(alpha = 0.7f)))
         }
     }
+    undone?.let { was ->
+        Row(
+            Modifier.align(Alignment.BottomCenter).padding(horizontal = GUTTER, vertical = 16.dp).fillMaxWidth().clip(l.buttonShape).background(l.raised).border(1.dp, l.line, l.buttonShape).padding(start = 14.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(R.string.started_over), Modifier.weight(1f).padding(vertical = 12.dp), color = l.text, fontSize = 14.sp)
+            Text(
+                stringResource(R.string.undo),
+                Modifier.clip(l.buttonShape).clickable { undone = null; vm.restoreProgress(was) }.padding(horizontal = 12.dp, vertical = 12.dp),
+                color = l.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
     }
     if (confirmMark) {
         // A whole title's marks change at once: asked first, since there is no undo.
@@ -1049,7 +1065,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
         val p = state.progress[item.id]
         Sheet(rowLabel(item, title.reading), { menu = null }) {
             SheetAction(Ic.Play, stringResource(if (title.reading) R.string.action_read else R.string.action_play)) { menu = null; vm.open(item) }
-            if (p != null && !p.completed && p.positionSec > 0) SheetAction(Ic.RotateCcw, stringResource(R.string.start_over)) { menu = null; vm.markWatched(listOf(item.id), false) }
+            if (p != null && !p.completed && p.positionSec > 0) SheetAction(Ic.RotateCcw, stringResource(R.string.start_over)) { menu = null; undone = p; vm.markWatched(listOf(item.id), false) }
             SheetAction(Ic.CheckCircle, stringResource(if (p?.completed == true) R.string.mark_unwatched else if (title.reading) R.string.mark_read else R.string.mark_watched)) {
                 menu = null
                 vm.markWatched(listOf(item.id), p?.completed != true)
