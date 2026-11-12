@@ -65,3 +65,22 @@ export const integrations = {
 			body
 		})
 };
+
+/** A program that feeds libraries through a key (D-265). */
+export interface ApiKey {
+	id: string;
+	name: string;
+	libraries: string[];
+	created_at: number;
+	/** Only in the answer to `create`: the key is shown once. */
+	key?: string;
+}
+
+/** Admin: GET/POST /api/integrations, DELETE /api/integrations/{id}. */
+export const apiKeys = {
+	list: () => request<{ integrations: ApiKey[] }>('/api/integrations'),
+	create: (body: { name: string; libraries: string[] }) =>
+		request<ApiKey>('/api/integrations', { method: 'POST', body }),
+	remove: (id: string) =>
+		request<{ status: string }>(`/api/integrations/${encodeURIComponent(id)}`, { method: 'DELETE' })
+};

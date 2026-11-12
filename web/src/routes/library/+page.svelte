@@ -1,11 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import LockIcon from '@lucide/svelte/icons/lock';
+	import LockOpen from '@lucide/svelte/icons/lock-open';
 	import type { Library } from '$lib/api/types';
 	import { session } from '$lib/auth/session.svelte';
 	import LibraryBrowser from '$lib/components/media/LibraryBrowser.svelte';
+	import LibraryShelves from '$lib/components/media/LibraryShelves.svelte';
 	import UnlockLibraryDialog from '$lib/components/media/UnlockLibraryDialog.svelte';
 	import { t } from '$lib/i18n';
-	import { ensureLibraries } from '$lib/stores/media-cache.svelte';
+	import { api } from '$lib/api';
+	import { ensureLibraries, nameable } from '$lib/stores/media-cache.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -13,14 +17,41 @@
 	let libraries = $state<Library[]>([]);
 	// Private libraries this session has not unlocked (D-156, lain-rs).
 	const locked = $derived(libraries.filter((l) => l.private && l.locked));
-	let unlockTarget = $state<Library | null>(null);
+	const open = $derived(libraries.filter((l) => l.private && !l.locked));
+	// What the browser may name: a locked library is not on the page at all.
+	const visible = $derived(nameable(libraries));
+	// Shelves (one row per library) or every title in one grid. The choice
+	// is a per-browser convenience; shelves need more than one library.
+	const VIEW_KEY = 'lain.library.view';
+	let view = $state<'shelves' | 'all'>('shelves');
+	function setView(next: 'shelves' | 'all'): void {
+		view = next;
+		try {
+			localStorage.setItem(VIEW_KEY, next);
+		} catch {
+			/* private window: the choice lasts for this visit */
+		}
+	}
 	let unlockOpen = $state(false);
 	// Re-mounts the browser so it refetches once a library unlocks.
 	let generation = $state(0);
 
-	function askUnlock(lib: Library): void {
-		unlockTarget = lib;
-		unlockOpen = true;
+	// One quiet control for private libraries: it never names them or says
+	// how many there are. Locked, it asks for the PIN and opens them all;
+	// open, it locks them all again at once.
+	async function toggleLock(): Promise<void> {
+		if (locked.length > 0) {
+			unlockOpen = true;
+			return;
+		}
+		if (open.length === 0) return;
+		try {
+			for (const lib of open) await api.libraries.lock(lib.id);
+			toasts.success(t('privateLibrary.lockedAllToast'));
+		} catch (err) {
+			toasts.error(errorMessage(err, t('privateLibrary.updateFailed')));
+		}
+		await unlocked();
 	}
 
 	async function unlocked(): Promise<void> {
@@ -29,6 +60,11 @@
 	}
 
 	onMount(() => {
+		try {
+			if (localStorage.getItem(VIEW_KEY) === 'all') view = 'all';
+		} catch {
+			/* default view */
+		}
 		void ensureLibraries()
 			.then((libs) => (libraries = libs))
 			.catch(() => {
@@ -54,9 +90,9 @@
 		if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
 		if (document.querySelector('[role="dialog"]')) return;
 		if (e.key === 'u') {
-			if (locked.length > 0) {
+			if (locked.length > 0 || open.length > 0) {
 				e.preventDefault();
-				askUnlock(locked[0]);
+				void toggleLock();
 			}
 			return;
 		}
@@ -74,40 +110,57 @@
 			<h1 class="text-xl font-semibold tracking-tight text-foreground">Library</h1>
 			<p class="mt-0.5 text-sm text-muted">Everything Lain has indexed.</p>
 		</div>
-		{#if session.isAdmin}
+		{#if session.isAdmin || locked.length > 0 || open.length > 0}
 			<div class="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em]">
-				<button
-					type="button"
-					class="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:opacity-60"
-					disabled={scan.running}
-					onclick={() => void rescan()}
-				>
-					{scan.running ? 'Scanning…' : 'Scan'} <kbd class="text-muted/70">S</kbd>
-				</button>
-				<a href="/settings/libraries" class="rounded-md px-2.5 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground">
-					Manage ›
-				</a>
+				{#if locked.length > 0 || open.length > 0}
+					<button
+						type="button"
+						class="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+						title={locked.length > 0 ? t('privateLibrary.unlockHint') : t('privateLibrary.lockHint')}
+						aria-label={locked.length > 0 ? t('privateLibrary.unlockHint') : t('privateLibrary.lockHint')}
+						onclick={() => void toggleLock()}
+					>
+						{#if locked.length > 0}<LockIcon class="size-3.5" />{:else}<LockOpen class="size-3.5" />{/if}
+						<kbd class="text-muted/70">U</kbd>
+					</button>
+				{/if}
+				{#if session.isAdmin}
+					<button
+						type="button"
+						class="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:opacity-60"
+						disabled={scan.running}
+						onclick={() => void rescan()}
+					>
+						{scan.running ? 'Scanning…' : 'Scan'} <kbd class="text-muted/70">S</kbd>
+					</button>
+					<a href="/settings/libraries" class="rounded-md px-2.5 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground">
+						Manage ›
+					</a>
+				{/if}
 			</div>
 		{/if}
 	</header>
-	{#if locked.length > 0}
-		<div class="flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface/40 px-4 py-2.5 text-sm text-muted">
-			<span>{t('privateLibrary.lockedBanner', { count: locked.length })}</span>
-			{#each locked as lib, i (lib.id)}
+	{#if visible.length > 1}
+		<div class="flex gap-1 font-mono text-[11px] uppercase tracking-[0.14em]" role="group" aria-label="View">
+			{#each [['shelves', 'By library'], ['all', 'All titles']] as const as [id, label] (id)}
 				<button
 					type="button"
-					class="rounded-md px-2 py-1 text-foreground transition-colors hover:bg-surface-hover"
-					onclick={() => askUnlock(lib)}
+					aria-pressed={view === id}
+					class={['rounded-md px-2.5 py-1.5 transition-colors', view === id ? 'bg-surface-active text-foreground' : 'text-muted hover:bg-surface-hover hover:text-foreground'].join(' ')}
+					onclick={() => setView(id)}
 				>
-					{t('privateLibrary.unlock')} {lib.name}
-					{#if i === 0}<kbd class="ms-1 font-mono text-[10px] text-muted">U</kbd>{/if}
+					{label}
 				</button>
 			{/each}
 		</div>
 	{/if}
-	{#key generation}
-		<LibraryBrowser {libraries} showLibraryFilter />
+	{#key `${generation}:${visible.map((l) => l.id).join(',')}`}
+		{#if visible.length > 1 && view === 'shelves'}
+			<LibraryShelves libraries={visible} />
+		{:else}
+			<LibraryBrowser libraries={visible} showLibraryFilter={visible.length > 1} />
+		{/if}
 	{/key}
 </div>
 
-<UnlockLibraryDialog bind:open={unlockOpen} library={unlockTarget} onunlocked={() => void unlocked()} />
+<UnlockLibraryDialog bind:open={unlockOpen} libraries={locked} onunlocked={() => void unlocked()} />

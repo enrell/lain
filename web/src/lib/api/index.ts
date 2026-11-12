@@ -6,7 +6,7 @@ import { downloads } from './downloads';
 import { enrich } from './enrich';
 import { items } from './items';
 import { libraries } from './libraries';
-import { integrations, links, list } from './list';
+import { apiKeys, integrations, links, list } from './list';
 import { localplay } from './localplay';
 import { me } from './me';
 import { playback } from './playback';
@@ -34,6 +34,7 @@ export const api = {
 	enrich,
 	items,
 	libraries,
+	apiKeys,
 	integrations,
 	links,
 	list,

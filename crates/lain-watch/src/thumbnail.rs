@@ -42,6 +42,39 @@ fn comic(path: &str) -> bool {
     !lain_read::archive::format(Path::new(path)).is_empty()
 }
 
+/// A still that came with the file, by the conventions downloaders and
+/// media managers use: `<name>-poster.*` or `<name>-thumb.*` next to
+/// it, or `.metadata/thumbs/thumbnail.jpg` (`banner.jpg`) in its
+/// folder. A non-empty regular file, never a link out of the folder.
+pub fn local_cover(media_file: &Path) -> Option<PathBuf> {
+    let dir = media_file.parent()?;
+    let stem = media_file.file_stem()?.to_string_lossy();
+    let mut names: Vec<PathBuf> = Vec::new();
+    for suffix in ["-poster", "-thumb"] {
+        for ext in ["jpg", "jpeg", "png", "webp"] {
+            names.push(dir.join(format!("{stem}{suffix}.{ext}")));
+        }
+    }
+    let thumbs = dir.join(".metadata").join("thumbs");
+    names.push(thumbs.join("thumbnail.jpg"));
+    names.push(thumbs.join("banner.jpg"));
+    names.into_iter().find(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file() && m.len() > 0))
+}
+
+/// The content type of a still by its first bytes: a downloader may
+/// keep the `.jpg` name whatever the site served.
+pub fn image_type(path: &Path) -> &'static str {
+    use std::io::Read;
+    let mut head = [0u8; 12];
+    let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut head)).unwrap_or(0);
+    match &head[..n] {
+        [0x89, b'P', b'N', b'G', ..] => "image/png",
+        [b'G', b'I', b'F', b'8', ..] => "image/gif",
+        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P'] => "image/webp",
+        _ => "image/jpeg",
+    }
+}
+
 pub struct Generator {
     dir: PathBuf,
     slots: Mutex<usize>,
@@ -191,6 +224,33 @@ mod tests {
                 .unwrap()
                 .cached
         );
+        std::fs::remove_dir_all(dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod cover_tests {
+    use super::*;
+
+    #[test]
+    fn a_still_next_to_the_file_is_its_cover() {
+        let dir = std::env::temp_dir().join(format!("lain-cover-{}", std::process::id()));
+        let thumbs = dir.join(".metadata").join("thumbs");
+        std::fs::create_dir_all(&thumbs).unwrap();
+        let media = dir.join("item.mp4");
+        assert_eq!(local_cover(&media), None);
+        std::fs::write(thumbs.join("thumbnail.jpg"), b"").unwrap();
+        assert_eq!(local_cover(&media), None, "an empty file is not a cover");
+        std::fs::write(thumbs.join("banner.jpg"), b"jpg").unwrap();
+        assert_eq!(local_cover(&media), Some(thumbs.join("banner.jpg")));
+        std::fs::write(thumbs.join("thumbnail.jpg"), b"\x89PNG\r\n\x1a\n").unwrap();
+        assert_eq!(local_cover(&media), Some(thumbs.join("thumbnail.jpg")));
+        assert_eq!(image_type(&thumbs.join("thumbnail.jpg")), "image/png");
+        // A poster named after the file comes first.
+        std::fs::write(dir.join("item-poster.webp"), b"RIFF\x10\0\0\0WEBPVP8 ").unwrap();
+        assert_eq!(local_cover(&media), Some(dir.join("item-poster.webp")));
+        assert_eq!(image_type(&dir.join("item-poster.webp")), "image/webp");
+        assert_eq!(image_type(&dir.join("missing.jpg")), "image/jpeg");
         std::fs::remove_dir_all(dir).ok();
     }
 }

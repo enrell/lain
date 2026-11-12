@@ -12,6 +12,7 @@ use lain_core::Error;
 use lain_probe::{RawReport, RawStream, exec, image_subtitle_codec, text_subtitle_codec};
 
 use crate::settings::{self as st, allow_stream_copy, encoder_tuning, quality};
+use crate::transcode::effects;
 use crate::transcode::{SourceSpec, V3Request, unsupported};
 
 /// The probed ffmpeg surface (D-031: probing, never silent switching).
@@ -24,6 +25,8 @@ pub struct Capabilities {
     pub tone_map: bool,
     /// The libplacebo BT.2390 path executes.
     pub tone_map_2390: bool,
+    /// libplacebo renders a frame on this machine (D-274).
+    pub effects: bool,
     pub hardware: BTreeMap<String, bool>,
     pub ffmpeg: String,
 }
@@ -75,6 +78,10 @@ pub struct EncodePlan {
     pub reasons: Vec<String>,
     pub method: String,
     pub profile: String,
+    /// The video effect rendered into this session (D-274), `""` for
+    /// none, and its shader file once the runner has written it.
+    pub effect: String,
+    pub effect_file: String,
 }
 
 impl EncodePlan {
@@ -281,6 +288,7 @@ impl EncodePlan {
             _ => return Err(Error::invalid("video_codec must be h264, hevc or av1")),
         }
         self.video_codec = codec.clone();
+        self.resolve_effect(req, caps)?;
         let pixel = self.video.pix_fmt.to_ascii_lowercase();
         let mut web_video =
             self.video.codec_name.eq_ignore_ascii_case("h264") && (pixel == "yuv420p" || pixel == "yuvj420p");
@@ -291,9 +299,18 @@ impl EncodePlan {
         if self.max_bitrate_kbps > 0 && source_kbps(self.video.bit_rate_bps()) > self.max_bitrate_kbps {
             web_video = false;
         }
+        // An HEVC source the client decodes is copied too (D-273), 8 or
+        // 10 bit 4:2:0, into fMP4 only: the MPEG-TS segment container is
+        // not a place browsers read HEVC from.
+        let hevc_copy = st::accepts_hevc_copy(&req.video_copy_codecs)
+            && allow_stream_copy(req.allow_video_stream_copy)
+            && matches!(self.video.codec_name.to_ascii_lowercase().as_str(), "hevc" | "h265")
+            && matches!(pixel.as_str(), "yuv420p" | "yuvj420p" | "yuv420p10le")
+            && !(self.max_bitrate_kbps > 0 && source_kbps(self.video.bit_rate_bps()) > self.max_bitrate_kbps)
+            && !(self.is_hls() && self.settings.hls_segment_container == st::HLS_TS);
         let v = &self.video;
-        self.copy_video = web_video
-            && codec == st::VIDEO_H264
+        self.copy_video = ((web_video && codec == st::VIDEO_H264) || (hevc_copy && codec != st::VIDEO_AV1))
+            && self.effect.is_empty()
             && !v.is_hdr()
             && !v.is_interlaced()
             && !self.burn_image
@@ -302,6 +319,10 @@ impl EncodePlan {
             && (self.height == 0 || self.height >= v.height);
         if self.copy_video {
             self.encoder.clear();
+            if hevc_copy {
+                // The status names what is on the wire, not what was asked.
+                self.video_codec = st::VIDEO_HEVC.into();
+            }
             return Ok(());
         }
         let hdr = v.is_hdr();
@@ -319,7 +340,7 @@ impl EncodePlan {
                 return Err(unsupported("HDR tone mapping is unavailable on this server (probe failed)"));
             }
             if self.settings.tone_mapping_algorithm == st::TONEMAP_BT2390 && !caps.tone_map_2390 {
-                self.fallback = "bt2390 tone mapping unavailable; used hable".into();
+                self.fallback = join_notes(&self.fallback, "bt2390 tone mapping unavailable; used hable");
             }
         }
         self.need_tone = need_tone || always;
@@ -327,6 +348,11 @@ impl EncodePlan {
         self.encoder = encoder;
         self.hw_backend = backend;
         self.hw_decode = hw_decode;
+        if !self.effect.is_empty() && self.hw_backend == st::HW_VAAPI {
+            // The VA-API encode owns the filter device libplacebo would
+            // need as a Vulkan one.
+            self.drop_effect("video effects are not rendered with a VA-API encode");
+        }
         if !fallback.is_empty() {
             self.fallback = join_notes(&self.fallback, &fallback);
         }
@@ -334,6 +360,43 @@ impl EncodePlan {
         self.crf = crf;
         self.preset = preset;
         Ok(())
+    }
+
+    /// The requested effect, when this session can carry it. An unknown
+    /// preset is the client's error; a server or a source that cannot
+    /// render one still plays, and says why in `fallback`.
+    fn resolve_effect(&mut self, req: &V3Request, caps: &Capabilities) -> Result<(), Error> {
+        let preset = req.video_effect.as_str();
+        if preset.is_empty() {
+            return Ok(());
+        }
+        if !effects::known(preset) {
+            return Err(Error::invalid(format!("unknown video_effect {preset:?}")));
+        }
+        self.effect = preset.to_string();
+        if !caps.effects {
+            self.drop_effect("video effects are unavailable on this server");
+        } else if self.video.is_hdr() {
+            self.drop_effect("video effects are not rendered on HDR sources");
+        } else if self.burn_image {
+            self.drop_effect("video effects are not rendered with an image subtitle burned in");
+        }
+        if self.effect.is_empty() {
+            return Ok(());
+        }
+        // `width`/`height` already hold the quality box when it is
+        // smaller than the source; otherwise the preset decides.
+        let boxed = self.width < self.video.width || self.height < self.video.height;
+        let (max_w, max_h) = if boxed { (self.width, self.height) } else { (0, 0) };
+        (self.width, self.height) = effects::output_size(preset, self.video.width, self.video.height, max_w, max_h);
+        Ok(())
+    }
+
+    fn drop_effect(&mut self, why: &str) {
+        self.effect.clear();
+        self.fallback = join_notes(&self.fallback, why);
+        self.width = self.width.min(self.video.width);
+        self.height = self.height.min(self.video.height);
     }
 
     fn resolve_audio(&mut self, req: &V3Request, settings: &TranscodeSettings) -> Result<(), Error> {
@@ -361,12 +424,15 @@ impl EncodePlan {
 
     fn resolve_filters(&mut self, caps: &Capabilities) {
         let mut filters = Vec::new();
-        if self.burn_text {
-            filters.push(format!(
-                "subtitles={}{}",
-                super::encode::SUBTITLE_PLACEHOLDER,
-                subtitle_font_options(&self.settings)
-            ));
+        let subtitles = self.burn_text.then(|| {
+            format!("subtitles={}{}", super::encode::SUBTITLE_PLACEHOLDER, subtitle_font_options(&self.settings))
+        });
+        // Text is drawn after an effect, at the output size, so the
+        // shaders never redraw the letters.
+        if self.effect.is_empty()
+            && let Some(s) = &subtitles
+        {
+            filters.push(s.clone());
         }
         if self.settings.deinterlace == st::DEINTERLACE_AUTO && self.video.is_interlaced() {
             let mut method = self.settings.deinterlace_method.clone();
@@ -389,7 +455,10 @@ impl EncodePlan {
         let has_width = self.width > 0 && self.video.width > 0;
         let narrower = self.width < self.video.width;
         let shorter = self.height > 0 && self.height < self.video.height;
-        if has_width && (narrower || shorter) {
+        if !self.effect.is_empty() {
+            filters.push(effects::filter(self.width, self.height));
+            filters.extend(subtitles);
+        } else if has_width && (narrower || shorter) {
             filters.push(scale_filter(self.width, self.height));
         }
         if self.hw_backend == st::HW_VAAPI && !self.copy_video {
@@ -425,6 +494,9 @@ impl EncodePlan {
             }
             if self.video_codec != st::VIDEO_H264 {
                 append_reason(&mut r, &format!("output codec ({})", self.video_codec));
+            }
+            if !self.effect.is_empty() {
+                append_reason(&mut r, &format!("video effect ({})", self.effect));
             }
         }
         if let Some(a) = &self.audio
@@ -624,7 +696,10 @@ pub fn parse_ffmpeg_list(out: &str, set: &mut BTreeSet<String>) {
 }
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
-const TESTSRC: &str = "testsrc2=size=128x128:rate=5:duration=0.2";
+/// One small frame for the hardware probes. Not smaller: NVENC refuses
+/// H.264 below 145x49 ("Invalid argument", measured on an RTX 3050 Ti
+/// at 128x128), which read as "no NVENC" on a working card.
+const TESTSRC: &str = "testsrc2=size=256x144:rate=5:duration=0.2";
 
 fn ffmpeg_ok(ffmpeg: &str, args: &[&str]) -> bool {
     let mut c = Command::new(ffmpeg);
@@ -808,6 +883,27 @@ fn probe_tone_map(ffmpeg: &str, bt2390: bool) -> bool {
     }
 }
 
+/// libplacebo renders one frame: the filter exists in many builds whose
+/// machine has no Vulkan device to run it on.
+fn probe_effects(ffmpeg: &str) -> bool {
+    ffmpeg_ok(
+        ffmpeg,
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            TESTSRC,
+            "-vf",
+            "libplacebo=w=512:h=288:format=yuv420p",
+            "-frames:v",
+            "1",
+            "-f",
+            "null",
+            "-",
+        ],
+    )
+}
+
 /// Probes the ffmpeg build with no cache: encoder, filter and hwaccel
 /// lists plus real execution probes for tone mapping and each hardware
 /// backend the build could support. Discovery does not depend on the
@@ -827,6 +923,7 @@ pub fn probe_build(s: &TranscodeSettings) -> Capabilities {
     }
     caps.tone_map = probe_tone_map(&ffmpeg, false);
     caps.tone_map_2390 = caps.has_filter("libplacebo") && probe_tone_map(&ffmpeg, true);
+    caps.effects = caps.has_filter("libplacebo") && probe_effects(&ffmpeg);
     let device = hardware_device(s);
     for b in st::HW_BACKENDS {
         let ok = hardware_candidate(b, &caps) && probe_hardware(&ffmpeg, b, &device);
@@ -867,6 +964,7 @@ pub fn report(caps: &Capabilities) -> lain_api::TranscodeCapabilities {
         encoders: if enc.is_empty() { None } else { Some(enc) },
         tone_mapping: caps.tone_map,
         tone_mapping_bt2390: caps.tone_map_2390,
+        video_effects: caps.effects,
         hardware: caps.hardware.clone(),
     }
 }
@@ -947,6 +1045,85 @@ mod tests {
         assert_eq!((p.encoder.as_str(), p.crf, p.preset.as_str()), ("libx264", 23, "veryfast"));
         assert!(p.reasons.contains(&"video codec (hevc)".to_string()));
         assert!(p.reasons.contains(&"audio codec (flac)".to_string()));
+    }
+
+    #[test]
+    fn copies_hevc_for_a_client_that_decodes_it() {
+        let mut rq = req();
+        rq.video_copy_codecs = vec!["hevc".into()];
+        let ten = report(vec![vs("hevc", "yuv420p10le", 1920, 1080), aus(1, "aac", 2)]);
+        let p = plan_v3(&spec("/m/a.mkv"), &rq, &caps_full(), &ten).unwrap();
+        assert!(p.copy_video && p.copy_audio && p.encoder.is_empty());
+        assert_eq!((p.method.as_str(), p.video_codec.as_str()), ("remux", "hevc"));
+        assert_eq!(p.reasons, vec!["container (mkv)".to_string()]);
+
+        // The claim licenses nothing else: an H.264 source still copies as
+        // H.264, 4:4:4 and HDR are still encoded, and so is a downscale.
+        let h264 = report(vec![vs("h264", "yuv420p", 1280, 720), aus(1, "aac", 2)]);
+        let p = plan_v3(&spec("/m/a.mkv"), &rq, &caps_full(), &h264).unwrap();
+        assert!(p.copy_video && p.video_codec == "h264");
+        let wide = report(vec![vs("hevc", "yuv444p", 1920, 1080)]);
+        assert!(!plan_v3(&spec("/m/a.mkv"), &rq, &caps_full(), &wide).unwrap().copy_video);
+        let mut hdr = vs("hevc", "yuv420p10le", 1920, 1080);
+        hdr.color_transfer = "smpte2084".into();
+        let p = plan_v3(&spec("/m/a.mkv"), &rq, &caps_full(), &report(vec![hdr])).unwrap();
+        assert!(!p.copy_video && p.video_codec == "h264");
+        let mut small = rq.clone();
+        small.quality = "720p".into();
+        assert!(!plan_v3(&spec("/m/a.mkv"), &small, &caps_full(), &ten).unwrap().copy_video);
+
+        // Refused by the client's own flag, and by the MPEG-TS container.
+        let mut no_copy = rq.clone();
+        no_copy.allow_video_stream_copy = Some(false);
+        assert!(!plan_v3(&spec("/m/a.mkv"), &no_copy, &caps_full(), &ten).unwrap().copy_video);
+        let mut ts = rq.clone();
+        ts.settings.hls_segment_container = st::HLS_TS.into();
+        assert!(!plan_v3(&spec("/m/a.mkv"), &ts, &caps_full(), &ten).unwrap().copy_video);
+        ts.delivery = "progressive".into();
+        assert!(plan_v3(&spec("/m/a.mkv"), &ts, &caps_full(), &ten).unwrap().copy_video);
+    }
+
+    #[test]
+    fn renders_a_video_effect_on_the_server() {
+        let mut caps = caps_full();
+        caps.effects = true;
+        let mut rq = req();
+        rq.video_effect = "anime4k-a".into();
+        let src = report(vec![vs("h264", "yuv420p", 1280, 720), aus(1, "aac", 2)]);
+        let p = plan_v3(&spec("/m/a.mkv"), &rq, &caps, &src).unwrap();
+        // A copyable source is encoded: the effect is the reason.
+        assert!(!p.copy_video && p.copy_audio && p.effect == "anime4k-a");
+        assert_eq!((p.width, p.height), (1920, 1080));
+        assert_eq!(p.filters, vec!["libplacebo=custom_shader_path=__EFFECT_FILE__:w=1920:h=1080:format=yuv420p"]);
+        assert!(p.reasons.contains(&"video effect (anime4k-a)".to_string()));
+
+        // A quality box bounds the output; burned text is drawn after it.
+        let mut q = rq.clone();
+        q.quality = "720p".into();
+        q.subtitle_stream = Some(2);
+        q.subtitle_mode = "burn".into();
+        let subbed = report(vec![vs("h264", "yuv420p", 1920, 1080), aus(1, "aac", 2), sub(2, "ass")]);
+        let p = plan_v3(&spec("/m/a.mkv"), &q, &caps, &subbed).unwrap();
+        assert_eq!((p.width, p.height), (1280, 720));
+        assert!(p.filters[0].starts_with("libplacebo=") && p.filters[1].starts_with("subtitles="), "{:?}", p.filters);
+
+        // A server or a source that cannot render it still plays.
+        let p = plan_v3(&spec("/m/a.mkv"), &rq, &caps_full(), &src).unwrap();
+        assert!(p.effect.is_empty() && p.copy_video && p.fallback.contains("unavailable on this server"));
+        assert_eq!((p.width, p.height), (1280, 720));
+        let mut hdr = vs("hevc", "yuv420p10le", 1920, 1080);
+        hdr.color_transfer = "smpte2084".into();
+        let p = plan_v3(&spec("/m/a.mkv"), &rq, &caps, &report(vec![hdr])).unwrap();
+        assert!(p.effect.is_empty() && p.fallback.contains("HDR"));
+        let mut va = rq.clone();
+        va.settings.hardware_acceleration = st::HW_VAAPI.into();
+        va.settings.hardware_encode = true;
+        caps.hardware.insert(st::HW_VAAPI.into(), true);
+        let p = plan_v3(&spec("/m/a.mkv"), &va, &caps, &src).unwrap();
+        assert!(p.effect.is_empty() && p.fallback.contains("VA-API") && (p.width, p.height) == (1280, 720));
+
+        rq.video_effect = "sepia".into();
+        assert_eq!(plan_v3(&spec("/m/a.mkv"), &rq, &caps, &src).unwrap_err().code, "invalid-message");
     }
 
     #[test]

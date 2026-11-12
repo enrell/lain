@@ -37,8 +37,23 @@ pub struct LibraryDone {
     pub commit: CommitScanOutput,
 }
 
-/// Called after each library's commit (in-process observers only).
-pub type Progress = Arc<dyn Fn(&LibraryDone) + Send + Sync>;
+/// One step of a running scan, in the order a library goes through
+/// them. Roots walk in parallel, so steps of different libraries
+/// interleave.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Step<'a> {
+    /// A root was listed (or could not be): `files` candidates found.
+    Walked { files: i64 },
+    /// One candidate went through the identifiers.
+    Identified,
+    /// Every root is read; the commits start.
+    Committing,
+    /// One library's commit landed (or failed).
+    Library(&'a LibraryDone),
+}
+
+/// Called at each step (in-process observers only).
+pub type Progress = Arc<dyn Fn(Step<'_>) + Send + Sync>;
 
 /// The provider. It reaches the registry through a weak reference: the
 /// registry owns it.
@@ -61,10 +76,17 @@ impl Runner {
             ..ScanStats::default()
         };
         let r: &Registry = &reg;
+        let step = |s: Step<'_>| {
+            if let Some(p) = &self.progress {
+                p(s);
+            }
+        };
+        let step = &step;
         let results: Vec<RootResult> = std::thread::scope(|s| {
-            let handles: Vec<_> = input.libraries.iter().map(|lib| s.spawn(move || scan_root(r, lib))).collect();
+            let handles: Vec<_> = input.libraries.iter().map(|lib| s.spawn(move || scan_root(r, lib, step))).collect();
             handles.into_iter().map(|h| h.join().unwrap_or_default()).collect()
         });
+        step(Step::Committing);
         for (res, lib) in results.iter().zip(&input.libraries) {
             stats.candidates += res.candidates;
             stats.identified += res.identified;
@@ -118,9 +140,14 @@ impl Runner {
                     stats.errors += 1;
                 }
             }
-            if let Some(p) = &self.progress {
-                p(&done);
-            }
+            tracing::info!(
+                library = %lib.id,
+                candidates = done.candidates,
+                identified = done.identified,
+                committed = done.committed,
+                "library scanned"
+            );
+            step(Step::Library(&done));
         }
         stats.unidentified = stats.candidates - stats.identified;
         stats.finished_at = lain_core::now_unix();
@@ -153,21 +180,14 @@ fn rel_path(lib: &Library, path: &str) -> String {
     }
 }
 
-fn scan_root(reg: &Registry, lib: &Library) -> RootResult {
+fn scan_root(reg: &Registry, lib: &Library, step: &(dyn Fn(Step<'_>) + Sync)) -> RootResult {
     let mut res = RootResult::default();
-    let input = EnumerateInput { root: lib.path.clone(), library_id: lib.id.clone(), kind: lib.kind.clone() };
-    let out = match reg.call_one(CAP_SOURCE_ENUMERATE, "enumerate", json!(input)) {
-        Ok((out, _)) => out,
-        Err(e) => {
-            tracing::warn!(library = %lib.id, err = %e, "library root not walked");
-            res.errors += 1;
-            return res; // root gone: nothing may be marked missing
-        }
-    };
-    let Ok(out) = serde_json::from_value::<EnumerateOutput>(out) else {
-        res.errors += 1;
-        return res;
-    };
+    // A root that was not walked still reports, so the walked count
+    // always reaches the library count.
+    let out = enumerate_root(reg, lib, &mut res);
+    step(Step::Walked { files: out.as_ref().map_or(0, |o| o.candidates.len() as i64) });
+    let Some(out) = out else { return res };
+    tracing::info!(library = %lib.id, files = out.candidates.len(), dirs = out.stats.dirs, "library walked");
     res.dirs = out.stats.dirs;
     res.walk_errors = out.stats.walk_errors;
     res.accessible = out.stats.accessible;
@@ -193,8 +213,29 @@ fn scan_root(reg: &Registry, lib: &Library) -> RootResult {
         }
         entry.candidate = c;
         res.entries.push(entry);
+        step(Step::Identified);
     }
+    crate::siblings::number_siblings(&mut res.entries);
     res
+}
+
+/// The root's listing; `None` (counted in `res.errors`) when it could
+/// not be walked: nothing may be marked missing then.
+fn enumerate_root(reg: &Registry, lib: &Library, res: &mut RootResult) -> Option<EnumerateOutput> {
+    let input = EnumerateInput { root: lib.path.clone(), library_id: lib.id.clone(), kind: lib.kind.clone() };
+    let out = match reg.call_one(CAP_SOURCE_ENUMERATE, "enumerate", json!(input)) {
+        Ok((out, _)) => out,
+        Err(e) => {
+            tracing::warn!(library = %lib.id, err = %e, "library root not walked");
+            res.errors += 1;
+            return None;
+        }
+    };
+    let out = serde_json::from_value::<EnumerateOutput>(out).ok();
+    if out.is_none() {
+        res.errors += 1;
+    }
+    out
 }
 
 impl Provider for Runner {

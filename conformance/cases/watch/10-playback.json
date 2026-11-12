@@ -50,7 +50,7 @@
     {"name": "the player's quality menu", "requires": ["w_alpha"], "steps": [
       {"req": {"method": "GET", "path": "/api/playback/options", "auth": "w_bob"},
        "expect": {"status": 200, "body": {"default_delivery": "hls", "deliveries": ["hls", "progressive"],
-         "qualities": {"$contains": [{"name": "1080p", "max_width": 1920, "max_height": 1080, "bitrate_kbps": 8000}], "$len": 5}}}},
+         "qualities": {"$contains": [{"name": "1080p", "max_width": 1920, "max_height": 1080, "bitrate_kbps": 8000}], "$len": 5}, "effects": "$array"}}},
       {"req": {"method": "GET", "path": "/api/playback/options"}, "expect": {"status": 401}}
     ]}
   ]

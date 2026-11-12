@@ -48,6 +48,8 @@ conformance suite it was checked against stays as the API spec.
     (`lain.ui.theme@1`), backups (`lain.backup.create@1`, tar of a
     consistent store snapshot), integration settings and avatars.
   - `lain-server` — the axum gateway, `/api/modules`, `/api/events`,
+    integrations (API keys other programs feed a library with,
+    D-265..D-267),
     service mode, catalog `export`/`import` (`lain.catalog-export@3`)
     and the web SPA's static serving (`webui.rs`, D-235), on the
     canonical data dir (`lain`) and port 9360 (D-178). A library: the
@@ -68,7 +70,8 @@ conformance suite it was checked against stays as the API spec.
     pipeline, the `commit_scan` plan (moves D-019, missing D-068,
     locations D-157/D-186), the library watcher on `notify`, the scan
     controller and the folder picker.
-  - `lain-metadata` — the metadata module: enrich, the NFO provider,
+  - `lain-metadata` — the metadata module: enrich (local-only for
+    private libraries, D-268), the NFO provider,
     the network providers (Kitsu, AniList, Jikan, TVMaze, in-process,
     D-201), the merge and the overlay and cache tables.
   - `lain-subtitle` — sidecar discovery, naming and the moviehash,

@@ -11,10 +11,10 @@ use std::time::Duration;
 
 use serde_json::json;
 
-use lain_api::{Library, ScanStats, ScanStatus};
+use lain_api::{Library, ScanProgress, ScanStats, ScanStatus};
 use lain_core::Registry;
 
-use crate::scan::{CAP_INGEST_SCAN, LibraryDone, ScanInput};
+use crate::scan::{CAP_INGEST_SCAN, LibraryDone, ScanInput, Step};
 use crate::watch::{CAP_SOURCE_WATCH, PollInput, PollOutput, WatchLibrary};
 
 pub const CAP_METADATA_ENRICH: &str = "lain.metadata.enrich@1";
@@ -28,17 +28,27 @@ pub const WATCH_POLL: Duration = Duration::from_millis(500);
 pub enum ScanEvent {
     Started { trigger: String, libraries: i64 },
     Library { done: LibraryDone, libraries: i64, libraries_done: i64, trigger: String },
-    Finished(ScanStatus),
+    Finished(Box<ScanStatus>),
 }
 
 pub type Sink = Arc<dyn Fn(ScanEvent) + Send + Sync>;
 pub type LibrarySource = Arc<dyn Fn() -> Vec<Library> + Send + Sync>;
 
+/// The running scan's `status.progress` is its live position; a
+/// finished scan has none.
 #[derive(Default)]
 struct Run {
     status: ScanStatus,
-    libraries: i64,
-    libraries_done: i64,
+}
+
+/// Phases only move forward: roots walk in parallel, so a late walk
+/// must not pull a scan that is already identifying back to `walk`.
+fn advance(p: &mut ScanProgress, phase: &str) {
+    const ORDER: [&str; 4] = ["walk", "identify", "commit", "enrich"];
+    let rank = |s: &str| ORDER.iter().position(|o| *o == s);
+    if rank(phase) > rank(&p.phase) {
+        p.phase = phase.into();
+    }
 }
 
 pub struct Scanner {
@@ -56,10 +66,7 @@ impl Scanner {
         Arc::new(Scanner {
             registry: Arc::downgrade(registry),
             libraries,
-            run: Mutex::new(Run {
-                status: ScanStatus { state: "idle".into(), ..ScanStatus::default() },
-                ..Run::default()
-            }),
+            run: Mutex::new(Run { status: ScanStatus { state: "idle".into(), ..ScanStatus::default() } }),
             sink: RwLock::new(None),
             auto_enrich: AtomicBool::new(auto_enrich),
             stopping: Arc::new(AtomicBool::new(false)),
@@ -94,14 +101,49 @@ impl Scanner {
         self.lock().status.state == "running"
     }
 
-    /// The ingest runner's per-library hook.
-    pub fn library_done(&self, done: &LibraryDone) {
-        let (libraries, libraries_done, trigger) = {
+    /// The ingest runner's hook: every step moves `status.progress`,
+    /// a committed library is also an event.
+    pub fn step(&self, step: Step<'_>) {
+        let done: Option<(&LibraryDone, i64, i64, String)> = {
             let mut r = self.lock();
-            r.libraries_done += 1;
-            (r.libraries, r.libraries_done, r.status.trigger.clone())
+            let trigger = r.status.trigger.clone();
+            let Some(p) = r.status.progress.as_mut() else { return };
+            match step {
+                Step::Walked { files } => {
+                    p.libraries_walked += 1;
+                    p.files += files;
+                    advance(p, "identify");
+                    None
+                }
+                Step::Identified => {
+                    p.files_done += 1;
+                    None
+                }
+                Step::Committing => {
+                    advance(p, "commit");
+                    None
+                }
+                Step::Library(done) => {
+                    p.libraries_done += 1;
+                    Some((done, p.libraries, p.libraries_done, trigger))
+                }
+            }
         };
-        self.emit(ScanEvent::Library { done: done.clone(), libraries, libraries_done, trigger });
+        if let Some((done, libraries, libraries_done, trigger)) = done {
+            self.emit(ScanEvent::Library { done: done.clone(), libraries, libraries_done, trigger });
+        }
+    }
+
+    /// The enricher's backfill hook: `done` of `total` items. Heard
+    /// only in the scan's own enrich phase, so a backfill someone else
+    /// asked for never moves a scan that is still reading files.
+    pub fn enrich_progress(&self, done: i64, total: i64) {
+        if let Some(p) = self.lock().status.progress.as_mut()
+            && p.phase == "enrich"
+        {
+            p.enrich_done = done;
+            p.enrich_total = total;
+        }
     }
 
     /// Starts a scan of `libs` unless one is running (`false` then).
@@ -115,17 +157,20 @@ impl Scanner {
                 state: "running".into(),
                 started_at: lain_core::now_unix(),
                 trigger: trigger.into(),
+                progress: Some(ScanProgress {
+                    phase: "walk".into(),
+                    libraries: libs.len() as i64,
+                    ..ScanProgress::default()
+                }),
                 ..ScanStatus::default()
             };
-            r.libraries = libs.len() as i64;
-            r.libraries_done = 0;
         }
         self.emit(ScanEvent::Started { trigger: trigger.into(), libraries: libs.len() as i64 });
         let me = self.clone();
         let trigger = trigger.to_string();
         let spawned = std::thread::Builder::new().name("lain-scan".into()).spawn(move || me.run(libs, &trigger));
         if let Err(e) = spawned {
-            self.finish(ScanStatus { state: "error".into(), error: e.to_string(), ..self.status() });
+            self.finish(ScanStatus { state: "error".into(), error: e.to_string(), progress: None, ..self.status() });
         }
         true
     }
@@ -138,7 +183,7 @@ impl Scanner {
 
     fn finish(&self, status: ScanStatus) {
         self.lock().status = status.clone();
-        self.emit(ScanEvent::Finished(status));
+        self.emit(ScanEvent::Finished(Box::new(status)));
     }
 
     fn run(&self, libs: Vec<Library>, trigger: &str) {
@@ -166,6 +211,10 @@ impl Scanner {
         // Enrichment runs with the state still "running" but outside the
         // lock, so status reads never wait behind a long backlog.
         if self.auto_enrich.load(Ordering::SeqCst) {
+            if let Some(p) = self.lock().status.progress.as_mut() {
+                advance(p, "enrich");
+            }
+            tracing::info!(trigger, "scan committed; enriching metadata");
             stats.enriched = match reg.call_one(CAP_METADATA_ENRICH, "backfill", json!({})) {
                 Ok((v, _)) => v["enriched"].as_i64().unwrap_or(0),
                 Err(e) => {

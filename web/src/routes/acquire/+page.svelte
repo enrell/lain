@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { nameable } from '$lib/stores/media-cache.svelte';
 	/*
 	 * Acquire (docs/slices/acquisition.md): search indexers, grab a
 	 * release into a library, watch the queue. Admin only (A-9).
@@ -64,7 +65,10 @@
 
 	onMount(async () => {
 		try {
-			[libraries, indexers] = await Promise.all([api.libraries.list(), api.acquire.indexers().then((r) => r.indexers)]);
+			[libraries, indexers] = await Promise.all([
+				api.libraries.list().then(nameable),
+				api.acquire.indexers().then((r) => r.indexers)
+			]);
 			libraryId = libraries[0]?.id ?? '';
 		} catch (err) {
 			toasts.error(errorMessage(err, t('acquire.loadFailed')));

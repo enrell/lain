@@ -3,6 +3,7 @@
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import { isReadable } from '$lib/reader/kinds';
+	import { recordShape } from '$lib/stores/shapes.svelte';
 	import PlaceholderPoster from './PlaceholderPoster.svelte';
 
 	let {
@@ -44,6 +45,18 @@
 
 <div class={['relative overflow-hidden bg-surface', className].join(' ')}>
 	{#if src}
+		{#if isStill}
+			<!-- Fills the bars of a picture that does not match the frame. -->
+			<img
+				{src}
+				alt=""
+				aria-hidden="true"
+				loading={priority ? 'eager' : 'lazy'}
+				decoding="async"
+				referrerpolicy="no-referrer"
+				class="absolute inset-0 size-full scale-125 object-cover opacity-50 blur-2xl"
+			/>
+		{/if}
 		<img
 			{src}
 			{alt}
@@ -51,7 +64,11 @@
 			decoding="async"
 			fetchpriority={priority ? 'high' : 'auto'}
 			referrerpolicy="no-referrer"
-			class={['size-full', isStill ? 'object-contain' : 'object-cover'].join(' ')}
+			class={['relative size-full', isStill ? 'object-contain' : 'object-cover'].join(' ')}
+			onload={(e) => {
+				const img = e.currentTarget as HTMLImageElement;
+				recordShape(item.id, img.naturalWidth, img.naturalHeight);
+			}}
 			onerror={handleError}
 		/>
 	{:else}

@@ -11,10 +11,10 @@ describe('thumbnail.url', () => {
 		expect(q.get('w')).toBe('320');
 	});
 
-	it('applies composition defaults and omits a missing token', () => {
+	it('leaves the time to the server by default and omits a missing token', () => {
 		const url = thumbnail.url('abc', null);
 		const q = new URLSearchParams(url.split('?')[1]);
-		expect(q.get('t')).toBe('10');
+		expect(q.has('t')).toBe(false);
 		expect(q.get('w')).toBe('480');
 		expect(q.has('token')).toBe(false);
 	});

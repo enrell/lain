@@ -304,6 +304,12 @@ pub fn allow_stream_copy(flag: Option<bool>) -> bool {
     flag != Some(false)
 }
 
+/// The client accepts an HEVC stream as it is (D-273). The list is a
+/// vocabulary of one: values this server does not know are ignored.
+pub fn accepts_hevc_copy(codecs: &[String]) -> bool {
+    codecs.iter().any(|c| c.eq_ignore_ascii_case(VIDEO_HEVC))
+}
+
 pub fn allows_subtitle_extraction(s: &TranscodeSettings) -> bool {
     s.allow_subtitle_extraction != Some(false)
 }
@@ -371,7 +377,7 @@ pub fn profile_key(s: &TranscodeSettings, req: &V3Request) -> String {
         .unwrap_or_default();
     let a = req.audio_stream.map(|n| n.to_string()).unwrap_or_else(|| "default".into());
     let sub = req.subtitle_stream.map(|n| n.to_string()).unwrap_or_else(|| "off".into());
-    let fields = [
+    let mut fields = vec![
         "v3".to_string(),
         delivery,
         req.quality.clone(),
@@ -409,6 +415,13 @@ pub fn profile_key(s: &TranscodeSettings, req: &V3Request) -> String {
         format!("a:{a}"),
         format!("s:{sub}"),
     ];
+    // Appended only when claimed, so every key made before D-273 stays.
+    if accepts_hevc_copy(&req.video_copy_codecs) {
+        fields.push("vcopy:hevc".into());
+    }
+    if !req.video_effect.is_empty() {
+        fields.push(format!("fx:{}", req.video_effect));
+    }
     let h = Sha256::digest(fields.join("|").as_bytes());
     format!("web-mp4-v3-{}", hex(&h[..6]))
 }
@@ -545,6 +558,12 @@ mod tests {
         assert_ne!(profile_key(&ladder, &r720), profile_key(&s, &r720), "ladder values are in the key");
         let sub = V3Request { subtitle_stream: Some(2), ..V3Request::default() };
         assert_ne!(profile_key(&s, &sub), base);
+        let unknown = V3Request { video_copy_codecs: vec!["vvc".into()], ..V3Request::default() };
+        assert_eq!(profile_key(&s, &unknown), base, "an unknown copy codec is ignored");
+        let hevc = V3Request { video_copy_codecs: vec!["HEVC".into()], ..V3Request::default() };
+        assert_ne!(profile_key(&s, &hevc), base);
+        let fx = V3Request { video_effect: "anime4k-a".into(), ..V3Request::default() };
+        assert_ne!(profile_key(&s, &fx), base);
     }
 
     #[test]
