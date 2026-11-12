@@ -2,11 +2,12 @@
 //! TCP stream, one connection per request (a LAN server answers in
 //! milliseconds; pooling can come later without an API change).
 //!
-//! Plain HTTP only for LAN v1. The connection is a boxed [`Io`], so TLS
-//! is one more `connect` arm producing another `Io` (a TLS crate needs
-//! the owner's approval first); an `https` URL parses today and fails
-//! with [`ClientError::Unsupported`] when used.
+//! `https` servers are reached through `lain-http`'s rustls setup
+//! (D-277): the webpki-roots trust anchors, plus the roots given to
+//! [`trust_roots`] for a private CA or a self-signed certificate. A
+//! failed handshake is [`ClientError::Tls`].
 
+use std::sync::Mutex;
 use std::time::Duration;
 
 use http_body_util::{BodyExt, Full};
@@ -17,7 +18,8 @@ use hyper_util::rt::TokioIo;
 
 use crate::error::ClientError;
 
-/// lain's default port (D-178), used when a URL has no scheme or port.
+/// lain's default port (D-178), used when a local address is typed with
+/// no scheme or port (D-277).
 pub const DEFAULT_PORT: u16 = 9360;
 
 /// A parsed server address.
@@ -33,19 +35,21 @@ pub struct ServerUrl {
 
 impl ServerUrl {
     /// Parses `http://host[:port][/base]`, `https://...`, or a bare
-    /// `host[:port]`, which means `http` on port 9360. IPv6 hosts go in
-    /// brackets (`http://[::1]:9360`).
+    /// `host[:port][/base]`, whose scheme [`local_host`] picks (D-277):
+    /// `http` on port 9360 for a local address, `https` on port 443 for
+    /// any other. IPv6 hosts go in brackets (`http://[::1]:9360`).
     pub fn parse(raw: &str) -> Result<ServerUrl, ClientError> {
         let invalid = |m: &str| ClientError::Invalid { message: format!("server url {raw:?}: {m}") };
         let raw = raw.trim();
-        let (tls, rest, default_port) = if let Some(r) = raw.strip_prefix("http://") {
-            (false, r, 80)
+        // `None`: no scheme typed; the host decides below.
+        let (tls, rest) = if let Some(r) = raw.strip_prefix("http://") {
+            (Some(false), r)
         } else if let Some(r) = raw.strip_prefix("https://") {
-            (true, r, 443)
+            (Some(true), r)
         } else if raw.contains("://") {
             return Err(invalid("only http and https are supported"));
         } else {
-            (false, raw, DEFAULT_PORT)
+            (None, raw)
         };
         let (authority, path) = match rest.find('/') {
             Some(i) => (&rest[..i], &rest[i..]),
@@ -57,14 +61,14 @@ impl ServerUrl {
         let (host, port) = if let Some(v6) = authority.strip_prefix('[') {
             let (h, after) = v6.split_once(']').ok_or_else(|| invalid("unclosed ["))?;
             match after.strip_prefix(':') {
-                Some(p) => (h.to_string(), p.parse().map_err(|_| invalid("bad port"))?),
-                None if after.is_empty() => (h.to_string(), default_port),
+                Some(p) => (h.to_string(), Some(p.parse().map_err(|_| invalid("bad port"))?)),
+                None if after.is_empty() => (h.to_string(), None),
                 None => return Err(invalid("bad host")),
             }
         } else {
             match authority.rsplit_once(':') {
-                Some((h, p)) => (h.to_string(), p.parse().map_err(|_| invalid("bad port"))?),
-                None => (authority.to_string(), default_port),
+                Some((h, p)) => (h.to_string(), Some(p.parse().map_err(|_| invalid("bad port"))?)),
+                None => (authority.to_string(), None),
             }
         };
         if host.is_empty() || host.chars().any(|c| c.is_whitespace() || c == '?' || c == '#') {
@@ -73,7 +77,13 @@ impl ServerUrl {
         if path.contains(['?', '#']) {
             return Err(invalid("no query or fragment"));
         }
-        Ok(ServerUrl { tls, host, port, base: path.trim_end_matches('/').to_string() })
+        let (tls, default_port) = match tls {
+            Some(false) => (false, 80),
+            Some(true) => (true, 443),
+            None if local_host(&host) => (false, DEFAULT_PORT),
+            None => (true, 443),
+        };
+        Ok(ServerUrl { tls, host, port: port.unwrap_or(default_port), base: path.trim_end_matches('/').to_string() })
     }
 
     /// The canonical form, which also keys local state (tokens, the
@@ -96,6 +106,47 @@ impl std::fmt::Display for ServerUrl {
     }
 }
 
+/// Whether a server typed without a scheme is plain `http` (D-277). A
+/// lain server speaks plain HTTP itself and TLS comes from a reverse
+/// proxy, so a server on the LAN or a tailnet has no certificate, while
+/// one reached by a public name sits behind TLS. The answer looks only
+/// at what was typed (no DNS lookup), and an `https` that fails is
+/// never retried as `http`, so a public host is not silently downgraded.
+///
+/// Local, so `http`:
+/// - IPv4 loopback, private (RFC 1918), link-local, unspecified and
+///   shared (100.64.0.0/10, where a tailnet's addresses live);
+/// - IPv6 loopback, unspecified, unique local (fc00::/7) and link-local
+///   (fe80::/10), and IPv4-mapped local addresses;
+/// - a name of one label (`nas`, `localhost`), or one ending in `.local`
+///   (mDNS), `.lan`, `.home.arpa` (RFC 8375), `.internal` or
+///   `.localhost`.
+///
+/// Anything else, a public address or another dotted name, is `https`.
+pub fn local_host(host: &str) -> bool {
+    use std::net::{IpAddr, Ipv4Addr};
+    let v4 = |ip: Ipv4Addr| {
+        let [a, b, ..] = ip.octets();
+        ip.is_loopback()
+            || ip.is_private()
+            || ip.is_link_local()
+            || ip.is_unspecified()
+            || (a == 100 && (64..128).contains(&b))
+    };
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(ip)) => v4(ip),
+        Ok(IpAddr::V6(ip)) => match ip.to_ipv4_mapped() {
+            Some(mapped) => v4(mapped),
+            None => ip.is_loopback() || ip.is_unspecified() || ip.is_unique_local() || ip.is_unicast_link_local(),
+        },
+        Err(_) => {
+            let name = host.trim_end_matches('.').to_ascii_lowercase();
+            !name.contains('.')
+                || [".local", ".lan", ".home.arpa", ".internal", ".localhost"].iter().any(|s| name.ends_with(s))
+        }
+    }
+}
+
 /// Percent-encodes one path segment or query component.
 pub fn encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -108,18 +159,66 @@ pub fn encode(s: &str) -> String {
     out
 }
 
-/// A byte stream hyper can drive: TCP today, TLS later.
+/// A byte stream hyper can drive: TCP, or TLS over it.
 pub(crate) trait Io: hyper::rt::Read + hyper::rt::Write + Unpin + Send {}
 impl<T: hyper::rt::Read + hyper::rt::Write + Unpin + Send> Io for T {}
 
-async fn connect(url: &ServerUrl) -> Result<Box<dyn Io>, ClientError> {
-    if url.tls {
-        return Err(ClientError::Unsupported { message: "https needs TLS, which this build does not have yet".into() });
+/// The longest wait for a TLS handshake.
+const TLS_HANDSHAKE: Duration = Duration::from_secs(10);
+
+/// The process-wide TLS setup: the extra roots, and the connector built
+/// from them on first use.
+struct Trust {
+    roots: Vec<Vec<u8>>,
+    connector: Option<lain_http::tls::Connector>,
+}
+
+static TRUST: Mutex<Trust> = Mutex::new(Trust { roots: Vec::new(), connector: None });
+
+fn tls_error(e: lain_http::Error) -> ClientError {
+    match e.kind {
+        lain_http::ErrorKind::Timeout => ClientError::Timeout,
+        _ => ClientError::Tls { message: e.to_string() },
     }
+}
+
+/// Trusts more root certificates (DER, X.509) for `https` servers, on
+/// top of the public roots compiled in: a private CA, or a server's
+/// self-signed certificate. Process-wide, for every client made before
+/// or after; a certificate that does not parse changes nothing.
+pub fn trust_roots(der: Vec<Vec<u8>>) -> Result<(), ClientError> {
+    let mut t = TRUST.lock().unwrap_or_else(|e| e.into_inner());
+    let mut roots = t.roots.clone();
+    for d in der {
+        if !roots.contains(&d) {
+            roots.push(d);
+        }
+    }
+    let connector = lain_http::tls::Connector::new(&roots)
+        .map_err(|e| ClientError::Invalid { message: format!("root certificate: {e}") })?;
+    *t = Trust { roots, connector: Some(connector) };
+    Ok(())
+}
+
+fn connector() -> Result<lain_http::tls::Connector, ClientError> {
+    let mut t = TRUST.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(c) = &t.connector {
+        return Ok(c.clone());
+    }
+    let c = lain_http::tls::Connector::new(&t.roots).map_err(tls_error)?;
+    t.connector = Some(c.clone());
+    Ok(c)
+}
+
+async fn connect(url: &ServerUrl) -> Result<Box<dyn Io>, ClientError> {
     let tcp = tokio::net::TcpStream::connect((url.host.as_str(), url.port))
         .await
         .map_err(|e| ClientError::Offline { message: format!("{}: {e}", url.authority()) })?;
     let _ = tcp.set_nodelay(true);
+    if url.tls {
+        let stream = connector()?.connect(&url.host, tcp, TLS_HANDSHAKE).await.map_err(tls_error)?;
+        return Ok(Box::new(TokioIo::new(stream)));
+    }
     Ok(Box::new(TokioIo::new(tcp)))
 }
 
@@ -212,6 +311,55 @@ pub(crate) async fn next_chunk(body: &mut Incoming) -> Result<Option<Bytes>, Cli
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// D-277: an address typed without a scheme is `http` on 9360 when
+    /// it is local, `https` on 443 otherwise; a typed scheme always wins.
+    #[test]
+    fn a_bare_address_picks_its_scheme_by_host() {
+        let canon = |raw: &str| ServerUrl::parse(raw).unwrap().canonical();
+        for (raw, want) in [
+            // The owner's LAN server and the emulator's host.
+            ("192.168.0.10:9360", "http://192.168.0.10:9360"),
+            ("10.0.2.2:9369", "http://10.0.2.2:9369"),
+            ("192.168.0.10", "http://192.168.0.10:9360"),
+            ("172.16.4.2", "http://172.16.4.2:9360"),
+            ("172.31.255.1:80", "http://172.31.255.1:80"),
+            ("127.0.0.1:9360", "http://127.0.0.1:9360"),
+            ("169.254.10.1", "http://169.254.10.1:9360"),
+            ("100.101.102.103", "http://100.101.102.103:9360"),
+            ("0.0.0.0:9360", "http://0.0.0.0:9360"),
+            ("[::1]:9360", "http://[::1]:9360"),
+            ("[fd12:3456::7]", "http://[fd12:3456::7]:9360"),
+            ("[fe80::1]:9360", "http://[fe80::1]:9360"),
+            ("[::ffff:192.168.1.2]", "http://[::ffff:192.168.1.2]:9360"),
+            ("localhost:9360", "http://localhost:9360"),
+            ("nas", "http://nas:9360"),
+            ("lain.local", "http://lain.local:9360"),
+            ("Media.LAN:9360/lain/", "http://Media.LAN:9360/lain"),
+            ("box.home.arpa", "http://box.home.arpa:9360"),
+            ("lain.internal", "http://lain.internal:9360"),
+            ("dev.localhost", "http://dev.localhost:9360"),
+            // Public names and addresses: TLS, the reverse proxy's port.
+            ("lain.example.org", "https://lain.example.org:443"),
+            ("lain.example.org:8443/media", "https://lain.example.org:8443/media"),
+            ("home.tailnet-example.ts.net", "https://home.tailnet-example.ts.net:443"),
+            ("8.8.8.8", "https://8.8.8.8:443"),
+            ("172.32.0.1", "https://172.32.0.1:443"),
+            ("100.128.0.1", "https://100.128.0.1:443"),
+            ("192.169.0.1", "https://192.169.0.1:443"),
+            ("[2001:db8::1]", "https://[2001:db8::1]:443"),
+            ("[::ffff:8.8.8.8]", "https://[::ffff:8.8.8.8]:443"),
+            ("local.example.org", "https://local.example.org:443"),
+            ("example.lan.org", "https://example.lan.org:443"),
+            // A typed scheme is never second-guessed, either way.
+            ("http://lain.example.org", "http://lain.example.org:80"),
+            ("https://192.168.0.10:9360", "https://192.168.0.10:9360"),
+        ] {
+            assert_eq!(canon(raw), want, "{raw}");
+        }
+        assert!(local_host("lain.local.") && local_host("fe80::1%wlan0"));
+        assert!(!local_host("lain.example.org."));
+    }
 
     #[test]
     fn urls_parse() {

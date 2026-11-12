@@ -10,6 +10,7 @@ import io.github.enrell.lain.ui.Phase
 import io.github.enrell.lain.ui.PlayerModel
 import io.github.enrell.lain.ui.ReaderModel
 import io.github.enrell.lain.ui.Screen
+import io.github.enrell.lain.ui.offline
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -45,7 +46,12 @@ class ModelsTest {
         vm.start(null)
         assertEquals(Phase.Connect, vm.state.value.phase)
 
+        // Typed without a scheme, the address goes to the core as is: the core picks it (D-277).
+        vm.connect(" lain.example.org ")
+        assertEquals("lain.example.org", core.setServerRaw)
+        assertEquals("https://lain.example.org", remembered)
         vm.connect("192.168.1.10:9360/")
+        assertEquals("192.168.1.10:9360/", core.setServerRaw)
         assertEquals(Phase.Login, vm.state.value.phase)
         assertEquals("http://192.168.1.10:9360", remembered)
 
@@ -89,6 +95,15 @@ class ModelsTest {
         assertTrue(vm.state.value.online)
         assertFalse(vm.state.value.fromCache)
         core.stopEvents()
+    }
+
+    @Test
+    fun aFailedTlsHandshakeCountsAsUnreachable() {
+        // The core's rule (D-277): the top bar says offline, as it does for a refused connection.
+        assertTrue(offline(LainException.Tls("unknown issuer")))
+        assertTrue(offline(LainException.Offline("connection refused")))
+        assertTrue(offline(LainException.Timeout()))
+        assertFalse(offline(LainException.Unsupported("x")))
     }
 
     @Test

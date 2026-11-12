@@ -36,16 +36,20 @@ import io.github.enrell.lain.ui.AppState
 import io.github.enrell.lain.ui.AppViewModel
 import io.github.enrell.lain.ui.theme.LocalLain
 
-/** Server URL (manual discovery, D-179). */
+/**
+ * Server URL (manual discovery, D-179). It starts empty, not at a scheme:
+ * an address typed without one is `http` on the LAN and `https` anywhere
+ * else, the core's rule (D-277), and a prefilled scheme would overrule it.
+ */
 @Composable
 fun ConnectScreen(state: AppState, vm: AppViewModel) {
-    var url by rememberSaveable { mutableStateOf(state.server.ifEmpty { "http://" }) }
+    var url by rememberSaveable { mutableStateOf(state.server) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Door(stringResource(R.string.connect_title), stringResource(R.string.connect_hint)) {
         Field(
             url, { url = it }, stringResource(R.string.connect_url), Modifier.fillMaxWidth(),
-            placeholder = "http://192.168.1.10:9360", keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, onIme = { vm.connect(url) }, focus = focus,
+            placeholder = "192.168.1.10:9360", keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, onIme = { vm.connect(url) }, focus = focus,
         )
         ErrorLine(state.error)
         WButton(stringResource(if (state.busy) R.string.working else R.string.connect_go), { vm.connect(url) }, Modifier.fillMaxWidth(), large = true, enabled = !state.busy)

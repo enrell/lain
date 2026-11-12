@@ -21,10 +21,11 @@
 //! callers (registry providers run on blocking threads) through
 //! [`Request::send_blocking`] and async callers through
 //! [`Request::send`] alike. It holds no server types, so `lain-client`
-//! can use it for TLS to remote servers too.
+//! uses its TLS setup ([`tls::Connector`]) for `https` servers (D-277).
 
 mod conn;
 mod pace;
+pub mod tls;
 pub mod url;
 
 use std::sync::Arc;

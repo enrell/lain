@@ -115,8 +115,10 @@ conformance suite it was checked against stays as the API spec.
     (DESIGN-v2 §8.1, D-179): the typed API, sessions (`TokenStore`),
     discovery (`Discovery`), the offline store (D-094's limits and LRU
     eviction, on redb), progress sync with an offline queue and conflict
-    rules (`sync.rs`), and the event stream. No GUI code; the public
-    surface stays UniFFI-friendly (owned types, object-safe traits).
+    rules (`sync.rs`), the event stream, and `https` servers through
+    `lain-http`'s rustls setup (`trust_roots` for a private CA, D-277).
+    No GUI code; the public surface stays UniFFI-friendly (owned types,
+    object-safe traits).
   - `lain-probe` — ffprobe as an external process (D-190): one
     `-show_format -show_streams` run parsed into bounded stream facts
     (`RawReport`, the wire's `MediaInfo`), plus the deadline-bounded
@@ -244,7 +246,7 @@ the server or the app): `wit-bindgen` (=0.63.0, `macros`, `realloc`,
 `std`) for the `lain:extension` world. Extensions and the probe guest
 build for `wasm32-wasip2`; spec in `docs/MODDING.md`.
 
-## Android app (`apps/android`, P5, D-245..D-254)
+## Android app (`apps/android`, P5, D-245..D-254, D-277, D-278)
 
 Kotlin + Jetpack Compose + Media3 on `lain-client`. Two builds:
 

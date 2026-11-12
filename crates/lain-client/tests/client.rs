@@ -1286,3 +1286,68 @@ async fn acquire_and_downloads() {
     drop(server);
     std::fs::remove_dir_all(root).ok();
 }
+
+/// One file of `lain-http`'s committed test CA (`tests/tls/`: a root
+/// and a certificate for `localhost` and 127.0.0.1, valid until 2126).
+fn tls_file(name: &str) -> Vec<u8> {
+    std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../lain-http/tests/tls").join(name)).unwrap()
+}
+
+/// Terminates TLS with the test certificate in front of `target` and
+/// returns its `https://localhost:<port>` address.
+async fn tls_front(target: std::net::SocketAddr) -> String {
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+    let cfg = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![CertificateDer::from(tls_file("server.der"))],
+            PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(tls_file("server.key.der"))),
+        )
+        .unwrap();
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(cfg));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("https://localhost:{}", listener.local_addr().unwrap().port());
+    tokio::spawn(async move {
+        while let Ok((down, _)) = listener.accept().await {
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move {
+                let Ok(mut down) = acceptor.accept(down).await else { return };
+                let Ok(mut up) = tokio::net::TcpStream::connect(target).await else { return };
+                let _ = tokio::io::copy_bidirectional(&mut down, &mut up).await;
+            });
+        }
+    });
+    url
+}
+
+/// `https` (D-277): a certificate from an unknown CA is refused as
+/// `Tls`, which counts as unreachable; once its root is trusted the
+/// same client logs in and reads through TLS. A port that does not
+/// speak TLS is `Tls` too, never a hang.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn https_with_a_trusted_root() {
+    let root = temp("https");
+    let server = Server::start(&root.join("data")).await;
+    let url = tls_front(server.addr).await;
+    let c = client(&url);
+    assert_eq!(c.server(), url);
+
+    let e = c.health().await.unwrap_err();
+    assert!(matches!(e, ClientError::Tls { .. }) && e.is_offline(), "{e:?}");
+
+    assert!(matches!(lain_client::trust_roots(vec![b"not a certificate".to_vec()]), Err(ClientError::Invalid { .. })));
+    assert!(matches!(c.health().await.unwrap_err(), ClientError::Tls { .. }));
+
+    lain_client::trust_roots(vec![tls_file("ca.der")]).unwrap();
+    assert_eq!(c.health().await.unwrap().status, "ok");
+    c.setup("admin", &pw(0)).await.unwrap();
+    assert_eq!(c.login("admin", &pw(0)).await.unwrap().username, "admin");
+    assert_eq!(c.session().unwrap().server, url);
+    assert_eq!(c.me().await.unwrap().username, "admin");
+    assert!(c.libraries().await.unwrap().is_empty());
+
+    let plain = client(&format!("https://localhost:{}", server.addr.port()));
+    assert!(matches!(plain.health().await.unwrap_err(), ClientError::Tls { .. }));
+}

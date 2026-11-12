@@ -7,6 +7,29 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Release identity (D-278), all from the environment so nothing secret
+// is ever in the tree: the version from the release tag, and the signing
+// key from a keystore file. Without a keystore the release APK is signed
+// with the debug key, so a local build still installs over a debug one.
+fun env(name: String): String? = providers.environmentVariable(name).orNull?.takeIf { it.isNotBlank() }
+val releaseKeystore = env("LAIN_ANDROID_KEYSTORE")
+
+// `LAIN_VERSION` is the release tag (`v0.3.1`); the version code follows
+// from it as MAJOR * 1_000_000 + MINOR * 1_000 + PATCH (3001), so it is the
+// same for every build of a tag and grows with every release. A suffix
+// (`-rc.1`) does not count. `LAIN_ANDROID_VERSION_CODE` overrides it.
+val lainVersion = env("LAIN_VERSION")?.removePrefix("v") ?: "0.3.0"
+val lainVersionCode = env("LAIN_ANDROID_VERSION_CODE")?.let {
+    it.toIntOrNull() ?: throw GradleException("LAIN_ANDROID_VERSION_CODE is not a number: $it")
+} ?: run {
+    val parts = lainVersion.substringBefore('-').substringBefore('+').split('.')
+    val n = parts.mapNotNull { it.toIntOrNull()?.takeIf { v -> v in 0..999 } }
+    if (parts.size != 3 || n.size != 3) {
+        throw GradleException("LAIN_VERSION must be MAJOR.MINOR.PATCH, each below 1000: $lainVersion")
+    }
+    n[0] * 1_000_000 + n[1] * 1_000 + n[2]
+}
+
 android {
     namespace = "io.github.enrell.lain"
     compileSdk = 37
@@ -15,10 +38,21 @@ android {
         applicationId = "io.github.enrell.lain"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.3.0"
+        versionCode = lainVersionCode
+        versionName = lainVersion
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    signingConfigs {
+        releaseKeystore?.let { keystore ->
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = env("LAIN_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = env("LAIN_ANDROID_KEY_ALIAS")
+                keyPassword = env("LAIN_ANDROID_KEY_PASSWORD") ?: env("LAIN_ANDROID_KEYSTORE_PASSWORD")
+            }
         }
     }
 
@@ -26,11 +60,11 @@ android {
         release {
             // The build to put on a phone: optimized and shrunk (R8), and not
             // debuggable, which is what makes Compose scroll and start fast.
-            // Signed with the debug key until there is a release one, so it
-            // installs over a debug build.
+            // Signed with the release key when one is given, else with the
+            // debug key (above).
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

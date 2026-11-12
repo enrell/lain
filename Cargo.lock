@@ -490,6 +490,7 @@ dependencies = [
  "lain-admin",
  "lain-api",
  "lain-conformance",
+ "lain-http",
  "lain-lists",
  "lain-metadata",
  "lain-read",
@@ -497,9 +498,11 @@ dependencies = [
  "lain-store",
  "libc",
  "redb",
+ "rustls",
  "serde",
  "serde_json",
  "tokio",
+ "tokio-rustls",
  "tracing",
 ]
 
