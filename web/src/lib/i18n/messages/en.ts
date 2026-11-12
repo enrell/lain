@@ -306,7 +306,7 @@ const en = {
 				apiKeys: 'For a program that puts files in a library and tells Lain what they are.',
 				apiKeysScope: 'A key sees only the libraries picked here: their names and paths, nothing in them.',
 				anilistSteps:
-					'Register the application in the AniList developer settings (D-080), paste its client credentials below and set its redirect URL to exactly the callback shown here. Users then link their own accounts in Settings › Connections.',
+					'Register the application in the AniList developer settings, paste its client credentials below and set its redirect URL to exactly the callback shown here. Users then link their own accounts in Settings › Connections.',
 				callbackHint:
 					'AniList requires an exact match. Behind a reverse proxy, this is the public URL users reach, not the internal bind address.',
 				clientIdHint: 'The numeric id of the AniList application.',
@@ -514,8 +514,7 @@ const en = {
 			loseProgress: 'Where they stopped in every file.',
 			loseLists: 'Their tracking lists and linked accounts.',
 			loseSocial: 'Their ratings, comments, collections, friends and notifications.',
-			loseLibraries: 'Private libraries they own become yours.',
-			keeps: 'Files, libraries and the catalog stay as they are.',
+			keeps: 'Files, libraries and the catalog stay as they are; private libraries they own become yours.',
 			typeName: 'Type {name} to confirm',
 			deleteConfirm: 'Delete {name}',
 			deleted: '{name} was deleted.',

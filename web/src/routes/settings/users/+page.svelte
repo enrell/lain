@@ -131,9 +131,9 @@
 			users = users.map((u) => (u.id === updated.id ? updated : u));
 			playbackOpen = false;
 			playbackTarget = null;
-				toasts.success(t('settings.usersPage.limitsSaved', { name: target.username }));
-			} catch (err) {
-				toasts.error(errorMessage(err, t('settings.usersPage.limitsFailed')));
+			toasts.success(t('settings.usersPage.limitsSaved', { name: target.username }));
+		} catch (err) {
+			toasts.error(errorMessage(err, t('settings.usersPage.limitsFailed')));
 		} finally {
 			playbackSaving = false;
 		}
@@ -205,9 +205,9 @@
 			resetOpen = false;
 			resetPassword = '';
 			resetTarget = null;
-				toasts.success(t('settings.usersPage.passwordReset', { name: target.username }));
-			} catch (err) {
-				toasts.error(errorMessage(err, t('settings.usersPage.resetFailed')));
+			toasts.success(t('settings.usersPage.passwordReset', { name: target.username }));
+		} catch (err) {
+			toasts.error(errorMessage(err, t('settings.usersPage.resetFailed')));
 		} finally {
 			resetting = false;
 		}
@@ -479,7 +479,6 @@
 			<li>{t('settings.usersPage.loseProgress')}</li>
 			<li>{t('settings.usersPage.loseLists')}</li>
 			<li>{t('settings.usersPage.loseSocial')}</li>
-			<li>{t('settings.usersPage.loseLibraries')}</li>
 		</ul>
 		<p class="text-xs text-muted">{t('settings.usersPage.keeps')}</p>
 		<Input

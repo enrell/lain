@@ -390,9 +390,9 @@
 			forgetLibrary(target.id);
 			deleteOpen = false;
 			deleteTarget = null;
-				toasts.success(t('settings.librariesPage.removed', { name: target.name }));
-			} catch (err) {
-				toasts.error(errorMessage(err, t('settings.librariesPage.removeFailed')));
+			toasts.success(t('settings.librariesPage.removed', { name: target.name }));
+		} catch (err) {
+			toasts.error(errorMessage(err, t('settings.librariesPage.removeFailed')));
 		} finally {
 			deleting = false;
 		}
