@@ -121,7 +121,7 @@
 	}
 </script>
 
-<svelte:head><title>Tracking — Lain</title></svelte:head>
+<svelte:head><title>{t('tracking.pageTitle')}</title></svelte:head>
 <svelte:window onkeydown={onKey} />
 
 <div class="space-y-6">
@@ -132,7 +132,7 @@
 	</header>
 
 	{#if showFilters}
-	<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Media type">
+	<div class="flex flex-wrap items-center gap-2" role="group" aria-label={t('tracking.typeFilter')}>
 		{#each types as t (t.id)}
 			<button
 				type="button"
@@ -154,7 +154,7 @@
 		<select
 			class="h-9 rounded-full border border-line bg-surface/60 ps-3.5 text-sm font-medium leading-none text-muted hover:text-foreground"
 			value={statusFilter}
-			aria-label="Status"
+			aria-label={t('tracking.statusFilter')}
 			onchange={(e) => pickStatus(e.currentTarget.value)}
 		>
 			{#each statuses as s (s.id)}
