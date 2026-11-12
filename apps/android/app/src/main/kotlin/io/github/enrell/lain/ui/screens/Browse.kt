@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -316,6 +318,13 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
                     // A rail is a sample: a library's opens the library, the favourites' their own page.
                     libId?.let { id -> { openLibrary(vm, id) } } ?: if (rail.label == RailLabel.MyList) ({ vm.go(Screen.LibraryDetail(io.github.enrell.lain.ui.FAVORITES)) }) else null,
                 )
+                val lone = rail.cards.singleOrNull() as? Card.Resume
+                if (lone != null && lone.item.reading() && lone.progress.durationSec > 0) {
+                    // One book under way: the cover with its place beside it, across the row. As a
+                    // rail of one, a narrow cover sat at the left of a row of nothing and broke its
+                    // name over two lines.
+                    LoneBook(lone, { vm.open(lone.item) })
+                } else
                 LazyRow(Modifier.padding(top = 8.dp), contentPadding = PaddingValues(horizontal = GUTTER), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(rail.cards.take(20)) { card ->
                         when (card) {
@@ -348,6 +357,35 @@ fun HomeScreen(state: AppState, vm: AppViewModel) {
             }
         }
     }
+    }
+}
+
+/** A lone book in progress on Home: its cover, its name, where you are and how far. */
+@Composable
+private fun LoneBook(card: Card.Resume, onOpen: () -> Unit) {
+    val l = LocalLain.current
+    val p = card.progress
+    Row(
+        Modifier.padding(top = 8.dp).padding(horizontal = GUTTER).fillMaxWidth().clip(l.cardShape).background(l.tonalLow)
+            .clickable(onClickLabel = card.item.title, onClick = onOpen).padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(RAIL_H * Shapes.PORTRAIT * 0.8f).aspectRatio(Shapes.PORTRAIT).clip(l.cardShape).background(l.surface)) {
+            Art(card.item.id, Modifier.fillMaxSize(), label = card.item.title)
+        }
+        Column(Modifier.weight(1f).padding(start = 16.dp, end = 6.dp)) {
+            Text(card.item.title, color = l.text, fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull(
+                    card.item.takeIf { it.episode > 0 || it.season > 0 }?.let { rowLabelShort(it, true) },
+                    stringResource(R.string.progress_page, p.positionSec.toInt().coerceAtLeast(1), p.durationSec.toInt()),
+                ).joinToString(" · "),
+                Modifier.padding(top = 4.dp), color = l.muted, fontSize = 13.sp, maxLines = 1,
+            )
+            Box(Modifier.padding(top = 12.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f))) {
+                Box(Modifier.fillMaxWidth(fraction(p).coerceIn(0.02f, 1f)).height(4.dp).clip(CircleShape).background(l.accent))
+            }
+        }
     }
 }
 
@@ -523,10 +561,21 @@ fun LibraryBrowser(titles: List<Title>, state: AppState, vm: AppViewModel, searc
                 Row(
                     Modifier.height(44.dp).clip(l.buttonShape).background(if (narrowing) l.accent.copy(alpha = 0.16f) else l.tonal).border(1.dp, if (narrowing) l.accent.copy(alpha = 0.7f) else Color.Transparent, l.buttonShape)
                         .clickable(onClickLabel = stringResource(R.string.filters)) { sheet = true }.padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Icon(Ic.Sliders, null, tint = if (narrowing) l.text else l.muted, modifier = Modifier.size(18.dp))
-                    Text(stringResource(R.string.filters) + (filters.active + if (filters.sort != Sort.Title) 1 else 0).let { n -> if (n > 0) " · $n" else "" }, color = if (narrowing) l.text else l.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                    // How many are set, as a badge on the icon: spelled after the label ("· 1") it
+                    // widened the button and the search field beside it shrank under the thumb.
+                    val set = filters.active + if (filters.sort != Sort.Title) 1 else 0
+                    Box {
+                        Icon(Ic.Sliders, null, tint = if (narrowing) l.text else l.muted, modifier = Modifier.size(18.dp))
+                        if (set > 0) {
+                            Box(
+                                Modifier.align(Alignment.TopEnd).offset(x = 7.dp, y = (-7).dp).size(16.dp).clip(CircleShape).background(l.accent),
+                                contentAlignment = Alignment.Center,
+                            ) { Text(set.toString(), color = l.onAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, lineHeight = 10.sp, maxLines = 1) }
+                        }
+                    }
+                    Text(stringResource(R.string.filters), color = if (narrowing) l.text else l.muted, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
             }
             FlowRow(
@@ -912,9 +961,19 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                         Box(Modifier.fillMaxWidth((p.positionSec / p.durationSec).toFloat().coerceIn(0.02f, 1f)).height(3.dp).background(l.accent))
                     }
                 }
+                // Right under the bar it reads: what is left of the one in progress, and how much of
+                // the whole is done. Below the row of actions it was cut off from the bar it explains.
+                val under = listOfNotNull(
+                    resume?.takeIf { series && !title.reading }?.let { rowLabelShort(next, false) + ": " + stringResource(R.string.time_left, length((it.durationSec - it.positionSec).coerceAtLeast(0.0))) },
+                    resume?.takeIf { series && title.reading && it.durationSec > 0 }?.let { rowLabelShort(next, true) + ": " + stringResource(R.string.progress_page, it.positionSec.toInt().coerceAtLeast(1), it.durationSec.toInt()) },
+                    if (series && watched > 0) stringResource(if (title.reading) R.string.read_of else R.string.watched_of, watched, title.items.size) else null,
+                )
+                if (under.isNotEmpty()) Text(under.joinToString("  ·  "), Modifier.padding(top = 8.dp), color = l.muted, fontSize = 13.sp)
                 // What else can be done with the title, at one weight below the main action.
-                // One row of columns, icon over word; each takes room by the length of its word, so none wraps alone.
-                Row(Modifier.padding(top = 12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // One row of equal columns, icon over word: sized by their words, the three changed
+                // shape from title to title. A word too long for its column takes a second line, and
+                // the row grows with it so the columns stay one height.
+                Row(Modifier.padding(top = 14.dp).fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (resume != null) QuietAction(this, Ic.RotateCcw, stringResource(R.string.start_over)) { undone = resume; vm.markWatched(listOf(next.id), false) }
                     QuietAction(this, 
                         if (allDone) Ic.EyeOff else Ic.CheckCircle,
@@ -940,13 +999,6 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
                         }
                     }
                 }
-                // Under the actions: what is left of the one in progress, and how much of the whole is done.
-                val under = listOfNotNull(
-                    resume?.takeIf { series && !title.reading }?.let { rowLabelShort(next, false) + ": " + stringResource(R.string.time_left, length((it.durationSec - it.positionSec).coerceAtLeast(0.0))) },
-                    resume?.takeIf { series && title.reading && it.durationSec > 0 }?.let { rowLabelShort(next, true) + ": " + stringResource(R.string.progress_page, it.positionSec.toInt().coerceAtLeast(1), it.durationSec.toInt()) },
-                    if (series && watched > 0) stringResource(if (title.reading) R.string.read_of else R.string.watched_of, watched, title.items.size) else null,
-                )
-                if (under.isNotEmpty()) Text(under.joinToString("  ·  "), Modifier.padding(top = 10.dp), color = l.muted, fontSize = 13.sp)
                 // Your score and everyone's: one tap to give or change it.
                 rating?.let { r ->
                     val mine = r.mine.toInt()
@@ -1039,7 +1091,7 @@ fun TitleScreen(state: AppState, vm: AppViewModel, key: String, onDownload: (Ite
             Gap(14.dp)
             for (row in (1..10).chunked(5)) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (n in row) ChoiceTile(n.toString(), mine == n, { give(n) }, Modifier.weight(1f))
+                    for (n in row) ChoiceTile(n.toString(), mine == n, { give(n) }, Modifier.weight(1f), ring = false)
                 }
             }
             if (mine > 0) {
@@ -1141,19 +1193,22 @@ private fun rowLabelShort(item: Item, reading: Boolean): String = when {
     else -> episodeLabel(item.season, item.episode, false)
 }
 
-/** A secondary action on a title: one of a row of columns, its icon over its word. */
+/** A secondary action on a title: one of a row of equal columns, its icon over its word. */
 @Composable
 private fun QuietAction(row: androidx.compose.foundation.layout.RowScope, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
     val l = LocalLain.current
     with(row) {
         Column(
-            Modifier.weight(label.length.coerceIn(9, 18).toFloat()).height(60.dp).clip(l.buttonShape).background(l.tonal)
-                .clickable(onClickLabel = label, onClick = onClick).padding(horizontal = 4.dp),
+            Modifier.weight(1f).fillMaxHeight().heightIn(min = 60.dp).clip(l.buttonShape).background(l.tonal)
+                .clickable(onClickLabel = label, onClick = onClick).padding(horizontal = 4.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically),
         ) {
             Icon(icon, null, tint = l.text, modifier = Modifier.size(18.dp))
-            Text(label, color = l.text.copy(alpha = 0.85f), fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+            Text(
+                label, color = l.text.copy(alpha = 0.85f), fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.Medium,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -1284,7 +1339,8 @@ fun SearchScreen(state: AppState, vm: AppViewModel) {
                 if (recents.isNotEmpty()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Mono(stringResource(R.string.recent_searches), Modifier.weight(1f))
-                        Text(stringResource(R.string.clear), Modifier.clip(CircleShape).clickable { recents = emptyList(); prefs.recentSearches = emptyList() }.padding(horizontal = 8.dp, vertical = 6.dp), color = l.muted, fontSize = 12.sp)
+                        // Its word ends on the content edge, its touch area runs into the gutter.
+                        Text(stringResource(R.string.clear), Modifier.offset(x = 8.dp).clip(CircleShape).clickable { recents = emptyList(); prefs.recentSearches = emptyList() }.padding(horizontal = 8.dp, vertical = 6.dp), color = l.muted, fontSize = 12.sp)
                     }
                     FlowRow(Modifier.padding(top = 8.dp, bottom = 26.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (q in recents) {
