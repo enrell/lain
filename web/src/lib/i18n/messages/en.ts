@@ -648,6 +648,11 @@ const en = {
 		pageOf: 'Page {page} of {pages}'
 	},
 	library: {
+		view: 'View',
+		byLibrary: 'By library',
+		allTitles: 'All titles',
+		viewKey: 'Switch view (V)',
+		shelves: 'Libraries on this page',
 		viewAll: 'View all',
 		seeAll: 'See all',
 		shelfFailed: 'Could not load this library.',
