@@ -108,10 +108,10 @@
 	<header class="flex flex-wrap items-end justify-between gap-3">
 		<div>
 			<h1 class="text-xl font-semibold tracking-tight text-foreground">Library</h1>
-			<p class="mt-0.5 text-sm text-muted">Everything Lain has indexed.</p>
+			<p class="mt-0.5 text-sm text-muted max-md:hidden">Everything Lain has indexed.</p>
 		</div>
 		{#if session.isAdmin || locked.length > 0 || open.length > 0}
-			<div class="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em]">
+			<div class="flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.14em] max-md:w-full max-md:gap-2 max-md:[&>*]:min-h-10 max-md:[&>*]:rounded-lg max-md:[&>*]:border max-md:[&>*]:border-line max-md:[&>*]:px-3.5 max-md:[&>a]:flex max-md:[&>a]:items-center">
 				{#if locked.length > 0 || open.length > 0}
 					<button
 						type="button"
@@ -146,7 +146,7 @@
 				<button
 					type="button"
 					aria-pressed={view === id}
-					class={['rounded-md px-2.5 py-1.5 transition-colors', view === id ? 'bg-surface-active text-foreground' : 'text-muted hover:bg-surface-hover hover:text-foreground'].join(' ')}
+					class={['rounded-md px-3 py-2.5 transition-colors md:px-2.5 md:py-1.5', view === id ? 'bg-surface-active text-foreground' : 'text-muted hover:bg-surface-hover hover:text-foreground'].join(' ')}
 					onclick={() => setView(id)}
 				>
 					{label}

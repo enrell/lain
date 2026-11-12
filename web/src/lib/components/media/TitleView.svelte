@@ -236,14 +236,14 @@
 <article class="space-y-8">
 	<!-- Full-bleed title hero in the home hero's language: no box, no
 	     border; the art runs under the navigation and fades into the page. -->
-	<header class="title-hero relative -mt-6 overflow-hidden md:-mt-28">
+	<header class="title-hero relative -mx-5 -mt-5 overflow-hidden sm:-mx-8 md:mx-0 md:-mt-28">
 		{#if backdrop}
 			<img src={backdrop} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full object-cover object-center md:w-[70%]" referrerpolicy="no-referrer" />
 		{:else}
 			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md md:w-[70%]" />
 		{/if}
 		<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
-		<div class="relative mx-auto flex min-h-[22rem] w-full max-w-[1800px] flex-col justify-end px-5 pb-10 pt-28 sm:px-8 md:min-h-[30rem] md:pb-14 md:pt-40 lg:px-10">
+		<div class="relative mx-auto flex min-h-[17rem] w-full max-w-[1800px] flex-col justify-end px-5 pb-6 pt-20 sm:px-8 md:min-h-[30rem] md:pb-14 md:pt-40 lg:px-10">
 			<div class="hero-monolith-copy max-w-5xl">
 				<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">{meta}</p>
 				<h1 class="title-hero-name mt-4 text-foreground">{displayTitle}</h1>
@@ -264,12 +264,13 @@
 		</div>
 	</header>
 
-	<div class="grid items-start gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
-		<div class="space-y-5 lg:sticky lg:top-24">
-			<div class="aspect-[2/3] w-44 overflow-hidden rounded-xl bg-surface shadow-2xl ring-1 ring-white/10 lg:w-full">
+	<div class="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-8">
+		<div class="max-lg:contents lg:sticky lg:top-24 lg:space-y-5">
+			<!-- The hero already shows the art on a phone. -->
+			<div class="hidden aspect-[2/3] w-44 overflow-hidden rounded-xl bg-surface shadow-2xl ring-1 ring-white/10 lg:block lg:w-full">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
-			<div>
+			<div class="max-lg:order-1">
 				{#if resumeTarget}
 					<LinkButton href={playHref(resumeTarget.id)} size="lg" class="w-full justify-center" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 						<Play class="size-4 fill-current" aria-hidden="true" /> {resumeLabel}
@@ -279,15 +280,16 @@
 						<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? 'Read' : 'Play'}
 					</Button>
 				{/if}
-				{#if resumeTarget && !reading}<div class="mt-3"><ExternalPlayers itemId={resumeTarget.id} /></div>{/if}
+				<!-- Handing playback to mpv or VLC is a desktop matter. -->
+				{#if resumeTarget && !reading}<div class="mt-3 max-md:hidden"><ExternalPlayers itemId={resumeTarget.id} /></div>{/if}
 				<p class="mt-2 text-center text-xs text-muted" aria-live="polite">{watchedLine}</p>
 			</div>
 			{#if actions}
-				<div class="flex flex-col gap-2">
+				<div class="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 max-lg:order-2 sm:-mx-8 sm:px-8 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0">
 					{@render actions()}
 				</div>
 			{/if}
-			<div class="rounded-xl border border-line/70 bg-surface/30 p-4">
+			<div class="rounded-xl border border-line/70 bg-surface/30 p-4 max-lg:order-4">
 				<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">Information</h2>
 				<dl class="mt-2 text-sm">
 					<div class="flex items-center justify-between gap-3 border-t border-line/60 py-2">
@@ -324,7 +326,7 @@
 			</div>
 		</div>
 
-		<div class="min-w-0">
+		<div class="min-w-0 max-lg:order-3">
 			{#if seasons.length > 1}
 				<div class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Seasons">
 					<button
@@ -410,7 +412,7 @@
 					</div>
 				{/if}
 			</div>
-			<ul class="grid {reading ? 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'} gap-4" data-episode-grid>
+			<ul class="grid {reading ? 'grid-cols-3 gap-2.5 sm:gap-4 xl:grid-cols-4' : 'episode-rows grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3'}" data-episode-grid>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
@@ -472,7 +474,7 @@
 </article>
 
 {#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean)}
-	<div class="relative {reading ? 'aspect-[3/4]' : 'aspect-video'} overflow-hidden bg-surface">
+	<div class="episode-thumb relative {reading ? 'aspect-[3/4]' : 'aspect-video'} overflow-hidden bg-surface">
 		<img
 			src={stillUrl(item.id)}
 			alt=""
@@ -494,7 +496,7 @@
 			</div>
 		{/if}
 	</div>
-	<div class="p-3">
+	<div class="episode-text min-w-0 p-3">
 		<p class="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">{label(item)}</p>
 		{#if item.title !== group.title}
 			<p class="mt-1 truncate text-sm font-semibold text-foreground">{item.title}</p>

@@ -13,6 +13,8 @@
 	import { page } from '$app/state';
 	import { session } from '$lib/auth/session.svelte';
 	import { prefs } from '$lib/auth/storage';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Modal from '$lib/components/primitives/Modal.svelte';
 	import { sectionFor, sectionHint, sectionLabel, visibleSections } from '$lib/settings/sections';
 
 	let { children }: { children: Snippet } = $props();
@@ -20,6 +22,12 @@
 	const sections = $derived(visibleSections(session.isAdmin));
 	const current = $derived(sectionFor(page.url.pathname));
 	let pane = $state<HTMLElement>();
+	// Phones pick a section from a sheet instead of two strips of tabs.
+	let picker = $state(false);
+	$effect(() => {
+		void page.url.pathname;
+		picker = false;
+	});
 	let chord = $state(false);
 	let chordTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -102,9 +110,23 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="mx-auto grid max-w-[66rem] gap-8 md:grid-cols-[13.5rem_minmax(0,1fr)] md:gap-12">
+<!-- The single phone column must be allowed to shrink: an auto track is as
+     wide as its widest row and pushed every page off the screen. -->
+<div class="mx-auto grid max-w-[66rem] grid-cols-[minmax(0,1fr)] gap-5 md:grid-cols-[13.5rem_minmax(0,1fr)] md:gap-12">
+	<button
+		type="button"
+		class="flex h-14 w-full items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 text-left md:hidden"
+		aria-haspopup="dialog"
+		onclick={() => (picker = true)}
+	>
+		<span class="min-w-0">
+			<span class="block font-mono text-[10px] uppercase tracking-[0.2em] text-muted">{t('settings.title')}</span>
+			<span class="block truncate text-[15px] font-semibold text-foreground">{current ? sectionLabel(current) : t('settings.title')}</span>
+		</span>
+		<ChevronDown class="size-5 shrink-0 text-muted" />
+	</button>
 	<!-- Rail: fixed like a tiled window. On phones it is a scrollable strip. -->
-	<nav class="md:sticky md:top-28 md:self-start" aria-label={t('settings.sections')}>
+	<nav class="hidden md:sticky md:top-28 md:block md:self-start" aria-label={t('settings.sections')}>
 		<p class="hidden font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-foreground md:block">{t('settings.title')}</p>
 		{#each ['you', 'server'] as scope (scope)}
 			{@const group = sections.filter((s) => s.scope === scope)}
@@ -142,7 +164,7 @@
 
 	<div bind:this={pane} class="settings-body min-w-0 pb-24">
 		{#if current}
-			<p class="mb-6 font-mono text-[10px] uppercase tracking-[0.22em] text-muted" aria-hidden="true">
+			<p class="mb-6 hidden font-mono text-[10px] uppercase tracking-[0.22em] text-muted md:block" aria-hidden="true">
 				{t('settings.breadcrumb', {
 					scope: t(current.scope === 'you' ? 'settings.scope.you' : 'settings.scope.server'),
 					section: sectionLabel(current)
@@ -152,3 +174,30 @@
 		{@render children()}
 	</div>
 </div>
+
+<Modal bind:open={picker} title={t('settings.title')}>
+	{#each ['you', 'server'] as scope (scope)}
+		{@const group = sections.filter((s) => s.scope === scope)}
+		{#if group.length > 0}
+			<p class="mb-1 mt-4 font-mono text-[10px] uppercase tracking-[0.22em] text-muted first:mt-0">{t(scope === 'you' ? 'settings.scope.you' : 'settings.scope.server')}</p>
+			<ul class="-mx-2">
+				{#each group as s (s.href)}
+					{@const on = current?.href === s.href}
+					<li>
+						<a
+							href={s.href}
+							aria-current={on ? 'page' : undefined}
+							class="flex min-h-12 items-center gap-3 rounded-lg px-3 py-2 {on ? 'bg-surface-active' : 'active:bg-surface-hover'}"
+						>
+							<span class="h-5 w-0.5 shrink-0 rounded-full {on ? 'bg-accent' : 'bg-transparent'}" aria-hidden="true"></span>
+							<span class="min-w-0">
+								<span class="block text-[15px] font-medium text-foreground">{sectionLabel(s)}</span>
+								<span class="block truncate text-xs text-muted">{sectionHint(s)}</span>
+							</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	{/each}
+</Modal>
