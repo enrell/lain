@@ -101,6 +101,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   the inset progress bar the library's cards wear; a bordered box around
   picture and words made them a second kind of card. Volumes are sized as
   every poster grid is: two a row on a phone, where three were cramped.
+- **One main action on a title page** (web): Rate, Share and Add to
+  collection under Community, and a comic's Save offline, are the quiet
+  buttons of the hero's row; an accent Rate competed with Play.
 
 ### Fixed
 - **Years in acquisition** (D-279): a search with a year rejects a
