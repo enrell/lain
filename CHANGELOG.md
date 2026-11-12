@@ -177,6 +177,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   open on their first field instead of the close button.
 
 ### Fixed
+- **Web**: a title page or player on a server with no local player (no mpv or
+  VLC on its machine) threw on every render: the server answers
+  `players: null` there, and the Open with menu read its length.
 - **A first visit draws in its final frame** (web, D-282): a films or
   shows library, All titles, search results and Home's library rows no
   longer draw wide cards that turn upright a moment later (or after
