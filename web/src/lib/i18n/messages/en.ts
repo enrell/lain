@@ -225,6 +225,39 @@ const en = {
 				storage: 'Comics and manga this browser keeps for reading offline.',
 				items: 'What this browser holds now.'
 			},
+			libraries: {
+				scan: 'Walks every library root and updates the catalog. Safe to run while watching.',
+				libraries: 'Folders on the server that Lain reads in place. Nothing is copied or moved.'
+			},
+			users: {
+				title: 'Accounts',
+				accounts: {
+					one: '{count} account. Roles and disabling take effect on the next request.',
+					other: '{count} accounts. Roles and disabling take effect on the next request.'
+				}
+			},
+			integrations: {
+				anilist: 'One OAuth application for the whole server; each user links their own account.',
+				apiKeys: 'For a program that puts files in a library and tells Lain what they are.',
+				apiKeysScope: 'A key sees only the libraries picked here: their names and paths, nothing in them.',
+				anilistSteps:
+					'Register the application in the AniList developer settings (D-080), paste its client credentials below and set its redirect URL to exactly the callback shown here. Users then link their own accounts in Settings › Connections.',
+				callbackHint:
+					'AniList requires an exact match. Behind a reverse proxy, this is the public URL users reach, not the internal bind address.',
+				clientIdHint: 'The numeric id of the AniList application.',
+				keyNameHint: 'What the program is, so its key can be told apart.'
+			},
+			plugins: {
+				capabilities: 'One job per row, and the plugin doing it.',
+				colJob: 'Job',
+				colProviders: 'Providers',
+				colMode: 'Binding',
+				events: 'Swaps and fallbacks since the server started.'
+			},
+			backup: {
+				snapshot: 'One archive of the database, safe to take while the server runs.',
+				restore: 'Deliberately offline: the server is stopped first.'
+			},
 			downloads: {
 				queue: 'Files the server fetches over HTTP onto its own disk.',
 				storage: 'What the downloads use, and what is left on the disk.',
