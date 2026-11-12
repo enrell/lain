@@ -24,6 +24,8 @@
 	import { scan } from '$lib/stores/scan.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { focusSoon } from '$lib/components/social/focus';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { formatRelative } from '$lib/utilities/format';
 
 	let libraries = $state<Library[]>([]);
@@ -105,6 +107,12 @@
 		}
 	}
 
+	usePageKeys(() => [
+		...(roots !== null ? [{ keys: ['P'], label: t('pageKeys.libraryPrivate') }] : []),
+		{ keys: ['U'], label: t('pageKeys.libraryLock') },
+		{ keys: ['Delete'], label: t('pageKeys.libraryRemove') }
+	]);
+
 	// Row keys: P toggles private, U unlocks or locks, Delete removes.
 	function rowKey(e: KeyboardEvent, lib: Library): void {
 		if (e.target !== e.currentTarget || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -140,6 +148,8 @@
 		nameTouched = false;
 		pathDraft = '';
 		void loadBrowse();
+		// The dialog opens on what it asks for first: the folder.
+		focusSoon(() => document.getElementById('library-path'));
 	}
 
 	function folderName(path: string): string {
@@ -206,6 +216,7 @@
 	function askRemove(lib: Library): void {
 		deleteTarget = lib;
 		deleteOpen = true;
+		focusSoon(() => document.getElementById('confirm-remove-library'));
 	}
 
 	async function load(): Promise<void> {
@@ -686,8 +697,8 @@
 	description="The files on disk stay untouched. Its catalog entries are removed with it."
 >
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (deleteOpen = false)}>Cancel</Button>
-		<Button variant="danger" loading={deleting} onclick={() => void remove()}>Remove library</Button>
+		<Button variant="ghost" onclick={() => (deleteOpen = false)}>Cancel <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
+		<Button id="confirm-remove-library" variant="danger" loading={deleting} onclick={() => void remove()}>Remove library <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
 	{/snippet}
 	{#if deleteTarget}
 		<p class="text-sm text-muted">
