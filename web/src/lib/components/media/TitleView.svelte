@@ -289,11 +289,11 @@
 		const length = formatLength(durations.get(item.id));
 		if (progress && !progress.completed && progress.duration_sec > 0 && progress.position_sec > 0) {
 			return reading
-				? `Page ${Math.floor(progress.position_sec)} of ${Math.floor(progress.duration_sec)}`
+				? t('browse.pageOf', { page: Math.floor(progress.position_sec), pages: Math.floor(progress.duration_sec) })
 				: timeLeft(progress.position_sec, progress.duration_sec);
 		}
 		if (progress?.completed) return reading ? t('title.read') : length ? t('title.watchedLength', { time: length }) : t('title.watched');
-		return length || (reading ? 'Unread' : 'Not watched');
+		return length || t(reading ? 'title.unread' : 'title.notWatched');
 	}
 
 	// One part's own actions, as the app's ⋮ on each row: its mark, its start

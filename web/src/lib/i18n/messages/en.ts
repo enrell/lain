@@ -921,6 +921,9 @@ const en = {
 		readOf: '{done} of {count} read',
 		watchedOf: '{done} of {count} watched',
 		notStarted: 'Not started',
+		// An episode or volume card's line before it is begun, when its length is unknown.
+		notWatched: 'Not watched',
+		unread: 'Unread',
 		allMissing: 'All files missing',
 		partActions: 'More for {part}',
 		markWatched: 'Mark watched',
