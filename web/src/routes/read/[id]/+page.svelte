@@ -12,7 +12,8 @@
 	import { compareEpisodes } from '$lib/utilities/grouping';
 	import { ProgressReporter } from '$lib/utilities/progress-reporter';
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
-	import { progressFor, startPage } from '$lib/reader/layout';
+	import { startPage } from '$lib/reader/layout';
+	import { PageTurns } from '$lib/reader/turns';
 
 	const id = $derived(page.params.id ?? '');
 
@@ -28,6 +29,8 @@
 	// throttled and coalesced like playback progress.
 	let reporter: ProgressReporter | null = null;
 	let opened = $state(-1);
+	// Which turn is still owed to the server, across files (see saveOnHide).
+	const turns = new PageTurns();
 
 	async function load(): Promise<void> {
 		await reporter?.flush();
@@ -53,8 +56,11 @@
 			progress = prog;
 			siblings = eps.items;
 			opened = startPage(prog, v.pages.length);
+			turns.open(opened);
 			const target = id;
-			reporter = new ProgressReporter((s) => api.progress.put(target, s), {
+			// A landed write settles the turn it carried, so hiding the tab
+			// does not send it a second time.
+			reporter = new ProgressReporter((s) => api.progress.put(target, s).then(() => turns.saved(target, s)), {
 				intervalMs: 2000,
 				minDeltaSec: 1
 			});
@@ -72,14 +78,10 @@
 		void load();
 	});
 
-	// The newest page turn not yet known to be saved (see saveOnHide).
-	let unsent: { id: string; snap: ReturnType<typeof progressFor> } | null = null;
-
 	function onPage(pageIndex: number, total: number): void {
 		// Opening a finished volume must not reset it: only a real page turn counts.
-		if (pageIndex === opened) return;
-		const snap = progressFor(pageIndex, total);
-		unsent = { id, snap };
+		const snap = turns.turn(id, pageIndex, total);
+		if (!snap) return;
 		void reporter?.update(snap, { force: snap.completed || pageIndex === 0 });
 	}
 
@@ -92,9 +94,9 @@
 	 * way the player saves its position.
 	 */
 	function saveOnHide(): void {
-		if (!unsent) return;
-		const { id: target, snap } = unsent;
-		unsent = null;
+		const owed = turns.take();
+		if (!owed) return;
+		const { id: target, snap } = owed;
 		void api.progress.put(target, snap, { keepalive: true }).catch(() => {
 			// The page is going away; there is no UI left to inform.
 		});
