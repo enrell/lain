@@ -20,8 +20,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Plugins name every job** (D-285): each binding on `GET /api/plugins`
   carries a one-sentence `summary` from the server (a component can
   describe the jobs it brings in its manifest). Settings › Plugins shows
-  it for every row, in families, and says how to install a provider
-  that is bound but missing.
+  it for every row, in families that close to one line each (how many
+  jobs, and whether a provider is missing or unhealthy), and says how
+  to install a provider that is bound but missing.
 - **`lain restore BACKUP.tar --replace`**: with the server stopped, one
   command moves the data folder aside (kept as `<dir>.before-restore`)
   and restores into a fresh one, keeping this machine's installed
@@ -48,6 +49,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   your own row in Settings › Users shows your role as text instead of
   disabled controls; library tags are one style and a phone's library
   rows no longer wrap Remove; every Settings string goes through `t()`.
+- Settings rows stack beside the section rail on a tablet (768 to 959
+  px), and the Libraries and Users tables start at 1280 px, so a name or
+  a hint is never squeezed to a few letters.
 
 ## [0.3.1] - 2026-11-12
 
