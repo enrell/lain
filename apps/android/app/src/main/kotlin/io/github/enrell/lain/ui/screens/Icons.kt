@@ -85,4 +85,8 @@ object Ic {
     val CheckCircle by lazy { stroke("M21.8 10A10 10 0 1 1 17 3.34", "m9 11 3 3L22 4") }
     val Swap by lazy { stroke("M8 3 4 7l4 4", "M4 7h16", "m16 21 4-4-4-4", "M20 17H4") }
     val Check by lazy { stroke("M20 6 9 17l-5-5") }
+    // A score given fills the star, as the heart fills once the title is a favourite.
+    val StarFilled by lazy { stroke("M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z", filled = true) }
+    // The ring without its tick: what "mark unwatched" leaves.
+    val Circle by lazy { stroke("M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20") }
 }
