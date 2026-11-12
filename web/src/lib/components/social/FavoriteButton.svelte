@@ -22,10 +22,11 @@
 </script>
 
 {#if favoriteState.ready}
-	<!-- The heart alone, as in the app: its name is the tooltip and the accessible name; F does the same. -->
+	<!-- The heart alone, as in the app: its name is the tooltip and the accessible name; F does the same.
+	     The fill of the title row's other quiet actions (the tonal button); the heart's own fill says "on". -->
 	<button
 		type="button"
-		class="inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-line text-foreground transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
+		class="inline-flex size-11 shrink-0 items-center justify-center rounded-md bg-foreground/[0.08] text-foreground transition-colors hover:bg-foreground/[0.14] focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
 		aria-pressed={favoriteState.on}
 		aria-label={favoriteState.on ? t('social.title.favorite') : t('social.title.addFavorite')}
 		title={`${favoriteState.on ? t('social.title.favorite') : t('social.title.addFavorite')} (F)`}

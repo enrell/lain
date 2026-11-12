@@ -441,9 +441,10 @@
 			{#if counter}
 				<p class="shrink-0 px-2 font-mono text-xs tabular-nums text-muted" aria-live="polite">{counter}</p>
 			{/if}
-			<div class="flex shrink-0 items-center gap-0.5 rounded-xl border border-line/60 bg-surface/60 p-0.5 max-sm:order-last max-sm:w-full max-sm:gap-1 max-sm:[&_button]:min-h-10 max-sm:[&_button]:min-w-10">
+			<div class="flex shrink-0 flex-wrap items-center gap-1.5 max-sm:order-last max-sm:w-full max-sm:[&_button]:min-h-10 max-sm:[&_button]:min-w-10">
 				<!-- Packed from the start on a phone: spread around, two toggles and a divider
-				     stood alone in a wide bar of nothing. -->
+				     stood alone in a wide bar of nothing. Each reader groups its toggles
+				     (ReaderGroup), one track per question. -->
 				{@render toolbar?.()}
 			</div>
 			<div class="flex shrink-0 items-center gap-0.5">

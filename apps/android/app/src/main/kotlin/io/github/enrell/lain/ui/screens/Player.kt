@@ -48,6 +48,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -826,8 +827,11 @@ fun PlayerScreen(
             }
         }
         if (settings) {
+            // Above the bar, as the track lists are: run to the bottom, the panel cut the bar's
+            // labels in half ("Subtitles · Englis") and covered the seek line. It scrolls when
+            // the screen is short.
             Column(
-                Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, top = 12.dp, bottom = 12.dp).width(300.dp).clip(RoundedCornerShape(10.dp))
+                Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(end = 12.dp, top = 12.dp, bottom = 104.dp).width(300.dp).clip(RoundedCornerShape(10.dp))
                     .verticalScroll(rememberScrollState()).background(l.bg).border(1.dp, l.line.copy(alpha = 0.6f), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -946,9 +950,18 @@ private fun PickRow(label: String, value: String, options: List<Pair<String, Boo
     val l = LocalLain.current
     var open by remember { mutableStateOf(false) }
     Column {
-        Row(Modifier.fillMaxWidth().height(40.dp).clickable { open = !open }, verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(40.dp).clickable(onClickLabel = label) { open = !open }, verticalAlignment = Alignment.CenterVertically) {
             Text(label, Modifier.weight(1f), color = l.text, fontSize = 13.sp)
-            Text(value, Modifier.clip(l.buttonShape).background(l.tonal).padding(horizontal = 8.dp, vertical = 4.dp), color = l.text, fontSize = 13.sp, maxLines = 1)
+            // The value with a chevron that turns: a bare chip did not say it opens a choice,
+            // and read like the plain facts (Source) under it.
+            Row(
+                Modifier.clip(l.buttonShape).background(l.tonal).padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(value, color = l.text, fontSize = 13.sp, maxLines = 1)
+                Icon(Ic.ChevronDown, null, tint = l.muted, modifier = Modifier.size(16.dp).graphicsLayer { rotationZ = if (open) 180f else 0f })
+            }
         }
         if (open) {
             options.forEachIndexed { i, (name, on) ->
