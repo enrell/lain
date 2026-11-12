@@ -8,10 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - **The player's episode list on every screen**: between an upright
   phone (list under the picture) and a wide screen (list beside it) the
-  bar's list button and E open it as a drawer over the picture's edge;
-  Escape, the button or a click outside close it. Beside the picture the
-  list has its own Hide button with its key, the choice is kept, and the
-  episode playing is scrolled into view.
+  bar's list button and E open it as a drawer over the picture's edge,
+  which keeps Tab inside it; Escape, the button or a click outside close
+  it. Beside the picture the list has its own Hide button with its key,
+  the choice is kept, and the episode playing is scrolled into view.
 - **Reading options on a phone**: the reader's top bar is one row, and
   its reading toggles open under it from one button.
 
