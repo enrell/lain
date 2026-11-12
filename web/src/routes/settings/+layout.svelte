@@ -143,14 +143,13 @@
 								aria-keyshortcuts={`g ${s.key}`}
 								title={sectionHint(s)}
 								class="group flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-sm transition-colors {on
-									? 'bg-surface-active text-foreground'
+									? 'bg-foreground/[0.08] font-medium text-foreground'
 									: 'text-muted hover:bg-surface-hover hover:text-foreground'}"
 							>
-								<span class="flex items-center gap-2">
-									<span class="h-3.5 w-0.5 rounded-full {on ? 'bg-accent' : 'bg-transparent'}" aria-hidden="true"></span>
-									{sectionLabel(s)}
-								</span>
-								<kbd class="hidden {chord ? 'text-accent' : 'text-muted/60'} md:inline-flex">g{s.key}</kbd>
+								<!-- The open section is a soft fill alone: a fill plus an accent bar inset in it
+								     read as a text caret, and the heavy surface swallowed the key cap. -->
+								<span>{sectionLabel(s)}</span>
+								<kbd class="hidden {chord ? 'text-accent' : on ? 'text-muted' : 'text-muted/60'} md:inline-flex">g{s.key}</kbd>
 							</a>
 						</li>
 					{/each}
