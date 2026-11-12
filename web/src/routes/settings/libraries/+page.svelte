@@ -158,7 +158,10 @@
 			pathDraft = res.path;
 			form.path = res.path;
 			formError = null;
-			if (!nameTouched) form.name = folderName(res.path);
+			// Named after a folder the viewer went to, not after the one the
+			// picker opens on: that one is the server's starting point, and
+			// the dialog came up with a library already called "media".
+			if (!nameTouched && path !== undefined) form.name = folderName(res.path);
 			// A long path keeps its end, the folder being chosen, in view.
 			requestAnimationFrame(() => {
 				if (pathEl && document.activeElement !== pathEl) pathEl.scrollLeft = pathEl.scrollWidth;
