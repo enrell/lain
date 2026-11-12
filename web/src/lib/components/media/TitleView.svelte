@@ -12,7 +12,8 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import BookOpen from '@lucide/svelte/icons/book-open';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import Check from '@lucide/svelte/icons/check';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import Play from '@lucide/svelte/icons/play';
@@ -382,6 +383,33 @@
 		}
 	}
 
+	/*
+	 * On arrival the part the main button opens is brought into view, when
+	 * the title is under way and it is below the fold: a viewer on Episode 8
+	 * landed on Episodes 1 to 4, and on a phone on none at all. Only as far
+	 * as needed, so as much of the hero stays; never on Back, which returns
+	 * to where the page was, and never moving the focus.
+	 */
+	let arrived = false;
+	afterNavigate((nav) => {
+		if (nav.type === 'popstate') arrived = true;
+	});
+	$effect(() => {
+		const target = resumeTarget;
+		if (arrived || !target || !progressMap || !(resuming || watched > 0)) return;
+		arrived = true;
+		void tick().then(() => {
+			const card = document.querySelector<HTMLElement>(`[data-episode-grid] [data-part="${CSS.escape(target.id)}"]`);
+			if (!card) return;
+			// Clear of the phone's bottom bar.
+			const floor = window.innerHeight - (window.matchMedia('(min-width: 768px)').matches ? 24 : 96);
+			const below = card.getBoundingClientRect().bottom - floor;
+			if (below <= 0) return;
+			const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+			window.scrollBy({ top: below, behavior: calm ? 'auto' : 'smooth' });
+		});
+	});
+
 	function stillUrl(id: string): string {
 		return api.thumbnail.url(id, session.token, { width: 480 });
 	}
@@ -393,7 +421,8 @@
 	}
 </script>
 
-<article class="space-y-8">
+<!-- Closer under the hero on a phone, where every row above the episodes pushes them down. -->
+<article class="space-y-4 md:space-y-8">
 	<!-- Full-bleed title hero in the home hero's language: no box, no
 	     border; the art runs under the navigation and fades into the page. -->
 	<header class="title-hero relative -mx-5 -mt-5 overflow-hidden sm:-mx-8 md:mx-0 md:-mt-28">
@@ -411,7 +440,7 @@
 		     long synopsis and the copy floated beside a cover taller than it. On a phone the
 		     cover sits beside the name, not above it: stacked, it put every episode below
 		     the fold. -->
-		<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-16 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
+		<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-14 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
 			<div class="aspect-[2/3] w-full shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
@@ -468,7 +497,8 @@
 				{#if synopsis}
 					<!-- A cut synopsis opens on a tap: an ellipsis with no way past it is a dead end. -->
 					<button type="button" class="mt-4 block max-w-2xl text-left" aria-expanded={synopsisOpen} onclick={() => (synopsisOpen = !synopsisOpen)}>
-						<span class={['block text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? '' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
+						<!-- Clamped, it is not a block: `block` overrode the clamp's box and three lines showed on a phone. -->
+						<span class={['text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? 'block' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
 					</button>
 				{/if}
 				</div>
@@ -563,7 +593,8 @@
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
 					{@const gone = isGone(item)}
-					<li class="relative">
+					{@const current = item.id === resumeTarget?.id && (resuming || watched > 0)}
+					<li class="relative" data-part={item.id}>
 						{#if selecting}
 							<!-- Selection mode turns the card into a toggle so the
 							     click never reaches a play link. -->
@@ -574,7 +605,7 @@
 								class={['group relative block w-full rounded-card text-left', gone ? 'opacity-60' : ''].join(' ')}
 								aria-label={`${selected.has(item.id) ? 'Deselect' : 'Select'} ${label(item)}`}
 							>
-								{@render episodeCard(item, progress, ratio, gone, false, selected.has(item.id))}
+								{@render episodeCard(item, progress, ratio, gone, false, selected.has(item.id), false, true)}
 								<span
 									class={[
 										'absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border backdrop-blur transition-colors',
@@ -603,7 +634,7 @@
 								class="group block rounded-card transition-transform duration-300 ease-out hover:-translate-y-1"
 								aria-label={`${reading ? 'Read' : 'Play'} ${label(item)}${item.title !== group.title ? `, ${item.title}` : ''}`}
 							>
-								{@render episodeCard(item, progress, ratio, gone, true)}
+								{@render episodeCard(item, progress, ratio, gone, true, false, current)}
 							</a>
 							<!-- Beside the link, not in it: a button inside a link is not a button. -->
 							<span class="absolute bottom-1.5 end-1.5">
@@ -658,7 +689,7 @@
 	</div>
 </article>
 
-{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false, chosen = false)}
+{#snippet episodeCard(item: CatalogItem, progress: Progress | null, ratio: number, gone: boolean, menu = false, chosen = false, current = false, choosing = false)}
 	<!-- A card as every other card in the app is drawn: the picture in a rounded
 	     frame with a faint ring, the words under it. A bordered box around both
 	     made the episodes and volumes a second kind of card. -->
@@ -666,7 +697,8 @@
 		class={[
 			'episode-thumb relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] transition duration-300',
 			reading ? 'aspect-[2/3]' : 'aspect-video',
-			chosen ? 'ring-2 ring-accent' : 'ring-1 ring-white/5 group-hover:ring-white/15'
+			// The part the main button opens wears the accent, so it is found at a glance.
+			chosen ? 'ring-2 ring-accent' : current ? 'ring-2 ring-accent/70' : 'ring-1 ring-white/5 group-hover:ring-white/15'
 		].join(' ')}
 	>
 		<img
@@ -677,7 +709,8 @@
 			decoding="async"
 			class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
 		/>
-		{#if !gone}
+		<!-- No play badge while choosing: the card then toggles, it does not play. -->
+		{#if !gone && !choosing}
 			<span
 				class="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-black/65 text-white opacity-0 backdrop-blur transition-opacity duration-200 group-hover:opacity-100"
 			>
