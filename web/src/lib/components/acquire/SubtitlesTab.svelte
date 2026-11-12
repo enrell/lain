@@ -7,7 +7,10 @@
 	 */
 	import { onMount } from 'svelte';
 	import { api, type SubtitleRecord, type SubtitleRefusal } from '$lib/api';
+	import Captions from '@lucide/svelte/icons/captions';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 	import Button from '$lib/components/primitives/Button.svelte';
+	import EmptyRow from '$lib/components/primitives/EmptyRow.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -100,9 +103,11 @@
 	{#if written === null}
 		<div class="flex justify-center py-6"><Spinner class="size-5 text-muted" /></div>
 	{:else if refused.length === 0}
-		<p class="py-3 text-sm text-muted">{t('acquire.subtitles.tabRefusedEmpty')}</p>
+		<EmptyRow title={t('acquire.subtitles.tabRefusedEmpty')}>
+			{#snippet icon()}<ShieldCheck />{/snippet}
+		</EmptyRow>
 	{:else}
-		<p class="text-xs text-muted">{t('acquire.subtitles.tabKeys')}</p>
+		<p class="keyboard-hint text-xs text-muted">{t('acquire.subtitles.tabKeys')}</p>
 		<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.subtitles.tabRefused')}>
 			{#each refused as r (r.provider_id + '\u0000' + r.file_id)}
 				<div role="row" tabindex="0" onkeydown={(e) => refusalKey(e, r)} class={row}>
@@ -126,7 +131,9 @@
 	{#if written === null}
 		<div class="flex justify-center py-6"><Spinner class="size-5 text-muted" /></div>
 	{:else if written.length === 0}
-		<p class="py-3 text-sm text-muted">{t('acquire.subtitles.tabWrittenEmpty')}</p>
+		<EmptyRow title={t('acquire.subtitles.tabWrittenEmpty')}>
+			{#snippet icon()}<Captions />{/snippet}
+		</EmptyRow>
 	{:else}
 		<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.subtitles.tabWritten')}>
 			{#each written as s (s.path)}

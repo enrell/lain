@@ -6,6 +6,7 @@
 	import ContinueCard from './ContinueCard.svelte';
 	import MediaCard from './MediaCard.svelte';
 	import ShowCard from './ShowCard.svelte';
+	import Rail from './Rail.svelte';
 
 	let {
 		title,
@@ -43,13 +44,8 @@
 			</a>
 		{/if}
 	</div>
-	<!-- Scrollable rail keeps the familiar streaming-library scan pattern. It runs
-	     through the page's side padding at every width, so the card that continues
-	     is cut by the window, not sliced by an invisible line at the gutter; the
-	     first card and the scroll stops stay on the gutter. -->
-	<div
-		class="-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-4 no-scrollbar sm:-mx-8 sm:scroll-px-8 sm:px-8 md:gap-4 lg:-mx-10 lg:scroll-px-10 lg:px-10 lg:gap-5"
-	>
+	<!-- Scrollable rail keeps the familiar streaming-library scan pattern (Rail). -->
+	<Rail class="lg:gap-5">
 		{#each groups ?? [] as group (group.key)}
 			<!-- The sizes of the cards below for the same frame. -->
 			<div class={['shrink-0 snap-start', layout === 'landscape' ? 'w-[78vw] max-w-96 sm:w-80 lg:w-[22rem] xl:w-96' : 'w-[40vw] max-w-48 sm:w-40 lg:w-44 xl:w-48'].join(' ')}>
@@ -79,5 +75,5 @@
 				</div>
 			{/if}
 		{/each}
-	</div>
+	</Rail>
 </section>

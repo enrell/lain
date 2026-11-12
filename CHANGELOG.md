@@ -47,6 +47,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   the choice is kept, and the episode playing is scrolled into view.
 - **Reading options on a phone**: the reader's top bar is one row, and
   its reading toggles open under it from one button.
+- **Rails page with a mouse** (web): Home's rows, the library's shelves
+  and "More in" show a previous and a next button at the window's edges
+  on hover while that side hides more; the arrows still walk them card by
+  card.
+- **Back returns the focus to the card that was opened** (web): Search, a
+  library grid, the shelves and Home put the focus back on the title you
+  opened, not on the page; the focus ring shows when you came by keyboard.
+- **The library's view is in the address** (web): `/library?view=all`
+  opens All titles and can be linked; Back returns to the view you left,
+  and the browser's last choice is only the default for a bare `/library`.
 
 ### Changed
 - **Web: titles, not files.** Home lists each library's newest titles in
@@ -93,6 +103,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Every string of the player and the reader, their settings panels and
   their routes, and a readable file's name (Vol, Ch, Issue), goes
   through `t()`.
+- **The error page** (web) opens like the first-run pages, with the status,
+  the address set apart, and keys on every way on (Enter Home, L Library,
+  Backspace Back when you came from inside Lain, R to retry a failed load).
+- **First-run pages each have their own art** (web): Tracking draws a list
+  kept elsewhere, Social a title among three people, Acquire releases on
+  their way in, all from your own titles, beside the words from 768 px.
+- **One meaning per key** (web): `/` searches (the header's titles, or the
+  search of the page you are on); Social finds people with **F**, and
+  Acquire's "Grab from a link" is **L** from any tab, no longer `2`, the
+  Queue tab's key.
+- **Favorites with few titles** (web) keep their filters in the toolbar's
+  sheet; the filter column comes from 12 titles up.
+- **Login and Setup share one field style** (web), and sign-in says how
+  to get back in after a forgotten password; a disabled account is told
+  so, not that its password is wrong.
 
 ### Fixed
 - **Web:** films and clips without a year are captioned with their length,
@@ -122,6 +147,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The player and the reader no longer show the page's scrollbar gutter
   as a grey strip at the right edge, and the Enter key on the reader's
   end card is readable.
+- **Library on a phone** (web): the shelf names get their own row under
+  the view switch (the fourth was cut), and a row of names fades only
+  where names are hidden, at its start too once scrolled.
+- **Social** (web): Privacy settings appears once; a tab shows it is
+  loading until its first answer instead of flashing its empty state;
+  Friends with nobody yet is drawn as an empty state.
+- **Acquire** (web): key hints spelled out in words ("Enter grabs") are
+  hidden on a touch screen; empty search results, Blocklist and Subtitles
+  sections are drawn as empty states.
+- **The phone's search field** (web) is filled like the library's and the
+  favourites' fields.
 
 ## [0.3.1] - 2026-11-12
 
