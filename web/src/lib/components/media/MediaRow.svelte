@@ -4,6 +4,7 @@
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import ContinueCard from './ContinueCard.svelte';
 	import MediaCard from './MediaCard.svelte';
+	import Rail from './Rail.svelte';
 
 	let {
 		title,
@@ -36,13 +37,8 @@
 			</a>
 		{/if}
 	</div>
-	<!-- Scrollable rail keeps the familiar streaming-library scan pattern. It runs
-	     through the page's side padding at every width, so the card that continues
-	     is cut by the window, not sliced by an invisible line at the gutter; the
-	     first card and the scroll stops stay on the gutter. -->
-	<div
-		class="-mx-5 flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-4 no-scrollbar sm:-mx-8 sm:scroll-px-8 sm:px-8 md:gap-4 lg:-mx-10 lg:scroll-px-10 lg:px-10 lg:gap-5"
-	>
+	<!-- Scrollable rail keeps the familiar streaming-library scan pattern (Rail). -->
+	<Rail class="lg:gap-5">
 		{#each items as item (item.id)}
 			{#if layout === 'landscape'}
 				<div class="w-[78vw] max-w-96 shrink-0 snap-start sm:w-80 lg:w-[22rem] xl:w-96">
@@ -62,5 +58,5 @@
 				</div>
 			{/if}
 		{/each}
-	</div>
+	</Rail>
 </section>

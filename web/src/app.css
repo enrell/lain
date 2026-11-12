@@ -102,6 +102,22 @@
 }
 
 /*
+ * A row of names that scrolls sideways fades where more is hidden, and
+ * only there: `scrollEdges(…, fade)` sets each side's fade as the row
+ * moves, so a row at rest fades at its end and one scrolled to its end
+ * fades at its start.
+ */
+@utility edge-fade {
+	mask-image: linear-gradient(
+		to right,
+		transparent,
+		black var(--fade-left, 0px),
+		black calc(100% - var(--fade-right, 0px)),
+		transparent
+	);
+}
+
+/*
  * One type scale for headings (r19 design review). A page's own name is
  * the largest text after a hero's title, and a section under it (a rail,
  * a title's episodes, a search's suggestions) is one step down, as Home's

@@ -17,6 +17,11 @@ const en = {
 		close: 'Close',
 		signOut: 'Sign out'
 	},
+	// A row of cards' buttons for a mouse (Rail); the keyboard walks it with the arrows.
+	rail: {
+		previous: 'Earlier in this row',
+		next: 'Further in this row'
+	},
 	auth: {
 		username: 'Username',
 		password: 'Password',
@@ -944,6 +949,7 @@ const en = {
 		allTitles: 'All titles',
 		viewKey: 'Switch view (V)',
 		shelves: 'Libraries on this page',
+		shelfCount: { one: '{count} library', other: '{count} libraries' },
 		viewAll: 'View all',
 		seeAll: 'See all',
 		shelfFailed: 'Could not load this library.',
