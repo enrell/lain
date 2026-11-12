@@ -113,11 +113,18 @@ class PlayerModel(
     }
 
     /** Saves the position (every few seconds, on pause, at the end). */
+    /**
+     * Set when the item was already watched as it opened: a second look keeps
+     * it watched (a few seconds of a finished episode used to un-mark it and
+     * send Resume back to it); only Mark unwatched takes the mark away.
+     */
+    var rewatch = false
+
     fun report(positionMs: Long, playerDurationMs: Long, ended: Boolean = false): Job? {
         if (_state.value.source == null) return null
         val pos = sourceSec(positionMs)
         val dur = durationSec(playerDurationMs)
-        val done = ended || (dur > 0 && pos / dur >= WATCHED_AT)
+        val done = rewatch || ended || (dur > 0 && pos / dur >= WATCHED_AT)
         if (pos < 1 && !done) return null
         return scope.launch {
             try {
