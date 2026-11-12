@@ -10,6 +10,8 @@ import io.github.enrell.lain.core.PlaySource
 import io.github.enrell.lain.core.SaveOutcome
 import io.github.enrell.lain.core.SourceKind
 import io.github.enrell.lain.core.SubtitleTrack
+import io.github.enrell.lain.domain.MIME_FAMILIES
+import io.github.enrell.lain.domain.withoutFamily
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,9 +47,12 @@ data class PlayerState(
 class PlayerModel(
     private val core: LainCoreInterface,
     val itemId: String,
-    private val caps: List<String>,
+    caps: List<String>,
     private val scope: CoroutineScope,
 ) {
+    /** The decode claim; narrowed when a decoder fails on something it claimed. */
+    private var claim = caps
+
     private val _state = MutableStateFlow(PlayerState())
     val state: StateFlow<PlayerState> = _state.asStateFlow()
 
@@ -55,7 +60,7 @@ class PlayerModel(
         _state.update { PlayerState(loading = true) }
         scope.launch {
             try {
-                val src = core.playSource(itemId, caps)
+                val src = core.playSource(itemId, claim)
                 _state.update { it.copy(loading = false, source = src) }
             } catch (e: LainException) {
                 _state.update { it.copy(loading = false, error = e) }
@@ -111,6 +116,34 @@ class PlayerModel(
                 _state.update { it.copy(loading = false, error = e) }
             }
         }
+    }
+
+    /**
+     * ExoPlayer could not decode a codec the claim offered. Ask the server
+     * again without that codec family, so it transcodes instead of the
+     * player stopping on an error. False when there is nothing to retry.
+     */
+    fun decoderFailed(mime: String?, positionMs: Long, playerDurationMs: Long): Boolean {
+        val src = _state.value.source ?: return false
+        val family = mime?.let { MIME_FAMILIES[it] } ?: return false
+        if (src.kind == SourceKind.HLS || claim.none { it.endsWith("/$family") }) return false
+        claim = withoutFamily(claim, family)
+        _state.update { it.copy(loading = true, error = null) }
+        scope.launch {
+            report(positionMs, playerDurationMs)?.join()
+            try {
+                val next = core.playSource(itemId, claim)
+                _state.update { it.copy(loading = false, source = next) }
+            } catch (e: LainException) {
+                _state.update { it.copy(loading = false, error = e) }
+            }
+        }
+        return true
+    }
+
+    /** A playback error with no fallback: shown under the player. */
+    fun playerFailed(e: Throwable) {
+        _state.update { it.copy(loading = false, error = e) }
     }
 
     private suspend fun stopSession(src: PlaySource?) {
