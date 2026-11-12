@@ -647,6 +647,12 @@ const en = {
 		partPage: '{part} · page {page} of {pages}',
 		pageOf: 'Page {page} of {pages}'
 	},
+	library: {
+		viewAll: 'View all',
+		seeAll: 'See all',
+		shelfFailed: 'Could not load this library.',
+		shelfEmpty: 'Nothing indexed here yet.'
+	},
 	home: {
 		browseLibrary: 'Browse library'
 	},
