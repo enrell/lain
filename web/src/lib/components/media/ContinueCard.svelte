@@ -25,11 +25,19 @@
 	// episode label over the series title.
 	const series = $derived(enrichment?.title || item.title);
 	const reading = $derived(isReadable(item.kind));
-	// An episode shows its own picture, never the show's poster kept beside
-	// its first episode (see `wideStill`); a film keeps its poster and a book
-	// its cover.
-	const framed = $derived(!reading && item.episode > 0);
-	const still = $derived(framed ? wideStill(item, 640) : api.thumbnail.url(item.id, session.token, { width: 640 }));
+	// A video shows a wide picture of itself in this wide card: an episode
+	// its own still, never the show's poster kept beside its first episode
+	// (see `wideStill`), and a film its overlay's backdrop or else its own
+	// still, where its poster stood pillarboxed between blurred bars. A book
+	// keeps its cover.
+	const framed = $derived(!reading);
+	const still = $derived(
+		reading
+			? api.thumbnail.url(item.id, session.token, { width: 640 })
+			: item.episode <= 0 && enrichment?.cover
+				? enrichment.cover
+				: wideStill(item, 640)
+	);
 	const epLabel = $derived(
 		reading
 			? readingLabel(item)
