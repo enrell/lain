@@ -449,6 +449,20 @@ fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
     file(&thumb.path, "image/jpeg", vec![("cache-control", "private, max-age=86400".into())], "thumbnail unavailable")
 }
 
+/// D-282: tells each item what `GET /api/items/{id}/thumbnail` serves it
+/// without a time, so a client draws its card in the picture's shape
+/// before the picture loads. Filled on every read, never stored: a still
+/// added next to a file counts at once, as it does for the route.
+pub(crate) fn tell_thumbnails(items: &mut [CatalogItem]) {
+    let infos = {
+        let files: Vec<&Path> = items.iter().map(|it| Path::new(&it.file_path)).collect();
+        thumbnail::describe(&files)
+    };
+    for (it, info) in items.iter_mut().zip(infos) {
+        it.thumbnail = info;
+    }
+}
+
 /// The item's length, probed; `None` when it is not a file ffprobe reads.
 fn duration_of(app: &App, it: &CatalogItem) -> Option<f64> {
     let settings = settings(app);
