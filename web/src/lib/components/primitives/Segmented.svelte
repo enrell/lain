@@ -30,6 +30,13 @@
 	} = $props();
 
 	let group = $state<HTMLDivElement>();
+	// The one segment Tab reaches: the picked one, or the first that can be
+	// picked when the value in force is disabled (Transcoding's engine keeps
+	// a backend the probe stopped passing), so the group never drops out of
+	// the tab order.
+	const tabStop = $derived(
+		options.find((o) => o.value === value && !o.disabled)?.value ?? options.find((o) => !o.disabled)?.value
+	);
 
 	function pick(next: V): void {
 		if (next !== value) onchange(next);
@@ -38,16 +45,19 @@
 	function onKey(e: KeyboardEvent): void {
 		const enabled = options.filter((o) => !o.disabled);
 		if (enabled.length === 0) return;
-		const at = Math.max(0, enabled.findIndex((o) => o.value === value));
+		// From the focused segment: with a disabled value in force, focus sits
+		// on the first enabled one, and the next is the one after it.
+		const from = (e.target as HTMLElement).closest('[data-value]')?.getAttribute('data-value') ?? value;
+		const at = enabled.findIndex((o) => o.value === from);
 		let to: number;
 		switch (e.key) {
 			case 'ArrowRight':
 			case 'ArrowDown':
-				to = (at + 1) % enabled.length;
+				to = at < 0 ? 0 : (at + 1) % enabled.length;
 				break;
 			case 'ArrowLeft':
 			case 'ArrowUp':
-				to = (at - 1 + enabled.length) % enabled.length;
+				to = at < 0 ? enabled.length - 1 : (at - 1 + enabled.length) % enabled.length;
 				break;
 			case 'Home':
 				to = 0;
@@ -86,7 +96,7 @@
 			data-value={o.value}
 			disabled={o.disabled}
 			title={o.title}
-			tabindex={on ? 0 : -1}
+			tabindex={o.value === tabStop ? 0 : -1}
 			class={[
 				'min-w-0 truncate rounded-md px-3 text-[13px] tracking-[0.01em] transition-colors disabled:cursor-not-allowed disabled:opacity-40',
 				size === 'sm' ? 'h-9 md:h-7' : 'h-8',
