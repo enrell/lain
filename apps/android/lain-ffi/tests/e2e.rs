@@ -119,6 +119,30 @@ async fn watch_offline_and_sync_back() {
     assert_eq!(core.set_preferred_language("jpn".into()).await.unwrap().preferred_language, "jpn");
     assert_eq!(core.me().await.unwrap().preferred_language, "jpn");
     assert_eq!(core.set_preferred_language(String::new()).await.unwrap().preferred_language, "");
+    // D-280: the one language reads as both; the three are set apart.
+    let both = core.set_preferred_language("jpn".into()).await.unwrap();
+    assert_eq!(
+        (
+            both.preferred_audio_language.as_str(),
+            both.preferred_subtitle_language.as_str(),
+            both.preferred_subtitle_mode.as_str()
+        ),
+        ("jpn", "jpn", "auto")
+    );
+    let split = core.set_track_preferences("jpn".into(), " POR ".into(), "always".into()).await.unwrap();
+    assert_eq!(
+        (
+            split.preferred_audio_language.as_str(),
+            split.preferred_subtitle_language.as_str(),
+            split.preferred_subtitle_mode.as_str(),
+            split.preferred_language.as_str()
+        ),
+        ("jpn", "por", "always", "por")
+    );
+    assert_eq!(core.me().await.unwrap(), split);
+    assert!(core.set_track_preferences("jpn".into(), "por".into(), "sometimes".into()).await.is_err());
+    let cleared = core.set_track_preferences(String::new(), String::new(), String::new()).await.unwrap();
+    assert_eq!((cleared.preferred_language.as_str(), cleared.preferred_subtitle_mode.as_str()), ("", "auto"));
 
     // A score: given, seen in the average, changed, and taken back.
     let unrated = core.rating(ITEM1.into()).await.unwrap();

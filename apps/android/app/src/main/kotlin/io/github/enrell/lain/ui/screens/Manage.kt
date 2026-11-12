@@ -53,6 +53,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import io.github.enrell.lain.AppGraph
 import io.github.enrell.lain.R
 import io.github.enrell.lain.core.CopyState
+import io.github.enrell.lain.domain.SubtitleMode
+import io.github.enrell.lain.domain.TrackPrefs
 import io.github.enrell.lain.download.DownloadService
 import io.github.enrell.lain.ui.AppState
 import io.github.enrell.lain.ui.AppViewModel
@@ -232,6 +234,7 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
 @Composable
 fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: String, onTheme: (String) -> Unit) {
     val l = LocalLain.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var queued by remember { mutableLongStateOf(0L) }
     var policy by remember { mutableStateOf(graph.core.offlinePolicy()) }
@@ -261,15 +264,43 @@ fun SettingsScreen(graph: AppGraph, state: AppState, vm: AppViewModel, themeId: 
             SettingRow(stringResource(R.string.player_skip), if (skip == 0) stringResource(R.string.settings_skip_hint) else stringResource(R.string.settings_skip_fixed, skip), below = true) {
                 Segmented(io.github.enrell.lain.domain.SKIP_CHOICES.map { it to if (it == 0) stringResource(R.string.settings_auto) else "$it s" }, skip, { skip = it; graph.prefs.skipSec = it }, Modifier.fillMaxWidth(), fill = true)
             }
-            // The account's language: the same setting the web client edits.
-            val lang = state.user?.preferredLanguage.orEmpty()
-            val auto = stringResource(R.string.settings_language_auto)
+            // The account's track preferences (D-280): the same three rows the web client edits.
+            val tracks = trackPrefsOf(state.user)
+            val failed = stringResource(R.string.settings_language_failed)
+            fun save(next: TrackPrefs) = scope.launch {
+                if (!vm.setTrackPreferences(next)) android.widget.Toast.makeText(context, failed, android.widget.Toast.LENGTH_SHORT).show()
+            }
+            fun named(code: String, none: String) = LANGUAGES.firstOrNull { it.first == code }?.second ?: code.ifEmpty { none }
+            // A code set elsewhere (the CLI, the web) that the list does not name stays choosable.
+            fun options(code: String, none: String) = listOf("" to none) + LANGUAGES + listOfNotNull(code.takeIf { c -> c.isNotEmpty() && LANGUAGES.none { it.first == c } }?.let { it to it })
+            val asFile = stringResource(R.string.settings_language_auto)
             ChoiceRow(
-                stringResource(R.string.settings_language), stringResource(R.string.settings_language_hint),
-                LANGUAGES.firstOrNull { it.first == lang }?.second ?: lang.ifEmpty { auto },
-                listOf("" to auto) + LANGUAGES,
-                lang,
-            ) { code -> scope.launch { vm.setPreferredLanguage(code) } }
+                stringResource(R.string.settings_audio_language), stringResource(R.string.settings_audio_language_hint),
+                named(tracks.audio, asFile), options(tracks.audio, asFile), tracks.audio,
+            ) { code -> save(tracks.copy(audio = code)) }
+            val noSubs = stringResource(R.string.settings_subtitle_language_none)
+            ChoiceRow(
+                stringResource(R.string.settings_subtitle_language), stringResource(R.string.settings_subtitle_language_hint),
+                named(tracks.subtitle, noSubs), options(tracks.subtitle, noSubs), tracks.subtitle,
+            ) { code -> save(tracks.copy(subtitle = code)) }
+            val modes = listOf(
+                SubtitleMode.AUTO to stringResource(R.string.settings_subtitle_mode_auto),
+                SubtitleMode.ALWAYS to stringResource(R.string.settings_subtitle_mode_always),
+                SubtitleMode.FORCED to stringResource(R.string.settings_subtitle_mode_forced),
+                SubtitleMode.OFF to stringResource(R.string.settings_subtitle_mode_off),
+            )
+            val modeHint = stringResource(
+                when (tracks.mode) {
+                    SubtitleMode.AUTO -> R.string.settings_subtitle_mode_auto_hint
+                    SubtitleMode.ALWAYS -> R.string.settings_subtitle_mode_always_hint
+                    SubtitleMode.FORCED -> R.string.settings_subtitle_mode_forced_hint
+                    SubtitleMode.OFF -> R.string.settings_subtitle_mode_off_hint
+                },
+            )
+            ChoiceRow(
+                stringResource(R.string.settings_subtitle_mode), modeHint,
+                modes.first { it.first == tracks.mode }.second, modes.map { it.first.wire to it.second }, tracks.mode.wire,
+            ) { wire -> save(tracks.copy(mode = SubtitleMode.of(wire))) }
             SettingRow(stringResource(R.string.settings_sub_size), below = true) {
                 Segmented(listOf(0 to stringResource(R.string.size_small), 1 to stringResource(R.string.size_medium), 2 to stringResource(R.string.size_large)), subSize, { subSize = it; graph.prefs.subtitleSize = it }, Modifier.fillMaxWidth(), fill = true)
             }

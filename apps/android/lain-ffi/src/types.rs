@@ -25,18 +25,31 @@ pub struct UserInfo {
     pub username: String,
     pub role: String,
     pub display_name: String,
-    /// ISO 639-2/T, empty when unset: the default subtitle language.
+    /// D-071's one language (ISO 639-2/T, empty when unset), kept for
+    /// callers before D-280: the subtitle language when one is set, else
+    /// the audio language.
     pub preferred_language: String,
+    /// D-280: ISO 639-2; empty plays the file's default audio.
+    pub preferred_audio_language: String,
+    /// D-280: ISO 639-2; empty when none is preferred.
+    pub preferred_subtitle_language: String,
+    /// D-280: `auto`, `always`, `forced` or `off`.
+    pub preferred_subtitle_mode: String,
 }
 
 impl From<User> for UserInfo {
     fn from(u: User) -> Self {
+        // An older server's one language reads as both (D-071).
+        let t = u.track_preferences();
         UserInfo {
             id: u.id,
             username: u.username,
             role: u.role,
             display_name: u.profile.display_name,
             preferred_language: u.preferred_language,
+            preferred_audio_language: t.audio_language,
+            preferred_subtitle_language: t.subtitle_language,
+            preferred_subtitle_mode: t.subtitle_mode,
         }
     }
 }
