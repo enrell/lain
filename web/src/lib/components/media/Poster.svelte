@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { CatalogItem, Enrichment } from '$lib/api/types';
-	import { cardThumb } from '$lib/stores/frames';
+	import { cardThumb, stillOf } from '$lib/stores/frames';
 	import { isReadable } from '$lib/reader/kinds';
 	import { guessShape, recordShape, shapeOf, type Shape } from '$lib/stores/shapes.svelte';
 	import PlaceholderPoster from './PlaceholderPoster.svelte';
@@ -83,7 +83,8 @@
 			onload={(e) => {
 				const img = e.currentTarget as HTMLImageElement;
 				loadedSrc = src;
-				recordShape(item.id, img.naturalWidth, img.naturalHeight);
+				// A file's own still also teaches what its library's stills are (see `guessShape`).
+				recordShape(item.id, img.naturalWidth, img.naturalHeight, isStill ? stillOf(item) : undefined);
 			}}
 			onerror={handleError}
 		/>

@@ -41,8 +41,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   pictures** (web): a library grid, a shelf, the rail under a title and
   search results are drawn as soon as their titles are here, in the frame
   guessed from what is known before a picture loads (posters in the
-  overlays, reading files), then checked once against their first
-  pictures and changed only if the guess was wrong, and held after that.
+  overlays, reading files, and what this browser has seen of each public
+  library's stills), then checked once against their first pictures and
+  changed only if the guess was wrong, and held after that.
   A grid opened in one shape and turned to the other as its posters came
   in; measuring first instead left a query or a library on a cold
   thumbnail cache with nothing on screen for up to 2.5 s. A card's

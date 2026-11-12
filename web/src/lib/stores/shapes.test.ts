@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Enrichment } from '$lib/api/types';
 import { groupItems } from '$lib/utilities/grouping';
-import { SAMPLE, frameDecided, frameFor, frameOf, guessShape, measure, recordShape, sampleArt, shapeOf } from './shapes.svelte';
+import {
+	SAMPLE, STILLS_CAP, frameDecided, frameFor, frameOf, guessShape, measure, recordShape, sampleArt, shapeOf, showsOwnStill, stillKey,
+	tallyStill, usualStill
+} from './shapes.svelte';
 
 function item(id: string, title: string, kind = 'video', episode = 0, library = 'lib'): CatalogItem {
 	return {
@@ -34,6 +37,54 @@ describe('shapes', () => {
 		expect(guessShape(item('x', 'X'), banner('x'))).toBe('landscape');
 		expect(guessShape(item('x', 'X', 'manga'), banner('x'))).toBe('landscape');
 		expect(guessShape(item('x', 'X'), { ...banner('x'), poster: 'p.jpg' })).toBe('portrait');
+	});
+	it('guesses a video still by what its library\'s stills have been', () => {
+		const film = (id: string) => item(id, id, 'video', 0, 'films');
+		expect(guessShape(film('f0'), null)).toBe('landscape');
+		// Two films came with posters, one without.
+		recordShape('f1', 600, 900, film('f1'));
+		recordShape('f2', 600, 900, film('f2'));
+		recordShape('f3', 1280, 720, film('f3'));
+		expect(guessShape(film('f4'), null)).toBe('portrait');
+		// Counted once a visit: the same picture loaded again by another card.
+		recordShape('f3', 1280, 720, film('f3'));
+		recordShape('f3', 1280, 720, film('f3'));
+		expect(guessShape(film('f4'), null)).toBe('portrait');
+		// Overlay art and reading files are not the library's stills.
+		expect(guessShape(film('f4'), banner('f4'))).toBe('landscape');
+		expect(guessShape(item('m', 'M', 'manga', 0, 'films'), null)).toBe('portrait');
+		// Another library learns nothing from this one.
+		expect(guessShape(item('c', 'C', 'video', 0, 'clips'), null)).toBe('landscape');
+		// A picture that is not the file's own still teaches nothing.
+		recordShape('p1', 600, 900);
+		expect(guessShape(item('c', 'C', 'video', 0, 'clips'), null)).toBe('landscape');
+	});
+	it('keeps a show\'s later episodes apart from its first', () => {
+		const ep = (id: string, n: number) => item(id, 'Show', 'episode', n, 'shows');
+		expect(stillKey(ep('e1', 1))).toBe('shows');
+		expect(stillKey(item('f', 'F', 'video', 0, 'shows'))).toBe('shows');
+		expect(stillKey(ep('e2', 2))).toBe('shows/later');
+		// The first episode came with the show's poster; the others are frames.
+		recordShape('s1e1', 600, 900, ep('s1e1', 1));
+		for (let n = 2; n <= 6; n += 1) recordShape(`s1e${n}`, 1280, 720, ep(`s1e${n}`, n));
+		expect(guessShape(ep('s2e1', 1), null)).toBe('portrait');
+		expect(guessShape(ep('s2e3', 3), null)).toBe('landscape');
+	});
+	it('tallies stills, halving past the cap, a frame on a tie', () => {
+		expect(usualStill(undefined)).toBeUndefined();
+		expect(usualStill([0, 0])).toBeUndefined();
+		expect(usualStill([1, 1])).toBe('landscape');
+		expect(usualStill([2, 1])).toBe('portrait');
+		expect(tallyStill(undefined, 'portrait')).toEqual([1, 0]);
+		const full = tallyStill([STILLS_CAP, 0], 'landscape');
+		expect(full[0] + full[1]).toBeLessThanOrEqual(STILLS_CAP);
+		expect(usualStill(full)).toBe('portrait');
+	});
+	it('tells a file\'s own still from overlay art and pages', () => {
+		expect(showsOwnStill(item('x', 'X'), null)).toBe(true);
+		expect(showsOwnStill(item('x', 'X'), art('x'))).toBe(false);
+		expect(showsOwnStill(item('x', 'X'), banner('x'))).toBe(false);
+		expect(showsOwnStill(item('x', 'X', 'comic'), null)).toBe(false);
 	});
 });
 
