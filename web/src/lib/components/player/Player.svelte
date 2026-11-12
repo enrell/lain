@@ -85,8 +85,11 @@
 		onFinished?: () => void;
 		/** The episode after this one, if any: a button in the bar and Shift+N go to it. */
 		next?: { label: string; go: () => void } | null;
-		/** The episode list beside the player on a wide screen: E and a bar button show or hide it. */
-		episodes?: { shown: boolean; toggle: () => void } | null;
+		/**
+		 * The episode list: E and a bar button show or hide it. `overlay` when
+		 * it opens as a drawer over the picture, which Escape also closes.
+		 */
+		episodes?: { shown: boolean; toggle: () => void; overlay?: boolean } | null;
 	} = $props();
 
 	const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -1614,6 +1617,11 @@
 	 * the way out, and a viewer reaching for Escape must not lose playback.
 	 */
 	function onEscape(event: KeyboardEvent): void {
+		if (episodes?.overlay && episodes.shown) {
+			consume(event);
+			episodes.toggle();
+			return;
+		}
 		if (settingsOpen) {
 			consume(event);
 			settingsOpen = false;
@@ -1690,8 +1698,8 @@
 				break;
 			case 'e':
 			case 'E':
-				// Only where the list sits beside the picture (lg and up); below, it is under it.
-				if (!episodes || !window.matchMedia('(min-width: 1024px)').matches) break;
+				// Not on an upright phone, where the list is under the picture (no `episodes` there).
+				if (!episodes) break;
 				consume(event);
 				episodes.toggle();
 				break;
@@ -2312,17 +2320,20 @@
 					<Keyboard class="size-5" />
 				</IconButton>
 				{#if episodes}
-					<!-- The list beside the picture takes a quarter of a laptop's width: it can step aside. -->
-					<IconButton label={episodes.shown ? t('player.episodesHide') : t('player.episodesShow')} class="max-lg:hidden" onclick={episodes.toggle}>
-						{#if episodes.shown}<PanelRightClose class="size-5" />{:else}<PanelRightOpen class="size-5" />{/if}
-					</IconButton>
+					<!-- The list beside the picture takes a quarter of a laptop's width: it can step aside.
+					     Narrower, the same button opens it as a drawer over the picture's edge. -->
+					<span class="contents" data-episodes-toggle>
+						<IconButton label={episodes.shown ? t('player.episodesHide') : t('player.episodesShow')} onclick={episodes.toggle}>
+							{#if episodes.shown}<PanelRightClose class="size-5" />{:else}<PanelRightOpen class="size-5" />{/if}
+						</IconButton>
+					</span>
 				{/if}
-				<button bind:this={settingsButton} type="button" aria-label="Playback settings" aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
+				<button bind:this={settingsButton} type="button" aria-label={t('player.settings.title')} aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
 					<Settings class="size-5" />
-					<span class="sr-only">Playback settings</span>
+					<span class="sr-only">{t('player.settings.title')}</span>
 				</button>
 				<IconButton
-					label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+					label={fullscreen ? t('player.exitFullscreen') : t('player.fullscreen')}
 					class="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
 					onclick={() => void toggleFullscreen()}
 				>
