@@ -338,7 +338,8 @@ const en = {
 			clear: 'clear',
 			close: 'close',
 			quickFind: 'quick find'
-		}
+		},
+		newest: 'New in your library'
 	},
 	shortcuts: {
 		title: 'Keyboard shortcuts',

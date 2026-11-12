@@ -19,6 +19,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   stills and posters, where results were rows of mixed shapes. Arrow keys
   move between results and from the header's field into them; up from the
   first row goes back to the field. The library grid answers the same keys.
+  Before a query the page offers the libraries as chips, as it does after a
+  short answer, and a rail of the newest titles.
 - **Home shows posters whole** (web): a library's row takes the frame its
   pictures decide (a films library of posters is a poster rail, not
   widescreen cards cropping each poster), and an upright picture in a
