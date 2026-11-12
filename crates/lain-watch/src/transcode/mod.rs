@@ -14,6 +14,7 @@
 //! `lain.playback.transcode@2` is not ported: no route reaches it
 //! (D-190).
 
+pub mod effects;
 pub mod encode;
 pub mod hls;
 pub mod policy;
@@ -103,6 +104,12 @@ pub struct V3Request {
     pub segment_index: i64,
     pub allow_video_stream_copy: Option<bool>,
     pub allow_audio_stream_copy: Option<bool>,
+    /// Codecs beyond H.264 the client decodes in fMP4 (D-273).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub video_copy_codecs: Vec<String>,
+    /// A video effect rendered by the server (D-274): a preset id.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub video_effect: String,
     pub policy: Option<Policy>,
     /// Opaque account reference: per-user stream counts and the admin
     /// list.
@@ -1358,6 +1365,16 @@ impl Transcoder {
         if self.with_job(session, epoch, |j| j.stopped).unwrap_or(true) {
             return Err(Fail::Plain("session stopped".into()));
         }
+        // The effect's shader is a file ffmpeg reads; it lives beside the
+        // sessions, one per preset.
+        let with_effect;
+        let p = if p.effect.is_empty() {
+            p
+        } else {
+            let file = effects::materialize(&self.inner.dir, &p.effect)?;
+            with_effect = EncodePlan { effect_file: file.to_string_lossy().into_owned(), ..p.clone() };
+            &with_effect
+        };
         let mut sub_file = PathBuf::new();
         if p.burn_text
             && let Some(sub) = &p.subtitle

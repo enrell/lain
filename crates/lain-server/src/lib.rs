@@ -18,6 +18,7 @@ pub mod datadir;
 pub mod events;
 pub mod files;
 pub mod gateway;
+pub mod integration;
 pub mod libraries;
 pub mod lists;
 pub mod logging;

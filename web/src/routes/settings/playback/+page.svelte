@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { nameable } from '$lib/stores/media-cache.svelte';
 	import { onMount } from 'svelte';
 	import Plus from '@lucide/svelte/icons/plus';
 	import X from '@lucide/svelte/icons/x';
@@ -14,6 +15,7 @@
 		loadEffectsPolicy,
 		saveEffectsPolicy,
 		type EffectPreset,
+		type EffectRenderer,
 		type EffectRule,
 		type EffectsPolicy
 	} from '$lib/player/effects-policy';
@@ -36,7 +38,7 @@
 		player = loadPreferredPlayer(session.user.id);
 		language = session.user.preferred_language ?? '';
 		policy = loadEffectsPolicy(session.user.id);
-		void api.libraries.list().then((v) => (libraries = v)).catch(() => {});
+		void api.libraries.list().then((v) => (libraries = nameable(v))).catch(() => {});
 	});
 
 	function changePlayer(value: string): void {
@@ -148,6 +150,21 @@
 			onchange={(e) => persistEffects({ ...policy, default: e.currentTarget.value as EffectPreset }, 'effect-default')}
 		>
 			{#each EFFECT_PRESETS as preset (preset.id)}<option value={preset.id}>{preset.label}</option>{/each}
+		</select>
+	</SettingRow>
+	<SettingRow
+		label="Render on"
+		hint="Server renders the effect into the stream, for a device whose GPU cannot. Needs a GPU on the server."
+		saved={flash.is('effect-render')}
+	>
+		<select
+			class="{field} w-56"
+			aria-label="Where video effects are rendered"
+			value={policy.renderOn ?? 'client'}
+			onchange={(e) => persistEffects({ ...policy, renderOn: e.currentTarget.value as EffectRenderer }, 'effect-render')}
+		>
+			<option value="client">This device</option>
+			<option value="server">Server</option>
 		</select>
 	</SettingRow>
 	<SettingRow

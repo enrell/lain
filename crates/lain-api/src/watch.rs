@@ -181,6 +181,9 @@ pub struct TranscodeCapabilities {
     pub encoders: Option<Vec<String>>,
     pub tone_mapping: bool,
     pub tone_mapping_bt2390: bool,
+    /// The libplacebo shader path executes (D-274).
+    #[serde(default)]
+    pub video_effects: bool,
     #[serde(default)]
     pub hardware: BTreeMap<String, bool>,
 }
@@ -198,6 +201,10 @@ pub struct PlaybackOptions {
     pub default_delivery: String,
     pub deliveries: Vec<String>,
     pub qualities: Vec<TranscodeQuality>,
+    /// Video effects this server can render into a session (D-274);
+    /// empty when its ffmpeg cannot.
+    #[serde(default)]
+    pub effects: Vec<String>,
 }
 
 /// A transcode session as clients see it: never a filesystem path.
@@ -296,6 +303,15 @@ pub struct TranscodeSelection {
     pub allow_video_stream_copy: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow_audio_stream_copy: Option<bool>,
+    /// Video codecs beyond H.264 the client decodes in fMP4 (D-273):
+    /// a source in one of them is copied instead of re-encoded. Only
+    /// `hevc` is known; other values are ignored.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub video_copy_codecs: Vec<String>,
+    /// A video effect the server renders into the session (D-274): one
+    /// of `PlaybackOptions.effects`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub video_effect: String,
 }
 
 /// `GET /api/localplay`: players that can open on the server's own

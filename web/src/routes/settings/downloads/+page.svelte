@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { nameable } from '$lib/stores/media-cache.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { api, type DownloadJob, type DownloadSettings, type DownloadsView, type Library } from '$lib/api';
 	import { ApiError } from '$lib/api';
@@ -60,7 +61,7 @@
 
 	onMount(async () => {
 		try {
-			libs = await api.libraries.list();
+			libs = nameable(await api.libraries.list());
 		} catch {
 			libs = [];
 		}

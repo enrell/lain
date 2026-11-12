@@ -36,10 +36,10 @@
 	{:else}
 		<header class="flex flex-wrap items-end justify-between gap-3">
 			<div>
-				<h1 class="text-xl font-semibold tracking-tight text-foreground">{library.name}</h1>
-				<p class="mt-0.5 font-mono text-xs text-muted">{library.path}</p>
+				<a href="/library" class="font-mono text-[11px] uppercase tracking-[0.14em] text-muted hover:text-foreground" title="Back (Backspace)">‹ Library</a>
+				<h1 class="mt-1 text-xl font-semibold tracking-tight text-foreground">{library.name}</h1>
 			</div>
 		</header>
-		<LibraryBrowser {libraries} libraryId={library.id} />
+		<LibraryBrowser {libraries} libraryId={library.id} name={library.name} backHref="/library" />
 	{/if}
 </div>

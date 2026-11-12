@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use lain_api::Library;
 use lain_core::{Binding, BindingMode, Composition, Error, Provider, Registry};
-use lain_ingest::{CAP_INGEST_SCAN, CAP_SOURCE_WATCH, ScanEvent, Scanner, SourceWatch};
+use lain_ingest::{CAP_INGEST_SCAN, CAP_SOURCE_WATCH, LibraryDone, ScanEvent, Scanner, SourceWatch, Step};
 
 struct SlowScan {
     gate: Arc<Mutex<()>>,
@@ -94,4 +94,39 @@ fn a_failed_pipeline_ends_in_error() {
     assert_eq!(st.state, "error");
     assert!(st.error.contains("walk exploded"), "{}", st.error);
     assert!(st.stats.is_none() && st.finished_at > 0);
+}
+
+/// A running scan says where it is; phases only move forward and the
+/// position ends with the scan.
+#[test]
+fn a_running_scan_reports_its_position() {
+    let (reg, gate, _) = setup(false);
+    let s = Scanner::new(&reg, libs(), false);
+    assert!(s.status().progress.is_none(), "an idle scanner has no position");
+    s.step(Step::Identified);
+    assert!(s.status().progress.is_none(), "a step outside a scan is ignored");
+    let held = gate.lock().unwrap();
+    assert!(s.start_all("manual"));
+    let p = s.status().progress.expect("a running scan has a position");
+    assert_eq!((p.phase.as_str(), p.libraries, p.files), ("walk", 1, 0));
+    s.step(Step::Walked { files: 3 });
+    s.step(Step::Identified);
+    s.step(Step::Identified);
+    let p = s.status().progress.unwrap();
+    assert_eq!((p.phase.as_str(), p.libraries_walked, p.files, p.files_done), ("identify", 1, 3, 2));
+    s.enrich_progress(1, 9);
+    assert_eq!(s.status().progress.unwrap().enrich_total, 0, "a backfill outside the enrich phase is not the scan's");
+    s.step(Step::Committing);
+    s.step(Step::Walked { files: 0 });
+    assert_eq!(s.status().progress.unwrap().phase, "commit", "a late walk does not move the scan back");
+    s.step(Step::Library(&LibraryDone { library_id: "lib-a".into(), ..LibraryDone::default() }));
+    assert_eq!(s.status().progress.unwrap().libraries_done, 1);
+    let v = json!(s.status());
+    assert_eq!(v["progress"]["phase"], "commit");
+    assert!(v["progress"].get("enrich_total").is_none(), "{v}");
+    drop(held);
+    assert!(s.wait_idle(Duration::from_secs(5)));
+    let st = s.status();
+    assert_eq!(st.state, "done");
+    assert!(st.progress.is_none(), "a finished scan has no position");
 }
