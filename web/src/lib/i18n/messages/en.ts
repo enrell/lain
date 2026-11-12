@@ -379,6 +379,9 @@ const en = {
 	// What `?` lists for each screen (usePageKeys), beside the actions they press.
 	pageKeys: {
 		gridMove: 'Move between titles',
+		episodesMove: 'Move between episodes (up from the first row: Play)',
+		partsMove: 'Move between volumes (up from the first row: Read)',
+		selectDone: 'Stop selecting',
 		back: 'Back to the previous page',
 		filters: 'Filters and genres',
 		clearFilters: 'Clear the filters',
