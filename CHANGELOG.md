@@ -31,6 +31,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   in software starts that retry from an empty directory: the failed
   attempt's playlist is withdrawn and its segments are no longer served
   next to the retry's init segment.
+- **Server**: a transcode session started again just as it was stopped
+  (a viewer joining as the last one leaves, or a play after an idle
+  stop) waits for the stopped one to finish cleaning up, instead of
+  losing its files to that cleanup.
 
 ## [0.3.0] - 2026-11-12
 

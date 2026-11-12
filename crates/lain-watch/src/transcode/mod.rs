@@ -63,6 +63,10 @@ const RECENT_ACCESS_GRACE: i64 = 60;
 const CAP_TTL: Duration = Duration::from_secs(30);
 /// Named viewers one session tracks; past that, joins count as unnamed.
 const MAX_VIEWERS: usize = 32;
+/// How long a run waits for a stopped run of its session id to wind
+/// down (`Transcoder::settle`): a killed ffmpeg and a directory removal
+/// take milliseconds, so this only bounds a stuck one.
+const SETTLE_WAIT: Duration = Duration::from_secs(30);
 
 pub(crate) fn unsupported(msg: &str) -> Error {
     Error::new("unsupported-media", msg)
@@ -450,6 +454,28 @@ struct State {
     max_cache_bytes: i64,
     next_gen: u64,
     ffmpeg: String,
+    /// Per session id, the runs not yet ended and the stops still
+    /// removing files. A stop takes a job out of `jobs` under the lock
+    /// but kills its ffmpeg and removes its files after, and the
+    /// stopped run exits after that; a fresh job of the same id (a
+    /// viewer joining as the last one left) writes the same paths, so
+    /// its run waits for both (`Transcoder::settle`).
+    busy: HashMap<String, u32>,
+}
+
+impl State {
+    fn enter(&mut self, session: &str) {
+        *self.busy.entry(session.to_string()).or_default() += 1;
+    }
+
+    fn leave(&mut self, session: &str) {
+        if let Some(n) = self.busy.get_mut(session) {
+            *n -= 1;
+            if *n == 0 {
+                self.busy.remove(session);
+            }
+        }
+    }
 }
 
 /// What a test run hook sees (it replaces the ffmpeg work).
@@ -551,6 +577,7 @@ impl Transcoder {
                     max_cache_bytes: d.cache_bytes,
                     next_gen: 1,
                     ffmpeg: "ffmpeg".into(),
+                    busy: HashMap::new(),
                 }),
                 cv: Condvar::new(),
                 playlist_io: Mutex::new(()),
@@ -921,7 +948,8 @@ impl Transcoder {
                 return self.status_from_job(j);
             }
             // Decided and taken under one lock: a viewer joining now
-            // finds no session and starts a new one.
+            // finds no session and starts a new one, whose run waits
+            // until this stop has removed the files (`settle`).
             self.take_job(&mut g, session)
         };
         tracing::info!(session = %session, "last viewer left");
@@ -947,6 +975,7 @@ impl Transcoder {
     /// what [`Transcoder::drop_taken`] needs to finish the stop.
     fn take_job(&self, g: &mut State, session: &str) -> Option<Taken> {
         let mut j = g.jobs.remove(session)?;
+        g.enter(session);
         self.inner.cv.notify_all();
         let paths = self.paths_for(session, &j.settings);
         let status = V3Status {
@@ -970,6 +999,8 @@ impl Transcoder {
         let _ = std::fs::remove_file(&paths.subtitle);
         let _ = std::fs::remove_file(&paths.burn);
         let _ = std::fs::remove_file(self.meta_path(session));
+        self.lock().leave(session);
+        self.inner.cv.notify_all();
         tracing::info!(session = %session, "transcode cancelled");
         self.changed(&status);
         V3Status { user_id: String::new(), item_id: String::new(), ..status }
@@ -1651,9 +1682,32 @@ impl Transcoder {
         let _ = std::fs::remove_file(&paths.burn);
     }
 
+    /// Waits until this run is the only thing working on `session`'s
+    /// paths (`State::busy` counts it too): a stopped run of the same id
+    /// may still be exiting, and its stop may still be removing the
+    /// files, either of which would delete what this run writes. Ends
+    /// early when this job was stopped meanwhile or the transcoder
+    /// closed; after [`SETTLE_WAIT`] it starts anyway.
+    fn settle<'a>(&'a self, mut g: MutexGuard<'a, State>, session: &str, epoch: u64) -> MutexGuard<'a, State> {
+        let until = Instant::now() + SETTLE_WAIT;
+        while !g.closed
+            && g.busy.get(session).is_some_and(|n| *n > 1)
+            && g.jobs.get(session).is_some_and(|j| j.epoch == epoch && j.state == QUEUED)
+        {
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                tracing::warn!(session = %session, "a stopped run of this session is still winding down; starting anyway");
+                break;
+            }
+            g = self.inner.cv.wait_timeout(g, left).map(|(g, _)| g).unwrap_or_else(|e| e.into_inner().0);
+        }
+        g
+    }
+
     fn run_v3(&self, session: &str, epoch: u64) {
         let started = {
-            let mut g = self.lock();
+            let g = self.lock();
+            let mut g = self.settle(g, session, epoch);
             if g.closed {
                 return;
             }
@@ -2109,6 +2163,7 @@ fn dispatch(weak: Weak<Inner>) {
                 let v3 = g.jobs.get(&s).filter(|j| j.epoch == epoch && j.state == QUEUED).map(|j| j.v3);
                 if let Some(v3) = v3 {
                     g.active += 1;
+                    g.enter(&s);
                     Some((s, epoch, v3))
                 } else {
                     None
@@ -2120,6 +2175,7 @@ fn dispatch(weak: Weak<Inner>) {
         };
         if let Some((s, epoch, v3)) = next {
             let runner = t.clone();
+            let session = s.clone();
             let spawned = std::thread::Builder::new().name("transcode-run".into()).spawn(move || {
                 if v3 {
                     runner.run_v3(&s, epoch);
@@ -2128,11 +2184,13 @@ fn dispatch(weak: Weak<Inner>) {
                 }
                 let mut g = runner.lock();
                 g.active = (g.active - 1).max(0);
+                g.leave(&s);
                 runner.inner.cv.notify_all();
             });
             if spawned.is_err() {
                 let mut g = t.lock();
                 g.active = (g.active - 1).max(0);
+                g.leave(&session);
             }
         }
     }
