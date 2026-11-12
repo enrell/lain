@@ -142,7 +142,6 @@
 		void load();
 	});
 
-
 	function progressLine(episode: CatalogItem): string {
 		if (episode.missing) return 'Missing from disk';
 		const p = progressMap.get(episode.id);
