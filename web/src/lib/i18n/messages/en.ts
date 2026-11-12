@@ -510,6 +510,7 @@ const en = {
 			deleteFor: 'Delete {name}',
 			deleteTitle: 'Delete {name}?',
 			deleteBody: 'The account goes at once, and its sessions with it. This cannot be undone.',
+			goesWith: 'Deleted with it',
 			loseProgress: 'Where they stopped in every file.',
 			loseLists: 'Their tracking lists and linked accounts.',
 			loseSocial: 'Their ratings, comments, collections, friends and notifications.',
