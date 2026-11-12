@@ -5,7 +5,6 @@
 	 * a per-title direction override (a few titles print left to right)
 	 * and a webtoon strip for long-scroll releases.
 	 */
-	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
 	import BookImage from '@lucide/svelte/icons/book-image';
 	import Columns2 from '@lucide/svelte/icons/columns-2';
 	import GalleryVertical from '@lucide/svelte/icons/gallery-vertical';
@@ -15,6 +14,7 @@
 	import { MANGA_PROFILE } from '$lib/reader/profile';
 	import { ReaderSettings } from '$lib/reader/settings.svelte';
 	import ReaderBase from './ReaderBase.svelte';
+	import ReaderGroup from './ReaderGroup.svelte';
 	import ReaderToggle from './ReaderToggle.svelte';
 
 	let {
@@ -53,48 +53,58 @@
 >
 	{#snippet toolbar()}
 		{#if settings.mode === 'paged'}
-			<ReaderToggle
-				label={settings.direction === 'rtl' ? 'Reading right to left (R)' : 'Reading left to right (R)'}
-				active={settings.direction === 'rtl'}
-				onclick={() => settings.toggleDirection()}
-			>
-				<ArrowLeftRight class="size-4" aria-hidden="true" />
-				{settings.direction}
-			</ReaderToggle>
-			<!-- Direction, then how pages are laid out, then the strip: three questions, kept apart.
-			     Spreads exist only on a screen wider than tall, so an upright one does not offer them. -->
-			<span class="flex items-center gap-1 portrait:hidden">
-			<span class="mx-0.5 h-5 w-px shrink-0 bg-hairline" aria-hidden="true"></span>
-			<ReaderToggle
-				label="Two-page spreads (D)"
-				active={settings.dual}
-				onclick={() => settings.toggleDual()}
-			>
-				<Columns2 class="size-4" aria-hidden="true" />
-				<span class="hidden max-md:inline xl:inline">Spread</span>
-			</ReaderToggle>
-			{#if settings.dual}
+			<!-- Direction, then how pages are laid out, then the strip: three questions, each in
+			     its own track. Both directions are named, so left to right is a lit "LTR", not
+			     only an unlit "RTL". -->
+			<ReaderGroup label="Reading direction">
 				<ReaderToggle
-					label="Cover on its own page"
-					active={settings.coverAlone}
-					onclick={() => settings.toggleCoverAlone()}
+					label="Read left to right (R)"
+					active={settings.direction === 'ltr'}
+					onclick={() => settings.setDirection('ltr')}
 				>
-					<!-- An icon like its neighbours, the word where there is room for all the words. -->
-					<BookImage class="size-4" aria-hidden="true" />
-					<!-- An option of the spread, named as one: "Cover" beside "Spread" read as a third layout. -->
-					<span class="hidden max-md:inline">Cover</span><span class="hidden xl:inline">Cover alone</span>
+					LTR
 				</ReaderToggle>
-			{/if}
-			</span>
+				<ReaderToggle
+					label="Read right to left (R)"
+					active={settings.direction === 'rtl'}
+					onclick={() => settings.setDirection('rtl')}
+				>
+					RTL
+				</ReaderToggle>
+			</ReaderGroup>
+			<!-- Spreads exist only on a screen wider than tall, so an upright one does not offer them. -->
+			<ReaderGroup label="Page layout" class="portrait:hidden">
+				<ReaderToggle
+					label="Two-page spreads (D)"
+					active={settings.dual}
+					onclick={() => settings.toggleDual()}
+				>
+					<Columns2 class="size-4" aria-hidden="true" />
+					<span class="hidden max-md:inline xl:inline">Spread</span>
+				</ReaderToggle>
+				{#if settings.dual}
+					<ReaderToggle
+						label="Cover on its own page"
+						active={settings.coverAlone}
+						onclick={() => settings.toggleCoverAlone()}
+					>
+						<!-- An icon like its neighbours, the word where there is room for all the words. -->
+						<BookImage class="size-4" aria-hidden="true" />
+						<!-- An option of the spread, named as one: "Cover" beside "Spread" read as a third layout. -->
+						<span class="hidden max-md:inline">Cover</span><span class="hidden xl:inline">Cover alone</span>
+					</ReaderToggle>
+				{/if}
+			</ReaderGroup>
 		{/if}
-		<span class="mx-0.5 h-5 w-px shrink-0 bg-hairline" aria-hidden="true"></span>
-		<ReaderToggle
-			label="Webtoon strip"
-			active={settings.mode === 'strip'}
-			onclick={() => settings.setMode(settings.mode === 'strip' ? 'paged' : 'strip')}
-		>
-			<GalleryVertical class="size-4" aria-hidden="true" />
-			<span class="hidden max-md:inline xl:inline">Webtoon</span>
-		</ReaderToggle>
+		<ReaderGroup label="Strip">
+			<ReaderToggle
+				label="Webtoon strip"
+				active={settings.mode === 'strip'}
+				onclick={() => settings.setMode(settings.mode === 'strip' ? 'paged' : 'strip')}
+			>
+				<GalleryVertical class="size-4" aria-hidden="true" />
+				<span class="hidden max-md:inline xl:inline">Webtoon</span>
+			</ReaderToggle>
+		</ReaderGroup>
 	{/snippet}
 </ReaderBase>

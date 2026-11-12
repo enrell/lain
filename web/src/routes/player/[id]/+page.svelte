@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import Check from '@lucide/svelte/icons/check';
 	import MonitorPlay from '@lucide/svelte/icons/monitor-play';
 	import type { CatalogItem, PlaybackPlan, Progress } from '$lib/api/types';
 	import { api, ApiError } from '$lib/api';
@@ -256,9 +257,9 @@
 						onclick={toggleAutoplay}
 					>
 						<!-- A switch that looks like one: as small caps it read as a fact, not a choice. -->
-						<!-- Drawn as the settings switch: accent track and accent-ink knob when on. -->
+						<!-- Drawn as the settings switch: accent track and accent-ink knob when on, a small dim knob when off. -->
 						<span class={['relative h-4 w-7 rounded-full transition-colors', autoplayNext ? 'bg-accent' : 'bg-surface-active'].join(' ')}>
-							<span class={['absolute top-0.5 size-3 rounded-full transition-all', autoplayNext ? 'left-3.5 bg-accent-fg' : 'left-0.5 bg-muted'].join(' ')}></span>
+							<span class={['absolute rounded-full transition-all', autoplayNext ? 'left-3.5 top-0.5 size-3 bg-accent-fg' : 'left-[3px] top-[3px] size-2.5 bg-muted/60'].join(' ')}></span>
 						</span>
 						Autoplay next
 					</button>
@@ -266,6 +267,8 @@
 				<ul class="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
 					{#each episodes as episode (episode.id)}
 						{@const current = episode.id === item.id}
+						{@const p = progressMap.get(episode.id)}
+						{@const begun = !!p && !p.completed && p.duration_sec > 0 && p.position_sec > 0}
 						<li>
 							<a
 								href={episode.missing ? undefined : playHref(episode.id)}
@@ -286,6 +289,18 @@
 										decoding="async"
 										class="size-full object-cover"
 									/>
+									<!-- The marks of the title page's episode cards: a check when watched, a strip
+									     for the one under way; the list said both in words only. -->
+									{#if p?.completed}
+										<span class="absolute left-1 top-1 flex size-4 items-center justify-center rounded-full bg-black/70 text-white" aria-hidden="true">
+											<Check class="size-2.5" />
+										</span>
+									{/if}
+									{#if begun}
+										<span class="absolute inset-x-0 bottom-0 h-1 bg-black/55" aria-hidden="true">
+											<span class="block h-full bg-accent" style:width={`${Math.min(100, (p!.position_sec / p!.duration_sec) * 100)}%`}></span>
+										</span>
+									{/if}
 								</span>
 								<span class="min-w-0 flex-1">
 									<span
@@ -296,7 +311,8 @@
 									>
 										{episodeLabel(episode)}
 									</span>
-									<span class="mt-0.5 block truncate text-xs text-muted">{progressLine(episode)}</span>
+									<!-- What is left of the one under way in the accent, as the app's episode rows. -->
+									<span class={['mt-0.5 block truncate text-xs', begun && !episode.missing ? 'text-accent' : 'text-muted'].join(' ')}>{progressLine(episode)}</span>
 								</span>
 							</a>
 						</li>

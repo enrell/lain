@@ -3,7 +3,10 @@
 	/*
 	 * The one row pattern of Settings: label and a one-line hint on the
 	 * left, the control on the right, a hairline below. One vertical scan
-	 * line for the eye; `id` is the anchor Ctrl+K jumps to.
+	 * line for the eye; `id` is the anchor Ctrl+K jumps to. On a wide
+	 * screen the hint takes the room and the control column is as wide as
+	 * the widest control: a hint held to 17rem wrapped one word onto a
+	 * second line beside 300px of nothing.
 	 */
 	import type { Snippet } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
@@ -34,7 +37,7 @@
 	data-setting-row
 	class="setting-row scroll-mt-28 border-b border-hairline py-4 {stack
 		? 'space-y-3'
-		: 'grid gap-x-8 gap-y-2 sm:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] sm:items-center'}"
+		: 'grid gap-x-8 gap-y-2 sm:grid-cols-[minmax(0,17rem)_minmax(0,1fr)] sm:items-center xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]'}"
 >
 	<div class="min-w-0">
 		<p class="flex items-center gap-2 text-sm font-medium text-foreground">

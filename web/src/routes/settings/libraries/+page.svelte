@@ -453,13 +453,16 @@
 						{:else}
 							<div class="hidden w-28 sm:block" aria-hidden="true"></div>
 						{/if}
+						<!-- Quiet until pointed at: a red bin on every row made five destructive
+						     buttons the loudest things on the page, louder than Scan now. -->
 						<Button
 							variant="ghost"
 							size="sm"
+							class="hover:text-danger! focus-visible:text-danger!"
 							aria-label={`Remove ${lib.name}`}
 							onclick={() => askRemove(lib)}
 						>
-							<Trash2 class="size-4 text-danger" /> Remove
+							<Trash2 class="size-4" /> Remove
 							<kbd class="ms-1 font-mono text-[10px] text-muted transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">Del</kbd>
 						</Button>
 					</li>

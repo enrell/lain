@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -156,7 +157,8 @@ fun DownloadsScreen(graph: AppGraph, vm: AppViewModel) {
                     }
                     Text(
                         stringResource(R.string.remove_all),
-                        Modifier.clip(l.buttonShape).clickable { removingAll = group.map { it.itemId } }.padding(horizontal = 10.dp, vertical = 8.dp),
+                        // The word on the cards' right edge; the touch area runs into the gutter.
+                        Modifier.offset(x = 10.dp).clip(l.buttonShape).clickable { removingAll = group.map { it.itemId } }.padding(horizontal = 10.dp, vertical = 8.dp),
                         color = l.text.copy(alpha = 0.85f), fontSize = 13.sp, fontWeight = FontWeight.Medium,
                     )
                 }
@@ -342,13 +344,15 @@ private fun ChoiceRow(label: String, hint: String, shown: String, options: List<
     var open by remember { mutableStateOf(false) }
     // The list under its hint: beside it, a two-line hint was squeezed to four.
     SettingRow(label, hint, below = true) {
+        // As wide as the segmented controls above and below it: sized to its words, each
+        // list on the page had a width of its own.
         Row(
-            Modifier.heightIn(min = 40.dp).clip(l.buttonShape).background(l.tonal).clickable(onClickLabel = label) { open = true }.padding(horizontal = 12.dp),
+            Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(l.buttonShape).background(l.tonal).clickable(onClickLabel = label) { open = true }.padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(shown, color = l.text, fontSize = 14.sp, maxLines = 1)
-            Icon(Ic.ChevronDown, null, tint = l.muted, modifier = Modifier.size(14.dp))
+            Text(shown, Modifier.weight(1f), color = l.text, fontSize = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Icon(Ic.ChevronDown, null, tint = l.muted, modifier = Modifier.size(16.dp))
         }
     }
     if (open) {
