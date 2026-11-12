@@ -95,6 +95,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   hold it at the same place, at the end of the bar's first row; in All
   titles it sat a row lower, under the search. With the switch beside the
   search, sort and tile size join the filters sheet below a wide screen.
+- **One heading scale** (web): a page's own name (Library, a library,
+  Favorites, Search, Tracking, Social, Acquire, Settings, a collection, a
+  profile) is set at Settings' size, and a section under it (a rail, a
+  title's episodes or volumes, More in, a search's suggestions) at Home's
+  rail size. Library named its page at 20 px over 24 px rails, and a
+  title page's sections were 18 px. Acquire and Social keep their one-line
+  lead on every tab: hidden on the first-run tab only, it made the tabs
+  under it jump each time that tab was left.
+- **Episode and volume cards look like every other card** (web): the
+  picture in a rounded frame with a faint ring, the words under it, and
+  the inset progress bar the library's cards wear; a bordered box around
+  picture and words made them a second kind of card. Volumes are sized as
+  every poster grid is: two a row on a phone, where three were cramped.
+- **One main action on a title page** (web): Rate, Share and Add to
+  collection under Community, and a comic's Save offline, are the quiet
+  buttons of the hero's row; an accent Rate competed with Play.
+- **The library's toolbar is one kind of control** (web): the search,
+  sort, tile size and Sort & filter are filled fields like the sort
+  picker, where an outlined field, a filled picker and an outlined button
+  stood side by side. The genre finder and the library picker in the
+  filters end where the rows under them do.
+- **The library's header on a phone** (web): the admin actions keep their
+  words on one line ("Manage libraries" broke inside its chip), and the
+  row of library names fades at its end, so a name scrolled past the view
+  switch reads as more to swipe to rather than missing.
+- **Empty tabs** (web): Acquire's Queue and Wanted and Social's
+  Notifications and Collections, when empty, show the app's empty state
+  (an icon, what the tab holds, how to fill it) instead of one grey line.
+- **Settings controls** (web): Transcoding's video engine is one segmented
+  choice like the policy above it (the engine in use, the ones the probe
+  passed, software), where a mono word sat beside two bare "Use …" buttons;
+  Playback's Render on is as wide as every other picker in its column; a
+  plugin job's description wraps to two lines instead of stopping mid-word.
+- The reader's toggles keep a gap between them (web): Spread and Cover
+  alone, both on, read as one block.
+- **A title page on a phone starts with its episodes in view** (web): the
+  cover sits beside the title's name instead of above it, so the first
+  episodes or volumes show under the actions where the hero filled the
+  whole screen. The name is sized to the column beside the cover, so a
+  long word ("Monochrome") fits it instead of running into the edge.
+- **First-run pages on a tablet** (web): Tracking, Social and Acquire set
+  their poster fan beside the copy from 1024 px; at 768 px it left the
+  headline one or two words a line.
 
 ### Fixed
 - **A first visit draws in its final frame** (web, D-282): a films or

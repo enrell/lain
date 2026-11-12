@@ -135,7 +135,7 @@
 		<header class="flex flex-wrap items-center gap-6">
 			<Avatar user={asAvatarUser(profile.user)} class="size-20" />
 			<div class="min-w-0 flex-1">
-				<h1 class="truncate text-3xl font-semibold tracking-tight text-foreground">{userName(profile.user)}</h1>
+				<h1 class="page-title truncate">{userName(profile.user)}</h1>
 				<p class="mt-1 flex flex-wrap items-center gap-3 font-mono text-[11px] text-muted">
 					<span>@{profile.user.username}</span>
 					{#if !profile.self && profile.relation !== 'none'}

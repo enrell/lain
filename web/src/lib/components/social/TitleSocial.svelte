@@ -180,13 +180,15 @@
 			{/if}
 		</div>
 		{#if view}
+			<!-- The quiet set of the title's own action row (tonal): the page has one
+			     main action, Play in the hero; an accent Rate here was a second one. -->
 			<div class="flex flex-wrap gap-2">
-				<Button size="sm" variant={view.mine ? 'secondary' : 'primary'} onclick={() => (rateOpen = true)}>
+				<Button size="sm" variant="tonal" onclick={() => (rateOpen = true)}>
 					{view.mine?.score ? t('social.title.yourScore', { score: view.mine.score }) : view.mine ? t('social.title.editReview') : t('social.title.rate')}
 					<Kbd>R</Kbd>
 				</Button>
-				<Button size="sm" variant="secondary" onclick={() => (shareOpen = true)}>{t('social.title.share')} <Kbd>S</Kbd></Button>
-				<Button size="sm" variant="secondary" onclick={() => (collectOpen = true)}>{t('social.title.collect')} <Kbd>C</Kbd></Button>
+				<Button size="sm" variant="tonal" onclick={() => (shareOpen = true)}>{t('social.title.share')} <Kbd>S</Kbd></Button>
+				<Button size="sm" variant="tonal" onclick={() => (collectOpen = true)}>{t('social.title.collect')} <Kbd>C</Kbd></Button>
 			</div>
 		{/if}
 	</div>

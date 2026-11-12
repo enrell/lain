@@ -8,6 +8,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import Users from '@lucide/svelte/icons/users';
+	import Bell from '@lucide/svelte/icons/bell';
+	import FolderHeart from '@lucide/svelte/icons/folder-heart';
 	import type { CatalogItem } from '$lib/api/types';
 	import {
 		api,
@@ -276,9 +278,10 @@
 <div class="space-y-6">
 	<header class="flex flex-wrap items-end justify-between gap-4">
 		<div>
-			<h1 class="text-xl font-semibold tracking-tight text-foreground">{t('social.heading')}</h1>
-			<!-- The first-run block below says what the page is for, at length. -->
-			{#if !firstRun}<p class="mt-0.5 text-sm text-muted">{t('social.subtitle')}</p>{/if}
+			<h1 class="page-title">{t('social.heading')}</h1>
+			<!-- Kept on every tab, the first-run one too: hidden there, the tabs
+			     under it jumped a line each time the first tab was left. -->
+			<p class="mt-1 text-sm text-muted">{t('social.subtitle')}</p>
 		</div>
 		<a href="/settings/privacy" class="inline-flex min-h-9 items-center gap-1 text-sm text-foreground/70 hover:text-foreground">{t('social.privacyLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>
 	</header>
@@ -437,13 +440,18 @@
 			<p class="text-sm text-muted">{t('social.notify.unread', { count: unread })}</p>
 			<Button size="sm" variant="ghost" disabled={unread === 0} onclick={() => void markAllRead()}>{t('social.notify.markAll')} <Kbd>R</Kbd></Button>
 		</div>
+		<!-- An empty tab is drawn as the app's empty state, not one grey line. -->
+		{#if notes.length === 0}
+			<EmptyState title={t('social.notify.empty')} description={t('social.notify.emptyBody')}>
+				{#snippet icon()}<Bell class="size-6 text-muted" aria-hidden="true" />{/snippet}
+			</EmptyState>
+		{:else}
 		<ul>
 			{#each notes as n (n.id)}
 				<NotificationRow {n} users={noteUsers} onChange={() => void loadNotes()} />
-			{:else}
-				<li class="py-3 text-sm text-muted">{t('social.notify.empty')}</li>
 			{/each}
 		</ul>
+		{/if}
 	{:else if tab === 'collections'}
 		<div class="flex justify-end">
 			<Button size="sm" onclick={openNew}>{t('social.collections.new')} <Kbd>N</Kbd></Button>
@@ -460,10 +468,13 @@
 						{/if}
 					</a>
 				</li>
-			{:else}
-				<li class="py-3 text-sm text-muted">{t('social.collections.empty')}</li>
 			{/each}
 		</ul>
+		{#if collections.length === 0}
+			<EmptyState title={t('social.collections.empty')} description={t('social.collections.emptyBody')}>
+				{#snippet icon()}<FolderHeart class="size-6 text-muted" aria-hidden="true" />{/snippet}
+			</EmptyState>
+		{/if}
 	{/if}
 </div>
 
