@@ -935,6 +935,13 @@
 		const el = video;
 		const at = el && el.currentTime > 1 ? el.currentTime : resumePosition();
 		el?.pause();
+		// Drop the direct stream before the offset moves, as a rebuild's
+		// destroyHLS does. Its pause and timeupdate events run after this
+		// function, and read against the new offset its still-current time
+		// counted twice: the bar jumped to twice the place, and the forced
+		// save on pause kept that (or marked the title watched).
+		el?.removeAttribute('src');
+		el?.load();
 		transcodeReady = false;
 		baseOffset = at;
 		resumeApplied = true;
