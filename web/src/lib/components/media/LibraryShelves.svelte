@@ -74,10 +74,12 @@
 <svelte:window bind:scrollY />
 
 <!-- Where each shelf is and the view switch, under the header at every
-     scroll position: the switch used to scroll away with the page top. -->
+     scroll position: the switch used to scroll away with the page top. The
+     row is as tall as the first row of All titles' bar (LibraryBrowser), so
+     the switch stands at one place in both views. -->
 <div
 	class={[
-		'sticky top-12 z-20 -mx-5 mb-6 flex items-center gap-3 bg-background px-5 py-2 transition-shadow sm:-mx-3 sm:px-3 md:top-20',
+		'sticky top-12 z-20 -mx-5 mb-6 box-content flex min-h-11 items-center gap-3 bg-background px-5 py-2 transition-shadow sm:-mx-3 sm:min-h-10 sm:px-3 md:top-20',
 		scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''
 	].join(' ')}
 >
