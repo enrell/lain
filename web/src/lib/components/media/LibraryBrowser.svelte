@@ -43,6 +43,7 @@
 	} from '$lib/utilities/browse';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { gridKeys } from '$lib/utilities/grid-nav';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { groupItems } from '$lib/utilities/grouping';
 	import { t, type Key } from '$lib/i18n';
 
@@ -389,6 +390,16 @@
 		defaultSort = next;
 		savePrefs();
 	}
+
+	// The keys below, for `?`; a key that does nothing right now is not listed.
+	usePageKeys(() => [
+		{ keys: ['/'], label: searchLabel || t('pageKeys.librarySearch') },
+		{ keys: ['↑', '↓', '←', '→'], label: t('pageKeys.gridMove') },
+		{ keys: ['F'], label: t('pageKeys.filters') },
+		...(narrowed ? [{ keys: ['C'], label: t('pageKeys.clearFilters') }] : []),
+		...(scrollY > 400 ? [{ keys: ['T'], label: t('pageKeys.toTop') }] : []),
+		...(backHref ? [{ keys: ['Backspace'], label: t('pageKeys.back') }] : [])
+	]);
 
 	function onKey(e: KeyboardEvent): void {
 		if (e.ctrlKey || e.metaKey || e.altKey) return;

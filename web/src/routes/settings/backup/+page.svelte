@@ -8,11 +8,14 @@
 	import { errorMessage } from '$lib/utilities/errors';
 
 	let busy = $state(false);
+	// The archive the restore lines name: the one just saved, once there is one.
+	let archive = $state('lain-backup-YYYYMMDD-HHMMSS.tar');
 
 	async function download(): Promise<void> {
 		busy = true;
 		try {
 			const name = await api.backup.download();
+			archive = name;
 			toasts.success(`Saved ${name}.`);
 		} catch (err) {
 			toasts.error(errorMessage(err, 'Could not download the backup.'));
@@ -41,13 +44,13 @@
 
 <SettingsGroup id="restore" title="Restoring" description={t('settings.groups.backup.restore')}>
 	<div class="space-y-3 py-4">
-		<p class="text-sm leading-6 text-muted">
-			Restore is deliberately offline: bbolt holds an exclusive lock, so the server must be
-			stopped first. The CLI validates the snapshot before touching anything.
-		</p>
+		<!-- The steps as they work: lain restore writes only into an empty data folder,
+		     so the live one is moved aside first (and kept until the restore is checked). -->
+		<p class="text-sm leading-6 text-muted">{t('settings.groups.backup.restoreSteps')}</p>
 		<pre
 			class="overflow-x-auto rounded-md bg-background px-4 py-3 font-mono text-xs leading-relaxed text-foreground"><code>pkill -x lain
-lain restore ~/Downloads/lain-backup.db --data-dir ~/.local/share/lain
+mv ~/.local/share/lain ~/.local/share/lain.before-restore
+lain restore ~/Downloads/{archive} --data-dir ~/.local/share/lain
 lain serve</code></pre>
 		<p class="text-xs text-muted">
 			The composition file (<span class="font-mono">composition.json</span>) sits next to the

@@ -39,6 +39,8 @@
 	import { t } from '$lib/i18n';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
+	import { gridKeys } from '$lib/utilities/grid-nav';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
 	let origin = $state('');
 	// How long each episode is, asked once for the whole title (D-276).
@@ -164,6 +166,11 @@
 		selecting = false;
 		selected = new Set();
 	}
+
+	usePageKeys(() => [
+		...(group.items.length > 1 ? [{ keys: ['↑', '↓', '←', '→'], label: t(reading ? 'pageKeys.partsMove' : 'pageKeys.episodesMove') }] : []),
+		...(selecting ? [{ keys: ['Esc'], label: t('pageKeys.selectDone') }] : [])
+	]);
 
 	// One click for the whole title: select every episode that still has
 	// a file — across all seasons, not just the visible filter — and open
@@ -430,7 +437,7 @@
 				     third line of its own. -->
 				<div class="title-actions flex flex-wrap items-center gap-x-2 gap-y-3 md:mt-6">
 					{#if resumeTarget}
-						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
+						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
 						</LinkButton>
 					{:else}
@@ -542,8 +549,11 @@
 			</div>
 			<!-- More, smaller cards on a wide screen: three big ones put every name below the fold. -->
 			<!-- Volumes are sized as every poster grid is (two a row on a phone, where
-			     three were cramped); episodes as wide cards, rows on a phone. -->
-			<ul class={reading ? framedGrid('portrait') : 'episode-rows grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'} data-episode-grid>
+			     three were cramped); episodes as wide cards, rows on a phone. Arrows
+			     move between the parts as in a library grid; up from the first row
+			     returns to Play. -->
+			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+			<ul class={reading ? framedGrid('portrait') : 'episode-rows grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'} data-episode-grid onkeydown={(e) => gridKeys(e, () => document.querySelector<HTMLElement>('a[data-title-play]'))}>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}

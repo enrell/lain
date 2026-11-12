@@ -24,6 +24,7 @@
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import { recentSearches } from '$lib/stores/recent-searches.svelte';
 	import { gridKeys } from '$lib/utilities/grid-nav';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { groupItems } from '$lib/utilities/grouping';
 	import { debounce } from '$lib/utilities/debounce';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -196,6 +197,15 @@
 		if (header instanceof HTMLInputElement && header.getClientRects().length > 0) return header;
 		return input && input.getClientRects().length > 0 ? input : null;
 	}
+
+	usePageKeys(() =>
+		items.length > 0
+			? [
+					{ keys: ['↓'], label: t('pageKeys.resultsMove') },
+					{ keys: ['↑', '↓', '←', '→'], label: t('pageKeys.gridMove') }
+				]
+			: []
+	);
 
 	// `/` is this page's field where it is the one shown; the header's handler covers the rest.
 	function onKey(e: KeyboardEvent): void {

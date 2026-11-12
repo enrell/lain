@@ -14,6 +14,7 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatRelative } from '$lib/utilities/format';
 	import { isTypingTarget } from '$lib/utilities/guards';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 
 	let written = $state<SubtitleRecord[] | null>(null);
 	let refused = $state<SubtitleRefusal[]>([]);
@@ -75,6 +76,8 @@
 	function writtenKey(e: KeyboardEvent): void {
 		if (!e.ctrlKey && !e.metaKey && !e.altKey) move(e);
 	}
+
+	usePageKeys(() => (refused.length > 0 ? [{ keys: ['Shift', 'C'], label: t('acquire.subtitles.clearAll') }] : []));
 
 	function pageKey(e: KeyboardEvent): void {
 		if (e.key !== 'C' || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;

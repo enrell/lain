@@ -27,6 +27,7 @@
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
 	import StagedBar from '$lib/components/settings/StagedBar.svelte';
+	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -350,6 +351,8 @@
 
 	// "/" jumps to the setting search, as in most developer tools.
 	let searchInput = $state<HTMLInputElement>();
+	usePageKeys(() => [{ keys: ['/'], label: t('pageKeys.settingsFilter') }]);
+
 	function onSlash(e: KeyboardEvent): void {
 		const t = e.target as HTMLElement | null;
 		if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
