@@ -14,7 +14,14 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { formatBytes } from '$lib/utilities/format';
 
-	let { item }: { item: CatalogItem } = $props();
+	let {
+		item,
+		summary = true
+	}: {
+		item: CatalogItem;
+		/** Whether the summary is shown here; the title's hero shows it when no overlay has one. */
+		summary?: boolean;
+	} = $props();
 	const itemId = $derived(item.id);
 
 	let view = $state<ReaderView | null>(null);
@@ -128,7 +135,7 @@
 				{#each view.info.genres as genre (genre)}<Badge>{genre}</Badge>{/each}
 			</div>
 		{/if}
-		{#if view.info?.summary}
+		{#if summary && view.info?.summary}
 			<p class="text-sm leading-relaxed text-muted">{view.info.summary}</p>
 		{/if}
 	</section>

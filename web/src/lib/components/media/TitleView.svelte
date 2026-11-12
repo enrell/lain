@@ -31,7 +31,7 @@
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Poster from '$lib/components/media/Poster.svelte';
-	import { framedGrid } from '$lib/components/media/grid';
+	import { RAIL } from '$lib/components/media/grid';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import { formatLength, formatTime, timeLeft } from '$lib/utilities/format';
@@ -67,6 +67,7 @@
 		progressMap = null,
 		libraries = [],
 		manage = [],
+		about = null,
 		onProgressChanged = undefined
 	}: {
 		group: SeriesGroup;
@@ -74,6 +75,8 @@
 		libraries?: Library[];
 		/** What an admin can do with the title, from the page that owns it. */
 		manage?: MenuEntry[];
+		/** What the files say of themselves (a comic's ComicInfo.xml), when no overlay does. */
+		about?: { summary?: string; genres?: string[] } | null;
 		/** Called after marks changed, so the page reads progress again. */
 		onProgressChanged?: () => void;
 	} = $props();
@@ -104,10 +107,10 @@
 	const artItem = $derived(group.items.find((i) => i.episode > 0) ?? first);
 	const enrichments = $derived(group.items.map((i) => enrichmentCache.get(i.id)));
 	const synopsis = $derived(
-		enrichments.map((e) => e?.synopsis).find((s) => s && s.length > 0) ?? ''
+		enrichments.map((e) => e?.synopsis).find((s) => s && s.length > 0) ?? about?.summary ?? ''
 	);
 	const genres = $derived(
-		enrichments.map((e) => e?.genres ?? []).find((g) => g.length > 0)?.slice(0, 3) ?? []
+		(enrichments.map((e) => e?.genres ?? []).find((g) => g.length > 0) ?? about?.genres ?? []).slice(0, 3)
 	);
 	const backdrop = $derived(enrichments.map((e) => e?.cover).find((c) => c) ?? '');
 	const posterEnrichment = $derived(enrichmentCache.get(artItem.id) ?? null);
@@ -583,12 +586,13 @@
 				{/if}
 			</div>
 			<!-- More, smaller cards on a wide screen: three big ones put every name below the fold. -->
-			<!-- Volumes are sized as every poster grid is (two a row on a phone, where
-			     three were cramped); episodes as wide cards, rows on a phone. Arrows
-			     move between the parts as in a library grid; up from the first row
-			     returns to Play. -->
+			<!-- Volumes are the cover cards of the "More in" rail under them, at its
+			     width from sm up (a fluid grid drew them 182 px wide over 192 px rail
+			     cards); two a row on a phone, as every poster grid there. Episodes
+			     as wide cards, rows on a phone. Arrows move between the parts as in a
+			     library grid; up from the first row returns to Play. -->
 			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-			<ul class={reading ? framedGrid('portrait') : 'episode-rows grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'} data-episode-grid onkeydown={(e) => gridKeys(e, () => document.querySelector<HTMLElement>('a[data-title-play]'))}>
+			<ul class={reading ? `grid grid-cols-2 items-start gap-x-3.5 gap-y-6 sm:grid-cols-[repeat(auto-fill,var(--card-w))] md:gap-x-4 ${RAIL.portrait}` : 'episode-rows grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5'} data-episode-grid onkeydown={(e) => gridKeys(e, () => document.querySelector<HTMLElement>('a[data-title-play]'))}>
 				{#each visible as item (item.id)}
 					{@const progress = progressMap?.get(item.id) ?? null}
 					{@const ratio = cardProgress(item.id)}
