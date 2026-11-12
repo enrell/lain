@@ -26,6 +26,19 @@ export interface CatalogItem {
 	/** The file vanished from the library root (D-068): the row is kept
 	 * and the flag clears on its own when the path comes back. */
 	missing?: boolean;
+	/** What the item's thumbnail is (D-282); absent from an older server. */
+	thumbnail?: ThumbnailInfo;
+}
+
+/**
+ * What `GET /api/items/{id}/thumbnail` serves without a time (D-269),
+ * told before it loads (D-282): a still that came with the file, a comic
+ * archive's cover page (upright), or a frame cut from the video.
+ */
+export interface ThumbnailInfo {
+	source: 'sidecar' | 'cover' | 'frame' | (string & {});
+	/** Width over height, when the server read the picture's header. */
+	aspect?: number;
 }
 
 /** internal/contracts.CatalogPage (media.go). */
