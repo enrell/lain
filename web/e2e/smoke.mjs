@@ -701,8 +701,24 @@ try {
 		await waitFor(`${field}.value === '' && document.activeElement === ${field}`, 3000, 'Escape cleared the field');
 		await pressKey('Escape', 'Escape', 27);
 		await waitFor(`document.activeElement !== ${field}`, 3000, 'a second Escape left the field');
+
+		// On /search the field writes what is typed to the URL a moment after
+		// the last key. A link followed inside that moment must win: the
+		// pending write used to replace it with /search again. The click
+		// lands well inside the 250ms debounce, and Home must still be where
+		// the viewer is a second later, four debounces on.
+		await navigate(`${BASE}/search?q=frie`);
+		await waitFor(`${field}.value === 'frie' && document.body.innerText.includes('1 title for')`, 15000, 'the field holds the page query');
+		await evalValue(`${field}.focus()`);
+		await page.send('Input.insertText', { text: 'r' });
+		await clickSelector('header nav a[href="/"]', 'Home, inside the debounce');
+		await waitFor(`location.pathname === '/'`, 5000, 'Home followed');
+		const settledAt = await evalValue(
+			`new Promise((resolve) => setTimeout(() => resolve(location.pathname + location.search), 1000))`
+		);
+		assert(settledAt === '/', `a link followed while the field waited was pulled back to ${settledAt}`);
 		await page.send('Emulation.clearDeviceMetricsOverride');
-		console.log('   / focuses, titles suggested, Enter opens results and titles, Escape clears then leaves');
+		console.log('   / focuses, titles suggested, Enter opens results and titles, Escape clears then leaves, a link inside the debounce wins');
 	}
 
 	await navigate(`${BASE}/search`);
