@@ -339,8 +339,8 @@
 			{:else if scan.status?.state === 'done' && scan.status.stats}
 				{@const stats = scan.status.stats}
 				<p class="text-muted">
-					Last scan {scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}
-					{#if scan.status.trigger === 'watch'}by the filesystem watcher{/if}:
+					<!-- The colon right after the last word: a line break before it printed "ago :". -->
+					Last scan {scan.status.finished_at ? formatRelative(scan.status.finished_at) : 'finished'}{#if scan.status.trigger === 'watch'}{' '}by the filesystem watcher{/if}:
 					<span class="text-foreground">{stats.identified}</span> identified ·
 					<span class="text-foreground">{stats.unidentified}</span> unidentified ·
 					<span class="text-foreground">{stats.enriched}</span> enriched
@@ -398,7 +398,7 @@
 				{#each libraries as lib (lib.id)}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 					<li
-						class="flex flex-wrap items-center gap-x-3 gap-y-2 bg-surface/40 px-4 py-3.5 max-sm:[&>*:first-child]:basis-full focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
+						class="group/row flex flex-wrap items-center gap-x-3 gap-y-2 bg-surface/40 px-4 py-3.5 max-sm:[&>*:first-child]:basis-full focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
 						tabindex="0"
 						onkeydown={(e) => rowKey(e, lib)}
 					>
@@ -433,18 +433,25 @@
 									onCheckedChange={(next) => void setPrivate(lib, next)}
 								/>
 								<span>{t('privateLibrary.makePrivate')}</span>
-								<kbd class="font-mono text-[10px] text-muted">P</kbd>
+								<kbd class="font-mono text-[10px] text-muted transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">P</kbd>
 							</div>
 						{/if}
+						<!-- One slot for Lock/Unlock on every row, empty where there is none: the
+						     row that had one pushed its Private switch out of the column. The keys
+						     act on the focused row, so their caps show on that row only. -->
 						{#if lib.private}
-							<Button variant="ghost" size="sm" onclick={() => void toggleLock(lib)}>
-								{#if lib.locked}
-									<LockOpen class="size-4" /> {t('privateLibrary.unlock')}
-								{:else}
-									<LockIcon class="size-4" /> {t('privateLibrary.lock')}
-								{/if}
-								<kbd class="ms-1 font-mono text-[10px] text-muted">U</kbd>
-							</Button>
+							<div class="sm:w-28">
+								<Button variant="ghost" size="sm" onclick={() => void toggleLock(lib)}>
+									{#if lib.locked}
+										<LockOpen class="size-4" /> {t('privateLibrary.unlock')}
+									{:else}
+										<LockIcon class="size-4" /> {t('privateLibrary.lock')}
+									{/if}
+									<kbd class="ms-1 font-mono text-[10px] text-muted transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">U</kbd>
+								</Button>
+							</div>
+						{:else}
+							<div class="hidden w-28 sm:block" aria-hidden="true"></div>
 						{/if}
 						<Button
 							variant="ghost"
@@ -453,7 +460,7 @@
 							onclick={() => askRemove(lib)}
 						>
 							<Trash2 class="size-4 text-danger" /> Remove
-							<kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd>
+							<kbd class="ms-1 font-mono text-[10px] text-muted transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">Del</kbd>
 						</Button>
 					</li>
 				{/each}

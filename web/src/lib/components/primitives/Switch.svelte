@@ -31,15 +31,19 @@
 			{#if description}<p class="mt-0.5 text-xs text-muted">{description}</p>{/if}
 		</div>
 	{/if}
+	<!-- Off is a visible track with a muted knob; on is the accent track with a knob in
+	     the accent's ink (the app's toggle, and the player's). A field-coloured track
+	     vanished on the page, and an on state of a dim track with a rose knob was
+	     easy to read as off. -->
 	<Switch.Root
 		aria-label={bare ? label : undefined}
 		checked={checked}
 		onCheckedChange={handleChange}
 		{disabled}
-		class="relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border border-hairline bg-field transition-colors data-[state=checked]:border-accent/40 data-[state=checked]:bg-accent/25 disabled:opacity-50"
+		class="relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border border-hairline bg-surface-active transition-colors data-[state=checked]:border-accent data-[state=checked]:bg-accent disabled:opacity-50"
 	>
 		<Switch.Thumb
-			class="size-4 translate-x-1 rounded-full bg-muted transition-transform data-[state=checked]:translate-x-5 data-[state=checked]:bg-accent"
+			class="size-4 translate-x-1 rounded-full bg-muted transition-transform data-[state=checked]:translate-x-5 data-[state=checked]:bg-accent-fg"
 		/>
 	</Switch.Root>
 </div>
