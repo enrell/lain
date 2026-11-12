@@ -326,7 +326,7 @@ const en = {
 				snapshot: 'One archive of the database, safe to take while the server runs.',
 				restore: 'Deliberately offline: the server is stopped first.',
 				restoreSteps:
-					'Stop the server, move its data folder aside (lain restore writes only into an empty one), restore the archive, start again. The CLI checks the archive before writing anything; delete the old folder once everything is there.'
+					'Stop the server (Ctrl+C, or lain service stop), run this one command, and start the server again.'
 			},
 			downloads: {
 				queue: 'Files the server fetches over HTTP onto its own disk.',
@@ -344,6 +344,45 @@ const en = {
 				profiles: 'Which releases are wanted, and when one is worth an upgrade.',
 				subtitles: 'Where missing subtitles are searched, with your own API keys.'
 			}
+		},
+		// Settings › Profile.
+		profilePage: {
+			pageTitle: 'Profile — Settings — Lain',
+			details: 'Details',
+			nameHint: 'Shown instead of @{username}.',
+			bioHint: 'One or two lines.',
+			bioPlaceholder: 'A line about you.',
+			unsaved: 'Changed, not saved yet',
+			discard: 'Discard',
+			save: 'Save details',
+			savedState: 'Saved · this is what others see',
+			saveFailed: 'Could not save the profile.',
+			picture: 'Picture',
+			pictureHint: 'PNG, JPEG, GIF or WebP, up to 2 MB.',
+			upload: 'Upload',
+			initials: 'Use initials',
+			tooBig: 'The image must be 2 MB or smaller.',
+			uploadFailed: 'Could not upload the picture.',
+			removeFailed: 'Could not remove the avatar.',
+			avatarFailed: 'Could not change the avatar.',
+			mascot: 'Mascot',
+			mascotHint: 'Arrow keys move and pick.',
+			mascots: 'Mascots',
+			account: 'Account',
+			usernameHint: 'Used to sign in. Only an admin can change it.',
+			session: 'Session',
+			sessionHint: 'Signs out of this browser only.'
+		},
+		// Settings › Backup.
+		backupPage: {
+			pageTitle: 'Backup — Settings — Lain',
+			snapshotTitle: 'Database snapshot',
+			download: 'Download a backup',
+			saved: 'Saved {name}.',
+			failed: 'Could not download the backup.',
+			what: 'One .tar archive, read in a single transaction: the database (accounts, libraries, catalog, watch progress, lists and social), the plugin composition, the library roots and the avatars. Safe while scans and streams run. Media files are never in it: they stay where they are.',
+			restoreTitle: 'Restoring',
+			restoreNotes: 'The archive is checked before anything moves. The current data folder is kept beside the new one as lain.before-restore (numbered if that name is taken), and put back if the restore fails; delete it once everything is there. Add --data-dir when the server does not use the default folder.'
 		},
 		// Settings › Users.
 		usersPage: {
@@ -843,7 +882,12 @@ const en = {
 		tooShort: 'At least 8 characters.',
 		mismatch: 'The two new passwords differ.',
 		wrongCurrent: 'That is not your current password.',
-		failed: 'Could not change the password.'
+		failed: 'Could not change the password.',
+		pageTitle: 'Security — Settings — Lain',
+		group: 'Password',
+		changed: 'Password changed. Other sessions were signed out.',
+		othersOut: 'Every other session is signed out at once.',
+		submit: 'Update password'
 	},
 	// An address the app does not know, or a page that failed to load (+error.svelte).
 	errorPage: {
