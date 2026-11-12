@@ -5,7 +5,7 @@
 	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
 	import RatingPill from '$lib/components/social/RatingPill.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { afterNavigate, goto } from '$app/navigation';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
@@ -115,22 +115,28 @@
 	 * position and the menu that was used stay where they were, and a
 	 * failed refresh says so without replacing the page.
 	 */
+	let loads = 0;
 	async function load(quiet = false): Promise<void> {
+		// An answer for a title left meanwhile (another card was opened) is dropped.
+		const mine = ++loads;
+		const want = id;
 		if (!quiet) {
 			loading = true;
 			error = null;
 			notFound = false;
+			about = null;
 		}
 		try {
 			const [it, pl, enr, libs, eps, allProgress] = await Promise.all([
-				api.catalog.get(id),
+				api.catalog.get(want),
 				// A comic or manga has no playback plan; the read never blocks the page.
-				api.playback.plan(id).catch(() => null),
-				api.enrich.get(id),
+				api.playback.plan(want).catch(() => null),
+				api.enrich.get(want),
 				ensureLibraries(),
-				api.catalog.episodes(id),
+				api.catalog.episodes(want),
 				api.me.continueWatching()
 			]);
+			if (mine !== loads) return;
 			item = it;
 			itemCache.set(it.id, it);
 			plan = pl;
@@ -142,7 +148,6 @@
 			progress = progressMap.get(it.id) ?? null;
 			series = eps.items.length > 1 ? groupFromEpisodes(eps.items) : null;
 			if (isReadable(it.kind) && !quiet) {
-				about = null;
 				void api.reader
 					.pages(it.id)
 					.then((view) => {
@@ -152,6 +157,7 @@
 			}
 			if (series) await ensureEnrichments(series.items.map((episode) => episode.id));
 		} catch (err) {
+			if (mine !== loads) return;
 			if (quiet) {
 				toasts.error(errorMessage(err, t('title.refreshFailed')));
 			} else if (err instanceof ApiError && err.kind === 'not-found') {
@@ -160,14 +166,21 @@
 				error = errorMessage(err);
 			}
 		} finally {
-			loading = false;
+			if (mine === loads) loading = false;
 		}
 	}
 
 	onMount(() => {
 		origin = window.location.origin;
 		if (session.user) preferredPlayer = loadPreferredPlayer(session.user.id);
-		void load();
+	});
+	// The page follows its id, not its mount: a link from one title to another
+	// (a "More in" card, Back between two titles) keeps this route, and loading
+	// only on mount left the first title on screen under the second's address.
+	// Another route's id (the player's, while this page is left) is not asked for.
+	const shownId = $derived(page.route.id === '/item/[id]' ? id : '');
+	$effect(() => {
+		if (shownId) untrack(() => void load());
 	});
 
 	// Comics and manga open in the reader: no plan, no external player (D-085).
