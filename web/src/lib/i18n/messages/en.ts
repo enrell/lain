@@ -900,7 +900,18 @@ const en = {
 	},
 	player: {
 		nextEpisode: 'Next episode',
-		nextEpisodeNamed: 'Next episode: {name} (Shift+N)'
+		nextEpisodeNamed: 'Next episode: {name} (Shift+N)',
+		keys: {
+			subtitles: 'Subtitles on or off',
+			speed: 'Slower or faster'
+		},
+		osd: {
+			subtitlesOn: 'Subtitles: {name}',
+			subtitlesOff: 'Subtitles off',
+			noSubtitles: 'No subtitles for this file',
+			speed: 'Speed {rate}',
+			speedNormal: 'Normal speed'
+		}
 	},
 	playerPrefs: {
 		group: 'Skipping and subtitles · this browser',
