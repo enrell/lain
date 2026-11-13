@@ -252,6 +252,9 @@
 	});
 
 	const emptyResults = $derived(!loading && searchedFor !== '' && items.length === 0 && !error);
+	// An answer with titles in it is counted; the next one's search keeps the
+	// count, dimmed, until it lands, so the line does not come and go per key.
+	const counted = $derived(searchedFor !== '' && items.length > 0 && !error);
 	const showIdle = $derived(searchedFor === '' && !loading);
 	// The libraries, to browse from before anything is typed.
 	let browse = $state<{ id: string; name: string }[]>([]);
@@ -279,9 +282,13 @@
 	<header class="space-y-3">
 		<div>
 			<h1 class="page-title">{t('search.heading')}</h1>
-			<!-- What a search looks at, as other pages lead with what they hold. On a
-			     phone the field's placeholder says it, right under the heading. -->
-			<p class="mt-0.5 text-sm text-muted max-md:hidden">{t('search.matches')}</p>
+			<!-- What a search looks at, as other pages lead with what they hold, until
+			     there is an answer: then the count is the one line under the heading
+			     (two muted lines stood over the results). On a phone the field's
+			     placeholder says it, right under the heading. -->
+			{#if !counted}
+				<p class="mt-0.5 text-sm text-muted max-md:hidden">{t('search.matches')}</p>
+			{/if}
 		</div>
 		<!-- A phone's field: from md up the header holds the search bar (HeaderSearch).
 		     Filled, as the library's and the favourites' search fields are. -->
@@ -322,8 +329,10 @@
 				</button>
 			{/if}
 		</form>
-		{#if searchedFor !== '' && !loading}
-			<p class="text-sm text-muted" aria-live="polite">
+		<!-- Under the field on a phone; from md up, where the field is the header's,
+		     in the place of the note just under the heading. -->
+		{#if counted}
+			<p class={['text-sm text-muted transition-opacity md:-mt-2.5', loading ? 'opacity-60' : ''].join(' ')} aria-live="polite">
 				{t('search.count', { count: byTitle ? total : groups.length, query: searchedFor })}
 			</p>
 		{/if}
