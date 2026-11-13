@@ -511,6 +511,84 @@ fn indexer_crud_and_keys() {
     m.close();
 }
 
+#[test]
+fn a_probe_tries_an_indexer_without_saving_it() {
+    let w = World::new();
+    let m = w.manager(&tmp("acq-probe"), settings(0.0));
+    let input = |key: &str| IndexerInput {
+        protocol: Some(INDEXER_TORZNAB.into()),
+        url: Some(w.index.url.clone()),
+        api_key: Some(key.into()),
+        ..Default::default()
+    };
+    let p = m.probe_indexer(&IndexerProbeInput { id: String::new(), input: input("k") }).unwrap();
+    assert!(p.ok && p.error.is_empty(), "{p:?}");
+    assert!(p.caps.as_ref().unwrap().tv_search);
+    assert_eq!(p.sample.len(), 2);
+    assert!(p.sample[0].title.contains("Show"));
+    assert!(p.sample.iter().all(|r| r.link.is_empty() && r.guid.is_empty() && r.magnet.is_empty()), "no links: {p:?}");
+    assert!(m.indexers().is_empty(), "a probe stores nothing");
+
+    let bad = m.probe_indexer(&IndexerProbeInput { id: String::new(), input: input("wrong") }).unwrap();
+    assert!(!bad.ok && bad.error.contains("auth-failed") && bad.sample.is_empty(), "{bad:?}");
+    assert_eq!(
+        m.probe_indexer(&IndexerProbeInput { id: String::new(), input: IndexerInput::default() }).unwrap_err().code,
+        CODE_INVALID
+    );
+
+    // An edit is tried with the stored key: the form sends none.
+    let ix = add_indexer(&m, &w);
+    let edit = IndexerInput { name: Some("renamed".into()), ..Default::default() };
+    let p = m.probe_indexer(&IndexerProbeInput { id: ix.id.clone(), input: edit }).unwrap();
+    assert!(p.ok, "{p:?}");
+    assert_eq!(m.indexers()[0].name, "tracker-exemplo", "nothing is written");
+    assert_eq!(
+        m.probe_indexer(&IndexerProbeInput { id: "nope".into(), input: IndexerInput::default() }).unwrap_err().code,
+        CODE_NOT_FOUND
+    );
+    m.close();
+}
+
+#[test]
+fn an_aggregator_adds_its_indexers_in_one_step() {
+    let w = World::new();
+    let m = w.manager(&tmp("acq-aggregator"), settings(0.0));
+    let prowlarr = serve(|s| {
+        let key = s.headers.iter().any(|(k, v)| k.eq_ignore_ascii_case("x-api-key") && v == "pk");
+        match (s.path.as_str(), key) {
+            ("/api/v1/indexer", true) => Reply::ok(
+                r#"[{"id": 1, "name": "tracker-exemplo", "protocol": "torrent", "enable": true},
+                    {"id": 2, "name": "usenet-exemplo", "protocol": "usenet", "enable": true}]"#,
+            ),
+            _ => Reply::status(401),
+        }
+    });
+    let from = DiscoverInput { source: SOURCE_PROWLARR.into(), url: prowlarr.url.clone(), api_key: "pk".into() };
+    let found = m.discover(&from).unwrap();
+    assert_eq!(found.indexers.len(), 2);
+    assert!(found.indexers.iter().all(|f| f.added_as.is_empty()));
+
+    let (added, skipped) =
+        m.import_indexers(&IndexerImportInput { from: from.clone(), ids: vec!["1".into(), "2".into()] }).unwrap();
+    assert_eq!((added.len(), skipped.len()), (2, 0));
+    assert_eq!(added[1].protocol, INDEXER_NEWZNAB);
+    assert_eq!(added[0].url, format!("{}/1/api", prowlarr.url));
+    assert!(added.iter().all(|ix| m.has_api_key(&ix.id) && ix.api_key.is_empty()), "the key is stored, not answered");
+
+    // Again: both are there already, and discover says so.
+    let again = m.discover(&from).unwrap();
+    assert_eq!(again.indexers[0].added_as, added[0].id);
+    let (added2, skipped2) =
+        m.import_indexers(&IndexerImportInput { from: from.clone(), ids: vec!["1".into()] }).unwrap();
+    assert_eq!((added2.len(), skipped2), (0, vec!["1".to_string()]));
+    assert_eq!(m.indexers().len(), 2);
+
+    let unknown = m.import_indexers(&IndexerImportInput { from: from.clone(), ids: vec!["9".into()] }).unwrap_err();
+    assert_eq!(unknown.code, CODE_NOT_FOUND);
+    assert_eq!(m.import_indexers(&IndexerImportInput { from, ids: vec![] }).unwrap_err().code, CODE_INVALID);
+    m.close();
+}
+
 // ---- automation ------------------------------------------------------------
 
 #[test]
