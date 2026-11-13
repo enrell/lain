@@ -1613,6 +1613,10 @@ const en = {
 		countPortrait: { one: '{count} poster or cover', other: '{count} posters and covers' },
 		countLandscape: { one: '{count} in widescreen', other: '{count} in widescreen' },
 		toPart: 'Go to {part}',
+		// The toolbar's sheet: "Sort & filter" where the sort lives in it (a phone), "Filters" where the sort sits beside it.
+		sortAndFilter: 'Sort & filter',
+		filters: 'Filters',
+		filtersActive: { one: 'Filters ({count} active)', other: 'Filters ({count} active)' },
 		// A catalog kind as the Kind filter names it.
 		kind: {
 			video: 'Films and clips',
