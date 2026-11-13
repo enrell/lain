@@ -118,6 +118,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Login and Setup share one field style** (web), and sign-in says how
   to get back in after a forgotten password; a disabled account is told
   so, not that its password is wrong.
+- **Web: one card size per shape.** Posters and widescreen cards are one
+  size in every rail and grid (Home, the library's shelves, More in, a
+  library, the favourites, search results): a grid fills its width with
+  the column count nearest the rails' size, so a library grid beside its
+  filters no longer draws smaller posters than the rail under a title.
+- **Web: All titles says how its count divides** ("33 titles · 21 posters
+  and covers · 12 in widescreen"), each part a jump to where it starts.
+  The browse toolbar's sheet button says "Filters" where the sort and tile
+  size sit beside it (the sheet then holds the filters alone), and the
+  sort carries an icon like the toolbar's other controls.
+- **Web: Search before a query** puts Recent and Browse side by side, ends
+  the recent searches with their Clear, and says what a search matches
+  under the heading, so the newest titles' rails start in the first screen.
+- **Web: Settings › Transcoding's HDR row is a choice** (the tone map that
+  runs, or Off) instead of a bare "HABLE"; another than Auto's switches
+  the policy to Custom. **Settings › Plugins** shows optional components
+  not installed as an option ("3 optional, available to install"), apart
+  from the families' health.
+- **Web:** a title's File details closes the hero under its synopsis; the
+  player's episode list fades where more episodes are hidden; a volume
+  under way says its page on Continue reading ("Vol 1 · page 4 of 8").
 
 ### Fixed
 - **Web:** films and clips without a year are captioned with their length,
@@ -158,6 +179,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   sections are drawn as empty states.
 - **The phone's search field** (web) is filled like the library's and the
   favourites' fields.
+- **Web:** File details' "Metadata from" line lost the space before its
+  date ("lain-import· Nov 11").
 
 ## [0.3.1] - 2026-11-12
 
