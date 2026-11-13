@@ -242,6 +242,8 @@ fn a_failed_scrobble_is_visible() {
     let e = env();
     set_anime(&e, vec![al_entry(154587, "ANIME", "Frieren", "CURRENT", 3, 28)]);
     link(&e, "u1");
+    // A sync that started before the write must not drop its record.
+    let before = e.links.account("u1", "anilist").unwrap();
     e.fixture.set(|_| (429, "{}".into()));
     e.links.scrobble("u1", &ep(4));
     let last = e.links.account("u1", "anilist").unwrap().last_push.unwrap();
@@ -250,7 +252,7 @@ fn a_failed_scrobble_is_visible() {
     assert_eq!((entry.progress, entry.push_error.as_str()), (3, "rate-limited"), "the local copy does not move");
     assert_eq!(e.events.lock().unwrap().last().unwrap().1["action"], "push-failed");
     e.fixture.set(anilist(e.remote.clone()));
-    e.links.sync(e.links.account("u1", "anilist").unwrap()).unwrap();
+    e.links.sync(before).unwrap();
     assert_eq!(e.links.list("u1", "", "").unwrap()[0].push_error, "", "an import is the truth");
     assert_eq!(e.links.account("u1", "anilist").unwrap().last_push.unwrap().error, "rate-limited", "kept by the sync");
 }
