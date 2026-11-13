@@ -96,7 +96,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The reader fits a whole page between its bars** while they show,
   and gives it the full height when they go away; full width, zoom and
   the strip still scroll under them. The spread's Cover alone is drawn
-  as a check box option of the spread, not a second filled pill.
+  as a check box option of the spread, in plain words after a hairline,
+  not a second filled pill.
 - **The player's settings panel fits a phone on its side**, and its
   menus share one width. The reader's `?` list is the app's dialog, as
   the player's is.
@@ -123,9 +124,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   screen play and the two skips sit in the middle of the picture and the
   bar keeps the time and the other buttons, all one size. An upright
   phone stacks the player: the picture under the top bar, the controls
-  under the picture, so "Resuming from…" no longer covers the frame.
+  under the picture, so "Resuming from…" no longer covers the frame;
+  there the settings panel drops from the gear over the episode list (a
+  tap on the list closes it) instead of covering the top bar and title.
 - **Web on a phone:** a title page's Back sits in the top bar, where it
-  stays on screen; the reader shows its direction (← RTL, a tap flips it)
+  stays on screen (named "Back to the library" when the title was opened
+  from outside Lain, where that is where it goes); the reader shows its direction (← RTL, a tap flips it)
   beside the page slider; Settings › Libraries and Users keep each row's
   actions in one labelled ⋯ menu (Edit, Move up, Move down, Remove;
   Playback, Reset password, Delete) instead of bare icons; the library's
@@ -136,19 +140,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   library, the favourites, search results): a grid fills its width with
   the column count nearest the rails' size, so a library grid beside its
   filters no longer draws smaller posters than the rail under a title.
-- **Web: All titles says how its count divides** ("33 titles · 21 posters
-  and covers · 12 in widescreen"), each part a jump to where it starts.
+- **Web: All titles says where its count continues** ("33 titles · 12 in
+  widescreen"), a jump to the part further down; the first part's own
+  heading sits just under the line.
   The browse toolbar's sheet button says "Filters" where the sort and tile
   size sit beside it (the sheet then holds the filters alone), and the
   sort carries an icon like the toolbar's other controls.
 - **Web: Search before a query** puts Recent and Browse side by side, ends
   the recent searches with their Clear, and says what a search matches
-  under the heading, so the newest titles' rails start in the first screen.
-- **Web: Settings › Transcoding's HDR row is a choice** (the tone map that
-  runs, or Off) instead of a bare "HABLE"; another than Auto's switches
-  the policy to Custom. **Settings › Plugins** shows optional components
-  not installed as an option ("3 optional, available to install"), apart
-  from the families' health.
+  under the heading, so the newest titles' rails start in the first screen;
+  once there is an answer, its count takes that line.
+- **Web: Settings › Transcoding's HDR row is a switch** whose hint names
+  the tone map that runs, instead of a bare "HABLE"; turning it off
+  switches the policy to Custom. The server's rows are the one place the
+  video engine and HDR on or off are set, in Auto and Custom alike; the
+  Hardware and HDR sections keep the rest of each, and the page's filter
+  finds the server's rows too. **Settings › Plugins** says a family's
+  optional components in words after its health ("5 jobs · all healthy ·
+  3 optional, not installed"), each part on one line at 360 px.
 - **Web:** a title's File details closes the hero under its synopsis; the
   player's episode list fades where more episodes are hidden; a volume
   under way says its page on Continue reading ("Vol 1 · page 4 of 8").
@@ -203,6 +212,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   their words sit between the top bar and the controls on a phone.
 - **Web:** File details' "Metadata from" line lost the space before its
   date ("lain-import· Nov 11").
+- **Web:** an episode watched for a fraction of a second wears the card's
+  progress sliver beside its time left (its percent rounded to 0); the
+  profile card's facts no longer end a phone's line on a lone "·";
+  Settings › Users words Delete like Playback and Reset password from
+  1280 px; the library's bar sits closer under the heading on a phone;
+  Acquire's and Tracking's first steps say what an indexer or a link is
+  rather than repeating where the button above goes, and their step
+  numbers set the dot evenly; Indexers' empty list says Acquire has
+  nothing to search; Acquisition's engine status fits one line; a
+  favourite, rating or activity made from a show reads Series (and a
+  film or clip Video) instead of the raw "EPISODE" or "VIDEO".
 
 ## [0.3.1] - 2026-11-12
 
