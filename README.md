@@ -15,6 +15,7 @@
 
 <p align="center">
   <a href="https://enrell.github.io/lain/"><strong>Website</strong></a> ·
+  <a href="https://enrell.github.io/lain/#tour"><strong>Live demo</strong></a> ·
   <a href="#install">Install</a> ·
   <a href="#android">Android</a> ·
   <a href="docs/">Docs</a> ·

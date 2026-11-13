@@ -1,0 +1,2034 @@
+{
+	"/api/acquire/grabs": {
+		"file": "35c1759bb189198b",
+		"type": "application/json"
+	},
+	"/api/acquire/indexers": {
+		"file": "832932f27b5ef499",
+		"type": "application/json"
+	},
+	"/api/acquire/profiles": {
+		"file": "345f565dd95dd1d0",
+		"type": "application/json"
+	},
+	"/api/acquire/settings": {
+		"file": "26ebc957dd2a0602",
+		"type": "application/json"
+	},
+	"/api/acquire/subtitle-providers": {
+		"file": "6d8c9d42a3152587",
+		"type": "application/json"
+	},
+	"/api/acquire/subtitle-refusals": {
+		"file": "302bccf7f84d5d3f",
+		"type": "application/json"
+	},
+	"/api/acquire/subtitles": {
+		"file": "1060a200e98c24d4",
+		"type": "application/json"
+	},
+	"/api/acquire/wanted": {
+		"file": "18d75f33441306af",
+		"type": "application/json"
+	},
+	"/api/admin/settings/integrations": {
+		"file": "e7b84ee5b6dde044",
+		"type": "application/json"
+	},
+	"/api/admin/settings/transcode": {
+		"file": "67a8e31302afd424",
+		"type": "application/json"
+	},
+	"/api/admin/transcodes": {
+		"file": "41b3ff417fb493d2",
+		"type": "application/json"
+	},
+	"/api/catalog/02f6de7beea3ba69": {
+		"file": "8b7ef860b64baaea",
+		"type": "application/json"
+	},
+	"/api/catalog/02f6de7beea3ba69/episodes": {
+		"file": "b5b8158d4ae1762c",
+		"type": "application/json"
+	},
+	"/api/catalog/039a34b14ce22380": {
+		"file": "fc1644d703837739",
+		"type": "application/json"
+	},
+	"/api/catalog/039a34b14ce22380/episodes": {
+		"file": "2319c00d6797ab12",
+		"type": "application/json"
+	},
+	"/api/catalog/0aeb917fc66c1f52": {
+		"file": "bbc5aa9509c78521",
+		"type": "application/json"
+	},
+	"/api/catalog/13cf6c3b89613b8c": {
+		"file": "19f349c76c16cd36",
+		"type": "application/json"
+	},
+	"/api/catalog/13cf6c3b89613b8c/episodes": {
+		"file": "7f87d49396e2465e",
+		"type": "application/json"
+	},
+	"/api/catalog/13d90f90da26cad8/episodes": {
+		"file": "4367458274a8a576",
+		"type": "application/json"
+	},
+	"/api/catalog/22f1d4885f6f0f9f": {
+		"file": "58d90981b4540c0b",
+		"type": "application/json"
+	},
+	"/api/catalog/22f1d4885f6f0f9f/episodes": {
+		"file": "8161d1f555bc1f32",
+		"type": "application/json"
+	},
+	"/api/catalog/2923b8329406a331": {
+		"file": "2b7de55e39098dc5",
+		"type": "application/json"
+	},
+	"/api/catalog/2923b8329406a331/episodes": {
+		"file": "316082d1a63ec91b",
+		"type": "application/json"
+	},
+	"/api/catalog/35daeb6f5ea34838": {
+		"file": "f6aa2c8eb06669dc",
+		"type": "application/json"
+	},
+	"/api/catalog/35daeb6f5ea34838/episodes": {
+		"file": "a760df77230e9436",
+		"type": "application/json"
+	},
+	"/api/catalog/37de60e7baf76e34": {
+		"file": "a6952876bb816885",
+		"type": "application/json"
+	},
+	"/api/catalog/37de60e7baf76e34/episodes": {
+		"file": "89dffbfd6c491615",
+		"type": "application/json"
+	},
+	"/api/catalog/4fc2fa9c0f8d306c": {
+		"file": "0770d84efd19ce97",
+		"type": "application/json"
+	},
+	"/api/catalog/4fc2fa9c0f8d306c/episodes": {
+		"file": "7368d2109798b0d2",
+		"type": "application/json"
+	},
+	"/api/catalog/5797ec5119d7d64a": {
+		"file": "bac75aea7c79d070",
+		"type": "application/json"
+	},
+	"/api/catalog/5797ec5119d7d64a/episodes": {
+		"file": "7410ec6cad5b5cd8",
+		"type": "application/json"
+	},
+	"/api/catalog/616d9119c4b3cd52": {
+		"file": "1ee2ef31cf72d0f1",
+		"type": "application/json"
+	},
+	"/api/catalog/616d9119c4b3cd52/episodes": {
+		"file": "9b148ce8e9457e94",
+		"type": "application/json"
+	},
+	"/api/catalog/64307f57ca501560": {
+		"file": "3cbd9427578c8784",
+		"type": "application/json"
+	},
+	"/api/catalog/79283270432390ed": {
+		"file": "4f17779ff4916b33",
+		"type": "application/json"
+	},
+	"/api/catalog/79283270432390ed/episodes": {
+		"file": "f58c7c28dc3f0456",
+		"type": "application/json"
+	},
+	"/api/catalog/872a7e56e8caf19d": {
+		"file": "11bf347a2cd94dea",
+		"type": "application/json"
+	},
+	"/api/catalog/872a7e56e8caf19d/episodes": {
+		"file": "11fc82c0acdd062d",
+		"type": "application/json"
+	},
+	"/api/catalog/8f2471e26bc6dd61": {
+		"file": "c0a2bfb784a4161d",
+		"type": "application/json"
+	},
+	"/api/catalog/ab0fce996f9aa7f4": {
+		"file": "1ed7613d8f18a3dd",
+		"type": "application/json"
+	},
+	"/api/catalog/ab0fce996f9aa7f4/episodes": {
+		"file": "f5c462a75c599ddc",
+		"type": "application/json"
+	},
+	"/api/catalog/b23954b1713da58b": {
+		"file": "efc3d8b3d7299543",
+		"type": "application/json"
+	},
+	"/api/catalog/b23954b1713da58b/episodes": {
+		"file": "f904d20ba3919fb7",
+		"type": "application/json"
+	},
+	"/api/catalog/b3cf880b04d7599f": {
+		"file": "c0bafeab9870613e",
+		"type": "application/json"
+	},
+	"/api/catalog/b85c4c991233056f": {
+		"file": "99ecbadd2a5c687c",
+		"type": "application/json"
+	},
+	"/api/catalog/b85c4c991233056f/episodes": {
+		"file": "0608205fedef143f",
+		"type": "application/json"
+	},
+	"/api/catalog/be521b2902a11b00": {
+		"file": "112de67bd7b9bc7d",
+		"type": "application/json"
+	},
+	"/api/catalog/be521b2902a11b00/episodes": {
+		"file": "b488a983846fcdb2",
+		"type": "application/json"
+	},
+	"/api/catalog/cb6d722e4a2e8c2e": {
+		"file": "b6aa8ef746f9ab83",
+		"type": "application/json"
+	},
+	"/api/catalog/cb6d722e4a2e8c2e/episodes": {
+		"file": "d318e04b2f9a4650",
+		"type": "application/json"
+	},
+	"/api/catalog/da1a8cc3c40d15a4": {
+		"file": "2c805b75b6977fa3",
+		"type": "application/json"
+	},
+	"/api/catalog/da1a8cc3c40d15a4/episodes": {
+		"file": "d9366e195fc87ade",
+		"type": "application/json"
+	},
+	"/api/catalog/e2642c6e66aff114": {
+		"file": "a6b4d91692212f9f",
+		"type": "application/json"
+	},
+	"/api/catalog/e2642c6e66aff114/episodes": {
+		"file": "c8da12e6abc6fb64",
+		"type": "application/json"
+	},
+	"/api/catalog/e2bf85f3b48199b6": {
+		"file": "81708949ad6a78d2",
+		"type": "application/json"
+	},
+	"/api/catalog/e2bf85f3b48199b6/episodes": {
+		"file": "1ada11472b7513d4",
+		"type": "application/json"
+	},
+	"/api/catalog/f90a03f6fd040052": {
+		"file": "d9a84f3807eca5b9",
+		"type": "application/json"
+	},
+	"/api/catalog/f90a03f6fd040052/episodes": {
+		"file": "c5c9fada12ee798d",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&library_id=lib-153529bd&limit=12&sort=recent": {
+		"file": "8ebb56f198c37a8b",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&library_id=lib-153529bd&limit=13": {
+		"file": "a0ff7d79ae8d6c74",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&library_id=lib-153529bd&limit=14&sort=recent": {
+		"file": "37bf647d9581ad5f",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&library_id=lib-155c56d9&limit=12&sort=recent": {
+		"file": "76c8d1db9446e1d5",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&library_id=lib-3fc1dc28&limit=12&sort=recent": {
+		"file": "c583dbea4b4cf213",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&library_id=lib-3fc1dc28&limit=13": {
+		"file": "cc6a92ac0737504c",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&library_id=lib-3fc1dc28&limit=14&sort=recent": {
+		"file": "569cae3e2df46b41",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&library_id=lib-b3b00fdf&limit=12&sort=recent": {
+		"file": "bd0ee1435061b3e7",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&library_id=lib-b3b00fdf&limit=13": {
+		"file": "e8b1c9d576758aec",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&library_id=lib-b3b00fdf&limit=14&sort=recent": {
+		"file": "333ff809f19709a4",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&limit=1&sort=recent": {
+		"file": "ed26497247903e05",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&limit=12&sort=recent": {
+		"file": "1438a6d563a12b96",
+		"type": "application/json"
+	},
+	"/api/catalog?group=title&limit=500": {
+		"file": "e95c6e0e4dc2f33a",
+		"type": "application/json"
+	},
+	"/api/catalog?library_id=lib-153529bd&limit=500&offset=0&sort=title": {
+		"file": "118643453d034540",
+		"type": "application/json"
+	},
+	"/api/catalog?library_id=lib-155c56d9&limit=500&offset=0&sort=title": {
+		"file": "95349fc7bc82a1c2",
+		"type": "application/json"
+	},
+	"/api/catalog?library_id=lib-3fc1dc28&limit=500&offset=0&sort=title": {
+		"file": "0d001227953af19c",
+		"type": "application/json"
+	},
+	"/api/catalog?library_id=lib-b3b00fdf&limit=500&offset=0&sort=title": {
+		"file": "041bcb9598bec479",
+		"type": "application/json"
+	},
+	"/api/catalog?limit=500&offset=0&sort=title": {
+		"file": "d2f869d1b186fc14",
+		"type": "application/json"
+	},
+	"/api/catalog?limit=60&sort=recent": {
+		"file": "7d96eccee3e1f56b",
+		"type": "application/json"
+	},
+	"/api/downloads": {
+		"file": "93c9e7bbaeba2b47",
+		"type": "application/json"
+	},
+	"/api/durations?ids=039a34b14ce22380%2Ca6703a60fc5148ad%2Cf24930dc2f88dc1d%2C8c13157af813c53d%2C68a22e4abac5f20f%2Cf121d8eb10c09885%2Cca06e0565606796d%2C4e22ff4ade7007d7%2C147832365d381d80%2C6b8c029e76d08bea%2C95cc1a9c0cb3934f%2C3ddb7f122a0309d3%2C176b1853eb923c0c": {
+		"file": "d4349aec944fee48",
+		"type": "application/json"
+	},
+	"/api/durations?ids=22f1d4885f6f0f9f%2Ce56184642e32df86%2C60a9fa843cd98109%2Ccf8af4686b8813ae%2C17b5ad276740afb0%2Ce8471323035f778e%2Cb3989ffc74d1d904%2C6f32afddffc415bb%2Ce7d91031d9d4b301%2Cf244e5d9c690e532%2C05f4989057b6a0ff%2C3e48bc01506ee0c2": {
+		"file": "3890d45418b15a12",
+		"type": "application/json"
+	},
+	"/api/durations?ids=35daeb6f5ea34838": {
+		"file": "c338c53f6f6c8609",
+		"type": "application/json"
+	},
+	"/api/durations?ids=4fc2fa9c0f8d306c": {
+		"file": "dc42d64957a36947",
+		"type": "application/json"
+	},
+	"/api/durations?ids=5797ec5119d7d64a%2Cf0de394a648cab3c%2C05695626c11725d7": {
+		"file": "43208234307aabd9",
+		"type": "application/json"
+	},
+	"/api/durations?ids=616d9119c4b3cd52": {
+		"file": "09aa8f607df4dc0a",
+		"type": "application/json"
+	},
+	"/api/durations?ids=79283270432390ed%2Cd195e96b34df0007%2C1d7b9657bdd41527%2C7d45e20aa1528099%2Cf346589443d77faa%2C145a38f1a4094508%2C6ccbe50e62d5a098%2Cf2f3da3505f1238f%2Ca6014f0dd475eee8%2C75fe9aef92fc6470%2C554c1cbed1a5a86a%2C6406182489d78831%2C4d65f91a32f85de7%2Ce220bd3039693b6b%2Ccee7cc60ad4744fa%2Cbba64f93c18a158c%2C16d13082e50d5837%2C7d30890599bdf297%2Cb851cc17e60371a3%2Cbc148439a83a13f7%2Cf5eea384c96e6998%2Cc22b149486c7cc18%2C5a01a79adf490f20%2C5904bdc63564359e": {
+		"file": "adb14318ddabe7e4",
+		"type": "application/json"
+	},
+	"/api/durations?ids=872a7e56e8caf19d": {
+		"file": "73221f5df4e61568",
+		"type": "application/json"
+	},
+	"/api/durations?ids=b23954b1713da58b": {
+		"file": "8baa27832caa1970",
+		"type": "application/json"
+	},
+	"/api/durations?ids=b85c4c991233056f%2C48371e2cce5c5903%2C01bd75d033883afb%2C801bf3e945424fe3%2C517d2235ab4af3fd%2Cd74e29440b2a8646": {
+		"file": "87a071aaf46000a6",
+		"type": "application/json"
+	},
+	"/api/durations?ids=be521b2902a11b00%2Cf128a097ee46c4e6%2C6af57d84d0958e52%2C1819ffbb83ad3b1b%2Cbdba2070a8bccca4%2C2d36bd1b634fd2d2%2Cea74a9957e5a7c01%2Ca6c5daef9fc636c0%2Cf75c9d02f39ecf4d%2C2491e6ec7c5e648e%2C12efa53894fdb064%2Ced5ae0777694b042": {
+		"file": "4a26d9f68158cd5b",
+		"type": "application/json"
+	},
+	"/api/durations?ids=cb6d722e4a2e8c2e%2C8f2471e26bc6dd61%2C5524f1b95f7aa9f8%2Ca9fe69cec83c1284%2Ca41e66e2b061784e%2C93a6dd91c25682c3%2Cabb41b5d1d83ed02%2Cb3cf880b04d7599f%2Cb30f15bea8f8f739%2C8dc621552cff4347%2Cbb7aff0a3fb46b6f%2C64307f57ca501560": {
+		"file": "047278d78ea9dd78",
+		"type": "application/json"
+	},
+	"/api/durations?ids=e2642c6e66aff114": {
+		"file": "09912826b6cfb692",
+		"type": "application/json"
+	},
+	"/api/durations?ids=e2bf85f3b48199b6": {
+		"file": "754263fd84b795b7",
+		"type": "application/json"
+	},
+	"/api/durations?ids=f90a03f6fd040052%2C20a29d392cf775c2%2C65da7ee50e3d9e27%2Cf0c6c1ddc8d9263b%2Cc8a629a2a7f46849%2C57b1f63febc7d3c9%2C83f6ecfb52fb5bdc%2C81c92cd2a8b3fbb9%2Cbb2b9bbc73e99e53%2Cb1fb9b4fca562bd7%2C464d83122de1325b%2C36b4805cded325a8%2Cc0c7bab6b58dbaca%2C471c5d3edd4848f6%2C13d90f90da26cad8%2C0aeb917fc66c1f52%2C924003002baa31fb%2Cec78d6a7db674288%2C6b7f99fd03bce5c9%2C54c9ddcc2f90d461%2Ceedcf15be56788ce%2C73f0cae2fdba9ce9%2Cb64f75b028952e09%2C4c21d3b71b3be1a6%2Cfada1d8d17d875c9%2C8f1fa453b45a79ec": {
+		"file": "a0533ee3811c8527",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=039a34b14ce22380": {
+		"file": "77a9abfa35283ff6",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=13cf6c3b89613b8c%2C2923b8329406a331%2Cda1a8cc3c40d15a4%2C02f6de7beea3ba69%2C37de60e7baf76e34": {
+		"file": "083830bfac3fd2bd",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=13cf6c3b89613b8c%2Ce2bf85f3b48199b6%2Ccb6d722e4a2e8c2e%2C0aeb917fc66c1f52%2Cbe521b2902a11b00%2Cb23954b1713da58b%2Cab0fce996f9aa7f4%2Cb85c4c991233056f%2C35daeb6f5ea34838%2C4fc2fa9c0f8d306c%2C616d9119c4b3cd52%2C872a7e56e8caf19d%2Ce2642c6e66aff114%2C039a34b14ce22380%2C5797ec5119d7d64a%2C22f1d4885f6f0f9f%2Cf90a03f6fd040052%2C79283270432390ed": {
+		"file": "fd3630d2f5df1eae",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=20a29d392cf775c2%2C65da7ee50e3d9e27%2Cf0c6c1ddc8d9263b%2Cc8a629a2a7f46849%2C57b1f63febc7d3c9%2C83f6ecfb52fb5bdc%2C81c92cd2a8b3fbb9%2Cbb2b9bbc73e99e53%2Cb1fb9b4fca562bd7%2C464d83122de1325b%2C36b4805cded325a8%2Cc0c7bab6b58dbaca%2C471c5d3edd4848f6%2C13d90f90da26cad8%2C0aeb917fc66c1f52%2C924003002baa31fb%2Cec78d6a7db674288%2C6b7f99fd03bce5c9%2C54c9ddcc2f90d461%2Ceedcf15be56788ce%2C73f0cae2fdba9ce9%2Cb64f75b028952e09%2C4c21d3b71b3be1a6%2Cfada1d8d17d875c9%2C8f1fa453b45a79ec": {
+		"file": "e9a669ed8cfa4950",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=20a29d392cf775c2%2C65da7ee50e3d9e27%2Cf0c6c1ddc8d9263b%2Cc8a629a2a7f46849%2C57b1f63febc7d3c9%2C83f6ecfb52fb5bdc%2C81c92cd2a8b3fbb9%2Cbb2b9bbc73e99e53%2Cb1fb9b4fca562bd7%2C464d83122de1325b%2C36b4805cded325a8%2Cc0c7bab6b58dbaca%2C471c5d3edd4848f6%2C13d90f90da26cad8%2C924003002baa31fb%2Cec78d6a7db674288%2C6b7f99fd03bce5c9%2C54c9ddcc2f90d461%2Ceedcf15be56788ce%2C73f0cae2fdba9ce9%2Cb64f75b028952e09%2C4c21d3b71b3be1a6%2Cfada1d8d17d875c9%2C8f1fa453b45a79ec": {
+		"file": "af449c04ece541d4",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=22f1d4885f6f0f9f": {
+		"file": "8035e647721ec8de",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=2923b8329406a331%2Cda1a8cc3c40d15a4%2C02f6de7beea3ba69%2C37de60e7baf76e34": {
+		"file": "01bda7cc534efc96",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=35daeb6f5ea34838": {
+		"file": "2a19989cc2617745",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=48371e2cce5c5903%2C01bd75d033883afb%2C801bf3e945424fe3%2C517d2235ab4af3fd%2Cd74e29440b2a8646": {
+		"file": "8aa356823822ff58",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=48371e2cce5c5903%2C13cf6c3b89613b8c%2C039a34b14ce22380%2C5797ec5119d7d64a%2C22f1d4885f6f0f9f%2C20a29d392cf775c2%2C6af57d84d0958e52%2C79283270432390ed%2C35daeb6f5ea34838%2C4fc2fa9c0f8d306c%2C5524f1b95f7aa9f8%2C616d9119c4b3cd52": {
+		"file": "e01d638f2f91a488",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=4fc2fa9c0f8d306c": {
+		"file": "aedf42b6ea72d95d",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=5797ec5119d7d64a": {
+		"file": "f68f42ac7a67efa7",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=616d9119c4b3cd52%2C35daeb6f5ea34838%2C872a7e56e8caf19d%2Ce2bf85f3b48199b6%2Cb23954b1713da58b%2C4fc2fa9c0f8d306c": {
+		"file": "341a6be609f0d094",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=616d9119c4b3cd52": {
+		"file": "5b57f3071d5e3cad",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=79283270432390ed": {
+		"file": "3f877a3a99c4ae92",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=872a7e56e8caf19d": {
+		"file": "ab643d321eb9ff57",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=8f2471e26bc6dd61%2C5524f1b95f7aa9f8%2Ca9fe69cec83c1284%2Ca41e66e2b061784e%2C93a6dd91c25682c3%2Cabb41b5d1d83ed02%2Cb3cf880b04d7599f%2Cb30f15bea8f8f739%2C8dc621552cff4347%2Cbb7aff0a3fb46b6f%2C64307f57ca501560": {
+		"file": "cfd218fe2d2a1732",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=a6703a60fc5148ad%2Cf24930dc2f88dc1d%2C8c13157af813c53d%2C68a22e4abac5f20f%2Cf121d8eb10c09885%2Cca06e0565606796d%2C4e22ff4ade7007d7%2C147832365d381d80%2C6b8c029e76d08bea%2C95cc1a9c0cb3934f%2C3ddb7f122a0309d3%2C176b1853eb923c0c": {
+		"file": "d4d6a4c6283e1b59",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=ab0fce996f9aa7f4%2C13cf6c3b89613b8c%2C2923b8329406a331%2Cda1a8cc3c40d15a4%2C02f6de7beea3ba69%2C37de60e7baf76e34": {
+		"file": "56e6bd82a339076f",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=ab0fce996f9aa7f4": {
+		"file": "12f9b0260d6df424",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=b23954b1713da58b%2Cbe521b2902a11b00%2Cf128a097ee46c4e6%2C6af57d84d0958e52%2C1819ffbb83ad3b1b%2Cbdba2070a8bccca4%2C2d36bd1b634fd2d2%2Cea74a9957e5a7c01%2Ca6c5daef9fc636c0%2Cf75c9d02f39ecf4d%2C2491e6ec7c5e648e%2C12efa53894fdb064%2Ced5ae0777694b042%2Cab0fce996f9aa7f4%2C13cf6c3b89613b8c%2C2923b8329406a331%2Cda1a8cc3c40d15a4%2C02f6de7beea3ba69%2C37de60e7baf76e34%2Ce2bf85f3b48199b6": {
+		"file": "f424f5f13aabe83c",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=b23954b1713da58b": {
+		"file": "8ee415f1a5cb4b04",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=b85c4c991233056f%2Cab0fce996f9aa7f4%2C039a34b14ce22380%2C5797ec5119d7d64a%2C22f1d4885f6f0f9f%2Cf90a03f6fd040052%2Cbe521b2902a11b00%2C79283270432390ed%2C35daeb6f5ea34838%2C4fc2fa9c0f8d306c%2Ccb6d722e4a2e8c2e%2C616d9119c4b3cd52": {
+		"file": "781e0653f3f5f9d2",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=b85c4c991233056f%2Cbe521b2902a11b00%2C22f1d4885f6f0f9f%2C039a34b14ce22380%2Ccb6d722e4a2e8c2e%2C5797ec5119d7d64a%2C79283270432390ed": {
+		"file": "e4481534e2765b29",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=b85c4c991233056f": {
+		"file": "a51b3e5868249011",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=be521b2902a11b00": {
+		"file": "56bdb95842ff394e",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=cb6d722e4a2e8c2e": {
+		"file": "8d1d7a56d1cc1f91",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=d195e96b34df0007%2C1d7b9657bdd41527%2C7d45e20aa1528099%2Cf346589443d77faa%2C145a38f1a4094508%2C6ccbe50e62d5a098%2Cf2f3da3505f1238f%2Ca6014f0dd475eee8%2C75fe9aef92fc6470%2C554c1cbed1a5a86a%2C6406182489d78831%2C4d65f91a32f85de7%2Ce220bd3039693b6b%2Ccee7cc60ad4744fa%2Cbba64f93c18a158c%2C16d13082e50d5837%2C7d30890599bdf297%2Cb851cc17e60371a3%2Cbc148439a83a13f7%2Cf5eea384c96e6998%2Cc22b149486c7cc18%2C5a01a79adf490f20%2C5904bdc63564359e": {
+		"file": "33b2af90bc888ab8",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=e2642c6e66aff114%2C35daeb6f5ea34838%2C872a7e56e8caf19d%2Ce2bf85f3b48199b6%2Cb23954b1713da58b%2C4fc2fa9c0f8d306c": {
+		"file": "6556233fd8080cb7",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=e2642c6e66aff114%2C616d9119c4b3cd52%2C35daeb6f5ea34838%2C872a7e56e8caf19d%2Cb23954b1713da58b%2C4fc2fa9c0f8d306c": {
+		"file": "72c77d379bebcb9f",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=e2642c6e66aff114%2C616d9119c4b3cd52%2C35daeb6f5ea34838%2C872a7e56e8caf19d%2Ce2bf85f3b48199b6%2C4fc2fa9c0f8d306c": {
+		"file": "c881e3e7090ee9f1",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=e2642c6e66aff114%2C616d9119c4b3cd52%2C35daeb6f5ea34838%2C872a7e56e8caf19d%2Ce2bf85f3b48199b6%2Cb23954b1713da58b%2C4fc2fa9c0f8d306c": {
+		"file": "98782db95af87d0c",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=e2642c6e66aff114%2C616d9119c4b3cd52%2C35daeb6f5ea34838%2C872a7e56e8caf19d%2Ce2bf85f3b48199b6%2Cb23954b1713da58b": {
+		"file": "ae003ea92e71edf4",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=e2642c6e66aff114%2C616d9119c4b3cd52%2C35daeb6f5ea34838%2Ce2bf85f3b48199b6%2Cb23954b1713da58b%2C4fc2fa9c0f8d306c": {
+		"file": "fd3d16a4de2bab9e",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=e2642c6e66aff114%2C616d9119c4b3cd52%2C872a7e56e8caf19d%2Ce2bf85f3b48199b6%2Cb23954b1713da58b%2C4fc2fa9c0f8d306c": {
+		"file": "098481e9aca2384c",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=e2642c6e66aff114": {
+		"file": "a2d87f14e41b358b",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=e2bf85f3b48199b6": {
+		"file": "076e7d279fb83527",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=e56184642e32df86%2C60a9fa843cd98109%2Ccf8af4686b8813ae%2C17b5ad276740afb0%2Ce8471323035f778e%2Cb3989ffc74d1d904%2C6f32afddffc415bb%2Ce7d91031d9d4b301%2Cf244e5d9c690e532%2C05f4989057b6a0ff%2C3e48bc01506ee0c2": {
+		"file": "ff2bced4e93ad10a",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f0de394a648cab3c%2C05695626c11725d7": {
+		"file": "612a00b712e68097",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f128a097ee46c4e6%2C6af57d84d0958e52%2C1819ffbb83ad3b1b%2Cbdba2070a8bccca4%2C2d36bd1b634fd2d2%2Cea74a9957e5a7c01%2Ca6c5daef9fc636c0%2Cf75c9d02f39ecf4d%2C2491e6ec7c5e648e%2C12efa53894fdb064%2Ced5ae0777694b042": {
+		"file": "7ddd3c7dd3de0c08",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f90a03f6fd040052%2C20a29d392cf775c2%2C65da7ee50e3d9e27%2Cf0c6c1ddc8d9263b%2Cc8a629a2a7f46849%2C57b1f63febc7d3c9%2C83f6ecfb52fb5bdc%2C81c92cd2a8b3fbb9%2Cbb2b9bbc73e99e53%2Cb1fb9b4fca562bd7%2C464d83122de1325b%2C36b4805cded325a8%2Cc0c7bab6b58dbaca%2C471c5d3edd4848f6%2C13d90f90da26cad8%2C0aeb917fc66c1f52%2C924003002baa31fb%2Cec78d6a7db674288%2C6b7f99fd03bce5c9%2C54c9ddcc2f90d461%2Ceedcf15be56788ce%2C73f0cae2fdba9ce9%2Cb64f75b028952e09%2C4c21d3b71b3be1a6%2Cfada1d8d17d875c9%2C8f1fa453b45a79ec%2Cb85c4c991233056f%2C48371e2cce5c5903%2C01bd75d033883afb%2C801bf3e945424fe3%2C517d2235ab4af3fd%2Cd74e29440b2a8646%2Cbe521b2902a11b00%2Cf128a097ee46c4e6%2C6af57d84d0958e52%2C1819ffbb83ad3b1b%2Cbdba2070a8bccca4%2C2d36bd1b634fd2d2%2Cea74a9957e5a7c01%2Ca6c5daef9fc636c0%2Cf75c9d02f39ecf4d%2C2491e6ec7c5e648e%2C12efa53894fdb064%2Ced5ae0777694b042%2C22f1d4885f6f0f9f%2Ce56184642e32df86%2C60a9fa843cd98109%2Ccf8af4686b8813ae%2C17b5ad276740afb0%2Ce8471323035f778e%2Cb3989ffc74d1d904%2C6f32afddffc415bb%2Ce7d91031d9d4b301%2Cf244e5d9c690e532%2C05f4989057b6a0ff%2C3e48bc01506ee0c2%2C039a34b14ce22380%2Ca6703a60fc5148ad%2Cf24930dc2f88dc1d%2C8c13157af813c53d%2C68a22e4abac5f20f%2Cf121d8eb10c09885%2Cca06e0565606796d%2C4e22ff4ade7007d7%2C147832365d381d80%2C6b8c029e76d08bea%2C95cc1a9c0cb3934f%2C3ddb7f122a0309d3%2C176b1853eb923c0c%2Ccb6d722e4a2e8c2e%2C8f2471e26bc6dd61%2C5524f1b95f7aa9f8%2Ca9fe69cec83c1284%2Ca41e66e2b061784e%2C93a6dd91c25682c3%2Cabb41b5d1d83ed02%2Cb3cf880b04d7599f%2Cb30f15bea8f8f739%2C8dc621552cff4347%2Cbb7aff0a3fb46b6f%2C64307f57ca501560%2C5797ec5119d7d64a%2Cf0de394a648cab3c%2C05695626c11725d7%2C79283270432390ed%2Cd195e96b34df0007%2C1d7b9657bdd41527%2C7d45e20aa1528099%2Cf346589443d77faa%2C145a38f1a4094508%2C6ccbe50e62d5a098%2Cf2f3da3505f1238f%2Ca6014f0dd475eee8%2C75fe9aef92fc6470%2C554c1cbed1a5a86a%2C6406182489d78831%2C4d65f91a32f85de7%2Ce220bd3039693b6b%2Ccee7cc60ad4744fa%2Cbba64f93c18a158c%2C16d13082e50d5837%2C7d30890599bdf297%2Cb851cc17e60371a3%2Cbc148439a83a13f7%2Cf5eea384c96e6998%2Cc22b149486c7cc18%2C5a01a79adf490f20%2C5904bdc63564359e": {
+		"file": "2821cf1a3d9004e2",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f90a03f6fd040052%2C20a29d392cf775c2%2C65da7ee50e3d9e27%2Cf0c6c1ddc8d9263b%2Cc8a629a2a7f46849%2C57b1f63febc7d3c9%2C83f6ecfb52fb5bdc%2C81c92cd2a8b3fbb9%2Cbb2b9bbc73e99e53%2Cb1fb9b4fca562bd7%2C464d83122de1325b%2C36b4805cded325a8%2Cc0c7bab6b58dbaca%2C471c5d3edd4848f6%2C13d90f90da26cad8%2C0aeb917fc66c1f52%2C924003002baa31fb%2Cec78d6a7db674288%2C6b7f99fd03bce5c9%2C54c9ddcc2f90d461%2Ceedcf15be56788ce%2C73f0cae2fdba9ce9%2Cb64f75b028952e09%2C4c21d3b71b3be1a6%2Cfada1d8d17d875c9%2C8f1fa453b45a79ec%2Ce2642c6e66aff114%2C616d9119c4b3cd52%2C35daeb6f5ea34838%2C872a7e56e8caf19d%2Cb85c4c991233056f%2C48371e2cce5c5903%2C01bd75d033883afb%2C801bf3e945424fe3%2C517d2235ab4af3fd%2Cd74e29440b2a8646%2Cbe521b2902a11b00%2Cf128a097ee46c4e6%2C6af57d84d0958e52%2C1819ffbb83ad3b1b%2Cbdba2070a8bccca4%2C2d36bd1b634fd2d2%2Cea74a9957e5a7c01%2Ca6c5daef9fc636c0%2Cf75c9d02f39ecf4d%2C2491e6ec7c5e648e%2C12efa53894fdb064%2Ced5ae0777694b042%2C22f1d4885f6f0f9f%2Ce56184642e32df86%2C60a9fa843cd98109%2Ccf8af4686b8813ae%2C17b5ad276740afb0%2Ce8471323035f778e%2Cb3989ffc74d1d904%2C6f32afddffc415bb%2Ce7d91031d9d4b301%2Cf244e5d9c690e532%2C05f4989057b6a0ff%2C3e48bc01506ee0c2%2C039a34b14ce22380%2Ca6703a60fc5148ad%2Cf24930dc2f88dc1d%2C8c13157af813c53d%2C68a22e4abac5f20f%2Cf121d8eb10c09885%2Cca06e0565606796d%2C4e22ff4ade7007d7%2C147832365d381d80%2C6b8c029e76d08bea%2C95cc1a9c0cb3934f%2C3ddb7f122a0309d3%2C176b1853eb923c0c%2Ccb6d722e4a2e8c2e%2C8f2471e26bc6dd61%2C5524f1b95f7aa9f8%2Ca9fe69cec83c1284%2Ca41e66e2b061784e%2C93a6dd91c25682c3%2Cabb41b5d1d83ed02%2Cb3cf880b04d7599f%2Cb30f15bea8f8f739%2C8dc621552cff4347%2Cbb7aff0a3fb46b6f%2C64307f57ca501560%2Cab0fce996f9aa7f4%2C13cf6c3b89613b8c%2C2923b8329406a331%2Cda1a8cc3c40d15a4%2C02f6de7beea3ba69%2C37de60e7baf76e34%2C5797ec5119d7d64a%2Cf0de394a648cab3c%2C05695626c11725d7%2Ce2bf85f3b48199b6%2Cb23954b1713da58b%2C4fc2fa9c0f8d306c%2C79283270432390ed%2Cd195e96b34df0007%2C1d7b9657bdd41527%2C7d45e20aa1528099%2Cf346589443d77faa%2C145a38f1a4094508%2C6ccbe50e62d5a098%2Cf2f3da3505f1238f%2Ca6014f0dd475eee8%2C75fe9aef92fc6470%2C554c1cbed1a5a86a%2C6406182489d78831%2C4d65f91a32f85de7%2Ce220bd3039693b6b%2Ccee7cc60ad4744fa%2Cbba64f93c18a158c%2C16d13082e50d5837%2C7d30890599bdf297%2Cb851cc17e60371a3%2Cbc148439a83a13f7%2Cf5eea384c96e6998%2Cc22b149486c7cc18%2C5a01a79adf490f20%2C5904bdc63564359e": {
+		"file": "0774385a1d90b822",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f90a03f6fd040052%2Cb85c4c991233056f%2C22f1d4885f6f0f9f%2C039a34b14ce22380%2Ccb6d722e4a2e8c2e%2C5797ec5119d7d64a%2C79283270432390ed": {
+		"file": "e7fa9f0c8432a8e7",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f90a03f6fd040052%2Cb85c4c991233056f%2Cbe521b2902a11b00%2C039a34b14ce22380%2Ccb6d722e4a2e8c2e%2C5797ec5119d7d64a%2C79283270432390ed": {
+		"file": "c85ec5fb7f3f9edd",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f90a03f6fd040052%2Cb85c4c991233056f%2Cbe521b2902a11b00%2C22f1d4885f6f0f9f%2C039a34b14ce22380%2C5797ec5119d7d64a%2C79283270432390ed": {
+		"file": "de69d3e3bcdea744",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f90a03f6fd040052%2Cb85c4c991233056f%2Cbe521b2902a11b00%2C22f1d4885f6f0f9f%2C039a34b14ce22380%2Ccb6d722e4a2e8c2e%2C5797ec5119d7d64a": {
+		"file": "3bebdbb34fcc3f59",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f90a03f6fd040052%2Cb85c4c991233056f%2Cbe521b2902a11b00%2C22f1d4885f6f0f9f%2C039a34b14ce22380%2Ccb6d722e4a2e8c2e%2C79283270432390ed": {
+		"file": "928dff1d8ff9e3bd",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f90a03f6fd040052%2Cb85c4c991233056f%2Cbe521b2902a11b00%2C22f1d4885f6f0f9f%2Ccb6d722e4a2e8c2e%2C5797ec5119d7d64a%2C79283270432390ed": {
+		"file": "da7663741fd9d5dd",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f90a03f6fd040052%2Cbe521b2902a11b00%2C22f1d4885f6f0f9f%2C039a34b14ce22380%2Ccb6d722e4a2e8c2e%2C5797ec5119d7d64a%2C79283270432390ed": {
+		"file": "c60d7177ff198c1f",
+		"type": "application/json"
+	},
+	"/api/enrichments?ids=f90a03f6fd040052": {
+		"file": "3786dbba5200f75c",
+		"type": "application/json"
+	},
+	"/api/integrations": {
+		"file": "51b6c652ce194dd7",
+		"type": "application/json"
+	},
+	"/api/items/01bd75d033883afb/thumbnail?art=still&w=320": {
+		"file": "79d872b0d72dbdb6",
+		"type": "image/jpeg"
+	},
+	"/api/items/01bd75d033883afb/thumbnail?art=still&w=480": {
+		"file": "15f21d01c42e8c50",
+		"type": "image/jpeg"
+	},
+	"/api/items/02f6de7beea3ba69/pages": {
+		"file": "6298eb936f85077f",
+		"type": "application/json"
+	},
+	"/api/items/02f6de7beea3ba69/pages/0": {
+		"file": "ae43c8f42b7b67cf",
+		"type": "image/jpeg"
+	},
+	"/api/items/02f6de7beea3ba69/pages/1": {
+		"file": "15e4d262807a7382",
+		"type": "image/jpeg"
+	},
+	"/api/items/02f6de7beea3ba69/pages/2": {
+		"file": "84a4d9f3ad06d291",
+		"type": "image/jpeg"
+	},
+	"/api/items/02f6de7beea3ba69/pages/3": {
+		"file": "2ac155bb6c1e7d61",
+		"type": "image/jpeg"
+	},
+	"/api/items/02f6de7beea3ba69/pages/4": {
+		"file": "841ee17c413e5176",
+		"type": "image/jpeg"
+	},
+	"/api/items/02f6de7beea3ba69/progress": {
+		"file": "5dd93988c274c4ce",
+		"type": "application/json"
+	},
+	"/api/items/02f6de7beea3ba69/thumbnail?w=480": {
+		"file": "a1c45baed0f1c9a8",
+		"type": "image/jpeg"
+	},
+	"/api/items/039a34b14ce22380/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "a6c4c538d44d5ccc",
+		"type": "application/json"
+	},
+	"/api/items/039a34b14ce22380/progress": {
+		"file": "d34ea9198b368833",
+		"type": "application/json"
+	},
+	"/api/items/039a34b14ce22380/thumbnail?t=10&w=320": {
+		"file": "81c6a471c9f9090d",
+		"type": "image/jpeg"
+	},
+	"/api/items/039a34b14ce22380/thumbnail?t=10&w=480": {
+		"file": "e8ec7d309eb4ac58",
+		"type": "image/jpeg"
+	},
+	"/api/items/039a34b14ce22380/thumbnail?w=320": {
+		"file": "93c1d2e7ea425c4a",
+		"type": "image/jpeg"
+	},
+	"/api/items/039a34b14ce22380/thumbnail?w=480": {
+		"file": "a974db1c69a51a8e",
+		"type": "image/jpeg"
+	},
+	"/api/items/039a34b14ce22380/tracking": {
+		"file": "dd79691462be8a6c",
+		"type": "application/json"
+	},
+	"/api/items/05695626c11725d7/thumbnail?art=still&w=320": {
+		"file": "e457b26dd242edd8",
+		"type": "image/jpeg"
+	},
+	"/api/items/05695626c11725d7/thumbnail?art=still&w=480": {
+		"file": "23520b2e75252000",
+		"type": "image/jpeg"
+	},
+	"/api/items/05f4989057b6a0ff/thumbnail?art=still&w=320": {
+		"file": "a893a3d35aac0654",
+		"type": "image/jpeg"
+	},
+	"/api/items/05f4989057b6a0ff/thumbnail?art=still&w=480": {
+		"file": "f6bb46b0ecb4fcfa",
+		"type": "image/jpeg"
+	},
+	"/api/items/0aeb917fc66c1f52/thumbnail?art=still&w=480": {
+		"file": "f799caccaea69e3b",
+		"type": "image/jpeg"
+	},
+	"/api/items/0aeb917fc66c1f52/thumbnail?art=still&w=640": {
+		"file": "bb2896fbd714497e",
+		"type": "image/jpeg"
+	},
+	"/api/items/12efa53894fdb064/thumbnail?art=still&w=320": {
+		"file": "22f92c2ea48ba352",
+		"type": "image/jpeg"
+	},
+	"/api/items/12efa53894fdb064/thumbnail?art=still&w=480": {
+		"file": "48820937ee4c17f4",
+		"type": "image/jpeg"
+	},
+	"/api/items/13cf6c3b89613b8c/pages": {
+		"file": "cbc081893c4e80ed",
+		"type": "application/json"
+	},
+	"/api/items/13cf6c3b89613b8c/pages/1": {
+		"file": "6fccb3c15ec2467d",
+		"type": "image/jpeg"
+	},
+	"/api/items/13cf6c3b89613b8c/pages/2": {
+		"file": "aaeddcd27b75a394",
+		"type": "image/jpeg"
+	},
+	"/api/items/13cf6c3b89613b8c/pages/3": {
+		"file": "b20c164870af9889",
+		"type": "image/jpeg"
+	},
+	"/api/items/13cf6c3b89613b8c/pages/4": {
+		"file": "d8f7f0f801706d65",
+		"type": "image/jpeg"
+	},
+	"/api/items/13cf6c3b89613b8c/pages/5": {
+		"file": "91ab1eea1fa83aa5",
+		"type": "image/jpeg"
+	},
+	"/api/items/13cf6c3b89613b8c/progress": {
+		"file": "1e1266d7c9c2679f",
+		"type": "application/json"
+	},
+	"/api/items/13cf6c3b89613b8c/thumbnail?w=480": {
+		"file": "16c271f04b7f52f0",
+		"type": "image/jpeg"
+	},
+	"/api/items/13cf6c3b89613b8c/thumbnail?w=720": {
+		"file": "1dcb8ad70399944b",
+		"type": "image/jpeg"
+	},
+	"/api/items/13d90f90da26cad8/thumbnail?art=still&w=480": {
+		"file": "48990e3458a375f6",
+		"type": "image/jpeg"
+	},
+	"/api/items/145a38f1a4094508/thumbnail?art=still&w=320": {
+		"file": "e6f8974fac31aa8d",
+		"type": "image/jpeg"
+	},
+	"/api/items/145a38f1a4094508/thumbnail?art=still&w=480": {
+		"file": "07ea02cb655eaba6",
+		"type": "image/jpeg"
+	},
+	"/api/items/147832365d381d80/thumbnail?art=still&w=320": {
+		"file": "981da4af1089779d",
+		"type": "image/jpeg"
+	},
+	"/api/items/147832365d381d80/thumbnail?art=still&w=480": {
+		"file": "0e11d1ff646a2e45",
+		"type": "image/jpeg"
+	},
+	"/api/items/16d13082e50d5837/thumbnail?art=still&w=480": {
+		"file": "f23b65c2f29d12f8",
+		"type": "image/jpeg"
+	},
+	"/api/items/176b1853eb923c0c/thumbnail?art=still&w=480": {
+		"file": "34f108480900ea7a",
+		"type": "image/jpeg"
+	},
+	"/api/items/17b5ad276740afb0/thumbnail?art=still&w=320": {
+		"file": "70b89d6db8ee423d",
+		"type": "image/jpeg"
+	},
+	"/api/items/17b5ad276740afb0/thumbnail?art=still&w=480": {
+		"file": "130e26977a7b5516",
+		"type": "image/jpeg"
+	},
+	"/api/items/1819ffbb83ad3b1b/thumbnail?art=still&w=320": {
+		"file": "0bfa0b36898612f9",
+		"type": "image/jpeg"
+	},
+	"/api/items/1819ffbb83ad3b1b/thumbnail?art=still&w=480": {
+		"file": "d77a44eca7885066",
+		"type": "image/jpeg"
+	},
+	"/api/items/1d7b9657bdd41527/thumbnail?art=still&w=320": {
+		"file": "2a25db69c728624d",
+		"type": "image/jpeg"
+	},
+	"/api/items/1d7b9657bdd41527/thumbnail?art=still&w=480": {
+		"file": "29abe5695ab2cb1f",
+		"type": "image/jpeg"
+	},
+	"/api/items/20a29d392cf775c2/thumbnail?art=still&w=320": {
+		"file": "d29f6cba7847042c",
+		"type": "image/jpeg"
+	},
+	"/api/items/20a29d392cf775c2/thumbnail?art=still&w=480": {
+		"file": "3cfe09df9d6c303f",
+		"type": "image/jpeg"
+	},
+	"/api/items/22f1d4885f6f0f9f/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "f5e3461aa4081525",
+		"type": "application/json"
+	},
+	"/api/items/22f1d4885f6f0f9f/progress": {
+		"file": "ab0228d9597f6368",
+		"type": "application/json"
+	},
+	"/api/items/22f1d4885f6f0f9f/thumbnail?t=10&w=320": {
+		"file": "498ed7c469a1bbaf",
+		"type": "image/jpeg"
+	},
+	"/api/items/22f1d4885f6f0f9f/thumbnail?t=10&w=480": {
+		"file": "9c8f559e89890fd2",
+		"type": "image/jpeg"
+	},
+	"/api/items/22f1d4885f6f0f9f/thumbnail?w=320": {
+		"file": "8eda81ede12c965f",
+		"type": "image/jpeg"
+	},
+	"/api/items/22f1d4885f6f0f9f/thumbnail?w=480": {
+		"file": "d7e56dcbe296c6bd",
+		"type": "image/jpeg"
+	},
+	"/api/items/22f1d4885f6f0f9f/tracking": {
+		"file": "7754e7c0272855e3",
+		"type": "application/json"
+	},
+	"/api/items/2491e6ec7c5e648e/thumbnail?art=still&w=320": {
+		"file": "343221686c4b634f",
+		"type": "image/jpeg"
+	},
+	"/api/items/2491e6ec7c5e648e/thumbnail?art=still&w=480": {
+		"file": "345732d5c2409e3c",
+		"type": "image/jpeg"
+	},
+	"/api/items/2923b8329406a331/pages": {
+		"file": "466d945156d66109",
+		"type": "application/json"
+	},
+	"/api/items/2923b8329406a331/pages/0": {
+		"file": "8e1ec72d947da694",
+		"type": "image/jpeg"
+	},
+	"/api/items/2923b8329406a331/pages/1": {
+		"file": "5098d1afeef95ba3",
+		"type": "image/jpeg"
+	},
+	"/api/items/2923b8329406a331/pages/2": {
+		"file": "17bf831d7f2a608b",
+		"type": "image/jpeg"
+	},
+	"/api/items/2923b8329406a331/pages/3": {
+		"file": "a089b2a5c7af04e2",
+		"type": "image/jpeg"
+	},
+	"/api/items/2923b8329406a331/pages/4": {
+		"file": "952c2ab637f38ad6",
+		"type": "image/jpeg"
+	},
+	"/api/items/2923b8329406a331/pages/5": {
+		"file": "60f7b285366bb6ca",
+		"type": "image/jpeg"
+	},
+	"/api/items/2923b8329406a331/pages/6": {
+		"file": "76dfa6b6bd88e915",
+		"type": "image/jpeg"
+	},
+	"/api/items/2923b8329406a331/pages/7": {
+		"file": "cc096bac9d2581e8",
+		"type": "image/jpeg"
+	},
+	"/api/items/2923b8329406a331/progress": {
+		"file": "b7e9b3f3000dd684",
+		"type": "application/json"
+	},
+	"/api/items/2923b8329406a331/thumbnail?w=480": {
+		"file": "1fe769d3ff82ecd4",
+		"type": "image/jpeg"
+	},
+	"/api/items/2d36bd1b634fd2d2/thumbnail?art=still&w=320": {
+		"file": "7897f4bcfb58a6c8",
+		"type": "image/jpeg"
+	},
+	"/api/items/2d36bd1b634fd2d2/thumbnail?art=still&w=480": {
+		"file": "a414ffe53db76748",
+		"type": "image/jpeg"
+	},
+	"/api/items/35daeb6f5ea34838/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "409788fe4944f260",
+		"type": "application/json"
+	},
+	"/api/items/35daeb6f5ea34838/progress": {
+		"file": "a37698277cd7b655",
+		"type": "application/json"
+	},
+	"/api/items/35daeb6f5ea34838/thumbnail?t=30&w=960": {
+		"file": "91661f565c8f7187",
+		"type": "image/jpeg"
+	},
+	"/api/items/35daeb6f5ea34838/thumbnail?w=320": {
+		"file": "906f217474107683",
+		"type": "image/jpeg"
+	},
+	"/api/items/35daeb6f5ea34838/tracking": {
+		"file": "9c789ea12f80791f",
+		"type": "application/json"
+	},
+	"/api/items/36b4805cded325a8/thumbnail?art=still&w=320": {
+		"file": "80bc7b1451eab7aa",
+		"type": "image/jpeg"
+	},
+	"/api/items/36b4805cded325a8/thumbnail?art=still&w=480": {
+		"file": "7019f70c26b7c10c",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/pages": {
+		"file": "9ded158dfaa5b52b",
+		"type": "application/json"
+	},
+	"/api/items/37de60e7baf76e34/pages/0": {
+		"file": "bb90e8f2f5a489ba",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/pages/1": {
+		"file": "2ad0a82ee033c0a1",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/pages/2": {
+		"file": "12b75b05ae07c9f6",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/pages/3": {
+		"file": "54a3f6ebbe23bbe6",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/pages/4": {
+		"file": "d3b6f1f5c41e7d9b",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/pages/5": {
+		"file": "8ea1d411c52d4613",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/pages/6": {
+		"file": "fdee1f9a73b547fd",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/pages/7": {
+		"file": "c3a3ebe7db830720",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/pages/8": {
+		"file": "6d3824be17fc9de4",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/pages/9": {
+		"file": "4032776ffd462a8e",
+		"type": "image/jpeg"
+	},
+	"/api/items/37de60e7baf76e34/progress": {
+		"file": "da75dd7549a6f902",
+		"type": "application/json"
+	},
+	"/api/items/37de60e7baf76e34/thumbnail?w=480": {
+		"file": "e97751bc3ae78a6f",
+		"type": "image/jpeg"
+	},
+	"/api/items/3ddb7f122a0309d3/thumbnail?art=still&w=320": {
+		"file": "1222c5b0b62b5886",
+		"type": "image/jpeg"
+	},
+	"/api/items/3ddb7f122a0309d3/thumbnail?art=still&w=480": {
+		"file": "aadf792a1fafbe78",
+		"type": "image/jpeg"
+	},
+	"/api/items/3e48bc01506ee0c2/thumbnail?art=still&w=320": {
+		"file": "7e34b967b86248a1",
+		"type": "image/jpeg"
+	},
+	"/api/items/3e48bc01506ee0c2/thumbnail?art=still&w=480": {
+		"file": "ceb204774bb80932",
+		"type": "image/jpeg"
+	},
+	"/api/items/464d83122de1325b/thumbnail?art=still&w=320": {
+		"file": "be17d23b2688c186",
+		"type": "image/jpeg"
+	},
+	"/api/items/464d83122de1325b/thumbnail?art=still&w=480": {
+		"file": "14acf5bdbd2a8001",
+		"type": "image/jpeg"
+	},
+	"/api/items/471c5d3edd4848f6/thumbnail?art=still&w=480": {
+		"file": "9568447105be0bae",
+		"type": "image/jpeg"
+	},
+	"/api/items/48371e2cce5c5903/thumbnail?art=still&w=320": {
+		"file": "e0006a50cdd6e894",
+		"type": "image/jpeg"
+	},
+	"/api/items/48371e2cce5c5903/thumbnail?art=still&w=480": {
+		"file": "8f01bbfb861aa62a",
+		"type": "image/jpeg"
+	},
+	"/api/items/4c21d3b71b3be1a6/thumbnail?art=still&w=480": {
+		"file": "8d102abce8763a23",
+		"type": "image/jpeg"
+	},
+	"/api/items/4d65f91a32f85de7/thumbnail?art=still&w=480": {
+		"file": "b7e44339efca13d4",
+		"type": "image/jpeg"
+	},
+	"/api/items/4e22ff4ade7007d7/thumbnail?art=still&w=320": {
+		"file": "ad6781909c5c1856",
+		"type": "image/jpeg"
+	},
+	"/api/items/4e22ff4ade7007d7/thumbnail?art=still&w=480": {
+		"file": "8179b22709757170",
+		"type": "image/jpeg"
+	},
+	"/api/items/4fc2fa9c0f8d306c/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "2279f5a41c7c8e5e",
+		"type": "application/json"
+	},
+	"/api/items/4fc2fa9c0f8d306c/progress": {
+		"file": "726b53ad87849f5f",
+		"type": "application/json"
+	},
+	"/api/items/4fc2fa9c0f8d306c/thumbnail?t=30&w=960": {
+		"file": "24655622eee974f3",
+		"type": "image/jpeg"
+	},
+	"/api/items/4fc2fa9c0f8d306c/thumbnail?w=320": {
+		"file": "c59a2c47eb96cd14",
+		"type": "image/jpeg"
+	},
+	"/api/items/4fc2fa9c0f8d306c/tracking": {
+		"file": "b1e677528eec5a4c",
+		"type": "application/json"
+	},
+	"/api/items/517d2235ab4af3fd/thumbnail?art=still&w=320": {
+		"file": "0a2928574406d949",
+		"type": "image/jpeg"
+	},
+	"/api/items/517d2235ab4af3fd/thumbnail?art=still&w=480": {
+		"file": "f48debdb017770c1",
+		"type": "image/jpeg"
+	},
+	"/api/items/54c9ddcc2f90d461/thumbnail?art=still&w=480": {
+		"file": "8aca968afa2a787d",
+		"type": "image/jpeg"
+	},
+	"/api/items/5524f1b95f7aa9f8/thumbnail?art=still&w=320": {
+		"file": "f04bb6353b333a5c",
+		"type": "image/jpeg"
+	},
+	"/api/items/5524f1b95f7aa9f8/thumbnail?art=still&w=480": {
+		"file": "df385c2b687a3e57",
+		"type": "image/jpeg"
+	},
+	"/api/items/554c1cbed1a5a86a/thumbnail?art=still&w=320": {
+		"file": "da1473441a6d0289",
+		"type": "image/jpeg"
+	},
+	"/api/items/554c1cbed1a5a86a/thumbnail?art=still&w=480": {
+		"file": "892ee3f36acff8f3",
+		"type": "image/jpeg"
+	},
+	"/api/items/5797ec5119d7d64a/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "f7104a26225637a9",
+		"type": "application/json"
+	},
+	"/api/items/5797ec5119d7d64a/progress": {
+		"file": "87ff614760d6a644",
+		"type": "application/json"
+	},
+	"/api/items/5797ec5119d7d64a/thumbnail?t=10&w=320": {
+		"file": "65f8998c5be0d843",
+		"type": "image/jpeg"
+	},
+	"/api/items/5797ec5119d7d64a/thumbnail?t=10&w=480": {
+		"file": "f4ce0d8b211cf93c",
+		"type": "image/jpeg"
+	},
+	"/api/items/5797ec5119d7d64a/thumbnail?w=320": {
+		"file": "be4f019ec7dfe536",
+		"type": "image/jpeg"
+	},
+	"/api/items/5797ec5119d7d64a/thumbnail?w=480": {
+		"file": "fef242a13fb556d6",
+		"type": "image/jpeg"
+	},
+	"/api/items/5797ec5119d7d64a/tracking": {
+		"file": "dcc114b9b67a67aa",
+		"type": "application/json"
+	},
+	"/api/items/57b1f63febc7d3c9/thumbnail?art=still&w=320": {
+		"file": "b0ad61af71381fe8",
+		"type": "image/jpeg"
+	},
+	"/api/items/57b1f63febc7d3c9/thumbnail?art=still&w=480": {
+		"file": "882b163972f0acf4",
+		"type": "image/jpeg"
+	},
+	"/api/items/5904bdc63564359e/thumbnail?art=still&w=480": {
+		"file": "8c853b37456d1209",
+		"type": "image/jpeg"
+	},
+	"/api/items/5a01a79adf490f20/thumbnail?art=still&w=480": {
+		"file": "5af3ef7fe07fa02d",
+		"type": "image/jpeg"
+	},
+	"/api/items/60a9fa843cd98109/thumbnail?art=still&w=320": {
+		"file": "06b03298972e8d62",
+		"type": "image/jpeg"
+	},
+	"/api/items/60a9fa843cd98109/thumbnail?art=still&w=480": {
+		"file": "c5fc8dacd2357265",
+		"type": "image/jpeg"
+	},
+	"/api/items/616d9119c4b3cd52/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "4a573c4f42a4f355",
+		"type": "application/json"
+	},
+	"/api/items/616d9119c4b3cd52/progress": {
+		"file": "5701bb85ef06a213",
+		"type": "application/json"
+	},
+	"/api/items/616d9119c4b3cd52/thumbnail?t=30&w=960": {
+		"file": "d6f4f17ef38672ab",
+		"type": "image/jpeg"
+	},
+	"/api/items/616d9119c4b3cd52/thumbnail?w=320": {
+		"file": "b2d7b3bcf1cab891",
+		"type": "image/jpeg"
+	},
+	"/api/items/616d9119c4b3cd52/tracking": {
+		"file": "36f4421521af2178",
+		"type": "application/json"
+	},
+	"/api/items/6406182489d78831/thumbnail?art=still&w=320": {
+		"file": "faa0936fb57da5e9",
+		"type": "image/jpeg"
+	},
+	"/api/items/6406182489d78831/thumbnail?art=still&w=480": {
+		"file": "3a211116eeea16b4",
+		"type": "image/jpeg"
+	},
+	"/api/items/64307f57ca501560/thumbnail?art=still&w=320": {
+		"file": "a5086d77e6213ccc",
+		"type": "image/jpeg"
+	},
+	"/api/items/64307f57ca501560/thumbnail?art=still&w=480": {
+		"file": "99082a6442a0d7d7",
+		"type": "image/jpeg"
+	},
+	"/api/items/65da7ee50e3d9e27/thumbnail?art=still&w=320": {
+		"file": "e7b9d7881d3bf20c",
+		"type": "image/jpeg"
+	},
+	"/api/items/65da7ee50e3d9e27/thumbnail?art=still&w=480": {
+		"file": "e684c1a54cb0aeeb",
+		"type": "image/jpeg"
+	},
+	"/api/items/68a22e4abac5f20f/thumbnail?art=still&w=320": {
+		"file": "a57fcf5451bdd4c9",
+		"type": "image/jpeg"
+	},
+	"/api/items/68a22e4abac5f20f/thumbnail?art=still&w=480": {
+		"file": "fcd244de0f1f56a7",
+		"type": "image/jpeg"
+	},
+	"/api/items/6af57d84d0958e52/thumbnail?art=still&w=320": {
+		"file": "7a04db07302aa8fa",
+		"type": "image/jpeg"
+	},
+	"/api/items/6af57d84d0958e52/thumbnail?art=still&w=480": {
+		"file": "70413b4f87cfa363",
+		"type": "image/jpeg"
+	},
+	"/api/items/6b7f99fd03bce5c9/thumbnail?art=still&w=480": {
+		"file": "539c28baa1d63dba",
+		"type": "image/jpeg"
+	},
+	"/api/items/6b8c029e76d08bea/thumbnail?art=still&w=320": {
+		"file": "21d271df44325b35",
+		"type": "image/jpeg"
+	},
+	"/api/items/6b8c029e76d08bea/thumbnail?art=still&w=480": {
+		"file": "3605e8a321236ce4",
+		"type": "image/jpeg"
+	},
+	"/api/items/6ccbe50e62d5a098/thumbnail?art=still&w=320": {
+		"file": "4c2aa7cf103b584e",
+		"type": "image/jpeg"
+	},
+	"/api/items/6ccbe50e62d5a098/thumbnail?art=still&w=480": {
+		"file": "3ecf2ded843f2b80",
+		"type": "image/jpeg"
+	},
+	"/api/items/6f32afddffc415bb/thumbnail?art=still&w=320": {
+		"file": "24372d62db1b8827",
+		"type": "image/jpeg"
+	},
+	"/api/items/6f32afddffc415bb/thumbnail?art=still&w=480": {
+		"file": "32febbfac76d5309",
+		"type": "image/jpeg"
+	},
+	"/api/items/73f0cae2fdba9ce9/thumbnail?art=still&w=480": {
+		"file": "10d02d008514cf06",
+		"type": "image/jpeg"
+	},
+	"/api/items/75fe9aef92fc6470/thumbnail?art=still&w=320": {
+		"file": "2849b0c801f06ecb",
+		"type": "image/jpeg"
+	},
+	"/api/items/75fe9aef92fc6470/thumbnail?art=still&w=480": {
+		"file": "edc6e4345fa85516",
+		"type": "image/jpeg"
+	},
+	"/api/items/79283270432390ed/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "8f86acbb07294de4",
+		"type": "application/json"
+	},
+	"/api/items/79283270432390ed/progress": {
+		"file": "6ddb0c6966cdf357",
+		"type": "application/json"
+	},
+	"/api/items/79283270432390ed/thumbnail?t=10&w=320": {
+		"file": "e590e2e2819c12ea",
+		"type": "image/jpeg"
+	},
+	"/api/items/79283270432390ed/thumbnail?t=10&w=480": {
+		"file": "aab30be26c6e5ba0",
+		"type": "image/jpeg"
+	},
+	"/api/items/79283270432390ed/thumbnail?w=320": {
+		"file": "b5fcee5133b4620c",
+		"type": "image/jpeg"
+	},
+	"/api/items/79283270432390ed/thumbnail?w=480": {
+		"file": "749a6952677b1d66",
+		"type": "image/jpeg"
+	},
+	"/api/items/79283270432390ed/tracking": {
+		"file": "9363efef639c29e9",
+		"type": "application/json"
+	},
+	"/api/items/7d30890599bdf297/thumbnail?art=still&w=480": {
+		"file": "b044d019bcc10f44",
+		"type": "image/jpeg"
+	},
+	"/api/items/7d45e20aa1528099/thumbnail?art=still&w=320": {
+		"file": "a6736712c7c3eeb2",
+		"type": "image/jpeg"
+	},
+	"/api/items/7d45e20aa1528099/thumbnail?art=still&w=480": {
+		"file": "658e0a2cace5428a",
+		"type": "image/jpeg"
+	},
+	"/api/items/801bf3e945424fe3/thumbnail?art=still&w=320": {
+		"file": "78adea3661f0bcc4",
+		"type": "image/jpeg"
+	},
+	"/api/items/801bf3e945424fe3/thumbnail?art=still&w=480": {
+		"file": "5813c12ce2d241cc",
+		"type": "image/jpeg"
+	},
+	"/api/items/81c92cd2a8b3fbb9/thumbnail?art=still&w=320": {
+		"file": "7f35cf666547c5de",
+		"type": "image/jpeg"
+	},
+	"/api/items/81c92cd2a8b3fbb9/thumbnail?art=still&w=480": {
+		"file": "10d15f428dcb1bea",
+		"type": "image/jpeg"
+	},
+	"/api/items/83f6ecfb52fb5bdc/thumbnail?art=still&w=320": {
+		"file": "00c3e7e9d1165da8",
+		"type": "image/jpeg"
+	},
+	"/api/items/83f6ecfb52fb5bdc/thumbnail?art=still&w=480": {
+		"file": "6b708e2cd77c5d82",
+		"type": "image/jpeg"
+	},
+	"/api/items/872a7e56e8caf19d/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "8b400b188c5b61db",
+		"type": "application/json"
+	},
+	"/api/items/872a7e56e8caf19d/progress": {
+		"file": "283279fed6e2a3d0",
+		"type": "application/json"
+	},
+	"/api/items/872a7e56e8caf19d/thumbnail?t=30&w=960": {
+		"file": "5bcebf9985ef4dcc",
+		"type": "image/jpeg"
+	},
+	"/api/items/872a7e56e8caf19d/thumbnail?w=320": {
+		"file": "742c50d53e1e2d81",
+		"type": "image/jpeg"
+	},
+	"/api/items/872a7e56e8caf19d/tracking": {
+		"file": "6661532c148d6199",
+		"type": "application/json"
+	},
+	"/api/items/8c13157af813c53d/thumbnail?art=still&w=320": {
+		"file": "bb7a1f85e6c886f0",
+		"type": "image/jpeg"
+	},
+	"/api/items/8c13157af813c53d/thumbnail?art=still&w=480": {
+		"file": "695819d5492fae96",
+		"type": "image/jpeg"
+	},
+	"/api/items/8dc621552cff4347/thumbnail?art=still&w=320": {
+		"file": "ba3e7651e84d8959",
+		"type": "image/jpeg"
+	},
+	"/api/items/8dc621552cff4347/thumbnail?art=still&w=480": {
+		"file": "51b9af7bb2cac0ea",
+		"type": "image/jpeg"
+	},
+	"/api/items/8f1fa453b45a79ec/thumbnail?art=still&w=480": {
+		"file": "bd13b08ceb80bca9",
+		"type": "image/jpeg"
+	},
+	"/api/items/8f2471e26bc6dd61/thumbnail?art=still&w=320": {
+		"file": "a801917559bdff7b",
+		"type": "image/jpeg"
+	},
+	"/api/items/8f2471e26bc6dd61/thumbnail?art=still&w=480": {
+		"file": "59179f62604d6432",
+		"type": "image/jpeg"
+	},
+	"/api/items/924003002baa31fb/thumbnail?art=still&w=480": {
+		"file": "4dcd28f5d12d78a0",
+		"type": "image/jpeg"
+	},
+	"/api/items/93a6dd91c25682c3/thumbnail?art=still&w=320": {
+		"file": "f00afacfe640e634",
+		"type": "image/jpeg"
+	},
+	"/api/items/93a6dd91c25682c3/thumbnail?art=still&w=480": {
+		"file": "1cab5df34cacac0d",
+		"type": "image/jpeg"
+	},
+	"/api/items/95cc1a9c0cb3934f/thumbnail?art=still&w=320": {
+		"file": "4a6158fe578f619a",
+		"type": "image/jpeg"
+	},
+	"/api/items/95cc1a9c0cb3934f/thumbnail?art=still&w=480": {
+		"file": "da88a54e9d261eee",
+		"type": "image/jpeg"
+	},
+	"/api/items/a41e66e2b061784e/thumbnail?art=still&w=320": {
+		"file": "14fc271c5ecfbcaa",
+		"type": "image/jpeg"
+	},
+	"/api/items/a41e66e2b061784e/thumbnail?art=still&w=480": {
+		"file": "614013a4674e39f1",
+		"type": "image/jpeg"
+	},
+	"/api/items/a6014f0dd475eee8/thumbnail?art=still&w=320": {
+		"file": "583b962ca586a553",
+		"type": "image/jpeg"
+	},
+	"/api/items/a6014f0dd475eee8/thumbnail?art=still&w=480": {
+		"file": "e3281fd7124787ed",
+		"type": "image/jpeg"
+	},
+	"/api/items/a6703a60fc5148ad/thumbnail?art=still&w=320": {
+		"file": "74eeff238e5a08ab",
+		"type": "image/jpeg"
+	},
+	"/api/items/a6703a60fc5148ad/thumbnail?art=still&w=480": {
+		"file": "e75602dc9247117e",
+		"type": "image/jpeg"
+	},
+	"/api/items/a6c5daef9fc636c0/thumbnail?art=still&w=320": {
+		"file": "af80a432e984e402",
+		"type": "image/jpeg"
+	},
+	"/api/items/a6c5daef9fc636c0/thumbnail?art=still&w=480": {
+		"file": "630f8226630a8f8b",
+		"type": "image/jpeg"
+	},
+	"/api/items/a9fe69cec83c1284/thumbnail?art=still&w=320": {
+		"file": "ff8f1fb193198d68",
+		"type": "image/jpeg"
+	},
+	"/api/items/a9fe69cec83c1284/thumbnail?art=still&w=480": {
+		"file": "146cf2fbbda6f244",
+		"type": "image/jpeg"
+	},
+	"/api/items/ab0fce996f9aa7f4/pages": {
+		"file": "00e9ce04bfb75d19",
+		"type": "application/json"
+	},
+	"/api/items/ab0fce996f9aa7f4/pages/0": {
+		"file": "cc289366c49d0552",
+		"type": "image/jpeg"
+	},
+	"/api/items/ab0fce996f9aa7f4/pages/1": {
+		"file": "2e05acc3d21827cf",
+		"type": "image/jpeg"
+	},
+	"/api/items/ab0fce996f9aa7f4/pages/2": {
+		"file": "7c7790fa6773937e",
+		"type": "image/jpeg"
+	},
+	"/api/items/ab0fce996f9aa7f4/pages/3": {
+		"file": "dd2bfc6a0f717529",
+		"type": "image/jpeg"
+	},
+	"/api/items/ab0fce996f9aa7f4/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "0160ec6daa648020",
+		"type": "application/json"
+	},
+	"/api/items/ab0fce996f9aa7f4/progress": {
+		"file": "afe6977833979814",
+		"type": "application/json"
+	},
+	"/api/items/ab0fce996f9aa7f4/thumbnail?w=480": {
+		"file": "b9c5a292cf29f0e9",
+		"type": "image/jpeg"
+	},
+	"/api/items/ab0fce996f9aa7f4/tracking": {
+		"file": "3deddfd521ad3694",
+		"type": "application/json"
+	},
+	"/api/items/abb41b5d1d83ed02/thumbnail?art=still&w=320": {
+		"file": "c92a092ee2bb4dc7",
+		"type": "image/jpeg"
+	},
+	"/api/items/abb41b5d1d83ed02/thumbnail?art=still&w=480": {
+		"file": "5d23f3b8a1138196",
+		"type": "image/jpeg"
+	},
+	"/api/items/b1fb9b4fca562bd7/thumbnail?art=still&w=320": {
+		"file": "84a582682225b455",
+		"type": "image/jpeg"
+	},
+	"/api/items/b1fb9b4fca562bd7/thumbnail?art=still&w=480": {
+		"file": "1953b2aefcf32327",
+		"type": "image/jpeg"
+	},
+	"/api/items/b23954b1713da58b/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "7ad13bb2a5dc1c8d",
+		"type": "application/json"
+	},
+	"/api/items/b23954b1713da58b/progress": {
+		"file": "ebeed3e7902a82b2",
+		"type": "application/json"
+	},
+	"/api/items/b23954b1713da58b/thumbnail?t=30&w=960": {
+		"file": "cfd4d77bd7775486",
+		"type": "image/jpeg"
+	},
+	"/api/items/b23954b1713da58b/thumbnail?w=320": {
+		"file": "73a4b993a7a260f2",
+		"type": "image/jpeg"
+	},
+	"/api/items/b23954b1713da58b/tracking": {
+		"file": "19960bbc5268e27a",
+		"type": "application/json"
+	},
+	"/api/items/b30f15bea8f8f739/thumbnail?art=still&w=320": {
+		"file": "ed9a994c47ba3ced",
+		"type": "image/jpeg"
+	},
+	"/api/items/b30f15bea8f8f739/thumbnail?art=still&w=480": {
+		"file": "439fc9516bd8a0c4",
+		"type": "image/jpeg"
+	},
+	"/api/items/b3989ffc74d1d904/thumbnail?art=still&w=320": {
+		"file": "bf644633da36e300",
+		"type": "image/jpeg"
+	},
+	"/api/items/b3989ffc74d1d904/thumbnail?art=still&w=480": {
+		"file": "c0786af69fd5a222",
+		"type": "image/jpeg"
+	},
+	"/api/items/b3cf880b04d7599f/thumbnail?art=still&w=320": {
+		"file": "96fb2f5704391ca8",
+		"type": "image/jpeg"
+	},
+	"/api/items/b3cf880b04d7599f/thumbnail?art=still&w=480": {
+		"file": "e492da338e0cce02",
+		"type": "image/jpeg"
+	},
+	"/api/items/b64f75b028952e09/thumbnail?art=still&w=480": {
+		"file": "61f773359b2c089f",
+		"type": "image/jpeg"
+	},
+	"/api/items/b851cc17e60371a3/thumbnail?art=still&w=480": {
+		"file": "6f7ada61a4827ce9",
+		"type": "image/jpeg"
+	},
+	"/api/items/b85c4c991233056f/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "64eb4444493c215d",
+		"type": "application/json"
+	},
+	"/api/items/b85c4c991233056f/progress": {
+		"file": "63206f0033679986",
+		"type": "application/json"
+	},
+	"/api/items/b85c4c991233056f/thumbnail?t=10&w=320": {
+		"file": "fe5474600af73ddc",
+		"type": "image/jpeg"
+	},
+	"/api/items/b85c4c991233056f/thumbnail?t=10&w=480": {
+		"file": "8ca07f72e8063310",
+		"type": "image/jpeg"
+	},
+	"/api/items/b85c4c991233056f/thumbnail?w=320": {
+		"file": "45c959c03a9d1b06",
+		"type": "image/jpeg"
+	},
+	"/api/items/b85c4c991233056f/thumbnail?w=480": {
+		"file": "51f57b7161c414ed",
+		"type": "image/jpeg"
+	},
+	"/api/items/b85c4c991233056f/tracking": {
+		"file": "afed292220e92bd0",
+		"type": "application/json"
+	},
+	"/api/items/bb2b9bbc73e99e53/thumbnail?art=still&w=320": {
+		"file": "c87362a811265d46",
+		"type": "image/jpeg"
+	},
+	"/api/items/bb2b9bbc73e99e53/thumbnail?art=still&w=480": {
+		"file": "a87f4f301bd0f456",
+		"type": "image/jpeg"
+	},
+	"/api/items/bb7aff0a3fb46b6f/thumbnail?art=still&w=320": {
+		"file": "39cddd453dfa6fd9",
+		"type": "image/jpeg"
+	},
+	"/api/items/bb7aff0a3fb46b6f/thumbnail?art=still&w=480": {
+		"file": "7f813dbe0e035d65",
+		"type": "image/jpeg"
+	},
+	"/api/items/bba64f93c18a158c/thumbnail?art=still&w=480": {
+		"file": "8ab4a1294c402e29",
+		"type": "image/jpeg"
+	},
+	"/api/items/bc148439a83a13f7/thumbnail?art=still&w=480": {
+		"file": "57707979d6cb60e2",
+		"type": "image/jpeg"
+	},
+	"/api/items/bdba2070a8bccca4/thumbnail?art=still&w=320": {
+		"file": "c191ea3d47a6c8d2",
+		"type": "image/jpeg"
+	},
+	"/api/items/bdba2070a8bccca4/thumbnail?art=still&w=480": {
+		"file": "172fc76021f5ad93",
+		"type": "image/jpeg"
+	},
+	"/api/items/be521b2902a11b00/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "5f5c4808e4ee9e2b",
+		"type": "application/json"
+	},
+	"/api/items/be521b2902a11b00/progress": {
+		"file": "e3052da6c96d40ce",
+		"type": "application/json"
+	},
+	"/api/items/be521b2902a11b00/thumbnail?t=10&w=320": {
+		"file": "573d5ecdd99a17e6",
+		"type": "image/jpeg"
+	},
+	"/api/items/be521b2902a11b00/thumbnail?t=10&w=480": {
+		"file": "0e89263a79009fd1",
+		"type": "image/jpeg"
+	},
+	"/api/items/be521b2902a11b00/thumbnail?t=10&w=640": {
+		"file": "974d2fb6baadfe93",
+		"type": "image/jpeg"
+	},
+	"/api/items/be521b2902a11b00/thumbnail?w=320": {
+		"file": "a0d3dc40a8871c5a",
+		"type": "image/jpeg"
+	},
+	"/api/items/be521b2902a11b00/thumbnail?w=480": {
+		"file": "b74f524eee2dcc20",
+		"type": "image/jpeg"
+	},
+	"/api/items/be521b2902a11b00/tracking": {
+		"file": "1e75d95315a7e781",
+		"type": "application/json"
+	},
+	"/api/items/c0c7bab6b58dbaca/thumbnail?art=still&w=480": {
+		"file": "1f9fa8def800bbb3",
+		"type": "image/jpeg"
+	},
+	"/api/items/c22b149486c7cc18/thumbnail?art=still&w=480": {
+		"file": "926daa80a7da47c0",
+		"type": "image/jpeg"
+	},
+	"/api/items/c8a629a2a7f46849/thumbnail?art=still&w=320": {
+		"file": "93fa692ded3baed8",
+		"type": "image/jpeg"
+	},
+	"/api/items/c8a629a2a7f46849/thumbnail?art=still&w=480": {
+		"file": "ab9e40c87e7ecf1b",
+		"type": "image/jpeg"
+	},
+	"/api/items/ca06e0565606796d/thumbnail?art=still&w=320": {
+		"file": "5ababdc595baa13f",
+		"type": "image/jpeg"
+	},
+	"/api/items/ca06e0565606796d/thumbnail?art=still&w=480": {
+		"file": "17fbf6b76fee44df",
+		"type": "image/jpeg"
+	},
+	"/api/items/cb6d722e4a2e8c2e/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "ca3121fc0a218905",
+		"type": "application/json"
+	},
+	"/api/items/cb6d722e4a2e8c2e/progress": {
+		"file": "0d0f132b88ba2d6e",
+		"type": "application/json"
+	},
+	"/api/items/cb6d722e4a2e8c2e/thumbnail?t=10&w=320": {
+		"file": "753efd01bf45b308",
+		"type": "image/jpeg"
+	},
+	"/api/items/cb6d722e4a2e8c2e/thumbnail?t=10&w=480": {
+		"file": "60b14427046bdbca",
+		"type": "image/jpeg"
+	},
+	"/api/items/cb6d722e4a2e8c2e/thumbnail?t=10&w=640": {
+		"file": "c5a27bdaa209b3b1",
+		"type": "image/jpeg"
+	},
+	"/api/items/cb6d722e4a2e8c2e/thumbnail?w=320": {
+		"file": "100efd5019f7d648",
+		"type": "image/jpeg"
+	},
+	"/api/items/cb6d722e4a2e8c2e/thumbnail?w=480": {
+		"file": "55ea43aaf2c68700",
+		"type": "image/jpeg"
+	},
+	"/api/items/cb6d722e4a2e8c2e/tracking": {
+		"file": "dc8334b64a773078",
+		"type": "application/json"
+	},
+	"/api/items/cee7cc60ad4744fa/thumbnail?art=still&w=480": {
+		"file": "35aa6329c4700e65",
+		"type": "image/jpeg"
+	},
+	"/api/items/cf8af4686b8813ae/thumbnail?art=still&w=320": {
+		"file": "cd3dd4e85a9eab0b",
+		"type": "image/jpeg"
+	},
+	"/api/items/cf8af4686b8813ae/thumbnail?art=still&w=480": {
+		"file": "7e1b169a3de29dc7",
+		"type": "image/jpeg"
+	},
+	"/api/items/d195e96b34df0007/thumbnail?art=still&w=320": {
+		"file": "021659a7bc6c5f2a",
+		"type": "image/jpeg"
+	},
+	"/api/items/d195e96b34df0007/thumbnail?art=still&w=480": {
+		"file": "fc83f3a624f01519",
+		"type": "image/jpeg"
+	},
+	"/api/items/d74e29440b2a8646/thumbnail?art=still&w=320": {
+		"file": "035eabe33c51da03",
+		"type": "image/jpeg"
+	},
+	"/api/items/d74e29440b2a8646/thumbnail?art=still&w=480": {
+		"file": "f97b92438e9cc86f",
+		"type": "image/jpeg"
+	},
+	"/api/items/da1a8cc3c40d15a4/pages": {
+		"file": "f53cfca5bcdf4546",
+		"type": "application/json"
+	},
+	"/api/items/da1a8cc3c40d15a4/pages/0": {
+		"file": "490359eb16d68eea",
+		"type": "image/jpeg"
+	},
+	"/api/items/da1a8cc3c40d15a4/pages/1": {
+		"file": "80ecfbd2c4e0eceb",
+		"type": "image/jpeg"
+	},
+	"/api/items/da1a8cc3c40d15a4/pages/2": {
+		"file": "5c0c5d87e50cc4e3",
+		"type": "image/jpeg"
+	},
+	"/api/items/da1a8cc3c40d15a4/pages/3": {
+		"file": "a3c1282ed6f10416",
+		"type": "image/jpeg"
+	},
+	"/api/items/da1a8cc3c40d15a4/pages/4": {
+		"file": "922525ef247af0d9",
+		"type": "image/jpeg"
+	},
+	"/api/items/da1a8cc3c40d15a4/pages/5": {
+		"file": "230a8fcb195508be",
+		"type": "image/jpeg"
+	},
+	"/api/items/da1a8cc3c40d15a4/pages/6": {
+		"file": "45cd0d9727aeebff",
+		"type": "image/jpeg"
+	},
+	"/api/items/da1a8cc3c40d15a4/progress": {
+		"file": "133ea0c718bc93fd",
+		"type": "application/json"
+	},
+	"/api/items/da1a8cc3c40d15a4/thumbnail?w=480": {
+		"file": "15ce233f66f44e6d",
+		"type": "image/jpeg"
+	},
+	"/api/items/e220bd3039693b6b/thumbnail?art=still&w=480": {
+		"file": "da5ce16172a5f9a1",
+		"type": "image/jpeg"
+	},
+	"/api/items/e2642c6e66aff114/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "58a13b7b015efa3c",
+		"type": "application/json"
+	},
+	"/api/items/e2642c6e66aff114/progress": {
+		"file": "d59fc51d36596169",
+		"type": "application/json"
+	},
+	"/api/items/e2642c6e66aff114/thumbnail?t=30&w=960": {
+		"file": "5e1ab158277c556d",
+		"type": "image/jpeg"
+	},
+	"/api/items/e2642c6e66aff114/thumbnail?w=320": {
+		"file": "3df994012cec087a",
+		"type": "image/jpeg"
+	},
+	"/api/items/e2642c6e66aff114/tracking": {
+		"file": "16dc5729c0239f31",
+		"type": "application/json"
+	},
+	"/api/items/e2bf85f3b48199b6/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "6151276b85da5a50",
+		"type": "application/json"
+	},
+	"/api/items/e2bf85f3b48199b6/progress": {
+		"file": "560985447b8cf79d",
+		"type": "application/json"
+	},
+	"/api/items/e2bf85f3b48199b6/thumbnail?t=10&w=640": {
+		"file": "ea1c4fc07046eac0",
+		"type": "image/jpeg"
+	},
+	"/api/items/e2bf85f3b48199b6/thumbnail?t=30&w=960": {
+		"file": "1c5b8f0192925659",
+		"type": "image/jpeg"
+	},
+	"/api/items/e2bf85f3b48199b6/thumbnail?w=320": {
+		"file": "54c161767c284fde",
+		"type": "image/jpeg"
+	},
+	"/api/items/e2bf85f3b48199b6/tracking": {
+		"file": "29a0215875d0c6a6",
+		"type": "application/json"
+	},
+	"/api/items/e56184642e32df86/thumbnail?art=still&w=320": {
+		"file": "e7850879f390fd89",
+		"type": "image/jpeg"
+	},
+	"/api/items/e56184642e32df86/thumbnail?art=still&w=480": {
+		"file": "5b75d4999143afbb",
+		"type": "image/jpeg"
+	},
+	"/api/items/e7d91031d9d4b301/thumbnail?art=still&w=320": {
+		"file": "b6538a406884a804",
+		"type": "image/jpeg"
+	},
+	"/api/items/e7d91031d9d4b301/thumbnail?art=still&w=480": {
+		"file": "5daf1b24b8180757",
+		"type": "image/jpeg"
+	},
+	"/api/items/e8471323035f778e/thumbnail?art=still&w=320": {
+		"file": "e5b0c4c1d3c5b98f",
+		"type": "image/jpeg"
+	},
+	"/api/items/e8471323035f778e/thumbnail?art=still&w=480": {
+		"file": "52693dfda6eb27a6",
+		"type": "image/jpeg"
+	},
+	"/api/items/ea74a9957e5a7c01/thumbnail?art=still&w=320": {
+		"file": "a1da3830d10d690b",
+		"type": "image/jpeg"
+	},
+	"/api/items/ea74a9957e5a7c01/thumbnail?art=still&w=480": {
+		"file": "950ec453e93ab028",
+		"type": "image/jpeg"
+	},
+	"/api/items/ec78d6a7db674288/thumbnail?art=still&w=480": {
+		"file": "090fda0de933c710",
+		"type": "image/jpeg"
+	},
+	"/api/items/ed5ae0777694b042/thumbnail?art=still&w=320": {
+		"file": "6c91af1a9f7fd8bc",
+		"type": "image/jpeg"
+	},
+	"/api/items/ed5ae0777694b042/thumbnail?art=still&w=480": {
+		"file": "e46e055f83cceb4f",
+		"type": "image/jpeg"
+	},
+	"/api/items/eedcf15be56788ce/thumbnail?art=still&w=480": {
+		"file": "e81c14ea981fb21b",
+		"type": "image/jpeg"
+	},
+	"/api/items/f0c6c1ddc8d9263b/thumbnail?art=still&w=320": {
+		"file": "c28da60bdd7416f3",
+		"type": "image/jpeg"
+	},
+	"/api/items/f0c6c1ddc8d9263b/thumbnail?art=still&w=480": {
+		"file": "05039a887a251b94",
+		"type": "image/jpeg"
+	},
+	"/api/items/f0de394a648cab3c/thumbnail?art=still&w=320": {
+		"file": "8787e7e7d47ee986",
+		"type": "image/jpeg"
+	},
+	"/api/items/f0de394a648cab3c/thumbnail?art=still&w=480": {
+		"file": "791a8264a4454670",
+		"type": "image/jpeg"
+	},
+	"/api/items/f121d8eb10c09885/thumbnail?art=still&w=320": {
+		"file": "ce70af1445681ddd",
+		"type": "image/jpeg"
+	},
+	"/api/items/f121d8eb10c09885/thumbnail?art=still&w=480": {
+		"file": "313e3e1e98806f1a",
+		"type": "image/jpeg"
+	},
+	"/api/items/f128a097ee46c4e6/thumbnail?art=still&w=320": {
+		"file": "2e3084cf668c3152",
+		"type": "image/jpeg"
+	},
+	"/api/items/f128a097ee46c4e6/thumbnail?art=still&w=480": {
+		"file": "1ddf90ee9e74f5df",
+		"type": "image/jpeg"
+	},
+	"/api/items/f244e5d9c690e532/thumbnail?art=still&w=320": {
+		"file": "4982bde79cdc7eb1",
+		"type": "image/jpeg"
+	},
+	"/api/items/f244e5d9c690e532/thumbnail?art=still&w=480": {
+		"file": "98041138c1972921",
+		"type": "image/jpeg"
+	},
+	"/api/items/f24930dc2f88dc1d/thumbnail?art=still&w=320": {
+		"file": "9e36ae1a38914728",
+		"type": "image/jpeg"
+	},
+	"/api/items/f24930dc2f88dc1d/thumbnail?art=still&w=480": {
+		"file": "ace0c873962dd078",
+		"type": "image/jpeg"
+	},
+	"/api/items/f2f3da3505f1238f/thumbnail?art=still&w=320": {
+		"file": "98dd8d481213c31d",
+		"type": "image/jpeg"
+	},
+	"/api/items/f2f3da3505f1238f/thumbnail?art=still&w=480": {
+		"file": "36cf26b6fc1bc236",
+		"type": "image/jpeg"
+	},
+	"/api/items/f346589443d77faa/thumbnail?art=still&w=320": {
+		"file": "9c472b84d07b7af7",
+		"type": "image/jpeg"
+	},
+	"/api/items/f346589443d77faa/thumbnail?art=still&w=480": {
+		"file": "edca409256051ca7",
+		"type": "image/jpeg"
+	},
+	"/api/items/f5eea384c96e6998/thumbnail?art=still&w=480": {
+		"file": "88d232fe51b1a984",
+		"type": "image/jpeg"
+	},
+	"/api/items/f75c9d02f39ecf4d/thumbnail?art=still&w=320": {
+		"file": "d5bd30fe33b88f4a",
+		"type": "image/jpeg"
+	},
+	"/api/items/f75c9d02f39ecf4d/thumbnail?art=still&w=480": {
+		"file": "587199e459e03668",
+		"type": "image/jpeg"
+	},
+	"/api/items/f90a03f6fd040052/playback?caps=mp4%2Cmp4%2Fh264%2Cmp4%2Fav1%2Cmp4%2Fvp9%2Cmp4%2Faac%2Cmp4%2Fmp3%2Cmp4%2Fopus%2Cmp4%2Fflac%2Cmkv%2Cmkv%2Fh264%2Cmkv%2Fvp9%2Cmkv%2Fav1%2Cmkv%2Faac%2Cmkv%2Fmp3%2Cmkv%2Fopus%2Cmkv%2Fvorbis%2Cmkv%2Fflac%2Cwebm%2Cwebm%2Fvp8%2Cwebm%2Fvp9%2Cwebm%2Fav1%2Cwebm%2Fopus%2Cwebm%2Fvorbis%2Cogg%2Cogg%2Fopus%2Cogg%2Fvorbis%2Cogg%2Fflac%2Cmp3%2Cmp3%2Fmp3%2Cflac%2Cflac%2Fflac&client=web": {
+		"file": "e3a9ed9faaeb6a2b",
+		"type": "application/json"
+	},
+	"/api/items/f90a03f6fd040052/progress": {
+		"file": "9640a4aaaee1c8f7",
+		"type": "application/json"
+	},
+	"/api/items/f90a03f6fd040052/thumbnail?t=10&w=320": {
+		"file": "4bc3a7858e028c46",
+		"type": "image/jpeg"
+	},
+	"/api/items/f90a03f6fd040052/thumbnail?t=10&w=480": {
+		"file": "90f666310f3ca4f3",
+		"type": "image/jpeg"
+	},
+	"/api/items/f90a03f6fd040052/thumbnail?w=320": {
+		"file": "a38da529135d332b",
+		"type": "image/jpeg"
+	},
+	"/api/items/f90a03f6fd040052/thumbnail?w=480": {
+		"file": "b52ee0b7417f1acf",
+		"type": "image/jpeg"
+	},
+	"/api/items/f90a03f6fd040052/tracking": {
+		"file": "148bd0fba88808f7",
+		"type": "application/json"
+	},
+	"/api/items/fada1d8d17d875c9/thumbnail?art=still&w=480": {
+		"file": "e1a7f5c33fb30de7",
+		"type": "image/jpeg"
+	},
+	"/api/libraries": {
+		"file": "ef31a201587c218b",
+		"type": "application/json"
+	},
+	"/api/library/scan": {
+		"file": "967d78ee5cf6ee9a",
+		"type": "application/json"
+	},
+	"/api/list": {
+		"file": "36b3e7a772f8c96d",
+		"type": "application/json"
+	},
+	"/api/localplay": {
+		"file": "2665c9e3472d9c88",
+		"type": "application/json"
+	},
+	"/api/me": {
+		"file": "4f8cc3f306852ecb",
+		"type": "application/json"
+	},
+	"/api/me/continue": {
+		"file": "3780e7eb7179d835",
+		"type": "application/json"
+	},
+	"/api/me/links": {
+		"file": "4056002717d293c9",
+		"type": "application/json"
+	},
+	"/api/me/links/anilist/pin": {
+		"file": "8cacdaa0cac10335",
+		"type": "application/json"
+	},
+	"/api/me/pin": {
+		"file": "e18b22e9768b423d",
+		"type": "application/json"
+	},
+	"/api/plugins": {
+		"file": "d2f112a5f3ea79bf",
+		"type": "application/json"
+	},
+	"/api/roots": {
+		"file": "fcb7932f60928ec8",
+		"type": "application/json"
+	},
+	"/api/setup/status": {
+		"file": "3ff5146bc15e43c0",
+		"type": "application/json"
+	},
+	"/api/social/collections": {
+		"file": "c279a6bbef62eff5",
+		"type": "application/json"
+	},
+	"/api/social/feed": {
+		"file": "e3c32059f20e9528",
+		"type": "application/json"
+	},
+	"/api/social/friends": {
+		"file": "fdb4d36ae06d7b95",
+		"type": "application/json"
+	},
+	"/api/social/me/settings": {
+		"file": "462f8496773c3162",
+		"type": "application/json"
+	},
+	"/api/social/notifications": {
+		"file": "7d831c50bc912edf",
+		"type": "application/json"
+	},
+	"/api/social/users": {
+		"file": "e89b30e970295760",
+		"type": "application/json"
+	},
+	"/api/social/work?item=039a34b14ce22380": {
+		"file": "ae871cf83ceb6f69",
+		"type": "application/json"
+	},
+	"/api/social/work?item=22f1d4885f6f0f9f": {
+		"file": "1cbc2c9ff3bec098",
+		"type": "application/json"
+	},
+	"/api/social/work?item=35daeb6f5ea34838": {
+		"file": "f5d47ea971d422b0",
+		"type": "application/json"
+	},
+	"/api/social/work?item=4fc2fa9c0f8d306c": {
+		"file": "03d801fd60a5737c",
+		"type": "application/json"
+	},
+	"/api/social/work?item=5797ec5119d7d64a": {
+		"file": "5d3a90bb1454a3fd",
+		"type": "application/json"
+	},
+	"/api/social/work?item=616d9119c4b3cd52": {
+		"file": "d36c12943f6b455d",
+		"type": "application/json"
+	},
+	"/api/social/work?item=79283270432390ed": {
+		"file": "e7ea1b539a95bd5f",
+		"type": "application/json"
+	},
+	"/api/social/work?item=872a7e56e8caf19d": {
+		"file": "5a53f6b5c507dc4a",
+		"type": "application/json"
+	},
+	"/api/social/work?item=ab0fce996f9aa7f4": {
+		"file": "9ff15cb53300b800",
+		"type": "application/json"
+	},
+	"/api/social/work?item=b23954b1713da58b": {
+		"file": "d06817e9629dc009",
+		"type": "application/json"
+	},
+	"/api/social/work?item=b85c4c991233056f": {
+		"file": "e2b6a9d3b6833040",
+		"type": "application/json"
+	},
+	"/api/social/work?item=be521b2902a11b00": {
+		"file": "9309a7cd11e84364",
+		"type": "application/json"
+	},
+	"/api/social/work?item=cb6d722e4a2e8c2e": {
+		"file": "a0828efa06b88905",
+		"type": "application/json"
+	},
+	"/api/social/work?item=e2642c6e66aff114": {
+		"file": "1880797a8f503db6",
+		"type": "application/json"
+	},
+	"/api/social/work?item=e2bf85f3b48199b6": {
+		"file": "3861fefbc0c660fc",
+		"type": "application/json"
+	},
+	"/api/social/work?item=f90a03f6fd040052": {
+		"file": "4c9f26e2855dfeb9",
+		"type": "application/json"
+	},
+	"/api/theme": {
+		"file": "614743d72f557b39",
+		"type": "application/json"
+	},
+	"/api/users": {
+		"file": "6654ad4d1d494222",
+		"type": "application/json"
+	}
+}

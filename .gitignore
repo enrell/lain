@@ -40,3 +40,7 @@ __pycache__/
 
 # Claude Code local state (worktrees, settings)
 /.claude/
+
+# The live demo is built by the Pages workflow (web/demo/).
+site/demo/
+web/demo-out/

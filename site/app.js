@@ -1,4 +1,5 @@
-// lain's site: tabs, copy buttons and the header's hairline. No dependencies.
+// lain's site: the live demo's frames, tabs, copy buttons and the header's
+// hairline. No dependencies.
 (() => {
 	'use strict';
 
@@ -26,40 +27,48 @@
 			e.preventDefault();
 			select(tabs[(to + tabs.length) % tabs.length], true);
 		});
+		return { clear: () => tabs.forEach((t) => t.setAttribute('aria-selected', 'false')) };
 	}
 
-	// The tour swaps one picture; each tab carries its file, alt text and caption.
-	const tour = document.querySelector('[data-tour]');
-	if (tour) {
-		const img = tour.querySelector('[data-tour-img]');
-		const cap = tour.querySelector('[data-tour-cap]');
-		const panel = tour.querySelector('[role="tabpanel"]');
-		const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-		let wanted = img.getAttribute('src');
-		tablist(tour.querySelector('[role="tablist"]'), (tab) => {
-			const src = `assets/shots/${tab.dataset.shot}.webp`;
-			panel.setAttribute('aria-labelledby', tab.id);
-			cap.textContent = tab.dataset.cap;
-			if (src === wanted) return;
-			wanted = src;
-			const next = new Image();
-			const show = () => {
-				if (wanted !== src) return;
-				img.src = src;
-				img.alt = tab.dataset.alt;
-				img.classList.remove('is-swapping');
-			};
-			next.onload = next.onerror = show;
-			if (!reduce) img.classList.add('is-swapping');
-			next.src = src;
-		});
-		// Warm the other pictures once the page is idle, so a tab answers at once.
-		const warm = () => {
-			for (const t of tour.querySelectorAll('[role="tab"]')) new Image().src = `assets/shots/${t.dataset.shot}.webp`;
+	// The live demo: the real client in an iframe, drawn at its own size and
+	// scaled to its frame. It loads when asked for, not with the page.
+	const frames = [...document.querySelectorAll('[data-live]')].map((box) => {
+		const view = box.querySelector('.live-view, .phone-view');
+		const frame = box.querySelector('iframe');
+		const fit = () => view.style.setProperty('--scale', String(view.clientWidth / Number(frame.getAttribute('width'))));
+		new ResizeObserver(fit).observe(view);
+		fit();
+		const show = (route) => {
+			if (box.classList.contains('is-live')) {
+				// Same origin: the demo routes by hash, so this is a navigation inside it.
+				try {
+					frame.contentWindow.location.hash = route;
+					return;
+				} catch {
+					/* fall through and load it again */
+				}
+			}
+			box.classList.add('is-live');
+			frame.src = `${frame.dataset.src}#${route ?? '/'}`;
 		};
-		if ('requestIdleCallback' in window) requestIdleCallback(warm, { timeout: 4000 });
-		else setTimeout(warm, 2500);
+		box.querySelector('[data-live-start]')?.addEventListener('click', () => show('/'));
+		return { box, show, visible: () => box.offsetParent !== null };
+	});
+	// The frame a visitor can see: the browser frame on a wide screen, the phone on a narrow one.
+	const stage = () => frames.find((f) => f.visible()) ?? frames[0];
+	function go(route) {
+		const f = stage();
+		if (!f) return;
+		f.show(route);
+		f.box.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
 	}
+
+	const demoTabs = document.querySelector('[data-demo-tabs]');
+	if (demoTabs) tablist(demoTabs, (tab) => go(tab.dataset.route));
+	document.addEventListener('click', (e) => {
+		const b = e.target.closest('[data-demo-go]');
+		if (b) go(b.dataset.demoGo);
+	});
 
 	// Install: one panel per tab.
 	const install = document.querySelector('[data-install]');

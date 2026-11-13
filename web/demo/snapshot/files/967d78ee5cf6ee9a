@@ -1,0 +1,1 @@
+{"finished_at":1794567842,"started_at":1794567842,"state":"done","stats":{"candidates":125,"dirs":13,"enriched":0,"errors":0,"finished_at":1794567842,"identified":125,"libraries":4,"migrated":0,"missing":0,"pruned":0,"restored":0,"started_at":1794567842,"unidentified":0,"walk_errors":0},"trigger":"manual"}
