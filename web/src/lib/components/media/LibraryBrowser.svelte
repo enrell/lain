@@ -13,9 +13,11 @@
 	 * gives (the favourites), so every list of titles browses the same way.
 	 */
 	import { onMount, tick, untrack, type Snippet } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
+	import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down';
 	import Grid2x2 from '@lucide/svelte/icons/grid-2x2';
 	import Grid3x3 from '@lucide/svelte/icons/grid-3x3';
 	import Film from '@lucide/svelte/icons/film';
@@ -421,6 +423,12 @@
 	});
 
 	let sheet = $state(false);
+	// Where the toolbar has room for the sort and the tile size (from sm, or
+	// from lg beside the view switch): there the sheet is filters alone, and
+	// its button says so. "Sort & filter" beside the sort read as a second sort.
+	const sm = new MediaQuery('(min-width: 640px)');
+	const lg = new MediaQuery('(min-width: 1024px)');
+	const sortInBar = $derived(view ? lg.current : sm.current);
 	function pickSort(next: Sort): void {
 		// Ask for it while it is not yet the default, so the URL keeps
 		// it, then remember it for next time.
@@ -498,13 +506,13 @@
 	<button
 		type="button"
 		class={['h-11 shrink-0 items-center gap-2 rounded-md border bg-field px-3.5 text-sm transition-colors sm:h-10', place, active > 0 ? 'border-accent/60 text-foreground' : 'border-transparent text-muted hover:border-hairline hover:text-foreground'].join(' ')}
-		aria-label={active > 0 ? `Filters (${active} active)` : 'Filters'}
+		aria-label={active > 0 ? t('browse.filtersActive', { count: active }) : t(sortInBar ? 'browse.filters' : 'browse.sortAndFilter')}
 		onclick={() => (sheet = true)}
 	>
-		<SlidersHorizontal class="size-4" />
-		<!-- Named, as in the app: the sliders alone did not say "filters". Below a
-		     wide screen the sheet also holds the sort. -->
-		Sort &amp; filter{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
+		<SlidersHorizontal class="size-4" aria-hidden="true" />
+		<!-- Named, as in the app: the sliders alone did not say "filters". Where
+		     the sort is not in the toolbar the sheet holds it, and says so. -->
+		{t(sortInBar ? 'browse.filters' : 'browse.sortAndFilter')}{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
 	</button>
 {/snippet}
 
@@ -514,7 +522,7 @@
 
 {#snippet panel(findId: string, sheet: boolean)}
 	<div class="space-y-5">
-		{#if sheet}
+		{#if sheet && !sortInBar}
 			<div>
 				{@render heading('Sort')}
 				<div class="grid grid-cols-2 gap-1.5 px-2">
@@ -733,13 +741,15 @@
 						</div>
 						<!-- With the view switch beside them, sort and tile size stay in the
 						     sheet until a wide screen has room for all three. -->
-						<div class={['hidden w-44 shrink-0', view ? 'lg:block' : 'sm:block'].join(' ')}>
+						<div class={['hidden w-48 shrink-0', view ? 'lg:block' : 'sm:block'].join(' ')}>
 							<Select
 								aria-label="Sort"
 								bind:value={sortValue}
 								options={sortOptions}
 								onValueChange={() => pickSort(sortValue as Sort)}
-							/>
+							>
+								{#snippet icon()}<ArrowUpDown class="size-4" />{/snippet}
+							</Select>
 						</div>
 						<button
 							type="button"
@@ -896,7 +906,7 @@
 	</button>
 {/if}
 
-<Modal bind:open={sheet} title="Filters">
+<Modal bind:open={sheet} title={t(sortInBar ? 'browse.filters' : 'browse.sortAndFilter')}>
 	<div class="mt-4">
 		{@render panel('genre-find-sheet', true)}
 	</div>
