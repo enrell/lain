@@ -302,7 +302,7 @@
 				     of leaving the previous episode's state behind. -->
 				{#key item.id}
 					{#if import.meta.env.VITE_DEMO}
-						<DemoPlayer title={item.title} />
+						<DemoPlayer itemId={item.id} title={item.title} episodes={episodes.length > 1 && !upright ? episodesToggle : null} />
 					{:else}
 						<Player {item} {plan} initialProgress={progress} {onFinished} {next} episodes={episodes.length > 1 && !upright ? episodesToggle : null} />
 					{/if}
@@ -362,7 +362,7 @@
 					overlay && drawerOpen
 						? 'absolute inset-y-0 right-0 z-40 flex max-w-[85vw] bg-surface/95 shadow-[-18px_0_45px_rgba(0,0,0,0.45)] backdrop-blur-xl'
 						: `hidden bg-surface/60 ${listShown ? 'lg:flex' : ''}`,
-					'max-md:portrait:flex max-md:portrait:min-h-0 max-md:portrait:w-full max-md:portrait:flex-1 max-md:portrait:border-l-0 max-md:portrait:bg-background'
+					'max-md:portrait:flex max-md:portrait:min-h-0 max-md:portrait:w-full max-md:portrait:flex-1 max-md:portrait:border-l-0 max-md:portrait:border-t max-md:portrait:border-line/40 max-md:portrait:bg-background'
 				].join(' ')}
 				aria-label={t('player.list.label')}
 			>
