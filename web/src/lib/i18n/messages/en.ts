@@ -1245,6 +1245,9 @@ const en = {
 			rtlLabel: 'Read right to left (R)',
 			ltr: 'LTR',
 			rtl: 'RTL',
+			// The phone's chip beside the page slider: the direction now, and what a tap does.
+			readsRtl: 'Reads right to left. Switch to left to right',
+			readsLtr: 'Reads left to right. Switch to right to left',
 			coverLabel: 'Cover on its own page',
 			cover: 'Cover',
 			coverAlone: 'Cover alone',
