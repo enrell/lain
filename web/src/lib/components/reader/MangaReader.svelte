@@ -83,8 +83,10 @@
 					<span class="hidden max-md:inline xl:inline">{t('reader.toolbar.spread')}</span>
 				</ReaderToggle>
 				{#if settings.dual}
-					<!-- An option of the spread, drawn as one: a check box, not a second
-					     filled mode, and always named, since a lone box says nothing. -->
+					<!-- An option of the spread, drawn as one: a check box in plain words
+					     after a hairline, not a second mode in the modes' capitals, and
+					     always named, since a lone box says nothing. -->
+					<span class="mx-0.5 h-4 w-px bg-line" aria-hidden="true"></span>
 					<ReaderToggle
 						label={t('reader.toolbar.coverLabel')}
 						check

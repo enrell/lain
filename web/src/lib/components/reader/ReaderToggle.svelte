@@ -32,14 +32,16 @@
 	aria-label={label}
 	aria-pressed={active}
 	title={label}
-	class="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg px-2 font-mono text-xs font-semibold uppercase tracking-[0.06em] transition-colors disabled:pointer-events-none disabled:opacity-40
+	class="inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg px-2 transition-colors disabled:pointer-events-none disabled:opacity-40
 		{check
-		? active
-			? 'text-foreground hover:bg-surface-hover'
-			: 'text-foreground/55 hover:bg-surface-hover hover:text-foreground'
-		: active
-			? 'bg-accent text-accent-fg'
-			: 'text-foreground/55 hover:bg-surface-hover hover:text-foreground'}"
+		? // A setting of the mode before it, in a form's words (sans, as written), not
+			// in the mono capitals of the modes: in their type "SPREAD ☑ COVER ALONE"
+			// read as one compound pill.
+			active
+			? 'text-[13px] font-medium text-foreground hover:bg-surface-hover'
+			: 'text-[13px] font-medium text-foreground/60 hover:bg-surface-hover hover:text-foreground'
+		: 'font-mono text-xs font-semibold uppercase tracking-[0.06em] ' +
+			(active ? 'bg-accent text-accent-fg' : 'text-foreground/55 hover:bg-surface-hover hover:text-foreground')}"
 	{onclick}
 >
 	{#if check}
