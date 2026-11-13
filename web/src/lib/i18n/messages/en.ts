@@ -362,7 +362,7 @@ const en = {
 			saved: 'Integration settings saved.',
 			saveFailed: 'Could not save the integration settings.',
 			copyFailed: 'Could not copy to the clipboard.',
-			indexersScope: 'Indexers only (a coding agent’s key) · expires {when}',
+			indexersScope: 'Indexers only · expires {when}',
 			callback: 'Callback URL to register',
 			copyCallback: 'Copy the callback URL',
 			clientId: 'Client ID',
