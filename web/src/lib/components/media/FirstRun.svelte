@@ -209,9 +209,12 @@
 		<ol class="mt-10 grid gap-x-10 gap-y-5 border-t border-hairline pt-6 sm:grid-cols-3 md:mt-12">
 			{#each steps as step, i (step.label)}
 				<li class="min-w-0">
+					<!-- One space on each side of the dot: a margin on top of the space
+					     before it only, and none after, set it against the label. -->
 					<p class="font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
 						<span class="text-accent">{String(i + 1).padStart(2, '0')}</span>
-						<span class="mx-1 opacity-50" aria-hidden="true">·</span>{step.label}
+						<span class="opacity-50" aria-hidden="true">·</span>
+						{step.label}
 					</p>
 					<p class="mt-2 text-sm leading-6 text-foreground/75">{step.text}</p>
 				</li>
