@@ -2,6 +2,7 @@
 	import type { ListEntry } from '$lib/api/types';
 	import PlaceholderPoster from './PlaceholderPoster.svelte';
 	import CardProgress from './CardProgress.svelte';
+	import { t } from '$lib/i18n';
 
 	let {
 		entry,
@@ -73,7 +74,7 @@
 			{entry.platform}
 		</span>
 		{#if ratio > 0}
-			<CardProgress {ratio} label="Progress" />
+			<CardProgress {ratio} label={t('tracking.entryProgress')} />
 		{/if}
 	</div>
 	<div class="mt-3 min-w-0">

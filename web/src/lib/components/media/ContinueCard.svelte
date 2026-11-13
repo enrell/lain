@@ -109,7 +109,7 @@
 			<Play class="size-4 translate-x-px" aria-hidden="true" />
 		</div>
 		{#if ratio > 0}
-			<CardProgress {ratio} label="Watch progress" />
+			<CardProgress {ratio} label={t('title.watchProgress')} />
 		{/if}
 	</div>
 	<div class="mt-3 min-w-0">
