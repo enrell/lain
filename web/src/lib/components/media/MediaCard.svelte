@@ -6,6 +6,7 @@
 	import { formatLength, mediaSubtitle, timeLeft } from '$lib/utilities/format';
 	import { lengthOf, wantLength } from '$lib/stores/lengths.svelte';
 	import { progressRatio } from '$lib/utilities/progress';
+	import { t } from '$lib/i18n';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
 	import ProgressBar from './ProgressBar.svelte';
@@ -38,9 +39,19 @@
 	$effect(() => {
 		if (bare) wantLength(item.id);
 	});
-	// Under way, the line says what is left, as a show's card and the hero do.
-	const left = $derived(progress && !progress.completed && !isReadable(item.kind) && progressRatio(progress) > 0 ? timeLeft(progress.position_sec, progress.duration_sec) : '');
-	const subtitle = $derived([said || (bare && !left ? formatLength(lengthOf(item.id)) : ''), left].filter(Boolean).join(' · '));
+	// Under way, the line says how far, as a show's card and the hero do: what
+	// is left of a film, the page of a volume. Continue reading said only
+	// "Vol 1" under a bar, where Continue watching says "8 sec left".
+	const under = $derived(!!progress && !progress.completed && progressRatio(progress) > 0);
+	const left = $derived(under && !isReadable(item.kind) ? timeLeft(progress!.position_sec, progress!.duration_sec) : '');
+	const page = $derived(under && isReadable(item.kind) ? { page: Math.max(1, Math.floor(progress!.position_sec)), pages: Math.floor(progress!.duration_sec) } : null);
+	const subtitle = $derived(
+		page
+			? said
+				? t('browse.partPage', { part: said, ...page })
+				: t('browse.pageOf', page)
+			: [said || (bare && !left ? formatLength(lengthOf(item.id)) : ''), left].filter(Boolean).join(' · ')
+	);
 	const reading = $derived(isReadable(item.kind));
 	const ratio = $derived(progress && !progress.completed ? progressRatio(progress) : 0);
 	// The link's aria-label replaces its inner text, so the visual 'Watching'
