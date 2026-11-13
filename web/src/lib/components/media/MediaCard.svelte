@@ -10,7 +10,6 @@
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
 	import CardProgress from './CardProgress.svelte';
-	import { t } from '$lib/i18n';
 
 	let {
 		item,
