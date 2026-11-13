@@ -208,6 +208,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   under way says its page on Continue reading ("Vol 1 · page 4 of 8").
 
 ### Fixed
+- **Subtitles**: a track inside the file (ASS) no longer shows `\h` or
+  override blocks as text; a hard space is a space, and the cached
+  sidecars are made again.
 - **A title in a poster rail shows its poster while you watch it**: a
   show's card drew its first episode's overlay, and when only the episode
   under way had one (a backfill cut short, metadata fetched from that

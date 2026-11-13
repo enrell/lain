@@ -54,7 +54,8 @@ pub const ACTION_LIST: &str = "list";
 pub const ACTION_SUBTITLES: &str = "subtitles";
 
 const LEGACY_PROFILE: &str = "mp4-compat-v1";
-const SUBTITLE_PROFILE: &str = "subs-vtt-v1";
+// v2: the sidecar no longer carries ASS escapes (`\\h`, override blocks).
+const SUBTITLE_PROFILE: &str = "subs-vtt-v2";
 const PROGRESSIVE_TIMEOUT: Duration = Duration::from_secs(3600);
 const SUBTITLE_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_QUEUE_CAPACITY: i64 = 64;
@@ -2373,7 +2374,49 @@ fn extract_subtitle(spec: &SourceSpec, s: &RawStream, out: &Path, format: &str) 
         let _ = std::fs::remove_file(&tmp);
         return Err("no subtitle file produced".into());
     }
+    if format == "webvtt" {
+        // ffmpeg's ASS to WebVTT conversion leaves some ASS escapes in the
+        // cue text; a player would draw them as written.
+        if let Ok(text) = std::fs::read_to_string(&tmp) {
+            let clean = clean_webvtt(&text);
+            if clean != text && std::fs::write(&tmp, clean).is_err() {
+                let _ = std::fs::remove_file(&tmp);
+                return Err("could not write the subtitle file".into());
+            }
+        }
+    }
     std::fs::rename(&tmp, out).map_err(|e| e.to_string())
+}
+
+/// WebVTT cue text without the ASS escapes ffmpeg passes through: `\h`
+/// (a hard space) becomes a no-break space, `\N` and `\n` a line break,
+/// and an override block (`{\an8}`, `{\i1}`) is dropped. Only a block
+/// that starts with a backslash goes, so braces a translator typed stay.
+fn clean_webvtt(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find(['\\', '{']) {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i..];
+        if let Some(t) = tail.strip_prefix("\\h") {
+            out.push('\u{a0}');
+            rest = t;
+        } else if let Some(t) = tail.strip_prefix("\\N").or_else(|| tail.strip_prefix("\\n")) {
+            out.push('\n');
+            rest = t;
+        } else if tail.starts_with("{\\")
+            && let Some(end) = tail.find('}')
+            && !tail[..end].contains('\n')
+        {
+            rest = &tail[end + 1..];
+        } else {
+            let c = tail.chars().next().unwrap_or('\\');
+            out.push(c);
+            rest = &tail[c.len_utf8()..];
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 impl From<Fail> for String {
