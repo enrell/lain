@@ -1584,8 +1584,17 @@ const en = {
 		continueFromPage: 'Continue from page {page}',
 		continueFromPageIn: 'Continue from page {page} · {part}',
 		readingAt: '{part}: page {page} of {pages}',
+		// Under a synopsis cut to two lines, and under the whole of it once open.
+		synopsisMore: 'More',
+		synopsisLess: 'Less',
+		// The part under way, beside the bar that measures it (a title page's hero).
+		partLeft: '{part}: {time} left',
 		readOf: '{done} of {count} read',
 		watchedOf: '{done} of {count} watched',
+		// The whole title's count, named, beside the part under way.
+		episodesWatched: { one: '{done} of {count} episode watched', other: '{done} of {count} episodes watched' },
+		volumesRead: { one: '{done} of {count} volume read', other: '{done} of {count} volumes read' },
+		issuesRead: { one: '{done} of {count} issue read', other: '{done} of {count} issues read' },
 		notStarted: 'Not started',
 		// An episode or volume card's line before it is begun, when its length is unknown.
 		notWatched: 'Not watched',
