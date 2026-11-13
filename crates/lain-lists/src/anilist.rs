@@ -97,7 +97,7 @@ impl AniList {
         }
         let r = req.send_blocking().map_err(|e| sync_failed(e.to_string()))?;
         if r.status == 429 {
-            return Err(sync_failed("rate limited (429)"));
+            return Err(Error::new(code::RATE_LIMITED, "rate limited (429)"));
         }
         Ok((r.status, r.body))
     }
@@ -219,21 +219,38 @@ impl AniList {
         Ok(standard.into_values().collect())
     }
 
-    /// Writes progress (and optionally status) to one entry. GraphQL
-    /// answers 200 with `errors` for validation failures, so the body
-    /// is checked, not just the status.
+    /// Writes the fields the input carries to one entry, creating it
+    /// when the list does not hold the media yet. GraphQL answers 200
+    /// with `errors` for validation failures, so the body is checked,
+    /// not just the status. Only the variables that are set are sent:
+    /// AniList leaves an argument that is not given as it was.
     pub fn push(&self, i: &PushInput) -> Result<PushOutput, Error> {
         if i.token.is_empty() {
             return Err(Error::invalid("token required"));
         }
         let media =
             leading_int(&i.remote_id).filter(|n| *n > 0).ok_or_else(|| Error::invalid("remote_id must be numeric"))?;
-        if i.progress < 0 {
+        if i.progress.is_some_and(|p| p < 0) || i.progress_volumes.is_some_and(|p| p < 0) {
             return Err(Error::invalid("progress must not be negative"));
         }
-        let mut vars = json!({"mediaId": media, "progress": i.progress});
+        if i.score.is_some_and(|s| !(0.0..=10.0).contains(&s)) {
+            return Err(Error::invalid("score must be between 0 and 10"));
+        }
+        let mut vars = json!({"mediaId": media});
+        if let Some(p) = i.progress {
+            vars["progress"] = json!(p);
+        }
+        if let Some(v) = i.progress_volumes {
+            vars["progressVolumes"] = json!(v);
+        }
         if !i.status.is_empty() {
-            vars["status"] = json!(i.status.to_uppercase());
+            vars["status"] = json!(remote_status(&i.status));
+        }
+        // `scoreRaw` is the 100-point scale whatever format the user
+        // chose on AniList, so 8.5 here is 8.5 on a 10-point list and
+        // 85 on a 100-point one.
+        if let Some(sc) = i.score {
+            vars["scoreRaw"] = json!((sc * 10.0).round() as i64);
         }
         let doc = self.graphql(&i.token, SAVE_ENTRY_MUTATION, vars)?;
         if let Some(e) = doc["errors"].as_array().and_then(|a| a.first()) {
@@ -244,10 +261,26 @@ impl AniList {
             )));
         }
         let save = &doc["data"]["SaveMediaListEntry"];
+        let entry = serde_json::from_value::<AlEntry>(save.clone()).ok().filter(|e| e.media.id != 0).map(map_entry);
         Ok(PushOutput {
             progress: save["progress"].as_i64().unwrap_or(0),
             status: map_status(save["status"].as_str().unwrap_or("")),
+            entry,
         })
+    }
+}
+
+/// The shared vocabulary onto AniList's statuses (the inverse of
+/// [`map_status`]).
+pub fn remote_status(s: &str) -> String {
+    match s {
+        list_status::CURRENT => "CURRENT".into(),
+        list_status::PLANNING => "PLANNING".into(),
+        list_status::COMPLETED => "COMPLETED".into(),
+        list_status::PAUSED => "PAUSED".into(),
+        list_status::DROPPED => "DROPPED".into(),
+        list_status::REPEATING => "REPEATING".into(),
+        other => other.to_uppercase(),
     }
 }
 
@@ -287,13 +320,11 @@ pub fn jwt_expiry(token: &str) -> i64 {
         .unwrap_or(0)
 }
 
-const COLLECTION_QUERY: &str = r#"query ($userId: Int, $type: MediaType) {
-	MediaListCollection(userId: $userId, type: $type) {
-		lists {
-			name
-			isCustomList
-			entries {
-				mediaId status progress progressVolumes
+/// One entry's fields, shared by the collection read and the save's
+/// answer so both map through [`map_entry`].
+macro_rules! entry_fields {
+    () => {
+        "mediaId status progress progressVolumes
 				score(format: POINT_10_DECIMAL) repeat notes
 				startedAt { year month day }
 				completedAt { year month day }
@@ -301,17 +332,35 @@ const COLLECTION_QUERY: &str = r#"query ($userId: Int, $type: MediaType) {
 					id type format episodes chapters
 					title { romaji english native }
 					coverImage { extraLarge large }
-				}
+				}"
+    };
+}
+
+const COLLECTION_QUERY: &str = concat!(
+    r#"query ($userId: Int, $type: MediaType) {
+	MediaListCollection(userId: $userId, type: $type) {
+		lists {
+			name
+			isCustomList
+			entries {
+				"#,
+    entry_fields!(),
+    r#"
 			}
 		}
 	}
-}"#;
+}"#
+);
 
-const SAVE_ENTRY_MUTATION: &str = r#"mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus) {
-	SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status) {
-		progress status
+const SAVE_ENTRY_MUTATION: &str = concat!(
+    r#"mutation ($mediaId: Int, $progress: Int, $progressVolumes: Int, $status: MediaListStatus, $scoreRaw: Int) {
+	SaveMediaListEntry(mediaId: $mediaId, progress: $progress, progressVolumes: $progressVolumes, status: $status, scoreRaw: $scoreRaw) {
+		"#,
+    entry_fields!(),
+    r#"
 	}
-}"#;
+}"#
+);
 
 /// Absent and `null` read as empty, as Go's zero values do.
 fn nullable<'de, D: serde::Deserializer<'de>, T: Default + Deserialize<'de>>(d: D) -> Result<T, D::Error> {
@@ -407,6 +456,14 @@ struct AlEntry {
 }
 
 fn map_entry(e: AlEntry) -> ListEntry {
+    let title = first_non_empty(&[&e.media.title.english, &e.media.title.romaji, &e.media.title.native]);
+    let mut alt_titles: Vec<String> = Vec::new();
+    for t in [&e.media.title.english, &e.media.title.romaji, &e.media.title.native] {
+        let t = t.trim();
+        if !t.is_empty() && t != title && !alt_titles.iter().any(|a| a == t) {
+            alt_titles.push(t.to_string());
+        }
+    }
     let (media_type, total) = match e.media.kind.as_str() {
         "ANIME" => (list_media::ANIME.to_string(), e.media.episodes),
         "MANGA" => (list_media::MANGA.to_string(), e.media.chapters),
@@ -424,7 +481,8 @@ fn map_entry(e: AlEntry) -> ListEntry {
         started_at: format_date(&e.started_at),
         completed_at: format_date(&e.completed_at),
         format: e.media.format,
-        title: first_non_empty(&[&e.media.title.english, &e.media.title.romaji, &e.media.title.native]),
+        title,
+        alt_titles,
         cover: first_non_empty(&[&e.media.cover_image.extra_large, &e.media.cover_image.large]),
         media_type,
         ..ListEntry::default()
@@ -501,6 +559,9 @@ mod tests {
         assert_eq!(leading_int("x"), None);
         assert_eq!(map_status("CURRENT"), "current");
         assert_eq!(map_status("Hiatus"), "hiatus");
+        for s in ["current", "planning", "completed", "paused", "dropped", "repeating"] {
+            assert_eq!(map_status(&remote_status(s)), s, "round trip");
+        }
         assert_eq!(format_date(&AlDate { year: 2024, month: 3, day: 9 }), "2024-03-09");
         assert_eq!(format_date(&AlDate::default()), "");
         let claims = lain_auth::crypto::b64_url(br#"{"exp":1900000000}"#);

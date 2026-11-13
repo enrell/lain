@@ -1,6 +1,6 @@
 {
   "tier": "v1",
-  "description": "The lists module from a fresh server (the pasted-code answer is the link as stored before its first import, Go's answer, so its entry_count is 0): the tracking list, linked accounts, the OAuth and pin flows, imports, scrobble preferences and unlinking (D-078..D-083). The flows that reach AniList need the upstream fixture server (`upstream`, with LAIN_LISTLINK_ANILIST_GRAPHQL_URL=<upstream>/anilist-list/graphql and LAIN_LISTLINK_ANILIST_OAUTH_URL=<upstream>/anilist-list/oauth); nothing reaches the network.",
+  "description": "The lists module from a fresh server (the pasted-code answer is the link as stored before its first import, Go's answer, so its entry_count is 0): the tracking list, linked accounts, the OAuth and pin flows, imports, scrobble preferences (on for a new link, D-288), edits written back with the last-write line (D-289) and unlinking (D-078..D-083). The flows that reach AniList need the upstream fixture server (`upstream`, with LAIN_LISTLINK_ANILIST_GRAPHQL_URL=<upstream>/anilist-list/graphql and LAIN_LISTLINK_ANILIST_OAUTH_URL=<upstream>/anilist-list/oauth); nothing reaches the network.",
   "cases": [
     {"name": "accounts", "steps": [
       {"req": {"method": "POST", "path": "/api/setup", "body": {"username": "admin", "password": "password123"}}, "expect": {"status": 201}},
@@ -23,7 +23,12 @@
       {"req": {"method": "DELETE", "path": "/api/me/links/anilist", "auth": "bob"}, "expect": {"status": 404, "body": {"error": "no anilist account linked"}}},
       {"req": {"method": "PATCH", "path": "/api/me/links/anilist", "auth": "bob", "body": {"scrobble": true}}, "expect": {"status": 404, "body": {"error": "no anilist account linked"}}},
       {"req": {"method": "PATCH", "path": "/api/me/links/anilist", "auth": "bob", "body": {}}, "expect": {"status": 400, "body": {"error": "scrobble (boolean) required"}}},
-      {"req": {"method": "PATCH", "path": "/api/me/links/anilist", "auth": "bob", "raw_body": "{\"scrobble\": \"yes\"}"}, "expect": {"status": 400, "body": {"error": "scrobble (boolean) required"}}}
+      {"req": {"method": "PATCH", "path": "/api/me/links/anilist", "auth": "bob", "raw_body": "{\"scrobble\": \"yes\"}"}, "expect": {"status": 400, "body": {"error": "scrobble (boolean) required"}}},
+      {"req": {"method": "PUT", "path": "/api/list/anilist/154587", "auth": "bob", "body": {"score": 9}}, "expect": {"status": 404, "body": {"error": "no anilist account linked"}}},
+      {"req": {"method": "PUT", "path": "/api/list/anilist/154587", "auth": "bob", "raw_body": "nope"}, "expect": {"status": 400, "body": {"error": "invalid json"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-nope/tracking", "auth": "bob"}, "expect": {"status": 404, "body": {"error": "unknown item"}}},
+      {"req": {"method": "GET", "path": "/api/items/item-nope/tracking"}, "expect": {"status": 401}},
+      {"req": {"method": "PUT", "path": "/api/list/anilist/154587", "body": {"score": 9}}, "expect": {"status": 401}}
     ]},
     {"name": "the OAuth flow needs an operator client", "steps": [
       {"req": {"method": "GET", "path": "/api/me/links/anilist/authorize", "auth": "bob"},
@@ -70,13 +75,13 @@
        "expect": {"status": 302, "headers": {"Location": "/settings/connections?linked=anilist"}}},
       {"req": {"method": "GET", "path": "/api/me/links", "auth": "bob"},
        "expect": {"status": 200, "body": {"links": [{"platform": "anilist", "remote_user_id": "7", "remote_username": "watcher",
-         "linked_at": "$int", "last_sync_at": "$int", "entry_count": 2, "token_expires_at": 4102444800, "scrobble": false,
+         "linked_at": "$int", "last_sync_at": "$int", "entry_count": 2, "token_expires_at": 4102444800, "scrobble": true,
          "last_sync_error": "$absent", "token": "$absent", "token_expired": "$absent"}]}}},
       {"req": {"method": "GET", "path": "/api/list", "auth": "bob"},
        "expect": {"status": 200, "body": {"entries": [
          {"id": "anilist:154587", "user_id": "user-bob", "platform": "anilist", "remote_id": "154587", "media_type": "anime", "format": "TV",
           "title": "Frieren: Beyond Journey's End", "cover": "https://img.example/frieren-xl.jpg", "status": "current", "progress": 12,
-          "progress_total": 28, "score": 8.5, "started_at": "2026-01-03", "updated_at": "$int", "notes": "$absent", "completed_at": "$absent"},
+          "progress_total": 28, "score": 8.5, "started_at": "2026-01-03", "alt_titles": ["Sousou no Frieren"], "updated_at": "$int", "notes": "$absent", "completed_at": "$absent"},
          {"id": "anilist:30013", "user_id": "user-bob", "platform": "anilist", "remote_id": "30013", "media_type": "manga", "format": "MANGA",
           "title": "One Piece", "cover": "https://img.example/op.jpg", "status": "planning", "progress": 0, "progress_volumes": 7,
           "notes": "peak", "started_at": "2025-09-01", "updated_at": "$int", "progress_total": "$absent", "score": "$absent"}]}}},
@@ -92,14 +97,29 @@
        "expect": {"status": 200, "body": {"status": "ok", "stats": {"upserted": 2, "removed": 0}}}},
       {"req": {"method": "PATCH", "path": "/api/me/links/anilist", "auth": "bob", "body": {"scrobble": true}},
        "expect": {"status": 200, "body": {"platform": "anilist", "scrobble": true, "entry_count": 2, "$open": true}}},
-      {"req": {"method": "GET", "path": "/api/me/links", "auth": "bob"}, "expect": {"status": 200, "body": {"links": [{"scrobble": true, "$open": true}]}}},
+      {"req": {"method": "GET", "path": "/api/me/links", "auth": "bob"}, "expect": {"status": 200, "body": {"links": [{"scrobble": true, "last_push": "$absent", "$open": true}]}}},
+      {"req": {"method": "PUT", "path": "/api/list/anilist/154587", "auth": "bob", "body": {"score": 9, "status": "current"}},
+       "expect": {"status": 200, "body": {"entry": {"id": "anilist:154587", "remote_id": "154587", "title": "Frieren: Beyond Journey's End", "score": 9, "status": "current",
+         "progress": 13, "pushed_at": "$int", "push_error": "$absent", "item_id": "$absent", "$open": true}}}},
+      {"req": {"method": "GET", "path": "/api/me/links", "auth": "bob"},
+       "expect": {"status": 200, "body": {"links": [{"last_push": {"at": "$int", "remote_id": "154587", "title": "Frieren: Beyond Journey's End", "progress": 13, "status": "current", "via": "edit", "error": "$absent"}, "$open": true}]}}},
+      {"req": {"method": "GET", "path": "/api/list?status=current", "auth": "bob"},
+       "expect": {"status": 200, "body": {"entries": [{"remote_id": "154587", "score": 9, "pushed_at": "$int", "$open": true}]}}},
+      {"req": {"method": "PUT", "path": "/api/list/anilist/154587", "auth": "bob", "body": {"status": "watching"}},
+       "expect": {"status": 400, "body": {"code": "invalid-message", "$open": true}}},
+      {"req": {"method": "PUT", "path": "/api/list/anilist/154587", "auth": "bob", "body": {"score": 11}},
+       "expect": {"status": 400, "body": {"code": "invalid-message", "$open": true}}},
+      {"req": {"method": "PUT", "path": "/api/list/anilist/154587", "auth": "bob", "body": {}},
+       "expect": {"status": 400, "body": {"code": "invalid-message", "$open": true}}},
+      {"req": {"method": "PUT", "path": "/api/list/anilist/154587", "auth": "bob", "body": {"score": 9, "item_id": "item-nope"}},
+       "expect": {"status": 404, "body": {"error": "unknown item"}}},
       {"req": {"method": "DELETE", "path": "/api/me/links/anilist", "auth": "bob"}, "expect": {"status": 200, "body": {"status": "ok", "removed": 2}}},
       {"req": {"method": "GET", "path": "/api/list", "auth": "bob"}, "expect": {"status": 200, "body": {"entries": []}}},
       {"req": {"method": "GET", "path": "/api/me/links", "auth": "bob"}, "expect": {"status": 200, "body": {"links": []}}}
     ]},
     {"name": "a pasted pin URL links too", "requires": ["upstream"], "steps": [
       {"req": {"method": "POST", "path": "/api/me/links/anilist/code", "auth": "bob", "body": {"code": "https://anilist.co/api/v2/oauth/pin?code=good-code"}},
-       "expect": {"status": 200, "body": {"link": {"platform": "anilist", "remote_username": "watcher", "entry_count": 0, "scrobble": false, "$open": true}}}},
+       "expect": {"status": 200, "body": {"link": {"platform": "anilist", "remote_username": "watcher", "entry_count": 0, "scrobble": true, "$open": true}}}},
       {"req": {"method": "GET", "path": "/api/me/links", "auth": "bob"}, "expect": {"status": 200, "body": {"links": [{"entry_count": 2, "last_sync_at": "$int", "$open": true}]}}},
       {"req": {"method": "GET", "path": "/api/list", "auth": "bob"}, "expect": {"status": 200, "body": {"entries": {"$len": 2}}}}
     ]}

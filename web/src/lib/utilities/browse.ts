@@ -9,6 +9,23 @@ export function artItem(group: SeriesGroup) {
 	return group.items.find((i) => i.episode > 0) ?? group.items[0];
 }
 
+/**
+ * The file whose overlay a title's poster card draws: the first file of the
+ * title with a poster, then with a wide cover, else `artItem`. Overlays are
+ * kept per file, and the one a title has may sit on the episode being
+ * watched (a backfill that stopped part way, metadata fetched from that
+ * episode's page) while the first has none: the card then drew the first
+ * episode's frame letterboxed in the poster frame, where the hero drew the
+ * title's poster. Progress never chooses the picture.
+ */
+export function posterItem(group: SeriesGroup, enrichment: Lookup) {
+	return (
+		group.items.find((i) => !!enrichment(i.id)?.poster) ??
+		group.items.find((i) => !!enrichment(i.id)?.cover) ??
+		artItem(group)
+	);
+}
+
 /** Every genre of a group's files, first spelling kept, case ignored. */
 export function groupGenres(group: SeriesGroup, enrichment: Lookup): string[] {
 	const seen = new Map<string, string>();

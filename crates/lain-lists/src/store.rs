@@ -24,6 +24,10 @@ pub mod op {
     pub const PUT_PLATFORM: &str = "put-platform";
     /// `lain.list.write@1`: `{user_id, platform}` → the number removed
     pub const DELETE_PLATFORM: &str = "delete-platform";
+    /// `lain.list.write@1`: `{user_id, platform, entry}` → the stored
+    /// entry: one entry upserted, the rest of the set untouched (a write
+    /// lain made to the platform, D-288).
+    pub const PUT_ENTRY: &str = "put-entry";
     /// `lain.list.account@1`: `{user_id, platform}` → `LinkedAccount`
     pub const GET: &str = "get";
     /// `lain.list.account@1`: `{account}` → `LinkedAccount`
@@ -60,6 +64,16 @@ struct PutPlatformIn {
     platform: String,
     #[serde(default)]
     entries: Vec<ListEntry>,
+}
+
+#[derive(Deserialize, Default)]
+struct PutEntryIn {
+    #[serde(default)]
+    user_id: String,
+    #[serde(default)]
+    platform: String,
+    #[serde(default)]
+    entry: ListEntry,
 }
 
 #[derive(Deserialize, Default)]
@@ -143,8 +157,19 @@ impl ListStore {
                     e.platform = platform.into();
                     e.id = format!("{platform}:{rid}");
                     e.remote_id = rid.clone();
+                    e.item_id.clear();
+                    e.matched_by.clear();
                     e.updated_at = now;
-                    tx.put_json(Bucket::List, &entry_key(user_id, platform, &rid), &e)?;
+                    let key = entry_key(user_id, platform, &rid);
+                    // When lain last wrote the entry outlives an import;
+                    // a failed write does not: the import is the truth.
+                    if let Some(old) = tx.get(Bucket::List, &key)?
+                        && let Ok(old) = serde_json::from_slice::<ListEntry>(&old)
+                    {
+                        e.pushed_at = e.pushed_at.max(old.pushed_at);
+                    }
+                    e.push_error.clear();
+                    tx.put_json(Bucket::List, &key, &e)?;
                     stats.upserted += 1;
                 }
                 let prefix = platform_prefix(user_id, platform);
@@ -158,6 +183,24 @@ impl ListStore {
                 Ok(stats)
             })
             .map_err(store_err)
+    }
+
+    /// Upserts one entry of a platform's set, keyed as an import keys it.
+    pub fn put_entry(&self, user_id: &str, platform: &str, mut e: ListEntry) -> Result<ListEntry, Error> {
+        let rid = e.remote_id.trim().to_string();
+        if user_id.is_empty() || platform.is_empty() || rid.is_empty() || e.title.trim().is_empty() {
+            return Err(Error::invalid("user_id, platform and an entry with remote_id and title required"));
+        }
+        e.user_id = user_id.into();
+        e.platform = platform.into();
+        e.id = format!("{platform}:{rid}");
+        e.remote_id = rid.clone();
+        // Never stored: the gateway fills them on each read.
+        e.item_id.clear();
+        e.matched_by.clear();
+        e.updated_at = lain_core::now_unix();
+        self.store.write(|tx| tx.put_json(Bucket::List, &entry_key(user_id, platform, &rid), &e)).map_err(store_err)?;
+        Ok(e)
     }
 
     /// Removes every entry one platform owns for a user (unlink, D-079).
@@ -247,6 +290,10 @@ impl Provider for ListStore {
                 let i: PutPlatformIn = decode(input, "PutPlatformInput")?;
                 Ok(json!(self.put_platform(&i.user_id, &i.platform, i.entries)?))
             }
+            (CAP_LIST_WRITE, op::PUT_ENTRY) => {
+                let i: PutEntryIn = decode(input, "PutEntryInput")?;
+                Ok(json!(self.put_entry(&i.user_id, &i.platform, i.entry)?))
+            }
             (CAP_LIST_WRITE, op::DELETE_PLATFORM) => {
                 let k: AccountKey = decode(input, "DeletePlatformInput")?;
                 need_pair(&k)?;
@@ -320,6 +367,40 @@ mod tests {
         assert_eq!(s.delete_platform("u1", "anilist").unwrap(), 2);
         assert_eq!(s.list("u1", "", "").unwrap().len(), 1);
         assert_eq!(s.list("u10", "", "").unwrap().len(), 1);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn put_entry_upserts_one_and_keeps_the_rest() {
+        let (s, dir) = open();
+        s.put_platform("u", "anilist", vec![entry("1", "Frieren"), entry("2", "Bocchi")]).unwrap();
+        let mut e = entry(" 2 ", "Bocchi");
+        e.progress = 5;
+        e.item_id = "item-x".into();
+        e.matched_by = "title".into();
+        let got = s.put_entry("u", "anilist", e).unwrap();
+        assert_eq!((got.id.as_str(), got.item_id.as_str(), got.matched_by.as_str()), ("anilist:2", "", ""));
+        let all = s.list("u", "", "").unwrap();
+        assert_eq!(all.len(), 2, "the rest of the set stays");
+        assert_eq!(all.iter().find(|e| e.remote_id == "2").unwrap().progress, 5);
+        let mut failed = entry("1", "Frieren");
+        failed.pushed_at = 77;
+        failed.push_error = "rate-limited".into();
+        s.put_entry("u", "anilist", failed).unwrap();
+        s.put_platform("u", "anilist", vec![entry("1", "Frieren"), entry("2", "Bocchi")]).unwrap();
+        let back = s.list("u", "", "").unwrap().into_iter().find(|e| e.remote_id == "1").unwrap();
+        assert_eq!(
+            (back.pushed_at, back.push_error.as_str()),
+            (77, ""),
+            "an import keeps the write time, not its error"
+        );
+        s.put_entry("u", "anilist", entry("3", "New")).unwrap();
+        assert_eq!(s.list("u", "", "").unwrap().len(), 3, "a new remote id is added");
+        assert_eq!(s.put_entry("u", "anilist", entry("4", " ")).unwrap_err().code, "invalid-message");
+        assert_eq!(
+            s.invoke(CAP_LIST_WRITE, op::PUT_ENTRY, json!({"user_id": "u", "platform": "anilist"})).unwrap_err().code,
+            "invalid-message"
+        );
         std::fs::remove_dir_all(dir).ok();
     }
 

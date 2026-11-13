@@ -427,9 +427,21 @@ pub struct CatalogItem {
     /// catalog and search answers and never stored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thumbnail: Option<ThumbnailInfo>,
+    /// D-287: the file cannot be reached right now, filled by the gateway
+    /// with `thumbnail` and never stored: `library` when its library's
+    /// folder is missing or empty (an unmounted disk), `file` when the
+    /// folder is there but the file is not. Empty when the file is there.
+    /// `missing` is the scan's stored verdict; this is the live one.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub offline: String,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
+
+/// `CatalogItem.offline` when the library's folder is not reachable.
+pub const OFFLINE_LIBRARY: &str = "library";
+/// `CatalogItem.offline` when only the file is gone.
+pub const OFFLINE_FILE: &str = "file";
 
 /// What `GET /api/items/{id}/thumbnail` serves without a time (D-269),
 /// said before it is fetched (D-282): a client draws the card in its
@@ -439,7 +451,8 @@ pub struct ThumbnailInfo {
     /// `sidecar`: a still that came with the file (`<name>-poster.*`,
     /// `<name>-thumb.*`, `.metadata/thumbs/`); `cover`: a comic
     /// archive's cover page (the first upright page); `frame`: a frame
-    /// the server cuts from the video.
+    /// the server cuts from the video; `title` (D-287): the file cannot
+    /// be reached, so the route serves its title's art or a placeholder.
     pub source: String,
     /// Width over height, when the server read it from the picture's
     /// header (a sidecar); absent when unknown (a frame is the video's

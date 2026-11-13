@@ -10,6 +10,7 @@
 	import { t } from '$lib/i18n';
 	import { progressRatio } from '$lib/utilities/progress';
 	import ProgressBar from './ProgressBar.svelte';
+	import OfflineMark from './OfflineMark.svelte';
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable } from '$lib/reader/kinds';
 	import { toldShape } from '$lib/stores/shapes.svelte';
@@ -47,11 +48,27 @@
 	// A page is portrait: shown as a cover over a blurred backdrop instead of
 	// being stretched across the hero like a video still.
 	const cover = $derived(api.thumbnail.url(item.id, session.token, { width: 720 }));
+	// D-287: each picture walks its chain on error (the overlay's art, then
+	// the file's picture, which a server since D-287 answers with the title's
+	// art when the file is away) and the hero ends on the lettered
+	// placeholder, never an empty black stage.
+	let failed = $state<string[]>([]);
+	const first = (chain: (string | undefined)[]) =>
+		chain.find((s): s is string => !!s && !failed.includes(s)) ?? '';
 	const artwork = $derived(
-		reading
-			? enrichment?.cover || enrichment?.poster || cover
-			: enrichment?.cover || enrichment?.poster || api.thumbnail.url(item.id, session.token, { width: 1600 })
+		first(
+			reading
+				? [enrichment?.cover, enrichment?.poster, cover]
+				: // A file that cannot be reached would be lettered by the server
+					// behind the title's own name: the stage stays plain instead.
+					[enrichment?.cover, enrichment?.poster, item.offline ? '' : api.thumbnail.url(item.id, session.token, { width: 1600 })]
+		)
 	);
+	const poster = $derived(first([enrichment?.poster, item.offline ? '' : cover]));
+	function fail(e: Event): void {
+		const src = (e.currentTarget as HTMLImageElement).getAttribute('src');
+		if (src && !failed.includes(src)) failed = [...failed, src];
+	}
 	const title = $derived(enrichment?.title || item.title);
 	const eyebrow = $derived(
 		// Not the words of the rail right under it.
@@ -78,26 +95,32 @@
 </script>
 
 <section class="hero-monolith relative overflow-hidden bg-background" aria-label={title}>
-	{#if upright}
+	{#if !artwork}
+		<!-- Nothing to show: the theme's surface, never a black stage; the
+		     title below is the lettering. -->
+		<div class="absolute inset-0 bg-gradient-to-br from-surface-active to-background" aria-hidden="true"></div>
+	{:else if upright}
 		<img
 			src={artwork}
 			alt=""
 			aria-hidden="true"
 			decoding="async"
 			referrerpolicy="no-referrer"
+			onerror={fail}
 			class="absolute inset-0 size-full scale-125 object-cover opacity-30 blur-3xl"
 		/>
-		<img
-			src={enrichment?.poster || cover}
+		{#if poster}<img
+			src={poster}
 			alt=""
 			aria-hidden="true"
 			loading="eager"
 			fetchpriority="high"
 			decoding="async"
 			referrerpolicy="no-referrer"
+			onerror={fail}
 			class="absolute right-[8%] top-[56%] z-[1] hidden h-[62%] max-h-[38rem] w-auto -translate-y-1/2 rounded-xl object-contain shadow-[0_30px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/12 md:block lg:right-[12%]"
-		/>
-	{:else if artwork}
+		/>{/if}
+	{:else}
 		<img
 			src={artwork}
 			alt=""
@@ -106,6 +129,7 @@
 			fetchpriority="high"
 			decoding="async"
 			referrerpolicy="no-referrer"
+			onerror={fail}
 			class="hero-monolith-art absolute inset-0 hidden size-full object-cover object-center md:block"
 		/>
 		<!-- Phone: the art's colours wash the background and the art itself is
@@ -117,6 +141,7 @@
 			aria-hidden="true"
 			decoding="async"
 			referrerpolicy="no-referrer"
+			onerror={fail}
 			class="absolute inset-0 size-full scale-150 object-cover opacity-55 blur-3xl md:hidden"
 		/>
 	{/if}
@@ -125,17 +150,21 @@
 		<!-- Beside upright art the copy keeps to the left half until the screen
 		     is wide enough for both: at 768 the synopsis ran under the poster. -->
 		<div class="hero-monolith-copy max-w-4xl {upright ? 'md:max-w-[52%] xl:max-w-4xl' : ''}">
-			<img
-				src={enrichment?.poster || cover}
-				alt=""
-				aria-hidden="true"
-				loading="eager"
-				decoding="async"
-				referrerpolicy="no-referrer"
-				class="mb-5 max-h-40 w-auto max-w-full rounded-xl object-contain shadow-[0_20px_50px_rgba(0,0,0,0.5)] ring-1 ring-white/10 md:hidden"
-			/>
-			<p class="mb-4 font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">
+			{#if poster}
+				<img
+					src={poster}
+					alt=""
+					aria-hidden="true"
+					loading="eager"
+					decoding="async"
+					referrerpolicy="no-referrer"
+					onerror={fail}
+					class="mb-5 max-h-40 w-auto max-w-full rounded-xl object-contain shadow-[0_20px_50px_rgba(0,0,0,0.5)] ring-1 ring-white/10 md:hidden"
+				/>
+			{/if}
+			<p class="mb-4 flex items-center gap-3 font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">
 				{eyebrow}
+				{#if item.offline}<OfflineMark />{/if}
 			</p>
 			<h1 class="hero-monolith-title text-white">{title}</h1>
 			{#if meta.length > 0}

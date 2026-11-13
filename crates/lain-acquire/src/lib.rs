@@ -15,6 +15,7 @@ pub mod monitored;
 pub mod util;
 
 pub use error::{AcqError, Result};
+pub mod aggregators;
 pub mod automation;
 pub mod client;
 pub mod manager;

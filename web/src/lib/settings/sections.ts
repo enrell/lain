@@ -105,7 +105,7 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'downloadStorage', href: '/settings/downloads', anchor: 'storage', keywords: 'download disk space usage cleanup partial', admin: true },
 	{ id: 'downloadLimits', href: '/settings/downloads', anchor: 'limits', keywords: 'download quota budget limit free space directory concurrency', admin: true },
 	{ id: 'offlineStorage', href: '/settings/offline', anchor: 'storage', keywords: 'offline save download cache browser quota storage read' },
-	{ id: 'indexers', href: '/settings/indexers', anchor: 'indexers', keywords: 'indexer torznab newznab jackett prowlarr tracker api key', admin: true },
+	{ id: 'indexers', href: '/settings/indexers', anchor: 'indexers', keywords: 'indexer torznab newznab jackett prowlarr tracker api key preset coding agent claude code opencode deepseek', admin: true },
 	{ id: 'acquisitionEngine', href: '/settings/acquisition', anchor: 'engine', keywords: 'torrent engine port peers rate limit speed bittorrent', admin: true },
 	{ id: 'acquisitionSeeding', href: '/settings/acquisition', anchor: 'seeding', keywords: 'seed ratio seeding time share upload', admin: true },
 	{ id: 'acquisitionImport', href: '/settings/acquisition', anchor: 'import', keywords: 'import hardlink copy move rename library', admin: true },

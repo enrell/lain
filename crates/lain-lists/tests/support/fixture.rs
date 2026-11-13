@@ -126,7 +126,7 @@ pub fn token() -> String {
 
 pub fn anilist(state: Arc<Mutex<AniListState>>) -> impl Fn(&Recorded) -> (u16, String) + Send + 'static {
     move |r: &Recorded| {
-        let st = state.lock().unwrap();
+        let mut st = state.lock().unwrap();
         if r.path.ends_with("/oauth/token") {
             let v = r.json();
             if v["code"] != "good" {
@@ -150,16 +150,54 @@ pub fn anilist(state: Arc<Mutex<AniListState>>) -> impl Fn(&Recorded) -> (u16, S
             return (200, r#"{"data":{"Viewer":{"id":42,"name":"watcher"}}}"#.into());
         }
         if q.contains("SaveMediaListEntry") {
-            let vars = &v["variables"];
-            return (
-                200,
-                serde_json::json!({"data": {"SaveMediaListEntry": {"progress": vars["progress"], "status": vars["status"].as_str().unwrap_or("CURRENT")}}})
-                    .to_string(),
-            );
+            let saved = save(&mut st, &v["variables"]);
+            return (200, serde_json::json!({"data": {"SaveMediaListEntry": saved}}).to_string());
         }
         let lists = if v["variables"]["type"] == "MANGA" { st.manga.clone() } else { st.anime.clone() };
         (200, serde_json::json!({"data": {"MediaListCollection": {"lists": lists}}}).to_string())
     }
+}
+
+/// `SaveMediaListEntry` as AniList runs it: the given fields change on
+/// the stored entry (one is created in the first list for an unknown
+/// media), COMPLETED fills the progress, and the whole entry comes back.
+fn save(st: &mut AniListState, vars: &serde_json::Value) -> serde_json::Value {
+    let id = vars["mediaId"].as_i64().unwrap_or(0);
+    let mut at = None;
+    for (set, lists) in [&st.anime, &st.manga].into_iter().enumerate() {
+        for (li, l) in lists.as_array().into_iter().flatten().enumerate() {
+            for (ei, e) in l["entries"].as_array().into_iter().flatten().enumerate() {
+                if e["mediaId"] == id {
+                    at = Some((set, li, ei));
+                }
+            }
+        }
+    }
+    let (set, li, ei) = match at {
+        Some(at) => at,
+        None => {
+            if st.anime.as_array().is_none_or(|a| a.is_empty()) {
+                st.anime = serde_json::json!([{"name": "Planning", "isCustomList": false, "entries": []}]);
+            }
+            let list = st.anime[0]["entries"].as_array_mut().unwrap();
+            list.push(al_entry(id, "ANIME", &format!("Media {id}"), "PLANNING", 0, 12));
+            (0, 0, list.len() - 1)
+        }
+    };
+    let entry = &mut (if set == 0 { &mut st.anime } else { &mut st.manga })[li]["entries"][ei];
+    for (var, field) in [("progress", "progress"), ("progressVolumes", "progressVolumes"), ("status", "status")] {
+        if !vars[var].is_null() {
+            entry[field] = vars[var].clone();
+        }
+    }
+    if let Some(raw) = vars["scoreRaw"].as_i64() {
+        entry["score"] = serde_json::json!(raw as f64 / 10.0);
+    }
+    if vars["status"] == "COMPLETED" && vars["progress"].is_null() {
+        let total = entry["media"]["episodes"].as_i64().or(entry["media"]["chapters"].as_i64()).unwrap_or(0);
+        entry["progress"] = serde_json::json!(total);
+    }
+    entry.clone()
 }
 
 /// One AniList list entry.

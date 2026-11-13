@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { CatalogItem, Enrichment } from '$lib/api/types';
-	import { cardThumb, stillOf } from '$lib/stores/frames';
+	import { cardThumb, standsIn, stillOf } from '$lib/stores/frames';
 	import { isReadable } from '$lib/reader/kinds';
 	import { guessShape, recordShape, shapeOf, toldShape, type Shape } from '$lib/stores/shapes.svelte';
 	import PlaceholderPoster from './PlaceholderPoster.svelte';
@@ -27,7 +27,7 @@
 	// poster -> cover -> still frame (extracted and cached by the server).
 	const artwork = $derived(!artworkFailed ? enrichment?.poster || enrichment?.cover || '' : '');
 	// The same address a grid's check measures (`settleFrame`), so one load serves both.
-	const thumb = $derived(!thumbFailed ? cardThumb(item) : '');
+	const thumb = $derived(!thumbFailed && !standsIn(item) ? cardThumb(item) : '');
 	const src = $derived(artwork || thumb);
 	const alt = $derived(enrichment?.title || item.title);
 	/*
@@ -90,6 +90,6 @@
 			onerror={handleError}
 		/>
 	{:else}
-		<PlaceholderPoster title={alt} seed={item.id} class="size-full" />
+		<PlaceholderPoster title={alt} seed={item.id} wide={frame === 'landscape'} class="size-full" />
 	{/if}
 </div>

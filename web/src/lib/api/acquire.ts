@@ -77,6 +77,35 @@ export interface IndexerInput {
 	min_interval_ms?: number;
 }
 
+/** POST /api/acquire/indexers/probe (D-290): an indexer tried before it is saved. */
+export interface IndexerProbe {
+	ok: boolean;
+	caps?: IndexerCaps;
+	/** A few of its latest releases; never links. */
+	sample: Pick<SearchResult, 'title' | 'size' | 'seeders' | 'peers' | 'protocol' | 'published_at'>[];
+	error?: string;
+}
+
+export type AggregatorSource = 'prowlarr' | 'jackett';
+
+export interface DiscoverInput {
+	source: AggregatorSource;
+	url: string;
+	api_key: string;
+}
+
+/** One feed a Prowlarr or Jackett serves. */
+export interface DiscoveredIndexer {
+	source_id: string;
+	name: string;
+	protocol: 'torznab' | 'newznab';
+	url: string;
+	privacy?: 'public' | 'private' | 'semi-private';
+	enabled: boolean;
+	/** The lain indexer already on this feed. */
+	added_as?: string;
+}
+
 export interface SearchResult {
 	indexer_id: string;
 	protocol: 'torrent' | 'usenet';
@@ -379,6 +408,13 @@ export const acquire = {
 		request<{ indexer: Indexer; ok: boolean; error?: string }>(`/api/acquire/indexers/${seg(id)}/test`, {
 			method: 'POST'
 		}),
+	/** With `id`, the saved indexer with `body` over it (its stored key). Nothing is written. */
+	probeIndexer: (body: IndexerInput & { id?: string }) =>
+		request<IndexerProbe>('/api/acquire/indexers/probe', { method: 'POST', body }),
+	discoverIndexers: (body: DiscoverInput) =>
+		request<{ source: AggregatorSource; indexers: DiscoveredIndexer[] }>('/api/acquire/indexers/discover', { method: 'POST', body }),
+	importIndexers: (body: DiscoverInput & { ids: string[] }) =>
+		request<{ added: Indexer[]; skipped: string[] }>('/api/acquire/indexers/import', { method: 'POST', body }),
 
 	search: (p: SearchParams) =>
 		request<SearchResponse>('/api/acquire/search', {

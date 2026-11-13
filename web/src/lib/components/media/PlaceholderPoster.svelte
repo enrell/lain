@@ -1,59 +1,50 @@
 <script lang="ts">
 	/*
-	 * Deterministic artwork placeholder: same item always gets the same
-	 * quiet gradient + monogram, so a partially enriched library still
-	 * reads as a designed grid instead of broken images.
+	 * The picture a title shows when it has none (D-287): its name lettered
+	 * in large tight type on the theme's surface, under the accent's short
+	 * bar, with the house's small mono label for the part. The server draws
+	 * the same for a thumbnail it cannot make (an SVG), so a card looks the
+	 * same whichever side gave up. Never an empty box: a library still
+	 * reads as a designed grid when its disk is away or its art is missing.
 	 */
 	let {
 		title,
-		seed,
+		seed = '',
+		label = '',
+		wide = false,
 		class: className = ''
 	}: {
 		title: string;
-		seed: string;
+		/** Kept for callers; the look no longer varies by item. */
+		seed?: string;
+		/** A small mono line under the name (S01E03, a year). */
+		label?: string;
+		/** A 16:9 slot, where the name is set smaller than on a 2:3 cover. */
+		wide?: boolean;
 		class?: string;
 	} = $props();
+	
 
-	const palettes: [string, string][] = [
-		['#12323b', '#0a161c'],
-		['#1b2a44', '#0c1220'],
-		['#2c2438', '#140f1d'],
-		['#20302a', '#0d1512'],
-		['#332a22', '#191410'],
-		['#252b3a', '#10131b']
-	];
-
-	function hash(input: string): number {
-		let h = 2166136261;
-		for (let i = 0; i < input.length; i++) {
-			h ^= input.charCodeAt(i);
-			h = Math.imul(h, 16777619);
-		}
-		return h >>> 0;
-	}
-
-	const h = $derived(hash(seed || title));
-	const palette = $derived(palettes[h % palettes.length]);
-	const monogram = $derived(
-		title
-			.split(/\s+/)
-			.filter((w) => /[\p{L}\p{N}]/u.test(w))
-			.slice(0, 2)
-			.map((w) => [...w][0]?.toUpperCase() ?? '')
-			.join('') || '?'
-	);
+	const name = $derived(title.trim() || '?');
 </script>
 
 <div
-	class={['relative flex items-center justify-center', className].join(' ')}
-	style={`background: linear-gradient(155deg, ${palette[0]}, ${palette[1]});`}
+	class={['relative flex flex-col justify-end overflow-hidden bg-gradient-to-br from-surface-active to-background', className].join(' ')}
+	style="container-type: inline-size;"
 	aria-hidden="true"
 >
-	<div
-		class="absolute inset-0 opacity-40"
-		style="background-image: radial-gradient(circle, rgba(255,255,255,0.10) 1px, transparent 1px); background-size: 18px 18px;"
-	></div>
-	<span class="relative font-mono text-3xl font-semibold tracking-widest text-white/25">
-		{monogram}
-	</span>
+	<span class="absolute left-[7cqi] top-[7cqi] h-[max(2px,0.8cqi)] w-[8cqi] rounded-full bg-accent"></span>
+	<div class="relative p-[7cqi]">
+		<p
+			class="line-clamp-3 break-words font-bold leading-[1.05] tracking-[-0.02em] text-foreground"
+			style:font-size={wide ? 'max(0.75rem, 7.3cqi)' : 'max(0.75rem, 12cqi)'}
+		>
+			{name}
+		</p>
+		{#if label}
+			<p class="mt-[3cqi] truncate font-mono font-semibold uppercase tracking-[0.18em] text-muted" style:font-size={wide ? 'max(0.5625rem, 2.8cqi)' : 'max(0.5625rem, 4.5cqi)'}>
+				{label}
+			</p>
+		{/if}
+	</div>
 </div>
