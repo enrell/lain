@@ -1718,7 +1718,8 @@ const en = {
 			connect: 'Connect AniList',
 			watch: 'Browse the library',
 			stepConnect: 'Connect',
-			stepConnectText: 'Link your AniList account under Settings → Connections.',
+			// What connecting is, not where: Connect AniList over the steps goes there.
+			stepConnectText: 'Sign in to AniList once; the link stays until you remove it.',
 			stepImport: 'Import',
 			stepImportText: 'Its list arrives here and can be synced again at any time.',
 			stepWatch: 'Watch here',
@@ -1951,7 +1952,8 @@ const en = {
 			addIndexer: 'Add an indexer',
 			fromLink: 'Grab from a link',
 			stepIndexer: 'Add an indexer',
-			stepIndexerText: 'Settings → Indexers takes a Torznab address and its key.',
+			// What an indexer is, not where it is added: the button over the steps and the header's Indexers go there.
+			stepIndexerText: 'A Torznab address and its API key, from Jackett or Prowlarr.',
 			stepSearch: 'Search',
 			stepSearchText: 'Search here, then grab a release into the library you pick.',
 			stepFollow: 'Follow',
