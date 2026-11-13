@@ -825,7 +825,8 @@ const en = {
 				title: 'Hardware acceleration',
 				nothing: 'No hardware backend passed the probe on this machine. Install a GPU driver ffmpeg can use, restart the server, and the backends that pass appear here.',
 				// The section with software encoding: the backend is picked in the server's rows.
-				software: 'Video is encoded on the CPU. Pick a backend in the Video engine row above to tune the hardware.',
+				// Only the way there: the section's summary just above already says "Off: video is encoded on the CPU".
+				software: 'Pick a backend in the Video engine row above; its encode and decode settings then show here.',
 				device: 'VA-API device',
 				deviceHint: 'The render node (usually /dev/dri/renderD128). Other backends find their own device.',
 				encode: 'Encode in hardware',
@@ -845,7 +846,8 @@ const en = {
 			hdr: {
 				title: 'HDR & tone mapping',
 				// The section with tone mapping off: it is turned on in the server's rows.
-				off: 'Tone mapping is off. Turn it on in the HDR row above to pick the algorithm, when it applies and the peak.',
+				// Only the way there: the section's summary just above already says it is off.
+				off: 'Turn tone mapping on in the HDR row above to pick the algorithm, when it applies and the peak.',
 				algorithm: 'Algorithm',
 				bt2390: 'BT.2390 (needs libplacebo/Vulkan)',
 				bt2390Missing: 'BT.2390 needs libplacebo, which this ffmpeg lacks; the server uses Hable instead.',
