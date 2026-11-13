@@ -9,6 +9,8 @@
 	// Import the hash-router adapter directly: vite.config.ts skips rewriting
 	// `$app/navigation` for files inside `src/lib/demo/`.
 	import { goto } from './navigation';
+	import { api } from '$lib/api';
+	import { session } from '$lib/auth/session.svelte';
 	import { t } from '$lib/i18n';
 
 	interface EpisodesControl {
@@ -39,6 +41,8 @@
 			? IP_FALLBACK_VIDEO
 			: PRIMARY_VIDEO
 	);
+	// What stands where the picture would be: a frame of the title itself.
+	const poster = $derived(itemId ? api.thumbnail.url(itemId, session.token, { at: 10, width: 960 }) : '');
 	const backHref = $derived(itemId ? `/item/${itemId}` : '/library');
 	const episodesLabel = $derived(
 		episodes ? (episodes.shown ? t('player.episodesHide') : t('player.episodesShow')) : ''
@@ -89,23 +93,34 @@
 			></iframe>
 		</div>
 	{:else}
-		<div class="flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-5 py-6 text-center max-md:portrait:flex-none sm:px-8 sm:py-10">
-			<div class="mx-auto my-auto flex max-w-md flex-col items-center gap-3.5 sm:gap-5">
-				<p class="font-mono text-[10px] uppercase tracking-[0.28em] text-accent">Live demo</p>
-				<p class="text-base font-semibold leading-snug text-foreground sm:text-lg">
-					This demo has no files behind it, so {title} cannot play here.
-				</p>
-				<p class="text-xs leading-relaxed text-muted sm:text-sm">
-					On your own server this is the player: direct play, subtitles, seek previews. Here, Play brings something else.
-				</p>
-				<button
-					type="button"
-					class="mt-1 inline-flex h-11 shrink-0 items-center gap-2 rounded-lg bg-accent px-5 text-sm font-semibold text-accent-fg transition-colors hover:bg-accent-hover sm:h-12 sm:px-6"
-					onclick={() => (playing = true)}
-				>
-					<Play class="size-4" fill="currentColor" /> Play anyway
-				</button>
-			</div>
-		</div>
+		<!-- A paused player: a frame of the title, and Play. The whole picture is the button. -->
+		<button
+			type="button"
+			class="group relative min-h-0 w-full flex-1 overflow-hidden bg-black text-left max-md:portrait:aspect-video max-md:portrait:flex-none"
+			aria-label="Play {title}"
+			onclick={() => (playing = true)}
+		>
+			{#if poster}
+				<img
+					src={poster}
+					alt=""
+					draggable="false"
+					class="absolute inset-0 size-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
+				/>
+			{/if}
+			<span class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/40" aria-hidden="true"></span>
+			<span
+				class="absolute left-1/2 top-1/2 grid size-16 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-accent text-accent-fg shadow-[0_0_0_10px_rgb(255_255_255/0.08)] transition-transform duration-200 group-hover:scale-110 sm:size-20"
+				aria-hidden="true"
+			>
+				<Play class="ml-1 size-7 sm:size-8" fill="currentColor" />
+			</span>
+			<span class="absolute inset-x-0 bottom-0 flex flex-col gap-1 px-4 pb-3 sm:px-6 sm:pb-5">
+				<span class="font-mono text-[10px] uppercase tracking-[0.28em] text-accent">Live demo</span>
+				<span class="max-w-xl text-xs leading-snug text-white/80 sm:text-sm">
+					No files behind this demo, so {title} cannot play here. Press Play anyway.
+				</span>
+			</span>
+		</button>
 	{/if}
 </div>
