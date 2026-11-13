@@ -9,6 +9,7 @@
 	import { tick, untrack, type Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import CircleHelp from '@lucide/svelte/icons/circle-help';
@@ -106,6 +107,8 @@
 
 	// A manga is read in volumes, a comic in issues: the words differ, the keys do not.
 	const manga = $derived(profile.kind === 'manga');
+	// Said beside the page slider on a phone when it can change, or when it runs right to left.
+	const showDirection = $derived(settings.mode === 'paged' && (profile.controls.direction || settings.direction === 'rtl'));
 	const shortcuts = $derived<[string[], string][]>([
 		[settings.mode === 'paged' && settings.direction === 'rtl' ? ['←'] : ['→'], t('reader.keys.next')],
 		[settings.mode === 'paged' && settings.direction === 'rtl' ? ['→'] : ['←'], t('reader.keys.previous')],
@@ -662,9 +665,32 @@
 			: 'translate-y-[130%] opacity-0'}"
 	>
 		<div
-			class="pointer-events-auto mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border border-line/70 bg-background/80 px-4 py-3 shadow-[0_18px_45px_rgba(0,0,0,0.4)] backdrop-blur-xl"
-			dir={settings.mode === 'paged' ? settings.direction : 'ltr'}
+			class="pointer-events-auto mx-auto flex max-w-3xl items-center gap-3 rounded-2xl border border-line/70 bg-background/80 px-4 py-3 shadow-[0_18px_45px_rgba(0,0,0,0.4)] backdrop-blur-xl {showDirection
+				? 'max-sm:py-1.5 max-sm:ps-1.5'
+				: ''}"
 		>
+			<!-- The direction beside the slider it turns around, on a phone, where the
+			     LTR / RTL toggles wait behind the options button: a slider running 8 to 1
+			     with nothing saying why read as broken. A tap flips it, as R does. -->
+			{#if showDirection}
+				{@const Arrow = settings.direction === 'rtl' ? ArrowLeft : ArrowRight}
+				{@const name = settings.direction === 'rtl' ? t('reader.toolbar.rtl') : t('reader.toolbar.ltr')}
+				{#if profile.controls.direction}
+					<button
+						type="button"
+						class="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-line/70 bg-foreground/[0.06] px-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-foreground active:bg-surface-hover sm:hidden"
+						aria-label={t(settings.direction === 'rtl' ? 'reader.toolbar.readsRtl' : 'reader.toolbar.readsLtr')}
+						onclick={() => settings.toggleDirection()}
+					>
+						<Arrow class="size-3.5" aria-hidden="true" />{name}
+					</button>
+				{:else}
+					<span class="inline-flex min-h-10 shrink-0 items-center gap-1.5 px-1 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted sm:hidden">
+						<Arrow class="size-3.5" aria-hidden="true" /><span class="sr-only">{t(`reader.info.direction.${settings.direction}`)}</span><span aria-hidden="true">{name}</span>
+					</span>
+				{/if}
+			{/if}
+			<div class="flex min-w-0 flex-1 items-center gap-3" dir={settings.mode === 'paged' ? settings.direction : 'ltr'}>
 			<span class="font-mono text-[10px] tabular-nums text-muted">1</span>
 			<input
 				type="range"
@@ -680,6 +706,7 @@
 				style:--to={settings.mode === 'paged' && settings.direction === 'rtl' ? 'left' : 'right'}
 			/>
 			<span class="font-mono text-[10px] tabular-nums text-muted">{total}</span>
+			</div>
 		</div>
 	</footer>
 </div>
