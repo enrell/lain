@@ -119,6 +119,17 @@
 	);
 }
 
+/* The same for a list that scrolls down (the player's episodes). */
+@utility edge-fade-y {
+	mask-image: linear-gradient(
+		to bottom,
+		transparent,
+		black var(--fade-top, 0px),
+		black calc(100% - var(--fade-bottom, 0px)),
+		transparent
+	);
+}
+
 /*
  * One type scale for headings (r19 design review). A page's own name is
  * the largest text after a hero's title, and a section under it (a rail,
