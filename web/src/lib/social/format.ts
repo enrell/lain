@@ -29,7 +29,11 @@ const KINDS: Record<string, () => string> = {
 	series: () => t('social.kind.series'),
 	movie: () => t('social.kind.movie'),
 	manga: () => t('social.kind.manga'),
-	comic: () => t('social.kind.comic')
+	comic: () => t('social.kind.comic'),
+	// A work named by a catalog item carries the item's kind: an episode's work
+	// is its show ("Harbor Lights · EPISODE" read as one episode), a video a film or clip.
+	episode: () => t('social.kind.series'),
+	video: () => t('social.kind.video')
 };
 
 /** A known media kind in the interface language; unknown kinds stay as their token. */

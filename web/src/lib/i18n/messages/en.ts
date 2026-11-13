@@ -1317,7 +1317,9 @@ const en = {
 			series: 'Series',
 			movie: 'Movie',
 			manga: 'Manga',
-			comic: 'Comic'
+			comic: 'Comic',
+			// A catalog video: a film or a clip.
+			video: 'Video'
 		},
 		unit: {
 			episode: 'S{season}E{episode}',
