@@ -13,7 +13,6 @@
 	<meta property="og:image" content="https://enrell.github.io/lain/assets/shots/home.webp" />
 	<meta name="twitter:card" content="summary_large_image" />
 	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c0b0c'/%3E%3Cg fill='none' stroke='%23b59790' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M18 22 L46 18 M18 22 L32 46 M46 18 L32 46'/%3E%3C/g%3E%3Ccircle cx='18' cy='22' r='5' fill='%230c0b0c' stroke='%23b59790' stroke-width='3'/%3E%3Ccircle cx='46' cy='18' r='5' fill='%230c0b0c' stroke='%23b59790' stroke-width='3'/%3E%3Ccircle cx='32' cy='46' r='5' fill='%23b59790'/%3E%3C/svg%3E" />
-	<link rel="preload" as="image" href="assets/shots/home.webp" />
 	<link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -31,7 +30,7 @@
 				<span>lain</span>
 			</a>
 			<nav class="nav-links" aria-label="Sections">
-				<a href="#tour">Tour</a>
+				<a href="#tour">Live demo</a>
 				<a href="#watch">Watch</a>
 				<a href="#read">Read</a>
 				<a href="#clients">Apps</a>
@@ -59,7 +58,7 @@
 				</p>
 				<div class="cta">
 					<a class="btn btn-primary" href="#install">Get lain</a>
-					<a class="btn btn-quiet" href="#tour">Take the tour</a>
+					<a class="btn btn-quiet" href="#tour">Try it live</a>
 				</div>
 				<div class="copyline" data-copy-root>
 					<span class="prompt" aria-hidden="true">$</span>
@@ -73,36 +72,47 @@
 					<li>Apache-2.0</li>
 				</ul>
 			</div>
-			<div class="wrap">
-				<figure class="frame hero-shot">
-					<img src="assets/shots/home.webp" width="1760" height="1100" alt="lain's Home: a title to resume, then Continue watching and a row per library" fetchpriority="high" />
-				</figure>
-				<p class="note">Real screenshots of the client on its author's library. The reader, the settings and the Android app show a demo library.</p>
-			</div>
 		</section>
 
-		<!-- tour -->
-		<section class="section" id="tour">
+		<!-- the live demo -->
+		<section class="section tight" id="tour">
 			<div class="wrap">
-				<p class="eyebrow">The tour</p>
-				<h2>A client you would pick even if it were not yours.</h2>
+				<p class="eyebrow">Try it here</p>
+				<h2>This is the client itself, running in your browser.</h2>
 				<p class="sub">
-					Built screen by screen until nothing needed explaining: titles instead of files,
-					one calm grid, the next thing to watch always one key away.
+					Not a video and not a mock-up: the real web client on a small demo library,
+					with a recorded server behind it. Click around, search, open a comic.
+					Nothing you do is saved.
 				</p>
-				<div class="tour" data-tour>
-					<div class="tabs" role="tablist" aria-label="Screens">
-						<button role="tab" type="button" id="tab-home" aria-selected="true" aria-controls="tour-panel" data-shot="home" data-alt="Home with a title to resume and rows per library" data-cap="Home picks up where you left off, then gives every library its own row of whole titles.">Home</button>
-						<button role="tab" type="button" id="tab-library" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-shot="library" data-alt="A library as a grid of posters, with filters beside it" data-cap="Every title of a library in one calm grid, with filters that say how many they leave: progress, kind, genre, when it was added.">Library</button>
-						<button role="tab" type="button" id="tab-title" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-shot="title-series" data-alt="A series page with its episodes" data-cap="A title page opens on the episode you are in. Resume names it; your score and downloads sit beside it.">Title</button>
-						<button role="tab" type="button" id="tab-search" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-shot="search" data-alt="Search results as cards" data-cap="Press / anywhere and type. Results are titles, in the same cards as the library.">Search</button>
-						<button role="tab" type="button" id="tab-settings" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-shot="settings-transcoding" data-alt="Transcoding settings" data-cap="Settings that fit on a screen: what the probe found on this machine, and who picks the rest.">Settings</button>
-					</div>
-					<figure class="frame" id="tour-panel" role="tabpanel" aria-labelledby="tab-home" tabindex="0">
-						<img src="assets/shots/home.webp" width="1760" height="1100" alt="Home with a title to resume and rows per library" loading="lazy" data-tour-img />
-						<figcaption data-tour-cap>Home picks up where you left off, then gives every library its own row of whole titles.</figcaption>
-					</figure>
+				<div class="tabs" role="tablist" aria-label="Jump to a screen of the demo" data-demo-tabs>
+					<button role="tab" type="button" aria-selected="true" data-route="/">Home</button>
+					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/library?view=shelves">Library</button>
+					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/library?view=all">All titles</button>
+					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/item/cb6d722e4a2e8c2e">Series</button>
+					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/item/e2bf85f3b48199b6">Film</button>
+					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/read/ab0fce996f9aa7f4">Reader</button>
+					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/search?q=s">Search</button>
+					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/settings/transcoding">Settings</button>
 				</div>
+				<div class="live" data-live="desktop">
+					<div class="live-bar">
+						<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+						<span class="live-url">your-server:9360</span>
+						<a class="live-open" href="demo/" target="_blank" rel="noopener">Open full screen</a>
+					</div>
+					<div class="live-view">
+						<iframe title="lain's web client, live demo" data-src="demo/" width="1440" height="900" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
+						<button class="live-start" type="button" data-live-start>
+							<span class="live-start-mark" aria-hidden="true"></span>
+							<span>Start the live demo</span>
+							<small>Loads the client, about 2 MB</small>
+						</button>
+					</div>
+				</div>
+				<p class="note">
+					Demo library: the Blender Foundation's open films and Pepper&amp;Carrot by David Revoy, both CC BY; the shows are generated artwork.
+					Try the keys: <kbd>/</kbd> searches, <kbd>?</kbd> lists what a screen can do.
+				</p>
 			</div>
 		</section>
 
@@ -123,9 +133,10 @@
 						<li><strong>Subtitles without re-encoding</strong>, seek previews, and every control on the keyboard.</li>
 					</ul>
 				</div>
-				<figure class="frame">
-					<img src="assets/shots/player.webp" width="1760" height="1100" alt="The player with the episode list beside the picture" loading="lazy" />
-				</figure>
+				<div class="showme">
+					<p>The demo has no files behind it, so its player cannot play. Open it anyway: the layout, the episode list and the keys are all there, and Play has a surprise.</p>
+					<button class="btn btn-quiet" type="button" data-demo-go="/player/cb6d722e4a2e8c2e">Open the player in the demo</button>
+				</div>
 			</div>
 		</section>
 
@@ -145,9 +156,10 @@
 						<li><strong>Offline copies</strong> of volumes in the browser and in the Android app.</li>
 					</ul>
 				</div>
-				<figure class="frame">
-					<img src="assets/shots/reader.webp" width="1760" height="1100" alt="The comic reader with reading direction and spread controls" loading="lazy" />
-				</figure>
+				<div class="showme">
+					<p>The reader in the demo is the real one, with six volumes of Pepper&amp;Carrot. Arrow keys turn the page; try the spread and the webtoon modes.</p>
+					<button class="btn btn-quiet" type="button" data-demo-go="/read/ab0fce996f9aa7f4">Open the reader in the demo</button>
+				</div>
 			</div>
 		</section>
 
@@ -160,23 +172,24 @@
 					The web client is designed for a thumb as much as for a keyboard. The Android app
 					is native Kotlin on the same Rust core, signed and attached to every release.
 				</p>
-				<div class="devices">
-					<figure>
-						<div class="phones" aria-label="The web client on a phone">
-							<img src="assets/shots/phone-home.webp" width="640" height="1385" alt="Home on a phone" loading="lazy" />
-							<img src="assets/shots/phone-title.webp" width="640" height="1385" alt="A series page on a phone" loading="lazy" />
-							<img src="assets/shots/phone-player.webp" width="640" height="1385" alt="The player on an upright phone, picture over the episode list" loading="lazy" />
+				<div class="pocket">
+					<div class="phone" data-live="phone">
+						<div class="phone-view">
+							<iframe title="lain's web client at phone size, live demo" data-src="demo/" width="390" height="800" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
+							<button class="live-start" type="button" data-live-start>
+								<span class="live-start-mark" aria-hidden="true"></span>
+								<span>Start it at phone size</span>
+							</button>
 						</div>
-						<figcaption><span class="tag">Web</span> In any browser, nothing to install, comics kept for offline reading.</figcaption>
-					</figure>
-					<figure>
-						<div class="phones" aria-label="The Android app">
-							<img src="assets/shots/android-home.webp" width="720" height="1600" alt="The Android app's Home" loading="lazy" />
-							<img src="assets/shots/android-title.webp" width="720" height="1600" alt="A series page in the Android app" loading="lazy" />
-							<img src="assets/shots/android-library.webp" width="720" height="1600" alt="The Android app's library" loading="lazy" />
-						</div>
-						<figcaption><span class="tag">Android</span> Media3 playback, picture in picture, downloads, a private-library PIN.</figcaption>
-					</figure>
+					</div>
+					<div class="pocket-text">
+						<h3>In any browser</h3>
+						<p>The same client lays itself out for a phone: a bottom bar for the thumb, sheets instead of dialogs, the player stacked over the episode list. Nothing to install.</p>
+						<h3>On Android</h3>
+						<p>A native app in Kotlin on the same Rust core, with the same screens you see here: Media3 playback, picture in picture, downloads that play without the server, and a PIN for private libraries.</p>
+						<p>Every release carries the signed APK, so <a class="link" href="https://github.com/ImranR98/Obtainium" rel="noopener">Obtainium</a> can follow it.</p>
+						<p><a class="btn btn-quiet" href="https://github.com/enrell/lain/releases/latest" rel="noopener">Get the APK</a></p>
+					</div>
 				</div>
 				<p class="also">Also: <code>lain watch</code> hands a title to mpv from the terminal, and a native desktop client is on the way.</p>
 			</div>
@@ -218,10 +231,7 @@
 						<p>Online backups from a consistent snapshot, a restore that keeps the old data until it succeeds, and releases with checksums and build attestations.</p>
 					</article>
 				</div>
-				<figure class="frame wide">
-					<img src="assets/shots/settings-plugins.webp" width="1760" height="1100" alt="Settings, Plugins: every job the server does, in families, all healthy" loading="lazy" />
-					<figcaption>Every job the server does, and who does it. Replacing a provider is safe by design.</figcaption>
-				</figure>
+				<p class="yours-go"><button class="btn btn-quiet" type="button" data-demo-go="/settings/plugins">See every job and its provider in the demo</button></p>
 			</div>
 		</section>
 
@@ -275,6 +285,10 @@ lain service install       # or keep it running as a user service</code></pre><b
 				<a href="https://github.com/enrell/lain/tree/main/docs" rel="noopener">Docs</a>
 				<a href="https://github.com/enrell/lain/blob/main/LICENSE" rel="noopener">Apache-2.0</a>
 			</nav>
+			<p class="credits">
+				The demo shows the <a href="https://studio.blender.org/films/" rel="noopener">Blender Studio open films</a> (posters &copy; Blender Foundation, CC BY)
+				and <a href="https://www.peppercarrot.com/" rel="noopener">Pepper&amp;Carrot</a> by David Revoy (CC BY 4.0). No film plays in it.
+			</p>
 		</div>
 	</footer>
 

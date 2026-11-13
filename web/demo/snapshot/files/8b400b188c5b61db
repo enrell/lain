@@ -1,0 +1,1 @@
+{"asset":"asset:872a7e56e8caf19d","available":true,"duration_sec":40.0,"mode":"direct","streams":[{"bit_rate":21735,"codec":"h264","default":true,"height":720,"index":0,"language":"und","pixel_format":"yuvj420p","profile":"High","type":"video","width":1280},{"bit_rate":2088,"channels":2,"codec":"aac","default":true,"index":1,"language":"und","profile":"LC","type":"audio"}]}
