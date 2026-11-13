@@ -1115,24 +1115,34 @@ try {
 	/* ---------------- advanced playback settings ---------------- */
 	step('advanced playback settings UI');
 	await navigate(`${BASE}/settings/transcoding`);
-	// Auto shows a summary; Custom reveals every section.
+	// Auto shows what it chose in one line; Custom lists every section.
 	await waitText('Policy', 20000);
-	await evalValue(`[...document.querySelectorAll('[role=radio]')].find((b) => b.textContent.trim() === 'Custom').click()`);
-	// Every section the advanced configuration exposes must render.
+	await clickText('Custom', '[role=radio]');
+	// Every section the advanced configuration exposes must render: round
+	// 20 lists each closed to its heading and a line of its current values,
+	// and the probe's answer is "What the probe found".
 	for (const section of [
 		'Video engine',
-		'Probed capabilities',
+		'What the probe found',
 		'Delivery',
 		'Encoding',
-		'Per-codec encoding',
-		'Quality ladder',
 		'Hardware acceleration',
 		'HDR & tone mapping',
 		'Audio & subtitles',
-		'Performance, resources & storage',
+		'Capacity & storage',
 		'Active sessions'
 	]) {
 		await waitText(section, 20000);
+	}
+	// A closed section opens from its heading, as a user opens it, and its
+	// rows are then on the page.
+	assert(
+		!(await evalValue(`document.getElementById('encoding').open`)),
+		'the Encoding section is open before its heading is clicked'
+	);
+	await clickSelector('details#encoding > summary', 'the Encoding heading');
+	for (const row of ['Per-codec preset and quality', 'Quality ladder']) {
+		await waitText(row, 5000);
 	}
 	// The redesign keeps a compact navigator and makes large settings pages
 	// searchable without removing any control from the underlying contract.
@@ -1163,10 +1173,17 @@ try {
 	await page.send('Emulation.clearDeviceMetricsOverride');
 	// The app-wide Switch bug (a bare `checked` binding) used to paint every
 	// toggle ON regardless of state; assert the real binding by flipping one
-	// and watching data-state move, then prove it survives a reload.
-	const firstSwitch = `document.querySelectorAll('button[role=switch]')[0]`;
+	// and watching data-state move, then prove it survives a reload. The
+	// search above opened every section, so Delivery's Throttle switch is on
+	// the page and takes a real click.
+	const throttleSwitch = `button[role=switch][aria-label="Throttle transcodes"]`;
+	const firstSwitch = `document.querySelector(${JSON.stringify(throttleSwitch)})`;
+	assert(
+		await evalValue(`document.getElementById('delivery').open`),
+		'the search left the Delivery section closed'
+	);
 	const beforeState = await evalValue(`(${firstSwitch}).getAttribute('data-state')`);
-	await evalValue(`(${firstSwitch}).click()`);
+	await clickSelector(throttleSwitch, 'the Throttle transcodes switch');
 	await waitFor(
 		`(${firstSwitch}).getAttribute('data-state') !== ${JSON.stringify(beforeState)}`,
 		5000,
@@ -1194,20 +1211,27 @@ try {
 		'transcode settings save'
 	);
 	await navigate(`${BASE}/settings/transcoding`);
+	// A saved policy that is not Auto's opens on Custom, its sections closed;
+	// Delivery is opened from its heading to reach the switch again.
 	await waitText('Hardware acceleration', 20000);
+	await clickSelector('details#delivery > summary', 'the Delivery heading');
+	await waitText('Throttle transcodes', 5000);
 	const reloadedState = await evalValue(`(${firstSwitch}).getAttribute('data-state')`);
 	assert(
 		reloadedState === flippedState,
 		`switch did not persist: ${beforeState} -> ${flippedState} -> ${reloadedState}`
 	);
 	// Restore the shipped value so later steps see the default policy.
-	await evalValue(`(${firstSwitch}).click()`);
+	const savesBefore = requests.filter(
+		(r) => r.url.includes('/settings/transcode') && r.method === 'PUT' && r.status === 200
+	).length;
+	await clickSelector(throttleSwitch, 'the Throttle transcodes switch');
 	await saveSettings();
 	await waitUntil(
 		() =>
-			requests.some(
+			requests.filter(
 				(r) => r.url.includes('/settings/transcode') && r.method === 'PUT' && r.status === 200
-			),
+			).length > savesBefore,
 		10000,
 		'transcode settings restore'
 	);
@@ -2175,6 +2199,17 @@ try {
 	await waitText('Capabilities');
 	// The first capability whose job an installed provider can do (a
 	// component bound before its install offers nothing to replace with).
+	// Round 20 lists the jobs in families, closed to one line each unless a
+	// provider in them is unhealthy, so its family is opened from its
+	// heading first, as a user opens it.
+	const swapFamily = await evalValue(`(() => {
+		const replace = [...document.querySelectorAll('button:not([disabled])')].find((b) => (b.textContent || '').trim() === 'Replace');
+		const details = replace?.closest('details');
+		if (!details) return null;
+		return { heading: details.querySelector('summary span')?.textContent.trim() ?? '', open: details.open };
+	})()`);
+	assert(swapFamily?.heading, 'no family holds a job an installed provider can do');
+	if (!swapFamily.open) await clickText(swapFamily.heading, 'summary');
 	await clickText('Replace', 'button:not([disabled])');
 	await waitText('Replace providers', 5000);
 	const beforeGen = await evalValue(`(() => {
@@ -2278,8 +2313,11 @@ try {
 			});
 			await navigate(`${BASE}/library`);
 			await waitText('Library', 10000);
+			// Against the client width, not innerWidth: an emulated phone widens
+			// its layout viewport to fit content that overflows, so innerWidth
+			// grows with the overflow and the difference stayed 0.
 			const overflow = await evalValue(
-				'document.documentElement.scrollWidth - window.innerWidth'
+				'document.documentElement.scrollWidth - document.documentElement.clientWidth'
 			);
 			assert(overflow <= 1, `${vp.name} (${vp.w}px): horizontal overflow of ${overflow}px`);
 			if (vp.w < 768) {
