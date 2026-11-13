@@ -69,7 +69,7 @@
 	{#each shown as part, p (part.shape)}
 		{#if part.items.length > 0}
 			<!-- The next part under a hairline, as Search's "Or browse" stands apart. -->
-			<section class={p > 0 ? 'mt-10 border-t border-line/50 pt-6' : ''} aria-label={parts.length > 1 ? t(part.shape === 'portrait' ? 'browse.partPortrait' : 'browse.partLandscape') : undefined}>
+			<section class={p > 0 ? 'mt-10 border-t border-line/50 pt-6' : ''} data-part={part.shape} aria-label={parts.length > 1 ? t(part.shape === 'portrait' ? 'browse.partPortrait' : 'browse.partLandscape') : undefined}>
 				{#if parts.length > 1}
 					<h2 class="mb-4 flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">
 						{t(part.shape === 'portrait' ? 'browse.partPortrait' : 'browse.partLandscape')}

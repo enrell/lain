@@ -667,7 +667,8 @@ const en = {
 			installOther: 'Not installed on this server: add its component’s manifest to the plugins folder of the data directory.',
 			jobs: { one: '{count} job', other: '{count} jobs' },
 			allHealthy: 'all healthy',
-			missingCount: { one: '{count} not installed', other: '{count} not installed' },
+			// Jobs bound to a component that is not installed (the optional bridges): an option, not a fault.
+			toInstall: { one: '{count} optional, available to install', other: '{count} optional, available to install' },
 			unhealthyCount: { one: '{count} provider unhealthy', other: '{count} providers unhealthy' },
 			generation: 'generation {n}',
 			replace: 'Replace',
@@ -749,7 +750,11 @@ const en = {
 				label: 'HDR',
 				ready: 'HDR files are tone mapped for screens and browsers that cannot show them.',
 				missing: 'This ffmpeg cannot tone map: HDR files play only on devices that show HDR themselves.',
-				none: 'Not available'
+				none: 'Not available',
+				choose: 'HDR tone mapping',
+				off: 'Off',
+				// The hint with tone mapping off; the select beside it already says "Off".
+				offHint: 'HDR files are not tone mapped, so they cannot play in a browser.'
 			},
 			probe: {
 				title: 'What the probe found',
@@ -963,6 +968,7 @@ const en = {
 		recent: 'Recent',
 		recentLabel: 'Recent searches',
 		forget: 'Clear',
+		forgetLabel: 'Clear recent searches',
 		browse: 'Browse',
 		browseInstead: 'Browse instead',
 		orBrowse: 'Or browse',
@@ -1586,6 +1592,11 @@ const en = {
 		readAgain: 'Read again',
 		watchedLength: 'Watched · {time}',
 		fileDetails: 'File details',
+		// The rows of File details (an admin's): the name the scan gave it, the metadata's source, the file's size and path.
+		indexedAs: 'Indexed as',
+		metadataFrom: 'Metadata from',
+		fileSize: 'Size',
+		filePath: 'Path',
 		episodes: { one: '{count} episode', other: '{count} episodes' },
 		volumes: { one: '{count} volume', other: '{count} volumes' },
 		issues: { one: '{count} issue', other: '{count} issues' },
@@ -1631,6 +1642,21 @@ const en = {
 		// The parts of a grid whose pictures differ in shape (TitleGrid).
 		partPortrait: 'Posters and covers',
 		partLandscape: 'Widescreen',
+		// Beside a grid's count: how its titles divide between the parts; each goes to its part.
+		countPortrait: { one: '{count} poster or cover', other: '{count} posters and covers' },
+		countLandscape: { one: '{count} in widescreen', other: '{count} in widescreen' },
+		toPart: 'Go to {part}',
+		// The toolbar's sheet: "Sort & filter" where the sort lives in it (a phone), "Filters" where the sort sits beside it.
+		sortAndFilter: 'Sort & filter',
+		filters: 'Filters',
+		filtersActive: { one: 'Filters ({count} active)', other: 'Filters ({count} active)' },
+		sortAndFilterActive: { one: 'Sort & filter ({count} active)', other: 'Sort & filter ({count} active)' },
+		// The sort dropdown's name, and the sheet's headings over the sort and the tile size.
+		sort: 'Sort',
+		tilesHeading: 'Tiles',
+		tileSize: { title: 'Tile size', large: 'Large', small: 'Small' },
+		// The toolbar's tile size button: what is set (as its visible "Tiles: large"), then what a press does.
+		tilesSwitch: 'Tiles: {size}. Switch to {other}.',
 		// A catalog kind as the Kind filter names it.
 		kind: {
 			video: 'Films and clips',
