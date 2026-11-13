@@ -196,6 +196,9 @@ pub(crate) enum Gate {
     Public,
     User,
     Admin,
+    /// An admin session, or an integration key with the `indexers`
+    /// scope (D-290). Only the `/api/acquire/indexers*` routes use it.
+    Indexers,
 }
 
 pub(crate) type Handler = fn(&App, &Req, &Verified) -> Reply;
@@ -204,8 +207,18 @@ pub(crate) fn authorize(app: &App, req: &Req, gate: Gate) -> Result<Verified, Re
     if gate == Gate::Public {
         return Ok(Verified { user_id: String::new(), role: String::new(), session: String::new(), expires_at: 0 });
     }
+    if gate == Gate::Indexers
+        && let Some(who) = crate::integration::indexers_caller(app, req)
+    {
+        return who.map(|i| Verified {
+            user_id: i.id,
+            role: crate::integration::ROLE_INTEGRATION.into(),
+            session: String::new(),
+            expires_at: i.expires_at,
+        });
+    }
     let v = req.token().and_then(|t| app.verify(t)).ok_or_else(|| Reply::err(401, "unauthorized"))?;
-    if gate == Gate::Admin && v.role != ROLE_ADMIN {
+    if matches!(gate, Gate::Admin | Gate::Indexers) && v.role != ROLE_ADMIN {
         return Err(Reply::err(403, "admin required"));
     }
     Ok(v)

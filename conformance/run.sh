@@ -132,7 +132,7 @@ run_suites() {
 	done
 	mkdir -p "$tmp/rs-acqmedia"
 	pid=$(LAIN_WATCH=0 LAIN_AUTO_ENRICH=0 start rs-acquire "$url" "$lain" serve --data-dir "$tmp/rs-acquire" --port "$rs_port")
-	out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var acq_media="$tmp/rs-acqmedia" conformance/cases/acquire) || { echo "$out"; exit 1; }
+	out=$(LAIN_URL=$url "$runner" --tier v1,v2 --var acq_media="$tmp/rs-acqmedia" --var upstream="$upstream" conformance/cases/acquire) || { echo "$out"; exit 1; }
 	echo "$out"
 	note "acquire v1+v2: $(echo "$out" | tail -1)"
 	stop "$pid"

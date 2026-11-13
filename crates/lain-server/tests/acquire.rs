@@ -97,8 +97,11 @@ fn acquire_suite_passes() {
     let media = dir.join("media");
     std::fs::create_dir_all(&media).unwrap();
     let server = Server::start(&dir.join("data"));
+    // The indexer presets talk to a fictional Prowlarr on loopback.
+    let upstream = lain_conformance::upstream::Upstream::start(&lain_conformance::upstream::dir(), 0).unwrap();
     let mut runner = Runner::new(Base::parse(&server.url).unwrap());
     runner.vars.insert("acq_media".into(), json!(media.to_string_lossy()));
+    runner.vars.insert("upstream".into(), json!(upstream.url));
     let reports = runner
         .run_suite(
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/cases/acquire"),
@@ -114,6 +117,7 @@ fn acquire_suite_passes() {
         })
         .collect();
     assert!(failed.is_empty(), "{}", failed.join("\n"));
+    assert!(upstream.hits("/prowlarr/") > 0, "the preset cases reached the fixture");
     drop(server);
     std::fs::remove_dir_all(dir).ok();
 }
@@ -499,6 +503,40 @@ fn private_items_are_unknown_to_acquire_routes() {
     assert_eq!(st, 200);
     let (st, _) = call(&base, "GET", &paths[0].1, &locked, None);
     assert_eq!(st, 200, "unlocked in this session");
+    drop(server);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// An indexers key stops at its expiry (D-290): the next call answers
+/// 401 `key expired` and the key is gone from the list.
+#[test]
+fn an_indexers_key_expires() {
+    let dir = lain_store::test_dir("rs-acquire-expiry");
+    let server = Server::start(&dir.join("data"));
+    let base = Base::parse(&server.url).unwrap();
+    let tok = admin(&base);
+    let (st, made) =
+        call(&base, "POST", "/api/integrations", &tok, Some(json!({"name": "agent", "scopes": ["indexers"]})));
+    assert_eq!(st, 201, "{made}");
+    let (key, id) = (made["key"].as_str().unwrap().to_string(), made["id"].as_str().unwrap().to_string());
+    assert!(made["expires_at"].as_i64().unwrap() > lain_core::now_unix() + 3500, "an hour unless asked: {made}");
+    assert_eq!(call(&base, "GET", "/api/acquire/indexers", &key, None).0, 200);
+
+    // Move the expiry into the past, as time would.
+    server
+        .app
+        .store
+        .write(|tx| {
+            let mut rec: Value = tx.get_json(lain_store::Bucket::Integrations, id.as_bytes())?.unwrap();
+            rec["expires_at"] = json!(lain_core::now_unix() - 1);
+            tx.put_json(lain_store::Bucket::Integrations, id.as_bytes(), &rec)
+        })
+        .unwrap();
+    let (st, body) = call(&base, "GET", "/api/acquire/indexers", &key, None);
+    assert_eq!((st, body), (401, json!({"error": "key expired"})));
+    let (_, list) = call(&base, "GET", "/api/integrations", &tok, None);
+    assert_eq!(list, json!({"integrations": []}));
+    assert_eq!(call(&base, "GET", "/api/acquire/indexers", &key, None).0, 401);
     drop(server);
     std::fs::remove_dir_all(dir).ok();
 }
