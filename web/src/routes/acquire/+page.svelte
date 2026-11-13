@@ -310,7 +310,10 @@
 		</div>
 	</header>
 
-	<div class="flex gap-6 border-b border-hairline" role="tablist" aria-label={t('acquire.heading')} tabindex="-1" onkeydown={onTabKey}>
+	<!-- Closer on a phone: at 360 px five tabs a 24 px gap apart ran off the edge, and
+	     Subtitles, clipped, could not be reached; wrapped, as Social's, should a
+	     language's words be longer still. -->
+	<div class="flex flex-wrap gap-x-3 border-b border-hairline min-[400px]:gap-x-4 sm:gap-x-6" role="tablist" aria-label={t('acquire.heading')} tabindex="-1" onkeydown={onTabKey}>
 		{#each [{ id: 'search', key: '1', label: t('acquire.tab.search') }, { id: 'queue', key: '2', label: t('acquire.tab.queue') }, { id: 'wanted', key: '3', label: t('acquire.tab.wanted') }, { id: 'blocklist', key: '4', label: t('acquire.tab.blocklist') }, { id: 'subtitles', key: '5', label: t('acquire.tab.subtitles') }] as x (x.id)}
 			<button type="button" role="tab" id="acquire-tab-{x.id}" aria-selected={tab === x.id} tabindex={tab === x.id ? 0 : -1} onclick={() => setTab(x.id as Tab)}
 				class="-mb-px flex min-h-11 items-center gap-2 border-b-2 pb-2 text-sm transition-colors md:min-h-0 {tab === x.id ? 'border-accent text-foreground' : 'border-transparent text-muted hover:text-foreground'}">

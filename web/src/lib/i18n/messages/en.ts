@@ -111,6 +111,8 @@ const en = {
 		settings: 'Settings',
 		// The phone bar's last tab: every place that is not one of its four.
 		more: 'More',
+		// The phone bar's arrow on a title page (AppShell).
+		back: 'Back',
 		accountMenu: 'Account menu',
 		scanning: 'scanning',
 		scanningPercent: 'scanning {percent}',
@@ -511,6 +513,8 @@ const en = {
 			roleSaved: 'Role changed for {name}.',
 			selfRole: 'Your own role and access are changed by another admin.',
 			signedInHere: 'Signed in here',
+			// The ⋯ that holds a row's actions below the table's width.
+			actionsFor: 'Actions for {name}',
 			active: 'Active',
 			playback: 'Playback',
 			resetPassword: 'Reset password',
@@ -601,6 +605,10 @@ const en = {
 			moveUp: 'Move {name} up',
 			moveDown: 'Move {name} down',
 			moveUpKey: 'Move up (Alt+↑)',
+			// A row's menu below the table's width: the entries, and the ⋯ that opens them.
+			moveUpShort: 'Move up',
+			moveDownShort: 'Move down',
+			actionsFor: 'Actions for {name}',
 			moveDownKey: 'Move down (Alt+↓)',
 			moveFailed: 'Could not change the order.',
 			keyEdit: 'Edit the library',
@@ -1243,6 +1251,9 @@ const en = {
 			rtlLabel: 'Read right to left (R)',
 			ltr: 'LTR',
 			rtl: 'RTL',
+			// The phone's chip beside the page slider: the direction now, and what a tap does.
+			readsRtl: 'Reads right to left. Switch to left to right',
+			readsLtr: 'Reads left to right. Switch to right to left',
 			coverLabel: 'Cover on its own page',
 			cover: 'Cover',
 			coverAlone: 'Cover alone',
@@ -1387,6 +1398,9 @@ const en = {
 			unrated: 'No ratings yet.',
 			rate: 'Rate',
 			yourScore: 'Your score: {score}',
+			// The score button beside a title's main action: its tooltip, and everyone's average.
+			scoreHint: 'Your score (R)',
+			average: '{average} avg',
 			editReview: 'Edit review',
 			share: 'Share',
 			collect: 'Add to collection',
@@ -1582,8 +1596,17 @@ const en = {
 		continueFromPage: 'Continue from page {page}',
 		continueFromPageIn: 'Continue from page {page} · {part}',
 		readingAt: '{part}: page {page} of {pages}',
+		// Under a synopsis cut to two lines, and under the whole of it once open.
+		synopsisMore: 'More',
+		synopsisLess: 'Less',
+		// The part under way, beside the bar that measures it (a title page's hero).
+		partLeft: '{part}: {time} left',
 		readOf: '{done} of {count} read',
 		watchedOf: '{done} of {count} watched',
+		// The whole title's count, named, beside the part under way.
+		episodesWatched: { one: '{done} of {count} episode watched', other: '{done} of {count} episodes watched' },
+		volumesRead: { one: '{done} of {count} volume read', other: '{done} of {count} volumes read' },
+		issuesRead: { one: '{done} of {count} issue read', other: '{done} of {count} issues read' },
 		notStarted: 'Not started',
 		// An episode or volume card's line before it is begun, when its length is unknown.
 		notWatched: 'Not watched',
@@ -1630,7 +1653,9 @@ const en = {
 		lead: 'Everything Lain has indexed.',
 		scan: 'Scan',
 		scanning: 'Scanning…',
-		manage: 'Manage libraries'
+		manage: 'Manage libraries',
+		// The phone's ⋯ beside the title that holds Unlock, Scan and Manage libraries.
+		upkeep: 'Library actions'
 	},
 	favorites: {
 		title: 'Favorites',
@@ -1660,6 +1685,8 @@ const en = {
 		noMatchTitle: 'Nothing tracked of this kind',
 		noMatchBody: 'Your accounts track other things. Clear the filters to see all of it.',
 		showEverything: 'Show everything',
+		// A tracked entry's card bar, for a screen reader.
+		entryProgress: 'Progress',
 		firstRun: {
 			eyebrow: 'First step',
 			title: 'Bring the list you keep elsewhere.',

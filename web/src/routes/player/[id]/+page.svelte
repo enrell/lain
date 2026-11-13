@@ -286,11 +286,12 @@
 	</div>
 {:else if item && plan}
 	<div class="relative flex h-dvh flex-col bg-black lg:flex-row" data-immersive>
-		<!-- A phone held upright: a square stage at the top, the picture in its
-		     middle and the controls in the bands above and below it (on a 16:9
-		     frame that small they would cover the picture), and what comes next
-		     fills the rest. On its side, or full screen, it is all picture. -->
-		<div class="relative min-h-0 min-w-0 flex-1 bg-black max-md:portrait:aspect-square max-md:portrait:flex-none">
+		<!-- A phone held upright: the stage at the top, as tall as its bands
+		     (the top bar, the 16:9 picture, the deck: the player stacks them,
+		     since on a frame that small the controls would cover the picture),
+		     and what comes next fills the rest. On its side, or full screen, it
+		     is all picture. A title that cannot play keeps a square for its note. -->
+		<div class={['relative min-h-0 min-w-0 flex-1 bg-black max-md:portrait:flex-none', plan.available ? '' : 'max-md:portrait:aspect-square'].join(' ')}>
 			{#if plan.available}
 				<!-- A new episode is a new session: keying on the item rebuilds
 				     the player (video element, transcode session, clock) instead
@@ -424,8 +425,9 @@
 										</span>
 									{/if}
 									{#if begun}
-										<span class="absolute inset-x-0 bottom-0 h-1 bg-black/55" aria-hidden="true">
-											<span class="block h-full bg-accent" style:width={`${Math.min(100, (p!.position_sec / p!.duration_sec) * 100)}%`}></span>
+										<!-- On a dark track of its own, as the cards' bar: on a pale still the fill vanished. -->
+										<span class="absolute inset-x-0 bottom-0 h-1 bg-black/75" aria-hidden="true">
+											<span class="block h-full bg-accent" style:width={`${Math.max(4, Math.min(100, (p!.position_sec / p!.duration_sec) * 100))}%`}></span>
 										</span>
 									{/if}
 								</span>
