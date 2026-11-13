@@ -638,7 +638,9 @@
 					</div>
 				</SettingRow>
 				<SettingRow label={t('settings.transcode.encoding.ladder')} hint={t('settings.groups.transcoding.ladderHint')} stack>
-					<div class="w-full overflow-x-auto">
+					<!-- Positioned, so the sr-only column name (absolute) scrolls inside it:
+					     unpositioned, it escaped the scroller and widened a phone's page. -->
+					<div class="relative w-full overflow-x-auto">
 						<table class="w-full min-w-[28rem] text-sm">
 							<thead>
 								<tr class="text-start font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
