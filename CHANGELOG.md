@@ -177,9 +177,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   in More; the profile card shows the display name as typed, not in
   capitals; a title's action row and Acquire's five tabs fit a 360 px
   phone; the comment box's key hint no longer leaves "to write" alone on
-  a touch screen; the
-  player's Retry and Back on a failure or a transcode wait take clicks and
-  taps (a touch layer above them took them).
+  a touch screen; the player's Retry and Back on a failure or a transcode
+  wait take clicks and taps (a touch layer above them took them), and
+  their words sit between the top bar and the controls on a phone.
 
 ## [0.3.1] - 2026-11-12
 
