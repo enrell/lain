@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import FolderPlus from '@lucide/svelte/icons/folder-plus';
 	import Folder from '@lucide/svelte/icons/folder';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
@@ -303,7 +304,7 @@
 
 	onMount(() => {
 		// Ctrl+K "Add library" lands here with ?add.
-		if (new URL(window.location.href).searchParams.has('add')) openCreate();
+		if (page.url.searchParams.has('add')) openCreate();
 		void load();
 		void loadExtras();
 		void scan.watch();
