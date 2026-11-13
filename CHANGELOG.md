@@ -175,8 +175,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   a pale cover; a title's hero says what each count measures ("Episode 1:
   10 sec left · 6 of 12 episodes watched"), and a synopsis cut short ends
   in More; the profile card shows the display name as typed, not in
-  capitals; a title's action row fits a 360 px phone; the comment box's
-  key hint no longer leaves "to write" alone on a touch screen; the
+  capitals; a title's action row and Acquire's five tabs fit a 360 px
+  phone; the comment box's key hint no longer leaves "to write" alone on
+  a touch screen; the
   player's Retry and Back on a failure or a transcode wait take clicks and
   taps (a touch layer above them took them).
 
