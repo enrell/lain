@@ -288,7 +288,9 @@
 		stack
 	>
 		{#if policy.rules.length > 0}
-			<div class="overflow-x-auto">
+			<!-- Positioned, so the sr-only column name (absolute) scrolls inside it:
+			     unpositioned, it escaped the scroller and widened a phone's page. -->
+			<div class="relative overflow-x-auto">
 				<table class="w-full min-w-[46rem] text-sm">
 					<thead>
 						<tr class="text-left font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
