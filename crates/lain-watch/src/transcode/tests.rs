@@ -1011,3 +1011,18 @@ fn a_refresh_of_the_old_ffmpeg_never_answers_for_the_new_one() {
     assert_eq!(r.caps_now(&old).ffmpeg, "probe-2");
     assert_eq!(r.runs(), 3);
 }
+
+#[test]
+fn a_webvtt_sidecar_drops_ass_escapes() {
+    let raw = "WEBVTT\n\n00:01.000 --> 00:03.000\n\\h\\hEssa escola é enorme.\\N{\\i1}só que não{\\i0} há dúvidas\n\n00:04.000 --> 00:05.000\n{nota} C:\\pasta\n";
+    let clean = super::clean_webvtt(raw);
+    assert_eq!(
+        clean,
+        "WEBVTT\n\n00:01.000 --> 00:03.000\n\u{a0}\u{a0}Essa escola é enorme.\nsó que não há dúvidas\n\n00:04.000 --> 00:05.000\n{nota} C:\\pasta\n"
+    );
+    // Text with nothing to clean comes back as it was.
+    assert_eq!(
+        super::clean_webvtt("WEBVTT\n\n00:01.000 --> 00:02.000\nOlá.\n"),
+        "WEBVTT\n\n00:01.000 --> 00:02.000\nOlá.\n"
+    );
+}
