@@ -1,0 +1,4 @@
+[
+ {"id": 1, "name": "tracker-exemplo", "protocol": "torrent", "enable": true, "privacy": "public", "priority": 25},
+ {"id": 2, "name": "usenet-exemplo", "protocol": "usenet", "enable": false, "privacy": "private", "priority": 25}
+]

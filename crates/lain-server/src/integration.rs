@@ -23,6 +23,13 @@
 //! An integration key reads and writes nothing else: no catalog, no
 //! progress, no users. It works on a private library it was given
 //! without unlocking it for anyone.
+//!
+//! A key has one scope (D-290). `library` is the above. `indexers` is
+//! for a coding agent setting up indexers on the owner's behalf: it
+//! opens only the `/api/acquire/indexers*` routes (`Gate::Indexers`),
+//! takes no libraries, always expires (one hour unless asked, a day at
+//! most), and is read from the `Authorization` header only, never from
+//! a URL, so it does not end up in logs or shell history as a query.
 
 use std::sync::{Arc, RwLock};
 
@@ -50,6 +57,16 @@ const MAX_TEXT: usize = 8000;
 const KEY_PREFIX: &str = "lain_";
 const KINDS: &[&str] = &["episode", "video", "movie", "comic", "manga"];
 
+pub const SCOPE_LIBRARY: &str = "library";
+pub const SCOPE_INDEXERS: &str = "indexers";
+/// The role a request made with an indexers key carries; no gate but
+/// `Gate::Indexers` accepts it.
+pub const ROLE_INTEGRATION: &str = "integration";
+/// An indexers key lives an hour unless asked, and a day at most.
+const INDEXERS_TTL: i64 = 3600;
+const MIN_TTL: i64 = 60;
+const MAX_INDEXERS_TTL: i64 = 86_400;
+
 /// A stored integration. The key itself is never stored.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Integration {
@@ -58,8 +75,40 @@ pub struct Integration {
     /// The libraries the key may list and write to.
     pub libraries: Vec<String>,
     pub created_at: i64,
+    /// Empty on keys made before scopes: those are `library` keys.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes: Vec<String>,
+    /// Unix seconds; 0 never expires.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub expires_at: i64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     key_hash: String,
+}
+
+fn is_zero(v: &i64) -> bool {
+    *v == 0
+}
+
+impl Integration {
+    /// The scope this key has (`library` for keys older than scopes).
+    pub fn scope(&self) -> &str {
+        self.scopes.first().map(String::as_str).unwrap_or(SCOPE_LIBRARY)
+    }
+
+    pub fn expired(&self, now: i64) -> bool {
+        self.expires_at != 0 && now >= self.expires_at
+    }
+
+    fn view(&self) -> Value {
+        json!({
+            "id": self.id,
+            "name": self.name,
+            "libraries": self.libraries,
+            "created_at": self.created_at,
+            "scopes": [self.scope()],
+            "expires_at": self.expires_at,
+        })
+    }
 }
 
 /// What an integration said one file is.
@@ -101,11 +150,55 @@ fn all(store: &Store) -> Vec<Integration> {
     out
 }
 
-/// The integration a request's key belongs to.
+/// The integration `key` belongs to, when it has `scope` and has not
+/// expired. An expired key is removed on the way.
+fn lookup(app: &App, key: &str, scope: &str) -> Result<Integration, Reply> {
+    let want = hash(key);
+    let who =
+        all(&app.store).into_iter().find(|i| i.key_hash == want).ok_or_else(|| Reply::err(401, "unauthorized"))?;
+    if who.expired(lain_core::now_unix()) {
+        let _ = app.store.write(|tx| tx.delete(Bucket::Integrations, who.id.as_bytes()).map(|_| ()));
+        tracing::info!(integration = %who.id, "expired integration removed");
+        return Err(Reply::err(401, "key expired"));
+    }
+    if who.scope() != scope {
+        // Answered like a wrong key: a key never learns what else exists.
+        return Err(Reply::err(401, "unauthorized"));
+    }
+    Ok(who)
+}
+
+/// The library integration a request's key belongs to. These routes
+/// predate D-290 and still take `?token=`.
 fn authorized(app: &App, req: &Req) -> Result<Integration, Reply> {
     let key = req.token().filter(|t| t.starts_with(KEY_PREFIX)).ok_or_else(|| Reply::err(401, "unauthorized"))?;
-    let want = hash(key);
-    all(&app.store).into_iter().find(|i| i.key_hash == want).ok_or_else(|| Reply::err(401, "unauthorized"))
+    lookup(app, key, SCOPE_LIBRARY)
+}
+
+/// For `Gate::Indexers`: `None` when the request carries no integration
+/// key (the session check decides), else the indexers integration or
+/// the refusal. The key is read from the `Authorization` header only.
+pub(crate) fn indexers_caller(app: &App, req: &Req) -> Option<Result<Integration, Reply>> {
+    if req.query("token").starts_with(KEY_PREFIX) {
+        return Some(Err(Reply::err(401, "an integration key goes in the Authorization header, never in the URL")));
+    }
+    let key = req.authorization.as_deref().and_then(|h| h.strip_prefix("Bearer ")).map(str::trim)?;
+    key.starts_with(KEY_PREFIX).then(|| lookup(app, key, SCOPE_INDEXERS))
+}
+
+/// Drops expired keys (they no longer open anything either way).
+fn purge_expired(store: &Store) {
+    let now = lain_core::now_unix();
+    let gone: Vec<Integration> = all(store).into_iter().filter(|i| i.expired(now)).collect();
+    if gone.is_empty() {
+        return;
+    }
+    let _ = store.write(|tx| {
+        for i in &gone {
+            tx.delete(Bucket::Integrations, i.id.as_bytes())?;
+        }
+        Ok(())
+    });
 }
 
 /// The library `id`, when this integration was given it. One it was
@@ -149,11 +242,35 @@ fn clip(s: &str, max: usize) -> String {
 // ---- admin: the integrations themselves ----------------------------------------
 
 fn list(app: &App, _: &Req, _: &lain_auth::Verified) -> Reply {
-    let items: Vec<Value> = all(&app.store)
-        .into_iter()
-        .map(|i| json!({"id": i.id, "name": i.name, "libraries": i.libraries, "created_at": i.created_at}))
-        .collect();
+    purge_expired(&app.store);
+    let items: Vec<Value> = all(&app.store).iter().map(Integration::view).collect();
     Reply::ok(json!({"integrations": items}))
+}
+
+/// The scope, libraries and expiry a create asks for, checked.
+fn shape(scopes: &[String], libraries: Vec<String>, ttl: i64, now: i64) -> Result<(Vec<String>, i64), String> {
+    let scope = match scopes {
+        [] => SCOPE_LIBRARY,
+        [s] if s == SCOPE_LIBRARY || s == SCOPE_INDEXERS => s.as_str(),
+        _ => return Err(format!("scopes: one of {SCOPE_LIBRARY} or {SCOPE_INDEXERS}")),
+    };
+    if scope == SCOPE_INDEXERS {
+        if !libraries.is_empty() {
+            return Err("an indexers key takes no libraries".into());
+        }
+        let ttl = if ttl == 0 { INDEXERS_TTL } else { ttl };
+        if !(MIN_TTL..=MAX_INDEXERS_TTL).contains(&ttl) {
+            return Err(format!("ttl_seconds: {MIN_TTL} to {MAX_INDEXERS_TTL} for an indexers key"));
+        }
+        return Ok((vec![SCOPE_INDEXERS.into()], now + ttl));
+    }
+    if libraries.is_empty() {
+        return Err("at least one library required".into());
+    }
+    if ttl != 0 && ttl < MIN_TTL {
+        return Err(format!("ttl_seconds: 0 (never) or at least {MIN_TTL}"));
+    }
+    Ok((Vec::new(), if ttl == 0 { 0 } else { now + ttl }))
 }
 
 fn create(app: &App, req: &Req, _: &lain_auth::Verified) -> Reply {
@@ -163,6 +280,10 @@ fn create(app: &App, req: &Req, _: &lain_auth::Verified) -> Reply {
         name: String,
         #[serde(default)]
         libraries: Vec<String>,
+        #[serde(default)]
+        scopes: Vec<String>,
+        #[serde(default)]
+        ttl_seconds: i64,
     }
     let i: In = match req.decode() {
         Ok(i) => i,
@@ -175,9 +296,12 @@ fn create(app: &App, req: &Req, _: &lain_auth::Verified) -> Reply {
     let mut libraries = i.libraries;
     libraries.sort();
     libraries.dedup();
-    if libraries.is_empty() {
-        return Reply::err(400, "at least one library required");
-    }
+    let now = lain_core::now_unix();
+    let (scopes, expires_at) = match shape(&i.scopes, libraries.clone(), i.ttl_seconds, now) {
+        Ok(s) => s,
+        Err(e) => return Reply::err(400, &e),
+    };
+    purge_expired(&app.store);
     if let Some(unknown) = libraries.iter().find(|l| app.libraries.get(l).is_none()) {
         return Reply::err(400, &format!("unknown library {unknown}"));
     }
@@ -186,16 +310,16 @@ fn create(app: &App, req: &Req, _: &lain_auth::Verified) -> Reply {
         _ => return Reply::err(500, "could not make a key"),
     };
     let key = format!("{KEY_PREFIX}{secret}");
-    let rec = Integration { id, name, libraries, created_at: lain_core::now_unix(), key_hash: hash(&key) };
+    let rec = Integration { id, name, libraries, created_at: now, scopes, expires_at, key_hash: hash(&key) };
     if let Err(e) = &app.store.write(|tx| tx.put_json(Bucket::Integrations, rec.id.as_bytes(), &rec)) {
         return Reply::err(500, &e.to_string());
     }
-    tracing::info!(integration = %rec.id, name = %rec.name, "integration created");
+    // Never the key: only its id, name and scope.
+    tracing::info!(integration = %rec.id, name = %rec.name, scope = rec.scope(), "integration created");
     // The only time the key leaves the server.
-    Reply::json(
-        201,
-        json!({"id": rec.id, "name": rec.name, "libraries": rec.libraries, "created_at": rec.created_at, "key": key}),
-    )
+    let mut out = rec.view();
+    out["key"] = json!(key);
+    Reply::json(201, out)
 }
 
 fn delete(app: &App, req: &Req, _: &lain_auth::Verified) -> Reply {
@@ -382,6 +506,17 @@ pub fn routes() -> axum::Router<Arc<App>> {
         .route("/api/integration/libraries", route(MethodFilter::GET, Gate::Public, libraries))
         .route("/api/integration/libraries/{id}/files", route(MethodFilter::PUT, Gate::Public, files_put))
         .route("/api/integration/libraries/{id}/scan", route(MethodFilter::POST, Gate::Public, scan))
+        .route("/api/agent/indexers.md", route(MethodFilter::GET, Gate::Public, agent_guide))
+}
+
+/// The guide a coding agent reads before it touches indexers (D-291):
+/// the rules and the exact calls. Public: it holds no secret, and the
+/// agent may fetch it before it is handed the key.
+pub const AGENT_GUIDE: &str = include_str!("agent-indexers.md");
+
+fn agent_guide(_: &App, _: &Req, _: &lain_auth::Verified) -> Reply {
+    Reply::bytes(200, "text/markdown; charset=utf-8", AGENT_GUIDE.as_bytes().to_vec())
+        .header(axum::http::header::CACHE_CONTROL, "no-cache")
 }
 
 // ---- identification --------------------------------------------------------------
@@ -503,6 +638,75 @@ mod tests {
         assert_eq!(item_id(&rooted, "Show/01.mkv"), lain_ingest::commit::item_id("lib-2", "anime/Show/01.mkv"));
         assert_eq!(relative(&plain, "/media/anime/Show/01.mkv").as_deref(), Some("Show/01.mkv"));
         assert_eq!(relative(&plain, "/elsewhere/01.mkv"), None);
+    }
+
+    #[test]
+    fn an_indexers_key_takes_no_libraries_and_always_expires() {
+        let libs = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let ix = vec![SCOPE_INDEXERS.to_string()];
+        assert_eq!(shape(&ix, vec![], 0, 1000), Ok((ix.clone(), 1000 + INDEXERS_TTL)));
+        assert_eq!(shape(&ix, vec![], 900, 1000), Ok((ix.clone(), 1900)));
+        assert!(shape(&ix, libs(&["lib-1"]), 0, 0).is_err());
+        for ttl in [-1, 59, MAX_INDEXERS_TTL + 1] {
+            assert!(shape(&ix, vec![], ttl, 0).is_err(), "{ttl}");
+        }
+        // Library keys keep their old shape: libraries, no expiry.
+        assert_eq!(shape(&[], libs(&["lib-1"]), 0, 1000), Ok((vec![], 0)));
+        assert_eq!(shape(&[SCOPE_LIBRARY.into()], libs(&["lib-1"]), 120, 1000), Ok((vec![], 1120)));
+        assert!(shape(&[], vec![], 0, 0).is_err());
+        assert!(shape(&["admin".into()], vec![], 0, 0).is_err());
+        assert!(shape(&[SCOPE_LIBRARY.into(), SCOPE_INDEXERS.into()], libs(&["lib-1"]), 0, 0).is_err());
+    }
+
+    #[test]
+    fn scope_and_expiry_of_a_stored_key() {
+        let old: Integration =
+            serde_json::from_str(r#"{"id":"int-1","name":"n","libraries":["l"],"created_at":1}"#).unwrap();
+        assert_eq!(old.scope(), SCOPE_LIBRARY, "keys from before scopes are library keys");
+        assert!(!old.expired(i64::MAX));
+        let ix = Integration { scopes: vec![SCOPE_INDEXERS.into()], expires_at: 100, ..Default::default() };
+        assert_eq!(ix.scope(), SCOPE_INDEXERS);
+        assert!(!ix.expired(99) && ix.expired(100));
+        assert_eq!(ix.view()["scopes"], json!(["indexers"]));
+    }
+
+    /// The indexers gate opens only the indexer routes: no route file
+    /// names it in a `route(…)`, and the routes of acquire.rs that take
+    /// its alias are exactly the `/api/acquire/indexers*` ones.
+    #[test]
+    fn only_indexer_routes_take_an_indexers_key() {
+        for (name, src) in [
+            ("gateway.rs", include_str!("gateway.rs")),
+            ("acquire.rs", include_str!("acquire.rs")),
+            ("population.rs", include_str!("population.rs")),
+            ("watch.rs", include_str!("watch.rs")),
+            ("lists.rs", include_str!("lists.rs")),
+            ("social.rs", include_str!("social.rs")),
+            ("translate.rs", include_str!("translate.rs")),
+        ] {
+            assert!(
+                !src.lines().any(|l| l.contains("route(") && l.contains("Gate::Indexers")),
+                "{name} gives a route the indexers gate directly"
+            );
+        }
+        assert!(
+            !include_str!("integration.rs")
+                .lines()
+                .any(|l| l.contains("route(") && l.contains(concat!("Gate::", "Indexers,")))
+        );
+        let acquire = include_str!("acquire.rs");
+        assert_eq!(acquire.lines().filter(|l| l.trim() == "let ix = Gate::Indexers;").count(), 1);
+        let mut gated = 0;
+        for line in acquire.lines().filter(|l| l.contains(".route(\"")) {
+            let path = line.split('"').nth(1).unwrap_or("");
+            if line.contains(", ix,") {
+                gated += 1;
+                assert!(path.starts_with("/api/acquire/indexers"), "{path} takes an indexers key");
+            } else {
+                assert!(!path.starts_with("/api/acquire/indexers"), "{path} should take an indexers key");
+            }
+        }
+        assert_eq!(gated, 6);
     }
 
     #[test]
