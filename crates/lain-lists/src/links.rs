@@ -760,10 +760,6 @@ impl Links {
         let mut e = local.unwrap_or_default();
         if let Some(s) = &patch.status {
             e.status = s.clone();
-            // A completed entry is complete on the platform too.
-            if s == list_status::COMPLETED && patch.progress.is_none() && e.progress_total > 0 {
-                e.progress = e.progress_total;
-            }
         }
         if let Some(p) = patch.progress {
             e.progress = p;
