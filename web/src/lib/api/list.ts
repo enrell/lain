@@ -1,6 +1,9 @@
 import { request } from './client';
 import type {
 	AuthorizeResponse,
+	ListEntry,
+	ListEntryPatch,
+	TitleTrack,
 	IntegrationsResponse,
 	LinkedAccountView,
 	LinksResponse,
@@ -49,10 +52,21 @@ export const links = {
 		})
 };
 
-/** The user's unified tracking list (D-078). */
+/** The user's unified tracking list (D-078), joined with the library (D-288). */
 export const list = {
 	entries: (filters: { type?: string; status?: string } = {}) =>
-		request<ListResponse>('/api/list', { query: filters })
+		request<ListResponse>('/api/list', { query: filters }),
+
+	/** A title's entry on each linked platform, from the stored copy (D-289). */
+	tracking: (itemId: string) =>
+		request<{ tracks: TitleTrack[] }>(`/api/items/${encodeURIComponent(itemId)}/tracking`),
+
+	/** Writes an edit to the platform, then to the stored copy. */
+	save: (platform: string, remoteId: string, patch: ListEntryPatch) =>
+		request<{ entry: ListEntry }>(`/api/list/${encodeURIComponent(platform)}/${encodeURIComponent(remoteId)}`, {
+			method: 'PUT',
+			body: patch
+		})
 };
 
 /** Admin integration credentials (D-080); the secret never comes back. */
@@ -72,6 +86,10 @@ export interface ApiKey {
 	name: string;
 	libraries: string[];
 	created_at: number;
+	/** `library` (feeds libraries) or `indexers` (a coding agent's, D-290). */
+	scopes?: ('library' | 'indexers')[];
+	/** Unix seconds; 0 never. Indexers keys always expire. */
+	expires_at?: number;
 	/** Only in the answer to `create`: the key is shown once. */
 	key?: string;
 }
@@ -79,7 +97,7 @@ export interface ApiKey {
 /** Admin: GET/POST /api/integrations, DELETE /api/integrations/{id}. */
 export const apiKeys = {
 	list: () => request<{ integrations: ApiKey[] }>('/api/integrations'),
-	create: (body: { name: string; libraries: string[] }) =>
+	create: (body: { name: string; libraries?: string[]; scopes?: ('library' | 'indexers')[]; ttl_seconds?: number }) =>
 		request<ApiKey>('/api/integrations', { method: 'POST', body }),
 	remove: (id: string) =>
 		request<{ status: string }>(`/api/integrations/${encodeURIComponent(id)}`, { method: 'DELETE' })

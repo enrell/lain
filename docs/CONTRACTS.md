@@ -58,7 +58,21 @@ from the picture's header (a sidecar's; a frame's is the video's and is
 not known). The gateway fills it on `GET /api/catalog`,
 `/api/catalog/{id}`, `/api/catalog/{id}/episodes` and `/api/search` on
 every read; it is never stored or exported, and a catalog provider never
-sets it. An item with no resolved `file_path` has none.
+sets it. An item with no resolved `file_path` has none. `source` may also
+be `title` (D-287): the file cannot be reached, so the route serves its
+title's art (see `lain.transform.thumbnail@1`), shape unknown.
+
+`CatalogItem.offline` (D-287, additive, omitted when empty) says the file
+cannot be reached right now, filled by the gateway on the same answers as
+`thumbnail` and from the same folder listings, never stored or exported:
+`library` when the item's library folder is missing or empty (an
+unmounted disk often leaves its mount point behind, empty), `file` when
+that folder is there but the file is not. It is the live state, where
+`missing` is a scan's stored verdict, so a file whose disk is away is
+`offline` without a rescan, and the flag clears the moment the file is
+back. The playback plan of such an item is `unavailable` with the reason
+`the library's folder cannot be reached` (`library`) or `the file is no
+longer on disk` (`file`).
 
 ### Pages of titles (D-283)
 
@@ -744,6 +758,27 @@ else the frame at `t` (10 s by default; a comic archive's cover page),
 never `<name>-poster.*` or the folder's `.metadata/thumbs/` still. An
 older server ignores it and answers the cover.
 
+When the file's own picture cannot be made (D-287), because the file
+cannot be reached or no frame could be cut (no ffmpeg, a broken file),
+the route answers the title's art instead of an error, in this order: a
+still that stands for the title next to the file (`<name>-poster.*`,
+`.metadata/thumbs/`); the picture of the title's metadata overlay (the
+item's own, else its title's other files', from libraries the caller may
+see; a 16:9 ask, `art=still` or `t`, takes the wide `cover` before the
+`poster`, the plain cover the poster first), served from disk when it is
+an `.nfo`'s picture named beside it (a picture's name, never a path out of
+the `.nfo`'s folder or a link) or as a `302` to the provider's `http(s)`
+address the overlay holds (the server fetches nothing); last a
+placeholder, `200 image/svg+xml`, the title's name lettered on the
+theme's surface (16:9, or 2:3 for a book's cover) with
+`Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'`.
+Each such answer carries `X-Lain-Thumbnail: title-art | placeholder`,
+`X-Lain-Thumbnail-Reason: source-unavailable | frame-unavailable` and
+`Cache-Control: private, max-age=60`, so a disk mounted again shows its
+stills within a minute; answers of the file's own picture carry neither
+header. A client that cannot draw SVG reads the header (or the type) and
+draws its own placeholder. Case: `watch/24-thumbnail-fallback.json`.
+
 `GET /api/items/{id}/storyboard` (D-275) is how a seek bar previews
 without a request per position: `{interval_sec, count, columns, rows,
 tile_width, tile_height}` for a video whose length is known (404
@@ -912,7 +947,12 @@ into either.
 (`anime|manga|movie|series|comic`), `status`
 (`current|planning|completed|paused|dropped|repeating`), `progress`,
 `progress_total`, `progress_volumes`, `score`, dates, `cover` and the
-remote identity (`platform` + `remote_id`).
+remote identity (`platform` + `remote_id`); also (D-288) `alt_titles`
+(the platform's other names, matched too), `pushed_at` (when lain last
+wrote the entry; kept across imports) and `push_error` (the stable code
+of the last failed write; an import clears it). `item_id` and
+`matched_by` (`id|title`) are the gateway's join with the library,
+filled on reads and never stored.
 
 Read: `ListInput{user_id, type?, status?}` → `ListEntry[]` sorted by
 title then platform.
@@ -922,6 +962,9 @@ Write: `PutPlatformInput{user_id, platform, entries}` →
 that platform (D-081): incoming remote ids are upserted and every
 entry the platform owned that is absent from the response is deleted.
 `DeletePlatformInput{user_id, platform}` → removed count (unlink).
+`PutEntryInput{user_id, platform, entry}` (`put-entry`) → the stored
+entry: one entry upserted, the rest of the set untouched (a write lain
+made to the platform, D-288).
 
 ### lain.list.account@1 (exactly-one)
 
@@ -947,10 +990,14 @@ bound provider is tried. Ops:
 - `LinkFetchInput{platform, token, remote_user_id}` →
   `LinkFetchOutput{entries}` — the remote list mapped onto
   `ListEntry` fields.
-- `LinkPushInput{platform, token, remote_id, progress, status?}` →
-  `LinkPushOutput{progress, status}` — scrobble: writes one entry's
-  progress (and optionally a normalized status) back to the platform
-  (D-084). Additive to `@1`: connectors that predate it answer
+- `LinkPushInput{platform, token, remote_id, progress?,
+  progress_volumes?, status?, score?}` → `LinkPushOutput{progress,
+  status, entry?}` — scrobbles and edits: writes the fields given to
+  one entry (creating it when the list lacks the media); an absent field
+  is left as the platform has it (D-289: `progress` was required before,
+  and callers then always sent it). `score` is 0..10 (0 clears it).
+  `entry`, when the connector reads the saved entry back, is the whole
+  `ListEntry`. Additive to `@1`: connectors that predate it answer
   `invalid-message`, never crash.
 Built-in `lain-listlink-anilist`: AniList's authorization-code flow
 plus an authenticated GraphQL `MediaListCollection` fetch for `ANIME`
@@ -992,6 +1039,46 @@ platform-owned entries (D-079). `POST /api/me/links/{platform}/sync`
 re-imports on demand; `401 token-invalid|token-expired` marks the link
 for reconnection while imported entries stay visible. `GET /api/list`
 (auth) → `{entries}`, filterable with `?type=`/`?status=`.
+
+**The list and the library (D-288, D-289).** `GET /api/list` fills each
+entry's `item_id` (the library title it is: the title's first file in
+watch order) and `matched_by`: `id` when a file of the title has a
+`lain-metadata-anilist` overlay naming the entry's `remote_id`, else
+`title` when exactly one title's names (files' title and aliases, the
+overlay's title) equal one of the entry's (`title`, `alt_titles`) under
+`match_key` (lower-case letters and digits, other runs one space).
+Anime entries join watched titles, manga entries read ones (`manga`,
+`comic` kinds); private libraries never join, locked or not, and
+libraries hidden from the session are left out.
+
+`GET /api/items/{id}/tracking` (auth) → `{tracks: [{platform,
+remote_id, matched_by?, scrobble, entry?}]}`, one per linked platform,
+from the stored copy (no remote call): `remote_id` is the entry's, else
+the id the title's metadata names, else empty. `{tracks: []}` with
+nothing linked or for a private library's item; `404 unknown item` for
+an item the session cannot see.
+
+`PUT /api/list/{platform}/{remote_id}` (auth) with `{status?, progress?,
+progress_volumes?, score?, item_id?}` writes the given fields to the
+platform, then to the stored copy, and answers `{entry}` (joined). At
+least one field; `status` in the shared vocabulary; `score` 0..10 (AniList
+gets `scoreRaw`, the 100-point value, whatever the user's format);
+`item_id` describes a work the list lacks (title, cover, kind). Errors:
+`400 invalid-message`, `404` not linked or unknown item, `403
+private-library`, `401 token-invalid|token-expired`, `429 rate-limited`,
+`503` otherwise. Each write, good or failed, is the account's
+`last_push{at, remote_id, title, progress?, status?, via, error?}` on
+`GET /api/me/links` (`via`: `scrobble` or `edit`).
+
+Automatic updates (`scrobble`, on for a new link; a relink keeps the
+stored choice): a finished item advances the entry it is (overlay id
+first, then names): an anime episode of season 0 or 1, a film a
+one-episode entry, an archive's chapter (`episode`) and volume
+(`season`) a manga entry; never lower, never a completed or repeating
+entry, `completed` on the last episode or chapter. Finishes wait 1.5 s
+of quiet in one worker and go out as one write per entry. Private
+libraries never scrobble. `list-changed` gains the actions `saved` (an
+edit) and `push-failed` (`remote_id`, `error`).
 
 The callback URL AniList must be registered with is derived per
 request as `{scheme}://{host}/api/auth/{platform}/callback` (honoring
@@ -1062,6 +1149,76 @@ the crates `lain-torrent`, `lain-acquire` and `lain-downloads`; every
 `/api/acquire/*` and `/api/downloads*` route keeps Go's shapes and
 texts. `GET /api/events` adds `grab-changed` and `download-changed`
 (admins; `{id, removed: true}` on delete, D-210).
+
+### Setting indexers up: presets, probe and agent keys (D-290, D-291)
+
+Additive routes, admin-only like the rest of `/api/acquire/*`, that also
+take an **indexers key** (below). Cases: `acquire/22-agent-keys.json`.
+
+- `POST /api/acquire/indexers/probe` — `IndexerProbeInput` (an
+  `IndexerInput`, plus optional `id`: the saved indexer with the input
+  laid over it, tried with its stored key) → 200 `IndexerProbe{ok,
+  caps?, sample, error?}` either way, like a test. `caps` first (`ok`
+  false and `error` when it fails), then an empty-query search with
+  `limit=5` whose results are `sample`, stripped to `protocol`, `title`,
+  `size`, `seeders`, `peers`, `published_at`, `categories`, `freeleech`
+  (links and guids can carry the indexer's key); a failed sample after
+  good caps keeps `ok` and sets `error`. Nothing is stored; 400 for an
+  input `POST /api/acquire/indexers` would refuse, 404 for an unknown
+  `id`.
+- `POST /api/acquire/indexers/discover` — `DiscoverInput{source:
+  prowlarr|jackett, url, api_key}` → `DiscoverOutput{source, indexers:
+  [DiscoveredIndexer{source_id, name, protocol, url, privacy?, enabled,
+  added_as?}]}`. Prowlarr: `GET {url}/api/v1/indexer` with `X-Api-Key`;
+  feeds `{url}/{id}/api` (`usenet` → `newznab`, `torrent` → `torznab`,
+  other protocols left out). Jackett: the Torznab `t=indexers&configured=true`
+  of its `all` indexer (`apikey` in the query, as Jackett requires);
+  feeds `{url}/api/v2.0/indexers/{id}/results/torznab/`, ids limited to
+  letters, digits and `-_.`. `url` is the base address (a trailing `/`
+  or query is dropped); `privacy` is `public`, `private` or
+  `semi-private` when said; `added_as` is the lain indexer already on
+  that feed (feeds compare without a trailing `/` or `/api`). Errors:
+  400 `invalid-request` (source, URL, missing or long key), 502
+  `auth-failed` (the key was refused) or `fetch-failed` (unreachable,
+  404, not a list); messages name the host only.
+- `POST /api/acquire/indexers/import` — `DiscoverInput` plus `ids`
+  (1–200 `source_id`s) → 201 `IndexerImport{added: [IndexerView],
+  skipped: [source_id]}` (200 when nothing was added). lain discovers
+  again and never takes a feed URL from the caller; each new indexer is
+  created as `POST /api/acquire/indexers` would (enabled, 2 s interval)
+  with the aggregator's key stored on it; ids already on a lain indexer
+  are `skipped`. An id the aggregator does not serve is 404 `not-found`
+  and adds nothing.
+
+**Indexers keys.** `POST /api/integrations` takes the additive
+`scopes` (`["library"]`, the default and the old shape, or
+`["indexers"]`; one scope per key) and `ttl_seconds`. An indexers key
+takes no `libraries` and always expires: `ttl_seconds` 60–86400, 3600
+when 0 or absent. A library key may expire too (`ttl_seconds` ≥ 60; 0
+or absent never). `GET /api/integrations` and the create answer add
+`scopes` (`["library"]` for keys made before scopes) and `expires_at`
+(Unix seconds, 0 never); expired keys are dropped from the list. With
+an indexers key (`Authorization: Bearer lain_…`, the header only):
+
+- the routes `GET/POST /api/acquire/indexers`,
+  `PATCH/DELETE /api/acquire/indexers/{id}`,
+  `POST /api/acquire/indexers/{id}/test`, `…/probe`, `…/discover` and
+  `…/import` answer as for an admin (`Gate::Indexers`); every other
+  route answers 401 `unauthorized`, as for a wrong key, and a library
+  key answers 401 on the indexer routes;
+- a key sent as `?token=` is refused with 401 `an integration key goes
+  in the Authorization header, never in the URL`;
+- past `expires_at` the key answers 401 `key expired` once and is
+  deleted; `DELETE /api/integrations/{id}` revokes it at once;
+- the log names changes by key id (`indexer added by an integration
+  key`), never the key.
+
+**The agent guide** (D-291): `GET /api/agent/indexers.md`, public,
+`text/markdown; charset=utf-8`, format `lain.agent-guide@1`: the rules
+(ask the owner before writing, the key only in a header, no invented
+URLs) and a `curl` line for each route above. Its source is
+`crates/lain-server/src/agent-indexers.md`; the web's "Set up with a
+coding agent" prompt points the agent at it.
 
 ## P4 components: bridges to standalone apps (lain-rs, D-225..D-231)
 

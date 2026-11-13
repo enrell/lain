@@ -196,6 +196,9 @@ pub(crate) enum Gate {
     Public,
     User,
     Admin,
+    /// An admin session, or an integration key with the `indexers`
+    /// scope (D-290). Only the `/api/acquire/indexers*` routes use it.
+    Indexers,
 }
 
 pub(crate) type Handler = fn(&App, &Req, &Verified) -> Reply;
@@ -204,8 +207,18 @@ pub(crate) fn authorize(app: &App, req: &Req, gate: Gate) -> Result<Verified, Re
     if gate == Gate::Public {
         return Ok(Verified { user_id: String::new(), role: String::new(), session: String::new(), expires_at: 0 });
     }
+    if gate == Gate::Indexers
+        && let Some(who) = crate::integration::indexers_caller(app, req)
+    {
+        return who.map(|i| Verified {
+            user_id: i.id,
+            role: crate::integration::ROLE_INTEGRATION.into(),
+            session: String::new(),
+            expires_at: i.expires_at,
+        });
+    }
     let v = req.token().and_then(|t| app.verify(t)).ok_or_else(|| Reply::err(401, "unauthorized"))?;
-    if gate == Gate::Admin && v.role != ROLE_ADMIN {
+    if matches!(gate, Gate::Admin | Gate::Indexers) && v.role != ROLE_ADMIN {
         return Err(Reply::err(403, "admin required"));
     }
     Ok(v)
@@ -934,17 +947,17 @@ fn search(app: &App, req: &Req, v: &Verified) -> Reply {
     p.group = PageParams::grouping(req.query("group"));
     let input = json!({"q": req.query("q"), "kind": req.query("kind"), "page": p});
     match app.registry.call_one(CAP_CATALOG_READ, "query", input) {
-        Ok((out, _)) => Reply::ok(page_with_thumbnails(out)),
+        Ok((out, _)) => Reply::ok(page_with_thumbnails(app, out)),
         Err(e) => Reply::err(503, &e.to_string()),
     }
 }
 
 /// A catalog page with what each item's thumbnail is (D-282); a page that
 /// does not decode (a swapped provider's) goes out as it came.
-fn page_with_thumbnails(out: Value) -> Value {
+fn page_with_thumbnails(app: &App, out: Value) -> Value {
     match serde_json::from_value::<CatalogPage>(out.clone()) {
         Ok(mut page) => {
-            crate::watch::tell_thumbnails(&mut page.items);
+            crate::watch::tell_thumbnails(app, &mut page.items);
             json!(page)
         }
         Err(_) => out,
@@ -1005,7 +1018,7 @@ fn catalog_list(app: &App, req: &Req, v: &Verified) -> Reply {
     p.exclude_libraries = app.hidden_libraries(v);
     p.group = PageParams::grouping(req.query("group"));
     match app.registry.call_one(CAP_CATALOG_READ, "page", json!({"page": p})) {
-        Ok((out, _)) => Reply::ok(page_with_thumbnails(out)),
+        Ok((out, _)) => Reply::ok(page_with_thumbnails(app, out)),
         Err(e) => Reply::err(500, &e.to_string()),
     }
 }
@@ -1015,7 +1028,7 @@ fn catalog_get(app: &App, req: &Req, v: &Verified) -> Reply {
         Ok((out, _)) if app.visible_item(v, req.param("id")).is_some() => {
             match serde_json::from_value::<CatalogItem>(out.clone()) {
                 Ok(mut it) => {
-                    crate::watch::tell_thumbnails(std::slice::from_mut(&mut it));
+                    crate::watch::tell_thumbnails(app, std::slice::from_mut(&mut it));
                     Reply::ok(json!(it))
                 }
                 Err(_) => Reply::ok(out),
@@ -1045,7 +1058,7 @@ fn catalog_episodes(app: &App, req: &Req, v: &Verified) -> Reply {
                 .into_iter()
                 .filter(|it| !hidden.contains(&it.library_id))
                 .collect();
-            crate::watch::tell_thumbnails(&mut items);
+            crate::watch::tell_thumbnails(app, &mut items);
             Reply::ok(json!({"items": items}))
         }
         Err(e) => {

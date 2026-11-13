@@ -3,8 +3,8 @@
 //! (on link, on demand and on a ~6 h ticker) and scrobbles. Every call
 //! goes through the registry, so swaps and module suspend apply.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -13,12 +13,16 @@ use lain_admin::integrations::IntegrationSettings;
 use lain_core::{Error, Registry};
 use lain_store::{Bucket, Store};
 
-use crate::link::{self, AuthorizeInput, AuthorizeOutput, ExchangeInput, FetchInput, FetchOutput, Identity, PushInput};
+use lain_api::{ListEntryPatch, list_status};
+
+use crate::link::{
+    self, AuthorizeInput, AuthorizeOutput, ExchangeInput, FetchInput, FetchOutput, Identity, PushInput, PushOutput,
+};
 use crate::scrobble::{self, Finished};
 use crate::store::op;
 use crate::{
-    CAP_INTEGRATION_SETTINGS, CAP_LIST_ACCOUNT, CAP_LIST_LINK, CAP_LIST_READ, CAP_LIST_WRITE, LinkedAccount, ListEntry,
-    ListSyncStats, anilist, code, encode_query, settings,
+    CAP_INTEGRATION_SETTINGS, CAP_LIST_ACCOUNT, CAP_LIST_LINK, CAP_LIST_READ, CAP_LIST_WRITE, LinkPush, LinkedAccount,
+    ListEntry, ListSyncStats, anilist, code, encode_query, settings,
 };
 
 /// The official Lain application for the auth-pin flow (D-083). Its
@@ -36,7 +40,14 @@ pub const STATE_TTL_SECS: i64 = 600;
 /// The scheduled import interval (D-081).
 pub const SYNC_INTERVAL: Duration = Duration::from_secs(6 * 3600);
 
+/// How long finished items gather before they are written: marking a
+/// season watched lands as one write per entry (D-288).
+pub const SCROBBLE_DEBOUNCE: Duration = Duration::from_millis(1500);
+
 const STATE_KEY: &[u8] = b"oauth_state_key";
+
+/// Finished items waiting for the scrobble worker, by user.
+type Pending = Arc<(Mutex<Vec<(String, Finished)>>, Condvar)>;
 
 /// Called with the user and the `list-changed` event data whenever a
 /// link or its entries change.
@@ -48,9 +59,16 @@ pub struct Links {
     /// One import at a time: a ticker never piles onto a manual sync,
     /// and a scrobble's local update never races a replace.
     sync_lock: Mutex<()>,
+    /// One write to the platforms at a time: a scrobble plans against
+    /// the copy the previous write left, and an edit never interleaves
+    /// with one.
+    push_lock: Mutex<()>,
     hook: Mutex<Option<ChangeHook>>,
     started: AtomicBool,
     stop: Arc<AtomicBool>,
+    pending: Pending,
+    worker: AtomicBool,
+    debounce_ms: Arc<AtomicU64>,
 }
 
 fn now() -> i64 {
@@ -138,9 +156,13 @@ impl Links {
             registry,
             state_key: key,
             sync_lock: Mutex::new(()),
+            push_lock: Mutex::new(()),
             hook: Mutex::new(None),
             started: AtomicBool::new(false),
             stop: Arc::new(AtomicBool::new(false)),
+            pending: Arc::new((Mutex::new(Vec::new()), Condvar::new())),
+            worker: AtomicBool::new(false),
+            debounce_ms: Arc::new(AtomicU64::new(SCROBBLE_DEBOUNCE.as_millis() as u64)),
         })
     }
 
@@ -261,7 +283,11 @@ impl Links {
     /// authoritative, D-081). A failed import still leaves a valid link:
     /// the error lands on the account and the next sync retries.
     pub fn link(&self, user_id: &str, platform: &str, id: Identity, via: &str) -> LinkedAccount {
+        // A relink keeps the owner's choice; a first link updates the
+        // platform as lain is used (D-288).
+        let scrobble = self.account(user_id, platform).is_none_or(|old| old.scrobble);
         let a = LinkedAccount {
+            scrobble,
             user_id: user_id.into(),
             platform: platform.into(),
             remote_user_id: id.remote_user_id,
@@ -369,6 +395,11 @@ impl Links {
             json!({"user_id": a.user_id, "platform": a.platform, "entries": fetched.entries}),
         )?;
         let stats: ListSyncStats = serde_json::from_value(v).unwrap_or_default();
+        // The stored account, not the one this sync started from: a
+        // write recorded meanwhile (its last push) must not be lost.
+        if let Some(cur) = self.account(&a.user_id, &a.platform) {
+            a = cur;
+        }
         a.last_sync_at = now();
         a.last_sync_error.clear();
         a.entry_count = n;
@@ -382,6 +413,9 @@ impl Links {
     }
 
     fn mark_error(&self, mut a: LinkedAccount, code: &str) {
+        if let Some(cur) = self.account(&a.user_id, &a.platform) {
+            a = cur;
+        }
         a.last_sync_error = code.into();
         self.put_account(&a);
         self.changed(&a.user_id, json!({"platform": a.platform, "action": "sync-failed", "error": code}));
@@ -440,10 +474,76 @@ impl Links {
 
     // ---- scrobble ---------------------------------------------------------
 
-    /// Pushes a finished episode to every account that opted in. Runs
-    /// synchronously; the caller runs it off the request path so a slow
-    /// platform never delays playback reporting.
+    /// Sets how long finished items gather before they are written.
+    pub fn set_debounce(&self, d: Duration) {
+        self.debounce_ms.store(d.as_millis() as u64, Ordering::SeqCst);
+    }
+
+    /// Queues a finished item for the scrobble worker, which writes
+    /// after [`SCROBBLE_DEBOUNCE`] of quiet, off the request path, so a
+    /// slow platform never delays playback reporting and a run of
+    /// finishes is one write per entry.
+    pub fn enqueue(self: &Arc<Self>, user_id: &str, item: Finished) {
+        {
+            let (q, cv) = &*self.pending;
+            q.lock().unwrap_or_else(|e| e.into_inner()).push((user_id.to_string(), item));
+            cv.notify_one();
+        }
+        if self.worker.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let (weak, pending, stop, debounce) =
+            (Arc::downgrade(self), self.pending.clone(), self.stop.clone(), self.debounce_ms.clone());
+        let spawned = std::thread::Builder::new().name("scrobble".into()).spawn(move || {
+            loop {
+                let (q, cv) = &*pending;
+                let mut guard = q.lock().unwrap_or_else(|e| e.into_inner());
+                while guard.is_empty() {
+                    if stop.load(Ordering::SeqCst) || weak.strong_count() == 0 {
+                        return;
+                    }
+                    guard = cv.wait_timeout(guard, Duration::from_millis(250)).unwrap_or_else(|e| e.into_inner()).0;
+                }
+                // Quiet for the debounce: every finish that keeps coming
+                // in (a season marked at once) joins this batch.
+                let mut seen = guard.len();
+                drop(guard);
+                loop {
+                    std::thread::sleep(Duration::from_millis(debounce.load(Ordering::SeqCst)));
+                    let n = q.lock().unwrap_or_else(|e| e.into_inner()).len();
+                    if n == seen || stop.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    seen = n;
+                }
+                let batch = std::mem::take(&mut *q.lock().unwrap_or_else(|e| e.into_inner()));
+                let Some(links) = weak.upgrade() else { return };
+                let mut users: Vec<String> = Vec::new();
+                for (u, _) in &batch {
+                    if !users.contains(u) {
+                        users.push(u.clone());
+                    }
+                }
+                for u in users {
+                    let items: Vec<Finished> = batch.iter().filter(|(x, _)| *x == u).map(|(_, i)| i.clone()).collect();
+                    links.scrobble_many(&u, &items);
+                }
+            }
+        });
+        if spawned.is_err() {
+            self.worker.store(false, Ordering::SeqCst);
+            tracing::warn!("scrobble worker did not start");
+        }
+    }
+
+    /// Pushes a finished item to every account that opted in, now.
     pub fn scrobble(&self, user_id: &str, item: &Finished) {
+        self.scrobble_many(user_id, std::slice::from_ref(item));
+    }
+
+    /// Pushes a run of finished items to every account that opted in:
+    /// one write per entry they advance.
+    pub fn scrobble_many(&self, user_id: &str, items: &[Finished]) {
         let accounts = match self.accounts(user_id) {
             Ok(a) => a,
             Err(e) => {
@@ -451,69 +551,241 @@ impl Links {
                 return;
             }
         };
+        let _one = self.push_lock.lock().unwrap_or_else(|e| e.into_inner());
         for a in accounts.into_iter().filter(|a| a.scrobble && !a.token.is_empty()) {
-            self.scrobble_to(a, item);
+            self.scrobble_to(&a, items);
         }
     }
 
-    fn scrobble_to(&self, a: LinkedAccount, item: &Finished) {
-        let entries = match self.list(&a.user_id, "anime", "") {
+    fn scrobble_to(&self, a: &LinkedAccount, items: &[Finished]) {
+        let entries = match self.list(&a.user_id, "", "") {
             Ok(e) => e,
             Err(e) => {
                 tracing::warn!(platform = %a.platform, err = %e, "scrobble list read failed");
                 return;
             }
         };
-        let Some(d) = scrobble::plan(item, &a.platform, &entries) else { return };
+        let decisions = scrobble::plan_many(items, &a.platform, &entries);
+        if decisions.is_empty() {
+            return;
+        }
         if a.token_expired(now()) {
             tracing::warn!(platform = %a.platform, user = %a.user_id, "scrobble skipped: token expired");
             return;
         }
-        let push = PushInput {
-            platform: a.platform.clone(),
-            token: a.token.clone(),
-            remote_id: d.remote_id.clone(),
-            progress: d.progress,
-            status: d.status.clone(),
-        };
-        if let Err(e) = self.connector(link::PUSH, serde_json::to_value(&push).unwrap_or_default()) {
-            tracing::warn!(platform = %a.platform, user = %a.user_id, code = %e.code, "scrobble failed");
-            return;
+        for d in decisions {
+            let push = PushInput {
+                platform: a.platform.clone(),
+                token: a.token.clone(),
+                remote_id: d.remote_id.clone(),
+                progress: d.progress,
+                progress_volumes: d.progress_volumes,
+                status: d.status.clone(),
+                score: None,
+            };
+            let local = entries.iter().find(|e| e.platform == a.platform && e.remote_id == d.remote_id).cloned();
+            let mut record = LinkPush {
+                at: now(),
+                remote_id: d.remote_id.clone(),
+                title: d.title.clone(),
+                progress: d.progress.or(d.progress_volumes).unwrap_or(0),
+                status: d.status.clone(),
+                via: "scrobble".into(),
+                error: String::new(),
+            };
+            match self.push(&push) {
+                Ok(out) => {
+                    tracing::info!(platform = %a.platform, user = %a.user_id, progress = ?d.progress, status = %d.status, "scrobbled");
+                    let mut e = local.unwrap_or_default();
+                    scrobble::apply(&mut e, &d);
+                    let saved = self.store_written(a, e, out);
+                    self.record_push(a, record);
+                    self.changed(
+                        &a.user_id,
+                        json!({"platform": a.platform, "action": "scrobbled", "remote_id": d.remote_id,
+                               "progress": saved.as_ref().map_or(0, |e| e.progress), "status": d.status}),
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(platform = %a.platform, user = %a.user_id, code = %e.code, "scrobble failed");
+                    record.error = e.code.clone();
+                    if let Some(mut l) = local {
+                        l.push_error = e.code.clone();
+                        self.put_entry(a, l);
+                    }
+                    self.record_push(a, record);
+                    self.changed(
+                        &a.user_id,
+                        json!({"platform": a.platform, "action": "push-failed", "remote_id": d.remote_id, "error": e.code}),
+                    );
+                }
+            }
         }
-        tracing::info!(platform = %a.platform, user = %a.user_id, progress = d.progress, status = %d.status, "scrobbled");
-        self.update_local(&a, &d);
     }
 
-    /// Keeps the stored copy in step with the platform, so the next
-    /// finished episode compares against it without waiting for a sync.
-    fn update_local(&self, a: &LinkedAccount, d: &scrobble::Decision) {
-        let _one = self.sync_lock.lock().unwrap_or_else(|e| e.into_inner());
-        let all = match self.list(&a.user_id, "", "") {
-            Ok(all) => all,
-            Err(e) => {
-                tracing::warn!(err = %e, "scrobble local update failed");
-                return;
+    fn push(&self, push: &PushInput) -> Result<PushOutput, Error> {
+        let out = self.connector(link::PUSH, serde_json::to_value(push).unwrap_or_default())?;
+        Ok(serde_json::from_value(out).unwrap_or_default())
+    }
+
+    /// Stores what a good write left: the platform's copy when the
+    /// connector read one back, else the local copy with the change.
+    fn store_written(&self, a: &LinkedAccount, local: ListEntry, out: PushOutput) -> Option<ListEntry> {
+        let mut e = match out.entry {
+            Some(mut remote) => {
+                // The platform's answer is the truth; what it does not
+                // carry (the write time) comes from the local copy.
+                remote.pushed_at = local.pushed_at;
+                remote
+            }
+            // A connector that answers only the two counts it wrote:
+            // those are still the platform's word.
+            None => {
+                let mut l = local;
+                if out.progress > 0 {
+                    l.progress = out.progress;
+                }
+                if !out.status.is_empty() {
+                    l.status = out.status;
+                }
+                l
             }
         };
-        let mine: Vec<ListEntry> = all
-            .into_iter()
-            .filter(|e| e.platform == a.platform)
-            .map(|mut e| {
-                if e.remote_id == d.remote_id {
-                    e.progress = d.progress;
-                    e.status = d.status.clone();
-                }
-                e
-            })
-            .collect();
-        let input = json!({"user_id": a.user_id, "platform": a.platform, "entries": mine});
-        match self.registry.call_one(CAP_LIST_WRITE, op::PUT_PLATFORM, input) {
-            Ok(_) => self.changed(
-                &a.user_id,
-                json!({"platform": a.platform, "action": "scrobbled", "remote_id": d.remote_id, "progress": d.progress, "status": d.status}),
-            ),
-            Err(e) => tracing::warn!(err = %e, "scrobble local update failed"),
+        e.pushed_at = now();
+        e.push_error.clear();
+        self.put_entry(a, e)
+    }
+
+    fn put_entry(&self, a: &LinkedAccount, e: ListEntry) -> Option<ListEntry> {
+        let input = json!({"user_id": a.user_id, "platform": a.platform, "entry": e});
+        match self.registry.call_one(CAP_LIST_WRITE, op::PUT_ENTRY, input) {
+            Ok((v, _)) => serde_json::from_value(v).ok(),
+            Err(e) => {
+                tracing::warn!(platform = %a.platform, err = %e, "list entry write failed");
+                None
+            }
         }
+    }
+
+    /// The account's "last write" line: what went out and whether it
+    /// took (D-288).
+    fn record_push(&self, a: &LinkedAccount, p: LinkPush) {
+        let mut cur = self.account(&a.user_id, &a.platform).unwrap_or_else(|| a.clone());
+        cur.last_push = Some(p);
+        self.put_account(&cur);
+    }
+
+    // ---- edits from a title page (D-289) ---------------------------------
+
+    /// Writes an edit (status, score, progress) to the platform, then
+    /// to the local copy. `fallback` describes the work when the list
+    /// does not hold it yet (a title added from its page) and the
+    /// connector does not read the entry back.
+    pub fn save_entry(
+        &self,
+        user_id: &str,
+        platform: &str,
+        remote_id: &str,
+        patch: &ListEntryPatch,
+        fallback: Option<ListEntry>,
+    ) -> Result<ListEntry, Error> {
+        let statuses = [
+            list_status::CURRENT,
+            list_status::PLANNING,
+            list_status::COMPLETED,
+            list_status::PAUSED,
+            list_status::DROPPED,
+            list_status::REPEATING,
+        ];
+        if let Some(s) = patch.status.as_deref()
+            && !statuses.contains(&s)
+        {
+            return Err(Error::invalid(format!("status must be one of {}", statuses.join(", "))));
+        }
+        if patch.score.is_some_and(|s| !(0.0..=10.0).contains(&s) || s.is_nan()) {
+            return Err(Error::invalid("score must be between 0 and 10"));
+        }
+        if patch.progress.is_some_and(|p| p < 0) || patch.progress_volumes.is_some_and(|p| p < 0) {
+            return Err(Error::invalid("progress must not be negative"));
+        }
+        if patch.status.is_none()
+            && patch.score.is_none()
+            && patch.progress.is_none()
+            && patch.progress_volumes.is_none()
+        {
+            return Err(Error::invalid("status, score, progress or progress_volumes required"));
+        }
+        let a =
+            self.account(user_id, platform).ok_or_else(|| Error::not_found(format!("no {platform} account linked")))?;
+        if a.token_expired(now()) {
+            return Err(Error::new(code::TOKEN_EXPIRED, format!("the {platform} token expired; link again")));
+        }
+        let _one = self.push_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let local = self
+            .list(user_id, "", "")?
+            .into_iter()
+            .find(|e| e.platform == platform && e.remote_id == remote_id)
+            .or(fallback.map(|f| ListEntry { remote_id: remote_id.into(), ..f }));
+        let push = PushInput {
+            platform: platform.into(),
+            token: a.token.clone(),
+            remote_id: remote_id.into(),
+            progress: patch.progress,
+            progress_volumes: patch.progress_volumes,
+            status: patch.status.clone().unwrap_or_default(),
+            score: patch.score,
+        };
+        let title = local.as_ref().map(|e| e.title.clone()).unwrap_or_default();
+        let mut record = LinkPush {
+            at: now(),
+            remote_id: remote_id.into(),
+            title,
+            progress: patch.progress.unwrap_or(0),
+            status: patch.status.clone().unwrap_or_default(),
+            via: "edit".into(),
+            error: String::new(),
+        };
+        let out = match self.push(&push) {
+            Ok(out) => out,
+            Err(e) => {
+                record.error = e.code.clone();
+                self.record_push(&a, record);
+                return Err(e);
+            }
+        };
+        if out.entry.is_none() && local.as_ref().is_none_or(|l| l.title.trim().is_empty()) {
+            self.record_push(&a, record);
+            return Err(Error::internal("the platform saved the entry but lain cannot describe it; sync to see it"));
+        }
+        let mut e = local.unwrap_or_default();
+        if let Some(s) = &patch.status {
+            e.status = s.clone();
+        }
+        if let Some(p) = patch.progress {
+            e.progress = p;
+        }
+        if let Some(v) = patch.progress_volumes {
+            e.progress_volumes = v;
+        }
+        if let Some(sc) = patch.score {
+            e.score = sc;
+        }
+        if e.media_type.is_empty() {
+            e.media_type = lain_api::list_media::ANIME.into();
+        }
+        let saved =
+            self.store_written(&a, e, out).ok_or_else(|| Error::internal("the list entry could not be stored"))?;
+        if record.title.is_empty() {
+            record.title = saved.title.clone();
+        }
+        record.progress = saved.progress;
+        record.status = saved.status.clone();
+        self.record_push(&a, record);
+        self.changed(
+            user_id,
+            json!({"platform": platform, "action": "saved", "remote_id": remote_id, "progress": saved.progress, "status": saved.status}),
+        );
+        Ok(saved)
     }
 
     // ---- the OAuth state (HMAC-signed, expiring, bound to user and platform)

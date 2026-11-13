@@ -9,6 +9,7 @@
 	import { t } from '$lib/i18n';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
+	import OfflineMark from './OfflineMark.svelte';
 	import CardProgress from './CardProgress.svelte';
 
 	let {
@@ -57,7 +58,7 @@
 	// The link's aria-label replaces its inner text, so the visual 'Watching'
 	// badge has to be part of the name or a screen reader never hears it.
 	const accessibleName = $derived(
-		[title, subtitle, ratio > 0 ? (reading ? 'reading' : 'watching') : ''].filter(Boolean).join(', ')
+		[item.offline ? t('unreachable.cardLabel', { title }) : title, subtitle, ratio > 0 ? (reading ? 'reading' : 'watching') : ''].filter(Boolean).join(', ')
 	);
 </script>
 
@@ -75,11 +76,15 @@
 		<div
 			class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent opacity-15 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100"
 		></div>
-		<div
-			class="pointer-events-none absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/65 text-foreground opacity-0 backdrop-blur transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
-		>
-			<Play class="size-4 translate-x-px" aria-hidden="true" />
-		</div>
+		{#if item.offline}
+			<OfflineMark compact={ratio > 0 || !!progress?.completed} class="absolute right-2 top-2" />
+		{:else}
+			<div
+				class="pointer-events-none absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/65 text-foreground opacity-0 backdrop-blur transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+			>
+				<Play class="size-4 translate-x-px" aria-hidden="true" />
+			</div>
+		{/if}
 		{#if ratio > 0}
 			<span
 				class="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground backdrop-blur"

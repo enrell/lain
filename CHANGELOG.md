@@ -6,6 +6,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Cards are never empty boxes** (D-287): when a file's own picture
+  cannot be made (its disk unmounted, no frame to cut), the thumbnail
+  route answers the title's art instead of an error (a still beside the
+  file, the overlay's picture as a redirect, else a placeholder lettering
+  the title in the theme), saying so in `X-Lain-Thumbnail` and
+  `X-Lain-Thumbnail-Reason`. The web also walks each picture's fallbacks on
+  error and ends on the same lettered placeholder.
+- **Offline files are told, calmly** (D-287): catalog answers carry
+  `offline` (`library` when the library's folder is missing or empty,
+  `file` when only the file is gone), cards wear a small `Offline` mark,
+  and the title page says which folder cannot be reached instead of
+  offering a Play that fails; the playback plan's reason names the folder.
+- **AniList that pays off** (D-288, D-289): Tracking shows the AniList
+  lists (Watching, Planning, Completed, Paused, Dropped, Rewatching; anime
+  and manga) with cover, progress and score, each entry marked "In
+  library" and opening its title, or, when planned and missing, offering
+  an administrator "Find releases" in Acquire. Watching and reading
+  update AniList on their own (episodes, film entries, manga chapters and
+  volumes; a season marked watched is one write and completes the entry),
+  with the switch and the last update on Tracking and in Settings ›
+  Connections; new links have it on. The title page shows the AniList
+  status, progress and your score and sets the status and score there
+  (L). API: `GET /api/items/{id}/tracking`, `PUT
+  /api/list/{platform}/{remote_id}`; `GET /api/list` entries carry
+  `item_id`, `matched_by`, `pushed_at`, `push_error`; links carry
+  `last_push`. Pages read the stored copy and never wait on AniList.
+  `lain-client`: `Client::title_tracking`, `Client::save_list_entry`.
+- **Indexer presets** (D-290): Settings › Indexers › Add indexer asks a
+  Prowlarr or Jackett you run for the indexers it serves and adds the
+  ticked ones in one step, with its API key; a feed URL typed by hand can
+  be tried first (caps and a few latest releases). `POST
+  /api/acquire/indexers/discover`, `/import` and `/probe`. There are no
+  public presets: no well-known public source publishes a stable feed of
+  its own.
+- **Set up indexers with a coding agent** (D-290, D-291): one button (key
+  `a`) makes an integration key that only manages indexers, expires (15
+  minutes to a day) and can be revoked from the same dialog, and shows a
+  prompt for Claude Code, opencode or a DeepSeek harness that points at
+  the server's own guide, `GET /api/agent/indexers.md`, and tells the
+  agent to ask before adding anything. `POST /api/integrations` takes
+  `scopes: ["indexers"]` and `ttl_seconds`; such a key is accepted only
+  in the `Authorization` header and only by `/api/acquire/indexers*`.
+  The empty Indexers page and Acquire's first step offer both ways.
 - **Pages of titles** (D-283): `GET /api/catalog` and `GET /api/search`
   take `group=title`, which pages titles instead of files: `total`,
   `limit` and `offset` count titles and `items` holds every file of each
@@ -165,6 +208,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   under way says its page on Continue reading ("Vol 1 · page 4 of 8").
 
 ### Fixed
+- **A title in a poster rail shows its poster while you watch it**: a
+  show's card drew its first episode's overlay, and when only the episode
+  under way had one (a backfill cut short, metadata fetched from that
+  episode's page) the card showed the first episode's wide frame
+  letterboxed in the poster frame. Cards, the title page's cover and the
+  frame guess now take the poster from whichever file of the title has it.
 - **Web:** films and clips without a year are captioned with their length,
   not "video"; time left is said one way on every card and hero ("9 sec
   left", where a card said "1 min left"); a film card under way says what

@@ -11,9 +11,19 @@ export function cardThumb(item: Pick<CatalogItem, 'id' | 'kind'>): string {
 	return api.thumbnail.url(item.id, session.token, { width: isReadable(item.kind) ? 480 : 320 });
 }
 
+/**
+ * Whether the server stands in for the file's picture (D-287: the file
+ * cannot be reached): its answer is the title's art or a drawn placeholder
+ * of a shape of its own, so a card that has no overlay art letters the
+ * title itself in its frame, and the picture never votes on a set's frame.
+ */
+export function standsIn(item: Pick<CatalogItem, 'thumbnail'>): boolean {
+	return item.thumbnail?.source === 'title';
+}
+
 /** The picture a card shows first: poster, then cover, then the file's still (see Poster). */
-export function cardPicture(item: Pick<CatalogItem, 'id' | 'kind'>, enrichment: Enrichment | null | undefined): string {
-	return enrichment?.poster || enrichment?.cover || cardThumb(item);
+export function cardPicture(item: Pick<CatalogItem, 'id' | 'kind' | 'thumbnail'>, enrichment: Enrichment | null | undefined): string {
+	return enrichment?.poster || enrichment?.cover || (standsIn(item) ? '' : cardThumb(item));
 }
 
 /**
@@ -23,6 +33,9 @@ export function cardPicture(item: Pick<CatalogItem, 'id' | 'kind'>, enrichment: 
  * as private.
  */
 export function stillOf(item: CatalogItem): StillOf | undefined {
+	// A file that cannot be reached shows its title's art (D-287), which says
+	// nothing of what the library's own stills are.
+	if (item.offline) return undefined;
 	const library = libraryCache.get(item.library_id);
 	return library && !library.private ? item : undefined;
 }

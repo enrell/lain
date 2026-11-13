@@ -51,7 +51,7 @@ fn title_order(a: &CatalogItem, b: &CatalogItem) -> std::cmp::Ordering {
         .then(a.id.cmp(&b.id))
 }
 
-fn watch_order(a: &CatalogItem, b: &CatalogItem) -> std::cmp::Ordering {
+pub(crate) fn watch_order(a: &CatalogItem, b: &CatalogItem) -> std::cmp::Ordering {
     a.season.cmp(&b.season).then(a.episode.cmp(&b.episode)).then(a.year.cmp(&b.year)).then(a.id.cmp(&b.id))
 }
 

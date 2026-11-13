@@ -1,4 +1,5 @@
 <script lang="ts">
+	import OfflineNotice from '$lib/components/media/OfflineNotice.svelte';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
@@ -32,6 +33,7 @@
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import TitleView from '$lib/components/media/TitleView.svelte';
 	import TitleSocial from '$lib/components/social/TitleSocial.svelte';
+	import TitleTracking from '$lib/components/media/TitleTracking.svelte';
 	import SubtitlePanel from '$lib/components/acquire/SubtitlePanel.svelte';
 	import { t } from '$lib/i18n';
 	import { isTypingTarget } from '$lib/utilities/guards';
@@ -185,7 +187,9 @@
 
 	// Comics and manga open in the reader: no plan, no external player (D-085).
 	const reading = $derived(isReadable(item?.kind));
-	const playable = $derived(reading ? !item?.missing : plan?.available === true);
+	// Missing (a scan's verdict) or offline (its disk away, D-287): nothing to open.
+	const away = $derived(!!item?.missing || !!item?.offline);
+	const playable = $derived(reading ? !away : plan?.available === true);
 	const resumeAt = $derived(
 		progress && !progress.completed && progress.position_sec >= (reading ? 2 : 5) ? progress.position_sec : 0
 	);
@@ -195,7 +199,7 @@
 	// covers this file, or every present file of the title; t opens it.
 	let subtitlesOpen = $state(false);
 	const subtitleItems = $derived(
-		reading || !item ? [] : (series ? series.items : [item]).filter((it) => !it.missing).map((it) => it.id)
+		reading || !item ? [] : (series ? series.items : [item]).filter((it) => !it.missing && !it.offline).map((it) => it.id)
 	);
 	function pageKey(e: KeyboardEvent): void {
 		if ((e.key !== 't' && e.key !== 'p') || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
@@ -213,7 +217,7 @@
 		subtitlesOpen = true;
 	}
 	// P where the hero has something to open: a title whose files are gone has nothing.
-	const canPlay = $derived(series ? series.items.some((i) => !i.missing) : playable || (!item?.missing && preferredPlayer !== 'browser'));
+	const canPlay = $derived(series ? series.items.some((i) => !i.missing && !i.offline) : playable || (!away && preferredPlayer !== 'browser'));
 	usePageKeys(() => [
 		...(canPlay ? [{ keys: ['P'], label: t(reading ? 'pageKeys.titleRead' : 'pageKeys.titlePlay') }] : []),
 		...(session.isAdmin && subtitleItems.length > 0 ? [{ keys: ['T'], label: t('pageKeys.subtitles') }] : [])
@@ -233,7 +237,7 @@
 			: []
 	);
 	const manageSingle = $derived<MenuEntry[]>(
-		session.isAdmin && item && !item.missing
+		session.isAdmin && item && !away
 			? [...manage, { label: t('title.deleteFile'), icon: Trash2, danger: true, separated: true, onSelect: () => (confirmDeleteFile = true) }]
 			: manage
 	);
@@ -375,7 +379,9 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if series}
 	{#key series.key}
-		<TitleView group={series} {progressMap} {libraries} {manage} {about} {returned} onProgressChanged={() => void load(true)} />
+		<TitleView group={series} {progressMap} {libraries} {manage} {about} {returned} onProgressChanged={() => void load(true)}>
+			{#snippet tracking()}<div class="mt-5 max-w-3xl"><TitleTracking itemId={series?.items[0]?.id ?? id} {reading} /></div>{/snippet}
+		</TitleView>
 	{/key}
 	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} summary={!!enrichment?.synopsis} /></div>{/if}
 {:else if item}
@@ -424,7 +430,7 @@
 					<!-- The primary action sits directly under the title, above the
 					     optional prose, so it is on screen on arrival at 320x568. -->
 					<div class="title-actions flex flex-wrap items-center gap-x-2 gap-y-3 md:mt-6">
-						{#if playable || (!item.missing && preferredPlayer !== 'browser')}
+						{#if playable || (!away && preferredPlayer !== 'browser')}
 							<LinkButton href={playHref(item.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, item!.id, reading ? 'browser' : preferredPlayer)}>
 								{#if progress?.completed}<RotateCcw class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" />{/if}
 								{reading
@@ -440,15 +446,15 @@
 											: t('title.play')}
 							</LinkButton>
 						{:else}
-							<Button size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" disabled title={item.missing ? 'The file is no longer on disk' : (plan?.reason ?? 'Not playable in the browser')}>
+							<Button size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" disabled title={item.missing ? 'The file is no longer on disk' : item.offline === 'library' ? t('unreachable.play') : (plan?.reason ?? 'Not playable in the browser')}>
 								<Play class="size-4" /> Play
 							</Button>
 						{/if}
 						<!-- The heart keeps the main action's row, on a phone too. -->
 						<FavoriteButton />
 						<RatingPill />
-						{#if !item.missing && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={item.id} variant="tonal" size="row" /></span>{/if}
-						{#if !item.missing}<DownloadFileButton items={[item]} hotkey variant="tonal" size="row" label={t('download.one')} />{/if}
+						{#if !away && !reading}<span class="max-md:hidden"><ExternalPlayers itemId={item.id} variant="tonal" size="row" /></span>{/if}
+						{#if !away}<DownloadFileButton items={[item]} hotkey variant="tonal" size="row" label={t('download.one')} />{/if}
 						<Menu label={t('title.more')} hint={t('title.moreHint')} entries={moreSingle} variant="tonal" size="row" compact>
 							{#snippet icon()}<Ellipsis class="size-4" aria-hidden="true" />{/snippet}
 						</Menu>
@@ -478,6 +484,8 @@
 					{#if enrichment?.synopsis || about?.summary}
 						<p class="mt-5 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{enrichment?.synopsis || about?.summary}</p>
 					{/if}
+					<!-- The title on the viewer's linked lists (D-289): status, progress and score, set from here. -->
+					<div class="mt-5 max-w-3xl"><TitleTracking itemId={item.id} {reading} /></div>
 					<!-- Where the file is and where its metadata came from: an admin's
 					     business, folded away from the page everyone reads. Under the
 					     title's own lines: below the hero it floated alone in the gap
@@ -504,7 +512,9 @@
 			</div>
 		</header>
 
-		{#if item.missing}
+		{#if item.offline && !item.missing}
+			<OfflineNotice reason={item.offline} library={library?.name ?? ''} />
+		{:else if item.missing}
 			<div class="max-w-2xl rounded-card border border-danger/25 bg-danger/5 px-4 py-3 text-sm">
 				<p class="font-medium text-danger">The file is no longer on disk.</p>
 				<p class="mt-1 text-muted">

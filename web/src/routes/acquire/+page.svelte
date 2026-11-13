@@ -11,7 +11,8 @@
 	 * release into a library, watch the queue. Admin only (A-9).
 	 * Keys: 1 search, 2 queue, 3 wanted, 4 blocklist, 5 subtitles, / focuses the
 	 * release search (the search of this page, as `/` is on every page), L
-	 * grabs from a link (the Queue's link field, from any tab). Result rows:
+	 * grabs from a link (the Queue's link field, from any tab). `?q=` (and
+	 * `kind=`, a library type) searches a title on arrival. Result rows:
 	 * Enter grabs, m monitors the title, j/k move. Queue rows: p pause/resume,
 	 * i retry the import, Delete removes, j/k move.
 	 */
@@ -85,6 +86,15 @@
 			toasts.error(errorMessage(err, t('acquire.loadFailed')));
 		}
 		loaded = true;
+		// Handed a title (Tracking's "Find releases", D-288): the search runs at once,
+		// into a library of the kind asked for when there is one.
+		const asked = page.url.searchParams.get('q')?.trim() ?? '';
+		if (asked && tab === 'search') {
+			const kind = page.url.searchParams.get('kind') ?? '';
+			libraryId = libraries.find((l) => l.type === kind)?.id ?? libraryId;
+			query = asked;
+			if (indexers.length > 0) void search();
+		}
 		await refresh();
 	});
 	onDestroy(() => {
@@ -264,7 +274,7 @@
 		{ keys: ['1', '…', '5'], label: t('pageKeys.tabs') },
 		...(tab === 'search' && !firstRun ? [{ keys: ['/'], label: t('pageKeys.releaseSearch') }] : []),
 		...(noLibrary ? [{ keys: ['L'], label: t('acquire.noLibrariesAction') }] : [{ keys: ['L'], label: t('acquire.queue.link') }]),
-		...(firstRun && !noLibrary ? [{ keys: ['I'], label: t('acquire.firstRun.addIndexer') }] : [])
+		...(firstRun && !noLibrary ? [{ keys: ['I'], label: t('acquire.firstRun.addIndexer') }, { keys: ['A'], label: t('acquire.firstRun.agent') }] : [])
 	]);
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
@@ -272,7 +282,12 @@
 		// Not a key a queue row already took (i retries an import there).
 		if (firstRun && !e.defaultPrevented && e.key === (noLibrary ? 'l' : 'i')) {
 			e.preventDefault();
-			void goto(noLibrary ? '/settings/libraries' : '/settings/indexers');
+			void goto(noLibrary ? '/settings/libraries' : '/settings/indexers?setup=add');
+			return;
+		}
+		if (firstRun && !noLibrary && !e.defaultPrevented && e.key === 'a') {
+			e.preventDefault();
+			void goto('/settings/indexers?setup=agent');
 			return;
 		}
 		const n = Number(e.key);
@@ -342,7 +357,8 @@
 				{ label: t('acquire.firstRun.stepFollow'), text: t('acquire.firstRun.stepFollowText') }
 			]}
 		>
-			<LinkButton href="/settings/indexers" size="rowMain">{t('acquire.firstRun.addIndexer')} <kbd>I</kbd></LinkButton>
+			<LinkButton href="/settings/indexers?setup=add" size="rowMain">{t('acquire.firstRun.addIndexer')} <kbd>I</kbd></LinkButton>
+			<LinkButton href="/settings/indexers?setup=agent" variant="tonal" size="row">{t('acquire.firstRun.agent')} <kbd>A</kbd></LinkButton>
 			<Button variant="tonal" size="row" onclick={() => grabFromLink()}>{t('acquire.firstRun.fromLink')} <kbd>L</kbd></Button>
 		</FirstRun>
 	{:else if tab === 'search'}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<caps>
+  <limits max="100" default="50"/>
+  <searching>
+    <search available="yes" supportedParams="q"/>
+    <tv-search available="yes" supportedParams="q,season,ep"/>
+    <movie-search available="no"/>
+  </searching>
+  <categories>
+    <category id="5000" name="TV"><subcat id="5070" name="Anime"/></category>
+  </categories>
+</caps>
