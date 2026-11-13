@@ -57,7 +57,9 @@
 	 * back to, so it leads to the library instead of leaving the app.
 	 */
 	const backable = $derived(page.route.id === '/item/[id]');
-	let cameFromApp = false;
+	let cameFromApp = $state(false);
+	// Its name says where it goes when that is not the page before.
+	const backLabel = $derived(cameFromApp ? t('nav.back') : t('nav.backToLibrary'));
 	afterNavigate((nav) => {
 		if (nav.from !== null && nav.type !== 'enter') cameFromApp = true;
 	});
@@ -136,7 +138,7 @@
 	>
 		<div class="flex items-center gap-1">
 			{#if backable}
-				<button type="button" class="flex size-11 items-center justify-center rounded-full text-foreground active:bg-surface-hover" aria-label={t('nav.back')} onclick={goBack}>
+				<button type="button" class="flex size-11 items-center justify-center rounded-full text-foreground active:bg-surface-hover" aria-label={backLabel} title={backLabel} onclick={goBack}>
 					<ArrowLeft class="size-5" aria-hidden="true" />
 				</button>
 			{/if}
