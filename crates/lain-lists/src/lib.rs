@@ -20,7 +20,7 @@ pub mod store;
 
 use serde::{Deserialize, Serialize};
 
-pub use lain_api::{Link, ListEntry, ListSyncStats};
+pub use lain_api::{Link, LinkPush, ListEntry, ListSyncStats};
 
 pub use anilist::AniList;
 pub use links::Links;
@@ -43,6 +43,9 @@ pub mod code {
     pub const TOKEN_EXPIRED: &str = "token-expired";
     pub const INVALID_GRANT: &str = "invalid-grant";
     pub const NOT_CONFIGURED: &str = "not-configured";
+    /// The platform asked us to slow down (HTTP 429 after the shared
+    /// client's own retries).
+    pub const RATE_LIMITED: &str = "rate-limited";
     /// A failure with no typed code (network, a remote's odd answer):
     /// Go's untyped error, shown by its message alone.
     pub const SYNC_FAILED: &str = "sync-failed";
@@ -72,10 +75,15 @@ pub struct LinkedAccount {
     pub last_sync_error: String,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub entry_count: i64,
-    /// Pushes finished episodes back to the platform; off by default,
-    /// since writing to someone's remote list is an outward action.
+    /// Pushes finished episodes and chapters back to the platform. A
+    /// new link turns it on (D-288: linking is the consent, and a link
+    /// that writes nothing gave the owner nothing); stored accounts keep
+    /// what they had.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub scrobble: bool,
+    /// The last write lain made to the platform, good or failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_push: Option<LinkPush>,
 }
 
 fn is_zero(v: &i64) -> bool {
@@ -102,6 +110,7 @@ impl LinkedAccount {
             token_expires_at: self.token_expires_at,
             token_expired: self.token_expired(now),
             scrobble: self.scrobble,
+            last_push: self.last_push.clone(),
         }
     }
 }
@@ -199,9 +208,11 @@ pub mod link {
         pub entries: Vec<ListEntry>,
     }
 
-    /// One entry's progress written back (scrobble); an empty status
-    /// leaves the remote status alone.
-    #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+    /// One entry written back (a scrobble or an edit). Every field but
+    /// the identity is optional: an absent one (or an empty status)
+    /// leaves the remote value alone. `progress` was required before
+    /// D-289; old callers always send it, so they read as before.
+    #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
     pub struct PushInput {
         #[serde(default)]
         pub platform: String,
@@ -209,24 +220,68 @@ pub mod link {
         pub token: String,
         #[serde(default)]
         pub remote_id: String,
-        #[serde(default)]
-        pub progress: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub progress: Option<i64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub progress_volumes: Option<i64>,
         #[serde(default, skip_serializing_if = "String::is_empty")]
         pub status: String,
+        /// 0..10; 0 clears the score.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub score: Option<f64>,
     }
 
-    #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+    impl std::fmt::Debug for PushInput {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("PushInput")
+                .field("platform", &self.platform)
+                .field("remote_id", &self.remote_id)
+                .field("progress", &self.progress)
+                .field("progress_volumes", &self.progress_volumes)
+                .field("status", &self.status)
+                .field("score", &self.score)
+                .finish_non_exhaustive()
+        }
+    }
+
+    #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
     pub struct PushOutput {
         #[serde(default)]
         pub progress: i64,
         #[serde(default)]
         pub status: String,
+        /// The whole entry as the platform saved it, when the connector
+        /// reads it back (title, cover and totals for an entry the list
+        /// did not hold yet).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub entry: Option<ListEntry>,
     }
 }
 
 /// The title page's grouping key (D-056).
 pub fn title_key(title: &str) -> String {
     title.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// The key a list entry and a library title are matched by (D-288):
+/// letters and digits in lower case, every run of anything else one
+/// space, so "Frieren: Beyond Journey's End" and "frieren beyond
+/// journey s end" agree while different words never do.
+pub fn match_key(title: &str) -> String {
+    let mut out = String::with_capacity(title.len());
+    let mut gap = false;
+    for c in title.chars() {
+        if c.is_alphanumeric() {
+            if gap && !out.is_empty() {
+                out.push(' ');
+            }
+            gap = false;
+            out.extend(c.to_lowercase());
+        } else {
+            gap = true;
+        }
+    }
+    out
 }
 
 /// Go's `url.QueryEscape`: letters, digits and `-_.~` stay, a space is
@@ -276,4 +331,15 @@ pub fn register(
     registry.register(Arc::new(ListStore::new(store.clone())));
     registry.register(Arc::new(IntegrationsProvider::new(store)));
     registry.register(Arc::new(AniList::new(endpoints, http)));
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn match_keys() {
+        assert_eq!(super::match_key("  Frieren: Beyond Journey's End "), "frieren beyond journey s end");
+        assert_eq!(super::match_key("Re:ZERO"), "re zero");
+        assert_eq!(super::match_key("葬送のフリーレン"), "葬送のフリーレン");
+        assert_eq!(super::match_key("!!"), "");
+    }
 }

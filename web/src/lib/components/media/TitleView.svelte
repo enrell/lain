@@ -73,8 +73,11 @@
 		manage = [],
 		about = null,
 		returned = false,
-		onProgressChanged = undefined
+		onProgressChanged = undefined,
+		tracking = undefined
 	}: {
+		/** The title on the viewer's linked lists (D-289), under the synopsis. */
+		tracking?: import('svelte').Snippet;
 		group: SeriesGroup;
 		progressMap?: Map<string, Progress> | null;
 		libraries?: Library[];
@@ -567,6 +570,7 @@
 						<p class="mt-4 max-w-2xl">{@render synopsisText()}</p>
 					{/if}
 				{/if}
+				{@render tracking?.()}
 				</div>
 			</div>
 		</div>

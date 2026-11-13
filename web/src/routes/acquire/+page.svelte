@@ -11,7 +11,8 @@
 	 * release into a library, watch the queue. Admin only (A-9).
 	 * Keys: 1 search, 2 queue, 3 wanted, 4 blocklist, 5 subtitles, / focuses the
 	 * release search (the search of this page, as `/` is on every page), L
-	 * grabs from a link (the Queue's link field, from any tab). Result rows:
+	 * grabs from a link (the Queue's link field, from any tab). `?q=` (and
+	 * `kind=`, a library type) searches a title on arrival. Result rows:
 	 * Enter grabs, m monitors the title, j/k move. Queue rows: p pause/resume,
 	 * i retry the import, Delete removes, j/k move.
 	 */
@@ -85,6 +86,15 @@
 			toasts.error(errorMessage(err, t('acquire.loadFailed')));
 		}
 		loaded = true;
+		// Handed a title (Tracking's "Find releases", D-288): the search runs at once,
+		// into a library of the kind asked for when there is one.
+		const asked = page.url.searchParams.get('q')?.trim() ?? '';
+		if (asked && tab === 'search') {
+			const kind = page.url.searchParams.get('kind') ?? '';
+			libraryId = libraries.find((l) => l.type === kind)?.id ?? libraryId;
+			query = asked;
+			if (indexers.length > 0) void search();
+		}
 		await refresh();
 	});
 	onDestroy(() => {

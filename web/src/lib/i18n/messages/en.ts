@@ -438,9 +438,9 @@ const en = {
 			step2: '2 · Paste the code',
 			codeLabel: 'AniList code',
 			step3: '3 · Link',
-			scrobble: 'Update {platform} when I finish an episode',
+			scrobble: 'Update {platform} when I finish an episode or chapter',
 			scrobbleHint: 'Advances entries you already track. Never lowers progress or reopens a finished title.',
-			scrobbleTo: 'Update {platform} as I watch',
+			scrobbleTo: 'Update {platform} as I watch and read',
 			loadFailed: 'Could not load the connected accounts.'
 		},
 		// Settings › Playback.
@@ -1084,6 +1084,11 @@ const en = {
 		newCollection: 'New collection',
 		connect: 'Connect AniList',
 		sync: 'Sync the list again',
+		trackingMedia: 'Anime or manga',
+		trackingStatus: 'Previous or next list',
+		trackingLibrary: 'Only what is in your library',
+		trackingAuto: 'Turn automatic updates on or off',
+		titleTracking: 'Set the list status',
 		settingsGo: 'Open a section (the letter beside it)',
 		settingsStep: 'Previous or next section',
 		settingsMove: 'Next or previous control',
@@ -1589,6 +1594,23 @@ const en = {
 		failed: 'Could not start local playback.'
 	},
 	title: {
+		// The title's entry on a linked list (AniList), under its hero.
+		tracking: {
+			label: 'On {platform}',
+			notListed: 'Not on your list',
+			status: 'Status',
+			statusHint: 'Set the status on {platform}',
+			add: 'Add to {platform}',
+			score: 'Score',
+			scoreHint: '0 to 10; Enter saves, 0 clears',
+			auto: 'Updates as you watch',
+			autoReading: 'Updates as you read',
+			manual: 'Automatic updates off',
+			saved: 'Saved to {platform}.',
+			failed: 'Could not update {platform}.',
+			rateLimited: '{platform} asked to slow down; try again in a minute.',
+			reconnect: 'The {platform} link expired; reconnect it in Settings.'
+		},
 		refreshFailed: 'Could not refresh this title; reload the page to see the change.',
 		manage: 'Manage',
 		manageHint: 'For administrators: metadata, subtitles and files of this title',
@@ -1723,12 +1745,8 @@ const en = {
 	},
 	tracking: {
 		pageTitle: 'Tracking — Lain',
-		typeFilter: 'Media type',
 		statusFilter: 'Status',
 		subtitle: 'Everything your connected accounts track — manga, comics, anime, films and shows in one place.',
-		films: 'Films',
-		shows: 'Shows',
-		noMatchTitle: 'Nothing tracked of this kind',
 		noMatchBody: 'Your accounts track other things. Clear the filters to see all of it.',
 		showEverything: 'Show everything',
 		// A tracked entry's card bar, for a screen reader.
@@ -1747,6 +1765,60 @@ const en = {
 			stepWatch: 'Watch here',
 			stepWatchText: 'With progress sync on, episodes you finish on Lain count there too.'
 		},
+		// The lists AniList keeps, in its order; reading media say read.
+		status: {
+			all: 'All',
+			current: 'Watching',
+			currentReading: 'Reading',
+			planning: 'Planning',
+			completed: 'Completed',
+			paused: 'Paused',
+			dropped: 'Dropped',
+			repeating: 'Rewatching',
+			repeatingReading: 'Rereading'
+		},
+		statusCount: '{label} {count}',
+		media: {
+			label: 'Media',
+			anime: 'Anime',
+			manga: 'Manga',
+			// Not `other`: a group with that key reads as a plural message.
+			rest: 'Other'
+		},
+		inLibraryOnly: 'In your library',
+		inLibrary: 'In library',
+		openTitle: 'Open {title}',
+		findReleases: 'Find releases',
+		findReleasesHint: 'Search the indexers for {title}',
+		// Progress on a card: episodes or chapters of a known total, or alone.
+		progressEpisodes: '{progress}/{total} ep',
+		progressEpisodesOpen: '{progress} ep',
+		progressChapters: '{progress}/{total} ch',
+		progressChaptersOpen: '{progress} ch',
+		progressVolumes: 'vol {volumes}',
+		score: 'Score {score}',
+		sentWhen: 'Sent {when}',
+		notSent: 'Not sent: {error}',
+		account: {
+			// The strip over the list: who is linked, when it last came in, what lain last sent.
+			label: '{platform} · {name}',
+			syncedWhen: 'Synced {when}',
+			neverSynced: 'Not synced yet',
+			syncFailed: 'Last sync failed: {error}',
+			sync: 'Sync',
+			auto: 'Update {platform} as I watch and read',
+			autoOnHint: 'Finished episodes and chapters advance the entries you track.',
+			autoOffHint: 'Off: {platform} changes only from title pages.',
+			lastPush: 'Last update: {title} → {progress} · {when}',
+			lastPushStatus: 'Last update: {title} → {status} · {when}',
+			lastPushFailed: 'Last update failed ({error}): {title} · {when}',
+			noPush: 'Nothing sent yet.',
+			autoSaved: 'Automatic updates on.',
+			autoOff: 'Automatic updates off.',
+			autoFailed: 'Could not change automatic updates.'
+		},
+		emptyStatus: 'Nothing here on {platform}.',
+		emptyLibrary: 'None of these are in your library yet.',
 		linkedEmpty: {
 			eyebrow: 'AniList connected',
 			title: 'Nothing imported yet.',

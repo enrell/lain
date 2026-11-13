@@ -15,9 +15,9 @@ use serde_json::json;
 use lain_api::{
     ActivityPage, Changed, CollectionItemInput, CollectionPatch, CollectionReply, CollectionShareInput, Collections,
     Comment, CommentInput, Friends, Link, LinkPatch, LinkReply, LinkSyncReply, LinkUrl, Links, ListEntries, ListEntry,
-    ListSyncStats, MarkRead, NewCollection, Notifications, Rating, RatingInput, Ratings, RelateReply, Removed,
-    ShareInput, ShareReply, SocialProfile, SocialSettings, SocialSettingsPatch, UnlinkReply, UserSearch,
-    UserWithRelation, WorkRef, WorkView,
+    ListEntryPatch, ListEntryReply, ListSyncStats, MarkRead, NewCollection, Notifications, Rating, RatingInput,
+    Ratings, RelateReply, Removed, ShareInput, ShareReply, SocialProfile, SocialSettings, SocialSettingsPatch,
+    TitleTrack, TitleTracking, UnlinkReply, UserSearch, UserWithRelation, WorkRef, WorkView,
 };
 use lain_api::{
     AdminTranscodes, BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health,
@@ -808,6 +808,27 @@ impl Client {
         let path = format!("/api/list{}", query(&[("type", media_type.into()), ("status", status.into())]));
         let e: ListEntries = self.call(Method::GET, &path, Body::None).await?;
         Ok(e.entries)
+    }
+
+    /// A title's entry on each linked list, from the server's stored
+    /// copy (D-289).
+    pub async fn title_tracking(&self, item_id: &str) -> Result<Vec<TitleTrack>, ClientError> {
+        let t: TitleTracking =
+            self.call(Method::GET, &format!("/api/items/{}/tracking", encode(item_id)), Body::None).await?;
+        Ok(t.tracks)
+    }
+
+    /// Writes an edit (status, score, progress) to a list platform, then
+    /// to the server's copy (D-289).
+    pub async fn save_list_entry(
+        &self,
+        platform: &str,
+        remote_id: &str,
+        patch: &ListEntryPatch,
+    ) -> Result<ListEntry, ClientError> {
+        let path = format!("/api/list/{}/{}", encode(platform), encode(remote_id));
+        let r: ListEntryReply = self.call(Method::PUT, &path, json_body(patch)).await?;
+        Ok(r.entry)
     }
 
     /// The linked external accounts (never their tokens).
