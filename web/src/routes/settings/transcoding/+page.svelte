@@ -569,7 +569,7 @@
 						? t('settings.transcode.hdrRow.missing')
 						: settings.tone_mapping
 							? t('settings.transcode.hdrRow.ready')
-							: t('settings.transcode.hdr.sumOff')}
+							: t('settings.transcode.hdrRow.offHint')}
 				>
 					{#if capabilities.tone_mapping}
 						{@render select(t('settings.transcode.hdrRow.choose'), toneInForce, toneChoices, pickTone)}
