@@ -200,7 +200,7 @@
 					</button>
 					<span class="hidden md:inline">{sectionLabel(current)}</span>
 				</h1>
-				<p class="mt-1.5 text-sm text-muted">{sectionHint(current)}</p>
+				<p class="text-sm text-muted">{sectionHint(current)}</p>
 			</header>
 		{/if}
 		{@render children()}

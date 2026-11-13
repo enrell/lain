@@ -21,11 +21,11 @@ use lain_api::{
 };
 use lain_api::{
     AdminTranscodes, BrowseResult, CatalogItem, CatalogPage, ComicPages, Enrichment, Enrichments, Episodes, Health,
-    IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryPatch, LocalPlayers, LoginReply, Mascots,
-    ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions, PlaybackPlan,
-    PluginsView, PreferencesPatch, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus, SetupStatus, Sidecar,
-    Sidecars, StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings, TranscodeSettingsView,
-    TranscodeStatus, User, UserPatch, WithdrawReply,
+    IntegrationsUpdate, IntegrationsView, Library, LibraryDeleted, LibraryOrder, LibraryPatch, LocalPlayers,
+    LoginReply, Mascots, ModulesView, NewLibrary, Palette, PinState, PlayLocalReply, PlayLocalRequest, PlaybackOptions,
+    PlaybackPlan, PluginsView, PreferencesPatch, ProfilePatch, Progress, ProgressUpdate, RootsView, ScanStatus,
+    SetupStatus, Sidecar, Sidecars, StatusReply, SwapReply, SwapRequest, TranscodeSelection, TranscodeSettings,
+    TranscodeSettingsView, TranscodeStatus, User, UserDeleted, UserPatch, WithdrawReply,
 };
 
 use crate::error::ClientError;
@@ -55,6 +55,9 @@ pub struct CatalogQuery {
     pub offset: i64,
     pub sort: String,
     pub library_id: String,
+    /// `title` pages titles instead of files (D-283): see
+    /// [`CatalogPage::group`], which says whether the server did.
+    pub group: String,
 }
 
 /// `GET /api/search`.
@@ -65,6 +68,8 @@ pub struct SearchQuery {
     pub limit: i64,
     pub offset: i64,
     pub sort: String,
+    /// `title` pages titles instead of files (D-283), as for the catalog.
+    pub group: String,
 }
 
 /// How to unlock a private library for this session (D-156).
@@ -358,6 +363,12 @@ impl Client {
         self.call(Method::PATCH, &format!("/api/users/{}", encode(id)), json_body(&patch)).await
     }
 
+    /// Deletes an account and everything it kept (progress, lists,
+    /// social rows); its private libraries pass to the caller.
+    pub async fn delete_user(&self, id: &str) -> Result<UserDeleted, ClientError> {
+        self.call(Method::DELETE, &format!("/api/users/{}", encode(id)), Body::None).await
+    }
+
     // ---- libraries ----------------------------------------------------
 
     /// The libraries this user may see; a private one carries `locked`.
@@ -371,6 +382,11 @@ impl Client {
 
     pub async fn update_library(&self, id: &str, patch: LibraryPatch) -> Result<Library, ClientError> {
         self.call(Method::PATCH, &format!("/api/libraries/{}", encode(id)), json_body(&patch)).await
+    }
+
+    /// Orders the libraries: every id, first to last.
+    pub async fn order_libraries(&self, ids: Vec<String>) -> Result<Vec<Library>, ClientError> {
+        self.call(Method::PUT, "/api/libraries/order", json_body(&LibraryOrder { ids })).await
     }
 
     /// Removes the library and its catalog entries (never files).
@@ -406,7 +422,8 @@ impl Client {
                 ("limit", num(q.limit)),
                 ("offset", num(q.offset)),
                 ("sort", q.sort),
-                ("library_id", q.library_id)
+                ("library_id", q.library_id),
+                ("group", q.group)
             ])
         );
         self.call(Method::GET, &path, Body::None).await
@@ -430,7 +447,8 @@ impl Client {
                 ("kind", q.kind),
                 ("limit", num(q.limit)),
                 ("offset", num(q.offset)),
-                ("sort", q.sort)
+                ("sort", q.sort),
+                ("group", q.group)
             ])
         );
         self.call(Method::GET, &path, Body::None).await
@@ -470,7 +488,8 @@ impl Client {
     // ---- catalog population -----------------------------------------
 
     /// Starts a scan of every library (admin); answers when it starts.
-    /// A scan already running is `Api { status: 409, .. }`.
+    /// While one runs, one follow-up is queued behind it (D-286) and
+    /// [`ScanStatus::queued`] says so.
     pub async fn start_scan(&self) -> Result<(), ClientError> {
         self.raw(Method::POST, "/api/library/scan", Body::None, true).await.map(|_| ())
     }
@@ -622,6 +641,17 @@ impl Client {
     pub async fn thumbnail(&self, item_id: &str) -> Result<Vec<u8>, ClientError> {
         Ok(self
             .raw(Method::GET, &format!("/api/items/{}/thumbnail", encode(item_id)), Body::None, true)
+            .await?
+            .to_vec())
+    }
+
+    /// The item's own picture (D-284), for a slot that stands for that one
+    /// file (an episode's row): its `-thumb` still, else its frame; never
+    /// the show's poster kept beside a first episode, which `thumbnail`
+    /// serves as the title's cover. An older server answers as `thumbnail`.
+    pub async fn still(&self, item_id: &str) -> Result<Vec<u8>, ClientError> {
+        Ok(self
+            .raw(Method::GET, &format!("/api/items/{}/thumbnail?art=still", encode(item_id)), Body::None, true)
             .await?
             .to_vec())
     }

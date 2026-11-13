@@ -17,5 +17,12 @@ describe('thumbnail.url', () => {
 		expect(q.has('t')).toBe(false);
 		expect(q.get('w')).toBe('480');
 		expect(q.has('token')).toBe(false);
+		expect(q.has('art')).toBe(false);
+	});
+
+	it('asks for the file\'s own picture with art=still (D-284)', () => {
+		const q = new URLSearchParams(thumbnail.url('abc', null, { art: 'still', width: 320 }).split('?')[1]);
+		expect(q.get('art')).toBe('still');
+		expect(q.has('t')).toBe(false);
 	});
 });

@@ -1,15 +1,16 @@
 {
   "tier": "v1",
-  "description": "The composition inspection surface (admin). Provider sets differ by server; the shape and the core bindings do not.",
+  "description": "The composition inspection surface (admin). Provider sets differ by server; the shape and the core bindings do not. A binding the server can describe carries its summary (D-285).",
   "cases": [
     {"name": "admin reads the composition", "steps": [
       {"req": {"method": "GET", "path": "/api/plugins", "auth": "admin_token"},
        "expect": {"status": 200, "body": {
-         "composition": {"$min_len": 1, "$each": {"capability": "$string", "mode": "$string", "providers": "$array", "generation": "$int"},
+         "composition": {"$min_len": 1, "$each": {"capability": "$string", "mode": "$string", "providers": "$array", "generation": "$int", "$open": true},
            "$contains": [
-             {"capability": "lain.catalog.read@1", "mode": "exactly-one", "providers": {"$len": 1}, "generation": "$int"},
-             {"capability": "lain.catalog.write@1", "mode": "exactly-one", "providers": {"$len": 1}, "generation": "$int"},
-             {"capability": "lain.userstate.progress@1", "mode": "exactly-one", "providers": {"$len": 1}, "generation": "$int"}]},
+             {"capability": "lain.catalog.read@1", "mode": "exactly-one", "providers": {"$len": 1}, "generation": "$int",
+              "summary": "Serves the catalog to the apps: lists, rails, search and item pages."},
+             {"capability": "lain.catalog.write@1", "mode": "exactly-one", "providers": {"$len": 1}, "generation": "$int", "summary": "$string"},
+             {"capability": "lain.userstate.progress@1", "mode": "exactly-one", "providers": {"$len": 1}, "generation": "$int", "summary": "$string"}]},
          "providers": {"$min_len": 1, "$each": "$string"},
          "provider_info": {"$min_len": 1, "$each": {"id": "$string", "capabilities": {"$each": "$string"}, "healthy": "$bool"}},
          "events": {"$each": {"at": "$int", "kind": "$string", "$open": true}}}}}

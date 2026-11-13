@@ -6,8 +6,8 @@
 	 * sorting and every filter answer at once and the counts next to each
 	 * option are exact. What is set lives in the URL: a view can be
 	 * bookmarked, and Back returns to it. The grid lists titles, one card
-	 * per show (it opens the show's page) or per single file, all in one
-	 * frame (see `guessFrame`).
+	 * per show (it opens the show's page) or per single file, one frame per
+	 * shape of picture (see `guessFrame`, TitleGrid).
 	 *
 	 * The titles are a library's, every library's, or whatever `source`
 	 * gives (the favourites), so every list of titles browses the same way.
@@ -25,8 +25,7 @@
 	import type { CatalogItem, Library, Progress } from '$lib/api/types';
 	import { api } from '$lib/api';
 	import { framedGrid } from '$lib/components/media/grid';
-	import MediaCard from '$lib/components/media/MediaCard.svelte';
-	import ShowCard from '$lib/components/media/ShowCard.svelte';
+	import TitleGrid from '$lib/components/media/TitleGrid.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
@@ -34,17 +33,16 @@
 	import Select from '$lib/components/primitives/Select.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
-	import { frameNow, guessFrame, settleFrame } from '$lib/stores/frames';
-	import { sampleArt, type Shape } from '$lib/stores/shapes.svelte';
+	import { guessFrame, settleFrame, shapesNow } from '$lib/stores/frames';
+	import { pictureShape, sampleArt, type Shape } from '$lib/stores/shapes.svelte';
 	import {
 		ADDED, LISTED, NO_FILTERS, SHAPES, SORTS, WATCH,
-		activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState,
+		activeCount, anyCount, apply, countBy, filtersFromParams, genreFacets, watchState, withFilters,
 		type Context, type Filters, type Sort
 	} from '$lib/utilities/browse';
 	import { errorMessage } from '$lib/utilities/errors';
-	import { gridKeys } from '$lib/utilities/grid-nav';
 	import { usePageKeys } from '$lib/stores/page-keys.svelte';
-	import { groupItems } from '$lib/utilities/grouping';
+	import { groupItems, type SeriesGroup } from '$lib/utilities/grouping';
 	import { t, type Key } from '$lib/i18n';
 
 	const FETCH = 500;
@@ -64,7 +62,8 @@
 		source,
 		listed = '',
 		prefsKey = 'lain.library.prefs',
-		searchLabel = ''
+		searchLabel = '',
+		filtersFrom = 0
 	}: {
 		libraries?: Library[];
 		libraryId?: string;
@@ -89,6 +88,12 @@
 		/** Where this browser keeps its sort and tile size. */
 		prefsKey?: string;
 		searchLabel?: string;
+		/**
+		 * How many titles earn the filter column on a wide screen. Below it the
+		 * filters stay in the toolbar's sheet, as on a phone: beside three
+		 * favourites the column outweighed the cards.
+		 */
+		filtersFrom?: number;
 	} = $props();
 
 	let selectedLibrary = $state('');
@@ -234,7 +239,7 @@
 	const active = $derived(activeCount(filters));
 
 	function set(patch: Partial<Filters>): void {
-		const query = filtersToParams({ ...filters, ...patch }, defaultSort).toString();
+		const query = withFilters(page.url.searchParams, { ...filters, ...patch }, defaultSort).toString();
 		shown = RENDER;
 		toResults();
 		void goto(query ? `?${query}` : page.url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
@@ -282,28 +287,35 @@
 		now
 	});
 	const all = $derived(groupItems(items));
+	// Until the titles are in, how many there are is not known: the column waits for them.
+	const columned = $derived(filtersFrom === 0 || (!loading && all.length >= filtersFrom));
 	const results = $derived(apply(all, filters, ctx));
 	let shown = $state(RENDER);
-	const visible = $derived(results.slice(0, shown));
-	// One frame for the whole grid, held per set (its first titles). A set
-	// is drawn at once in the frame guessed from what is known before a
-	// picture loads (see `guessFrame`), checked once against its first
-	// pictures and changed only if the guess was wrong: a grid that voted
-	// with its pictures as they came in turned shape under the eye, and one
-	// that waited for them stood empty for seconds on a cold thumbnail cache.
-	// The first set waits for its first titles' overlays only (one request);
-	// a later one (a filter, a search) is guessed from what is known when it
-	// is shown.
-	let held = $state<{ key: string; frame: Shape } | null>(null);
+	const visible = $derived(Math.min(shown, results.length));
+	// The shape of each title's picture, held per set (its first titles):
+	// titles of one shape share one frame, and the grid is in parts when
+	// shapes mix (see TitleGrid). A set is drawn at once in the shapes
+	// guessed from what is known before a picture loads (see `guessFrame`),
+	// checked once against its first pictures and changed only if a guess
+	// was wrong: a grid that followed its pictures as they came in turned
+	// shape under the eye, and one that waited for them stood empty for
+	// seconds on a cold thumbnail cache. The first set waits for its first
+	// titles' overlays only (one request); a later one (a filter, a search)
+	// is guessed from what is known when it is shown.
+	let held = $state<{ key: string; shapes: Map<string, Shape> } | null>(null);
 	const sampleKey = $derived(sampleArt(results).map((i) => i.id).join(' '));
-	const frame = $derived.by<Shape>(() => {
+	const shapes = $derived.by<Map<string, Shape>>(() => {
 		const key = sampleKey;
 		const h = held;
-		if (!h) return 'portrait';
-		if (h.key === key) return h.frame;
+		if (!h) return new Map();
+		if (h.key === key) return h.shapes;
 		// Read once per set: pictures loading must not move it.
-		return untrack(() => frameNow(results));
+		return untrack(() => shapesNow(results));
 	});
+	// A title the held set did not have yet (one further down, the same first
+	// titles) takes its shape as known when it is first drawn.
+	const shapeOf = (group: SeriesGroup): Shape =>
+		shapes.get(group.key) ?? untrack(() => pictureShape(group, (id) => enrichmentCache.get(id)));
 	let settling = 0;
 	$effect(() => {
 		const key = sampleKey;
@@ -312,11 +324,14 @@
 		const first = untrack(() => held) === null;
 		const mine = ++settling;
 		void (async () => {
-			const guess = first ? await guessFrame(set) : untrack(() => frame);
+			if (first) await guessFrame(set);
 			if (mine !== settling) return;
-			held = { key, frame: guess };
-			const settled = await settleFrame(set);
-			if (mine === settling && settled !== guess) held = { key, frame: settled };
+			const guess = untrack(() => shapesNow(set));
+			held = { key, shapes: guess };
+			await settleFrame(set);
+			if (mine !== settling) return;
+			const settled = untrack(() => shapesNow(set));
+			if ([...settled].some(([k, shape]) => guess.get(k) !== shape)) held = { key, shapes: settled };
 		})();
 	});
 	// Back lands where it left once the grid stands at its full height.
@@ -417,7 +432,7 @@
 			searchBox?.select();
 		} else if (e.key === 'f') {
 			e.preventDefault();
-			if (window.matchMedia('(min-width: 1024px)').matches) document.getElementById('genre-find')?.focus();
+			if (columned && window.matchMedia('(min-width: 1024px)').matches) document.getElementById('genre-find')?.focus();
 			else sheet = true;
 		} else if (e.key === 'c' && narrowed) {
 			e.preventDefault();
@@ -634,11 +649,11 @@
 <!-- Two rows on a wide screen: the heading then the filters on the left, the
      toolbar and grid spanning both on the right. The heading's row is sized
      by the heading alone (the grid spans the flexible row). -->
-<div class="lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-x-8">
+<div class={columned ? 'lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-x-8' : ''}>
 	{#if header}
 		<div class="mb-4 lg:col-start-1 lg:row-start-1 lg:mb-6">{@render header()}</div>
 	{/if}
-	<aside class={['hidden lg:col-start-1 lg:row-start-2', bare ? '' : 'lg:block'].join(' ')} aria-label="Filters">
+	<aside class={['hidden lg:col-start-1 lg:row-start-2', bare || !columned ? '' : 'lg:block'].join(' ')} aria-label="Filters">
 		<div class="sticky top-24 -ml-2 max-h-[calc(100vh-7rem)] overflow-y-auto pb-6 pr-1">
 			{@render panel('genre-find', false)}
 		</div>
@@ -721,7 +736,7 @@
 							<span class={view ? 'hidden xl:inline' : ''}>{t('browse.tiles', { size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge') })}</span>
 						</button>
 						{#if !view}
-							{@render filtersButton('flex lg:hidden')}
+							{@render filtersButton(columned ? 'flex lg:hidden' : 'flex')}
 						{:else}
 							{@render filtersButton('hidden sm:flex lg:hidden')}
 						{/if}
@@ -803,28 +818,17 @@
 		{:else}
 			<!-- Arrows move between titles; up from the first row returns to the search.
 			     A card scrolled to stops below the header and this sticky bar. -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div bind:this={gridEl} class={[framedGrid(frame, dense), '[&>*]:scroll-mt-48 [&>*]:scroll-mb-24 md:[&>*]:scroll-mt-52'].join(' ')} onkeydown={(e) => gridKeys(e, () => searchBox)}>
-				{#each visible as group, i (group.key)}
-					{#if group.count > 1}
-						<ShowCard
-							{group}
-							{frame}
-							progressOf={(id) => progressMap.get(id)}
-							priority={i < 6}
-						/>
-					{:else}
-						<MediaCard
-							item={group.items[0]}
-							enrichment={enrichmentCache.get(group.items[0].id) ?? null}
-							progress={progressMap.get(group.items[0].id) ?? null}
-							priority={i < 6}
-							{frame}
-						/>
-					{/if}
-				{/each}
-			</div>
-			{#if visible.length < results.length}
+			<TitleGrid
+				bind:element={gridEl}
+				groups={results}
+				{shapeOf}
+				limit={shown}
+				{dense}
+				progressOf={(id) => progressMap.get(id)}
+				above={() => searchBox}
+				cardClass="[&>*]:scroll-mt-48 [&>*]:scroll-mb-24 md:[&>*]:scroll-mt-52"
+			/>
+			{#if visible < results.length}
 				<div class="h-10" bind:this={sentinel}></div>
 			{:else if results.length > 24}
 				<p class="pt-8 text-center text-xs text-muted">

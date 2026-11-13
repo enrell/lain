@@ -8,41 +8,51 @@
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
 	import Search from '@lucide/svelte/icons/search';
 	import SearchX from '@lucide/svelte/icons/search-x';
-	import type { CatalogItem } from '$lib/api/types';
+	import type { CatalogItem, Progress } from '$lib/api/types';
 	import { api } from '$lib/api';
-	import MediaCard from '$lib/components/media/MediaCard.svelte';
 	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
+	import TitleGrid from '$lib/components/media/TitleGrid.svelte';
 	import { framedGrid } from '$lib/components/media/grid';
-	import ShowCard from '$lib/components/media/ShowCard.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { t } from '$lib/i18n';
-	import { frameNow, settleFrame } from '$lib/stores/frames';
+	import { settleFrame, shapesNow } from '$lib/stores/frames';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
-	import type { Shape } from '$lib/stores/shapes.svelte';
+	import { pictureShape, SAMPLE, type Shape } from '$lib/stores/shapes.svelte';
+	import { pagedTitles } from '$lib/stores/titles';
+	import { artItem } from '$lib/utilities/browse';
 	import { recentSearches } from '$lib/stores/recent-searches.svelte';
-	import { gridKeys } from '$lib/utilities/grid-nav';
 	import { usePageKeys } from '$lib/stores/page-keys.svelte';
-	import { groupItems } from '$lib/utilities/grouping';
+	import { groupItems, type SeriesGroup } from '$lib/utilities/grouping';
 	import { debounce } from '$lib/utilities/debounce';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { isTypingTarget } from '$lib/utilities/guards';
 	import { searchHref } from '$lib/utilities/search';
 
+	// Titles a page (files from a server before D-283).
 	const PAGE_SIZE = 60;
 
 	let query = $state(page.url.searchParams.get('q') ?? '');
 	let input = $state<HTMLInputElement | null>(null);
 	let items = $state<CatalogItem[]>([]);
 	const groups = $derived(groupItems(items));
-	// One frame for the results, as a library grid has: guessed when the
-	// answer is drawn, checked once against its first pictures and held.
-	let frame = $state<Shape>('portrait');
+	// The shape of each result's picture, as a library grid has it: guessed
+	// when the answer is drawn, checked once against its first pictures and
+	// held; posters and wide stills are each their own part (TitleGrid).
+	let shapes = $state<Map<string, Shape>>(new Map());
+	const shapeOf = (group: SeriesGroup): Shape =>
+		shapes.get(group.key) ?? untrack(() => pictureShape(group, (id) => enrichmentCache.get(id)));
 	let checking = 0;
 	let grid = $state<HTMLElement | null>(null);
 	let total = $state(0);
+	// A server that pages titles (D-283) says how many titles match, and each
+	// title it sends is whole; an older one pages files, which are grouped here.
+	let byTitle = $state(false);
+	// The account's positions, so a result says watched or under way as the
+	// same title does in the library.
+	let progressMap = $state<Map<string, Progress>>(new Map());
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let searchedFor = $state('');
@@ -59,7 +69,7 @@
 	beforeNavigate((nav) => {
 		if (!nav.from) return;
 		try {
-			sessionStorage.setItem(placeKey(nav.from.url), JSON.stringify({ y: window.scrollY, count: items.length }));
+			sessionStorage.setItem(placeKey(nav.from.url), JSON.stringify({ y: window.scrollY, count: loaded() }));
 		} catch {
 			/* no storage: Back lands at the top */
 		}
@@ -73,11 +83,14 @@
 			/* stay at the top */
 		}
 	});
+	/** How much of the answer is here, in what `total` counts: titles, or files from an older server. */
+	const loaded = () => (byTitle ? groups.length : items.length);
+
 	/** Scrolls back to the saved spot once as many results as there were are drawn. */
 	async function restorePlace(term: string): Promise<void> {
 		const place = restoreTo;
 		if (!place) return;
-		if (items.length < place.count && items.length < total) {
+		if (loaded() < place.count && loaded() < total) {
 			// The viewer had loaded more: the same pages come back first.
 			await run(term, false);
 			return;
@@ -104,7 +117,7 @@
 			return;
 		}
 
-		const offset = reset ? 0 : items.length;
+		const offset = reset ? 0 : loaded();
 		loading = true;
 		error = null;
 		try {
@@ -112,28 +125,31 @@
 				q: term,
 				limit: PAGE_SIZE,
 				offset,
+				group: 'title',
 				signal: abort.signal
 			});
 			const next = reset ? result.items : [...items, ...result.items];
 			// The overlays carry the titles' names and say which pictures are
-			// posters: one request, no picture.
-			await ensureEnrichments(result.items.map((i) => i.id));
+			// posters: one request, no picture (the first of each title is
+			// enough for its card; a long show's every episode would not fit).
+			await ensureEnrichments(groupItems(result.items).map((g) => artItem(g).id));
 			if (abort.signal.aborted) return;
-			// Drawn at once, in the frame guessed from what is known before a
+			// Drawn at once, in the shapes guessed from what is known before a
 			// picture loads: waiting for the pictures left the page blank for
-			// seconds on a cold cache. More of the same answer keeps the frame.
+			// seconds on a cold cache. More of the same answer keeps them.
 			const shown = groupItems(next);
-			if (reset) frame = frameNow(shown);
+			shapes = reset ? shapesNow(shown) : new Map([...shapesNow(shown), ...untrack(() => shapes)]);
 			items = next;
 			total = result.total;
+			byTitle = pagedTitles(result);
 			searchedFor = term;
 			void restorePlace(term);
 			if (reset) {
-				// Then checked once against its first pictures: the frame changes
+				// Then checked once against its first pictures: a shape changes
 				// only if the guess was wrong, and is held after that.
 				const mine = ++checking;
-				void settleFrame(shown).then((settled) => {
-					if (mine === checking) frame = settled;
+				void settleFrame(shown).then(() => {
+					if (mine === checking) shapes = new Map([...untrack(() => shapes), ...shapesNow(shown.slice(0, SAMPLE))]);
 				});
 			}
 		} catch (err) {
@@ -226,6 +242,10 @@
 	}
 
 	onMount(() => {
+		void api.me
+			.continueWatching()
+			.then((list) => (progressMap = new Map(list.map((p) => [p.item_id, p]))))
+			.catch(() => {});
 		if (query.trim() !== '') void run(query, true);
 		// Arriving with nothing to look for: the cursor is in the search bar.
 		else field()?.focus();
@@ -258,7 +278,8 @@
 <div class="space-y-6">
 	<header class="space-y-3">
 		<h1 class="page-title">{t('search.heading')}</h1>
-		<!-- A phone's field: from md up the header holds the search bar (HeaderSearch). -->
+		<!-- A phone's field: from md up the header holds the search bar (HeaderSearch).
+		     Filled, as the library's and the favourites' search fields are. -->
 		<form class="relative md:hidden" onsubmit={submit} role="search">
 			<Search
 				class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted"
@@ -283,7 +304,7 @@
 				aria-label={t('search.label')}
 				autocapitalize="none"
 				spellcheck={false}
-				class="h-12 w-full rounded-card border border-line bg-surface pl-10 pr-12 text-sm text-foreground placeholder:text-muted/60 focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+				class="h-11 w-full rounded-md border border-transparent bg-field pl-10 pr-12 text-sm text-foreground transition-colors placeholder:text-muted/70 hover:border-hairline focus:border-accent/60 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
 			/>
 			{#if query !== ''}
 				<button
@@ -298,7 +319,7 @@
 		</form>
 		{#if searchedFor !== '' && !loading}
 			<p class="text-sm text-muted" aria-live="polite">
-				{t('search.count', { count: groups.length, query: searchedFor })}
+				{t('search.count', { count: byTitle ? total : groups.length, query: searchedFor })}
 			</p>
 		{/if}
 	</header>
@@ -349,27 +370,21 @@
 		</EmptyState>
 	{:else}
 		<!-- A search answers with titles, not files: twelve episodes of one
-		     show are one card that opens the show. One frame and the library's
+		     show are one card that opens the show. The library's frames and
 		     sizes, so a result looks as the same title does everywhere else.
 		     Arrows move between results; up from the first row returns to the
 		     field (the header's, or this page's on a phone). -->
-		<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-		<div
+		<TitleGrid
 			id="search-results"
-			bind:this={grid}
-			class={[framedGrid(frame), '[&>*]:scroll-mt-28 [&>*]:scroll-mb-24'].join(' ')}
+			bind:element={grid}
+			{groups}
+			{shapeOf}
+			progressOf={(id) => progressMap.get(id)}
+			above={field}
+			cardClass="[&>*]:scroll-mt-28 [&>*]:scroll-mb-24"
 			onclick={() => recentSearches.remember(searchedFor)}
-			onkeydown={(e) => gridKeys(e, field)}
-		>
-			{#each groups as group, i (group.key)}
-				{#if group.count > 1}
-					<ShowCard {group} {frame} priority={i < 6} />
-				{:else}
-					<MediaCard item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} priority={i < 6} {frame} />
-				{/if}
-			{/each}
-		</div>
-		{#if items.length < total}
+		/>
+		{#if loaded() < total}
 			<div class="mt-8 flex justify-center">
 				<Button variant="secondary" loading={loading} onclick={() => void run(searchedFor, false)}>
 					<ArrowDown class="size-4" /> {t('search.loadMore')}
@@ -377,7 +392,7 @@
 			</div>
 		{/if}
 	{/if}
-	{#if !error && !showIdle && !loading && groups.length <= 6 && browse.length > 0}
+	{#if !error && !showIdle && !loading && (byTitle ? total : groups.length) <= 6 && browse.length > 0}
 		<!-- A short answer leaves the page with somewhere to go on to. -->
 		<nav aria-label={t('search.browse')} class="border-t border-line/50 pt-5">
 			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t(emptyResults ? 'search.browseInstead' : 'search.orBrowse')}</h2>

@@ -1,8 +1,9 @@
 <script lang="ts">
 	/*
 	 * Social hub (docs/slices/social.md): feed, friends, notifications and
-	 * collections. Keys: 1–4 switch tabs, / searches people, r marks
-	 * notifications read, n starts a collection.
+	 * collections. Keys: 1–4 switch tabs, f finds people, r marks
+	 * notifications read, n starts a collection. `/` is left to the header:
+	 * it searches titles on every page, and meant people here only.
 	 */
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { goto } from '$app/navigation';
@@ -27,8 +28,8 @@
 	import FirstRun from '$lib/components/media/FirstRun.svelte';
 	import RelatedRow from '$lib/components/media/RelatedRow.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
+	import EmptyRow from '$lib/components/primitives/EmptyRow.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
-	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
@@ -44,7 +45,6 @@
 	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { debounce } from '$lib/utilities/debounce';
-	import { isTypingTarget } from '$lib/utilities/guards';
 	import { tabStep } from '$lib/utilities/tabs';
 	import { formatRelative } from '$lib/utilities/format';
 
@@ -59,7 +59,12 @@
 	const tab = $derived<Tab>((TABS.find((x) => x.id === page.url.searchParams.get('tab'))?.id ?? 'feed') as Tab);
 
 	let loadError = $state('');
-	let ready = $state(false);
+	// The tabs that have had an answer: until then a tab shows it is loading,
+	// not its empty state (its lists start empty, so "No notifications." was
+	// drawn first and then replaced). A tab seen before keeps its rows while
+	// they are fetched again.
+	let answered = $state<Partial<Record<Tab, boolean>>>({});
+	const ready = $derived(answered[tab] === true);
 
 	// Feed
 	let feed = $state<Activity[]>([]);
@@ -91,7 +96,6 @@
 
 	async function load(which: Tab): Promise<void> {
 		loadError = '';
-		ready = false;
 		try {
 			if (which === 'feed') {
 				// The friends too: an empty feed with nobody to follow is the page's first run.
@@ -115,7 +119,7 @@
 		} catch (err) {
 			loadError = socialError(err, t('social.loadFailed'));
 		} finally {
-			ready = true;
+			answered[which] = true;
 		}
 	}
 
@@ -218,22 +222,19 @@
 
 	usePageKeys(() => [
 		{ keys: ['1', '…', '4'], label: t('pageKeys.tabs') },
-		{ keys: ['/'], label: t('pageKeys.findPeople') },
+		{ keys: ['F'], label: t('pageKeys.findPeople') },
 		...(tab === 'notifications' ? [{ keys: ['R'], label: t('pageKeys.markRead') }] : []),
 		...(tab === 'collections' ? [{ keys: ['N'], label: t('pageKeys.newCollection') }] : [])
 	]);
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
-		// The header's search takes `/` first and marks it handled; a page with
-		// a field of its own for the key moves focus on to it (HeaderSearch).
-		const slash = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTypingTarget(e.target) && !document.querySelector('[role="dialog"]');
-		const k = slash ? '/' : pageKey(e);
+		const k = pageKey(e).toLowerCase();
 		if (!k) return;
 		const target = TABS.find((x) => x.key === k);
 		if (target) {
 			e.preventDefault();
 			setTab(target.id);
-		} else if (k === '/') {
+		} else if (k === 'f') {
 			e.preventDefault();
 			void findPeople();
 		} else if (k === 'r' && tab === 'notifications') {
@@ -334,6 +335,7 @@
 	{:else if tab === 'feed'}
 		{#if firstRun}
 			<FirstRun
+				art="people"
 				eyebrow={t('social.firstRun.eyebrow')}
 				title={t('social.firstRun.title')}
 				body={t('social.firstRun.body')}
@@ -343,13 +345,13 @@
 					{ label: t('social.firstRun.stepShare'), text: t('social.firstRun.stepShareText') }
 				]}
 			>
-				<Button size="rowMain" onclick={findPeople}>{t('social.feed.findFriends')} <kbd>/</kbd></Button>
-				<LinkButton href="/settings/privacy" variant="tonal" size="row">{t('social.firstRun.privacy')}</LinkButton>
+				<!-- Privacy settings are the header's link, on every tab: a second copy here read as two places. -->
+				<Button size="rowMain" onclick={findPeople}>{t('social.feed.findFriends')} <kbd>F</kbd></Button>
 			</FirstRun>
 		{:else if feed.length === 0}
 			<EmptyState title={t('social.feed.emptyTitle')} description={t('social.feed.emptyBody')}>
 				{#snippet icon()}<Users class="size-6 text-muted" />{/snippet}
-				<Button onclick={findPeople}>{t('social.feed.findFriends')} <Kbd>/</Kbd></Button>
+				<Button onclick={findPeople}>{t('social.feed.findFriends')} <Kbd>F</Kbd></Button>
 			</EmptyState>
 		{:else}
 			<RelatedRow heading={t('social.feed.titles')} source={feedTitles} class="mb-2" />
@@ -375,9 +377,9 @@
 					onkeydown={(e) => e.key === 'Escape' && searchInput?.blur()}
 					class="{FIELD} md:pe-10"
 					placeholder={t('social.friends.searchPlaceholder')}
-					aria-keyshortcuts="/"
+					aria-keyshortcuts="F"
 				/>
-				<kbd class="pointer-events-none absolute end-3 top-1/2 hidden -translate-y-1/2 text-muted/70 md:inline-flex">/</kbd>
+				<kbd class="pointer-events-none absolute end-3 top-1/2 hidden -translate-y-1/2 text-muted/70 md:inline-flex">F</kbd>
 			</label>
 			<ul>
 				{#each results as r (r.user.id)}
@@ -422,7 +424,11 @@
 						<Button size="sm" variant="ghost" disabled={busyUser === r.user.id} onclick={() => void relate(r.user.id, api.social.unfriend)}>{t('social.friends.remove')}</Button>
 					</li>
 				{:else}
-					<li class="py-3 text-sm text-muted">{t('social.friends.none')}</li>
+					<li>
+						<EmptyRow title={t('social.friends.none')} description={t('social.friends.noneBody')}>
+							{#snippet icon()}<Users />{/snippet}
+						</EmptyRow>
+					</li>
 				{/each}
 			</ul>
 		</section>

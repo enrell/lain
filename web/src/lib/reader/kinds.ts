@@ -1,3 +1,5 @@
+import { t } from '$lib/i18n';
+
 /** Catalog kinds that open in the reader instead of the video player (D-085). */
 const READABLE = new Set(['comic', 'manga']);
 
@@ -17,9 +19,12 @@ export function readingLabel(item: {
 	episode: number;
 	title: string;
 }): string {
-	const unit = item.kind === 'manga' ? 'Ch' : 'Issue';
-	if (item.season > 0 && item.episode > 0) return `Vol ${item.season} · ${unit} ${item.episode}`;
-	if (item.season > 0) return `Vol ${item.season}`;
-	if (item.episode > 0) return `${unit} ${item.episode}`;
+	const manga = item.kind === 'manga';
+	const volume = item.season;
+	const number = item.episode;
+	if (volume > 0 && number > 0)
+		return manga ? t('reader.label.volumeChapter', { volume, number }) : t('reader.label.volumeIssue', { volume, number });
+	if (volume > 0) return t('reader.label.volume', { volume });
+	if (number > 0) return manga ? t('reader.label.chapter', { number }) : t('reader.label.issue', { number });
 	return item.title;
 }

@@ -17,6 +17,7 @@
 
 mod activity;
 mod collections;
+mod forget;
 mod graph;
 mod reviews;
 

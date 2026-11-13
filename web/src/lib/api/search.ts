@@ -8,6 +8,8 @@ export interface SearchOptions {
 	limit?: number;
 	offset?: number;
 	sort?: CatalogSort;
+	/** `title` pages titles, not files (D-283), as the catalog does. */
+	group?: 'title';
 	signal?: AbortSignal;
 }
 
@@ -20,7 +22,8 @@ export const search = {
 				kind: opts.kind,
 				limit: opts.limit,
 				offset: opts.offset,
-				sort: opts.sort
+				sort: opts.sort,
+				group: opts.group
 			},
 			signal: opts.signal
 		})

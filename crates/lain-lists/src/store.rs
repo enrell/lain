@@ -33,6 +33,9 @@ pub mod op {
     /// `lain.list.account@1`: `{user_id?}` → `[LinkedAccount]` (all
     /// accounts when `user_id` is empty: the scheduler's view)
     pub const ACCOUNTS: &str = "list";
+    /// `lain.list.account@1`: `{user_id}` → the number of rows removed:
+    /// every list entry and linked account of a deleted account.
+    pub const FORGET_USER: &str = "forget-user";
 }
 
 pub struct ListStore {
@@ -174,6 +177,24 @@ impl ListStore {
             .map_err(store_err)
     }
 
+    /// Removes every list entry and linked account of `user_id` (a
+    /// deleted account: its id comes back with the next account of the
+    /// same name, which must not inherit them).
+    pub fn forget_user(&self, user_id: &str) -> Result<i64, Error> {
+        self.store
+            .write(|tx| {
+                let mut n = 0;
+                for b in [Bucket::List, Bucket::ListAccounts] {
+                    for (k, _) in tx.scan_prefix(b, &key_prefix(user_id))? {
+                        tx.delete(b, &k)?;
+                        n += 1;
+                    }
+                }
+                Ok(n)
+            })
+            .map_err(store_err)
+    }
+
     /// One linked account; missing is a typed not-found.
     pub fn account(&self, user_id: &str, platform: &str) -> Result<LinkedAccount, Error> {
         let got = self
@@ -248,6 +269,13 @@ impl Provider for ListStore {
                 let k: AccountKey = decode(input, "DeleteAccountInput")?;
                 need_pair(&k)?;
                 Ok(json!(self.delete_account(&k.user_id, &k.platform)?))
+            }
+            (CAP_LIST_ACCOUNT, op::FORGET_USER) => {
+                let k: AccountKey = decode(input, "ForgetUserInput")?;
+                if k.user_id.is_empty() {
+                    return Err(Error::invalid("user_id required"));
+                }
+                Ok(json!(self.forget_user(&k.user_id)?))
             }
             (CAP_LIST_ACCOUNT, op::ACCOUNTS) => {
                 let k: AccountKey = decode(input, "ListAccountsInput")?;

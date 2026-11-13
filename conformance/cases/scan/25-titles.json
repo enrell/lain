@@ -1,0 +1,85 @@
+{
+ "tier": "v2",
+ "description": "D-283: `group=title` on the catalog and on search pages titles instead of files. `total`, `limit` and `offset` count titles, `items` holds every file of each title on the page in watch order (a title is never split across pages), and the envelope says `group: title`. Without it, pages are files as before and carry no `group`. lain-rs only.",
+ "cases": [
+  {
+   "name": "a page of titles holds whole titles and counts titles",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {"method": "GET", "path": "/api/catalog?group=title", "auth": "bob"},
+     "expect": {
+      "status": 200,
+      "body": {
+       "total": 3,
+       "limit": 50,
+       "offset": 0,
+       "group": "title",
+       "items": [
+        {"title": "Akira", "episode": 0, "$open": true},
+        {"title": "Frieren", "episode": 1, "$open": true},
+        {"title": "Frieren", "episode": 2, "$open": true},
+        {"title": "Show Name", "episode": 2, "$open": true}
+       ]
+      }
+     },
+     "save": {"t_f1": "/items/1/id", "t_f2": "/items/2/id"}
+    },
+    {
+     "req": {"method": "GET", "path": "/api/catalog?group=title&limit=1&offset=1", "auth": "bob"},
+     "expect": {
+      "status": 200,
+      "body": {
+       "total": 3,
+       "limit": 1,
+       "offset": 1,
+       "group": "title",
+       "items": [
+        {"id": "{{t_f1}}", "$open": true},
+        {"id": "{{t_f2}}", "$open": true}
+       ]
+      }
+     }
+    },
+    {
+     "req": {"method": "GET", "path": "/api/catalog?group=title&sort=recent&limit=2", "auth": "bob"},
+     "expect": {"status": 200, "body": {"total": 3, "limit": 2, "group": "title", "$open": true}}
+    },
+    {
+     "req": {"method": "GET", "path": "/api/catalog?group=files", "auth": "bob"},
+     "expect": {"status": 200, "body": {"total": 4, "limit": 50, "offset": 0, "$open": true}}
+    }
+   ]
+  },
+  {
+   "name": "search counts the titles that match",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {"method": "GET", "path": "/api/search?q=frie&group=title&limit=1", "auth": "bob"},
+     "expect": {
+      "status": 200,
+      "body": {
+       "total": 1,
+       "limit": 1,
+       "offset": 0,
+       "group": "title",
+       "items": [
+        {"title": "Frieren", "episode": 1, "$open": true},
+        {"title": "Frieren", "episode": 2, "$open": true}
+       ]
+      }
+     }
+    },
+    {
+     "req": {"method": "GET", "path": "/api/search?q=e&group=title", "auth": "bob"},
+     "expect": {"status": 200, "body": {"total": 2, "group": "title", "$open": true}}
+    }
+   ]
+  }
+ ]
+}

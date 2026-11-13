@@ -40,6 +40,8 @@ pub mod graph_op {
     pub const RELATIONS: &str = "relations";
     /// `{viewer_id, owner_id, subject}` → bool
     pub const CAN_SEE: &str = "can-see";
+    /// `{user_id}` → `{removed}`: every row of a deleted account.
+    pub const FORGET_USER: &str = "forget-user";
 }
 
 pub const REQUESTS_EVERYONE: &str = "everyone";
@@ -248,6 +250,11 @@ impl Social {
                 let i: CanSeeInput = input(v, "CanSeeInput")?;
                 need_user(&[&i.viewer_id, &i.owner_id])?;
                 out(self.can_see(&i.viewer_id, &i.owner_id, &i.subject)?)
+            }
+            FORGET_USER => {
+                let i: SettingsInput = input(v, "ForgetUserInput")?;
+                need_user(&[&i.user_id])?;
+                out(serde_json::json!({"removed": self.forget_user(&i.user_id)?}))
             }
             _ => Err(invalid(format!("unknown op {op} of lain.social.graph@1"))),
         }

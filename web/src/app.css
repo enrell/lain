@@ -54,8 +54,10 @@
 
 	/* A fullscreen element owns the whole screen: the gutter kept for the
 	   page's scrollbar is given back, or the player sat ten pixels short of
-	   the right edge. */
-	html:has(:fullscreen) {
+	   the right edge. The player and the reader (data-immersive) never
+	   scroll the page either, so the gutter there was a grey strip. */
+	html:has(:fullscreen),
+	html:has([data-immersive]) {
 		scrollbar-gutter: auto;
 		overflow: hidden;
 	}
@@ -102,6 +104,22 @@
 }
 
 /*
+ * A row of names that scrolls sideways fades where more is hidden, and
+ * only there: `scrollEdges(…, fade)` sets each side's fade as the row
+ * moves, so a row at rest fades at its end and one scrolled to its end
+ * fades at its start.
+ */
+@utility edge-fade {
+	mask-image: linear-gradient(
+		to right,
+		transparent,
+		black var(--fade-left, 0px),
+		black calc(100% - var(--fade-right, 0px)),
+		transparent
+	);
+}
+
+/*
  * One type scale for headings (r19 design review). A page's own name is
  * the largest text after a hero's title, and a section under it (a rail,
  * a title's episodes, a search's suggestions) is one step down, as Home's
@@ -117,6 +135,16 @@
 	@media (width >= 48rem) {
 		font-size: 2rem;
 	}
+}
+
+/*
+ * The lead line under a page's title sits one fixed step below it on every
+ * page (round 20): it was 2 px on Library and Tracking, 4 px on Favorites,
+ * Acquire and Social and 6 px in Settings. Unlayered, so it wins over the
+ * margin utilities those pages still carry.
+ */
+.page-title + p {
+	margin-top: 0.25rem;
 }
 
 @utility section-title {
@@ -254,8 +282,10 @@ video::cue {
 	}
 }
 /* A phone stacks a row's control under its label, except a lone switch or
-   number: those stay beside the label, where a thumb expects a toggle. */
-@media (max-width: 639px) {
+   number: those stay beside the label, where a thumb expects a toggle. A
+   tablet beside the settings rail (768 to 959 px) stacks the same way
+   (SettingRow). */
+@media (max-width: 639px), (min-width: 768px) and (max-width: 959px) {
 	.setting-row:has(> :nth-child(2) > :only-child:is(input[type='number'], .contents)) {
 		grid-template-columns: minmax(0, 1fr) auto;
 		align-items: center;
@@ -427,10 +457,12 @@ details.settings-group > summary::-webkit-details-marker {
 }
 
 /* ---- phones ---------------------------------------------------------- */
-/* Keyboard hints mean nothing without a keyboard. */
+/* Keyboard hints mean nothing without a keyboard: key caps, and a line of
+ * keys spelled out (`keyboard-hint`, "Enter grabs · j/k move"). */
 @media (hover: none) and (pointer: coarse) {
 	kbd,
-	.key-hint {
+	.key-hint,
+	.keyboard-hint {
 		display: none !important;
 	}
 }

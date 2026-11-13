@@ -58,11 +58,14 @@ export function nextUpAfter(
 }
 
 /**
- * What a title's main button opens: the file under way (past `minResume`);
- * else the first unfinished one after the most recently finished, as Home's
- * Next up; else the first unfinished; else the first, to watch it again.
- * Plain "the first file" played Episode 1 again on a show whose first
- * episodes were done, while Home offered Episode 4.
+ * What a title's main button opens: the file under way (past `minResume`),
+ * the one touched last when several are, as Home's Continue watching
+ * offers it; else the first unfinished one after the most recently
+ * finished, as Home's Next up; else the first unfinished; else the first,
+ * to watch it again. Plain "the first file" played Episode 1 again on a
+ * show whose first episodes were done, while Home offered Episode 4, and
+ * the first one under way resumed Episode 2 left a week ago while Home
+ * resumed Episode 8 left last night.
  */
 export function playTarget(
 	items: CatalogItem[],
@@ -70,10 +73,12 @@ export function playTarget(
 	minResume: number
 ): CatalogItem | undefined {
 	const of = (item: CatalogItem) => progress?.get(item.id);
-	const going = items.find((i) => {
-		const p = of(i);
-		return p !== undefined && !p.completed && p.position_sec >= minResume;
-	});
+	let going: CatalogItem | undefined;
+	for (const item of items) {
+		const p = of(item);
+		if (p === undefined || p.completed || p.position_sec < minResume) continue;
+		if (!going || p.updated_at > (of(going)?.updated_at ?? 0)) going = item;
+	}
 	if (going) return going;
 	const finished = sortByRecent(items.map(of).filter((p): p is Progress => p !== undefined && p.completed));
 	if (finished.length > 0) {

@@ -11,6 +11,7 @@
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
 	import LogOut from '@lucide/svelte/icons/log-out';
+	import Check from '@lucide/svelte/icons/check';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import { SavedFlash } from '$lib/settings/flash.svelte';
@@ -66,6 +67,11 @@
 		await saveDetails();
 	}
 
+	function discardDetails(): void {
+		name = user?.profile?.display_name || user?.username || '';
+		bio = user?.profile?.bio ?? '';
+	}
+
 	async function saveDetails(): Promise<boolean> {
 		saving = true;
 		try {
@@ -75,7 +81,7 @@
 			flash.mark('details');
 			return true;
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not save the profile.'));
+			toasts.error(errorMessage(err, t('settings.profilePage.saveFailed')));
 			return false;
 		} finally {
 			saving = false;
@@ -129,7 +135,7 @@
 			apply(await api.me.updateProfile({ mascot: id }));
 			flash.mark('avatar');
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not change the avatar.'));
+			toasts.error(errorMessage(err, t('settings.profilePage.avatarFailed')));
 		}
 	}
 
@@ -139,7 +145,7 @@
 		input.value = '';
 		if (!file) return;
 		if (file.size > MAX_BYTES) {
-			toasts.error('The image must be 2 MB or smaller.');
+			toasts.error(t('settings.profilePage.tooBig'));
 			return;
 		}
 		uploading = true;
@@ -147,7 +153,7 @@
 			apply(await api.me.uploadAvatar(file));
 			flash.mark('avatar');
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not upload the picture.'));
+			toasts.error(errorMessage(err, t('settings.profilePage.uploadFailed')));
 		} finally {
 			uploading = false;
 		}
@@ -158,7 +164,7 @@
 			apply(await api.me.removeAvatar());
 			flash.mark('avatar');
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not remove the avatar.'));
+			toasts.error(errorMessage(err, t('settings.profilePage.removeFailed')));
 		}
 	}
 
@@ -183,7 +189,7 @@
 	}
 </script>
 
-<svelte:head><title>Profile — Settings — Lain</title></svelte:head>
+<svelte:head><title>{t('settings.profilePage.pageTitle')}</title></svelte:head>
 
 {#if user}
 	<!-- Identity: the live preview of what other people see, in a panel of
@@ -200,9 +206,19 @@
 		</div>
 	</div>
 
-	<form onsubmit={save}>
-		<SettingsGroup title="Details" description={t('settings.groups.profile.details')}>
-			<SettingRow id="display-name" label="Display name" hint={`Shown instead of @${user.username}.`} saved={flash.is('details')}>
+	<!-- Ctrl+Enter saves from either field, as the Save button says: it
+	     was the bio's alone, and in the name field it did nothing. -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<form
+		onsubmit={save}
+		onkeydown={(e) => {
+			if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+			e.preventDefault();
+			e.currentTarget.requestSubmit();
+		}}
+	>
+		<SettingsGroup title={t('settings.profilePage.details')} description={t('settings.groups.profile.details')}>
+			<SettingRow id="display-name" label={t('settings.entry.displayName')} hint={t('settings.profilePage.nameHint', { username: user.username })} saved={flash.is('details')}>
 				<!-- The count sits inside its field's end: beside it, it floated in a column of its
 				     own and the field stopped short of every other control's right edge. -->
 				<div class="relative w-full">
@@ -212,52 +228,63 @@
 						maxlength={MAX_NAME}
 						placeholder={user.username}
 						autocomplete="nickname"
-						aria-label="Display name"
+						aria-label={t('settings.entry.displayName')}
 					/>
 					<!-- The count appears with the first character: beside a placeholder, "0/40" read as a broken counter. -->
 					<span class="pointer-events-none absolute inset-y-0 end-2.5 flex items-center font-mono text-[10px] tabular-nums text-muted" class:invisible={name.length === 0}>{name.length}/{MAX_NAME}</span>
 				</div>
 			</SettingRow>
-			<SettingRow id="bio" label="Bio" hint="One or two lines.">
+			<SettingRow id="bio" label={t('settings.entry.bio')} hint={t('settings.profilePage.bioHint')} saved={flash.is('details')}>
 				<div class="relative w-full">
 					<textarea
 						bind:value={bio}
 						maxlength={MAX_BIO}
 						rows="2"
-						aria-label="Bio"
+						aria-label={t('settings.entry.bio')}
 						class="block w-full resize-none rounded-md border px-3 pb-5 pt-2 text-sm text-foreground outline-none placeholder:text-muted"
-						placeholder="A line about you."
-						onkeydown={(e) => {
-							if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit();
-						}}
+						placeholder={t('settings.profilePage.bioPlaceholder')}
 					></textarea>
 					<span class="pointer-events-none absolute bottom-1.5 end-2.5 font-mono text-[10px] tabular-nums text-muted" class:invisible={bio.length === 0}>{bio.length}/{MAX_BIO}</span>
 				</div>
 			</SettingRow>
-			{#if dirty}
-				<div class="flex items-center justify-end gap-3 py-3">
-					<kbd class="text-muted">Ctrl Enter</kbd>
-					<Button type="submit" size="field" loading={saving}>Save details</Button>
-				</div>
-			{/if}
+			<!-- Always says where the name and bio stand: saved (what others see
+			     now), or changed and waiting for Save. A row that appeared only
+			     once something changed left a clean form saying nothing. -->
+			<div class="flex min-h-14 flex-wrap items-center justify-between gap-3 py-3" aria-live="polite">
+				{#if dirty}
+					<p class="flex items-center gap-2 text-[13px] text-foreground">
+						<span class="size-1.5 rounded-full bg-accent" aria-hidden="true"></span>{t('settings.profilePage.unsaved')}
+					</p>
+					<div class="flex items-center gap-2">
+						<Button type="button" variant="ghost" size="field" onclick={discardDetails}>{t('settings.profilePage.discard')}</Button>
+						<Button type="submit" size="field" loading={saving}>
+							{t('settings.profilePage.save')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Ctrl Enter</kbd>
+						</Button>
+					</div>
+				{:else}
+					<p class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+						<Check class="size-3" aria-hidden="true" /> {t('settings.profilePage.savedState')}
+					</p>
+				{/if}
+			</div>
 		</SettingsGroup>
 	</form>
 
-	<SettingsGroup id="avatar" title="Avatar" description={t('settings.groups.profile.avatar')}>
-		<SettingRow label="Picture" hint="PNG, JPEG, GIF or WebP · up to 2 MB." saved={flash.is('avatar')}>
+	<SettingsGroup id="avatar" title={t('settings.entry.avatar')} description={t('settings.groups.profile.avatar')}>
+		<SettingRow label={t('settings.profilePage.picture')} hint={t('settings.profilePage.pictureHint')} saved={flash.is('avatar')}>
 			<Button variant="tonal" size="field" loading={uploading} onclick={() => fileInput?.click()}>
-				<ImageUp class="size-4" /> Upload
+				<ImageUp class="size-4" /> {t('settings.profilePage.upload')}
 			</Button>
 			{#if avatar?.kind}
 				<Button variant="ghost" size="field" onclick={remove}>
-					<Trash2 class="size-4" /> Use initials
+					<Trash2 class="size-4" /> {t('settings.profilePage.initials')}
 				</Button>
 			{/if}
 			<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden" onchange={upload} />
 		</SettingRow>
-		<SettingRow label="Mascot" hint="Arrow keys move and pick." stack>
+		<SettingRow label={t('settings.profilePage.mascot')} hint={t('settings.profilePage.mascotHint')} stack>
 			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<div bind:this={grid} role="radiogroup" aria-label="Mascots" class="grid grid-cols-4 gap-2 sm:grid-cols-8" onkeydown={onGridKey}>
+			<div bind:this={grid} role="radiogroup" aria-label={t('settings.profilePage.mascots')} class="grid grid-cols-4 gap-2 sm:grid-cols-8" onkeydown={onGridKey}>
 				{#each MASCOTS as m, i (m.id)}
 					{@const on = avatar?.kind === 'mascot' && avatar.mascot === m.id}
 					<button
@@ -296,17 +323,17 @@
 		</SettingRow>
 	</SettingsGroup>
 
-	<SettingsGroup id="account" title="Account" description={t('settings.groups.profile.account')}>
-		<SettingRow label="Username" hint="Used to sign in. Only an admin can change it.">
+	<SettingsGroup id="account" title={t('settings.profilePage.account')} description={t('settings.groups.profile.account')}>
+		<SettingRow label={t('settings.usersPage.username')} hint={t('settings.profilePage.usernameHint')}>
 			<span class="font-mono text-sm text-foreground">@{user.username}</span>
 		</SettingRow>
-		<SettingRow label="Role">
+		<SettingRow label={t('settings.usersPage.role')}>
 			<span class="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] {user.role === 'admin' ? 'text-accent' : 'text-muted'}">
-				<span class="size-1.5 rounded-full {user.role === 'admin' ? 'bg-accent' : 'bg-muted'}" aria-hidden="true"></span>{user.role}
+				<span class="size-1.5 rounded-full {user.role === 'admin' ? 'bg-accent' : 'bg-muted'}" aria-hidden="true"></span>{user.role === 'admin' ? t('settings.usersPage.roleAdmin') : t('settings.usersPage.roleUser')}
 			</span>
 		</SettingRow>
-		<SettingRow label="Session" hint="Signs out of this browser only.">
-			<Button variant="tonal" size="field" onclick={signOut}><LogOut class="size-4" /> Sign out</Button>
+		<SettingRow label={t('settings.profilePage.session')} hint={t('settings.profilePage.sessionHint')}>
+			<Button variant="tonal" size="field" onclick={signOut}><LogOut class="size-4" /> {t('common.signOut')}</Button>
 		</SettingRow>
 	</SettingsGroup>
 {/if}
