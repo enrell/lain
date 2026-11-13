@@ -480,6 +480,27 @@
 					{#if enrichment?.synopsis || about?.summary}
 						<p class="mt-5 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{enrichment?.synopsis || about?.summary}</p>
 					{/if}
+					<!-- Where the file is and where its metadata came from: an admin's
+					     business, folded away from the page everyone reads. Under the
+					     title's own lines: below the hero it floated alone in the gap
+					     before the next rail. -->
+					{#if session.isAdmin}
+						<details class="mt-4 max-w-3xl text-sm text-muted">
+							<summary class="group/sum -ml-1 inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-md px-1 font-mono text-[11px] uppercase tracking-[0.16em] text-foreground/75 hover:text-foreground [&::-webkit-details-marker]:hidden">
+								<ChevronRight class="size-3.5 transition-transform [details[open]_&]:rotate-90" aria-hidden="true" />{t('title.fileDetails')}
+							</summary>
+							<dl class="mt-2 space-y-1.5 border-l border-line pl-4 text-xs">
+								{#if enrichment?.title && enrichment.title !== item.title}
+									<div><dt class="inline text-muted">Indexed as</dt> <dd class="inline text-foreground">“{item.title}”</dd></div>
+								{/if}
+								{#if enrichment}
+									<div><dt class="inline text-muted">Metadata from</dt> <dd class="inline text-foreground">{enrichment.provider}{#if enrichment.fetched_at}{' · '}{formatDate(enrichment.fetched_at)}{/if}</dd></div>
+								{/if}
+								{#if item.size > 0}<div><dt class="inline text-muted">Size</dt> <dd class="inline text-foreground">{formatBytes(item.size)}</dd></div>{/if}
+								<div><dt class="sr-only">Path</dt> <dd class="break-all font-mono text-[11px]">{item.file_path}</dd></div>
+							</dl>
+						</details>
+					{/if}
 					</div>
 				</div>
 			</div>
@@ -509,25 +530,6 @@
 
 		{#if reading}<ComicInfoPanel {item} summary={!!enrichment?.synopsis} />{/if}
 
-		<!-- Where the file is and where its metadata came from: an admin's
-		     business, folded away from the page everyone reads. -->
-		{#if session.isAdmin}
-			<details class="max-w-3xl text-sm text-muted">
-				<summary class="group/sum inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-md px-1 font-mono text-[11px] uppercase tracking-[0.16em] text-foreground/75 hover:text-foreground [&::-webkit-details-marker]:hidden">
-					<ChevronRight class="size-3.5 transition-transform [details[open]_&]:rotate-90" aria-hidden="true" />{t('title.fileDetails')}
-				</summary>
-				<dl class="mt-2 space-y-1.5 border-l border-line pl-4 text-xs">
-					{#if enrichment?.title && enrichment.title !== item.title}
-						<div><dt class="inline text-muted">Indexed as</dt> <dd class="inline text-foreground">“{item.title}”</dd></div>
-					{/if}
-					{#if enrichment}
-						<div><dt class="inline text-muted">Metadata from</dt> <dd class="inline text-foreground">{enrichment.provider}{#if enrichment.fetched_at} · {formatDate(enrichment.fetched_at)}{/if}</dd></div>
-					{/if}
-					{#if item.size > 0}<div><dt class="inline text-muted">Size</dt> <dd class="inline text-foreground">{formatBytes(item.size)}</dd></div>{/if}
-					<div><dt class="sr-only">Path</dt> <dd class="break-all font-mono text-[11px]">{item.file_path}</dd></div>
-				</dl>
-			</details>
-		{/if}
 	</article>
 {/if}
 
