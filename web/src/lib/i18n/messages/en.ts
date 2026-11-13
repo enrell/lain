@@ -955,6 +955,7 @@ const en = {
 		recent: 'Recent',
 		recentLabel: 'Recent searches',
 		forget: 'Clear',
+		forgetLabel: 'Clear recent searches',
 		browse: 'Browse',
 		browseInstead: 'Browse instead',
 		orBrowse: 'Or browse',
