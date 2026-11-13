@@ -1398,6 +1398,9 @@ const en = {
 			unrated: 'No ratings yet.',
 			rate: 'Rate',
 			yourScore: 'Your score: {score}',
+			// The score button beside a title's main action: its tooltip, and everyone's average.
+			scoreHint: 'Your score (R)',
+			average: '{average} avg',
 			editReview: 'Edit review',
 			share: 'Share',
 			collect: 'Add to collection',

@@ -422,6 +422,9 @@
 		const target = resumeTarget;
 		if (arrived || returned || !target || !progressMap || !(resuming || watched > 0)) return;
 		arrived = true;
+		// A phone on its side is too short for both: the hero (the name and the button
+		// that opens this very part) stays, rather than a grid with no title above it.
+		if (window.innerHeight < 500) return;
 		void tick().then(() => {
 			const card = document.querySelector<HTMLElement>(`[data-episode-grid] [data-part="${CSS.escape(target.id)}"]`);
 			if (!card) return;
@@ -497,7 +500,7 @@
 				     third line of its own. -->
 				<div class="title-actions flex flex-wrap items-center gap-x-2 gap-y-3 md:mt-6">
 					{#if resumeTarget}
-						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
+						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)] max-[380px]:px-3" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
 						</LinkButton>
 					{:else}
