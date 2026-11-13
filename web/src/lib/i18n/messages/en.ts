@@ -513,6 +513,8 @@ const en = {
 			roleSaved: 'Role changed for {name}.',
 			selfRole: 'Your own role and access are changed by another admin.',
 			signedInHere: 'Signed in here',
+			// The ⋯ that holds a row's actions below the table's width.
+			actionsFor: 'Actions for {name}',
 			active: 'Active',
 			playback: 'Playback',
 			resetPassword: 'Reset password',
@@ -603,6 +605,10 @@ const en = {
 			moveUp: 'Move {name} up',
 			moveDown: 'Move {name} down',
 			moveUpKey: 'Move up (Alt+↑)',
+			// A row's menu below the table's width: the entries, and the ⋯ that opens them.
+			moveUpShort: 'Move up',
+			moveDownShort: 'Move down',
+			actionsFor: 'Actions for {name}',
 			moveDownKey: 'Move down (Alt+↓)',
 			moveFailed: 'Could not change the order.',
 			keyEdit: 'Edit the library',

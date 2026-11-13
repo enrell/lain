@@ -6,6 +6,9 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
 	import ScanLine from '@lucide/svelte/icons/scan-line';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import LockIcon from '@lucide/svelte/icons/lock';
@@ -119,6 +122,17 @@
 		{ keys: ['Alt', '↑↓'], label: t('settings.librariesPage.keyMove') },
 		{ keys: ['Delete'], label: t('pageKeys.libraryRemove') }
 	]);
+
+	// A row's actions as one labelled menu where the table is two lines (below xl):
+	// the order's arrows sat in a gutter of their own and Edit and Remove were bare icons.
+	function rowEntries(lib: Library, index: number): MenuEntry[] {
+		return [
+			{ label: t('settings.librariesPage.edit'), icon: Pencil, kbd: 'E', onSelect: () => openEdit(lib) },
+			{ label: t('settings.librariesPage.moveUpShort'), icon: ArrowUp, disabled: index === 0, onSelect: () => void move(lib, -1) },
+			{ label: t('settings.librariesPage.moveDownShort'), icon: ArrowDown, disabled: index === libraries.length - 1, onSelect: () => void move(lib, 1) },
+			{ label: t('settings.librariesPage.remove'), icon: Trash2, kbd: 'Del', danger: true, separated: true, onSelect: () => askRemove(lib) }
+		];
+	}
 
 	// Row keys: P toggles private, U unlocks or locks, E edits, Alt+arrows
 	// move it in the order, Delete removes.
@@ -534,19 +548,20 @@
 			     The keys act on the focused row, so their caps show on that row
 			     only. A table from xl up: beside the settings rail a 1024 px window
 			     left the name four letters. Narrower, the controls take a second
-			     line and the actions are icons at its end. -->
+			     line and the order and the row's actions are one labelled menu
+			     (⋯) at the end of the name's line. -->
 			<ul class="settings-items">
 				{#each libraries as lib, index (lib.id)}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 					<li
 						data-library={lib.id}
-						class="group/row grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 py-3.5 outline-none focus-visible:bg-surface-active/40 xl:grid-cols-[auto_minmax(0,1fr)_auto_7rem_auto] xl:gap-x-4"
+						class="group/row grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 py-3.5 outline-none focus-visible:bg-surface-active/40 xl:grid-cols-[auto_minmax(0,1fr)_auto_7rem_auto] xl:gap-x-4"
 						tabindex="0"
 						aria-label={lib.name}
 						onkeydown={(e) => rowKey(e, lib)}
 					>
 						<!-- The order: Home and the library page list libraries this way. -->
-						<div class="row-span-2 flex flex-col self-center xl:row-span-1">
+						<div class="flex flex-col self-center max-xl:hidden">
 							<button
 								type="button"
 								tabindex="-1"
@@ -597,7 +612,12 @@
 								</summary>
 							</details>
 						</div>
-						<div class="col-start-2 flex min-w-0 items-center gap-1 xl:contents">
+						<div class="-me-2 self-start xl:hidden">
+							<Menu label={t('settings.librariesPage.actionsFor', { name: lib.name })} entries={rowEntries(lib, index)} variant="ghost" size="icon">
+								{#snippet icon()}<Ellipsis class="size-5" aria-hidden="true" />{/snippet}
+							</Menu>
+						</div>
+						<div class="col-span-2 flex min-w-0 items-center gap-1 xl:contents">
 							<div class="flex items-center">
 								{#if roots !== null}
 									<div class="flex h-9 items-center gap-2 pe-2 text-sm text-muted">
@@ -626,19 +646,19 @@
 							</div>
 							<!-- Quiet until pointed at: a red bin on every row made five
 							     destructive buttons the loudest things on the page. -->
-							<div class="ms-auto flex items-center gap-0.5 xl:ms-0">
-								<Button variant="ghost" size="field" class="max-xl:px-3" aria-label={t('settings.librariesPage.editFor', { name: lib.name })} onclick={() => openEdit(lib)}>
-									<Pencil class="size-4" /> <span class="max-xl:sr-only">{t('settings.librariesPage.edit')}</span>
+							<div class="ms-auto flex items-center gap-0.5 max-xl:hidden xl:ms-0">
+								<Button variant="ghost" size="field" aria-label={t('settings.librariesPage.editFor', { name: lib.name })} onclick={() => openEdit(lib)}>
+									<Pencil class="size-4" /> {t('settings.librariesPage.edit')}
 									<kbd class="ms-1 max-xl:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">E</kbd>
 								</Button>
 								<Button
 									variant="ghost"
 									size="field"
-									class="hover:text-danger! focus-visible:text-danger! max-xl:px-3"
+									class="hover:text-danger! focus-visible:text-danger!"
 									aria-label={t('settings.librariesPage.removeFor', { name: lib.name })}
 									onclick={() => askRemove(lib)}
 								>
-									<Trash2 class="size-4" /> <span class="max-xl:sr-only">{t('settings.librariesPage.remove')}</span>
+									<Trash2 class="size-4" /> {t('settings.librariesPage.remove')}
 									<kbd class="ms-1 max-xl:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">Del</kbd>
 								</Button>
 							</div>
