@@ -1,7 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity';
 import type { CatalogItem, Enrichment } from '$lib/api/types';
 import { isReadable } from '$lib/reader/kinds';
-import { artItem } from '$lib/utilities/browse';
+import { artItem, posterItem } from '$lib/utilities/browse';
 import type { SeriesGroup } from '$lib/utilities/grouping';
 
 /**
@@ -178,12 +178,15 @@ export function guessShape(item: Pick<CatalogItem, 'kind'> & StillOf, enrichment
 	const known = knownShape(item, enrichment);
 	if (known) return known;
 	if (isReadable(item.kind)) return 'portrait';
-	return usualStill(stills.get(stillKey(item))) ?? 'landscape';
+	// A show's file that cannot be reached is lettered as its title's cover
+	// (D-287), upright, unless its library's stills are known.
+	const away = item.thumbnail?.source === 'title' && item.episode > 0;
+	return usualStill(stills.get(stillKey(item))) ?? (away ? 'portrait' : 'landscape');
 }
 
-/** The shape of the picture a title's card shows (see `artItem`). */
+/** The shape of the picture a title's card shows (see `posterItem`). */
 export function pictureShape(group: SeriesGroup, enrichment: (id: string) => Enrichment | null | undefined): Shape {
-	const art = artItem(group);
+	const art = posterItem(group, enrichment);
 	return shapeOf(art.id, guessShape(art, enrichment(art.id)));
 }
 
