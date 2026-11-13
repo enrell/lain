@@ -16,45 +16,37 @@
 		try {
 			const name = await api.backup.download();
 			archive = name;
-			toasts.success(`Saved ${name}.`);
+			toasts.success(t('settings.backupPage.saved', { name }));
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not download the backup.'));
+			toasts.error(errorMessage(err, t('settings.backupPage.failed')));
 		} finally {
 			busy = false;
 		}
 	}
 </script>
 
-<svelte:head><title>Backup — Settings — Lain</title></svelte:head>
+<svelte:head><title>{t('settings.backupPage.pageTitle')}</title></svelte:head>
 
-<SettingsGroup id="backup" title="Database snapshot" description={t('settings.groups.backup.snapshot')}>
+<SettingsGroup id="backup" title={t('settings.backupPage.snapshotTitle')} description={t('settings.groups.backup.snapshot')}>
 	{#snippet aside()}
 		<Button size="field" loading={busy} onclick={() => void download()}>
-			<Download class="size-4" /> Download a backup
+			<Download class="size-4" /> {t('settings.backupPage.download')}
 		</Button>
 	{/snippet}
-	<p class="py-4 text-sm leading-6 text-muted">
-		One archive (<span class="font-mono text-xs">.tar</span>) read in a single transaction:
-		accounts, libraries, catalog and watch progress, with the plugin composition, library
-		roots and avatars. Safe while scans and streams are running. Media files are never
-		included — they are your files, where they already are. Restore it into an empty data
-		folder with <span class="font-mono text-xs">lain restore</span>.
-	</p>
+	<!-- What the archive is, as lain-admin's bundle writes it: a tar of a
+	     consistent redb snapshot (lain.redb) and the data folder's documents
+	     and avatars, read in one transaction. -->
+	<p class="py-4 text-sm leading-6 text-muted">{t('settings.backupPage.what')}</p>
 </SettingsGroup>
 
-<SettingsGroup id="restore" title="Restoring" description={t('settings.groups.backup.restore')}>
+<SettingsGroup id="restore" title={t('settings.backupPage.restoreTitle')} description={t('settings.groups.backup.restore')}>
 	<div class="space-y-3 py-4">
-		<!-- The steps as they work: lain restore writes only into an empty data folder,
-		     so the live one is moved aside first (and kept until the restore is checked). -->
+		<!-- One command does the restore: --replace checks the archive, refuses
+		     a store a running server holds, and keeps the old data folder
+		     beside the new one (lain restore, crates/lain/src/backup.rs). -->
 		<p class="text-sm leading-6 text-muted">{t('settings.groups.backup.restoreSteps')}</p>
 		<pre
-			class="overflow-x-auto rounded-md bg-background px-4 py-3 font-mono text-xs leading-relaxed text-foreground"><code>pkill -x lain
-mv ~/.local/share/lain ~/.local/share/lain.before-restore
-lain restore ~/Downloads/{archive} --data-dir ~/.local/share/lain
-lain serve</code></pre>
-		<p class="text-xs text-muted">
-			The composition file (<span class="font-mono">composition.json</span>) sits next to the
-			database in the data directory and is inspectable on the Plugins page.
-		</p>
+			class="overflow-x-auto rounded-md bg-background px-4 py-3 font-mono text-xs leading-relaxed text-foreground"><code>lain restore ~/Downloads/{archive} --replace</code></pre>
+		<p class="text-xs leading-5 text-muted">{t('settings.backupPage.restoreNotes')}</p>
 	</div>
 </SettingsGroup>

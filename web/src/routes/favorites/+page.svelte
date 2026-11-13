@@ -18,6 +18,11 @@
 	import { errorMessage } from '$lib/utilities/errors';
 	import { t } from '$lib/i18n';
 
+	// About two rows of cards on a wide screen: below it, the filter column
+	// stood taller than the cards it narrowed, and the filters wait in the
+	// toolbar's sheet instead.
+	const FILTERS_FROM = 12;
+
 	// Favourites whose files are no longer in a library this account can see.
 	let gone = $state(0);
 
@@ -63,6 +68,7 @@
 	listed={t('favorites.sortListed')}
 	prefsKey="lain.favorites.prefs"
 	searchLabel={t('favorites.search')}
+	filtersFrom={FILTERS_FROM}
 >
 	{#snippet header()}
 		<header class="space-y-1">

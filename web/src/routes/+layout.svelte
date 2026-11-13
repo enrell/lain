@@ -6,9 +6,11 @@
 	import { page } from '$app/state';
 	import AppShell from '$lib/components/navigation/AppShell.svelte';
 	import BootScreen from '$lib/components/navigation/BootScreen.svelte';
+	import ReturnFocus from '$lib/components/navigation/ReturnFocus.svelte';
 	import Toaster from '$lib/components/primitives/Toaster.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { session } from '$lib/auth/session.svelte';
+	import { t } from '$lib/i18n';
 	import { appearance } from '$lib/stores/appearance';
 	import { isAdminRoute, routeRedirect } from '$lib/utilities/guards';
 
@@ -71,14 +73,14 @@
 			<!-- Redirect to /setup is in flight; do not mount pages that
 			     would fire authenticated requests before it lands. -->
 			<div class="flex min-h-dvh items-center justify-center">
-				<Spinner class="size-5 text-muted" label="Redirecting" />
+				<Spinner class="size-5 text-muted" label={t('boot.redirecting')} />
 			</div>
 		{:else}
 			{@render children()}
 		{/if}
 	{:else if !session.authenticated || blockedAdmin}
 		<div class="flex min-h-dvh items-center justify-center">
-			<Spinner class="size-5 text-muted" label="Redirecting" />
+			<Spinner class="size-5 text-muted" label={t('boot.redirecting')} />
 		</div>
 	{:else if isPlayer}
 		{@render children()}
@@ -89,4 +91,7 @@
 	{/if}
 
 	<Toaster />
+	<!-- Here, not in the shell: the player and the reader leave the shell, and
+	     Back from them must still find the card that opened them. -->
+	<ReturnFocus />
 </Tooltip.Provider>

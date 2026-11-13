@@ -1,15 +1,18 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Download from '@lucide/svelte/icons/download';
+	import SearchX from '@lucide/svelte/icons/search-x';
+	import EmptyRow from '$lib/components/primitives/EmptyRow.svelte';
 	import EmptyState from '$lib/components/primitives/EmptyState.svelte';
 	import LinkButton from '$lib/components/primitives/LinkButton.svelte';
 	import { nameable } from '$lib/stores/media-cache.svelte';
 	/*
 	 * Acquire (docs/slices/acquisition.md): search indexers, grab a
 	 * release into a library, watch the queue. Admin only (A-9).
-	 * Keys: 1 search, 2 queue, 3 wanted, 4 blocklist, 5 subtitles, / focuses the active
-	 * tab's input. Result rows: Enter grabs, m monitors the title, j/k
-	 * move. Queue rows: p pause/resume,
+	 * Keys: 1 search, 2 queue, 3 wanted, 4 blocklist, 5 subtitles, / focuses the
+	 * release search (the search of this page, as `/` is on every page), L
+	 * grabs from a link (the Queue's link field, from any tab). Result rows:
+	 * Enter grabs, m monitors the title, j/k move. Queue rows: p pause/resume,
 	 * i retry the import, Delete removes, j/k move.
 	 */
 	import { onDestroy, onMount, tick } from 'svelte';
@@ -233,6 +236,18 @@
 		void goto(url, { replaceState: true, keepFocus: true, noScroll: true });
 	}
 
+	// The Queue's link field, from any tab: it takes the cursor once the tab has drawn it.
+	let wantLink = $state(false);
+	function grabFromLink(): void {
+		wantLink = true;
+		setTab('queue');
+	}
+	$effect(() => {
+		if (!wantLink || !linkInput) return;
+		wantLink = false;
+		linkInput.focus();
+	});
+
 	function onTabKey(e: KeyboardEvent): void {
 		const next = tabStep(e.key, TABS, tab);
 		if (!next) return;
@@ -248,8 +263,8 @@
 	usePageKeys(() => [
 		{ keys: ['1', '…', '5'], label: t('pageKeys.tabs') },
 		...(tab === 'search' && !firstRun ? [{ keys: ['/'], label: t('pageKeys.releaseSearch') }] : []),
-		...(tab === 'queue' ? [{ keys: ['/'], label: t('acquire.queue.link') }] : []),
-		...(firstRun ? [{ keys: [noLibrary ? 'L' : 'I'], label: noLibrary ? t('acquire.noLibrariesAction') : t('acquire.firstRun.addIndexer') }] : [])
+		...(noLibrary ? [{ keys: ['L'], label: t('acquire.noLibrariesAction') }] : [{ keys: ['L'], label: t('acquire.queue.link') }]),
+		...(firstRun && !noLibrary ? [{ keys: ['I'], label: t('acquire.firstRun.addIndexer') }] : [])
 	]);
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
@@ -264,10 +279,13 @@
 		if (n >= 1 && n <= TABS.length) {
 			e.preventDefault();
 			setTab(TABS[n - 1]);
-		} else if (e.key === '/') {
+		} else if (e.key === '/' && tab === 'search' && queryInput) {
+			// Only where the release search is on screen; elsewhere the header's title search has the key.
 			e.preventDefault();
-			await tick();
-			(tab === 'search' ? queryInput : linkInput)?.focus();
+			queryInput.focus();
+		} else if (e.key === 'l' && !e.defaultPrevented) {
+			e.preventDefault();
+			grabFromLink();
 		}
 	}
 
@@ -306,11 +324,12 @@
 	{#if !loaded}
 		<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
 	{:else if noLibrary}
-		<FirstRun eyebrow={t('acquire.firstRun.eyebrow')} title={t('acquire.firstRun.noLibraryTitle')} body={t('acquire.firstRun.noLibraryBody')}>
+		<FirstRun art={false} eyebrow={t('acquire.firstRun.eyebrow')} title={t('acquire.firstRun.noLibraryTitle')} body={t('acquire.firstRun.noLibraryBody')}>
 			<LinkButton href="/settings/libraries" size="rowMain">{t('acquire.noLibrariesAction')} <kbd>L</kbd></LinkButton>
 		</FirstRun>
 	{:else if tab === 'search' && indexers.length === 0}
 		<FirstRun
+			art="queue"
 			eyebrow={t('acquire.firstRun.eyebrow')}
 			title={t('acquire.firstRun.title')}
 			body={t('acquire.firstRun.body')}
@@ -321,7 +340,7 @@
 			]}
 		>
 			<LinkButton href="/settings/indexers" size="rowMain">{t('acquire.firstRun.addIndexer')} <kbd>I</kbd></LinkButton>
-			<Button variant="tonal" size="row" onclick={() => setTab('queue')}>{t('acquire.firstRun.fromLink')} <kbd>2</kbd></Button>
+			<Button variant="tonal" size="row" onclick={() => grabFromLink()}>{t('acquire.firstRun.fromLink')} <kbd>L</kbd></Button>
 		</FirstRun>
 	{:else if tab === 'search'}
 		<form class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_6rem_6rem_auto] sm:items-end" onsubmit={search}>
@@ -348,9 +367,13 @@
 
 		{#if results}
 			{#if results.candidates.length === 0}
-				<p class="py-6 text-sm text-muted">{t('acquire.search.empty')}</p>
+				<EmptyRow title={t('acquire.search.empty')} description={t('acquire.search.emptyBody')}>
+					{#snippet icon()}<SearchX />{/snippet}
+				</EmptyRow>
 			{:else}
-				<p class="text-xs text-muted">{t('acquire.search.keys', { count: results.candidates.length })}</p>
+				<p class="text-xs text-muted">
+					{t('acquire.search.count', { count: results.candidates.length })}<span class="keyboard-hint"> · {t('acquire.search.keys')}</span>
+				</p>
 				<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.tab.search')}>
 					<!-- Keyed by position: indexers may repeat links and omit guids, and a
 					     search replaces the whole list anyway. -->
@@ -390,7 +413,7 @@
 		     library to a few letters; the labels share one height, key cap or not. -->
 		<form class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end" onsubmit={grabLink}>
 			<label class="block min-w-0 space-y-1.5">
-				<span class="flex h-5 items-center gap-2 text-xs text-muted">{t('acquire.queue.link')} <kbd class="font-mono text-[10px]">/</kbd></span>
+				<span class="flex h-5 items-center gap-2 text-xs text-muted">{t('acquire.queue.link')} <kbd class="font-mono text-[10px]">L</kbd></span>
 				<input bind:this={linkInput} bind:value={link} class="{field} w-full font-mono text-xs" placeholder="magnet:?xt=… / https://…/file.torrent" spellcheck={false} autocomplete="off" />
 			</label>
 			<label class="block space-y-1.5">
@@ -415,7 +438,7 @@
 				{#snippet icon()}<Download class="size-6 text-muted" aria-hidden="true" />{/snippet}
 			</EmptyState>
 		{:else}
-			<p class="text-xs text-muted">{t('acquire.queue.keys')}</p>
+			<p class="keyboard-hint text-xs text-muted">{t('acquire.queue.keys')}</p>
 			<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.tab.queue')}>
 				{#each grabs as g (g.id)}
 					<div role="row" tabindex="0" onkeydown={(e) => grabKey(e, g)} class="grid gap-x-6 gap-y-2 py-3 outline-none focus-visible:bg-surface-active/40 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">

@@ -6,7 +6,7 @@
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
-	import { formatLength, mediaSubtitle } from '$lib/utilities/format';
+	import { mediaSubtitle, timeLeft } from '$lib/utilities/format';
 	import { t } from '$lib/i18n';
 	import { progressRatio } from '$lib/utilities/progress';
 	import ProgressBar from './ProgressBar.svelte';
@@ -64,7 +64,7 @@
 			? reading
 				? // A book's position is a page.
 					`Page ${Math.max(1, Math.floor(progress.position_sec))} of ${Math.floor(progress.duration_sec)}`
-				: t('title.left', { time: formatLength(progress.duration_sec - progress.position_sec) })
+				: timeLeft(progress.position_sec, progress.duration_sec)
 			: ''
 	);
 	const unit = $derived(

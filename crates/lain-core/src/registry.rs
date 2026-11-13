@@ -18,6 +18,12 @@ pub trait Provider: Send + Sync {
     fn capabilities(&self) -> Vec<String>;
     fn health(&self) -> Result<(), Error>;
     fn invoke(&self, cap: &str, op: &str, input: Value) -> Result<Value, Error>;
+    /// One plain sentence on what this provider does for `capability`,
+    /// for a capability the server itself does not describe (D-285): a
+    /// component that brings a new job says what it is.
+    fn describe(&self, _capability: &str) -> Option<String> {
+        None
+    }
 }
 
 pub use lain_api::{ProviderInfo, RegistryEvent as Event};
@@ -437,6 +443,25 @@ impl Registry {
     /// A copy of the live composition.
     pub fn composition(&self) -> Composition {
         self.read().comp.clone()
+    }
+
+    /// The composition's view with every binding's summary (D-285): the
+    /// server's own sentence for the capability, else the first bound
+    /// provider that describes it.
+    pub fn composition_view(&self) -> Vec<crate::BindingView> {
+        let inner = self.read();
+        let mut view = inner.comp.view();
+        for b in view.iter_mut().filter(|b| b.summary.is_empty()) {
+            if let Some(s) = b
+                .providers
+                .iter()
+                .filter_map(|id| inner.providers.get(id))
+                .find_map(|p| p.describe(&b.capability).filter(|s| !s.trim().is_empty()))
+            {
+                b.summary = s.trim().to_string();
+            }
+        }
+        view
     }
 }
 

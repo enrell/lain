@@ -5,6 +5,7 @@ import {
 	availableHardwareBackends,
 	cloneTranscodeSettings,
 	engineChoices,
+	isAutomatic,
 	settingsEqual
 } from './playback-policy';
 
@@ -130,5 +131,37 @@ describe('playback settings policy helpers', () => {
 		expect(engineChoices('nvenc', ['qsv'])).toEqual(['nvenc', 'qsv', 'none']);
 		expect(engineChoices('none', ['qsv', 'vaapi'])).toEqual(['qsv', 'vaapi', 'none']);
 		expect(engineChoices('none', [])).toEqual(['none']);
+	});
+});
+
+describe('isAutomatic', () => {
+	const caps: TranscodeCapabilities = {
+		ffmpeg: 'ffmpeg',
+		encoders: [],
+		tone_mapping: true,
+		tone_mapping_bt2390: false,
+		hardware: { nvenc: true }
+	};
+
+	it('reads what Auto staged as Auto, and a changed field as Custom', () => {
+		const auto = applySafeAutomaticPolicy(cloneTranscodeSettings(settings), caps);
+		expect(isAutomatic(auto, caps)).toBe(true);
+		expect(isAutomatic({ ...auto, crf: 18 }, caps)).toBe(false);
+	});
+
+	it('counts a BT.2390 tone map the probe cannot run as the Hable fallback', () => {
+		const auto = applySafeAutomaticPolicy(cloneTranscodeSettings(settings), caps);
+		expect(isAutomatic({ ...auto, tone_mapping_algorithm: 'bt2390' }, caps)).toBe(true);
+		const { allow_subtitle_extraction: _, ...older } = auto;
+		expect(isAutomatic(older as TranscodeSettings, caps), 'a switch an older server leaves out is on').toBe(true);
+		// Where BT.2390 runs, Auto picks it, so Hable is a choice someone made.
+		expect(isAutomatic(auto, { ...caps, tone_mapping_bt2390: true })).toBe(false);
+	});
+});
+
+describe('engineChoices without hardware', () => {
+	it('is software alone, which the page shows as a fact, not a one-segment control', () => {
+		expect(engineChoices('none', [])).toEqual(['none']);
+		expect(engineChoices('vaapi', [])).toEqual(['vaapi', 'none']);
 	});
 });

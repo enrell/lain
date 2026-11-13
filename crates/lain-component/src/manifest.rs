@@ -20,6 +20,11 @@ pub struct Manifest {
     pub capabilities: Vec<String>,
     #[serde(default)]
     pub execution: Execution,
+    /// Optional, D-285: one plain sentence per capability this component
+    /// brings, which `GET /api/plugins` shows when the server does not
+    /// describe that capability itself.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub summaries: std::collections::BTreeMap<String, String>,
 }
 
 impl Manifest {

@@ -132,6 +132,15 @@ describe('playTarget', () => {
 		expect(playTarget(eps, map, 5)?.id).toBe('e3');
 	});
 
+	it('resumes the one touched last when several are under way, as Home does', () => {
+		const going = (id: string, at: number) => [id, progress({ item_id: id, position_sec: 40, updated_at: at })] as const;
+		expect(playTarget(eps, new Map([going('e2', 1), going('e4', 3), going('e3', 2)]), 5)?.id).toBe('e4');
+		expect(playTarget(eps, new Map([going('e4', 1), going('e2', 3)]), 5)?.id).toBe('e2');
+		// A file barely begun is not under way.
+		const barely = ['e4', progress({ item_id: 'e4', position_sec: 2, updated_at: 9 })] as const;
+		expect(playTarget(eps, new Map([going('e2', 1), barely]), 5)?.id).toBe('e2');
+	});
+
 	it('goes on after the most recently finished file, past finished ones', () => {
 		// e1 and e3 watched, e3 last: the next one is e4, not e1 again.
 		expect(playTarget(eps, new Map([done('e1', 1), done('e3', 2)]), 5)?.id).toBe('e4');

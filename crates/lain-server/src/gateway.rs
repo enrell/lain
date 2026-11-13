@@ -269,7 +269,10 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/me/continue", route(GET, Gate::User, me_continue))
         .route("/api/profile/mascots", route(GET, Gate::User, mascots))
         .route("/api/users", route(GET, Gate::Admin, users_list).merge(route(POST, Gate::Admin, users_create)))
-        .route("/api/users/{id}", route(PATCH, Gate::Admin, users_patch))
+        .route(
+            "/api/users/{id}",
+            route(PATCH, Gate::Admin, users_patch).merge(route(DELETE, Gate::Admin, users_delete)),
+        )
         .route(
             "/api/libraries",
             route(GET, Gate::User, libraries_list).merge(route(POST, Gate::Admin, libraries_create)),
@@ -278,6 +281,7 @@ pub fn router(app: Arc<App>) -> Router {
             "/api/libraries/{id}",
             route(DELETE, Gate::Admin, libraries_delete).merge(route(PATCH, Gate::Admin, libraries_patch)),
         )
+        .route("/api/libraries/order", route(PUT, Gate::Admin, libraries_order))
         .route("/api/libraries/{id}/unlock", route(POST, Gate::User, libraries_unlock))
         .route("/api/libraries/{id}/lock", route(POST, Gate::User, libraries_lock))
         .route(
@@ -402,6 +406,11 @@ fn me_password(app: &App, req: &Req, v: &Verified) -> Reply {
     };
     match app.auth().change_password(&v.user_id, &i.old, &i.new) {
         Ok(()) => Reply::ok(json!({"status": "ok"})),
+        // A stable code, so a client tells "wrong current password" from
+        // a rejected new one without reading the message.
+        Err(e @ AuthError::WrongPassword) => {
+            Reply::json(400, json!({"error": e.to_string(), "code": "wrong-password"}))
+        }
         Err(e) => Reply::err(400, &e.to_string()),
     }
 }
@@ -736,6 +745,68 @@ fn users_patch(app: &App, req: &Req, v: &Verified) -> Reply {
     }
 }
 
+/// Deletes an account and what it owned: its progress, tracking lists
+/// and linked accounts, social rows (ratings, comments, collections,
+/// friends, notifications) and avatar. A private library it owned
+/// passes to the admin deleting it, so nothing is left without an
+/// owner; its membership elsewhere ends. The account's id derives from
+/// its name, so a row left behind would belong to the next account of
+/// that name: a cleanup that fails is an error, not a warning.
+fn users_delete(app: &App, req: &Req, v: &Verified) -> Reply {
+    let id = req.param("id");
+    if id == v.user_id {
+        return Reply::err(400, "cannot delete yourself");
+    }
+    let gone = match app.auth().delete(id) {
+        Ok(u) => u,
+        Err(AuthError::UnknownUser) => return Reply::err(404, "unknown user"),
+        Err(e) => return Reply::err(400, &e.to_string()),
+    };
+    let mut failed = Vec::new();
+    let mut removed = 0i64;
+    let forget = [
+        (CAP_USER_PROGRESS, "forget-user"),
+        (lain_lists::CAP_LIST_ACCOUNT, "forget-user"),
+        (lain_social::CAP_SOCIAL_GRAPH, "forget-user"),
+    ];
+    for (cap, op) in forget {
+        match app.registry.call_one(cap, op, json!({"user_id": id})) {
+            Ok((out, _)) => removed += out.as_i64().or_else(|| out["removed"].as_i64()).unwrap_or(0),
+            Err(e) => {
+                tracing::error!(user = %id, capability = cap, err = %e, "deleted account's data not removed");
+                failed.push(cap);
+            }
+        }
+    }
+    let auth = app.auth();
+    let mut reassigned = Vec::new();
+    for lib in app.libraries.list().unwrap_or_default() {
+        if !lib.is_member(id) {
+            continue;
+        }
+        let members: Vec<String> = lib.members.iter().filter(|m| *m != id).cloned().collect();
+        let owner = if lib.owner == id { v.user_id.clone() } else { lib.owner.clone() };
+        let patch = LibraryPatch { owner: Some(owner), members: Some(members), ..LibraryPatch::default() };
+        match app.libraries.update(&lib.id, &patch, &v.user_id, &|u| auth.get_public(u).is_some()) {
+            Ok(_) if lib.owner == id => reassigned.push(lib.id.clone()),
+            Ok(_) => {}
+            Err(e) => {
+                tracing::error!(user = %id, library = %lib.id, err = %e, "deleted account's library membership not removed");
+                failed.push("libraries");
+            }
+        }
+    }
+    app.avatars.remove(id);
+    tracing::info!(user = %id, username = %gone.username, rows = removed, "account deleted");
+    if !failed.is_empty() {
+        return Reply::json(
+            500,
+            json!({"error": format!("account deleted, but some of its data was not removed: {}", failed.join(", "))}),
+        );
+    }
+    Reply::ok(json!({"status": "ok", "rows_removed": removed, "libraries_reassigned": reassigned}))
+}
+
 // ---- libraries ------------------------------------------------------------
 
 /// One library as this viewer sees it: private ones carry `locked`.
@@ -783,6 +854,25 @@ fn libraries_patch(app: &App, req: &Req, v: &Verified) -> Reply {
             Reply::ok(library_view(app, &lib, v))
         }
         Err(e) if e == "unknown library" => Reply::err(404, &e),
+        Err(e) => Reply::err(400, &e),
+    }
+}
+
+/// The admin's order of the libraries (every id, first to last): Home,
+/// the library page and every client list them in it.
+fn libraries_order(app: &App, req: &Req, v: &Verified) -> Reply {
+    let i: lain_api::LibraryOrder = match req.decode() {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    match app.libraries.reorder(&i.ids) {
+        Ok(list) => {
+            for lib in &list {
+                app.publish_library(lib, json!({"library_id": lib.id, "action": "updated"}));
+            }
+            Reply::ok(json!(list.iter().map(|lib| library_view(app, lib, v)).collect::<Vec<_>>()))
+        }
+        Err(e) if e.starts_with("unknown library") => Reply::err(404, &e),
         Err(e) => Reply::err(400, &e),
     }
 }
@@ -841,6 +931,7 @@ fn roots_list(app: &App, _: &Req, _: &Verified) -> Reply {
 fn search(app: &App, req: &Req, v: &Verified) -> Reply {
     let mut p = PageParams::normalize(atoi(req.query("limit")), atoi(req.query("offset")), req.query("sort"));
     p.exclude_libraries = app.hidden_libraries(v);
+    p.group = PageParams::grouping(req.query("group"));
     let input = json!({"q": req.query("q"), "kind": req.query("kind"), "page": p});
     match app.registry.call_one(CAP_CATALOG_READ, "query", input) {
         Ok((out, _)) => Reply::ok(page_with_thumbnails(out)),
@@ -912,6 +1003,7 @@ fn catalog_list(app: &App, req: &Req, v: &Verified) -> Reply {
     let mut p = PageParams::normalize(atoi(req.query("limit")), atoi(req.query("offset")), req.query("sort"));
     p.library_id = req.query("library_id").to_string();
     p.exclude_libraries = app.hidden_libraries(v);
+    p.group = PageParams::grouping(req.query("group"));
     match app.registry.call_one(CAP_CATALOG_READ, "page", json!({"page": p})) {
         Ok((out, _)) => Reply::ok(page_with_thumbnails(out)),
         Err(e) => Reply::err(500, &e.to_string()),
@@ -1012,7 +1104,7 @@ fn progress_put(app: &App, req: &Req, v: &Verified) -> Reply {
 fn plugins(app: &App, _: &Req, _: &Verified) -> Reply {
     let reg = &app.registry;
     Reply::ok(json!({
-        "composition": reg.composition().view(),
+        "composition": reg.composition_view(),
         "providers": reg.providers(),
         "provider_info": reg.provider_infos(),
         "events": reg.events(),
@@ -1038,7 +1130,7 @@ fn plugins_swap(app: &App, req: &Req, _: &Verified) -> Reply {
             if let Err(e) = app.save_composition() {
                 return Reply::err(500, &e);
             }
-            Reply::ok(json!({"generation": generation, "composition": app.registry.composition().view()}))
+            Reply::ok(json!({"generation": generation, "composition": app.registry.composition_view()}))
         }
         Err((e, generation)) => {
             let status = match e.code.as_str() {
@@ -1070,7 +1162,7 @@ fn plugins_withdraw(app: &App, req: &Req, _: &Verified) -> Reply {
     if let Err(e) = app.save_composition() {
         return Reply::err(500, &e);
     }
-    Reply::ok(json!({"composition": app.registry.composition().view()}))
+    Reply::ok(json!({"composition": app.registry.composition_view()}))
 }
 
 fn modules_list(app: &App, _: &Req, _: &Verified) -> Reply {

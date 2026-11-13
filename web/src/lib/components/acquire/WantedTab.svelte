@@ -201,7 +201,7 @@
 		{#snippet icon()}<Radar class="size-6 text-muted" aria-hidden="true" />{/snippet}
 	</EmptyState>
 {:else}
-	<p class="text-xs text-muted">{t('acquire.wanted.keys')}</p>
+	<p class="keyboard-hint text-xs text-muted">{t('acquire.wanted.keys')}</p>
 	<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.tab.wanted')}>
 		{#each rows as row (row.id)}
 			<div role="row" tabindex="0" onkeydown={(e) => rowKey(e, row)} class="grid gap-x-6 gap-y-1 py-3 outline-none focus-visible:bg-surface-active/40 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center {row.enabled ? '' : 'opacity-60'}">

@@ -5,6 +5,160 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Pages of titles** (D-283): `GET /api/catalog` and `GET /api/search`
+  take `group=title`, which pages titles instead of files: `total`,
+  `limit` and `offset` count titles and `items` holds every file of each
+  title on the page, so a title is never split and a search says how many
+  titles match. `sort=recent&group=title` lists the newest titles.
+  `lain-client`: `CatalogQuery.group`, `SearchQuery.group`.
+- **An episode's own picture** (D-284): `GET /api/items/{id}/thumbnail`
+  takes `art=still`, the file's own picture (`<name>-thumb.*`, else its
+  frame), never the show's poster kept beside its first episode. The web
+  asks for it in every episode row and Continue watching card, so Episode
+  1 no longer shows the show's poster cut to 16:9. `lain-client`:
+  `Client::still`.
+- **Delete a user** (Settings › Users, `DELETE /api/users/{id}`): the
+  account goes with its progress, tracking lists and linked accounts,
+  ratings, comments, collections, friends and notifications; private
+  libraries it owned pass to the admin deleting it. The dialog names
+  what goes and asks for the username typed out. A later account of the
+  same name never accepts the deleted one's tokens.
+- **Edit and order libraries** (Settings › Libraries): rename, change
+  the type or the folder, or make one private from the dialog that adds
+  libraries; move them up and down (Alt+arrows on a row). Home and the
+  library page follow the order. `PATCH /api/libraries/{id}` takes
+  `type` and `path`; `PUT /api/libraries/order` sets the order.
+- **Plugins name every job** (D-285): each binding on `GET /api/plugins`
+  carries a one-sentence `summary` from the server (a component can
+  describe the jobs it brings in its manifest). Settings › Plugins shows
+  it for every row, in families that close to one line each (how many
+  jobs, and whether a provider is missing or unhealthy), and says how
+  to install a provider that is bound but missing.
+- **`lain restore BACKUP.tar --replace`**: with the server stopped, one
+  command moves the data folder aside (kept as `<dir>.before-restore`)
+  and restores into a fresh one, keeping this machine's installed
+  components and service wrapper; a failed restore puts it back.
+- **The player's episode list on every screen**: between an upright
+  phone (list under the picture) and a wide screen (list beside it) the
+  bar's list button and E open it as a drawer over the picture's edge,
+  which keeps Tab inside it; Escape, the button or a click outside close
+  it. Beside the picture the list has its own Hide button with its key,
+  the choice is kept, and the episode playing is scrolled into view.
+- **Reading options on a phone**: the reader's top bar is one row, and
+  its reading toggles open under it from one button.
+- **Rails page with a mouse** (web): Home's rows, the library's shelves
+  and "More in" show a previous and a next button at the window's edges
+  on hover while that side hides more; the arrows still walk them card by
+  card.
+- **Back returns the focus to the card that was opened** (web): Search, a
+  library grid, the shelves and Home put the focus back on the title you
+  opened, not on the page; the focus ring shows when you came by keyboard.
+- **The library's view is in the address** (web): `/library?view=all`
+  opens All titles and can be linked; Back returns to the view you left,
+  and the browser's last choice is only the default for a bare `/library`.
+
+### Changed
+- **Web: titles, not files.** Home lists each library's newest titles in
+  its own row (a show is one card counting all of its episodes, not a run
+  of "Glass Garden · 03" cards), and the mixed Recently added row is gone;
+  the Favorites rail lists whole titles. Search counts the titles that
+  match, not the ones loaded, and never cuts a show at the end of a page.
+- **Web: one frame per picture shape.** A grid whose titles mix posters
+  and wide stills (All titles, a search, the favourites) is in two parts,
+  posters and covers then widescreen, each at Home's sizes, instead of
+  letterboxing one shape inside the other's frame; Search's newest titles
+  split into two rails the same way. Continue watching shows a film's own
+  wide still instead of its poster between blurred bars.
+- **A scan asked for during a scan is queued on the server** (D-286):
+  `POST /api/library/scan` answers 202 with `queued: true` instead of
+  409, and the follow-up starts when the running scan ends, even after
+  the tab that asked is closed. Settings › Libraries shows it and lets
+  you queue one from Scan now.
+- **Settings › Transcoding fits on one screen**: what the probe found
+  (the video engine, HDR) and the Auto / Custom policy at the top, every
+  custom section closed to a line of its current values. A server with
+  no hardware encoder says it encodes on the CPU instead of offering a
+  one-option control, and a fresh server reads as Auto.
+- **One segmented control** across Settings and the library's By library
+  / All titles switch; Settings group headings use the app's section
+  heading size, and the gap under every page title is one value.
+- **A wrong current password has a code**: `PATCH /api/me/password`
+  answers `code: "wrong-password"`, which Settings › Security reads
+  instead of the message.
+- Settings › Profile always shows whether the name and bio are saved;
+  your own row in Settings › Users shows your role as text instead of
+  disabled controls; library tags are one style and a phone's library
+  rows no longer wrap Remove; every Settings string goes through `t()`.
+- Settings rows stack beside the section rail on a tablet (768 to 959
+  px), and the Libraries and Users tables start at 1280 px, so a name or
+  a hint is never squeezed to a few letters.
+- **The reader fits a whole page between its bars** while they show,
+  and gives it the full height when they go away; full width, zoom and
+  the strip still scroll under them. The spread's Cover alone is drawn
+  as a check box option of the spread, not a second filled pill.
+- **The player's settings panel fits a phone on its side**, and its
+  menus share one width. The reader's `?` list is the app's dialog, as
+  the player's is.
+- Every string of the player and the reader, their settings panels and
+  their routes, and a readable file's name (Vol, Ch, Issue), goes
+  through `t()`.
+- **The error page** (web) opens like the first-run pages, with the status,
+  the address set apart, and keys on every way on (Enter Home, L Library,
+  Backspace Back when you came from inside Lain, R to retry a failed load).
+- **First-run pages each have their own art** (web): Tracking draws a list
+  kept elsewhere, Social a title among three people, Acquire releases on
+  their way in, all from your own titles, beside the words from 768 px.
+- **One meaning per key** (web): `/` searches (the header's titles, or the
+  search of the page you are on); Social finds people with **F**, and
+  Acquire's "Grab from a link" is **L** from any tab, no longer `2`, the
+  Queue tab's key.
+- **Favorites with few titles** (web) keep their filters in the toolbar's
+  sheet; the filter column comes from 12 titles up.
+- **Login and Setup share one field style** (web), and sign-in says how
+  to get back in after a forgotten password; a disabled account is told
+  so, not that its password is wrong.
+
+### Fixed
+- **Web:** films and clips without a year are captioned with their length,
+  not "video"; time left is said one way on every card and hero ("9 sec
+  left", where a card said "1 min left"); a film card under way says what
+  is left.
+- **Web, series page:** Resume picks the episode watched last when several
+  are half-watched, as Home does (one Continue watching card a title); on
+  arrival the page scrolls just far enough to show that episode, which
+  wears the accent; the phone hero is tighter and its synopsis clamps.
+- **Web, film and comic pages:** a watched film says so ("Watched 2 days
+  ago") and offers Watch again; a comic shows its ComicInfo.xml summary and
+  genres in the hero; volume cards are the size of the rail cards under
+  them.
+- **Web, title pages:** a card in a title's "More in" rail opens that
+  title; the page kept the first title on screen under the new address.
+- **Subtitles step above the player's controls in Firefox**: Firefox
+  draws cues where they cannot be moved, so there the player draws them
+  itself (the D-082 overlay), above the controls while they show. The
+  overlay's cues are sized from the player's height, as the browsers'
+  own are.
+- **The player's on-screen messages reach screen readers**: one live
+  region stays mounted and only its text changes.
+- **The reader's newest page is saved when the tab closes**, by rules
+  now covered by tests; going back to the page a volume opened on is
+  saved too.
+- The player and the reader no longer show the page's scrollbar gutter
+  as a grey strip at the right edge, and the Enter key on the reader's
+  end card is readable.
+- **Library on a phone** (web): the shelf names get their own row under
+  the view switch (the fourth was cut), and a row of names fades only
+  where names are hidden, at its start too once scrolled.
+- **Social** (web): Privacy settings appears once; a tab shows it is
+  loading until its first answer instead of flashing its empty state;
+  Friends with nobody yet is drawn as an empty state.
+- **Acquire** (web): key hints spelled out in words ("Enter grabs") are
+  hidden on a touch screen; empty search results, Blocklist and Subtitles
+  sections are drawn as empty states.
+- **The phone's search field** (web) is filled like the library's and the
+  favourites' fields.
+
 ## [0.3.1] - 2026-11-12
 
 ### Added

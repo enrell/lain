@@ -9,6 +9,12 @@ export interface CatalogListOptions {
 	sort?: CatalogSort;
 	/** Restrict to one library (server-side filter). */
 	libraryId?: string;
+	/**
+	 * `title` pages titles, not files (D-283): every file of each title on
+	 * the page, `total` counting titles. The answer's `group` says whether
+	 * the server did; an older one pages files.
+	 */
+	group?: 'title';
 	signal?: AbortSignal;
 }
 
@@ -25,7 +31,8 @@ export const catalog = {
 				limit: opts.limit,
 				offset: opts.offset,
 				sort: opts.sort,
-				library_id: opts.libraryId
+				library_id: opts.libraryId,
+				group: opts.group
 			},
 			signal: opts.signal
 		}),

@@ -108,6 +108,21 @@ export function filtersToParams(f: Filters, defaultSort: Sort = 'title'): URLSea
 	return p;
 }
 
+/** The parameters `filtersToParams` writes. */
+const FILTER_PARAMS = ['q', 'sort', 'genre', 'not', 'watch', 'added', 'shape', 'kind'];
+
+/**
+ * The address's parameters with the filters replaced: the page's own
+ * (the Library page's `view`) are kept, so narrowing the grid does not
+ * drop which view the address names.
+ */
+export function withFilters(current: URLSearchParams, f: Filters, defaultSort: Sort = 'title'): URLSearchParams {
+	const p = new URLSearchParams(current);
+	for (const key of FILTER_PARAMS) p.delete(key);
+	for (const [key, value] of filtersToParams(f, defaultSort)) p.set(key, value);
+	return p;
+}
+
 /** How many filters are set (the search text and the sort are not filters). */
 export function activeCount(f: Filters): number {
 	return f.genres.length + f.exclude.length + (f.watch ? 1 : 0) + (f.added ? 1 : 0) + (f.shape ? 1 : 0) + (f.kind ? 1 : 0);

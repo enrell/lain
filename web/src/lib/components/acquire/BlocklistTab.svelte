@@ -7,7 +7,9 @@
 	 */
 	import { onMount } from 'svelte';
 	import { api, type BlockEntry, type HeldFile } from '$lib/api';
+	import Ban from '@lucide/svelte/icons/ban';
 	import Button from '$lib/components/primitives/Button.svelte';
+	import EmptyRow from '$lib/components/primitives/EmptyRow.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { t } from '$lib/i18n';
@@ -90,9 +92,11 @@
 	{#if entries === null}
 		<div class="flex justify-center py-6"><Spinner class="size-5 text-muted" /></div>
 	{:else if entries.length === 0}
-		<p class="py-3 text-sm text-muted">{t('acquire.blocklist.empty')}</p>
+		<EmptyRow title={t('acquire.blocklist.empty')} description={t('acquire.blocklist.emptyBody')}>
+			{#snippet icon()}<Ban />{/snippet}
+		</EmptyRow>
 	{:else}
-		<p class="text-xs text-muted">{t('acquire.blocklist.keys')}</p>
+		<p class="keyboard-hint text-xs text-muted">{t('acquire.blocklist.keys')}</p>
 		<div class="divide-y divide-hairline" role="grid" aria-label={t('acquire.blocklist.group')}>
 			{#each entries as e (e.id)}
 				<div role="row" tabindex="0" onkeydown={(ev) => rowKey(ev, e)} class="flex flex-wrap items-center justify-between gap-3 py-2.5 outline-none focus-visible:bg-surface-active/40">

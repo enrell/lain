@@ -34,13 +34,13 @@
 
 {#snippet heading()}
 	<div class="min-w-0">
-		<h2 class="flex items-center gap-2 text-[1.0625rem] font-semibold leading-6 tracking-[-0.01em] text-foreground">
+		<h2 class="section-title flex items-center gap-2">
 			{title}
 			{#if collapsible}
 				<ChevronDown class="size-4 shrink-0 text-muted transition-transform group-open/settings:rotate-180" aria-hidden="true" />
 			{/if}
 		</h2>
-		{#if description}<p class="mt-0.5 text-sm leading-5 text-muted">{description}</p>{/if}
+		{#if description}<p class="mt-1 text-sm leading-5 text-muted">{description}</p>{/if}
 	</div>
 	{#if aside}<div class="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">{@render aside()}</div>{/if}
 {/snippet}

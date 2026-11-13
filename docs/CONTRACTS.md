@@ -60,6 +60,21 @@ not known). The gateway fills it on `GET /api/catalog`,
 every read; it is never stored or exported, and a catalog provider never
 sets it. An item with no resolved `file_path` has none.
 
+### Pages of titles (D-283)
+
+`GET /api/catalog` and `GET /api/search` take `group=title` (additive;
+any other value pages files as before). The page then counts titles, not
+files: the files that share a title key (the episodes rule below) are one
+title, placed where its first file stands in the sort (`recent`: its
+newest file; `title`: its first by title), and `limit`, `offset` and
+`total` count titles. `items` holds every file of each title on the page,
+in watch order, after the page's own filters (library, query, kind), so a
+title is never split across pages and a card counts all of its episodes.
+The envelope says `group: "title"`; a page without it (an older server, a
+catalog provider that does not group) is a page of files, and a client
+falls back to grouping it itself. `PageParams` carries it to the catalog
+provider as `Group`. Case: `scan/25-titles.json`.
+
 ### Gateway read: one title's files
 
 `GET /api/catalog/{id}/episodes` (auth) → `{items: CatalogItem[]}`, 404
@@ -332,6 +347,15 @@ reached and never goes back: `walk` (roots being listed), `identify`
 reaches `libraries`, since roots walk in parallel), `commit`
 (`libraries_done` of `libraries`) and `enrich` (the metadata backfill,
 `enrich_done` of `enrich_total`). It is absent in every other state.
+
+`POST /api/library/scan` (admin) answers 202 `{state: "running"}` when
+it starts a scan. While one runs it queues one follow-up scan of every
+library instead of refusing (D-286; it answered 409 before): 202
+`{state: "running", queued: true}`, and `GET /api/library/scan` carries
+`queued: true` until the running scan ends and the follow-up starts by
+itself. Asked again while queued, it stays one follow-up. The running
+scan walks only the libraries it started with, so a library added
+meanwhile is read by the follow-up.
 
 ## lain.playback.transcode@1 (exactly-one)
 
@@ -712,6 +736,13 @@ spawned by the provider with a 20s timeout and at most 2 concurrent
 processes; absence degrades this capability, never the boot. Without `t`
 the gateway serves a still that came with the file instead (D-269), and
 catalog answers say which it will be (`CatalogItem.thumbnail`, D-282).
+That still is the cover that stands for the item's title, which beside a
+show's first episode is the show's poster. `art=still` (D-284, additive)
+asks for the file's own picture instead, for a slot that stands for that
+one file (an episode's row, a continue card): `<name>-thumb.*` next to it,
+else the frame at `t` (10 s by default; a comic archive's cover page),
+never `<name>-poster.*` or the folder's `.metadata/thumbs/` still. An
+older server ignores it and answers the cover.
 
 `GET /api/items/{id}/storyboard` (D-275) is how a seek bar previews
 without a request per position: `{interval_sec, count, columns, rows,
@@ -1279,6 +1310,15 @@ Operator surfaces can list registered providers with their
 capabilities and live health (`provider_info` on `GET /api/plugins`) so
 a swap UI only ever offers candidates that can serve the capability.
 
+Each binding of `composition` (on `GET /api/plugins` and the swap and
+withdraw answers) carries `summary` (D-285, additive, omitted when
+empty): what the job is, in one plain sentence. The server describes
+the capabilities it knows (`lain_core::capabilities`, matched without
+the version, so a new version keeps its sentence); for one it does not
+know, the first bound provider that describes it does
+(`Provider::describe`; a component manifest's optional
+`summaries: {capability: sentence}`).
+
 ## Private libraries and portable roots (lain-rs, D-156, D-157, D-175)
 
 Served by the Rust server only (P1b); the Go server is unchanged.
@@ -1286,9 +1326,19 @@ Served by the Rust server only (P1b); the Go server is unchanged.
 - **Library fields** (additive, omitted when unset): `private`, `owner`,
   `members`, `root`, `root_path`, and in responses `locked` for a
   private library (whether this session has unlocked it).
-- `PATCH /api/libraries/{id}` (admin): `{name?, private?, owner?,
-  members?}`. Making a library private makes the caller its owner unless
-  `owner` is given; making it public clears owner and members.
+- `PATCH /api/libraries/{id}` (admin): `{name?, type?, path?, private?,
+  owner?, members?}`. Making a library private makes the caller its owner
+  unless `owner` is given; making it public clears owner and members.
+  A new `path` (absolute, recorded under a mapped root when inside one)
+  must be a readable directory no other library reads; the id stays, so
+  progress and overlays stay attached, and the next scan reads the new
+  folder and marks what it no longer finds missing (D-068). `type`
+  changes which files the next scan reads.
+- `PUT /api/libraries/order` (admin): `{ids}`, every library id once,
+  first to last; answers the list in that order. Libraries carry
+  `position` (1 first; omitted, 0, for one never ordered), and every
+  list of libraries is in that order, the never-ordered ones last by
+  name. 400 for a missing or repeated id, 404 for an unknown one.
 - `POST /api/libraries/{id}/unlock` `{pin}` or `{password}` and
   `POST /api/libraries/{id}/lock`: per session (per token). Only the
   owner and members can unlock (403 `not a member of this library` for an

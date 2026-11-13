@@ -28,7 +28,7 @@
 			anilist = res.platforms['anilist'] ?? null;
 			clientId = anilist?.client_id ?? '';
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not load integration settings.'));
+			toasts.error(errorMessage(err, t('settings.integrationsPage.loadFailed')));
 		} finally {
 			ready = true;
 		}
@@ -45,9 +45,9 @@
 			anilist = res.platforms['anilist'] ?? null;
 			clientId = anilist?.client_id ?? '';
 			clientSecret = '';
-			toasts.success('Integration settings saved.');
+			toasts.success(t('settings.integrationsPage.saved'));
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not save the integration settings.'));
+			toasts.error(errorMessage(err, t('settings.integrationsPage.saveFailed')));
 		} finally {
 			saving = false;
 		}
@@ -61,12 +61,12 @@
 			copied = true;
 			setTimeout(() => (copied = false), 1500);
 		} catch {
-			toasts.error('Could not copy to the clipboard.');
+			toasts.error(t('settings.integrationsPage.copyFailed'));
 		}
 	}
 </script>
 
-<svelte:head><title>Integrations — Settings — Lain</title></svelte:head>
+<svelte:head><title>{t('settings.integrationsPage.pageTitle')}</title></svelte:head>
 
 <form
 	onsubmit={(e) => {
@@ -80,7 +80,7 @@
 		{:else}
 			<p class="py-4 text-sm leading-6 text-muted">{t('settings.groups.integrations.anilistSteps')}</p>
 			<SettingRow
-				label="Callback URL to register"
+				label={t('settings.integrationsPage.callback')}
 				hint={t('settings.groups.integrations.callbackHint')}
 			>
 				<div class="flex w-full items-center gap-2">
@@ -89,7 +89,7 @@
 						class="h-9 min-w-0 flex-1 rounded-md border px-3 font-mono text-xs text-foreground"
 						type="text"
 						readonly
-						aria-label="Callback URL to register"
+						aria-label={t('settings.integrationsPage.callback')}
 						value={anilist?.callback_url ?? ''}
 					/>
 					<Button
@@ -98,37 +98,36 @@
 						type="button"
 						class="shrink-0"
 						onclick={() => void copyCallback()}
-						aria-label="Copy callback URL"
+						aria-label={t('settings.integrationsPage.copyCallback')}
+						title={t('settings.integrationsPage.copyCallback')}
 					>
 						{#if copied}<Check class="size-4" />{:else}<Clipboard class="size-4" />{/if}
 					</Button>
 				</div>
 			</SettingRow>
-			<SettingRow label="Client ID" hint={t('settings.groups.integrations.clientIdHint')}>
+			<SettingRow label={t('settings.integrationsPage.clientId')} hint={t('settings.groups.integrations.clientIdHint')}>
 				<input
 					class="h-9 w-full rounded-md border px-3 font-mono text-sm text-foreground outline-none"
 					bind:value={clientId}
 					autocomplete="off"
 					spellcheck={false}
-					aria-label="Client ID"
+					aria-label={t('settings.integrationsPage.clientId')}
 				/>
 			</SettingRow>
 			<SettingRow
-				label="Client secret"
-				hint={anilist?.secret_set
-					? 'A secret is stored — leave blank to keep it.'
-					: 'Stored on the server only; it is never shown again.'}
+				label={t('settings.integrationsPage.clientSecret')}
+				hint={anilist?.secret_set ? t('settings.integrationsPage.secretKept') : t('settings.integrationsPage.secretNew')}
 			>
 				<input
 					class="h-9 w-full rounded-md border px-3 text-sm text-foreground outline-none"
 					type="password"
 					bind:value={clientSecret}
 					autocomplete="off"
-					aria-label="Client secret"
+					aria-label={t('settings.integrationsPage.clientSecret')}
 				/>
 			</SettingRow>
 			<div class="flex justify-end py-3">
-				<Button type="submit" size="field" loading={saving}>Save</Button>
+				<Button type="submit" size="field" loading={saving}>{t('settings.integrationsPage.save')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
 			</div>
 		{/if}
 	</SettingsGroup>
