@@ -11,6 +11,7 @@
 	import { api, ApiError } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import Player from '$lib/components/player/Player.svelte';
+	import DemoPlayer from '$lib/demo/DemoPlayer.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
@@ -300,7 +301,11 @@
 				     the player (video element, transcode session, clock) instead
 				     of leaving the previous episode's state behind. -->
 				{#key item.id}
-					<Player {item} {plan} initialProgress={progress} {onFinished} {next} episodes={episodes.length > 1 && !upright ? episodesToggle : null} />
+					{#if import.meta.env.VITE_DEMO}
+						<DemoPlayer title={item.title} />
+					{:else}
+						<Player {item} {plan} initialProgress={progress} {onFinished} {next} episodes={episodes.length > 1 && !upright ? episodesToggle : null} />
+					{/if}
 				{/key}
 				{#if upNext && countdown !== null}
 					<div

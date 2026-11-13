@@ -15,6 +15,7 @@
 
 <p align="center">
   <a href="https://enrell.github.io/lain/"><strong>Website</strong></a> ·
+  <a href="https://enrell.github.io/lain/#tour"><strong>Live demo</strong></a> ·
   <a href="#install">Install</a> ·
   <a href="#android">Android</a> ·
   <a href="docs/">Docs</a> ·
@@ -31,7 +32,9 @@ grid, and the next thing to watch always one key away. No account, no
 cloud, nothing between you and your files.
 
 > Real screenshots of the client on its author's library. The reader and the
-> Android app show a demo library.
+> Android app show the [live demo](https://enrell.github.io/lain/#tour)'s
+> library: the Blender Studio open films and Pepper&Carrot by David Revoy,
+> both CC BY.
 
 ## A look around
 
@@ -49,7 +52,7 @@ cloud, nothing between you and your files.
 </p>
 
 <p align="center">
-  <img src="site/assets/shots/android.webp" alt="The Android app: Home, a series page and the library" width="650" />
+  <img src="site/assets/shots/android.webp" alt="The Android app: Home, a film page and a comic's page" width="650" />
   <br />
   <em>The Android app: native Kotlin on the same Rust core, signed and attached to every release.</em>
 </p>

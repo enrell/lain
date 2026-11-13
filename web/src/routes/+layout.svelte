@@ -13,6 +13,7 @@
 	import { t } from '$lib/i18n';
 	import { appearance } from '$lib/stores/appearance';
 	import { isAdminRoute, routeRedirect } from '$lib/utilities/guards';
+	import { keepLinksInside } from '$lib/demo/links';
 
 	let { children } = $props();
 
@@ -22,6 +23,9 @@
 	afterNavigate((nav) => {
 		if (import.meta.env.DEV) console.debug('[nav] after', nav.to?.url?.pathname);
 	});
+
+	// The site's live demo routes by hash; see $lib/demo/links.
+	onMount(() => (import.meta.env.VITE_DEMO ? keepLinksInside() : undefined));
 
 	onMount(() => {
 		appearance.start();
