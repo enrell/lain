@@ -155,7 +155,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   switches the policy to Custom. The server's rows are the one place the
   video engine and HDR on or off are set, in Auto and Custom alike; the
   Hardware and HDR sections keep the rest of each, and the page's filter
-  finds the server's rows too. **Settings › Plugins** says a family's
+  finds the server's rows too; with an ffmpeg that cannot tone map, the
+  HDR section says so instead of offering an algorithm and a peak that
+  never run. **Settings › Plugins** says a family's
   optional components in words after its health ("5 jobs · all healthy ·
   3 optional, not installed"), each part on one line at 360 px.
 - **Web:** a title's File details closes the hero under its synopsis; the
