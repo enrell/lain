@@ -491,13 +491,13 @@
 							</summary>
 							<dl class="mt-2 space-y-1.5 border-l border-line pl-4 text-xs">
 								{#if enrichment?.title && enrichment.title !== item.title}
-									<div><dt class="inline text-muted">Indexed as</dt> <dd class="inline text-foreground">“{item.title}”</dd></div>
+									<div><dt class="inline text-muted">{t('title.indexedAs')}</dt> <dd class="inline text-foreground">“{item.title}”</dd></div>
 								{/if}
 								{#if enrichment}
-									<div><dt class="inline text-muted">Metadata from</dt> <dd class="inline text-foreground">{enrichment.provider}{#if enrichment.fetched_at}{' · '}{formatDate(enrichment.fetched_at)}{/if}</dd></div>
+									<div><dt class="inline text-muted">{t('title.metadataFrom')}</dt> <dd class="inline text-foreground">{enrichment.provider}{#if enrichment.fetched_at}{' · '}{formatDate(enrichment.fetched_at)}{/if}</dd></div>
 								{/if}
-								{#if item.size > 0}<div><dt class="inline text-muted">Size</dt> <dd class="inline text-foreground">{formatBytes(item.size)}</dd></div>{/if}
-								<div><dt class="sr-only">Path</dt> <dd class="break-all font-mono text-[11px]">{item.file_path}</dd></div>
+								{#if item.size > 0}<div><dt class="inline text-muted">{t('title.fileSize')}</dt> <dd class="inline text-foreground">{formatBytes(item.size)}</dd></div>{/if}
+								<div><dt class="sr-only">{t('title.filePath')}</dt> <dd class="break-all font-mono text-[11px]">{item.file_path}</dd></div>
 							</dl>
 						</details>
 					{/if}

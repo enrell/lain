@@ -506,7 +506,9 @@
 	<button
 		type="button"
 		class={['h-11 shrink-0 items-center gap-2 rounded-md border bg-field px-3.5 text-sm transition-colors sm:h-10', place, active > 0 ? 'border-accent/60 text-foreground' : 'border-transparent text-muted hover:border-hairline hover:text-foreground'].join(' ')}
-		aria-label={active > 0 ? t('browse.filtersActive', { count: active }) : t(sortInBar ? 'browse.filters' : 'browse.sortAndFilter')}
+		aria-label={active > 0
+			? t(sortInBar ? 'browse.filtersActive' : 'browse.sortAndFilterActive', { count: active })
+			: t(sortInBar ? 'browse.filters' : 'browse.sortAndFilter')}
 		onclick={() => (sheet = true)}
 	>
 		<SlidersHorizontal class="size-4" aria-hidden="true" />
@@ -524,7 +526,7 @@
 	<div class="space-y-5">
 		{#if sheet && !sortInBar}
 			<div>
-				{@render heading('Sort')}
+				{@render heading(t('browse.sort'))}
 				<div class="grid grid-cols-2 gap-1.5 px-2">
 					{#each sortOptions as s (s.value)}
 						<button
@@ -539,9 +541,9 @@
 				</div>
 			</div>
 			<div>
-				{@render heading('Tiles')}
+				{@render heading(t('browse.tilesHeading'))}
 				<div class="grid grid-cols-2 gap-1.5 px-2">
-					{#each [[false, 'Large'], [true, 'Small']] as const as [value, label] (label)}
+					{#each [[false, t('browse.tileSize.large')], [true, t('browse.tileSize.small')]] as const as [value, label] (value)}
 						<button
 							type="button"
 							aria-pressed={dense === value}
@@ -743,7 +745,7 @@
 						     sheet until a wide screen has room for all three. -->
 						<div class={['hidden w-48 shrink-0', view ? 'lg:block' : 'sm:block'].join(' ')}>
 							<Select
-								aria-label="Sort"
+								aria-label={t('browse.sort')}
 								bind:value={sortValue}
 								options={sortOptions}
 								onValueChange={() => pickSort(sortValue as Sort)}
@@ -754,9 +756,11 @@
 						<button
 							type="button"
 							class={['hidden h-10 shrink-0 items-center gap-2 rounded-md border border-transparent bg-field px-3 text-sm text-muted transition-colors hover:border-hairline hover:text-foreground', view ? 'lg:flex' : 'sm:flex'].join(' ')}
-							aria-pressed={dense}
-							aria-label={dense ? 'Tile size: small. Switch to large.' : 'Tile size: large. Switch to small.'}
-							title="Tile size"
+							aria-label={t('browse.tilesSwitch', {
+								size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge'),
+								other: t(dense ? 'browse.tilesLarge' : 'browse.tilesSmall')
+							})}
+							title={t('browse.tileSize.title')}
 							onclick={() => {
 								dense = !dense;
 								savePrefs();

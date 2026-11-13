@@ -1576,6 +1576,11 @@ const en = {
 		readAgain: 'Read again',
 		watchedLength: 'Watched · {time}',
 		fileDetails: 'File details',
+		// The rows of File details (an admin's): the name the scan gave it, the metadata's source, the file's size and path.
+		indexedAs: 'Indexed as',
+		metadataFrom: 'Metadata from',
+		fileSize: 'Size',
+		filePath: 'Path',
 		episodes: { one: '{count} episode', other: '{count} episodes' },
 		volumes: { one: '{count} volume', other: '{count} volumes' },
 		issues: { one: '{count} issue', other: '{count} issues' },
@@ -1620,6 +1625,13 @@ const en = {
 		sortAndFilter: 'Sort & filter',
 		filters: 'Filters',
 		filtersActive: { one: 'Filters ({count} active)', other: 'Filters ({count} active)' },
+		sortAndFilterActive: { one: 'Sort & filter ({count} active)', other: 'Sort & filter ({count} active)' },
+		// The sort dropdown's name, and the sheet's headings over the sort and the tile size.
+		sort: 'Sort',
+		tilesHeading: 'Tiles',
+		tileSize: { title: 'Tile size', large: 'Large', small: 'Small' },
+		// The toolbar's tile size button: what is set (as its visible "Tiles: large"), then what a press does.
+		tilesSwitch: 'Tiles: {size}. Switch to {other}.',
 		// A catalog kind as the Kind filter names it.
 		kind: {
 			video: 'Films and clips',
