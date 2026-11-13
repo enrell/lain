@@ -748,12 +748,11 @@ const en = {
 			},
 			hdrRow: {
 				label: 'HDR',
-				ready: 'HDR files are tone mapped for screens and browsers that cannot show them.',
+				ready: 'HDR files are tone mapped ({algorithm}) for screens and browsers that cannot show them.',
 				missing: 'This ffmpeg cannot tone map: HDR files play only on devices that show HDR themselves.',
 				none: 'Not available',
-				choose: 'HDR tone mapping',
-				off: 'Off',
-				// The hint with tone mapping off; the select beside it already says "Off".
+				toggle: 'HDR tone mapping',
+				// The hint with tone mapping off.
 				offHint: 'HDR files are not tone mapped, so they cannot play in a browser.'
 			},
 			probe: {
@@ -822,11 +821,9 @@ const en = {
 			},
 			hardware: {
 				title: 'Hardware acceleration',
-				none: 'None (software)',
-				unavailable: '{name} — did not pass the probe',
 				nothing: 'No hardware backend passed the probe on this machine. Install a GPU driver ffmpeg can use, restart the server, and the backends that pass appear here.',
-				backend: 'Backend',
-				backendHint: 'Only backends that passed the probe can be picked.',
+				// The section with software encoding: the backend is picked in the server's rows.
+				software: 'Video is encoded on the CPU. Pick a backend in the Video engine row above to tune the hardware.',
 				device: 'VA-API device',
 				deviceHint: 'The render node (usually /dev/dri/renderD128). Other backends find their own device.',
 				encode: 'Encode in hardware',
@@ -845,8 +842,8 @@ const en = {
 			},
 			hdr: {
 				title: 'HDR & tone mapping',
-				enable: 'Tone map HDR',
-				enableHint: 'Converts HDR video to SDR when it is transcoded; without it, an HDR file cannot play in a browser.',
+				// The section with tone mapping off: it is turned on in the server's rows.
+				off: 'Tone mapping is off. Turn it on in the HDR row above to pick the algorithm, when it applies and the peak.',
 				algorithm: 'Algorithm',
 				bt2390: 'BT.2390 (needs libplacebo/Vulkan)',
 				bt2390Missing: 'BT.2390 needs libplacebo, which this ffmpeg lacks; the server uses Hable instead.',
