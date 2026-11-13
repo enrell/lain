@@ -489,8 +489,23 @@ export interface LinkedAccountView {
 	entry_count: number;
 	token_expires_at?: number;
 	token_expired?: boolean;
-	/** Push finished episodes back to the platform (opt-in). */
+	/** Push finished episodes and chapters back to the platform (on for a new link, D-288). */
 	scrobble: boolean;
+	/** The last write lain made to the platform, good or failed. */
+	last_push?: LinkPush;
+}
+
+/** One write lain made to a list platform (D-288). */
+export interface LinkPush {
+	at: number;
+	remote_id: string;
+	title: string;
+	progress?: number;
+	status?: string;
+	/** `scrobble` (watching or reading) or `edit` (a title page's quick action). */
+	via: string;
+	/** The stable code of a failed write. */
+	error?: string;
 }
 
 /** GET /api/me/links. */
@@ -534,6 +549,34 @@ export interface ListEntry {
 	started_at?: string;
 	completed_at?: string;
 	updated_at: number;
+	alt_titles?: string[];
+	/** When lain last wrote this entry to the platform. */
+	pushed_at?: number;
+	/** The stable code of the last write that failed. */
+	push_error?: string;
+	/** The library title this entry is (D-288); absent when the library lacks it. */
+	item_id?: string;
+	matched_by?: 'id' | 'title';
+}
+
+/** PUT /api/list/{platform}/{remote_id}: absent fields stay as they are. */
+export interface ListEntryPatch {
+	status?: string;
+	progress?: number;
+	progress_volumes?: number;
+	/** 0..10; 0 clears it. */
+	score?: number;
+	/** The library title a new entry is made from. */
+	item_id?: string;
+}
+
+/** One linked platform's view of a title (GET /api/items/{id}/tracking). */
+export interface TitleTrack {
+	platform: string;
+	remote_id: string;
+	matched_by?: 'id' | 'title';
+	scrobble: boolean;
+	entry?: ListEntry;
 }
 
 /** GET /api/list. */
