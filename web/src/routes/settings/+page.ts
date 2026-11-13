@@ -11,10 +11,13 @@ import type { PageLoad } from './$types';
 // The last section is this browser's, not this account's: an admin's
 // section is skipped for an account known not to be one, rather than
 // opened only for the guard to send it away again.
+import { resolveLoadUrl } from '$lib/demo/url';
+
 export const load: PageLoad = ({ url }) => {
-	const oauth = url.searchParams.has('linked') || url.searchParams.has('link_error');
+	const resolved = resolveLoadUrl(url);
+	const oauth = resolved.searchParams.has('linked') || resolved.searchParams.has('link_error');
 	const last = prefs.get('settings.last');
 	const lastAllowed = last && sectionFor(last) && !(session.authenticated && !session.isAdmin && isAdminRoute(last));
 	const target = oauth ? '/settings/connections' : lastAllowed ? last : ACCOUNT_SETTINGS;
-	redirect(307, target + url.search);
+	redirect(307, target + resolved.search);
 };

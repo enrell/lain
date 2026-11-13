@@ -25,7 +25,29 @@
 	});
 
 	// The site's live demo routes by hash; see $lib/demo/links.
-	onMount(() => (import.meta.env.VITE_DEMO ? keepLinksInside() : undefined));
+	onMount(() => {
+		if (!import.meta.env.VITE_DEMO) return;
+		const stopLinks = keepLinksInside();
+		// Same-page fragment anchors (#main, #shelf-...) would otherwise replace the
+		// active hash route (#/...) under SvelteKit's hash router.
+		const onFragmentClick = (e: MouseEvent) => {
+			if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+			const a = (e.target as Element | null)?.closest('a[href]');
+			const href = a?.getAttribute('href');
+			if (!href || !href.startsWith('#') || href.startsWith('#/')) return;
+			const id = decodeURIComponent(href.slice(1));
+			const target = id ? document.getElementById(id) : null;
+			if (!target) return;
+			e.preventDefault();
+			target.scrollIntoView({ block: 'start' });
+			if (target instanceof HTMLElement && target.hasAttribute('tabindex')) target.focus({ preventScroll: true });
+		};
+		document.addEventListener('click', onFragmentClick, true);
+		return () => {
+			stopLinks?.();
+			document.removeEventListener('click', onFragmentClick, true);
+		};
+	});
 
 	onMount(() => {
 		appearance.start();
