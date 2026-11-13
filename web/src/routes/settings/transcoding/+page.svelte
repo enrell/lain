@@ -107,17 +107,6 @@
 		{ value: 'always', label: t('settings.transcode.hdr.modeAlways') },
 		{ value: 'never', label: t('settings.transcode.hdr.modeNever') }
 	]);
-	const hardwareOptions = $derived([
-		{ value: 'none', label: t('settings.transcode.hardware.none') },
-		...Object.keys(BACKEND_NAMES).map((value) => {
-			const off = capabilities !== null && capabilities.hardware[value] !== true;
-			return {
-				value,
-				disabled: off,
-				label: off ? t('settings.transcode.hardware.unavailable', { name: BACKEND_NAMES[value] }) : BACKEND_NAMES[value]
-			};
-		})
-	]);
 	const subtitleModes = $derived([
 		{ value: 'auto', label: t('settings.transcode.audio.subtitleAuto') },
 		{ value: 'extract', label: t('settings.transcode.audio.subtitleExtract') },
@@ -323,6 +312,28 @@
 		if (!normalizedSearch) return always || view === 'custom';
 		return `${title} ${KEYWORDS[id] ?? ''}`.toLowerCase().includes(normalizedSearch);
 	}
+	/*
+	 * The server's rows are the one place the policy, the video engine and
+	 * HDR on or off are set, in Auto and in Custom alike (the sections below
+	 * hold the rest of each), so a search shows the rows it matches rather
+	 * than leaving them out.
+	 */
+	const SERVER_KEYWORDS = {
+		policy: 'policy mode auto custom',
+		engine: 'video engine hardware acceleration gpu encoder backend vaapi nvenc qsv amf software cpu',
+		hdr: 'hdr tone mapping'
+	};
+	type ServerRow = keyof typeof SERVER_KEYWORDS;
+	const serverRows = $derived.by<ServerRow[]>(() => {
+		const labels: Record<ServerRow, string> = {
+			policy: t('settings.transcode.policy.label'),
+			engine: t('settings.transcode.engine.label'),
+			hdr: t('settings.transcode.hdrRow.label')
+		};
+		return (Object.keys(SERVER_KEYWORDS) as ServerRow[]).filter(
+			(id) => !normalizedSearch || `${labels[id]} ${SERVER_KEYWORDS[id]}`.toLowerCase().includes(normalizedSearch)
+		);
+	});
 	const sectionTitles = $derived({
 		capabilities: t('settings.transcode.probe.title'),
 		delivery: t('settings.transcode.delivery.title'),
@@ -334,7 +345,7 @@
 		sessions: t('settings.transcode.sessions.title')
 	});
 	const anyShown = $derived(
-		Object.entries(sectionTitles).some(([id, title]) => shows(id, title, id === 'capabilities' || id === 'sessions'))
+		serverRows.length > 0 || Object.entries(sectionTitles).some(([id, title]) => shows(id, title, id === 'capabilities' || id === 'sessions'))
 	);
 
 	function setQualityField(index: number, field: keyof TranscodeQuality, value: string | number): void {
@@ -422,27 +433,23 @@
 	}
 
 	/*
-	 * HDR in the server's rows: what runs (a BT.2390 the probe cannot run is
-	 * Hable), or off, as a choice like the engine above it. A bare "HABLE"
-	 * there gave no hint whether or where it could be changed; when to apply
-	 * it and the peak stay in the HDR section.
+	 * HDR in the server's rows: on or off, a switch as light as the engine's
+	 * segments beside it, its hint naming the tone map that runs (a BT.2390
+	 * the probe cannot run is Hable). A full-width select of every algorithm
+	 * there outweighed the rows around it and, under Custom, repeated the HDR
+	 * section, which keeps the algorithm, when to apply it and the peak.
 	 */
-	const toneChoices = $derived([
-		{ value: 'off', label: t('settings.transcode.hdrRow.off') },
-		...toneAlgorithms.map((a) => ({ ...a, disabled: a.value === 'bt2390' && !capabilities?.tone_mapping_bt2390 }))
-	]);
 	const toneInForce = $derived(
-		!settings?.tone_mapping
-			? 'off'
-			: settings.tone_mapping_algorithm === 'bt2390' && !capabilities?.tone_mapping_bt2390
-				? 'hable'
-				: settings.tone_mapping_algorithm
+		settings?.tone_mapping_algorithm === 'bt2390'
+			? capabilities?.tone_mapping_bt2390
+				? 'BT.2390'
+				: 'Hable'
+			: (toneAlgorithms.find((a) => a.value === settings?.tone_mapping_algorithm)?.label ?? settings?.tone_mapping_algorithm ?? '')
 	);
-	// Another tone map than Auto's, or none, is a choice of one's own.
-	function pickTone(value: string): void {
+	// No tone map is a choice of one's own: Auto tone maps where it can.
+	function setTone(on: boolean): void {
 		if (!settings) return;
-		settings.tone_mapping = value !== 'off';
-		if (value !== 'off') settings.tone_mapping_algorithm = value;
+		settings.tone_mapping = on;
 		if (view === 'auto' && !isAutomatic(settings, capabilities)) view = 'custom';
 	}
 
@@ -514,30 +521,32 @@
 			<kbd class="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2">/</kbd>
 		</div>
 
-		{#if !normalizedSearch}
+		{#if serverRows.length > 0}
 			<!-- What this machine can do, and who decides the rest. Each row is a
-			     fact about the server or one choice; nothing here repeats a
-			     section below. -->
+			     fact about the server or one choice, the same in Auto and Custom;
+			     nothing here repeats a section below. -->
 			<SettingsGroup id="mode" title={t('settings.transcode.machine.title')} description={t('settings.transcode.machine.description')}>
-				<SettingRow
-					id="policy"
-					label={t('settings.transcode.policy.label')}
-					hint={view === 'auto' ? t('settings.transcode.policy.autoHint') : t('settings.transcode.policy.customHint')}
-				>
-					<Segmented
+				{#if serverRows.includes('policy')}
+					<SettingRow
+						id="policy"
 						label={t('settings.transcode.policy.label')}
-						value={view}
-						options={[
-							{ value: 'auto', label: t('settings.transcode.policy.auto') },
-							{ value: 'custom', label: t('settings.transcode.policy.custom') }
-						]}
-						onchange={setView}
-					/>
-				</SettingRow>
-				{#if view === 'auto'}
+						hint={view === 'auto' ? t('settings.transcode.policy.autoHint') : t('settings.transcode.policy.customHint')}
+					>
+						<Segmented
+							label={t('settings.transcode.policy.label')}
+							value={view}
+							options={[
+								{ value: 'auto', label: t('settings.transcode.policy.auto') },
+								{ value: 'custom', label: t('settings.transcode.policy.custom') }
+							]}
+							onchange={setView}
+						/>
+					</SettingRow>
+				{/if}
+				{#if view === 'auto' && !normalizedSearch}
 					<SettingRow label={t('settings.transcode.policy.chose')} hint={autoLine} />
 				{/if}
-				{#if engines.length > 1}
+				{#if serverRows.includes('engine') && engines.length > 1}
 					<SettingRow
 						label={t('settings.transcode.engine.label')}
 						hint={hardwareActive ? t('settings.transcode.engine.hintHardware') : t('settings.transcode.engine.hintSoftware')}
@@ -556,28 +565,30 @@
 							onchange={pickEngine}
 						/>
 					</SettingRow>
-				{:else}
+				{:else if serverRows.includes('engine')}
 					<!-- Nothing to choose: a one-segment control would offer a choice
 					     that does not exist. Say what happens instead. -->
 					<SettingRow label={t('settings.transcode.engine.label')} hint={t('settings.transcode.engine.noHardware')}>
 						<span class="font-mono text-xs uppercase tracking-[0.14em] text-foreground">{t('settings.transcode.software')}</span>
 					</SettingRow>
 				{/if}
-				<SettingRow
-					label={t('settings.transcode.hdrRow.label')}
-					hint={!capabilities.tone_mapping
-						? t('settings.transcode.hdrRow.missing')
-						: settings.tone_mapping
-							? t('settings.transcode.hdrRow.ready')
-							: t('settings.transcode.hdrRow.offHint')}
-				>
-					{#if capabilities.tone_mapping}
-						{@render select(t('settings.transcode.hdrRow.choose'), toneInForce, toneChoices, pickTone)}
-					{:else}
-						<!-- Nothing to choose: this ffmpeg cannot tone map. -->
-						<span class="font-mono text-xs uppercase tracking-[0.14em] text-warning">{t('settings.transcode.hdrRow.none')}</span>
-					{/if}
-				</SettingRow>
+				{#if serverRows.includes('hdr')}
+					<SettingRow
+						label={t('settings.transcode.hdrRow.label')}
+						hint={!capabilities.tone_mapping
+							? t('settings.transcode.hdrRow.missing')
+							: settings.tone_mapping
+								? t('settings.transcode.hdrRow.ready', { algorithm: toneInForce })
+								: t('settings.transcode.hdrRow.offHint')}
+					>
+						{#if capabilities.tone_mapping}
+							<Switch bare label={t('settings.transcode.hdrRow.toggle')} checked={settings.tone_mapping} onCheckedChange={setTone} />
+						{:else}
+							<!-- Nothing to choose: this ffmpeg cannot tone map. -->
+							<span class="font-mono text-xs uppercase tracking-[0.14em] text-warning">{t('settings.transcode.hdrRow.none')}</span>
+						{/if}
+					</SettingRow>
+				{/if}
 			</SettingsGroup>
 		{/if}
 
@@ -707,10 +718,10 @@
 					<!-- Nothing passed the probe: no backend to pick, no decoder to
 					     tune. The section says so instead of offering dead controls. -->
 					<p class="py-4 text-sm text-muted">{t('settings.transcode.hardware.nothing')}</p>
+				{:else if !hardwareActive}
+					<!-- The backend is the Video engine row's, under This server. -->
+					<p class="py-4 text-sm text-muted">{t('settings.transcode.hardware.software')}</p>
 				{:else}
-					<SettingRow label={t('settings.transcode.hardware.backend')} hint={t('settings.transcode.hardware.backendHint')}>
-						{@render select(t('settings.transcode.hardware.backend'), settings.hardware_acceleration, hardwareOptions, (value) => (value === 'none' ? stageSoftware() : (settings!.hardware_acceleration = value)))}
-					</SettingRow>
 					{#if settings.hardware_acceleration === 'vaapi'}
 						<SettingRow label={t('settings.transcode.hardware.device')} hint={t('settings.transcode.hardware.deviceHint')}>
 							{@render textInput(t('settings.transcode.hardware.device'), settings.hardware_device, (v) => (settings!.hardware_device = v))}
@@ -754,13 +765,10 @@
 
 		{#if shows('processing', sectionTitles.processing)}
 			<SettingsGroup id="processing" title={sectionTitles.processing} description={summaries.processing} bind:open={opened.processing}>
-				<SettingRow
-					label={t('settings.transcode.hdr.enable')}
-					hint={capabilities.tone_mapping ? t('settings.transcode.hdr.enableHint') : t('settings.transcode.hdrRow.missing')}
-				>
-					<Switch bare label={t('settings.transcode.hdr.enable')} checked={settings.tone_mapping} onCheckedChange={(checked) => (settings!.tone_mapping = checked)} />
-				</SettingRow>
-				{#if settings.tone_mapping}
+				<!-- On or off is the HDR row's, under This server. -->
+				{#if !settings.tone_mapping}
+					<p class="py-4 text-sm text-muted">{t(capabilities.tone_mapping ? 'settings.transcode.hdr.off' : 'settings.transcode.hdrRow.missing')}</p>
+				{:else}
 					<SettingRow label={t('settings.transcode.hdr.algorithm')} hint={capabilities.tone_mapping_bt2390 ? undefined : t('settings.transcode.hdr.bt2390Missing')}>
 						{@render select(t('settings.transcode.hdr.algorithm'), settings.tone_mapping_algorithm, toneAlgorithms, (value) => (settings!.tone_mapping_algorithm = value))}
 					</SettingRow>
