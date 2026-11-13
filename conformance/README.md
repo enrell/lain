@@ -130,7 +130,7 @@ Rust host and the Rust component side.
 ## Case format
 
 See the module docs of `runner/src/cases.rs` (steps: `req`, `wait_for`,
-`sse_open`, `sse_expect`, `write_file`, `remove_file`, `sleep_ms`) and
+`sse_open`, `sse_expect`, `write_file`, `remove_file`, `rename_file`, `sleep_ms`) and
 `runner/src/matcher.rs` (`$string`, `$int`, `$prefix:`, `$absent`,
 `$open`, `$each`, `$contains`, `$substr:`, ...). `{{var}}` substitutes variables
 saved by earlier steps or passed with `--var`. Numbers compare as

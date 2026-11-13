@@ -1,0 +1,42 @@
+{
+  "tier": "v2",
+  "description": "D-287: a file that cannot be reached (its library's folder taken away, as an unmounted disk) is told as `offline` on catalog answers, its thumbnail is its title's art instead of an error (the overlay's picture as a redirect, the server fetches nothing; else a placeholder drawn in the theme, an SVG), said in `X-Lain-Thumbnail` and `X-Lain-Thumbnail-Reason`, and its playback plan says the folder cannot be reached. Everything comes back when the folder does. The overlay is an `.nfo` naming provider addresses that are never fetched. lain-rs only.",
+  "cases": [
+    {"name": "an overlay with the title's art", "requires": ["w_alpha", "media_root"], "steps": [
+      {"write_file": {"path": "{{media_root}}/Clips/Alpha.nfo",
+        "text": "<movie><title>Alpha Feature</title><thumb aspect=\"poster\">https://img.example.invalid/alpha-poster.jpg</thumb><fanart><thumb>https://img.example.invalid/alpha-wide.jpg</thumb></fanart></movie>"}},
+      {"req": {"method": "POST", "path": "/api/catalog/{{w_alpha}}/enrich?provider=lain-metadata-nfo", "auth": "w_admin"},
+       "expect": {"status": 200, "body": {"title": "Alpha Feature", "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{w_alpha}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"id": "{{w_alpha}}", "offline": "$absent", "thumbnail": {"source": "frame"}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail?art=still&w=96", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "image/jpeg", "x-lain-thumbnail": "$absent"}}}
+    ]},
+    {"name": "the library's folder taken away", "requires": ["w_alpha", "w_beta", "media_root"], "steps": [
+      {"rename_file": {"from": "{{media_root}}/Clips", "to": "{{media_root}}/Clips-away"}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{w_alpha}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"id": "{{w_alpha}}", "offline": "library", "thumbnail": {"source": "title"}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/catalog?library_id=lib-be88dfed", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"items": {"$each": {"offline": "library", "$open": true}}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail?art=still&w=96", "auth": "query:w_bob"},
+       "expect": {"status": 302, "headers": {"location": "https://img.example.invalid/alpha-wide.jpg",
+         "x-lain-thumbnail": "title-art", "x-lain-thumbnail-reason": "source-unavailable"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail", "auth": "query:w_bob"},
+       "expect": {"status": 302, "headers": {"location": "https://img.example.invalid/alpha-poster.jpg", "x-lain-thumbnail": "title-art"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_beta}}/thumbnail?art=still&w=320", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "image/svg+xml", "x-lain-thumbnail": "placeholder",
+         "x-lain-thumbnail-reason": "source-unavailable", "content-security-policy": "$prefix:default-src 'none'"}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/playback?client=web", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"mode": "unavailable", "available": false, "reason": "the library's folder cannot be reached", "$open": true}}}
+    ]},
+    {"name": "the folder back", "requires": ["w_alpha", "media_root"], "steps": [
+      {"rename_file": {"from": "{{media_root}}/Clips-away", "to": "{{media_root}}/Clips"}},
+      {"req": {"method": "GET", "path": "/api/catalog/{{w_alpha}}", "auth": "w_bob"},
+       "expect": {"status": 200, "body": {"id": "{{w_alpha}}", "offline": "$absent", "thumbnail": {"source": "frame"}, "$open": true}}},
+      {"req": {"method": "GET", "path": "/api/items/{{w_alpha}}/thumbnail?art=still&w=96", "auth": "query:w_bob"},
+       "expect": {"status": 200, "headers": {"content-type": "image/jpeg", "x-lain-thumbnail": "$absent"}}},
+      {"req": {"method": "DELETE", "path": "/api/catalog/{{w_alpha}}/enrich", "auth": "w_admin"}, "expect": {"status": 200}},
+      {"remove_file": "{{media_root}}/Clips/Alpha.nfo"}
+    ]}
+  ]
+}
