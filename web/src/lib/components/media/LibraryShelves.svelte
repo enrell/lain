@@ -120,8 +120,8 @@
 				{/if}
 			</div>
 			{#if !shelf}
-				<div class="flex gap-3.5 overflow-hidden md:gap-4 lg:gap-5">
-					{#each Array(6) as _}<Skeleton class="aspect-[2/3] w-40 shrink-0 rounded-xl lg:w-44" />{/each}
+				<div class={['flex gap-3.5 overflow-hidden md:gap-4', RAIL.portrait].join(' ')}>
+					{#each Array(6) as _}<Skeleton class="aspect-[2/3] w-[var(--card-w)] shrink-0 rounded-xl" />{/each}
 				</div>
 			{:else if shelf.failed}
 				<p class="text-sm text-muted">{t('library.shelfFailed')}</p>
@@ -129,7 +129,7 @@
 				<p class="text-sm text-muted">{t('library.shelfEmpty')}</p>
 			{:else}
 				<!-- Through the gutter to the window's edge, as MediaRow's rails. -->
-				<Rail class={['pt-1 lg:gap-5', RAIL[frame]].join(' ')}>
+				<Rail class={['pt-1', RAIL[frame]].join(' ')}>
 					{#each shelf.groups as group, i (group.key)}
 						<div class="w-[var(--card-w)] shrink-0 snap-start">
 							{#if group.count > 1}
