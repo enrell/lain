@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Indexer presets** (D-290): Settings › Indexers › Add indexer asks a
+  Prowlarr or Jackett you run for the indexers it serves and adds the
+  ticked ones in one step, with its API key; a feed URL typed by hand can
+  be tried first (caps and a few latest releases). `POST
+  /api/acquire/indexers/discover`, `/import` and `/probe`. There are no
+  public presets: no well-known public source publishes a stable feed of
+  its own.
+- **Set up indexers with a coding agent** (D-290, D-291): one button (key
+  `a`) makes an integration key that only manages indexers, expires (15
+  minutes to a day) and can be revoked from the same dialog, and shows a
+  prompt for Claude Code, opencode or a DeepSeek harness that points at
+  the server's own guide, `GET /api/agent/indexers.md`, and tells the
+  agent to ask before adding anything. `POST /api/integrations` takes
+  `scopes: ["indexers"]` and `ttl_seconds`; such a key is accepted only
+  in the `Authorization` header and only by `/api/acquire/indexers*`.
+  The empty Indexers page and Acquire's first step offer both ways.
 - **Pages of titles** (D-283): `GET /api/catalog` and `GET /api/search`
   take `group=title`, which pages titles instead of files: `total`,
   `limit` and `offset` count titles and `items` holds every file of each

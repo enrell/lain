@@ -1063,6 +1063,76 @@ the crates `lain-torrent`, `lain-acquire` and `lain-downloads`; every
 texts. `GET /api/events` adds `grab-changed` and `download-changed`
 (admins; `{id, removed: true}` on delete, D-210).
 
+### Setting indexers up: presets, probe and agent keys (D-290, D-291)
+
+Additive routes, admin-only like the rest of `/api/acquire/*`, that also
+take an **indexers key** (below). Cases: `acquire/22-agent-keys.json`.
+
+- `POST /api/acquire/indexers/probe` — `IndexerProbeInput` (an
+  `IndexerInput`, plus optional `id`: the saved indexer with the input
+  laid over it, tried with its stored key) → 200 `IndexerProbe{ok,
+  caps?, sample, error?}` either way, like a test. `caps` first (`ok`
+  false and `error` when it fails), then an empty-query search with
+  `limit=5` whose results are `sample`, stripped to `protocol`, `title`,
+  `size`, `seeders`, `peers`, `published_at`, `categories`, `freeleech`
+  (links and guids can carry the indexer's key); a failed sample after
+  good caps keeps `ok` and sets `error`. Nothing is stored; 400 for an
+  input `POST /api/acquire/indexers` would refuse, 404 for an unknown
+  `id`.
+- `POST /api/acquire/indexers/discover` — `DiscoverInput{source:
+  prowlarr|jackett, url, api_key}` → `DiscoverOutput{source, indexers:
+  [DiscoveredIndexer{source_id, name, protocol, url, privacy?, enabled,
+  added_as?}]}`. Prowlarr: `GET {url}/api/v1/indexer` with `X-Api-Key`;
+  feeds `{url}/{id}/api` (`usenet` → `newznab`, `torrent` → `torznab`,
+  other protocols left out). Jackett: the Torznab `t=indexers&configured=true`
+  of its `all` indexer (`apikey` in the query, as Jackett requires);
+  feeds `{url}/api/v2.0/indexers/{id}/results/torznab/`, ids limited to
+  letters, digits and `-_.`. `url` is the base address (a trailing `/`
+  or query is dropped); `privacy` is `public`, `private` or
+  `semi-private` when said; `added_as` is the lain indexer already on
+  that feed (feeds compare without a trailing `/` or `/api`). Errors:
+  400 `invalid-request` (source, URL, missing or long key), 502
+  `auth-failed` (the key was refused) or `fetch-failed` (unreachable,
+  404, not a list); messages name the host only.
+- `POST /api/acquire/indexers/import` — `DiscoverInput` plus `ids`
+  (1–200 `source_id`s) → 201 `IndexerImport{added: [IndexerView],
+  skipped: [source_id]}` (200 when nothing was added). lain discovers
+  again and never takes a feed URL from the caller; each new indexer is
+  created as `POST /api/acquire/indexers` would (enabled, 2 s interval)
+  with the aggregator's key stored on it; ids already on a lain indexer
+  are `skipped`. An id the aggregator does not serve is 404 `not-found`
+  and adds nothing.
+
+**Indexers keys.** `POST /api/integrations` takes the additive
+`scopes` (`["library"]`, the default and the old shape, or
+`["indexers"]`; one scope per key) and `ttl_seconds`. An indexers key
+takes no `libraries` and always expires: `ttl_seconds` 60–86400, 3600
+when 0 or absent. A library key may expire too (`ttl_seconds` ≥ 60; 0
+or absent never). `GET /api/integrations` and the create answer add
+`scopes` (`["library"]` for keys made before scopes) and `expires_at`
+(Unix seconds, 0 never); expired keys are dropped from the list. With
+an indexers key (`Authorization: Bearer lain_…`, the header only):
+
+- the routes `GET/POST /api/acquire/indexers`,
+  `PATCH/DELETE /api/acquire/indexers/{id}`,
+  `POST /api/acquire/indexers/{id}/test`, `…/probe`, `…/discover` and
+  `…/import` answer as for an admin (`Gate::Indexers`); every other
+  route answers 401 `unauthorized`, as for a wrong key, and a library
+  key answers 401 on the indexer routes;
+- a key sent as `?token=` is refused with 401 `an integration key goes
+  in the Authorization header, never in the URL`;
+- past `expires_at` the key answers 401 `key expired` once and is
+  deleted; `DELETE /api/integrations/{id}` revokes it at once;
+- the log names changes by key id (`indexer added by an integration
+  key`), never the key.
+
+**The agent guide** (D-291): `GET /api/agent/indexers.md`, public,
+`text/markdown; charset=utf-8`, format `lain.agent-guide@1`: the rules
+(ask the owner before writing, the key only in a header, no invented
+URLs) and a `curl` line for each route above. Its source is
+`crates/lain-server/src/agent-indexers.md`; the web's "Set up with a
+coding agent" prompt points the agent at it.
+
 ## P4 components: bridges to standalone apps (lain-rs, D-225..D-231)
 
 The owner's standalone apps plug in as components (DESIGN-v2 §6). Each
