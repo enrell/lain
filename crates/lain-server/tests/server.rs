@@ -533,6 +533,108 @@ fn next_event(stream: &http::SseStream, name: &str) -> serde_json::Value {
     panic!("no {name} event");
 }
 
+/// The list joined with the library (D-288, D-289): an entry names the
+/// title it is, the title page reads its entry from the stored copy and
+/// writes edits back, and a private library's titles stay out of it.
+#[test]
+fn tracking_joins_the_list_with_library_titles() {
+    let root = lain_store::test_dir("rs-tracking");
+    let media = root.join("media");
+    std::fs::create_dir_all(media.join("Frieren")).unwrap();
+    let data = root.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let roots = json!({"format": "lain.roots@1", "roots": {"media": media.to_string_lossy()}});
+    std::fs::write(data.join("roots.json"), serde_json::to_vec(&roots).unwrap()).unwrap();
+    let raw = std::fs::read(fixtures().join("catalog.json")).unwrap();
+    lain_server::import(&data, &serde_json::from_slice(&raw).unwrap()).unwrap();
+    let remote = std::sync::Arc::new(std::sync::Mutex::new(fixture::AniListState {
+        anime: json!([{"name": "Watching", "isCustomList": false, "entries": [
+            fixture::al_entry(154587, "ANIME", "Frieren", "CURRENT", 1, 28),
+            fixture::al_entry(21, "ANIME", "Not Here", "PLANNING", 0, 12)
+        ]}]),
+        manga: json!([]),
+        token_ok: true,
+    }));
+    let remote_srv = fixture::Fixture::start(fixture::anilist(remote.clone()));
+    let server = Server::start_with(&data, |c| {
+        c.offline = false;
+        c.list_sync = false;
+        c.anilist_endpoints = lain_lists::anilist::Endpoints {
+            graphql: format!("{}/graphql", remote_srv.url),
+            oauth: format!("{}/oauth", remote_srv.url),
+        };
+    });
+    let base = Base::parse(&server.url).unwrap();
+    call(&base, "POST", "/api/setup", "", Some(json!({"username": "admin", "password": "password123"})));
+    let admin = login(&base, "admin", "password123");
+    let (st, lib) = call(
+        &base,
+        "POST",
+        "/api/libraries",
+        &admin,
+        Some(json!({"name": "Anime", "root": "media", "path": "Frieren"})),
+    );
+    assert_eq!(st, 201, "{lib}");
+    let lib_id = lib["id"].as_str().unwrap().to_string();
+
+    // Nothing linked: no tracks.
+    let (st, v) = call(&base, "GET", "/api/items/item-frieren-02/tracking", &admin, None);
+    assert_eq!((st, v), (200, json!({"tracks": []})));
+    let (st, v) = call(&base, "POST", "/api/me/links/anilist/code", &admin, Some(json!({"code": "good"})));
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(v["link"]["scrobble"], true, "a new link updates AniList");
+
+    // The list names the library title it is (by name: no metadata yet).
+    let (_, v) = call(&base, "GET", "/api/list", &admin, None);
+    let by_id = |v: &serde_json::Value, rid: &str| {
+        v["entries"].as_array().unwrap().iter().find(|e| e["remote_id"] == rid).cloned().unwrap()
+    };
+    let frieren = by_id(&v, "154587");
+    assert_eq!((frieren["item_id"].as_str(), frieren["matched_by"].as_str()), (Some("item-frieren-01"), Some("title")));
+    assert!(by_id(&v, "21").get("item_id").is_none(), "an entry the library lacks has no title");
+
+    // A title page, from any of its files, reads the entry.
+    let (st, v) = call(&base, "GET", "/api/items/item-frieren-02/tracking", &admin, None);
+    assert_eq!(st, 200, "{v}");
+    let t = &v["tracks"][0];
+    assert_eq!(
+        (t["platform"].as_str(), t["remote_id"].as_str(), t["scrobble"].as_bool()),
+        (Some("anilist"), Some("154587"), Some(true))
+    );
+    assert_eq!((t["entry"]["progress"].as_i64(), t["entry"]["item_id"].as_str()), (Some(1), Some("item-frieren-01")));
+    let before = remote_srv.taken().len();
+    assert!(before > 0);
+    // ... from the stored copy: the page never waits on AniList.
+    call(&base, "GET", "/api/items/item-frieren-01/tracking", &admin, None);
+    call(&base, "GET", "/api/list", &admin, None);
+    assert!(remote_srv.taken().is_empty(), "a read reached AniList");
+
+    // Quick actions write back.
+    let (st, v) = call(&base, "PUT", "/api/list/anilist/154587", &admin, Some(json!({"score": 8, "status": "paused"})));
+    assert_eq!(st, 200, "{v}");
+    assert_eq!((v["entry"]["score"].as_f64(), v["entry"]["status"].as_str()), (Some(8.0), Some("paused")));
+    assert_eq!(v["entry"]["item_id"], "item-frieren-01", "the answer is joined too");
+    let sent = remote_srv.taken();
+    assert_eq!(sent[0].json()["variables"], json!({"mediaId": 154587, "status": "PAUSED", "scoreRaw": 80}));
+    let (_, links) = call(&base, "GET", "/api/me/links", &admin, None);
+    assert_eq!(links["links"][0]["last_push"]["via"], "edit");
+
+    // A private library's titles never meet the outside list.
+    let (st, _) = call(&base, "PATCH", &format!("/api/libraries/{lib_id}"), &admin, Some(json!({"private": true})));
+    assert_eq!(st, 200);
+    call(&base, "POST", &format!("/api/libraries/{lib_id}/unlock"), &admin, Some(json!({"password": "password123"})));
+    let (_, v) = call(&base, "GET", "/api/list", &admin, None);
+    assert!(by_id(&v, "154587").get("item_id").is_none(), "{v}");
+    let (st, v) = call(&base, "GET", "/api/items/item-frieren-02/tracking", &admin, None);
+    assert_eq!((st, v), (200, json!({"tracks": []})));
+    let (st, v) =
+        call(&base, "PUT", "/api/list/anilist/154587", &admin, Some(json!({"score": 8, "item_id": "item-frieren-01"})));
+    assert_eq!((st, v["code"].as_str()), (403, Some("private-library")), "{v}");
+    assert!(remote_srv.taken().is_empty());
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}
+
 /// A finished episode scrobbles to an opted-in account (and announces
 /// `list-changed`), but an item of a private library never leaves the
 /// server (D-156); progress feeds the social activity log either way,
