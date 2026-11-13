@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { Select } from 'bits-ui';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
@@ -16,6 +17,7 @@
 		disabled = false,
 		class: className = '',
 		onValueChange,
+		icon,
 		'aria-label': ariaLabel
 	}: {
 		value?: string;
@@ -25,6 +27,8 @@
 		disabled?: boolean;
 		class?: string;
 		onValueChange?: (value: string) => void;
+		/** Drawn before the value, as the buttons of a toolbar carry theirs. */
+		icon?: Snippet;
 		'aria-label'?: string;
 	} = $props();
 
@@ -61,7 +65,14 @@
 				className
 			].join(' ')}
 		>
-			<Select.Value {placeholder}>{selectedLabel || placeholder}</Select.Value>
+			{#if icon}
+				<span class="flex min-w-0 items-center gap-2">
+					<span class="flex shrink-0 text-muted" aria-hidden="true">{@render icon()}</span>
+					<Select.Value class="truncate" {placeholder}>{selectedLabel || placeholder}</Select.Value>
+				</span>
+			{:else}
+				<Select.Value {placeholder}>{selectedLabel || placeholder}</Select.Value>
+			{/if}
 			<ChevronDown class="size-4 shrink-0 text-muted" aria-hidden="true" />
 		</Select.Trigger>
 		<Select.Portal>

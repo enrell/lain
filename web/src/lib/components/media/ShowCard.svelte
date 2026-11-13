@@ -10,7 +10,7 @@
 	import { episodeLabel } from '$lib/utilities/grouping';
 	import { formatLength, timeLeft } from '$lib/utilities/format';
 	import { t } from '$lib/i18n';
-	import ProgressBar from './ProgressBar.svelte';
+	import CardProgress from './CardProgress.svelte';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
 
@@ -149,9 +149,7 @@
 			</span>
 			<!-- The film cards' bar, inset and rounded: a flush strip here and an inset bar
 			     there drew one fact two ways in the same grid. -->
-			<div class="absolute inset-x-0 bottom-0 p-1.5">
-				<ProgressBar ratio={Math.max(0.03, Math.min(1, state.fraction))} class="bg-black/50" />
-			</div>
+			<CardProgress ratio={Math.min(1, state.fraction)} label={t(reading ? 'title.readProgress' : 'title.watchProgress')} />
 		{/if}
 	</div>
 	<div class="mt-3 min-w-0">

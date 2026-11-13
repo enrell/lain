@@ -4,6 +4,10 @@
 	import { page } from '$app/state';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import LockOpen from '@lucide/svelte/icons/lock-open';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import ScanLine from '@lucide/svelte/icons/scan-line';
+	import FolderCog from '@lucide/svelte/icons/folder-cog';
+	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
 	import type { Library } from '$lib/api/types';
 	import { session } from '$lib/auth/session.svelte';
 	import LibraryBrowser from '$lib/components/media/LibraryBrowser.svelte';
@@ -107,6 +111,20 @@
 		}
 	}
 
+	// On a phone the page's upkeep is one labelled menu beside the title: as three
+	// bordered buttons under it, server maintenance outweighed the titles.
+	const upkeep = $derived<MenuEntry[]>([
+		...(locked.length > 0 || open.length > 0
+			? [{ label: locked.length > 0 ? t('privateLibrary.unlock') : t('privateLibrary.lock'), icon: locked.length > 0 ? LockIcon : LockOpen, kbd: 'U', onSelect: () => void toggleLock() }]
+			: []),
+		...(session.isAdmin
+			? [
+					{ label: scan.running ? t('library.scanning') : t('library.scan'), icon: ScanLine, kbd: 'S', disabled: scan.running, onSelect: () => void rescan() },
+					{ label: t('library.manage'), icon: FolderCog, onSelect: () => void goto('/settings/libraries') }
+				]
+			: [])
+	]);
+
 	usePageKeys(() => [
 		...(visible.length > 1 ? [{ keys: ['V'], label: t('pageKeys.libraryView') }] : []),
 		...(locked.length > 0 || open.length > 0 ? [{ keys: ['U'], label: t('pageKeys.unlock') }] : []),
@@ -141,15 +159,18 @@
 <svelte:head><title>{t('nav.library')} — Lain</title></svelte:head>
 
 <div class="space-y-6">
-	<header class="flex flex-wrap items-end justify-between gap-3">
+	<header class="flex flex-wrap items-end justify-between gap-3 max-md:flex-nowrap max-md:items-center">
 		<div>
 			<h1 class="page-title">{t('nav.library')}</h1>
 			<p class="mt-0.5 text-sm text-muted max-md:hidden">{t('library.lead')}</p>
 		</div>
-		{#if session.isAdmin || locked.length > 0 || open.length > 0}
-			<!-- On a phone each action is a chip on one line of its own words: "Manage
-			     libraries" broke over two lines inside its box. -->
-			<div class="flex items-center gap-1 whitespace-nowrap text-sm max-md:w-full max-md:flex-wrap max-md:gap-2 max-md:[&>*]:min-h-10 max-md:[&>*]:rounded-lg max-md:[&>*]:border max-md:[&>*]:border-line max-md:[&>*]:px-3.5 max-md:[&>a]:flex max-md:[&>a]:items-center">
+		{#if upkeep.length > 0}
+			<div class="-me-2 md:hidden">
+				<Menu label={t('library.upkeep')} entries={upkeep} variant="ghost" size="icon">
+					{#snippet icon()}<Ellipsis class="size-5" aria-hidden="true" />{/snippet}
+				</Menu>
+			</div>
+			<div class="flex items-center gap-1 whitespace-nowrap text-sm max-md:hidden">
 				{#if locked.length > 0 || open.length > 0}
 					<button
 						type="button"

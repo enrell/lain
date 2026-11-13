@@ -277,7 +277,12 @@
 
 <div class="space-y-6">
 	<header class="space-y-3">
-		<h1 class="page-title">{t('search.heading')}</h1>
+		<div>
+			<h1 class="page-title">{t('search.heading')}</h1>
+			<!-- What a search looks at, as other pages lead with what they hold. On a
+			     phone the field's placeholder says it, right under the heading. -->
+			<p class="mt-0.5 text-sm text-muted max-md:hidden">{t('search.matches')}</p>
+		</div>
 		<!-- A phone's field: from md up the header holds the search bar (HeaderSearch).
 		     Filled, as the library's and the favourites' search fields are. -->
 		<form class="relative md:hidden" onsubmit={submit} role="search">
@@ -327,34 +332,51 @@
 	{#if error}
 		<ErrorState message={error} retry={() => void run(query, true)} />
 	{:else if showIdle}
-		<!-- Before a query: what was searched lately, and the libraries to start from. -->
-		{#if recentSearches.items.length > 0}
-			<section aria-label={t('search.recentLabel')}>
-				<div class="flex items-center justify-between gap-3">
-					<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t('search.recent')}</h2>
-					<button type="button" class="rounded-md px-2 py-1 text-xs text-muted hover:text-foreground" onclick={() => recentSearches.forget()}>{t('search.forget')}</button>
-				</div>
-				<div class="mt-2 flex flex-wrap gap-2">
-					{#each recentSearches.items as term (term)}
+		<!-- Before a query: what was searched lately, and the libraries to start
+		     from, side by side from lg up so the newest titles start in the first
+		     screen and the rail after them shows its cards, not a lone heading.
+		     Below lg a half is too narrow: Clear and Shows each wrapped to a line
+		     of their own, and a tablet's tall screen has room for both rows. -->
+		<div class="grid gap-6 lg:grid-cols-2 lg:gap-10">
+			{#if recentSearches.items.length > 0}
+				<section aria-label={t('search.recentLabel')}>
+					<!-- Clear ends the row of what it clears: at the far edge of a wide
+					     page it stood a screen's width from the chips. On a phone the row
+					     is full, so it stays over the chips' end, beside the label. -->
+					<div class="flex items-center justify-between gap-3">
+						<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t('search.recent')}</h2>
+						<button type="button" class="rounded-md px-2 py-1 text-xs text-muted hover:text-foreground md:hidden" aria-label={t('search.forgetLabel')} onclick={() => recentSearches.forget()}>{t('search.forget')}</button>
+					</div>
+					<div class="mt-2 flex flex-wrap items-center gap-2">
+						{#each recentSearches.items as term (term)}
+							<button
+								type="button"
+								class="inline-flex min-h-9 items-center gap-2 rounded-full border border-line px-3.5 text-sm text-foreground hover:bg-surface-hover"
+								onclick={() => again(term)}
+							>
+								<Search class="size-3.5 text-muted" aria-hidden="true" />
+								{term}
+							</button>
+						{/each}
 						<button
 							type="button"
-							class="inline-flex min-h-9 items-center gap-2 rounded-full border border-line px-3.5 text-sm text-foreground hover:bg-surface-hover"
-							onclick={() => again(term)}
+							class="inline-flex min-h-9 items-center rounded-full px-3 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground max-md:hidden"
+							aria-label={t('search.forgetLabel')}
+							onclick={() => recentSearches.forget()}
 						>
-							<Search class="size-3.5 text-muted" aria-hidden="true" />
-							{term}
+							{t('search.forget')}
 						</button>
-					{/each}
-				</div>
+					</div>
+				</section>
+			{/if}
+			<section aria-label={t('search.browse')}>
+				<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t('search.browse')}</h2>
+				{@render browseChips()}
+				<p class="mt-4 text-sm text-muted md:hidden">{t('search.matches')}</p>
 			</section>
-		{/if}
-		<section aria-label={t('search.browse')}>
-			<h2 class="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/65">{t('search.browse')}</h2>
-			{@render browseChips()}
-			<p class="mt-4 text-sm text-muted">{t('search.matches')}</p>
-		</section>
+		</div>
 		<!-- Something to look at before a word is typed, sized as Home's rails. -->
-		<RelatedRow recent heading={t('search.newest')} />
+		<RelatedRow recent heading={t('search.newest')} class="mt-10 md:mt-8" />
 	{:else if loading && items.length === 0}
 		<div class={framedGrid('portrait')}>
 			{#each Array(12) as _}

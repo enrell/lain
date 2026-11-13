@@ -1,8 +1,9 @@
 export type ButtonVariant = 'primary' | 'secondary' | 'tonal' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon' | 'row' | 'rowMain' | 'field';
 
+// An icon never gives way to a long label: squeezed, Resume's triangle shrank to a dot on a 360 px phone.
 const base =
-	'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors duration-150 select-none disabled:opacity-50 disabled:pointer-events-none';
+	'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors duration-150 select-none disabled:opacity-50 disabled:pointer-events-none [&_svg]:shrink-0';
 
 const variants: Record<ButtonVariant, string> = {
 	primary: 'bg-accent text-accent-fg hover:bg-accent-hover',

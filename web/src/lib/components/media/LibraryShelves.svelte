@@ -85,10 +85,11 @@
 		aria-label={t('library.shelves')}
 		{@attach scrollEdges(undefined, '2rem')}
 	>
+		<!-- A thumb's height on a phone: as a line of small capitals the jumps were slivers to hit. -->
 		{#each libraries as lib (lib.id)}
 			<a
 				href={`#shelf-${lib.id}`}
-				class="shrink-0 rounded-md px-2 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors first:-ml-2 hover:bg-surface-hover hover:text-foreground"
+				class="shrink-0 rounded-md px-2 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors first:-ml-2 hover:bg-surface-hover hover:text-foreground max-md:inline-flex max-md:min-h-10 max-md:items-center max-md:active:bg-surface-hover"
 			>
 				{lib.name}
 			</a>
@@ -120,8 +121,8 @@
 				{/if}
 			</div>
 			{#if !shelf}
-				<div class="flex gap-3.5 overflow-hidden md:gap-4 lg:gap-5">
-					{#each Array(6) as _}<Skeleton class="aspect-[2/3] w-40 shrink-0 rounded-xl lg:w-44" />{/each}
+				<div class={['flex gap-3.5 overflow-hidden md:gap-4', RAIL.portrait].join(' ')}>
+					{#each Array(6) as _}<Skeleton class="aspect-[2/3] w-[var(--card-w)] shrink-0 rounded-xl" />{/each}
 				</div>
 			{:else if shelf.failed}
 				<p class="text-sm text-muted">{t('library.shelfFailed')}</p>
@@ -129,7 +130,7 @@
 				<p class="text-sm text-muted">{t('library.shelfEmpty')}</p>
 			{:else}
 				<!-- Through the gutter to the window's edge, as MediaRow's rails. -->
-				<Rail class={['pt-1 lg:gap-5', RAIL[frame]].join(' ')}>
+				<Rail class={['pt-1', RAIL[frame]].join(' ')}>
 					{#each shelf.groups as group, i (group.key)}
 						<div class="w-[var(--card-w)] shrink-0 snap-start">
 							{#if group.count > 1}

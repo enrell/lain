@@ -25,17 +25,23 @@ export function edgesOf(scrollLeft: number, scrollWidth: number, clientWidth: nu
 /**
  * Follows a row's edges as it scrolls, resizes or changes its children.
  * With `fade`, sets `--fade-left` and `--fade-right` for `edge-fade` (on
- * the physical sides, flipped in a right-to-left row).
+ * the physical sides, flipped in a right-to-left row). With `axis: 'y'`,
+ * a list that scrolls down: `--fade-top` and `--fade-bottom`, for
+ * `edge-fade-y`.
  */
-export function scrollEdges(onChange?: (edges: Edges) => void, fade = ''): Attachment<HTMLElement> {
+export function scrollEdges(onChange?: (edges: Edges) => void, fade = '', axis: 'x' | 'y' = 'x'): Attachment<HTMLElement> {
 	return (el) => {
 		let last = '';
 		const update = (): void => {
-			const edges = edgesOf(el.scrollLeft, el.scrollWidth, el.clientWidth);
+			const edges =
+				axis === 'y' ? edgesOf(el.scrollTop, el.scrollHeight, el.clientHeight) : edgesOf(el.scrollLeft, el.scrollWidth, el.clientWidth);
 			const key = `${edges.start}:${edges.end}`;
 			if (key === last) return;
 			last = key;
-			if (fade) {
+			if (fade && axis === 'y') {
+				el.style.setProperty('--fade-top', edges.start ? fade : '0px');
+				el.style.setProperty('--fade-bottom', edges.end ? fade : '0px');
+			} else if (fade) {
 				const rtl = getComputedStyle(el).direction === 'rtl';
 				el.style.setProperty('--fade-left', (rtl ? edges.end : edges.start) ? fade : '0px');
 				el.style.setProperty('--fade-right', (rtl ? edges.start : edges.end) ? fade : '0px');
