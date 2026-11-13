@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **AniList that pays off** (D-288, D-289): Tracking shows the AniList
+  lists (Watching, Planning, Completed, Paused, Dropped, Rewatching; anime
+  and manga) with cover, progress and score, each entry marked "In
+  library" and opening its title, or, when planned and missing, offering
+  an administrator "Find releases" in Acquire. Watching and reading
+  update AniList on their own (episodes, film entries, manga chapters and
+  volumes; a season marked watched is one write and completes the entry),
+  with the switch and the last update on Tracking and in Settings ›
+  Connections; new links have it on. The title page shows the AniList
+  status, progress and your score and sets the status and score there
+  (L). API: `GET /api/items/{id}/tracking`, `PUT
+  /api/list/{platform}/{remote_id}`; `GET /api/list` entries carry
+  `item_id`, `matched_by`, `pushed_at`, `push_error`; links carry
+  `last_push`. Pages read the stored copy and never wait on AniList.
+  `lain-client`: `Client::title_tracking`, `Client::save_list_entry`.
 - **Pages of titles** (D-283): `GET /api/catalog` and `GET /api/search`
   take `group=title`, which pages titles instead of files: `total`,
   `limit` and `offset` count titles and `items` holds every file of each

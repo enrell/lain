@@ -912,7 +912,12 @@ into either.
 (`anime|manga|movie|series|comic`), `status`
 (`current|planning|completed|paused|dropped|repeating`), `progress`,
 `progress_total`, `progress_volumes`, `score`, dates, `cover` and the
-remote identity (`platform` + `remote_id`).
+remote identity (`platform` + `remote_id`); also (D-288) `alt_titles`
+(the platform's other names, matched too), `pushed_at` (when lain last
+wrote the entry; kept across imports) and `push_error` (the stable code
+of the last failed write; an import clears it). `item_id` and
+`matched_by` (`id|title`) are the gateway's join with the library,
+filled on reads and never stored.
 
 Read: `ListInput{user_id, type?, status?}` → `ListEntry[]` sorted by
 title then platform.
@@ -922,6 +927,9 @@ Write: `PutPlatformInput{user_id, platform, entries}` →
 that platform (D-081): incoming remote ids are upserted and every
 entry the platform owned that is absent from the response is deleted.
 `DeletePlatformInput{user_id, platform}` → removed count (unlink).
+`PutEntryInput{user_id, platform, entry}` (`put-entry`) → the stored
+entry: one entry upserted, the rest of the set untouched (a write lain
+made to the platform, D-288).
 
 ### lain.list.account@1 (exactly-one)
 
@@ -947,10 +955,14 @@ bound provider is tried. Ops:
 - `LinkFetchInput{platform, token, remote_user_id}` →
   `LinkFetchOutput{entries}` — the remote list mapped onto
   `ListEntry` fields.
-- `LinkPushInput{platform, token, remote_id, progress, status?}` →
-  `LinkPushOutput{progress, status}` — scrobble: writes one entry's
-  progress (and optionally a normalized status) back to the platform
-  (D-084). Additive to `@1`: connectors that predate it answer
+- `LinkPushInput{platform, token, remote_id, progress?,
+  progress_volumes?, status?, score?}` → `LinkPushOutput{progress,
+  status, entry?}` — scrobbles and edits: writes the fields given to
+  one entry (creating it when the list lacks the media); an absent field
+  is left as the platform has it (D-289: `progress` was required before,
+  and callers then always sent it). `score` is 0..10 (0 clears it).
+  `entry`, when the connector reads the saved entry back, is the whole
+  `ListEntry`. Additive to `@1`: connectors that predate it answer
   `invalid-message`, never crash.
 Built-in `lain-listlink-anilist`: AniList's authorization-code flow
 plus an authenticated GraphQL `MediaListCollection` fetch for `ANIME`
@@ -992,6 +1004,46 @@ platform-owned entries (D-079). `POST /api/me/links/{platform}/sync`
 re-imports on demand; `401 token-invalid|token-expired` marks the link
 for reconnection while imported entries stay visible. `GET /api/list`
 (auth) → `{entries}`, filterable with `?type=`/`?status=`.
+
+**The list and the library (D-288, D-289).** `GET /api/list` fills each
+entry's `item_id` (the library title it is: the title's first file in
+watch order) and `matched_by`: `id` when a file of the title has a
+`lain-metadata-anilist` overlay naming the entry's `remote_id`, else
+`title` when exactly one title's names (files' title and aliases, the
+overlay's title) equal one of the entry's (`title`, `alt_titles`) under
+`match_key` (lower-case letters and digits, other runs one space).
+Anime entries join watched titles, manga entries read ones (`manga`,
+`comic` kinds); private libraries never join, locked or not, and
+libraries hidden from the session are left out.
+
+`GET /api/items/{id}/tracking` (auth) → `{tracks: [{platform,
+remote_id, matched_by?, scrobble, entry?}]}`, one per linked platform,
+from the stored copy (no remote call): `remote_id` is the entry's, else
+the id the title's metadata names, else empty. `{tracks: []}` with
+nothing linked or for a private library's item; `404 unknown item` for
+an item the session cannot see.
+
+`PUT /api/list/{platform}/{remote_id}` (auth) with `{status?, progress?,
+progress_volumes?, score?, item_id?}` writes the given fields to the
+platform, then to the stored copy, and answers `{entry}` (joined). At
+least one field; `status` in the shared vocabulary; `score` 0..10 (AniList
+gets `scoreRaw`, the 100-point value, whatever the user's format);
+`item_id` describes a work the list lacks (title, cover, kind). Errors:
+`400 invalid-message`, `404` not linked or unknown item, `403
+private-library`, `401 token-invalid|token-expired`, `429 rate-limited`,
+`503` otherwise. Each write, good or failed, is the account's
+`last_push{at, remote_id, title, progress?, status?, via, error?}` on
+`GET /api/me/links` (`via`: `scrobble` or `edit`).
+
+Automatic updates (`scrobble`, on for a new link; a relink keeps the
+stored choice): a finished item advances the entry it is (overlay id
+first, then names): an anime episode of season 0 or 1, a film a
+one-episode entry, an archive's chapter (`episode`) and volume
+(`season`) a manga entry; never lower, never a completed or repeating
+entry, `completed` on the last episode or chapter. Finishes wait 1.5 s
+of quiet in one worker and go out as one write per entry. Private
+libraries never scrobble. `list-changed` gains the actions `saved` (an
+edit) and `push-failed` (`remote_id`, `error`).
 
 The callback URL AniList must be registered with is derived per
 request as `{scheme}://{host}/api/auth/{platform}/callback` (honoring
