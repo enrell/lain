@@ -281,16 +281,18 @@
 						<details class="group/family" bind:open={openFamilies[family.id]}>
 							<summary class="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5 outline-offset-[-2px] hover:bg-surface-hover/40 max-sm:px-4 [&::-webkit-details-marker]:hidden">
 								<ChevronRight class="size-4 shrink-0 text-muted transition-transform group-open/family:rotate-90" aria-hidden="true" />
-								<span class="text-sm font-medium text-foreground">{t(family.title)}</span>
-								<span class="ms-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+								<span class="min-w-0 text-sm font-medium text-foreground">{t(family.title)}</span>
+								<!-- The family's state, each part on one line (the title wraps
+								     instead); on a phone the jobs over the options, from sm up
+								     one line. The options not installed are words, not a dashed
+								     pill with a plus: in the row that opens the family a pill read
+								     as a button of its own, and at 360 px it broke in two. -->
+								<span class="ms-auto flex shrink-0 flex-col items-end gap-0.5 text-end text-xs sm:flex-row sm:items-center sm:gap-1.5">
+									<span class="whitespace-nowrap {family.unhealthy > 0 ? 'text-warning' : 'text-muted'}">{familyLine(family)}</span>
 									{#if family.missing > 0}
-										<!-- An option, drawn as one: a dashed outline with a plus, as an
-										     empty slot is drawn, not a status in the status's grey. -->
-										<span class="inline-flex items-center gap-1 rounded-full border border-dashed border-foreground/25 px-2 py-0.5 text-xs text-foreground/80">
-											<Plus class="size-3" aria-hidden="true" />{t('settings.pluginsPage.toInstall', { count: family.missing })}
-										</span>
+										<span class="text-muted/50 max-sm:hidden" aria-hidden="true">·</span>
+										<span class="whitespace-nowrap text-foreground/75">{t('settings.pluginsPage.toInstall', { count: family.missing })}</span>
 									{/if}
-									<span class="text-end text-xs {family.unhealthy > 0 ? 'text-warning' : 'text-muted'}">{familyLine(family)}</span>
 								</span>
 							</summary>
 							<ul class="settings-items border-t border-hairline">
