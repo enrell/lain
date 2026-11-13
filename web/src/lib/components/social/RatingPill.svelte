@@ -7,6 +7,7 @@
 	 * what says a score is given.
 	 */
 	import Star from '@lucide/svelte/icons/star';
+	import { i18n, t } from '$lib/i18n';
 	import { ratingState } from '$lib/social/favorite.svelte';
 
 	const others = $derived(ratingState.scored - (ratingState.mine > 0 ? 1 : 0));
@@ -16,11 +17,18 @@
 	<button
 		type="button"
 		class="inline-flex h-11 shrink-0 items-center gap-2 rounded-md bg-foreground/[0.08] px-4 text-sm font-medium text-foreground transition-colors hover:bg-foreground/[0.14]"
-		title="Your score (R)"
+		title={t('social.title.scoreHint')}
+		aria-label={ratingState.mine > 0 ? t('social.title.yourScore', { score: ratingState.mine }) : undefined}
 		onclick={() => ratingState.ask()}
 	>
 		<Star class={ratingState.mine > 0 ? 'size-4 fill-accent text-accent' : 'size-4'} aria-hidden="true" />
-		{ratingState.mine > 0 ? `Your score: ${ratingState.mine}` : 'Rate'}
-		{#if others > 0}<span class="text-muted">· {ratingState.average.toFixed(1)} avg</span>{/if}
+		<!-- A phone under 380 px says the score by the filled star and the number: spelled out,
+		     the row's last button (More) fell onto a line of its own. -->
+		{#if ratingState.mine > 0}
+			<span class="max-[380px]:hidden">{t('social.title.yourScore', { score: ratingState.mine })}</span><span class="hidden tabular-nums max-[380px]:inline">{ratingState.mine}</span>
+		{:else}
+			{t('social.title.rate')}
+		{/if}
+		{#if others > 0}<span class="text-muted">· {t('social.title.average', { average: i18n.formatNumber(ratingState.average, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })}</span>{/if}
 	</button>
 {/if}
