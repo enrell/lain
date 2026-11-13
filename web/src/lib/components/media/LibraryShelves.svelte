@@ -85,10 +85,11 @@
 		aria-label={t('library.shelves')}
 		{@attach scrollEdges(undefined, '2rem')}
 	>
+		<!-- A thumb's height on a phone: as a line of small capitals the jumps were slivers to hit. -->
 		{#each libraries as lib (lib.id)}
 			<a
 				href={`#shelf-${lib.id}`}
-				class="shrink-0 rounded-md px-2 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors first:-ml-2 hover:bg-surface-hover hover:text-foreground"
+				class="shrink-0 rounded-md px-2 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors first:-ml-2 hover:bg-surface-hover hover:text-foreground max-md:inline-flex max-md:min-h-10 max-md:items-center max-md:active:bg-surface-hover"
 			>
 				{lib.name}
 			</a>

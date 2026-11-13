@@ -9,7 +9,7 @@
 	import { mediaSubtitle, timeLeft } from '$lib/utilities/format';
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	import { progressRatio } from '$lib/utilities/progress';
-	import ProgressBar from './ProgressBar.svelte';
+	import CardProgress from './CardProgress.svelte';
 
 	let {
 		item,
@@ -109,9 +109,7 @@
 			<Play class="size-4 translate-x-px" aria-hidden="true" />
 		</div>
 		{#if ratio > 0}
-			<div class="absolute inset-x-0 bottom-0 p-1.5">
-				<ProgressBar {ratio} label="Watch progress" class="bg-black/50" />
-			</div>
+			<CardProgress {ratio} label={t('title.watchProgress')} />
 		{/if}
 	</div>
 	<div class="mt-3 min-w-0">

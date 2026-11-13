@@ -6,6 +6,8 @@
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
+	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import Users from '@lucide/svelte/icons/users';
 	import type { User } from '$lib/api/types';
@@ -157,6 +159,23 @@
 		void load();
 	});
 
+	// An account's actions as one labelled menu where the table is two lines (below xl):
+	// as bare icons, a sliders glyph on a person's row did not say Playback.
+	function rowEntries(user: User): MenuEntry[] {
+		return [
+			{ label: t('settings.usersPage.playback'), icon: SlidersHorizontal, onSelect: () => openPlaybackLimits(user) },
+			{
+				label: t('settings.usersPage.resetPassword'),
+				icon: KeyRound,
+				onSelect: () => {
+					resetTarget = user;
+					resetOpen = true;
+				}
+			},
+			...(isSelf(user) ? [] : [{ label: t('settings.usersPage.delete'), icon: Trash2, danger: true, separated: true, onSelect: () => askDelete(user) }])
+		];
+	}
+
 	function isSelf(user: User): boolean {
 		return user.id === session.user?.id;
 	}
@@ -250,10 +269,10 @@
 			{#each users as user (user.id)}
 				{@const self = isSelf(user)}
 				<li class="group/row flex flex-wrap items-center gap-x-4 gap-y-3 py-3.5 xl:grid xl:grid-cols-[minmax(0,1fr)_8rem_7.5rem_20rem]">
-					<!-- Below xl the actions share the name's line (their icons fit
-					     beside it) and role and access take the second: as a table
+					<!-- Below xl the actions are one labelled menu (⋯) at the end of the
+					     name's line and role and access take the second: as a table
 					     beside the settings rail at 1024 px the name had no room. -->
-					<div class="flex min-w-0 basis-[calc(100%-9.5rem)] items-center gap-3 xl:basis-auto">
+					<div class="flex min-w-0 basis-[calc(100%-4rem)] items-center gap-3 xl:basis-auto">
 						<Avatar {user} class="size-9 shrink-0" />
 						<div class="min-w-0">
 							<div class="flex flex-wrap items-center gap-2">
@@ -269,7 +288,7 @@
 						</div>
 					</div>
 					{#if self}
-						<p class="flex h-9 w-32 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted max-xl:order-2" title={t('settings.usersPage.selfRole')}>
+						<p class="flex h-9 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted max-xl:order-2 xl:w-32" title={t('settings.usersPage.selfRole')}>
 							<LockIcon class="size-3" aria-hidden="true" />{user.role === 'admin' ? t('settings.usersPage.roleAdmin') : t('settings.usersPage.roleUser')}
 						</p>
 						<p class="flex h-9 items-center text-[13px] text-muted max-xl:order-2">{t('settings.usersPage.signedInHere')}</p>
@@ -300,26 +319,28 @@
 							<span>{t('settings.usersPage.active')}</span>
 						</div>
 					{/if}
+					<div class="-me-2 self-start max-xl:order-1 max-xl:ms-auto xl:hidden">
+						<Menu label={t('settings.usersPage.actionsFor', { name: user.username })} entries={rowEntries(user)} variant="ghost" size="icon">
+							{#snippet icon()}<Ellipsis class="size-5" aria-hidden="true" />{/snippet}
+						</Menu>
+					</div>
 					<!-- A fixed column, filled from its end: every row is its own grid,
 					     so an auto column was as wide as that row's buttons and the
 					     columns before it drifted from row to row. -->
-					<div class="flex flex-nowrap items-center justify-end gap-0.5 max-xl:order-1 max-xl:ms-auto">
-						<!-- Icons alone on a phone, as on Libraries: three worded buttons
-						     broke over two lines under the role and the switch. -->
-						<Button variant="ghost" size="field" class="max-xl:px-3" title={t('settings.usersPage.playback')} onclick={() => openPlaybackLimits(user)}>
-							<SlidersHorizontal class="size-4" /> <span class="max-xl:sr-only">{t('settings.usersPage.playback')}</span>
+					<div class="flex flex-nowrap items-center justify-end gap-0.5 max-xl:hidden">
+						<Button variant="ghost" size="field" title={t('settings.usersPage.playback')} onclick={() => openPlaybackLimits(user)}>
+							<SlidersHorizontal class="size-4" /> {t('settings.usersPage.playback')}
 						</Button>
 						<Button
 							variant="ghost"
 							size="field"
-							class="max-xl:px-3"
 							title={t('settings.usersPage.resetPassword')}
 							onclick={() => {
 								resetTarget = user;
 								resetOpen = true;
 							}}
 						>
-							<KeyRound class="size-4" /> <span class="max-xl:sr-only">{t('settings.usersPage.resetPassword')}</span>
+							<KeyRound class="size-4" /> {t('settings.usersPage.resetPassword')}
 						</Button>
 						{#if self}
 							<!-- The delete slot kept empty, so Playback and Reset password

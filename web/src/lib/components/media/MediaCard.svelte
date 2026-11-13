@@ -8,7 +8,8 @@
 	import { progressRatio } from '$lib/utilities/progress';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
-	import ProgressBar from './ProgressBar.svelte';
+	import CardProgress from './CardProgress.svelte';
+	import { t } from '$lib/i18n';
 
 	let {
 		item,
@@ -85,9 +86,7 @@
 			</span>
 		{/if}
 		{#if ratio > 0}
-			<div class="absolute inset-x-0 bottom-0 p-1.5">
-				<ProgressBar {ratio} label={reading ? "Reading progress" : "Watch progress"} class="bg-black/50" />
-			</div>
+			<CardProgress {ratio} label={t(reading ? 'title.readProgress' : 'title.watchProgress')} />
 		{/if}
 	</div>
 	<div class="mt-3 min-w-0">

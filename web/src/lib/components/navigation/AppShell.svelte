@@ -2,6 +2,8 @@
 	import { i18n, t } from '$lib/i18n';
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
+	import { afterNavigate, goto } from '$app/navigation';
+	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import SignalMark from '../primitives/SignalMark.svelte';
 	import UserMenu from './UserMenu.svelte';
 	import MobileNav from './MobileNav.svelte';
@@ -46,6 +48,23 @@
 		void scan.watch();
 		return () => scan.stop();
 	});
+
+	/*
+	 * A title page on a phone goes back from the bar that stays on screen.
+	 * The arrow floated on the hero scrolled under this bar with the page, so
+	 * a title opened onto its current volume showed two pixels of it.
+	 * Opened from outside (a shared link), there is nothing of the app to go
+	 * back to, so it leads to the library instead of leaving the app.
+	 */
+	const backable = $derived(page.route.id === '/item/[id]');
+	let cameFromApp = false;
+	afterNavigate((nav) => {
+		if (nav.from !== null && nav.type !== 'enter') cameFromApp = true;
+	});
+	function goBack(): void {
+		if (cameFromApp) history.back();
+		else void goto('/library');
+	}
 
 	const scanLabel = $derived(
 		scan.fraction === null
@@ -112,13 +131,20 @@
 	</header>
 
 	<header
-		class="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-background/92 pl-5 pr-3 backdrop-blur-xl md:hidden"
+		class={['sticky top-0 z-30 flex items-center justify-between border-b border-line bg-background/92 pr-3 backdrop-blur-xl md:hidden', backable ? 'pl-1' : 'pl-5'].join(' ')}
 		style="padding-top: env(safe-area-inset-top);"
 	>
-		<a href="/" class="flex h-12 items-center gap-2" aria-label={t('common.home')}>
-			<SignalMark class="size-[18px] text-accent" />
-			<span class="text-[15px] font-semibold tracking-[0.2em] text-foreground">lain</span>
-		</a>
+		<div class="flex items-center gap-1">
+			{#if backable}
+				<button type="button" class="flex size-11 items-center justify-center rounded-full text-foreground active:bg-surface-hover" aria-label={t('nav.back')} onclick={goBack}>
+					<ArrowLeft class="size-5" aria-hidden="true" />
+				</button>
+			{/if}
+			<a href="/" class="flex h-12 items-center gap-2" aria-label={t('common.home')}>
+				<SignalMark class="size-[18px] text-accent" />
+				<span class="text-[15px] font-semibold tracking-[0.2em] text-foreground">lain</span>
+			</a>
+		</div>
 		<div class="flex items-center gap-1">
 			{#if scan.running}
 				<span class="flex items-center gap-1.5 pr-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted" aria-live="polite">
