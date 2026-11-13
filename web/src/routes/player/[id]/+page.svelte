@@ -16,6 +16,7 @@
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { scrollEdges } from '$lib/utilities/scroll-edges';
 	import { episodeLabel, nextEpisode } from '$lib/utilities/grouping';
 	import { prefs } from '$lib/auth/storage';
 	import { itemCache } from '$lib/stores/media-cache.svelte';
@@ -391,7 +392,10 @@
 						{t('player.list.autoplay')}
 					</button>
 				</div>
-				<ul bind:this={listScroller} class="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+				<!-- Fades where more episodes are hidden, above or below: at rest the
+				     last one in view was cut by the window's edge with nothing to say
+				     the list goes on. -->
+				<ul bind:this={listScroller} class="edge-fade-y min-h-0 flex-1 space-y-1 overflow-y-auto p-2" {@attach scrollEdges(undefined, '3rem', 'y')}>
 					{#each episodes as episode (episode.id)}
 						{@const current = episode.id === item.id}
 						{@const p = progressMap.get(episode.id)}
