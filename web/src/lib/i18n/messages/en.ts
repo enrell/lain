@@ -659,7 +659,8 @@ const en = {
 			installOther: 'Not installed on this server: add its component’s manifest to the plugins folder of the data directory.',
 			jobs: { one: '{count} job', other: '{count} jobs' },
 			allHealthy: 'all healthy',
-			missingCount: { one: '{count} not installed', other: '{count} not installed' },
+			// Jobs bound to a component that is not installed (the optional bridges): an option, not a fault.
+			toInstall: { one: '{count} optional, available to install', other: '{count} optional, available to install' },
 			unhealthyCount: { one: '{count} provider unhealthy', other: '{count} providers unhealthy' },
 			generation: 'generation {n}',
 			replace: 'Replace',
