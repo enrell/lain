@@ -88,7 +88,7 @@
 					<button role="tab" type="button" aria-selected="true" data-route="/">Home</button>
 					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/library?view=shelves">Library</button>
 					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/library?view=all">All titles</button>
-					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/item/cb6d722e4a2e8c2e">Series</button>
+					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/item/039a34b14ce22380">Series</button>
 					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/item/e2bf85f3b48199b6">Film</button>
 					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/read/ab0fce996f9aa7f4">Reader</button>
 					<button role="tab" type="button" aria-selected="false" tabindex="-1" data-route="/search?q=s">Search</button>
@@ -110,7 +110,7 @@
 					</div>
 				</div>
 				<p class="note">
-					Demo library: the Blender Foundation's open films and Pepper&amp;Carrot by David Revoy, both CC BY; the shows are generated artwork.
+					Demo library: the Blender Foundation's open films and Pepper&amp;Carrot by David Revoy, both CC BY; series use anime posters and metadata from AniList.
 					Try the keys: <kbd>/</kbd> searches, <kbd>?</kbd> lists what a screen can do.
 				</p>
 			</div>
@@ -135,7 +135,7 @@
 				</div>
 				<div class="showme">
 					<p>The demo has no files behind it, so its player cannot play. Open it anyway: the layout, the episode list and the keys are all there, and Play has a surprise.</p>
-					<button class="btn btn-quiet" type="button" data-demo-go="/player/cb6d722e4a2e8c2e">Open the player in the demo</button>
+					<button class="btn btn-quiet" type="button" data-demo-go="/player/039a34b14ce22380">Open the player in the demo</button>
 				</div>
 			</div>
 		</section>
@@ -188,7 +188,7 @@
 						<h3>On Android</h3>
 						<p>A native app in Kotlin on the same Rust core, with the same screens you see here: Media3 playback, picture in picture, downloads that play without the server, and a PIN for private libraries.</p>
 						<p>Every release carries the signed APK, so <a class="link" href="https://github.com/ImranR98/Obtainium" rel="noopener">Obtainium</a> can follow it.</p>
-						<p><a class="btn btn-quiet" href="https://github.com/enrell/lain/releases/latest" rel="noopener">Get the APK</a></p>
+						<p><a class="btn btn-quiet" data-apk-link href="https://github.com/enrell/lain/releases/download/v0.3.1/lain_0.3.1_android.apk" rel="noopener">Get the APK</a></p>
 					</div>
 				</div>
 				<p class="also">Also: <code>lain watch</code> hands a title to mpv from the terminal, and a native desktop client is on the way.</p>
@@ -268,7 +268,7 @@ lain service install       # or keep it running as a user service</code></pre><b
 					</div>
 					<div class="panel" id="pan-android" role="tabpanel" aria-labelledby="in-android" tabindex="0" hidden>
 						<p>Every release carries a signed APK. Install it, type your server's address, sign in. Point Obtainium at the repository to follow updates.</p>
-						<p><a class="link" href="https://github.com/enrell/lain/releases/latest" rel="noopener">Get the APK from the latest release</a></p>
+						<p><a class="link" data-apk-link href="https://github.com/enrell/lain/releases/download/v0.3.1/lain_0.3.1_android.apk" rel="noopener">Get the APK from the latest release</a></p>
 					</div>
 				</div>
 			</div>
