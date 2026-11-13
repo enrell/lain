@@ -167,6 +167,20 @@ fn type_of(head: &[u8]) -> &'static str {
 pub const SOURCE_SIDECAR: &str = "sidecar";
 pub const SOURCE_COVER: &str = "cover";
 pub const SOURCE_FRAME: &str = "frame";
+/// D-287: the file cannot be reached, so its title's art stands in.
+pub const SOURCE_TITLE: &str = "title";
+
+/// Whether a file is where the catalog says, as its folder's listing
+/// shows it (D-287).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Presence {
+    /// Listed, or not checked (no path).
+    Here,
+    /// The folder is listed but the file is not in it.
+    FileGone,
+    /// The folder itself cannot be listed (an unmounted disk).
+    FolderGone,
+}
 
 /// What the thumbnail of each file is (D-282), in the order given: the
 /// still that came with it (`local_cover`'s choice, with its aspect when
@@ -187,16 +201,33 @@ pub fn describe(files: &[&Path]) -> Vec<Option<ThumbnailInfo>> {
 /// measures) and read on a later answer. The first page of a library of
 /// posters on a cold spinning disk would otherwise wait a seek per poster.
 pub fn describe_within(files: &[&Path], budget: Duration) -> Vec<Option<ThumbnailInfo>> {
+    describe_presence_within(files, budget).into_iter().map(|(info, _)| info).collect()
+}
+
+/// `describe`, and whether each file is there (D-287), from the same
+/// folder listings: a file that cannot be reached has no frame to cut,
+/// so its thumbnail is its title's art (`title`) unless a still beside it
+/// is still there.
+pub fn describe_presence(files: &[&Path]) -> Vec<(Option<ThumbnailInfo>, Presence)> {
+    describe_presence_within(files, ASPECT_BUDGET)
+}
+
+fn describe_presence_within(files: &[&Path], budget: Duration) -> Vec<(Option<ThumbnailInfo>, Presence)> {
     let until = std::time::Instant::now() + budget;
     let mut folders: HashMap<PathBuf, Folder> = HashMap::new();
     files
         .iter()
         .map(|file| {
             if file.as_os_str().is_empty() {
-                return None;
+                return (None, Presence::Here);
             }
             let dir = file.parent().unwrap_or(Path::new(""));
             let folder = folders.entry(dir.to_path_buf()).or_insert_with(|| Folder::read(dir));
+            let presence = match file.file_name() {
+                _ if !folder.listed => Presence::FolderGone,
+                Some(name) if !folder.names.contains(name.to_string_lossy().as_ref()) => Presence::FileGone,
+                _ => Presence::Here,
+            };
             let own = own_names(file)
                 .unwrap_or_default()
                 .into_iter()
@@ -204,13 +235,17 @@ pub fn describe_within(files: &[&Path], budget: Duration) -> Vec<Option<Thumbnai
                 .map(|n| dir.join(n))
                 .find(|p| still_file(p));
             if let Some(still) = own.or_else(|| folder.still.clone()) {
-                return Some(ThumbnailInfo {
-                    source: SOURCE_SIDECAR.into(),
-                    aspect: aspect_until(&still, Some(until)),
-                });
+                let info = ThumbnailInfo { source: SOURCE_SIDECAR.into(), aspect: aspect_until(&still, Some(until)) };
+                return (Some(info), presence);
             }
-            let source = if lain_read::archive::format(file).is_empty() { SOURCE_FRAME } else { SOURCE_COVER };
-            Some(ThumbnailInfo { source: source.into(), aspect: None })
+            let source = if presence != Presence::Here {
+                SOURCE_TITLE
+            } else if lain_read::archive::format(file).is_empty() {
+                SOURCE_FRAME
+            } else {
+                SOURCE_COVER
+            };
+            (Some(ThumbnailInfo { source: source.into(), aspect: None }), presence)
         })
         .collect()
 }
@@ -219,11 +254,15 @@ pub fn describe_within(files: &[&Path], budget: Duration) -> Vec<Option<Thumbnai
 struct Folder {
     names: HashSet<String>,
     still: Option<PathBuf>,
+    /// Whether the folder could be listed at all.
+    listed: bool,
 }
 
 impl Folder {
     fn read(dir: &Path) -> Folder {
-        let names: HashSet<String> = std::fs::read_dir(dir)
+        let listing = std::fs::read_dir(dir);
+        let listed = listing.is_ok();
+        let names: HashSet<String> = listing
             .map(|entries| entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
             .unwrap_or_default();
         let thumbs = dir.join(".metadata").join("thumbs");
@@ -232,7 +271,7 @@ impl Folder {
         } else {
             None
         };
-        Folder { names, still }
+        Folder { names, still, listed }
     }
 }
 
@@ -601,6 +640,29 @@ mod cover_tests {
     }
 
     #[test]
+    fn describe_tells_a_file_that_cannot_be_reached() {
+        let dir = std::env::temp_dir().join(format!("lain-presence-{}", std::process::id()));
+        let show = dir.join("Show");
+        std::fs::create_dir_all(&show).unwrap();
+        std::fs::write(show.join("Show 01.mkv"), b"media").unwrap();
+        // A poster outlives its episode: the route still serves it.
+        std::fs::write(show.join("Show 02-poster.png"), lain_read::image::test_png(600, 900)).unwrap();
+        let files =
+            [show.join("Show 01.mkv"), show.join("Show 02.mkv"), show.join("Show 03.mkv"), dir.join("Gone/Film.mp4")];
+        let refs: Vec<&Path> = files.iter().map(PathBuf::as_path).collect();
+        assert_eq!(
+            describe_presence(&refs),
+            vec![
+                (info(SOURCE_FRAME, None), Presence::Here),
+                (info(SOURCE_SIDECAR, Some(0.667)), Presence::FileGone),
+                (info(SOURCE_TITLE, None), Presence::FileGone),
+                (info(SOURCE_TITLE, None), Presence::FolderGone),
+            ]
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn describe_says_what_each_thumbnail_is() {
         let dir = std::env::temp_dir().join(format!("lain-describe-{}", std::process::id()));
         let show = dir.join("Show");
@@ -629,6 +691,10 @@ mod cover_tests {
             show.join("Book v01.cbz"),
             PathBuf::new(),
         ];
+        // The files are there: one that is not is told apart (D-287).
+        for f in files.iter().filter(|f| !f.as_os_str().is_empty()) {
+            std::fs::write(f, b"media").unwrap();
+        }
         let refs: Vec<&Path> = files.iter().map(PathBuf::as_path).collect();
         let got = describe(&refs);
         assert_eq!(

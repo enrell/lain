@@ -10,7 +10,7 @@
 //! read on that pool (`serve.rs`). Media elements cannot send headers,
 //! so every media route also takes `?token=`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -34,6 +34,7 @@ use lain_watch::transcode::{self, Policy, V3Request, V3Status};
 use lain_watch::{CAP_MEDIA_PROBE, CAP_PLAYBACK_PLAN, CAP_TRANSCODE_SETTINGS, localplay, settings as st, thumbnail};
 
 use crate::app::App;
+use crate::art;
 use crate::gateway::{Gate, Reply, Req, authorize, parse_query};
 use crate::serve;
 
@@ -311,12 +312,18 @@ fn playback(app: &App, w: &WReq, v: &Verified) -> Out {
         Ok(it) => it,
         Err(o) => return *o,
     };
-    // A row can outlive its file between reconciliations (D-068).
+    // A row can outlive its file between reconciliations (D-068), and a
+    // library's disk can be away (D-287): the reason says which.
     if std::fs::metadata(&it.file_path).is_err() {
+        let reason = if library_reachable(app, &it.library_id, &mut HashMap::new()) {
+            "the file is no longer on disk"
+        } else {
+            "the library's folder cannot be reached"
+        };
         return Reply::ok(json!(PlaybackPlan {
             mode: "unavailable".into(),
             available: false,
-            reason: "the file is no longer on disk".into(),
+            reason: reason.into(),
             ..PlaybackPlan::default()
         }))
         .into();
@@ -429,15 +436,20 @@ fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
     // its first episode is that episode's cover, never its still.
     let media = Path::new(&it.file_path);
     let still = w.req.query("art").trim() == "still";
-    if w.req.query("t").trim().is_empty()
-        && let Some(art) = if still { thumbnail::own_still(media) } else { thumbnail::local_cover(media) }
-    {
+    let timed = !w.req.query("t").trim().is_empty();
+    if !timed && let Some(art) = if still { thumbnail::own_still(media) } else { thumbnail::local_cover(media) } {
         let headers = vec![("cache-control", "private, max-age=86400".into())];
         let kind = thumbnail::image_type(&art);
         return file(art, kind, headers, "thumbnail unavailable");
     }
     let at = w.req.query("t").trim().parse::<f64>().ok().filter(|t| *t >= 0.0 && t.is_finite()).unwrap_or(10.0);
     let width = w.req.query("w").trim().parse::<i64>().ok().filter(|n| *n > 0).unwrap_or(480).clamp(32, 1280);
+    // D-287: a file that cannot be reached (an unmounted disk) has no
+    // frame; its title's art stands in rather than an error a card draws
+    // as an empty box.
+    if it.file_path.is_empty() || std::fs::metadata(media).is_err() {
+        return title_art(app, v, &it, still || timed, width, art::SOURCE_UNAVAILABLE);
+    }
     let req = thumbnail::Request { file_path: it.file_path.clone(), time_sec: at, width };
     let thumb: thumbnail::Thumbnail =
         match app.registry.call_one(thumbnail::CAP, "thumbnail", serde_json::to_value(&req).unwrap_or_default()) {
@@ -447,24 +459,75 @@ fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
             },
             Err(e) => {
                 tracing::warn!(item = %it.id, err = %e, "thumbnail failed");
-                return Reply::err(503, &e.to_string()).into();
+                // Gone between the check and the cut, or no ffmpeg: the
+                // same stand-in, saying which.
+                let reason =
+                    if std::fs::metadata(media).is_err() { art::SOURCE_UNAVAILABLE } else { art::FRAME_UNAVAILABLE };
+                return title_art(app, v, &it, still || timed, width, reason);
             }
         };
     file(&thumb.path, "image/jpeg", vec![("cache-control", "private, max-age=86400".into())], "thumbnail unavailable")
 }
 
+/// The stand-in for a file's picture (D-287), with headers saying what it
+/// is and why. Cached briefly: a disk mounted again shows its stills soon.
+fn title_art(app: &App, v: &Verified, it: &CatalogItem, wide: bool, width: i64, reason: &'static str) -> Out {
+    const CACHE: &str = "private, max-age=60";
+    let tell = |what: &'static str| -> Vec<(&'static str, String)> {
+        vec![("cache-control", CACHE.into()), (art::HEADER, what.into()), (art::REASON_HEADER, reason.into())]
+    };
+    match art::title_art(app, v, it, wide, width) {
+        art::TitleArt::File(p) => {
+            let kind = thumbnail::image_type(&p);
+            file(p, kind, tell(art::TITLE_ART), "thumbnail unavailable")
+        }
+        art::TitleArt::Redirect(url) => {
+            let mut headers = tell(art::TITLE_ART);
+            headers.push(("location", url));
+            Out::WithHeaders(Reply::bytes(302, "text/plain; charset=utf-8", Vec::new()), headers)
+        }
+        art::TitleArt::Placeholder(svg) => {
+            let mut headers = tell(art::PLACEHOLDER);
+            // Served from this origin and opened on its own, an SVG is a
+            // document: it may run nothing and load nothing.
+            headers.push(("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'".into()));
+            headers.push(("x-content-type-options", "nosniff".into()));
+            Out::WithHeaders(Reply::bytes(200, "image/svg+xml", svg.into_bytes()), headers)
+        }
+    }
+}
+
 /// D-282: tells each item what `GET /api/items/{id}/thumbnail` serves it
 /// without a time, so a client draws its card in the picture's shape
 /// before the picture loads. Filled on every read, never stored: a still
-/// added next to a file counts at once, as it does for the route.
-pub(crate) fn tell_thumbnails(items: &mut [CatalogItem]) {
+/// added next to a file counts at once, as it does for the route. D-287:
+/// with it, whether the file can be reached now (`offline`), from the
+/// same folder listings, so a card says so instead of failing on Play.
+pub(crate) fn tell_thumbnails(app: &App, items: &mut [CatalogItem]) {
     let infos = {
         let files: Vec<&Path> = items.iter().map(|it| Path::new(&it.file_path)).collect();
-        thumbnail::describe(&files)
+        thumbnail::describe_presence(&files)
     };
-    for (it, info) in items.iter_mut().zip(infos) {
+    let mut libraries: HashMap<String, bool> = HashMap::new();
+    for (it, (info, presence)) in items.iter_mut().zip(infos) {
         it.thumbnail = info;
+        it.offline = match presence {
+            thumbnail::Presence::Here => String::new(),
+            _ if library_reachable(app, &it.library_id, &mut libraries) => lain_api::OFFLINE_FILE.into(),
+            _ => lain_api::OFFLINE_LIBRARY.into(),
+        };
     }
+}
+
+/// Whether a library's folder is there and holds anything: an unmounted
+/// disk often leaves its mount point behind, empty. Asked once per
+/// library per answer.
+fn library_reachable(app: &App, id: &str, seen: &mut HashMap<String, bool>) -> bool {
+    *seen.entry(id.to_string()).or_insert_with(|| {
+        app.libraries.get(id).is_some_and(|lib| {
+            !lib.path.is_empty() && std::fs::read_dir(&lib.path).is_ok_and(|mut entries| entries.next().is_some())
+        })
+    })
 }
 
 /// The item's length, probed; `None` when it is not a file ffprobe reads.
