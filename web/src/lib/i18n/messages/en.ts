@@ -1650,7 +1650,9 @@ const en = {
 		lead: 'Everything Lain has indexed.',
 		scan: 'Scan',
 		scanning: 'Scanning…',
-		manage: 'Manage libraries'
+		manage: 'Manage libraries',
+		// The phone's ⋯ beside the title that holds Unlock, Scan and Manage libraries.
+		upkeep: 'Library actions'
 	},
 	favorites: {
 		title: 'Favorites',
