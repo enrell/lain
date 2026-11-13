@@ -394,11 +394,9 @@
 				/>
 			{/if}
 			<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
-			<button type="button" class="absolute left-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur md:hidden" aria-label="Back" onclick={() => history.back()}>
-				<ArrowLeft class="size-5" aria-hidden="true" />
-			</button>
-			<!-- On a phone the cover sits beside the name, as on a series page (TitleView). -->
-			<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-16 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
+			<!-- On a phone the cover sits beside the name, as on a series page (TitleView);
+			     Back is the top bar's (AppShell). -->
+			<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-6 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
 				<div class="w-full shrink-0 md:w-52">
 					<Poster {item} {enrichment} class="aspect-[2/3] rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10" priority />
 				</div>

@@ -405,7 +405,11 @@
 			if (!card) return;
 			// Clear of the phone's bottom bar.
 			const floor = window.innerHeight - (window.matchMedia('(min-width: 768px)').matches ? 24 : 96);
-			const below = card.getBoundingClientRect().bottom - floor;
+			const box = card.getBoundingClientRect();
+			// A card already half in view is found: nudging the page for its caption
+			// only slid the top of the hero under the bar.
+			if (box.top + box.height / 2 <= floor) return;
+			const below = box.bottom - floor;
 			if (below <= 0) return;
 			const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 			window.scrollBy({ top: below, behavior: calm ? 'auto' : 'smooth' });
@@ -434,15 +438,13 @@
 			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md" />
 		{/if}
 		<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
-		<button type="button" class="absolute left-3 top-3 z-10 flex size-11 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur md:hidden" aria-label="Back" onclick={() => history.back()}>
-			<ArrowLeft class="size-5" aria-hidden="true" />
-		</button>
+		<!-- On a phone Back is the top bar's (AppShell): drawn here, it scrolled under that bar. -->
 		<!-- One template for every kind of title: the cover, then what it is and what it can do.
 		     Both start on one line: aligned at the bottom, the cover floated mid-hero beside a
 		     long synopsis and the copy floated beside a cover taller than it. On a phone the
 		     cover sits beside the name, not above it: stacked, it put every episode below
 		     the fold. -->
-		<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-14 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
+		<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-6 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
 			<div class="aspect-[2/3] w-full shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
 				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
