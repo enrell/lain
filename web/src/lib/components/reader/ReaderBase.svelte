@@ -671,21 +671,23 @@
 		>
 			<!-- The direction beside the slider it turns around, on a phone, where the
 			     LTR / RTL toggles wait behind the options button: a slider running 8 to 1
-			     with nothing saying why read as broken. A tap flips it, as R does. -->
+			     with nothing saying why read as broken. A tap flips it, as R does. Set as
+			     the toolbar's own LTR / RTL (ReaderToggle: 12 px, light tracking), not in
+			     the 10 px spaced capitals the reader gave up as too hard to read. -->
 			{#if showDirection}
 				{@const Arrow = settings.direction === 'rtl' ? ArrowLeft : ArrowRight}
 				{@const name = settings.direction === 'rtl' ? t('reader.toolbar.rtl') : t('reader.toolbar.ltr')}
 				{#if profile.controls.direction}
 					<button
 						type="button"
-						class="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-line/70 bg-foreground/[0.06] px-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-foreground active:bg-surface-hover sm:hidden"
+						class="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg border border-line/70 bg-foreground/[0.06] px-2.5 font-mono text-xs font-semibold uppercase tracking-[0.06em] text-foreground active:bg-surface-hover sm:hidden"
 						aria-label={t(settings.direction === 'rtl' ? 'reader.toolbar.readsRtl' : 'reader.toolbar.readsLtr')}
 						onclick={() => settings.toggleDirection()}
 					>
 						<Arrow class="size-3.5" aria-hidden="true" />{name}
 					</button>
 				{:else}
-					<span class="inline-flex min-h-10 shrink-0 items-center gap-1.5 px-1 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted sm:hidden">
+					<span class="inline-flex min-h-10 shrink-0 items-center gap-1.5 px-1 font-mono text-xs font-semibold uppercase tracking-[0.06em] text-muted sm:hidden">
 						<Arrow class="size-3.5" aria-hidden="true" /><span class="sr-only">{t(`reader.info.direction.${settings.direction}`)}</span><span aria-hidden="true">{name}</span>
 					</span>
 				{/if}
