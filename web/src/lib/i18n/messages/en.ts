@@ -741,7 +741,9 @@ const en = {
 				label: 'HDR',
 				ready: 'HDR files are tone mapped for screens and browsers that cannot show them.',
 				missing: 'This ffmpeg cannot tone map: HDR files play only on devices that show HDR themselves.',
-				none: 'Not available'
+				none: 'Not available',
+				choose: 'HDR tone mapping',
+				off: 'Off'
 			},
 			probe: {
 				title: 'What the probe found',

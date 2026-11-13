@@ -421,6 +421,31 @@
 		if (view === 'auto' && id !== (readyHardware[0] ?? 'none')) view = 'custom';
 	}
 
+	/*
+	 * HDR in the server's rows: what runs (a BT.2390 the probe cannot run is
+	 * Hable), or off, as a choice like the engine above it. A bare "HABLE"
+	 * there gave no hint whether or where it could be changed; when to apply
+	 * it and the peak stay in the HDR section.
+	 */
+	const toneChoices = $derived([
+		{ value: 'off', label: t('settings.transcode.hdrRow.off') },
+		...toneAlgorithms.map((a) => ({ ...a, disabled: a.value === 'bt2390' && !capabilities?.tone_mapping_bt2390 }))
+	]);
+	const toneInForce = $derived(
+		!settings?.tone_mapping
+			? 'off'
+			: settings.tone_mapping_algorithm === 'bt2390' && !capabilities?.tone_mapping_bt2390
+				? 'hable'
+				: settings.tone_mapping_algorithm
+	);
+	// Another tone map than Auto's, or none, is a choice of one's own.
+	function pickTone(value: string): void {
+		if (!settings) return;
+		settings.tone_mapping = value !== 'off';
+		if (value !== 'off') settings.tone_mapping_algorithm = value;
+		if (view === 'auto' && !isAutomatic(settings, capabilities)) view = 'custom';
+	}
+
 	// "/" jumps to the setting search, as in most developer tools.
 	let searchInput = $state<HTMLInputElement>();
 	usePageKeys(() => [{ keys: ['/'], label: t('pageKeys.settingsFilter') }]);
@@ -540,15 +565,18 @@
 				{/if}
 				<SettingRow
 					label={t('settings.transcode.hdrRow.label')}
-					hint={capabilities.tone_mapping ? t('settings.transcode.hdrRow.ready') : t('settings.transcode.hdrRow.missing')}
+					hint={!capabilities.tone_mapping
+						? t('settings.transcode.hdrRow.missing')
+						: settings.tone_mapping
+							? t('settings.transcode.hdrRow.ready')
+							: t('settings.transcode.hdr.sumOff')}
 				>
-					<span class="font-mono text-xs uppercase tracking-[0.14em] {capabilities.tone_mapping ? 'text-foreground' : 'text-warning'}">
-						{capabilities.tone_mapping
-							? capabilities.tone_mapping_bt2390
-								? 'BT.2390'
-								: 'Hable'
-							: t('settings.transcode.hdrRow.none')}
-					</span>
+					{#if capabilities.tone_mapping}
+						{@render select(t('settings.transcode.hdrRow.choose'), toneInForce, toneChoices, pickTone)}
+					{:else}
+						<!-- Nothing to choose: this ffmpeg cannot tone map. -->
+						<span class="font-mono text-xs uppercase tracking-[0.14em] text-warning">{t('settings.transcode.hdrRow.none')}</span>
+					{/if}
 				</SettingRow>
 			</SettingsGroup>
 		{/if}
