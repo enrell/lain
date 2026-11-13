@@ -445,10 +445,13 @@
 		return api.thumbnail.url(id, session.token, { width: 480 });
 	}
 
+	// How far into a part, 0 to 1, unrounded: a card begun a fraction of a
+	// second in says the time left (cardLine), so it wears the bar's floor too;
+	// rounded to a whole percent it said "15 sec left" with no bar.
 	function cardProgress(id: string): number {
 		const p = progressMap?.get(id);
 		if (!p || p.completed || p.duration_sec <= 0) return 0;
-		return Math.min(100, Math.round((p.position_sec / p.duration_sec) * 100));
+		return Math.min(1, Math.max(0, p.position_sec / p.duration_sec));
 	}
 </script>
 
@@ -765,7 +768,7 @@
 		{/if}
 		{#if ratio > 0}
 			<!-- The bar every card wears: inset and rounded, not a strip on the edge. -->
-			<CardProgress ratio={ratio / 100} label={t(reading ? 'title.readProgress' : 'title.watchProgress')} />
+			<CardProgress {ratio} label={t(reading ? 'title.readProgress' : 'title.watchProgress')} />
 		{/if}
 	</div>
 	<!-- Room at the end for the card's ⋮, which sits over this corner. -->
