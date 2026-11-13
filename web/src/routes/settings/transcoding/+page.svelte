@@ -394,17 +394,20 @@
 				: readyHardware.length
 					? t('settings.transcode.hardware.sumOff')
 					: t('settings.transcode.hardware.sumNone'),
-			processing: !s.tone_mapping
-				? t('settings.transcode.hdr.sumOff')
-				: list([
-						s.tone_mapping_mode === 'auto' ? t('settings.transcode.hdr.sumAuto') : s.tone_mapping_mode === 'always' ? t('settings.transcode.hdr.sumAlways') : t('settings.transcode.hdr.sumNever'),
-						// What runs, not what was asked for: BT.2390 without libplacebo is Hable.
-						s.tone_mapping_algorithm === 'bt2390'
-							? capabilities?.tone_mapping_bt2390
-								? 'BT.2390'
-								: t('settings.transcode.hdr.sumFallback')
-							: s.tone_mapping_algorithm.replace(/^./, (c) => c.toUpperCase())
-					]),
+			// An ffmpeg that cannot tone map says so, as the HDR row does, whatever is stored.
+			processing: capabilities && !capabilities.tone_mapping
+				? t('settings.transcode.hdrRow.none')
+				: !s.tone_mapping
+					? t('settings.transcode.hdr.sumOff')
+					: list([
+							s.tone_mapping_mode === 'auto' ? t('settings.transcode.hdr.sumAuto') : s.tone_mapping_mode === 'always' ? t('settings.transcode.hdr.sumAlways') : t('settings.transcode.hdr.sumNever'),
+							// What runs, not what was asked for: BT.2390 without libplacebo is Hable.
+							s.tone_mapping_algorithm === 'bt2390'
+								? capabilities?.tone_mapping_bt2390
+									? 'BT.2390'
+									: t('settings.transcode.hdr.sumFallback')
+								: s.tone_mapping_algorithm.replace(/^./, (c) => c.toUpperCase())
+						]),
 			audio: list([
 				t('settings.transcode.audio.sumBitrate', { kbps: s.audio_bitrate_kbps }),
 				s.downmix_audio ? t('settings.transcode.audio.sumDownmix') : '',
@@ -765,8 +768,10 @@
 
 		{#if shows('processing', sectionTitles.processing)}
 			<SettingsGroup id="processing" title={sectionTitles.processing} description={summaries.processing} bind:open={opened.processing}>
-				<!-- On or off is the HDR row's, under This server. -->
-				{#if !settings.tone_mapping}
+				<!-- On or off is the HDR row's, under This server. An ffmpeg that cannot
+				     tone map has nothing here to tune either, even with the setting on (its
+				     default): the HDR row says "Not available", so the section says why. -->
+				{#if !settings.tone_mapping || !capabilities.tone_mapping}
 					<p class="py-4 text-sm text-muted">{t(capabilities.tone_mapping ? 'settings.transcode.hdr.off' : 'settings.transcode.hdrRow.missing')}</p>
 				{:else}
 					<SettingRow label={t('settings.transcode.hdr.algorithm')} hint={capabilities.tone_mapping_bt2390 ? undefined : t('settings.transcode.hdr.bt2390Missing')}>
