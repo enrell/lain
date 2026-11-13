@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CatalogItem } from '$lib/api/types';
 import { groupItems } from '$lib/utilities/grouping';
-import { guessFrame, settleFrame, wideStill } from './frames';
+import { cardPicture, guessFrame, settleFrame, stillOf, wideStill } from './frames';
 import { enrichmentCache, libraryCache } from './media-cache.svelte';
 import { guessShape, MEASURE_WAIT_MS, measure } from './shapes.svelte';
 
@@ -154,5 +154,22 @@ describe('a set drawn before its pictures', () => {
 		await done;
 		await measure([{ id: 'm0', src: 'm0.jpg' }]);
 		expect(FakeImage.made).toHaveLength(1);
+	});
+});
+
+describe('a file that cannot be reached (D-287)', () => {
+	const away: CatalogItem = {
+		id: 'gone', library_id: 'lib-pub', kind: 'episode', title: 'Away', season: 1, episode: 2, year: 0, file_path: '/m/a.mkv',
+		size: 1, confidence: 1, origin: '', provenance: '', updated_at: 0, offline: 'library', thumbnail: { source: 'title' }
+	};
+	it('letters its title in a poster frame instead of the server stand-in, and never measures it', () => {
+		expect(cardPicture(away, null)).toBe('');
+		expect(cardPicture(away, { item_id: 'gone', provider: 'p', remote_id: '', title: '', fetched_at: 0, poster: 'https://p.jpg' })).toBe('https://p.jpg');
+		expect(cardPicture({ id: 'here', kind: 'episode', thumbnail: { source: 'frame' } }, null)).toContain('/thumbnail');
+	});
+	it('teaches nothing of the stills of its library', () => {
+		libraryCache.set('lib-pub', { id: 'lib-pub', name: 'Pub', type: 'show', path: '/m', source: '', created_at: 0 });
+		expect(stillOf(away)).toBeUndefined();
+		expect(stillOf({ ...away, offline: undefined })).toBeDefined();
 	});
 });

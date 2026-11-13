@@ -19,7 +19,8 @@
 //!   next matching event on that stream (others are skipped; with
 //!   `strict`, the next event of that name must match).
 //! - `{"write_file": {path, json? | text?}}` (parent directories are
-//!   created), `{"remove_file": path}`,
+//!   created), `{"remove_file": path}`, `{"rename_file": {from, to}}`
+//!   (a file or a folder: a library's disk taken away and back),
 //!   `{"sleep_ms": n}`.
 //!
 //! `{{var}}` in strings is replaced from the variable map; a string
@@ -344,6 +345,14 @@ impl Runner {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
                 Err(e) => Err(format!("remove {p}: {e}")),
             };
+        }
+        if let Some(r) = step.get("rename_file") {
+            let r = subst(r, &self.vars)?;
+            let (from, to) = match (r["from"].as_str(), r["to"].as_str()) {
+                (Some(f), Some(t)) => (f, t),
+                _ => return Err("rename_file needs from and to".into()),
+            };
+            return std::fs::rename(from, to).map_err(|e| format!("rename {from} to {to}: {e}"));
         }
         if let Some(ms) = step.get("sleep_ms").and_then(Value::as_u64) {
             std::thread::sleep(Duration::from_millis(ms));
