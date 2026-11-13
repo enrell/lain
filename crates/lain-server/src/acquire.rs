@@ -6,7 +6,9 @@
 //! metadata episode count), the libraries, the catalog and the scan
 //! controller, and turns their changes into `/api/events`. Every route
 //! is admin-only (A-9): acquisition makes the server contact remote
-//! hosts and write to disk.
+//! hosts and write to disk. The indexer routes also take an integration
+//! key with the `indexers` scope (`Gate::Indexers`, D-290), so a coding
+//! agent can set indexers up for the owner; nothing else does.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -36,11 +38,15 @@ const PARSER_MODEL_ID: &str = "lain-release-model";
 
 pub fn routes() -> Router<Arc<App>> {
     let a = Gate::Admin;
+    let ix = Gate::Indexers;
     Router::new()
         .route("/api/acquire/settings", route(GET, a, settings_get).merge(route(PUT, a, settings_put)))
-        .route("/api/acquire/indexers", route(GET, a, indexers).merge(route(POST, a, indexer_create)))
-        .route("/api/acquire/indexers/{id}", route(PATCH, a, indexer_patch).merge(route(DELETE, a, indexer_delete)))
-        .route("/api/acquire/indexers/{id}/test", route(POST, a, indexer_test))
+        .route("/api/acquire/indexers", route(GET, ix, indexers).merge(route(POST, ix, indexer_create)))
+        .route("/api/acquire/indexers/probe", route(POST, ix, indexer_probe))
+        .route("/api/acquire/indexers/discover", route(POST, ix, indexer_discover))
+        .route("/api/acquire/indexers/import", route(POST, ix, indexer_import))
+        .route("/api/acquire/indexers/{id}", route(PATCH, ix, indexer_patch).merge(route(DELETE, ix, indexer_delete)))
+        .route("/api/acquire/indexers/{id}/test", route(POST, ix, indexer_test))
         .route("/api/acquire/search", route(GET, a, search))
         .route("/api/acquire/parse", route(GET, a, parse))
         .route("/api/acquire/grabs", route(GET, a, grabs).merge(route(POST, a, grab)))
@@ -394,28 +400,91 @@ fn indexers(app: &App, _: &Req, _: &Verified) -> Reply {
     })
 }
 
-fn indexer_create(app: &App, req: &Req, _: &Verified) -> Reply {
+/// What an integration key changed, by key id (never the key), so the
+/// owner can see in the log what an agent did.
+fn audit(v: &Verified, what: &str, indexer: &str) {
+    if v.role == crate::integration::ROLE_INTEGRATION {
+        tracing::info!(integration = %v.user_id, indexer = %indexer, "{what} by an integration key");
+    }
+}
+
+fn indexer_create(app: &App, req: &Req, v: &Verified) -> Reply {
     with_acq(app, |m| {
         let input: IndexerInput = match decode(req) {
             Ok(v) => v,
             Err(r) => return r,
         };
-        created_or(m.create_indexer(&input).map(|ix| json!(indexer_view(m, &ix))))
+        created_or(m.create_indexer(&input).map(|ix| {
+            audit(v, "indexer added", &ix.id);
+            json!(indexer_view(m, &ix))
+        }))
     })
 }
 
-fn indexer_patch(app: &App, req: &Req, _: &Verified) -> Reply {
+fn indexer_patch(app: &App, req: &Req, v: &Verified) -> Reply {
     with_acq(app, |m| {
         let input: IndexerInput = match decode(req) {
             Ok(v) => v,
             Err(r) => return r,
         };
-        ok_or(m.update_indexer(req.param("id"), &input).map(|ix| json!(indexer_view(m, &ix))))
+        ok_or(m.update_indexer(req.param("id"), &input).map(|ix| {
+            audit(v, "indexer changed", &ix.id);
+            json!(indexer_view(m, &ix))
+        }))
     })
 }
 
-fn indexer_delete(app: &App, req: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| removed(m.delete_indexer(req.param("id"))))
+fn indexer_delete(app: &App, req: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let r = m.delete_indexer(req.param("id"));
+        if r.is_ok() {
+            audit(v, "indexer removed", req.param("id"));
+        }
+        removed(r)
+    })
+}
+
+/// Caps and a sample search for an indexer not saved yet (or an edit
+/// of one): 200 either way, like a test.
+fn indexer_probe(app: &App, req: &Req, _: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let input: IndexerProbeInput = match decode(req) {
+            Ok(v) => v,
+            Err(r) => return r,
+        };
+        ok_or(m.probe_indexer(&input).map(|p| json!(p)))
+    })
+}
+
+/// The indexers a Prowlarr or Jackett serves (presets, D-290).
+fn indexer_discover(app: &App, req: &Req, _: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let input: DiscoverInput = match decode(req) {
+            Ok(v) => v,
+            Err(r) => return r,
+        };
+        ok_or(m.discover(&input).map(|d| json!(d)))
+    })
+}
+
+fn indexer_import(app: &App, req: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let input: IndexerImportInput = match decode(req) {
+            Ok(v) => v,
+            Err(r) => return r,
+        };
+        match m.import_indexers(&input) {
+            Ok((added, skipped)) => {
+                for ix in &added {
+                    audit(v, "indexer added", &ix.id);
+                }
+                let status = if added.is_empty() { 200 } else { 201 };
+                let added = added.iter().map(|ix| indexer_view(m, ix)).collect();
+                Reply::json(status, json!(IndexerImport { added, skipped }))
+            }
+            Err(e) => acq_err(e),
+        }
+    })
 }
 
 /// 200 with the recorded health either way: a failing indexer is a

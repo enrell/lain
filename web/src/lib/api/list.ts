@@ -86,6 +86,10 @@ export interface ApiKey {
 	name: string;
 	libraries: string[];
 	created_at: number;
+	/** `library` (feeds libraries) or `indexers` (a coding agent's, D-290). */
+	scopes?: ('library' | 'indexers')[];
+	/** Unix seconds; 0 never. Indexers keys always expire. */
+	expires_at?: number;
 	/** Only in the answer to `create`: the key is shown once. */
 	key?: string;
 }
@@ -93,7 +97,7 @@ export interface ApiKey {
 /** Admin: GET/POST /api/integrations, DELETE /api/integrations/{id}. */
 export const apiKeys = {
 	list: () => request<{ integrations: ApiKey[] }>('/api/integrations'),
-	create: (body: { name: string; libraries: string[] }) =>
+	create: (body: { name: string; libraries?: string[]; scopes?: ('library' | 'indexers')[]; ttl_seconds?: number }) =>
 		request<ApiKey>('/api/integrations', { method: 'POST', body }),
 	remove: (id: string) =>
 		request<{ status: string }>(`/api/integrations/${encodeURIComponent(id)}`, { method: 'DELETE' })

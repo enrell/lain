@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type Indexer, type IndexerInput } from '$lib/api';
+	import { page } from '$app/state';
+	import { api, type Indexer } from '$lib/api';
 	import Button from '$lib/components/primitives/Button.svelte';
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import Switch from '$lib/components/primitives/Switch.svelte';
 	import SettingRow from '$lib/components/settings/SettingRow.svelte';
 	import SettingsGroup from '$lib/components/settings/SettingsGroup.svelte';
-	import { parseCategories } from '$lib/acquire/format';
 	import { t } from '$lib/i18n';
+	import AddIndexer from './AddIndexer.svelte';
+	import AgentSetup from './AgentSetup.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatRelative } from '$lib/utilities/format';
@@ -18,19 +20,20 @@
 	/*
 	 * Indexers (docs/slices/acquisition.md, A-7/A-8): Torznab and Newznab,
 	 * so direct indexers and Jackett/Prowlarr both work. Changes apply at
-	 * once. Keys: n adds; a focused row takes t (test), e (edit),
-	 * Delete (remove), j/k (move). API keys are write-only.
+	 * once. Two ways in (D-290): the Add dialog (Prowlarr and Jackett
+	 * presets, or a feed tried before saving) and a coding agent with a
+	 * key that only manages indexers. Keys: n adds, a sets up an agent; a
+	 * focused row takes t (test), e (edit), Delete (remove), j/k (move).
+	 * API keys are write-only. ?setup=add|agent opens a dialog (Acquire's
+	 * first run links there).
 	 */
 	let indexers = $state<Indexer[] | null>(null);
 	let busy = $state('');
 	let editing = $state<Indexer | null>(null);
 	let open = $state(false);
-	let saving = $state(false);
+	let agentOpen = $state(false);
 	let confirmDelete = $state<Indexer | null>(null);
 	let deleteOpen = $state(false);
-	let nameInput = $state<HTMLInputElement>();
-
-	let form = $state({ name: '', protocol: 'torznab' as 'torznab' | 'newznab', url: '', api_key: '', categories: '', enabled: true, min_interval_ms: 2000 });
 
 	async function load(): Promise<void> {
 		try {
@@ -40,36 +43,21 @@
 			indexers = [];
 		}
 	}
-	onMount(() => void load());
+	onMount(() => {
+		void load();
+		const setup = page.url.searchParams.get('setup');
+		if (setup === 'agent') agentOpen = true;
+		else if (setup === 'add') startEdit(null);
+	});
 
 	function startEdit(ix: Indexer | null): void {
 		editing = ix;
-		form = ix
-			? { name: ix.name, protocol: ix.protocol, url: ix.url, api_key: '', categories: ix.categories.join(', '), enabled: ix.enabled, min_interval_ms: ix.min_interval_ms }
-			: { name: '', protocol: 'torznab', url: '', api_key: '', categories: '', enabled: true, min_interval_ms: 2000 };
 		open = true;
-		requestAnimationFrame(() => requestAnimationFrame(() => nameInput?.focus()));
 	}
 
-	async function submit(e: SubmitEvent): Promise<void> {
-		e.preventDefault();
-		saving = true;
-		const body: IndexerInput = {
-			name: form.name, protocol: form.protocol, url: form.url, categories: parseCategories(form.categories),
-			enabled: form.enabled, min_interval_ms: Number(form.min_interval_ms) || 0
-		};
-		if (form.api_key.trim()) body.api_key = form.api_key.trim();
-		try {
-			const saved = editing ? await api.acquire.updateIndexer(editing.id, body) : await api.acquire.createIndexer(body);
-			open = false;
-			toasts.success(t('acquire.indexers.saved', { name: saved.name }));
-			await load();
-			if (!editing) void test(saved);
-		} catch (err) {
-			toasts.error(errorMessage(err, t('acquire.indexers.saveFailed')));
-		} finally {
-			saving = false;
-		}
+	async function saved(fresh?: Indexer): Promise<void> {
+		await load();
+		if (fresh) void test(fresh);
 	}
 
 	async function test(ix: Indexer): Promise<void> {
@@ -140,15 +128,17 @@
 		e.preventDefault();
 	}
 
-	usePageKeys(() => [{ keys: ['N'], label: t('acquire.firstRun.addIndexer') }]);
+	usePageKeys(() => [
+		{ keys: ['N'], label: t('acquire.firstRun.addIndexer') },
+		{ keys: ['A'], label: t('acquire.agent.open') }
+	]);
 
 	function pageKey(e: KeyboardEvent): void {
-		if (e.key !== 'n' || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		if ((e.key !== 'n' && e.key !== 'a') || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
 		e.preventDefault();
-		startEdit(null);
+		if (e.key === 'n') startEdit(null);
+		else agentOpen = true;
 	}
-
-	const field = 'h-10 w-full rounded-md border border-transparent bg-field px-3 text-sm text-foreground placeholder:text-muted/60 focus:border-accent/60 focus:outline-none';
 </script>
 
 <svelte:head><title>{t('acquire.indexers.title')}</title></svelte:head>
@@ -157,12 +147,21 @@
 <div>
 	<SettingsGroup id="indexers" title={t('acquire.indexers.group')} description={t('settings.groups.indexers.indexers')}>
 		{#snippet aside()}
-			<Button size="field" variant="tonal" onclick={() => startEdit(null)}>{t('acquire.indexers.add')} <kbd class="ms-1 font-mono text-[10px] text-muted">n</kbd></Button>
+			<div class="flex flex-wrap gap-1.5">
+				<Button size="field" variant="ghost" onclick={() => (agentOpen = true)}>{t('acquire.agent.open')} <kbd class="ms-1 font-mono text-[10px] text-muted">a</kbd></Button>
+				<Button size="field" variant="tonal" onclick={() => startEdit(null)}>{t('acquire.indexers.add')} <kbd class="ms-1 font-mono text-[10px] text-muted">n</kbd></Button>
+			</div>
 		{/snippet}
 		{#if indexers === null}
 			<div class="flex justify-center py-10"><Spinner class="size-5 text-muted" /></div>
 		{:else if indexers.length === 0}
-			<p class="py-5 text-sm text-muted">{t('acquire.indexers.empty')}</p>
+			<div class="space-y-3 py-5">
+				<p class="text-sm text-muted">{t('acquire.indexers.empty')}</p>
+				<ul class="space-y-1.5 text-sm">
+					<li><button type="button" class="text-left text-foreground/85 hover:text-foreground" onclick={() => startEdit(null)}><kbd class="me-2 font-mono text-[10px] text-muted">n</kbd>{t('acquire.indexers.emptyPresets')}</button></li>
+					<li><button type="button" class="text-left text-foreground/85 hover:text-foreground" onclick={() => (agentOpen = true)}><kbd class="me-2 font-mono text-[10px] text-muted">a</kbd>{t('acquire.indexers.emptyAgent')}</button></li>
+				</ul>
+			</div>
 		{:else}
 			<p class="settings-note">{t('acquire.indexers.keys')}</p>
 			<div class="settings-items" role="grid" aria-label={t('acquire.indexers.group')}>
@@ -199,36 +198,8 @@
 	</SettingsGroup>
 </div>
 
-<Modal bind:open title={editing ? t('acquire.indexers.editTitle', { name: editing.name }) : t('acquire.indexers.addTitle')} description={t('acquire.indexers.formHint')}>
-	<form id="indexer-form" class="space-y-3" onsubmit={submit}>
-		<label class="block space-y-1.5"><span class="text-xs text-muted">{t('acquire.indexers.name')}</span>
-			<input bind:this={nameInput} bind:value={form.name} maxlength="60" required class={field} placeholder="tracker-exemplo" />
-		</label>
-		<label class="block space-y-1.5"><span class="text-xs text-muted">{t('acquire.indexers.protocol')}</span>
-			<select bind:value={form.protocol} class={field}>
-				<option value="torznab">Torznab</option>
-				<option value="newznab">Newznab</option>
-			</select>
-		</label>
-		<label class="block space-y-1.5"><span class="text-xs text-muted">{t('acquire.indexers.url')}</span>
-			<input bind:value={form.url} type="url" required spellcheck={false} class="{field} font-mono text-xs" placeholder="http://127.0.0.1:9117/api/v2.0/indexers/x/results/torznab" />
-		</label>
-		<label class="block space-y-1.5"><span class="text-xs text-muted">{editing?.has_api_key ? t('acquire.indexers.apiKeyKeep') : t('acquire.indexers.apiKey')}</span>
-			<input bind:value={form.api_key} type="password" autocomplete="off" spellcheck={false} class="{field} font-mono text-xs" />
-		</label>
-		<label class="block space-y-1.5"><span class="text-xs text-muted">{t('acquire.indexers.categories')}</span>
-			<input bind:value={form.categories} spellcheck={false} class="{field} font-mono text-xs" placeholder="5070, 5000, 7030" />
-		</label>
-		<label class="block space-y-1.5"><span class="text-xs text-muted">{t('acquire.indexers.interval')}</span>
-			<input bind:value={form.min_interval_ms} type="number" min="0" max="600000" class="{field} font-mono text-xs" />
-		</label>
-		<Switch label={t('acquire.indexers.enabled')} bind:checked={form.enabled} />
-	</form>
-	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (open = false)}>{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
-		<Button type="submit" form="indexer-form" loading={saving}>{t('acquire.indexers.save')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
-	{/snippet}
-</Modal>
+<AddIndexer bind:open {editing} onsaved={(fresh) => void saved(fresh)} />
+<AgentSetup bind:open={agentOpen} />
 
 <Modal bind:open={deleteOpen} title={t('acquire.indexers.removeTitle', { name: confirmDelete?.name ?? '' })} description={t('acquire.indexers.removeBody')}>
 	{#snippet footer()}

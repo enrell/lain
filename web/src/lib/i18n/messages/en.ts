@@ -379,6 +379,7 @@ const en = {
 			saved: 'Integration settings saved.',
 			saveFailed: 'Could not save the integration settings.',
 			copyFailed: 'Could not copy to the clipboard.',
+			indexersScope: 'Indexers only · expires {when}',
 			callback: 'Callback URL to register',
 			copyCallback: 'Copy the callback URL',
 			clientId: 'Client ID',
@@ -2047,7 +2048,8 @@ const en = {
 			fromLink: 'Grab from a link',
 			stepIndexer: 'Add an indexer',
 			// What an indexer is, not where it is added: the button over the steps and the header's Indexers go there.
-			stepIndexerText: 'A Torznab address and its API key, from Jackett or Prowlarr.',
+			stepIndexerText: 'From a Prowlarr or Jackett you run, a Torznab feed, or a coding agent you hand a key that only manages indexers.',
+			agent: 'Set up with a coding agent',
 			stepSearch: 'Search',
 			stepSearchText: 'Search here, then grab a release into the library you pick.',
 			stepFollow: 'Follow',
@@ -2225,8 +2227,39 @@ const en = {
 			addTitle: 'Add an indexer',
 			editTitle: 'Edit {name}',
 			formHint: 'Torznab or Newznab. For Jackett or Prowlarr, paste the per-indexer Torznab URL and the API key.',
+			addHint: 'From a Prowlarr or Jackett you run, or one Torznab or Newznab feed.',
 			// The key is on the Add indexer button just above (and means nothing on a phone).
 			empty: 'No indexer yet, so Acquire has nothing to search.',
+			emptyPresets: 'Add from Prowlarr, Jackett or a feed URL',
+			emptyAgent: 'Or let a coding agent set them up with a key that only manages indexers',
+			source: 'Source',
+			sourceFeed: 'Feed URL',
+			prowlarrHint: 'Its address and the API key from Prowlarr’s Settings › General. Lain lists the indexers it serves; tick the ones to add.',
+			jackettHint: 'Its address and the API key at the top of Jackett’s dashboard. Lain lists the indexers set up there; tick the ones to add.',
+			baseUrl: 'Address',
+			find: 'Find indexers',
+			addPicked: { zero: 'Add', one: 'Add {count} indexer', other: 'Add {count} indexers' },
+			foundCount: { zero: '{source} serves no indexer', one: '{source} serves {count} indexer', other: '{source} serves {count} indexers' },
+			foundNone: 'Set indexers up in {source} first, then find them again.',
+			findAgain: 'The address or key changed: Enter finds again.',
+			alreadyAdded: 'added',
+			offThere: 'off in {source}',
+			privacyPublic: 'public',
+			privacyPrivate: 'private',
+			privacySemi: 'semi-private',
+			imported: { zero: 'Nothing new from {source}.', one: 'Added {count} indexer from {source}.', other: 'Added {count} indexers from {source}.' },
+			discoverFailed: 'Could not ask {source}.',
+			tryFeed: 'Try it',
+			probeOk: { one: 'Answered · {modes} · {count} category', other: 'Answered · {modes} · {count} categories' },
+			capSearch: 'search',
+			capTv: 'TV',
+			capMovie: 'movies',
+			capBook: 'books',
+			sample: 'Latest releases',
+			sampleEmpty: 'It answered, with no release to show.',
+			sampleFailed: 'Caps answered, the sample search did not: {error}',
+			seeders: { one: '{count} seeder', other: '{count} seeders' },
+			noPublic: 'No public presets: no well-known public source publishes a stable feed of its own. Add public indexers in Prowlarr or Jackett and pick them here.',
 			keys: 't test · e edit · Delete remove · j/k move · n add',
 			name: 'Name',
 			protocol: 'Protocol',
@@ -2253,6 +2286,53 @@ const en = {
 			removed: 'Removed {name}.',
 			aboutLabel: 'How searches work',
 			aboutHint: 'Every enabled indexer is asked in parallel, each no faster than its minimum interval; results are parsed and ranked.'
+		},
+		// Settings › Indexers › Set up with a coding agent (D-290, D-291).
+		agent: {
+			open: 'Set up with a coding agent',
+			title: 'Set up indexers with a coding agent',
+			description: 'A key that only manages indexers, and a prompt to paste into your agent.',
+			ttl: 'Key expires after',
+			ttl15m: '15 min',
+			ttl1h: '1 hour',
+			ttl4h: '4 hours',
+			ttl1d: '1 day',
+			can: 'It can list, add, try, test, change and remove indexers.',
+			cannot: 'It cannot search, download, read the library or touch anything else.',
+			asks: 'The prompt tells the agent to ask you before it adds or removes anything.',
+			create: 'Create key and prompt',
+			keyName: 'Coding agent (indexers)',
+			ready: 'Paste this into the agent. The key stops working {when}, or as soon as you revoke it.',
+			promptLabel: 'Prompt for the coding agent',
+			harnesses: 'The same prompt works in Claude Code, opencode and DeepSeek harnesses: each runs curl in a shell. The key is shown only now.',
+			copy: 'Copy prompt',
+			liveKeys: { one: '{count} agent key alive', other: '{count} agent keys alive' },
+			expires: 'expires {when}',
+			revoked: 'Agent key revoked.',
+			// Pasted into a coding agent; it is read by the agent, so it is plain and exact.
+			prompt: `Help me set up the indexers of my lain media server.
+
+Server: {server}
+Key: {key}
+The key only manages indexers and expires at {expires}. Send it only as the header "Authorization: Bearer <key>". Never put it in a URL, a file or your replies.
+
+First read the guide, which lists the exact calls and their bodies:
+curl -s {guide}
+
+The calls:
+- list: GET /api/acquire/indexers
+- ask a Prowlarr or Jackett which indexers it serves: POST /api/acquire/indexers/discover
+- add the chosen ones in one step: POST /api/acquire/indexers/import
+- try a feed before saving it: POST /api/acquire/indexers/probe
+- add one feed: POST /api/acquire/indexers
+- test one: POST /api/acquire/indexers/<id>/test
+- change one: PATCH /api/acquire/indexers/<id>
+- remove one: DELETE /api/acquire/indexers/<id>
+
+Rules:
+- Ask me before you add, change or remove anything; show me what you found first.
+- Do not invent indexer URLs. Ask me where my indexers come from (a Prowlarr, a Jackett, or feed URLs I have) and for their API keys.
+- When you are done, tell me which indexers answered their test, and remind me to revoke the key.`
 		},
 		settings: {
 			title: 'Acquisition — Settings — Lain',

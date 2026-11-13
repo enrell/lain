@@ -1,6 +1,6 @@
 {
  "format": "lain.upstream-fixtures@1",
- "about": "Recorded (trimmed) and fictional answers of the remote APIs the network providers call; served on loopback by `lain-conformance upstream` and the Rust tests, so nothing reaches the network. Base URLs: <server>/kitsu, /anilist, /jikan, /tvmaze, /opensubtitles/api/v1, and the list connector's /anilist-list/graphql and /anilist-list/oauth.",
+ "about": "Recorded (trimmed) and fictional answers of the remote APIs the network providers call; served on loopback by `lain-conformance upstream` and the Rust tests, so nothing reaches the network. Base URLs: <server>/kitsu, /anilist, /jikan, /tvmaze, /opensubtitles/api/v1, the list connector's /anilist-list/graphql and /anilist-list/oauth, and a fictional Prowlarr at /prowlarr (its indexer list and the Torznab feed of indexer 1) for the indexer presets.",
  "routes": [
   {
    "method": "GET",
@@ -204,6 +204,48 @@
    "method": "GET",
    "path": "/opensubtitles/files/111.srt",
    "body": "1\n00:00:01,000 --> 00:00:02,000\nHello\n"
+  },
+  {
+   "method": "GET",
+   "path": "/prowlarr/api/v1/indexer",
+   "headers": {
+    "X-Api-Key": "prowlarr-key"
+   },
+   "file": "prowlarr/indexers.json"
+  },
+  {
+   "method": "GET",
+   "path": "/prowlarr/api/v1/indexer",
+   "status": 401,
+   "body": {
+    "message": "Unauthorized"
+   }
+  },
+  {
+   "method": "GET",
+   "path": "/prowlarr/1/api",
+   "query": {
+    "t": "caps",
+    "apikey": "prowlarr-key"
+   },
+   "file": "prowlarr/caps.xml"
+  },
+  {
+   "method": "GET",
+   "path": "/prowlarr/1/api",
+   "query": {
+    "t": "search",
+    "apikey": "prowlarr-key"
+   },
+   "file": "prowlarr/latest.xml"
+  },
+  {
+   "method": "GET",
+   "path": "/prowlarr/1/api",
+   "status": 401,
+   "body": {
+    "message": "Unauthorized"
+   }
   },
   {
    "method": "POST",

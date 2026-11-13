@@ -280,6 +280,107 @@ pub struct IndexerTest {
     pub error: String,
 }
 
+/// `POST /api/acquire/indexers/probe`: tries an indexer before it is
+/// saved (D-290). With `id`, the stored indexer with `input` laid over
+/// it, so an edit is tried with the stored key; nothing is written.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexerProbeInput {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
+    #[serde(flatten)]
+    pub input: IndexerInput,
+}
+
+impl std::fmt::Debug for IndexerProbeInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IndexerProbeInput").field("id", &self.id).field("input", &self.input).finish()
+    }
+}
+
+/// The probe's answer: 200 either way, like a test. `sample` is the
+/// first few releases of an empty-query search (the indexer's latest).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexerProbe {
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caps: Option<IndexerCaps>,
+    #[serde(default)]
+    pub sample: Vec<SearchResult>,
+    /// Why caps failed (then `ok` is false), or why the sample search
+    /// failed after caps answered (then `ok` stays true).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub error: String,
+}
+
+pub const SOURCE_PROWLARR: &str = "prowlarr";
+pub const SOURCE_JACKETT: &str = "jackett";
+
+/// `POST /api/acquire/indexers/discover`: an aggregator (Prowlarr or
+/// Jackett) and its API key; lain asks it which indexers it serves.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscoverInput {
+    pub source: String,
+    pub url: String,
+    #[serde(default)]
+    pub api_key: String,
+}
+
+impl std::fmt::Debug for DiscoverInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiscoverInput").field("source", &self.source).field("url", &self.url).finish_non_exhaustive()
+    }
+}
+
+/// One indexer an aggregator serves, with the feed lain would add.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscoveredIndexer {
+    /// The aggregator's own id for it.
+    pub source_id: String,
+    pub name: String,
+    /// `torznab` or `newznab`.
+    pub protocol: String,
+    /// The Torznab/Newznab feed through the aggregator.
+    pub url: String,
+    /// `public`, `private`, `semi-private` or `""` when not said.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub privacy: String,
+    /// Whether the aggregator has it switched on.
+    pub enabled: bool,
+    /// The id of the lain indexer already on this feed.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub added_as: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscoverOutput {
+    pub source: String,
+    pub indexers: Vec<DiscoveredIndexer>,
+}
+
+/// `POST /api/acquire/indexers/import`: adds the chosen ones in one
+/// step. lain discovers again rather than trusting feed URLs from the
+/// caller, and stores the aggregator's key on each.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexerImportInput {
+    #[serde(flatten)]
+    pub from: DiscoverInput,
+    /// `source_id`s from discover.
+    pub ids: Vec<String>,
+}
+
+impl std::fmt::Debug for IndexerImportInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IndexerImportInput").field("from", &self.from).field("ids", &self.ids).finish()
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexerImport {
+    pub added: Vec<IndexerView>,
+    /// `source_id`s already on a lain indexer.
+    pub skipped: Vec<String>,
+}
+
 // ---- search -----------------------------------------------------------------
 
 /// A search result with its parse, rank and the reasons it does not fit

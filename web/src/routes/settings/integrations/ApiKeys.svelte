@@ -1,6 +1,8 @@
 <script lang="ts">
 	// Keys for programs that feed libraries (D-265): a downloader files
-	// what it fetched in a library and tells lain what each file is.
+	// what it fetched in a library and tells lain what each file is. A
+	// coding agent's indexers key (D-290) is made in Settings › Indexers
+	// and only listed here, to revoke.
 	import { onMount } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import Clipboard from '@lucide/svelte/icons/clipboard';
@@ -17,6 +19,7 @@
 	import { t } from '$lib/i18n';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
+	import { formatRelative } from '$lib/utilities/format';
 
 	let ready = $state(false);
 	let keys = $state<ApiKey[]>([]);
@@ -118,7 +121,11 @@
 						<div class="min-w-0 flex-1">
 							<p class="truncate text-sm font-medium text-foreground">{key.name}</p>
 							<p class="truncate text-xs text-muted">
-								{key.libraries.map(libraryName).join(', ')}
+								{#if key.scopes?.includes('indexers')}
+									{t('settings.integrationsPage.indexersScope', { when: formatRelative(key.expires_at) })}
+								{:else}
+									{key.libraries.map(libraryName).join(', ')}
+								{/if}
 							</p>
 						</div>
 						<Button variant="ghost" size="field" class="hover:text-danger!" onclick={() => askRevoke(key)} aria-label={t('settings.integrationsPage.revokeFor', { name: key.name })}>

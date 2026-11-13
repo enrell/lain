@@ -1,0 +1,1216 @@
+{
+ "tier": "v2",
+ "description": "Integration keys with the indexers scope (D-290): a coding agent sets up indexers through the same routes as the web, with a key that opens nothing else, never travels in a URL, expires and is revoked at once; the Prowlarr/Jackett presets (discover, import) and the probe that tries an indexer before it is saved (D-290); the agent guide (D-291).",
+ "cases": [
+  {
+   "name": "an indexers key is made with its own shape",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "admin",
+      "body": {
+       "name": "coding agent",
+       "scopes": [
+        "indexers"
+       ]
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "id": "$string",
+       "name": "coding agent",
+       "libraries": [],
+       "created_at": "$int",
+       "scopes": [
+        "indexers"
+       ],
+       "expires_at": "$int",
+       "key": "$prefix:lain_"
+      }
+     },
+     "save": {
+      "agent_key": "/key",
+      "agent_id": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "scopes": [
+        "indexers"
+       ],
+       "libraries": [
+        "{{lib}}"
+       ]
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "an indexers key takes no libraries"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "scopes": [
+        "indexers"
+       ],
+       "ttl_seconds": 10
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "ttl_seconds: 60 to 86400 for an indexers key"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "scopes": [
+        "indexers"
+       ],
+       "ttl_seconds": 86401
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "ttl_seconds: 60 to 86400 for an indexers key"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "scopes": [
+        "admin"
+       ]
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "scopes: one of library or indexers"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "admin",
+      "body": {
+       "name": "x",
+       "scopes": [
+        "library",
+        "indexers"
+       ],
+       "libraries": [
+        "{{lib}}"
+       ]
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "scopes: one of library or indexers"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "admin",
+      "body": {
+       "name": "x"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "at least one library required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "bob",
+      "body": {
+       "name": "x",
+       "scopes": [
+        "indexers"
+       ]
+      }
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "admin",
+      "body": {
+       "name": "importer",
+       "libraries": [
+        "{{lib}}"
+       ]
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "id": "$string",
+       "name": "importer",
+       "libraries": [
+        "{{lib}}"
+       ],
+       "created_at": "$int",
+       "scopes": [
+        "library"
+       ],
+       "expires_at": 0,
+       "key": "$prefix:lain_"
+      }
+     },
+     "save": {
+      "library_key": "/key",
+      "library_key_id": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/integrations",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "integrations": {
+        "$len": 2,
+        "$contains": [
+         {
+          "id": "{{agent_id}}",
+          "name": "coding agent",
+          "libraries": [],
+          "created_at": "$int",
+          "scopes": [
+           "indexers"
+          ],
+          "expires_at": "$int"
+         }
+        ]
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "an indexers key opens the indexer routes and nothing else",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "indexers": "$array"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers",
+      "auth": "agent_key",
+      "body": {
+       "name": "agent-exemplo",
+       "protocol": "torznab",
+       "url": "http://127.0.0.1:9/api",
+       "api_key": "feed-key",
+       "min_interval_ms": 0
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "$open": true,
+       "id": "$string",
+       "name": "agent-exemplo",
+       "has_api_key": true,
+       "api_key": "$absent"
+      }
+     },
+     "save": {
+      "agent_ix": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/{{agent_ix}}/test",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "$open": true,
+       "ok": false,
+       "error": "$substr:127.0.0.1:9"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PATCH",
+      "path": "/api/acquire/indexers/{{agent_ix}}",
+      "auth": "agent_key",
+      "body": {
+       "priority": 3
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "$open": true,
+       "priority": 3,
+       "has_api_key": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/probe",
+      "auth": "agent_key",
+      "body": {
+       "id": "{{agent_ix}}"
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "ok": false,
+       "sample": [],
+       "error": "$substr:127.0.0.1:9"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/probe",
+      "auth": "agent_key",
+      "body": {
+       "protocol": "gopher",
+       "url": "http://127.0.0.1:9/api"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "protocol must be torznab or newznab",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/discover",
+      "auth": "agent_key",
+      "body": {
+       "source": "sonarr",
+       "url": "http://127.0.0.1:9",
+       "api_key": "k"
+      }
+     },
+     "expect": {
+      "status": 400,
+      "body": {
+       "error": "source must be prowlarr or jackett",
+       "code": "invalid-request"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/discover",
+      "auth": "agent_key",
+      "body": {
+       "source": "jackett",
+       "url": "http://127.0.0.1:9",
+       "api_key": "secret-aggregator-key"
+      }
+     },
+     "expect": {
+      "status": 502,
+      "body": {
+       "error": "127.0.0.1:9 did not answer",
+       "code": "fetch-failed"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/indexers/{{agent_ix}}",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "removed": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers",
+      "auth": "query:agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "an integration key goes in the Authorization header, never in the URL"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/settings",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/search?q=Show",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/grabs",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/profiles",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/monitored",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/wanted",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/blocklist",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/downloads",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/me",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/libraries",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/catalog",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/search?q=Show",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/users",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/roots",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/plugins",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/modules",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/admin/backup",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/admin/settings/integrations",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/integrations",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/integrations/{{agent_id}}",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/integration/libraries",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "agent_key",
+      "body": {
+       "name": "more",
+       "scopes": [
+        "indexers"
+       ]
+      }
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "PUT",
+      "path": "/api/integration/libraries/{{lib}}/files",
+      "auth": "agent_key",
+      "body": {
+       "files": [
+        {
+         "path": "a.mkv",
+         "title": "A"
+        }
+       ]
+      }
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integration/libraries/{{lib}}/scan",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers",
+      "auth": "library_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/probe",
+      "auth": "library_key",
+      "body": {
+       "protocol": "torznab",
+       "url": "http://127.0.0.1:9/api"
+      }
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "admin required"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers",
+      "headers": {
+       "Authorization": "Bearer lain_0000"
+      }
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/integrations/{{agent_id}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "status": "ok"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers",
+      "auth": "agent_key"
+     },
+     "expect": {
+      "status": 401,
+      "body": {
+       "error": "unauthorized"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/integrations/{{library_key_id}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "status": "ok"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "presets: a Prowlarr's indexers in one step, tried before saving",
+   "requires": [
+    "acq_media",
+    "upstream"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/integrations",
+      "auth": "admin",
+      "body": {
+       "name": "coding agent",
+       "scopes": [
+        "indexers"
+       ],
+       "ttl_seconds": 900
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "id": "$string",
+       "name": "coding agent",
+       "libraries": [],
+       "created_at": "$int",
+       "scopes": [
+        "indexers"
+       ],
+       "expires_at": "$int",
+       "key": "$string"
+      }
+     },
+     "save": {
+      "agent2": "/key",
+      "agent2_id": "/id"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/discover",
+      "auth": "agent2",
+      "body": {
+       "source": "prowlarr",
+       "url": "{{upstream}}/prowlarr/",
+       "api_key": "wrong"
+      }
+     },
+     "expect": {
+      "status": 502,
+      "body": {
+       "error": "$substr:the API key was rejected",
+       "code": "auth-failed"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/discover",
+      "auth": "agent2",
+      "body": {
+       "source": "prowlarr",
+       "url": "{{upstream}}/prowlarr/",
+       "api_key": "prowlarr-key"
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "source": "prowlarr",
+       "indexers": [
+        {
+         "source_id": "1",
+         "name": "tracker-exemplo",
+         "protocol": "torznab",
+         "url": "{{upstream}}/prowlarr/1/api",
+         "privacy": "public",
+         "enabled": true
+        },
+        {
+         "source_id": "2",
+         "name": "usenet-exemplo",
+         "protocol": "newznab",
+         "url": "{{upstream}}/prowlarr/2/api",
+         "privacy": "private",
+         "enabled": false
+        }
+       ]
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/import",
+      "auth": "agent2",
+      "body": {
+       "source": "prowlarr",
+       "url": "{{upstream}}/prowlarr",
+       "api_key": "prowlarr-key",
+       "ids": [
+        "7"
+       ]
+      }
+     },
+     "expect": {
+      "status": 404,
+      "body": {
+       "error": "prowlarr does not serve an indexer 7",
+       "code": "not-found"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/import",
+      "auth": "agent2",
+      "body": {
+       "source": "prowlarr",
+       "url": "{{upstream}}/prowlarr",
+       "api_key": "prowlarr-key",
+       "ids": [
+        "1"
+       ]
+      }
+     },
+     "expect": {
+      "status": 201,
+      "body": {
+       "added": [
+        {
+         "$open": true,
+         "id": "$string",
+         "name": "tracker-exemplo",
+         "protocol": "torznab",
+         "url": "{{upstream}}/prowlarr/1/api",
+         "enabled": true,
+         "has_api_key": true,
+         "api_key": "$absent"
+        }
+       ],
+       "skipped": []
+      }
+     },
+     "save": {
+      "pix": "/added/0/id"
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/import",
+      "auth": "agent2",
+      "body": {
+       "source": "prowlarr",
+       "url": "{{upstream}}/prowlarr",
+       "api_key": "prowlarr-key",
+       "ids": [
+        "1"
+       ]
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "added": [],
+       "skipped": [
+        "1"
+       ]
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/discover",
+      "auth": "agent2",
+      "body": {
+       "source": "prowlarr",
+       "url": "{{upstream}}/prowlarr",
+       "api_key": "prowlarr-key"
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "source": "prowlarr",
+       "indexers": [
+        {
+         "$open": true,
+         "source_id": "1",
+         "added_as": "{{pix}}"
+        },
+        {
+         "$open": true,
+         "source_id": "2",
+         "added_as": "$absent"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/probe",
+      "auth": "agent2",
+      "body": {
+       "id": "{{pix}}",
+       "min_interval_ms": 0
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "ok": true,
+       "caps": {
+        "$open": true,
+        "search": true,
+        "tv_search": true,
+        "movie_search": false
+       },
+       "sample": [
+        {
+         "indexer_id": "",
+         "protocol": "torrent",
+         "title": "[Fansub-A] Show - 05 [1080p]",
+         "size": 734003200,
+         "seeders": 12,
+         "peers": 15,
+         "categories": [
+          5070
+         ]
+        }
+       ]
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/probe",
+      "auth": "admin",
+      "body": {
+       "protocol": "torznab",
+       "url": "{{upstream}}/prowlarr/1/api",
+       "api_key": "prowlarr-key"
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "ok": true,
+       "caps": "$object",
+       "sample": {
+        "$len": 1
+       }
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/acquire/indexers/probe",
+      "auth": "admin",
+      "body": {
+       "protocol": "torznab",
+       "url": "{{upstream}}/prowlarr/1/api",
+       "api_key": "wrong"
+      }
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "ok": false,
+       "sample": [],
+       "error": "$substr:credentials rejected"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/acquire/indexers",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "indexers": {
+        "$contains": [
+         {
+          "$open": true,
+          "id": "{{pix}}",
+          "has_api_key": true,
+          "min_interval_ms": 2000,
+          "api_key": "$absent"
+         }
+        ]
+       }
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/acquire/indexers/{{pix}}",
+      "auth": "agent2"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "removed": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "DELETE",
+      "path": "/api/integrations/{{agent2_id}}",
+      "auth": "admin"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "status": "ok"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "the agent guide is public",
+   "requires": [
+    "acq_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/agent/indexers.md"
+     },
+     "expect": {
+      "status": 200,
+      "body": "$substr:Ask the owner before you add",
+      "headers": {
+       "content-type": "text/markdown; charset=utf-8"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}
