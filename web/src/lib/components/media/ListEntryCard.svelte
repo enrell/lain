@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { ListEntry } from '$lib/api/types';
 	import PlaceholderPoster from './PlaceholderPoster.svelte';
-	import ProgressBar from './ProgressBar.svelte';
+	import CardProgress from './CardProgress.svelte';
 
 	let {
 		entry,
@@ -73,9 +73,7 @@
 			{entry.platform}
 		</span>
 		{#if ratio > 0}
-			<div class="absolute inset-x-0 bottom-0 p-1.5">
-				<ProgressBar {ratio} label="Progress" class="bg-black/50" />
-			</div>
+			<CardProgress {ratio} label="Progress" />
 		{/if}
 	</div>
 	<div class="mt-3 min-w-0">

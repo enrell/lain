@@ -424,8 +424,9 @@
 										</span>
 									{/if}
 									{#if begun}
-										<span class="absolute inset-x-0 bottom-0 h-1 bg-black/55" aria-hidden="true">
-											<span class="block h-full bg-accent" style:width={`${Math.min(100, (p!.position_sec / p!.duration_sec) * 100)}%`}></span>
+										<!-- On a dark track of its own, as the cards' bar: on a pale still the fill vanished. -->
+										<span class="absolute inset-x-0 bottom-0 h-1 bg-black/75" aria-hidden="true">
+											<span class="block h-full bg-accent" style:width={`${Math.max(4, Math.min(100, (p!.position_sec / p!.duration_sec) * 100))}%`}></span>
 										</span>
 									{/if}
 								</span>
