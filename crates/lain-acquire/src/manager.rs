@@ -12,11 +12,11 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use lain_api::acquire::{
-    AcquireSettings, AcquireUsage, Candidate, GRAB_DONE, GRAB_DOWNLOADING, GRAB_FAILED, GRAB_IMPORTING, GRAB_METADATA,
-    GRAB_PAUSED, GRAB_QUEUED, GRAB_SEEDING, Grab, GrabInput, IMPORT_COPY, IMPORT_HARDLINK, IMPORT_MOVE,
-    INDEXER_NEWZNAB, INDEXER_TORZNAB, Indexer, IndexerCaps, IndexerFailure, IndexerInput, IndexerSearchInput,
-    PROTOCOL_TORRENT, PROTOCOL_USENET, SEARCH_BOOK, SEARCH_GENERIC, SEARCH_MOVIE, SEARCH_TV, SearchResult,
-    SearchResults, Unit,
+    AcquireSettings, AcquireUsage, Candidate, DiscoverInput, DiscoverOutput, GRAB_DONE, GRAB_DOWNLOADING, GRAB_FAILED,
+    GRAB_IMPORTING, GRAB_METADATA, GRAB_PAUSED, GRAB_QUEUED, GRAB_SEEDING, Grab, GrabInput, IMPORT_COPY,
+    IMPORT_HARDLINK, IMPORT_MOVE, INDEXER_NEWZNAB, INDEXER_TORZNAB, Indexer, IndexerCaps, IndexerFailure,
+    IndexerImportInput, IndexerInput, IndexerProbe, IndexerProbeInput, IndexerSearchInput, PROTOCOL_TORRENT,
+    PROTOCOL_USENET, SEARCH_BOOK, SEARCH_GENERIC, SEARCH_MOVIE, SEARCH_TV, SearchResult, SearchResults, Unit,
 };
 use lain_api::downloads::Limits;
 use lain_api::{CatalogItem, Library, Release};
@@ -31,6 +31,8 @@ use crate::store::AcqStore;
 use crate::util::{clean_name, clip, http_url, loose_key, new_id, now, settle, url_host, within_or_equal, years_agree};
 
 const MAX_TORRENT_FILE: usize = 10 << 20;
+/// How many releases a probe shows.
+const PROBE_SAMPLE: usize = 5;
 
 pub type SearchFn = dyn Fn(&IndexerSearchInput) -> Result<Vec<SearchResult>> + Send + Sync;
 pub type CapsFn = dyn Fn(&Indexer) -> Result<IndexerCaps> + Send + Sync;
@@ -578,6 +580,112 @@ impl Manager {
             return (Ok(ix.public()), Some(e));
         }
         (Ok(ix.public()), err)
+    }
+
+    /// Tries an indexer without saving it (D-290): caps, then an
+    /// empty-query search for a few of its latest releases. With an id,
+    /// the stored indexer (and its key) with `input` laid over it.
+    pub fn probe_indexer(&self, p: &IndexerProbeInput) -> Result<IndexerProbe> {
+        let mut ix: Indexer = if p.id.is_empty() {
+            Indexer { id: String::new(), name: "probe".into(), min_interval_ms: 0, ..Default::default() }
+        } else {
+            self.st.get(Bucket::AcqIndexers, &p.id, "indexer")?
+        };
+        apply_indexer(&p.input, &mut ix)?;
+        let deadline = Instant::now() + Duration::from_secs(30);
+        if !ix.id.is_empty()
+            && let Err(e) = self.wait(&ix, deadline)
+        {
+            return Ok(IndexerProbe { ok: false, error: e.to_string(), ..Default::default() });
+        }
+        let caps = match (self.d.caps)(&ix) {
+            Ok(c) => c,
+            Err(e) => return Ok(IndexerProbe { ok: false, error: e.to_string(), ..Default::default() }),
+        };
+        ix.caps = Some(caps.clone());
+        let mut out = IndexerProbe { ok: true, caps: Some(caps), ..Default::default() };
+        let gap = Duration::from_millis(ix.min_interval_ms.clamp(0, 5000) as u64);
+        std::thread::sleep(gap);
+        match (self.d.search)(&IndexerSearchInput {
+            indexer: ix.clone(),
+            limit: PROBE_SAMPLE as i64,
+            ..Default::default()
+        }) {
+            // Only what shows the feed works: download links and guids
+            // can carry the indexer's key, which no answer ever includes.
+            Ok(rs) => {
+                out.sample = rs
+                    .into_iter()
+                    .take(PROBE_SAMPLE)
+                    .map(|r| SearchResult {
+                        indexer_id: String::new(),
+                        protocol: r.protocol,
+                        title: r.title,
+                        size: r.size,
+                        seeders: r.seeders,
+                        peers: r.peers,
+                        published_at: r.published_at,
+                        categories: r.categories,
+                        freeleech: r.freeleech,
+                        ..Default::default()
+                    })
+                    .collect()
+            }
+            Err(e) => out.error = e.to_string(),
+        }
+        Ok(out)
+    }
+
+    /// The indexers a Prowlarr or Jackett serves, each marked with the
+    /// lain indexer already on its feed.
+    pub fn discover(&self, input: &DiscoverInput) -> Result<DiscoverOutput> {
+        let mut found = crate::aggregators::discover(self.d.http.as_ref(), input)?;
+        let have = self.st.indexers();
+        for f in &mut found {
+            if let Some(ix) = have.iter().find(|ix| crate::aggregators::same_feed(&ix.url, &f.url)) {
+                f.added_as = ix.id.clone();
+            }
+        }
+        Ok(DiscoverOutput { source: input.source.clone(), indexers: found })
+    }
+
+    /// Adds the chosen indexers of an aggregator in one step, with the
+    /// aggregator's key; ones already on lain are skipped. The feed URLs
+    /// come from a fresh discover, never from the caller.
+    pub fn import_indexers(&self, input: &IndexerImportInput) -> Result<(Vec<Indexer>, Vec<String>)> {
+        if input.ids.is_empty() || input.ids.len() > 200 {
+            return Err(errf!(CODE_INVALID, "ids: choose 1 to 200 indexers"));
+        }
+        let found = self.discover(&input.from)?;
+        if let Some(unknown) = input.ids.iter().find(|id| !found.indexers.iter().any(|f| &f.source_id == *id)) {
+            return Err(errf!(
+                CODE_NOT_FOUND,
+                "{} does not serve an indexer {}",
+                input.from.source,
+                clip(unknown, 100)
+            ));
+        }
+        let (mut added, mut skipped) = (Vec::new(), Vec::new());
+        for f in found.indexers.iter().filter(|f| input.ids.contains(&f.source_id)) {
+            if !f.added_as.is_empty() || added.iter().any(|ix: &Indexer| crate::aggregators::same_feed(&ix.url, &f.url))
+            {
+                skipped.push(f.source_id.clone());
+                continue;
+            }
+            let name = if f.name.trim().is_empty() {
+                format!("{} {}", input.from.source, f.source_id)
+            } else {
+                f.name.clone()
+            };
+            added.push(self.create_indexer(&IndexerInput {
+                name: Some(clip(&name, 60)),
+                protocol: Some(f.protocol.clone()),
+                url: Some(f.url.clone()),
+                api_key: Some(input.from.api_key.trim().to_string()),
+                ..Default::default()
+            })?);
+        }
+        Ok((added, skipped))
     }
 
     /// Queries indexers concurrently, parses and ranks the results.
