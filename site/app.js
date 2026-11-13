@@ -64,10 +64,23 @@
 	}
 
 	const demoTabs = document.querySelector('[data-demo-tabs]');
+	const syncDemoTab = (route) => {
+		if (!demoTabs) return;
+		const tabs = [...demoTabs.querySelectorAll('[role="tab"]')];
+		const match = tabs.find((t) => t.dataset.route === route);
+		for (const t of tabs) {
+			const on = t === match;
+			t.setAttribute('aria-selected', on ? 'true' : 'false');
+			t.tabIndex = on ? 0 : -1;
+		}
+	};
 	if (demoTabs) tablist(demoTabs, (tab) => go(tab.dataset.route));
 	document.addEventListener('click', (e) => {
 		const b = e.target.closest('[data-demo-go]');
-		if (b) go(b.dataset.demoGo);
+		if (b) {
+			syncDemoTab(b.dataset.demoGo);
+			go(b.dataset.demoGo);
+		}
 	});
 
 	// Install: one panel per tab.
@@ -101,4 +114,19 @@
 	const stuck = () => nav.classList.toggle('is-stuck', scrollY > 8);
 	addEventListener('scroll', stuck, { passive: true });
 	stuck();
+
+	// Keep the direct APK download links pointed at the latest GitHub release asset.
+	const apkLinks = [...document.querySelectorAll('[data-apk-link]')];
+	if (apkLinks.length) {
+		fetch('https://api.github.com/repos/enrell/lain/releases/latest', {
+			headers: { Accept: 'application/vnd.github+json' }
+		})
+			.then((res) => (res.ok ? res.json() : null))
+			.then((release) => {
+				const asset = release?.assets?.find((a) => typeof a?.name === 'string' && a.name.endsWith('.apk') && a?.browser_download_url);
+				if (!asset) return;
+				for (const link of apkLinks) link.href = asset.browser_download_url;
+			})
+			.catch(() => {});
+	}
 })();

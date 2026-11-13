@@ -2,6 +2,7 @@
 	import Avatar from '$lib/components/profile/Avatar.svelte';
 	import { displayName } from '$lib/profile/mascots';
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -155,7 +156,7 @@
 
 	onMount(() => {
 		// Ctrl+K "Add user" lands here with ?add.
-		if (new URL(window.location.href).searchParams.has('add')) createOpen = true;
+		if (page.url.searchParams.has('add')) createOpen = true;
 		void load();
 	});
 

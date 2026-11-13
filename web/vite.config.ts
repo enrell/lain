@@ -11,24 +11,37 @@ const backend = process.env.LAIN_BACKEND ?? 'http://127.0.0.1:9360';
 // LAIN_DEMO=1 builds the site's live demo (see demo/build.mjs).
 const demo = process.env.LAIN_DEMO === '1';
 
-// The demo's router takes hash routes; src/lib/demo/navigation.ts gives the
-// client's absolute paths that form. It stands in for `$app/navigation` in
-// every file of src/ but itself. The import is rewritten in the source text:
-// SvelteKit's alias resolves `$app/*` natively, before any plugin is asked.
-const wrapper = fileURLToPath(new URL('./src/lib/demo/navigation.ts', import.meta.url)).replace(/\\/g, '/');
+// The demo's router takes hash routes; src/lib/demo/{navigation,state,kit}.ts
+// adapt SvelteKit's client routing APIs so components work identically with
+// canonical paths and queries. SvelteKit resolves `$app/*` natively before any
+// plugin unless rewritten in source text.
+const demoRoot = fileURLToPath(new URL('./src/lib/demo/', import.meta.url)).replace(/\\/g, '/');
 const sources = fileURLToPath(new URL('./src/', import.meta.url)).replace(/\\/g, '/');
-const demoNavigation = {
-	name: 'lain-demo-navigation',
+const demoReplacements: Record<string, string> = {
+	'$app/navigation': '$lib/demo/navigation',
+	'$app/state': '$lib/demo/state',
+	'@sveltejs/kit': '$lib/demo/kit'
+};
+const demoImports = {
+	name: 'lain-demo-imports',
 	enforce: 'pre' as const,
 	transform(code: string, id: string) {
 		const file = id.split('?')[0].replace(/\\/g, '/');
-		if (!file.startsWith(sources) || file === wrapper || !code.includes('$app/navigation')) return null;
-		return { code: code.replace(/(['"])\$app\/navigation\1/g, "'$lib/demo/navigation'"), map: null };
+		if (!file.startsWith(sources) || file.startsWith(demoRoot)) return null;
+		let changed = false;
+		const next = code.replace(
+			/(\b(?:from|import\s*\()\s*)(['"])(\$app\/(?:navigation|state)|@sveltejs\/kit)\2/g,
+			(_, prefix: string, _q: string, spec: string) => {
+				changed = true;
+				return `${prefix}'${demoReplacements[spec]}'`;
+			}
+		);
+		return changed ? { code: next, map: null } : null;
 	}
 };
 
 export default defineConfig({
-	plugins: [...(demo ? [demoNavigation] : []), tailwindcss(), sveltekit()],
+	plugins: [...(demo ? [demoImports] : []), tailwindcss(), sveltekit()],
 	define: { 'import.meta.env.VITE_DEMO': JSON.stringify(demo) },
 	server: {
 		port: 5173,

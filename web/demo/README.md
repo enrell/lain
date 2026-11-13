@@ -25,4 +25,4 @@ only what may be published, then run `record.mjs` (see its header).
   Wikimedia Commons. The demo's "films" are stills, not the films.
 - Pepper&Carrot, episodes 1 to 6, by David Revoy:
   [CC BY 4.0](https://www.peppercarrot.com/), pages resized.
-- The shows are generated artwork made for lain's tests.
+- The shows showcase real anime series posters, stills, and metadata (Serial Experiments Lain, Puella Magi Madoka Magica, Cowboy Bebop, Steins;Gate, FLCL, Bocchi the Rock!, Mob Psycho 100, Cyber City Oedo 808).
