@@ -160,6 +160,11 @@
 	let fullscreenNotice = $state<string | null>(null);
 	let controlsVisible = $state(true);
 	let settingsOpen = $state(false);
+	// The stage's height: stacked on an upright phone it starts at the top of
+	// the page, so the settings panel under it has the rest of the screen.
+	let stageHeight = $state(0);
+	// When a tap outside closed the stacked panel: that tap's click is not passed on.
+	let dismissedAt = 0;
 	// The keys, listed on `?` (the reader does the same).
 	let keysOpen = $state(false);
 	let settingsButton = $state<HTMLButtonElement | null>(null);
@@ -1812,14 +1817,34 @@
 
 <svelte:window
 	onkeydowncapture={onKeydown}
+	onpointerdown={(event) => {
+		// Stacked, the open panel lies over the list under the player: a tap
+		// there closes it, as a tap on the picture does (the stage's own
+		// handler), and only closes it: the episode under the finger stays.
+		if (stacked && settingsOpen && event.target instanceof Node && !container?.contains(event.target)) {
+			settingsOpen = false;
+			dismissedAt = performance.now();
+		}
+	}}
+	onclickcapture={(event) => {
+		if (dismissedAt === 0) return;
+		if (performance.now() - dismissedAt < 700) {
+			event.preventDefault();
+			event.stopPropagation();
+		}
+		dismissedAt = 0;
+	}}
 	onpointerup={() => (seekEngaged = false)}
 	onpointercancel={() => (seekEngaged = false)}
 />
 
 <div
 	bind:this={container}
+	bind:clientHeight={stageHeight}
 	class={[
-		'relative flex w-full flex-col justify-end overflow-hidden bg-black',
+		// Open over the list under a stacked player, the settings panel may not be clipped.
+		'relative flex w-full flex-col justify-end bg-black',
+		stacked && settingsOpen ? 'overflow-visible' : 'overflow-hidden',
 		stacked ? 'h-auto' : 'h-full',
 		// Upright, the wait's words are taller than the 16:9 band: the player grows for them.
 		stacked && preparingTranscode ? 'min-h-[30rem]' : '',
@@ -2106,7 +2131,19 @@
 			id="player-settings"
 			role="region"
 			aria-label={t('player.settings.title')}
-			class="player-settings absolute bottom-24 right-3 z-30 max-h-[calc(100%-8rem)] w-[min(15.5rem,calc(100%-1.5rem))] overflow-y-auto rounded-lg border border-line/60 bg-background px-3 py-1.5 text-foreground shadow-xl md:bottom-28 md:max-h-[calc(100%-12rem)] md:w-[min(22rem,calc(100%-1.5rem))] md:p-4 sm:right-6 max-md:portrait:top-3 max-md:portrait:max-h-none [@media(max-height:500px)]:top-3 [@media(max-height:500px)]:bottom-[5.5rem] [@media(max-height:500px)]:max-h-none [@media(max-height:500px)]:py-1.5"
+			class={[
+				'player-settings absolute right-3 z-30 w-[min(15.5rem,calc(100%-1.5rem))] overflow-y-auto rounded-lg border border-line/60 bg-background px-3 py-1.5 text-foreground shadow-xl md:w-[min(22rem,calc(100%-1.5rem))] md:p-4 sm:right-6',
+				// Upright and stacked, the panel drops from the deck's gear over
+				// what comes next: from the top of the player it covered the top
+				// bar and the title, and the picture alone is too short for it.
+				// Upright in full screen it rises from the deck, short of the top bar.
+				stacked
+					? 'top-full mt-1'
+					: upright
+						? 'bottom-24 max-h-[calc(100%-10rem)]'
+						: 'bottom-24 max-h-[calc(100%-8rem)] md:bottom-28 md:max-h-[calc(100%-12rem)] [@media(max-height:500px)]:top-3 [@media(max-height:500px)]:bottom-[5.5rem] [@media(max-height:500px)]:max-h-none [@media(max-height:500px)]:py-1.5'
+			].join(' ')}
+			style:max-height={stacked ? `calc(100dvh - ${stageHeight}px - 0.75rem)` : undefined}
 		>
 			<!-- A screen this short (a phone on its side) keeps the panel for the
 			     settings themselves: the heading and Open with took all of it. -->

@@ -268,7 +268,7 @@
 		<ul class="settings-items">
 			{#each users as user (user.id)}
 				{@const self = isSelf(user)}
-				<li class="group/row flex flex-wrap items-center gap-x-4 gap-y-3 py-3.5 xl:grid xl:grid-cols-[minmax(0,1fr)_8rem_7.5rem_20rem]">
+				<li class="group/row flex flex-wrap items-center gap-x-4 gap-y-3 py-3.5 xl:grid xl:grid-cols-[minmax(0,1fr)_8rem_7.5rem_22rem]">
 					<!-- Below xl the actions are one labelled menu (⋯) at the end of the
 					     name's line and role and access take the second: as a table
 					     beside the settings rail at 1024 px the name had no room. -->
@@ -345,18 +345,20 @@
 						{#if self}
 							<!-- The delete slot kept empty, so Playback and Reset password
 							     line up with the rows that have one, at every width. -->
-							<span class="block w-10 shrink-0" aria-hidden="true"></span>
+							<span class="block w-[5.5rem] shrink-0" aria-hidden="true"></span>
 						{:else}
-							<!-- Quiet until pointed at, as Remove is on Libraries. -->
+							<!-- Worded as the actions beside it (a bare bin among words read as
+							     a different kind of control); quiet until pointed at, as Remove
+							     is on Libraries. -->
 							<Button
 								variant="ghost"
 								size="field"
-								class="hover:text-danger! focus-visible:text-danger!"
+								class="w-[5.5rem] hover:text-danger! focus-visible:text-danger!"
 								aria-label={t('settings.usersPage.deleteFor', { name: user.username })}
 								title={t('settings.usersPage.deleteFor', { name: user.username })}
 								onclick={() => askDelete(user)}
 							>
-								<Trash2 class="size-4" /> <span class="sr-only">{t('settings.usersPage.delete')}</span>
+								<Trash2 class="size-4" /> {t('settings.usersPage.delete')}
 							</Button>
 						{/if}
 					</div>

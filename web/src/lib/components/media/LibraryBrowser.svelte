@@ -338,9 +338,12 @@
 	});
 	/*
 	 * The parts the grid is drawn in (TitleGrid), once their shapes are held.
-	 * The count line says how the titles divide between them: "33 titles"
-	 * over a part headed "Posters and covers · 21" read as twelve titles
-	 * gone, the other part being four rows further down.
+	 * The count line says where the titles past the first part are: "33
+	 * titles" over a part headed "Posters and covers · 21" read as twelve
+	 * titles gone, the other part being four rows further down. The first
+	 * part is not named there: its heading sits just under the line ("21
+	 * posters and covers" over "Posters and covers · 21" said it twice),
+	 * and going to it is going to the top (T).
 	 */
 	const parts = $derived(held ? splitByShape(results, shapeOf).map((p) => ({ shape: p.shape, count: p.items.length })) : []);
 	let bar = $state<HTMLElement | null>(null);
@@ -805,13 +808,11 @@
 						{#if loading && items.length > 0}<span class="text-muted/70"> · loading the rest…</span>{/if}
 					</p>
 					{#if parts.length > 1 && !bare}
-						<!-- How the count divides, each part a way to where it starts. -->
-						<!-- On a phone a line of its own under the count and the sheet's button,
-						     which it pushed to a second row. -->
-						<span class="mr-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted max-sm:order-last max-sm:basis-full sm:-ml-1">
-							{#each parts as part, i (part.shape)}
+						<!-- The parts after the first, each a way to where it starts. -->
+						<span class="-ml-1 mr-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+							{#each parts.slice(1) as part (part.shape)}
 								{@const label = t(part.shape === 'portrait' ? 'browse.countPortrait' : 'browse.countLandscape', { count: part.count })}
-								<span class={['text-muted/50', i === 0 ? 'max-sm:hidden' : ''].join(' ')} aria-hidden="true">·</span>
+								<span class="text-muted/50" aria-hidden="true">·</span>
 								<button
 									type="button"
 									class="rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline"

@@ -111,8 +111,9 @@ const en = {
 		settings: 'Settings',
 		// The phone bar's last tab: every place that is not one of its four.
 		more: 'More',
-		// The phone bar's arrow on a title page (AppShell).
+		// The phone bar's arrow on a title page (AppShell); opened from outside the app it goes to the library.
 		back: 'Back',
+		backToLibrary: 'Back to the library',
 		accountMenu: 'Account menu',
 		scanning: 'scanning',
 		scanningPercent: 'scanning {percent}',
@@ -668,7 +669,8 @@ const en = {
 			jobs: { one: '{count} job', other: '{count} jobs' },
 			allHealthy: 'all healthy',
 			// Jobs bound to a component that is not installed (the optional bridges): an option, not a fault.
-			toInstall: { one: '{count} optional, available to install', other: '{count} optional, available to install' },
+			// The family's line; opening the family shows how to install each.
+			toInstall: { one: '{count} optional, not installed', other: '{count} optional, not installed' },
 			unhealthyCount: { one: '{count} provider unhealthy', other: '{count} providers unhealthy' },
 			generation: 'generation {n}',
 			replace: 'Replace',
@@ -748,12 +750,11 @@ const en = {
 			},
 			hdrRow: {
 				label: 'HDR',
-				ready: 'HDR files are tone mapped for screens and browsers that cannot show them.',
+				ready: 'HDR files are tone mapped ({algorithm}) for screens and browsers that cannot show them.',
 				missing: 'This ffmpeg cannot tone map: HDR files play only on devices that show HDR themselves.',
 				none: 'Not available',
-				choose: 'HDR tone mapping',
-				off: 'Off',
-				// The hint with tone mapping off; the select beside it already says "Off".
+				toggle: 'HDR tone mapping',
+				// The hint with tone mapping off.
 				offHint: 'HDR files are not tone mapped, so they cannot play in a browser.'
 			},
 			probe: {
@@ -822,11 +823,10 @@ const en = {
 			},
 			hardware: {
 				title: 'Hardware acceleration',
-				none: 'None (software)',
-				unavailable: '{name} — did not pass the probe',
 				nothing: 'No hardware backend passed the probe on this machine. Install a GPU driver ffmpeg can use, restart the server, and the backends that pass appear here.',
-				backend: 'Backend',
-				backendHint: 'Only backends that passed the probe can be picked.',
+				// The section with software encoding: the backend is picked in the server's rows.
+				// Only the way there: the section's summary just above already says "Off: video is encoded on the CPU".
+				software: 'Pick a backend in the Video engine row above; its encode and decode settings then show here.',
 				device: 'VA-API device',
 				deviceHint: 'The render node (usually /dev/dri/renderD128). Other backends find their own device.',
 				encode: 'Encode in hardware',
@@ -845,8 +845,9 @@ const en = {
 			},
 			hdr: {
 				title: 'HDR & tone mapping',
-				enable: 'Tone map HDR',
-				enableHint: 'Converts HDR video to SDR when it is transcoded; without it, an HDR file cannot play in a browser.',
+				// The section with tone mapping off: it is turned on in the server's rows.
+				// Only the way there: the section's summary just above already says it is off.
+				off: 'Turn tone mapping on in the HDR row above to pick the algorithm, when it applies and the peak.',
 				algorithm: 'Algorithm',
 				bt2390: 'BT.2390 (needs libplacebo/Vulkan)',
 				bt2390Missing: 'BT.2390 needs libplacebo, which this ffmpeg lacks; the server uses Hable instead.',
@@ -1318,7 +1319,9 @@ const en = {
 			series: 'Series',
 			movie: 'Movie',
 			manga: 'Manga',
-			comic: 'Comic'
+			comic: 'Comic',
+			// A catalog video: a film or a clip.
+			video: 'Video'
 		},
 		unit: {
 			episode: 'S{season}E{episode}',
@@ -1642,7 +1645,7 @@ const en = {
 		// The parts of a grid whose pictures differ in shape (TitleGrid).
 		partPortrait: 'Posters and covers',
 		partLandscape: 'Widescreen',
-		// Beside a grid's count: how its titles divide between the parts; each goes to its part.
+		// Beside a grid's count: the titles in the parts after the first; each goes to its part.
 		countPortrait: { one: '{count} poster or cover', other: '{count} posters and covers' },
 		countLandscape: { one: '{count} in widescreen', other: '{count} in widescreen' },
 		toPart: 'Go to {part}',
@@ -1720,7 +1723,8 @@ const en = {
 			connect: 'Connect AniList',
 			watch: 'Browse the library',
 			stepConnect: 'Connect',
-			stepConnectText: 'Link your AniList account under Settings → Connections.',
+			// What connecting is, not where: Connect AniList over the steps goes there.
+			stepConnectText: 'Sign in to AniList once; the link stays until you remove it.',
 			stepImport: 'Import',
 			stepImportText: 'Its list arrives here and can be synced again at any time.',
 			stepWatch: 'Watch here',
@@ -1953,7 +1957,8 @@ const en = {
 			addIndexer: 'Add an indexer',
 			fromLink: 'Grab from a link',
 			stepIndexer: 'Add an indexer',
-			stepIndexerText: 'Settings → Indexers takes a Torznab address and its key.',
+			// What an indexer is, not where it is added: the button over the steps and the header's Indexers go there.
+			stepIndexerText: 'A Torznab address and its API key, from Jackett or Prowlarr.',
 			stepSearch: 'Search',
 			stepSearchText: 'Search here, then grab a release into the library you pick.',
 			stepFollow: 'Follow',
@@ -2131,7 +2136,8 @@ const en = {
 			addTitle: 'Add an indexer',
 			editTitle: 'Edit {name}',
 			formHint: 'Torznab or Newznab. For Jackett or Prowlarr, paste the per-indexer Torznab URL and the API key.',
-			empty: 'No indexer yet. Press n to add one.',
+			// The key is on the Add indexer button just above (and means nothing on a phone).
+			empty: 'No indexer yet, so Acquire has nothing to search.',
 			keys: 't test · e edit · Delete remove · j/k move · n add',
 			name: 'Name',
 			protocol: 'Protocol',
@@ -2167,7 +2173,8 @@ const en = {
 			engineGroup: 'Engine',
 			status: 'Status',
 			statusHint: 'The built-in BitTorrent engine (no DHT yet: magnets need a tracker).',
-			statusValue: 'listening on port {port} · {used} of torrent data',
+			// Short enough for the control column on one line: "of torrent data" broke "data" onto a second.
+			statusValue: 'listening on {port} · {used} on disk',
 			parser: 'Release parser model',
 			parserHint: 'The local lain-parser service reads release names; without it the built-in tokenizer does.',
 			parserOn: 'connected',
