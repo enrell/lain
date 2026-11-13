@@ -1740,7 +1740,8 @@ const en = {
 		fullscreen: 'Fullscreen',
 		exitFullscreen: 'Exit fullscreen',
 		fullscreenUnavailable: 'Fullscreen is not available in this browser.',
-		dismissNotice: 'Dismiss',
+		// The notice's only button is an X: its name says what it closes.
+		dismissNotice: 'Dismiss fullscreen notice',
 		shortcuts: 'Keyboard shortcuts (?)',
 		buffering: 'Buffering',
 		subtitlesTrack: 'Subtitles',
