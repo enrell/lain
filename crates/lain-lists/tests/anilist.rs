@@ -158,8 +158,9 @@ fn push_writes_progress_and_status() {
         platform: "anilist".into(),
         token: token(),
         remote_id: "154587".into(),
-        progress: 13,
+        progress: Some(13),
         status: status.into(),
+        ..PushInput::default()
     };
     let out = a.push(&push("completed")).unwrap();
     assert_eq!((out.progress, out.status.as_str()), (13, "completed"));
@@ -173,8 +174,44 @@ fn push_writes_progress_and_status() {
     for bad in [
         PushInput { token: String::new(), ..push("") },
         PushInput { remote_id: "x".into(), ..push("") },
-        PushInput { progress: -1, ..push("") },
+        PushInput { progress: Some(-1), ..push("") },
+        PushInput { progress_volumes: Some(-1), ..push("") },
+        PushInput { score: Some(10.5), ..push("") },
     ] {
         assert_eq!(a.push(&bad).unwrap_err().code, "invalid-message");
     }
+    f.set(|_| (429, "{}".into()));
+    assert_eq!(a.push(&push("")).unwrap_err().code, "rate-limited");
+}
+
+/// An edit sends only the fields it changes, the score on the 100-point
+/// raw scale, and reads the whole entry back.
+#[test]
+fn push_sends_only_what_changes_and_reads_the_entry_back() {
+    let st = state();
+    let f = Fixture::start(anilist(st));
+    let a = connector(&f);
+    let out = a
+        .push(&PushInput {
+            platform: "anilist".into(),
+            token: token(),
+            remote_id: "154587".into(),
+            score: Some(8.5),
+            ..PushInput::default()
+        })
+        .unwrap();
+    assert_eq!(f.taken()[0].json()["variables"], json!({"mediaId": 154587, "scoreRaw": 85}));
+    let e = out.entry.expect("the saved entry comes back");
+    assert_eq!((e.remote_id.as_str(), e.media_type.as_str(), e.score), ("154587", "anime", 8.5));
+    assert!(!e.title.is_empty() && !e.cover.is_empty(), "{e:?}");
+    a.push(&PushInput {
+        platform: "anilist".into(),
+        token: token(),
+        remote_id: "30013".into(),
+        progress_volumes: Some(3),
+        status: "paused".into(),
+        ..PushInput::default()
+    })
+    .unwrap();
+    assert_eq!(f.taken()[0].json()["variables"], json!({"mediaId": 30013, "progressVolumes": 3, "status": "PAUSED"}));
 }

@@ -33,6 +33,7 @@
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import TitleView from '$lib/components/media/TitleView.svelte';
 	import TitleSocial from '$lib/components/social/TitleSocial.svelte';
+	import TitleTracking from '$lib/components/media/TitleTracking.svelte';
 	import SubtitlePanel from '$lib/components/acquire/SubtitlePanel.svelte';
 	import { t } from '$lib/i18n';
 	import { isTypingTarget } from '$lib/utilities/guards';
@@ -378,7 +379,9 @@
 	<ErrorState message={error} retry={() => void load()} />
 {:else if series}
 	{#key series.key}
-		<TitleView group={series} {progressMap} {libraries} {manage} {about} {returned} onProgressChanged={() => void load(true)} />
+		<TitleView group={series} {progressMap} {libraries} {manage} {about} {returned} onProgressChanged={() => void load(true)}>
+			{#snippet tracking()}<div class="mt-5 max-w-3xl"><TitleTracking itemId={series?.items[0]?.id ?? id} {reading} /></div>{/snippet}
+		</TitleView>
 	{/key}
 	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} summary={!!enrichment?.synopsis} /></div>{/if}
 {:else if item}
@@ -481,6 +484,8 @@
 					{#if enrichment?.synopsis || about?.summary}
 						<p class="mt-5 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{enrichment?.synopsis || about?.summary}</p>
 					{/if}
+					<!-- The title on the viewer's linked lists (D-289): status, progress and score, set from here. -->
+					<div class="mt-5 max-w-3xl"><TitleTracking itemId={item.id} {reading} /></div>
 					<!-- Where the file is and where its metadata came from: an admin's
 					     business, folded away from the page everyone reads. Under the
 					     title's own lines: below the hero it floated alone in the gap

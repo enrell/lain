@@ -1,6 +1,9 @@
 import { request } from './client';
 import type {
 	AuthorizeResponse,
+	ListEntry,
+	ListEntryPatch,
+	TitleTrack,
 	IntegrationsResponse,
 	LinkedAccountView,
 	LinksResponse,
@@ -49,10 +52,21 @@ export const links = {
 		})
 };
 
-/** The user's unified tracking list (D-078). */
+/** The user's unified tracking list (D-078), joined with the library (D-288). */
 export const list = {
 	entries: (filters: { type?: string; status?: string } = {}) =>
-		request<ListResponse>('/api/list', { query: filters })
+		request<ListResponse>('/api/list', { query: filters }),
+
+	/** A title's entry on each linked platform, from the stored copy (D-289). */
+	tracking: (itemId: string) =>
+		request<{ tracks: TitleTrack[] }>(`/api/items/${encodeURIComponent(itemId)}/tracking`),
+
+	/** Writes an edit to the platform, then to the stored copy. */
+	save: (platform: string, remoteId: string, patch: ListEntryPatch) =>
+		request<{ entry: ListEntry }>(`/api/list/${encodeURIComponent(platform)}/${encodeURIComponent(remoteId)}`, {
+			method: 'PUT',
+			body: patch
+		})
 };
 
 /** Admin integration credentials (D-080); the secret never comes back. */
