@@ -13,9 +13,11 @@
 	 * gives (the favourites), so every list of titles browses the same way.
 	 */
 	import { onMount, tick, untrack, type Snippet } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
+	import ArrowUpDown from '@lucide/svelte/icons/arrow-up-down';
 	import Grid2x2 from '@lucide/svelte/icons/grid-2x2';
 	import Grid3x3 from '@lucide/svelte/icons/grid-3x3';
 	import Film from '@lucide/svelte/icons/film';
@@ -34,7 +36,7 @@
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
 	import { guessFrame, settleFrame, shapesNow } from '$lib/stores/frames';
-	import { pictureShape, sampleArt, type Shape } from '$lib/stores/shapes.svelte';
+	import { pictureShape, sampleArt, splitByShape, type Shape } from '$lib/stores/shapes.svelte';
 	import {
 		ADDED, LISTED, NO_FILTERS, SHAPES, SORTS, WATCH,
 		activeCount, anyCount, apply, countBy, filtersFromParams, genreFacets, watchState, withFilters,
@@ -334,6 +336,30 @@
 			if ([...settled].some(([k, shape]) => guess.get(k) !== shape)) held = { key, shapes: settled };
 		})();
 	});
+	/*
+	 * The parts the grid is drawn in (TitleGrid), once their shapes are held.
+	 * The count line says how the titles divide between them: "33 titles"
+	 * over a part headed "Posters and covers · 21" read as twelve titles
+	 * gone, the other part being four rows further down.
+	 */
+	const parts = $derived(held ? splitByShape(results, shapeOf).map((p) => ({ shape: p.shape, count: p.items.length })) : []);
+	let bar = $state<HTMLElement | null>(null);
+	/** Scrolls a part's label to just under the sticky bar and puts the focus on its first title. */
+	async function toPart(shape: Shape): Promise<void> {
+		const before = parts.slice(0, parts.findIndex((p) => p.shape === shape)).reduce((n, p) => n + p.count, 0);
+		// A part past the titles drawn so far is drawn first.
+		if (shown <= before) {
+			shown = before + RENDER;
+			await tick();
+		}
+		const section = gridEl?.querySelector<HTMLElement>(`[data-part="${shape}"]`);
+		if (!section) return;
+		// The bar's own sticky offset (top-12 md:top-20), so the header's height is said once.
+		const under = bar ? bar.getBoundingClientRect().height + (parseFloat(getComputedStyle(bar).top) || 0) + 12 : 0;
+		const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		window.scrollTo({ top: Math.max(0, section.getBoundingClientRect().top + window.scrollY - under), behavior: calm ? 'auto' : 'smooth' });
+		section.querySelector<HTMLElement>('[data-cards] a[href]')?.focus({ preventScroll: true });
+	}
 	// Back lands where it left once the grid stands at its full height.
 	$effect(() => {
 		const y = restoreTo;
@@ -398,6 +424,12 @@
 	});
 
 	let sheet = $state(false);
+	// Where the toolbar has room for the sort and the tile size (from sm, or
+	// from lg beside the view switch): there the sheet is filters alone, and
+	// its button says so. "Sort & filter" beside the sort read as a second sort.
+	const sm = new MediaQuery('(min-width: 640px)');
+	const lg = new MediaQuery('(min-width: 1024px)');
+	const sortInBar = $derived(view ? lg.current : sm.current);
 	function pickSort(next: Sort): void {
 		// Ask for it while it is not yet the default, so the URL keeps
 		// it, then remember it for next time.
@@ -475,13 +507,15 @@
 	<button
 		type="button"
 		class={['h-11 shrink-0 items-center gap-2 rounded-md border bg-field px-3.5 text-sm transition-colors sm:h-10', place, active > 0 ? 'border-accent/60 text-foreground' : 'border-transparent text-muted hover:border-hairline hover:text-foreground'].join(' ')}
-		aria-label={active > 0 ? `Filters (${active} active)` : 'Filters'}
+		aria-label={active > 0
+			? t(sortInBar ? 'browse.filtersActive' : 'browse.sortAndFilterActive', { count: active })
+			: t(sortInBar ? 'browse.filters' : 'browse.sortAndFilter')}
 		onclick={() => (sheet = true)}
 	>
-		<SlidersHorizontal class="size-4" />
-		<!-- Named, as in the app: the sliders alone did not say "filters". Below a
-		     wide screen the sheet also holds the sort. -->
-		Sort &amp; filter{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
+		<SlidersHorizontal class="size-4" aria-hidden="true" />
+		<!-- Named, as in the app: the sliders alone did not say "filters". Where
+		     the sort is not in the toolbar the sheet holds it, and says so. -->
+		{t(sortInBar ? 'browse.filters' : 'browse.sortAndFilter')}{#if active > 0}<span class="font-mono text-xs tabular-nums">· {active}</span>{/if}
 	</button>
 {/snippet}
 
@@ -491,9 +525,9 @@
 
 {#snippet panel(findId: string, sheet: boolean)}
 	<div class="space-y-5">
-		{#if sheet}
+		{#if sheet && !sortInBar}
 			<div>
-				{@render heading('Sort')}
+				{@render heading(t('browse.sort'))}
 				<div class="grid grid-cols-2 gap-1.5 px-2">
 					{#each sortOptions as s (s.value)}
 						<button
@@ -508,9 +542,9 @@
 				</div>
 			</div>
 			<div>
-				{@render heading('Tiles')}
+				{@render heading(t('browse.tilesHeading'))}
 				<div class="grid grid-cols-2 gap-1.5 px-2">
-					{#each [[false, 'Large'], [true, 'Small']] as const as [value, label] (label)}
+					{#each [[false, t('browse.tileSize.large')], [true, t('browse.tileSize.small')]] as const as [value, label] (value)}
 						<button
 							type="button"
 							aria-pressed={dense === value}
@@ -664,7 +698,7 @@
 		     it: at rest the bar starts level with the heading. Its shadow shows only
 		     once the grid scrolls under it; at rest it drew a dark seam on the page. -->
 		{#if !bare || view}
-			<div class={['sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 transition-shadow sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-20', scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''].join(' ')}>
+			<div bind:this={bar} class={['sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 transition-shadow sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-20', scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''].join(' ')}>
 				<!-- The first row is as tall as the shelves' band (LibraryShelves), and the
 				     view switch ends it in both: switching views leaves it where it was.
 				     It sat a row lower here, under the search. -->
@@ -710,20 +744,24 @@
 						</div>
 						<!-- With the view switch beside them, sort and tile size stay in the
 						     sheet until a wide screen has room for all three. -->
-						<div class={['hidden w-44 shrink-0', view ? 'lg:block' : 'sm:block'].join(' ')}>
+						<div class={['hidden w-48 shrink-0', view ? 'lg:block' : 'sm:block'].join(' ')}>
 							<Select
-								aria-label="Sort"
+								aria-label={t('browse.sort')}
 								bind:value={sortValue}
 								options={sortOptions}
 								onValueChange={() => pickSort(sortValue as Sort)}
-							/>
+							>
+								{#snippet icon()}<ArrowUpDown class="size-4" />{/snippet}
+							</Select>
 						</div>
 						<button
 							type="button"
 							class={['hidden h-10 shrink-0 items-center gap-2 rounded-md border border-transparent bg-field px-3 text-sm text-muted transition-colors hover:border-hairline hover:text-foreground', view ? 'lg:flex' : 'sm:flex'].join(' ')}
-							aria-pressed={dense}
-							aria-label={dense ? 'Tile size: small. Switch to large.' : 'Tile size: large. Switch to small.'}
-							title="Tile size"
+							aria-label={t('browse.tilesSwitch', {
+								size: t(dense ? 'browse.tilesSmall' : 'browse.tilesLarge'),
+								other: t(dense ? 'browse.tilesLarge' : 'browse.tilesSmall')
+							})}
+							title={t('browse.tileSize.title')}
 							onclick={() => {
 								dense = !dense;
 								savePrefs();
@@ -766,6 +804,25 @@
 						{/if}
 						{#if loading && items.length > 0}<span class="text-muted/70"> · loading the rest…</span>{/if}
 					</p>
+					{#if parts.length > 1 && !bare}
+						<!-- How the count divides, each part a way to where it starts. -->
+						<!-- On a phone a line of its own under the count and the sheet's button,
+						     which it pushed to a second row. -->
+						<span class="mr-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted max-sm:order-last max-sm:basis-full sm:-ml-1">
+							{#each parts as part, i (part.shape)}
+								{@const label = t(part.shape === 'portrait' ? 'browse.countPortrait' : 'browse.countLandscape', { count: part.count })}
+								<span class={['text-muted/50', i === 0 ? 'max-sm:hidden' : ''].join(' ')} aria-hidden="true">·</span>
+								<button
+									type="button"
+									class="rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline"
+									title={t('browse.toPart', { part: label })}
+									onclick={() => void toPart(part.shape)}
+								>
+									{label}
+								</button>
+							{/each}
+						</span>
+					{/if}
 					{#each chips as chip (chip.label)}
 						<button
 							type="button"
@@ -856,7 +913,7 @@
 	</button>
 {/if}
 
-<Modal bind:open={sheet} title="Filters">
+<Modal bind:open={sheet} title={t(sortInBar ? 'browse.filters' : 'browse.sortAndFilter')}>
 	<div class="mt-4">
 		{@render panel('genre-find-sheet', true)}
 	</div>

@@ -6,6 +6,7 @@
 	import ContinueCard from './ContinueCard.svelte';
 	import MediaCard from './MediaCard.svelte';
 	import ShowCard from './ShowCard.svelte';
+	import { RAIL } from './grid';
 	import Rail from './Rail.svelte';
 
 	let {
@@ -44,11 +45,11 @@
 			</a>
 		{/if}
 	</div>
-	<!-- Scrollable rail keeps the familiar streaming-library scan pattern (Rail). -->
-	<Rail class="lg:gap-5">
+	<!-- Scrollable rail keeps the familiar streaming-library scan pattern (Rail),
+	     in the one card size of its frame (RAIL), as every rail and grid has it. -->
+	<Rail class={RAIL[frame]}>
 		{#each groups ?? [] as group (group.key)}
-			<!-- The sizes of the cards below for the same frame. -->
-			<div class={['shrink-0 snap-start', layout === 'landscape' ? 'w-[78vw] max-w-96 sm:w-80 lg:w-[22rem] xl:w-96' : 'w-[40vw] max-w-48 sm:w-40 lg:w-44 xl:w-48'].join(' ')}>
+			<div class="w-[var(--card-w)] shrink-0 snap-start">
 				{#if group.count > 1}
 					<ShowCard {group} {frame} progressOf={(id) => progressMap?.get(id)} />
 				{:else}
@@ -58,7 +59,7 @@
 		{/each}
 		{#each groups ? [] : items as item (item.id)}
 			{#if layout === 'landscape'}
-				<div class="w-[78vw] max-w-96 shrink-0 snap-start sm:w-80 lg:w-[22rem] xl:w-96">
+				<div class="w-[var(--card-w)] shrink-0 snap-start">
 					<ContinueCard
 						{item}
 						enrichment={enrichmentCache.get(item.id) ?? null}
@@ -66,7 +67,7 @@
 					/>
 				</div>
 			{:else}
-				<div class="w-[40vw] max-w-48 shrink-0 snap-start sm:w-40 lg:w-44 xl:w-48">
+				<div class="w-[var(--card-w)] shrink-0 snap-start">
 					<MediaCard
 						{item}
 						enrichment={enrichmentCache.get(item.id) ?? null}
