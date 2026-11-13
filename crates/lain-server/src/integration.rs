@@ -262,7 +262,7 @@ fn shape(scopes: &[String], libraries: Vec<String>, ttl: i64, now: i64) -> Resul
         if !(MIN_TTL..=MAX_INDEXERS_TTL).contains(&ttl) {
             return Err(format!("ttl_seconds: {MIN_TTL} to {MAX_INDEXERS_TTL} for an indexers key"));
         }
-        return Ok((vec![SCOPE_INDEXERS.into()], now + ttl));
+        return Ok((vec![SCOPE_INDEXERS.into()], now.saturating_add(ttl)));
     }
     if libraries.is_empty() {
         return Err("at least one library required".into());
@@ -270,7 +270,7 @@ fn shape(scopes: &[String], libraries: Vec<String>, ttl: i64, now: i64) -> Resul
     if ttl != 0 && ttl < MIN_TTL {
         return Err(format!("ttl_seconds: 0 (never) or at least {MIN_TTL}"));
     }
-    Ok((Vec::new(), if ttl == 0 { 0 } else { now + ttl }))
+    Ok((Vec::new(), if ttl == 0 { 0 } else { now.saturating_add(ttl) }))
 }
 
 fn create(app: &App, req: &Req, _: &lain_auth::Verified) -> Reply {
@@ -653,6 +653,7 @@ mod tests {
         // Library keys keep their old shape: libraries, no expiry.
         assert_eq!(shape(&[], libs(&["lib-1"]), 0, 1000), Ok((vec![], 0)));
         assert_eq!(shape(&[SCOPE_LIBRARY.into()], libs(&["lib-1"]), 120, 1000), Ok((vec![], 1120)));
+        assert_eq!(shape(&[], libs(&["lib-1"]), i64::MAX, 1000), Ok((vec![], i64::MAX)), "no overflow");
         assert!(shape(&[], vec![], 0, 0).is_err());
         assert!(shape(&["admin".into()], vec![], 0, 0).is_err());
         assert!(shape(&[SCOPE_LIBRARY.into(), SCOPE_INDEXERS.into()], libs(&["lib-1"]), 0, 0).is_err());
