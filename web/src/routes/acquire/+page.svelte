@@ -264,7 +264,7 @@
 		{ keys: ['1', '…', '5'], label: t('pageKeys.tabs') },
 		...(tab === 'search' && !firstRun ? [{ keys: ['/'], label: t('pageKeys.releaseSearch') }] : []),
 		...(noLibrary ? [{ keys: ['L'], label: t('acquire.noLibrariesAction') }] : [{ keys: ['L'], label: t('acquire.queue.link') }]),
-		...(firstRun && !noLibrary ? [{ keys: ['I'], label: t('acquire.firstRun.addIndexer') }] : [])
+		...(firstRun && !noLibrary ? [{ keys: ['I'], label: t('acquire.firstRun.addIndexer') }, { keys: ['A'], label: t('acquire.firstRun.agent') }] : [])
 	]);
 
 	async function onKey(e: KeyboardEvent): Promise<void> {
@@ -272,7 +272,12 @@
 		// Not a key a queue row already took (i retries an import there).
 		if (firstRun && !e.defaultPrevented && e.key === (noLibrary ? 'l' : 'i')) {
 			e.preventDefault();
-			void goto(noLibrary ? '/settings/libraries' : '/settings/indexers');
+			void goto(noLibrary ? '/settings/libraries' : '/settings/indexers?setup=add');
+			return;
+		}
+		if (firstRun && !noLibrary && !e.defaultPrevented && e.key === 'a') {
+			e.preventDefault();
+			void goto('/settings/indexers?setup=agent');
 			return;
 		}
 		const n = Number(e.key);
@@ -342,7 +347,8 @@
 				{ label: t('acquire.firstRun.stepFollow'), text: t('acquire.firstRun.stepFollowText') }
 			]}
 		>
-			<LinkButton href="/settings/indexers" size="rowMain">{t('acquire.firstRun.addIndexer')} <kbd>I</kbd></LinkButton>
+			<LinkButton href="/settings/indexers?setup=add" size="rowMain">{t('acquire.firstRun.addIndexer')} <kbd>I</kbd></LinkButton>
+			<LinkButton href="/settings/indexers?setup=agent" variant="tonal" size="row">{t('acquire.firstRun.agent')} <kbd>A</kbd></LinkButton>
 			<Button variant="tonal" size="row" onclick={() => grabFromLink()}>{t('acquire.firstRun.fromLink')} <kbd>L</kbd></Button>
 		</FirstRun>
 	{:else if tab === 'search'}
