@@ -15,6 +15,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { formatRelative } from '$lib/utilities/format';
+	import { statusLabel } from '$lib/tracking/status';
 
 	// --- Connected list accounts (D-079): AniList today; each entry is a
 	// platform that offers a supported link flow.
@@ -141,6 +142,16 @@
 		}
 	}
 
+	// What lain last sent: the visible proof the switch does something (D-288).
+	function lastPush(link: LinkedAccountView): string {
+		const p = link.last_push;
+		if (!p) return '';
+		const when = formatRelative(p.at);
+		if (p.error) return t('tracking.account.lastPushFailed', { error: p.error, title: p.title, when });
+		if (p.progress) return t('tracking.account.lastPush', { title: p.title, progress: p.progress, when });
+		return t('tracking.account.lastPushStatus', { title: p.title, status: statusLabel(p.status ?? '', false), when });
+	}
+
 	onMount(() => {
 		// The OAuth callback lands back here with a result flag.
 		const linked = page.url.searchParams.get('linked');
@@ -219,7 +230,7 @@
 			{#if link}
 				<SettingRow
 					label={t('settings.connectionsPage.scrobble', { platform: p.name })}
-					hint={t('settings.connectionsPage.scrobbleHint')}
+					hint={[t('settings.connectionsPage.scrobbleHint'), lastPush(link)].filter(Boolean).join(' ')}
 				>
 					<Switch
 						checked={link.scrobble}
