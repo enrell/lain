@@ -2132,7 +2132,8 @@ const en = {
 			addTitle: 'Add an indexer',
 			editTitle: 'Edit {name}',
 			formHint: 'Torznab or Newznab. For Jackett or Prowlarr, paste the per-indexer Torznab URL and the API key.',
-			empty: 'No indexer yet. Press n to add one.',
+			// The key is on the Add indexer button just above (and means nothing on a phone).
+			empty: 'No indexer yet, so Acquire has nothing to search.',
 			keys: 't test · e edit · Delete remove · j/k move · n add',
 			name: 'Name',
 			protocol: 'Protocol',
@@ -2168,7 +2169,8 @@ const en = {
 			engineGroup: 'Engine',
 			status: 'Status',
 			statusHint: 'The built-in BitTorrent engine (no DHT yet: magnets need a tracker).',
-			statusValue: 'listening on port {port} · {used} of torrent data',
+			// Short enough for the control column on one line: "of torrent data" broke "data" onto a second.
+			statusValue: 'listening on {port} · {used} on disk',
 			parser: 'Release parser model',
 			parserHint: 'The local lain-parser service reads release names; without it the built-in tokenizer does.',
 			parserOn: 'connected',
