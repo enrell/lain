@@ -698,8 +698,10 @@
 			title={t('privateLibrary.pinHeading')}
 			description={`${t('privateLibrary.pinHint')} ${pinSet ? t('privateLibrary.pinSet') : t('privateLibrary.pinNotSet')}`}
 		>
+			<!-- Aligned at the fields' foot: where "New PIN (4 to 12 digits)" breaks over two
+			     lines, its field sat lower than the password's beside it. -->
 			<form
-				class="grid gap-3 py-4 sm:grid-cols-[1fr_1fr_auto]"
+				class="grid gap-3 py-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
 				onsubmit={(e) => {
 					e.preventDefault();
 					void savePin(false);
