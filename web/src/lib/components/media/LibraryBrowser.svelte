@@ -801,10 +801,12 @@
 					</p>
 					{#if parts.length > 1 && !bare}
 						<!-- How the count divides, each part a way to where it starts. -->
-						<span class="-ml-1 mr-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
-							{#each parts as part (part.shape)}
+						<!-- On a phone a line of its own under the count and the sheet's button,
+						     which it pushed to a second row. -->
+						<span class="mr-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted max-sm:order-last max-sm:basis-full sm:-ml-1">
+							{#each parts as part, i (part.shape)}
 								{@const label = t(part.shape === 'portrait' ? 'browse.countPortrait' : 'browse.countLandscape', { count: part.count })}
-								<span class="text-muted/50" aria-hidden="true">·</span>
+								<span class={['text-muted/50', i === 0 ? 'max-sm:hidden' : ''].join(' ')} aria-hidden="true">·</span>
 								<button
 									type="button"
 									class="rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline"
