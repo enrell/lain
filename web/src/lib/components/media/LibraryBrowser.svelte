@@ -354,7 +354,8 @@
 		}
 		const section = gridEl?.querySelector<HTMLElement>(`[data-part="${shape}"]`);
 		if (!section) return;
-		const under = (bar?.getBoundingClientRect().height ?? 0) + (window.innerWidth < 768 ? 48 : 80) + 12;
+		// The bar's own sticky offset (top-12 md:top-20), so the header's height is said once.
+		const under = bar ? bar.getBoundingClientRect().height + (parseFloat(getComputedStyle(bar).top) || 0) + 12 : 0;
 		const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 		window.scrollTo({ top: Math.max(0, section.getBoundingClientRect().top + window.scrollY - under), behavior: calm ? 'auto' : 'smooth' });
 		section.querySelector<HTMLElement>('[data-cards] a[href]')?.focus({ preventScroll: true });
