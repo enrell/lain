@@ -8,10 +8,11 @@
 	import FavoriteButton from '$lib/components/social/FavoriteButton.svelte';
 	import RatingPill from '$lib/components/social/RatingPill.svelte';
 	import ProgressBar from '$lib/components/media/ProgressBar.svelte';
+	import CardProgress from '$lib/components/media/CardProgress.svelte';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import BookOpen from '@lucide/svelte/icons/book-open';
-	import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 	import { onMount, tick } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
@@ -138,6 +139,21 @@
 
 	const homeLibrary = $derived(libraries.find((lib) => group.libraryIds.includes(lib.id)) ?? null);
 	let synopsisOpen = $state(false);
+	// Whether the clamp cut anything: only then does the synopsis offer More.
+	let synopsisEl = $state<HTMLElement | null>(null);
+	let synopsisCut = $state(false);
+	$effect(() => {
+		const el = synopsisEl;
+		void synopsis;
+		if (!el) return;
+		const measure = (): void => {
+			if (!synopsisOpen) synopsisCut = el.scrollHeight > el.clientHeight + 1;
+		};
+		measure();
+		const watch = new ResizeObserver(measure);
+		watch.observe(el);
+		return () => watch.disconnect();
+	});
 
 	const watched = $derived(group.items.filter((i) => progressMap?.get(i.id)?.completed).length);
 
@@ -253,24 +269,30 @@
 						t('title.playPart', { part: label(resumeTarget) })
 					: t('title.play')
 	);
+	/*
+	 * Each fact says what it counts: the bar above is the part under way
+	 * ("Episode 1: 10 sec left"), the count is the whole title's ("6 of 12
+	 * episodes watched"). "10 sec left · 6 of 12 watched" read as one
+	 * measure under a bar that matched neither half.
+	 */
+	const doneKey = $derived(
+		!reading ? 'title.episodesWatched' : group.items[0]?.kind === 'manga' || byVolume ? 'title.volumesRead' : 'title.issuesRead'
+	);
+	const doneLine = $derived(watched > 0 ? t(doneKey, { done: watched, count: group.count }) : '');
 	const watchedLine = $derived(
 		resuming && resumeProgress!.duration_sec > 0
-			? reading
-				? // A book begun is where you are, not "Up next" (the app reads "Vol 1: Page 3 of 8").
-					[
-						t('title.readingAt', { part: label(resumeTarget!), page: Math.floor(resumeProgress!.position_sec), pages: Math.floor(resumeProgress!.duration_sec) }),
-						watched > 0 ? t('title.readOf', { done: watched, count: group.count }) : ''
-					]
-						.filter(Boolean)
-						.join(' · ')
-				: [timeLeft(resumeProgress!.position_sec, resumeProgress!.duration_sec), watched > 0 ? t('title.watchedOf', { done: watched, count: group.count }) : '']
-						.filter(Boolean)
-						.join(' · ')
+			? [
+					reading
+						? // A book begun is where you are, not "Up next" (the app reads "Vol 1: Page 3 of 8").
+							t('title.readingAt', { part: label(resumeTarget!), page: Math.floor(resumeProgress!.position_sec), pages: Math.floor(resumeProgress!.duration_sec) })
+						: t('title.partLeft', { part: label(resumeTarget!), time: formatLength(Math.max(1, resumeProgress!.duration_sec - resumeProgress!.position_sec)) }),
+					doneLine
+				]
+					.filter(Boolean)
+					.join(' · ')
 			: available.length === 0
 				? t('title.allMissing')
-				: watched > 0
-					? t(reading ? 'title.readOf' : 'title.watchedOf', { done: watched, count: group.count })
-					: t('title.notStarted')
+				: doneLine || t('title.notStarted')
 	);
 
 	// The title's own management joins what the page passed in.
@@ -499,11 +521,22 @@
 				{/if}
 				<p class="mt-3 text-sm text-muted" aria-live="polite">{watchedLine}</p>
 				{#if synopsis}
-					<!-- A cut synopsis opens on a tap: an ellipsis with no way past it is a dead end. -->
-					<button type="button" class="mt-4 block max-w-2xl text-left" aria-expanded={synopsisOpen} onclick={() => (synopsisOpen = !synopsisOpen)}>
-						<!-- Clamped, it is not a block: `block` overrode the clamp's box and three lines showed on a phone. -->
-						<span class={['text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? 'block' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
-					</button>
+					<!-- Clamped, it is not a block: `block` overrode the clamp's box and three lines showed on a phone. -->
+					{#snippet synopsisText()}
+						<span bind:this={synopsisEl} class={['text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? 'block' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
+					{/snippet}
+					{#if synopsisCut || synopsisOpen}
+						<!-- A cut synopsis says it goes on and opens on a tap: an ellipsis with no way past it was a dead end. -->
+						<button type="button" class="group/syn mt-4 block max-w-2xl text-left" aria-expanded={synopsisOpen} onclick={() => (synopsisOpen = !synopsisOpen)}>
+							{@render synopsisText()}
+							<span class="mt-1 inline-flex min-h-8 items-center gap-1 text-sm font-medium text-foreground/90 group-hover/syn:text-foreground">
+								{t(synopsisOpen ? 'title.synopsisLess' : 'title.synopsisMore')}
+								<ChevronDown class={['size-4 transition-transform', synopsisOpen ? 'rotate-180' : ''].join(' ')} aria-hidden="true" />
+							</span>
+						</button>
+					{:else}
+						<p class="mt-4 max-w-2xl">{@render synopsisText()}</p>
+					{/if}
 				{/if}
 				</div>
 			</div>
@@ -729,9 +762,7 @@
 		{/if}
 		{#if ratio > 0}
 			<!-- The bar every card wears: inset and rounded, not a strip on the edge. -->
-			<div class="absolute inset-x-0 bottom-0 p-1.5">
-				<ProgressBar ratio={ratio / 100} label={t(reading ? 'title.readProgress' : 'title.watchProgress')} class="bg-black/50" />
-			</div>
+			<CardProgress ratio={ratio / 100} label={t(reading ? 'title.readProgress' : 'title.watchProgress')} />
 		{/if}
 	</div>
 	<!-- Room at the end for the card's ⋮, which sits over this corner. -->
