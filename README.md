@@ -1,23 +1,97 @@
-# Lain
+<h1 align="center">lain</h1>
 
-[![CI](https://github.com/enrell/lain/actions/workflows/ci.yml/badge.svg)](https://github.com/enrell/lain/actions/workflows/ci.yml)
-[![Release](https://github.com/enrell/lain/actions/workflows/release.yml/badge.svg)](https://github.com/enrell/lain/releases)
-[![Container](https://img.shields.io/badge/ghcr.io-enrell%2Flain-2496ED?logo=docker&logoColor=white)](https://github.com/enrell/lain/pkgs/container/lain)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+<p align="center">
+  <strong>Your media. Your machine. Your rules.</strong><br />
+  A self-hosted media server for films, shows, anime, comics and manga:<br />
+  one small Rust binary with the web client inside, and an Android app.
+</p>
 
-A local-first media server in Rust, organized as replaceable providers
-over a small trusted core: few, pure-Rust dependencies, local by default,
-swappable by design.
+<p align="center">
+  <a href="https://github.com/enrell/lain/actions/workflows/ci.yml"><img src="https://github.com/enrell/lain/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/enrell/lain/releases/latest"><img src="https://img.shields.io/github/v/release/enrell/lain?color=b59790&label=release" alt="Latest release" /></a>
+  <a href="https://github.com/enrell/lain/pkgs/container/lain"><img src="https://img.shields.io/badge/ghcr.io-enrell%2Flain-2496ED?logo=docker&logoColor=white" alt="Container image" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0" /></a>
+</p>
 
-> Your data. Your machine. Your rules. Your plugins.
+<p align="center">
+  <a href="https://enrell.github.io/lain/"><strong>Website</strong></a> ·
+  <a href="#install">Install</a> ·
+  <a href="#android">Android</a> ·
+  <a href="docs/">Docs</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
-**v0.1.0** ships as: one `lain` binary per platform (Linux, macOS,
-Windows) with the web UI embedded, holding both the server and the
-command-line client, and a multi-arch container image. The native desktop
-app (`apps/desktop`, GPUI) is built on the same client core. The core is
-file-backed and dependency-light; the plugin registry supports runtime
-swap with generation fencing and last-good fallback. See `docs/` for
-boundaries and contracts.
+<p align="center">
+  <a href="https://enrell.github.io/lain/"><img src="site/assets/shots/home.webp" alt="lain's Home: a title to resume, then Continue watching and a row per library" width="920" /></a>
+</p>
+
+lain reads your library where it already lives and gives it a client you
+would pick even if it were not yours: titles instead of files, one calm
+grid, and the next thing to watch always one key away. No account, no
+cloud, nothing between you and your files.
+
+> Every screenshot here is the real client on a demo library of generated
+> artwork.
+
+## A look around
+
+| | |
+|:---:|:---:|
+| <img src="site/assets/shots/library-all.webp" alt="All titles with filters" /> | <img src="site/assets/shots/title-series.webp" alt="A series page opened on the episode in progress" /> |
+| **Library.** A shelf per library, or every title in one grid with filters that say how many they leave. | **Title page.** Opens on the episode you are in. Resume names it; your score and downloads sit beside it. |
+| <img src="site/assets/shots/player.webp" alt="The player with the episode list beside the picture" /> | <img src="site/assets/shots/reader.webp" alt="The comic reader" /> |
+| **Player.** Direct play first; a transcode only when it must, on the hardware the machine has. | **Reader.** Comics and manga next to the shows: left to right, right to left or webtoon, with spreads. |
+
+<p align="center">
+  <img src="site/assets/shots/phones.webp" alt="The web client on a phone: Home, a series page, the player and the reader" width="860" />
+  <br />
+  <em>The same web client on a phone.</em>
+</p>
+
+<p align="center">
+  <img src="site/assets/shots/android.webp" alt="The Android app: Home, a series page and the library" width="650" />
+  <br />
+  <em>The Android app: native Kotlin on the same Rust core, signed and attached to every release.</em>
+</p>
+
+## Why lain
+
+- **It plays the file as it is.** Direct play first, with an honest reason
+  whenever a transcode is needed. Then hardware transcoding (NVENC, Quick
+  Sync, VA-API) that is probed at start, HEVC stream copy for browsers that
+  decode it, HDR tone mapping, and Anime4K upscaling on your GPU or the
+  server's.
+- **Audio and subtitles are two choices.** Japanese audio with your
+  subtitles, none on a dubbed film, remembered per title. Subtitles never
+  force a re-encode.
+- **Comics and manga live in the same library**, with progress per volume,
+  offline copies and a reader that remembers how you read.
+- **Keyboard first.** `/` searches, `Ctrl K` finds anything, `?` lists what
+  the screen you are on can do. Every action has a key, and shows it.
+- **Local first.** Your files are read in place: nothing is copied, moved
+  or uploaded. Private libraries are enriched from local files only and
+  open with a PIN.
+- **AniList that pays off.** Link your account and Tracking shows your
+  lists beside what you own; finishing an episode or a chapter moves the
+  list forward by itself.
+- **Acquire, if you want it.** Add indexers through Prowlarr or Jackett in
+  one step, or hand a short-lived, indexers-only key to a coding agent
+  (Claude Code, opencode and the like) and let it set them up.
+- **A small core, everything else replaceable.** Scanning, metadata,
+  playback, search and thumbnails are providers; swap one while the server
+  runs, and the last good one keeps serving if the new one is unhealthy.
+- **For a household.** Accounts with their own progress, favourites, scores
+  and playback limits; friends on your server share what they watch, if
+  they choose to.
+- **Built to be kept.** Online backups from a consistent snapshot, a
+  restore that keeps the old data until it succeeds, and releases with
+  checksums and build attestations.
+
+Each release ships one `lain` binary per platform (Linux, macOS, Windows)
+holding the server, the web client and the command-line client; a
+multi-arch container image; and the signed Android APK. A native desktop
+app (`apps/desktop`, GPUI) is in progress on the same client core. See
+[`docs/`](docs/) for boundaries and contracts.
 
 ## Install
 
@@ -91,14 +165,23 @@ for automation). Media directories are never touched at any level.
 
 ```sh
 # from a release (linux/{amd64,arm64}, darwin/{amd64,arm64}; windows/amd64 is a .zip):
-curl -fsSLO https://github.com/enrell/lain/releases/latest/download/lain_0.1.0_linux_amd64.tar.gz
-curl -fsSLO https://github.com/enrell/lain/releases/latest/download/lain_0.1.0_linux_amd64.tar.gz.sha256
-sha256sum -c lain_0.1.0_linux_amd64.tar.gz.sha256
-tar -xzf lain_0.1.0_linux_amd64.tar.gz
+curl -fsSLO https://github.com/enrell/lain/releases/latest/download/lain_0.3.1_linux_amd64.tar.gz
+curl -fsSLO https://github.com/enrell/lain/releases/latest/download/lain_0.3.1_linux_amd64.tar.gz.sha256
+sha256sum -c lain_0.3.1_linux_amd64.tar.gz.sha256
+tar -xzf lain_0.3.1_linux_amd64.tar.gz
 install -Dm755 lain ~/.local/bin/lain
 lain serve --port 9360          # data: ~/.local/share/lain
 lain service install            # or run it as a user service (systemd, launchd, Task Scheduler)
 ```
+
+### Android
+
+Every [release](https://github.com/enrell/lain/releases/latest) carries
+`lain_<version>_android.apk`, signed with the project's key. Install it,
+type your server's address (a LAN address such as `192.168.0.10:9360`
+needs no `http://`) and sign in. Point
+[Obtainium](https://github.com/ImranR98/Obtainium) at this repository to
+follow updates.
 
 ### From source
 
@@ -130,7 +213,7 @@ Stream with Range (mpv/desktop or media element, `?token=` fallback):
 mpv "http://localhost:9360/api/items/<id>/stream?token=$TOK"
 ```
 
-## Features
+## Under the hood
 
 - **Plugins over a tiny core.** Every capability (source, identify,
   catalog, userstate, playback, search, ingest, metadata, thumbnails)
@@ -156,7 +239,7 @@ mpv "http://localhost:9360/api/items/<id>/stream?token=$TOK"
   stereo algorithm, subtitle extraction or burn-in with font fallback,
   throttling and segment deletion, thread count and muxing queue bounds,
   and a configurable transcoding temporary path. Everything is
-  runtime-configurable in **Settings → Playback** with a live session
+  runtime-configurable in **Settings → Transcoding** with a live session
   list showing fps and output bitrate, and `lain doctor` reports what
   the local ffmpeg can do. HDR sources are tone-mapped rather than
   refused; per-user limits (allow video/audio transcode, allow remux,
@@ -456,6 +539,7 @@ Tags `vX.Y.Z` publish:
   `lain_X.Y.Z_windows_amd64.zip` binaries (web UI embedded; Linux builds
   static on musl) with `.sha256` sidecars, a combined `checksums.txt` and
   build attestations;
+- `lain_X.Y.Z_android.apk`, signed, with its `.sha256`;
 - the matching [desktop release](https://github.com/enrell/lain-desktop/releases)
   is versioned independently.
 

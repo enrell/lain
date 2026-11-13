@@ -3,357 +3,279 @@
 <head>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>lain — local-first media server</title>
-	<meta name="description" content="lain is a local-first media server in Rust. A tiny trusted core hosts replaceable plugins: catalog, playback, search, metadata and thumbnails. Embedded web UI, mpv CLI and a native desktop client." />
-	<meta name="theme-color" content="#07080a" />
-	<meta property="og:title" content="lain — local-first media server" />
-	<meta property="og:description" content="Your data. Your machine. Your rules. Your plugins." />
+	<title>lain: your media, your machine, your rules</title>
+	<meta name="description" content="lain is a self-hosted media server for films, shows, anime, comics and manga. One Rust binary with the web client inside, an Android app, and nothing between you and your files." />
+	<meta name="theme-color" content="#0c0b0c" />
+	<meta property="og:title" content="lain: your media, your machine, your rules" />
+	<meta property="og:description" content="A self-hosted media server for films, shows, anime, comics and manga. One binary, a web client that feels native, and an Android app." />
 	<meta property="og:type" content="website" />
 	<meta property="og:url" content="https://enrell.github.io/lain/" />
-	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2307080a'/%3E%3Cpath d='M10 8v12h9' fill='none' stroke='%237aa2f7' stroke-width='3' stroke-linecap='square'/%3E%3C/svg%3E" />
-	<link rel="preload" href="assets/fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin />
+	<meta property="og:image" content="https://enrell.github.io/lain/assets/shots/home.webp" />
+	<meta name="twitter:card" content="summary_large_image" />
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230c0b0c'/%3E%3Cg fill='none' stroke='%23b59790' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M18 22 L46 18 M18 22 L32 46 M46 18 L32 46'/%3E%3C/g%3E%3Ccircle cx='18' cy='22' r='5' fill='%230c0b0c' stroke='%23b59790' stroke-width='3'/%3E%3Ccircle cx='46' cy='18' r='5' fill='%230c0b0c' stroke='%23b59790' stroke-width='3'/%3E%3Ccircle cx='32' cy='46' r='5' fill='%23b59790'/%3E%3C/svg%3E" />
+	<link rel="preload" as="image" href="assets/shots/home.webp" />
 	<link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 	<a class="skip" href="#main">Skip to content</a>
-	<div class="grain" aria-hidden="true"></div>
 
 	<header class="nav" id="nav">
-		<div class="nav-progress" id="progress" aria-hidden="true"></div>
-		<div class="nav-inner">
-			<a class="brand" href="#top" aria-label="lain home"><span class="brand-mark">lain</span><span class="brand-cursor">_</span></a>
+		<div class="wrap nav-inner">
+			<a class="brand" href="#top" aria-label="lain, top of the page">
+				<svg class="mark" viewBox="0 0 64 64" width="22" height="22" aria-hidden="true">
+					<g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M18 22 L46 18 M18 22 L32 46 M46 18 L32 46" /></g>
+					<circle cx="18" cy="22" r="6" fill="var(--bg)" stroke="currentColor" stroke-width="4" />
+					<circle cx="46" cy="18" r="6" fill="var(--bg)" stroke="currentColor" stroke-width="4" />
+					<circle cx="32" cy="46" r="6" fill="currentColor" />
+				</svg>
+				<span>lain</span>
+			</a>
 			<nav class="nav-links" aria-label="Sections">
-				<a href="#features">features</a>
-				<a href="#how">how</a>
-				<a href="#install">install</a>
-				<a href="#desktop">desktop</a>
+				<a href="#tour">Tour</a>
+				<a href="#watch">Watch</a>
+				<a href="#read">Read</a>
+				<a href="#clients">Apps</a>
+				<a href="#yours">Yours</a>
+				<a href="#install">Install</a>
 			</nav>
-			<a class="nav-gh" href="https://github.com/enrell/lain" rel="noopener">
-				<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+			<a class="btn btn-quiet nav-gh" href="https://github.com/enrell/lain" rel="noopener">
+				<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" /></svg>
 				<span>GitHub</span>
 			</a>
-			<button class="nav-menu" id="navMenu" aria-label="Open navigation" aria-expanded="false" aria-controls="mobileNav">
-				<span></span><span></span>
-			</button>
-		</div>
-		<div class="nav-mobile" id="mobileNav" hidden>
-			<a href="#features">features</a>
-			<a href="#how">how</a>
-			<a href="#install">install</a>
-			<a href="#desktop">desktop</a>
-			<a href="https://github.com/enrell/lain-desktop" rel="noopener">desktop repo</a>
 		</div>
 	</header>
 
 	<main id="main">
-		<!-- ============================== hero ============================== -->
+		<!-- hero -->
 		<section class="hero" id="top">
-			<canvas id="constellation" aria-hidden="true"></canvas>
-			<div class="hero-grid" aria-hidden="true"></div>
-			<div class="hero-inner">
-				<p class="kicker mono">[ local-first media server ]</p>
-				<h1 class="wordmark"><span class="wordmark-text">lain</span><span class="wordmark-caret" aria-hidden="true">_</span></h1>
-				<p class="mantra">Your data. Your machine.<br />Your rules. <em>Your plugins.</em></p>
+			<div class="glow" aria-hidden="true"></div>
+			<div class="wrap hero-inner">
+				<p class="eyebrow">Self-hosted media server</p>
+				<h1>Your media.<br />Your machine.<br /><em>Your rules.</em></h1>
 				<p class="lede">
-					A single binary in Rust. A tiny trusted core hosts replaceable
-					plugins — catalog, playback, search, metadata, thumbnails — and your
-					library streams to the embedded web UI, to <span class="mono">mpv</span> and to the
-					native desktop client.
+					lain streams your films, shows and anime and opens your comics and manga,
+					from one small Rust binary with the web client inside. No account, no cloud,
+					nothing between you and your files.
 				</p>
-				<div class="install-bar mono">
-					<span class="install-prompt" aria-hidden="true">$</span>
-					<code>curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash</code>
-					<button class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash">copy</button>
-				</div>
 				<div class="cta">
-					<a class="btn" href="#install">Get started</a>
-					<a class="link" href="#desktop">Desktop app</a>
+					<a class="btn btn-primary" href="#install">Get lain</a>
+					<a class="btn btn-quiet" href="#tour">Take the tour</a>
 				</div>
-				<ul class="status mono">
-					<li><span class="dot" aria-hidden="true"></span>v0.1.0</li>
+				<div class="copyline" data-copy-root>
+					<span class="prompt" aria-hidden="true">$</span>
+					<code>docker run -d -p 9360:9360 -v lain-data:/data -v ~/Videos:/media ghcr.io/enrell/lain</code>
+					<button class="copy" type="button" data-copy="docker run -d -p 9360:9360 -v lain-data:/data -v ~/Videos:/media ghcr.io/enrell/lain">Copy</button>
+				</div>
+				<ul class="facts" aria-label="At a glance">
+					<li>One binary</li>
+					<li>Linux · macOS · Windows</li>
+					<li>Android app</li>
 					<li>Apache-2.0</li>
-					<li>linux amd64 · arm64</li>
-					<li class="status-hide"><span class="mono-dim">ghcr.io/</span>enrell/lain</li>
 				</ul>
 			</div>
-			<div class="scroll-hint mono" aria-hidden="true">scroll<span class="scroll-arrow">↓</span></div>
-		</section>
-
-		<!-- ============================ manifesto =========================== -->
-		<section class="manifesto" aria-label="Manifesto">
-			<div class="manifesto-lines">
-				<p class="line reveal"><span class="line-no mono">01</span><span>No cloud. No account. <span class="dim">No telemetry.</span></span></p>
-				<p class="line reveal"><span class="line-no mono">02</span><span>Your files stay <span class="hl">yours</span>, on <span class="hl">your</span> disk.</span></p>
-				<p class="line reveal"><span class="line-no mono">03</span><span>Every subsystem is a <span class="hl-2">replaceable plugin</span>.</span></p>
-				<p class="line reveal"><span class="line-no mono">04</span><span>Nothing optional is <span class="dim">hardcoded</span>.</span></p>
-			</div>
-		</section>
-
-		<!-- ============================ features ============================ -->
-		<section class="section" id="features">
-			<header class="section-head">
-				<p class="section-index mono">01 / core</p>
-				<h2>Everything beyond the core is a plugin.</h2>
-				<p class="section-lede">Bound to capability names, health-checked, swappable at runtime with generation fencing. The server stays useful even with pieces missing.</p>
-			</header>
-
-			<div class="spec">
-				<article class="spec-entry spec-lead">
-					<div class="spec-key">
-						<span class="spec-no mono">01</span>
-						<h3>Capability registry</h3>
-					</div>
-					<div class="spec-value">
-						<p>Capabilities resolve through a composition: <span class="mono">exactly-one</span>,
-						<span class="mono">ordered-many</span>, <span class="mono">first-accepted</span>,
-						<span class="mono">merge-many</span>. Swaps are fenced by generation, so a stale
-						writer can never overwrite newer state; a provider that fails at call time falls
-						back to the last-good one, once.</p>
-						<div class="registry" aria-hidden="true">
-							<div class="registry-chips">
-								<span class="chip is-active">source</span>
-								<span class="chip">identify</span>
-								<span class="chip is-active">catalog</span>
-								<span class="chip">userstate</span>
-								<span class="chip is-active">playback</span>
-								<span class="chip">search</span>
-								<span class="chip is-active">metadata</span>
-								<span class="chip">thumbnail</span>
-							</div>
-							<div class="registry-gen mono">generation <span id="genCount">1</span><span class="gen-fence"> · stale writers fenced</span></div>
-						</div>
-					</div>
-				</article>
-
-				<article class="spec-entry">
-					<div class="spec-key">
-						<span class="spec-no mono">02</span>
-						<h3>Streaming</h3>
-					</div>
-					<div class="spec-value">
-						<p>Media bytes never cross a plugin call. The gateway authorizes, resolves
-						identity and serves the file over HTTP Range, from the same process as the
-						API and the web UI.</p>
-						<div class="range-demo" aria-hidden="true">
-							<div class="range-track"><span class="range-fill"></span></div>
-							<div class="range-meta mono"><span>206 Partial Content</span><span>matroska · hevc</span></div>
-						</div>
-					</div>
-				</article>
-
-				<article class="spec-entry">
-					<div class="spec-key">
-						<span class="spec-no mono">03</span>
-						<h3>Thumbnails</h3>
-					</div>
-					<div class="spec-value">
-						<p>ffmpeg extracts one frame, the provider caches it on disk keyed by source
-						mtime and size, and the gateway streams it. No ffmpeg installed? Only this
-						capability degrades, and it says so.</p>
-						<div class="reg-line mono"><span class="reg-get">GET</span> /api/items/&lt;id&gt;/thumbnail?t=8&amp;w=480 <span class="reg-ok">200</span> image/jpeg <span class="reg-dim">cached · 84ms</span></div>
-					</div>
-				</article>
-
-				<article class="spec-entry">
-					<div class="spec-key">
-						<span class="spec-no mono">04</span>
-						<h3>Metadata</h3>
-					</div>
-					<div class="spec-value">
-						<p>Local NFO sidecars plus remote providers merge by title match and
-						precedence, scored and cached. Overlays decorate the catalog without
-						touching identity, files or progress.</p>
-						<div class="providers" aria-hidden="true">
-							<span class="provider">NFO</span>
-							<span class="provider">Kitsu</span>
-							<span class="provider">AniList</span>
-							<span class="provider">Jikan</span>
-							<span class="provider-merge mono">merge-many → best pick</span>
-						</div>
-					</div>
-				</article>
-
-				<article class="spec-entry">
-					<div class="spec-key">
-						<span class="spec-no mono">05</span>
-						<h3>Progress</h3>
-					</div>
-					<div class="spec-value">
-						<p>User state lives outside the catalog, so reindexing never loses a resume
-						point. Writes are bounded — pause, seek, every ten seconds, on exit — never
-						on every video event.</p>
-						<figure class="figure">
-							<img src="assets/web-item.webp" width="1400" height="790" loading="lazy" decoding="async"
-								alt="Item page in the embedded web UI showing genres, synopsis, a 1:23:00 progress bar and a Resume button." />
-							<figcaption class="mono">fig. 05 — resume state in the embedded UI</figcaption>
-						</figure>
-					</div>
-				</article>
-
-				<article class="spec-entry">
-					<div class="spec-key">
-						<span class="spec-no mono">06</span>
-						<h3>Surfaces</h3>
-					</div>
-					<div class="spec-value">
-						<p>The Svelte 5 SPA is compiled into the lain binary — same process, same
-						origin, no Node at runtime. The CLI drives mpv with an authenticated stream
-						URL. The desktop client speaks the same API.</p>
-						<figure class="figure">
-							<img src="assets/web-home.webp" width="1400" height="790" loading="lazy" decoding="async"
-								alt="Home screen of the embedded web UI with Continue watching and Recently added rows." />
-							<figcaption class="mono">fig. 06 — the embedded web UI, no separate server</figcaption>
-						</figure>
-						<p class="surface-line mono"><span>web · embedded SPA</span><span>cli · lain watch --next</span><span>desktop · qt6 + libmpv</span></p>
-					</div>
-				</article>
-			</div>
-		</section>
-
-		<!-- ============================== how =============================== -->
-		<section class="section section-how" id="how">
-			<header class="section-head">
-				<p class="section-index mono">02 / pipeline</p>
-				<h2>Enumerate. Identify. Catalog. Plan. Stream.</h2>
-				<p class="section-lede">A policy-free ingest pipeline wired from plugins you can replace one by one. Unidentified files count, they never abort a scan.</p>
-			</header>
-
-			<div class="pipeline" aria-hidden="true">
-				<div class="pipeline-line"><span class="pipeline-pulse"></span></div>
-				<ol class="pipeline-steps">
-					<li><span class="pipeline-node"></span><span class="pipeline-label mono">enumerate</span><span class="pipeline-sub">filesystem</span></li>
-					<li><span class="pipeline-node"></span><span class="pipeline-label mono">identify</span><span class="pipeline-sub">anime · generic</span></li>
-					<li><span class="pipeline-node"></span><span class="pipeline-label mono">catalog</span><span class="pipeline-sub">boltdb + export</span></li>
-					<li><span class="pipeline-node"></span><span class="pipeline-label mono">plan</span><span class="pipeline-sub">direct · honest</span></li>
-					<li><span class="pipeline-node"></span><span class="pipeline-label mono">stream</span><span class="pipeline-sub">http range</span></li>
-				</ol>
-			</div>
-
-			<div class="marquee" aria-hidden="true">
-				<div class="marquee-track">
-					<span>lain.source.enumerate@1</span><span>lain.media.identify@1</span><span>lain.catalog.read@1</span><span>lain.catalog.write@1</span><span>lain.userstate.progress@1</span><span>lain.playback.plan@1</span><span>lain.search.query@1</span><span>lain.ingest.scan@1</span><span>lain.metadata.search@1</span><span>lain.metadata.resolve@1</span><span>lain.transform.thumbnail@1</span>
-					<span>lain.source.enumerate@1</span><span>lain.media.identify@1</span><span>lain.catalog.read@1</span><span>lain.catalog.write@1</span><span>lain.userstate.progress@1</span><span>lain.playback.plan@1</span><span>lain.search.query@1</span><span>lain.ingest.scan@1</span><span>lain.metadata.search@1</span><span>lain.metadata.resolve@1</span><span>lain.transform.thumbnail@1</span>
-				</div>
-			</div>
-
-			<div class="degrade">
-				<p class="degrade-quote">“With no transcoder installed, the planner says <span class="hl">transcode-required</span> instead of faking a stream it cannot produce.”</p>
-				<p class="degrade-note mono">degrade honestly · never silently</p>
-			</div>
-		</section>
-
-		<!-- ============================ install ============================= -->
-		<section class="section" id="install">
-			<header class="section-head">
-				<p class="section-index mono">03 / install</p>
-				<h2>Running in under a minute.</h2>
-				<p class="section-lede">No toolchain, no Node, no database to provision. Pick the shape that fits your machine.</p>
-			</header>
-
-			<div class="install-grid">
-				<div class="tabs">
-					<div class="tab-buttons" role="tablist" aria-label="Install methods">
-						<button class="tab is-active" role="tab" aria-selected="true" aria-controls="panel-docker" id="tab-docker" data-tab="docker">Docker <span class="tab-badge mono">recommended</span></button>
-						<button class="tab" role="tab" aria-selected="false" aria-controls="panel-binary" id="tab-binary" data-tab="binary">Static binary</button>
-						<button class="tab" role="tab" aria-selected="false" aria-controls="panel-installer" id="tab-installer" data-tab="installer">Installer</button>
-					</div>
-
-					<div class="terminal">
-						<div class="terminal-bar">
-							<span class="terminal-title mono" id="termTitle">docker</span>
-							<button class="copy mono" data-copy="">copy</button>
-						</div>
-
-						<div class="tab-panel" id="panel-docker" role="tabpanel" aria-labelledby="tab-docker">
-							<pre class="terminal-body mono" data-command="docker run -d --name lain -p 9360:9360 \
-  -v lain-data:/data \
-  -v ~/Videos:/media/videos:ro \
-  ghcr.io/enrell/lain:latest"></pre>
-							<p class="terminal-note mono">→ open <span class="hl">http://127.0.0.1:9360</span> · or let the installer generate the compose file</p>
-						</div>
-
-						<div class="tab-panel" id="panel-binary" role="tabpanel" aria-labelledby="tab-binary" hidden>
-							<pre class="terminal-body mono" data-command="curl -fsSLO https://github.com/enrell/lain/releases/latest/download/lain_0.1.0_linux_amd64.tar.gz
-sha256sum -c lain_0.1.0_linux_amd64.tar.gz.sha256
-tar -xzf lain_0.1.0_linux_amd64.tar.gz && ./lain serve --port 9360"></pre>
-							<p class="terminal-note mono">→ static, no cgo · releases carry .sha256 sidecars and build attestations</p>
-						</div>
-
-						<div class="tab-panel" id="panel-installer" role="tabpanel" aria-labelledby="tab-installer" hidden>
-							<pre class="terminal-body mono" data-command="curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash   # server + desktop, docker / binary / daemon"></pre>
-							<p class="terminal-note mono">→ choose components, media paths, port; generates docker-compose.yml</p>
-						</div>
-					</div>
-				</div>
-
-				<aside class="marginalia">
-					<p class="marginalia-title mono">first run</p>
-					<ol>
-						<li><span class="step-no mono">01</span><span>Create the admin account — the first setup wins.</span></li>
-						<li><span class="step-no mono">02</span><span>Add a library path. In Docker the host dir is mounted at <span class="mono">/media/…</span>.</span></li>
-						<li><span class="step-no mono">03</span><span>Scan. Unidentified files are counted, never fatal.</span></li>
-						<li><span class="step-no mono">04</span><span>Watch in the browser, in <span class="mono">mpv</span>, or in the desktop app.</span></li>
-					</ol>
-					<p class="marginalia-meta mono">image ~220 MB · linux/amd64 · linux/arm64</p>
-				</aside>
-			</div>
-		</section>
-
-		<!-- ============================ desktop ============================= -->
-		<section class="section section-desktop" id="desktop">
-			<header class="section-head">
-				<p class="section-index mono">04 / desktop</p>
-				<h2>A native client, not a browser tab.</h2>
-				<p class="section-lede">Qt 6 Quick/QML on libmpv. Direct play for everything the server can serve, resume from saved position, audio and subtitle tracks, server-side thumbnails and in-app metadata enrichment.</p>
-			</header>
-
-			<div class="desktop-grid">
-				<figure class="figure">
-					<img src="assets/desktop.webp" width="1000" height="805" loading="lazy" decoding="async"
-						alt="The native desktop client on first run: server URL, username and password fields over the Omarchy theme." />
-					<figcaption class="mono">fig. 07 — the native client: first-run setup against your server</figcaption>
+			<div class="wrap">
+				<figure class="frame hero-shot">
+					<img src="assets/shots/home.webp" width="1760" height="1100" alt="lain's Home: a title to resume, then Continue watching and a row per library" fetchpriority="high" />
 				</figure>
+				<p class="note">Every screenshot here is the real client on a demo library of generated artwork.</p>
+			</div>
+		</section>
 
-				<div class="desktop-copy">
-					<dl class="plain-list">
-						<div><dt class="mono">qt6</dt><dd>Quick/QML interface that follows your desktop palette live</dd></div>
-						<div><dt class="mono">libmpv</dt><dd>direct playback, shaders, tracks, bounded progress writes</dd></div>
-						<div><dt class="mono">api</dt><dd>first-run setup, login, catalog, search, enrichment, thumbnails</dd></div>
-						<div><dt class="mono">tests</dt><dd>headless Qt Quick Test suite under ctest, no window</dd></div>
-					</dl>
-					<a class="link" href="https://github.com/enrell/lain-desktop" rel="noopener">enrell/lain-desktop on GitHub</a>
+		<!-- tour -->
+		<section class="section" id="tour">
+			<div class="wrap">
+				<p class="eyebrow">The tour</p>
+				<h2>A client you would pick even if it were not yours.</h2>
+				<p class="sub">
+					Built screen by screen until nothing needed explaining: titles instead of files,
+					one calm grid, the next thing to watch always one key away.
+				</p>
+				<div class="tour" data-tour>
+					<div class="tabs" role="tablist" aria-label="Screens">
+						<button role="tab" type="button" id="tab-home" aria-selected="true" aria-controls="tour-panel" data-shot="home" data-alt="Home with a title to resume and rows per library" data-cap="Home picks up where you left off, then gives every library its own row of whole titles.">Home</button>
+						<button role="tab" type="button" id="tab-library" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-shot="library" data-alt="The library, a shelf per library" data-cap="A shelf per library, or every title in one grid. One card frame per grid, sized like Home.">Library</button>
+						<button role="tab" type="button" id="tab-all" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-shot="library-all" data-alt="All titles with filters for progress, shape, kind and date" data-cap="All titles, with filters that say how many they leave: progress, kind, genre, when it was added.">All titles</button>
+						<button role="tab" type="button" id="tab-title" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-shot="title-series" data-alt="A series page with its episodes" data-cap="A title page opens on the episode you are in. Resume names it; your score and downloads sit beside it.">Title</button>
+						<button role="tab" type="button" id="tab-search" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-shot="search" data-alt="Search results as cards" data-cap="Press / anywhere and type. Results are titles, in the same cards as the library.">Search</button>
+						<button role="tab" type="button" id="tab-settings" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-shot="settings-transcoding" data-alt="Transcoding settings" data-cap="Settings that fit on a screen: what the probe found on this machine, and who picks the rest.">Settings</button>
+					</div>
+					<figure class="frame" id="tour-panel" role="tabpanel" aria-labelledby="tab-home" tabindex="0">
+						<img src="assets/shots/home.webp" width="1760" height="1100" alt="Home with a title to resume and rows per library" loading="lazy" data-tour-img />
+						<figcaption data-tour-cap>Home picks up where you left off, then gives every library its own row of whole titles.</figcaption>
+					</figure>
+				</div>
+			</div>
+		</section>
+
+		<!-- watch -->
+		<section class="section split" id="watch">
+			<div class="wrap split-inner">
+				<div class="text">
+					<p class="eyebrow">Watch</p>
+					<h2>Plays the file as it is. Converts only when it must.</h2>
+					<p class="sub">
+						Direct play first, with an honest reason whenever a transcode is needed.
+						When it is, lain uses the hardware the machine has and says what it chose.
+					</p>
+					<ul class="ticks">
+						<li><strong>Hardware transcoding</strong> on NVENC, Quick Sync and VA-API, probed at start, with a software fallback that tells you it happened.</li>
+						<li><strong>HEVC stream copy</strong> for browsers that decode it, HDR tone mapping, and Anime4K upscaling on your GPU or the server's.</li>
+						<li><strong>Audio and subtitles apart</strong>: Japanese audio with your subtitles, none on a dubbed film, remembered per title.</li>
+						<li><strong>Subtitles without re-encoding</strong>, seek previews, and every control on the keyboard.</li>
+					</ul>
+				</div>
+				<figure class="frame">
+					<img src="assets/shots/player.webp" width="1760" height="1100" alt="The player with the episode list beside the picture" loading="lazy" />
+				</figure>
+			</div>
+		</section>
+
+		<!-- read -->
+		<section class="section split flip" id="read">
+			<div class="wrap split-inner">
+				<div class="text">
+					<p class="eyebrow">Read</p>
+					<h2>Comics and manga in the same library.</h2>
+					<p class="sub">
+						Archives open as books, next to the shows they came from. The reader
+						remembers the page, the direction and how you like your spreads.
+					</p>
+					<ul class="ticks">
+						<li><strong>Left to right, right to left or webtoon</strong>, with two-page spreads and the cover alone.</li>
+						<li><strong>Progress per volume</strong>, synced like video: Continue reading sits on Home.</li>
+						<li><strong>Offline copies</strong> of volumes in the browser and in the Android app.</li>
+					</ul>
+				</div>
+				<figure class="frame">
+					<img src="assets/shots/reader.webp" width="1760" height="1100" alt="The comic reader with reading direction and spread controls" loading="lazy" />
+				</figure>
+			</div>
+		</section>
+
+		<!-- clients -->
+		<section class="section" id="clients">
+			<div class="wrap">
+				<p class="eyebrow">On every screen</p>
+				<h2>The same client on a phone. And a real app on Android.</h2>
+				<p class="sub">
+					The web client is designed for a thumb as much as for a keyboard. The Android app
+					is native Kotlin on the same Rust core, signed and attached to every release.
+				</p>
+				<div class="devices">
+					<figure>
+						<div class="phones" aria-label="The web client on a phone">
+							<img src="assets/shots/phone-home.webp" width="640" height="1385" alt="Home on a phone" loading="lazy" />
+							<img src="assets/shots/phone-title.webp" width="640" height="1385" alt="A series page on a phone" loading="lazy" />
+							<img src="assets/shots/phone-player.webp" width="640" height="1385" alt="The player on an upright phone, picture over the episode list" loading="lazy" />
+						</div>
+						<figcaption><span class="tag">Web</span> In any browser, nothing to install, comics kept for offline reading.</figcaption>
+					</figure>
+					<figure>
+						<div class="phones" aria-label="The Android app">
+							<img src="assets/shots/android-home.webp" width="720" height="1600" alt="The Android app's Home" loading="lazy" />
+							<img src="assets/shots/android-title.webp" width="720" height="1600" alt="A series page in the Android app" loading="lazy" />
+							<img src="assets/shots/android-library.webp" width="720" height="1600" alt="The Android app's library" loading="lazy" />
+						</div>
+						<figcaption><span class="tag">Android</span> Media3 playback, picture in picture, downloads, a private-library PIN.</figcaption>
+					</figure>
+				</div>
+				<p class="also">Also: <code>lain watch</code> hands a title to mpv from the terminal, and a native desktop client is on the way.</p>
+			</div>
+		</section>
+
+		<!-- yours -->
+		<section class="section" id="yours">
+			<div class="wrap">
+				<p class="eyebrow">Yours, all the way down</p>
+				<h2>A small core, and everything else replaceable.</h2>
+				<p class="sub">
+					Scanning, metadata, playback, search and thumbnails are providers bound to a
+					tiny trusted core. Swap one while the server runs; if the new one is unhealthy,
+					the last good one keeps serving.
+				</p>
+				<div class="grid">
+					<article class="card">
+						<h3>Local first</h3>
+						<p>Your library is read in place: nothing is copied, moved or uploaded. Private libraries are enriched from local files only and open with a PIN.</p>
+					</article>
+					<article class="card">
+						<h3>Keyboard first</h3>
+						<p><kbd>/</kbd> searches, <kbd>Ctrl</kbd> <kbd>K</kbd> finds anything, <kbd>?</kbd> lists what the screen you are on can do. Every action has a key, and shows it.</p>
+					</article>
+					<article class="card">
+						<h3>AniList that pays off</h3>
+						<p>Link your account and Tracking shows your lists beside what you own. Finishing an episode or a chapter moves the list forward by itself.</p>
+					</article>
+					<article class="card">
+						<h3>Acquire, if you want it</h3>
+						<p>Add your indexers through Prowlarr or Jackett in one step, or hand a short-lived, indexers-only key to a coding agent and let it set them up.</p>
+					</article>
+					<article class="card">
+						<h3>For a household</h3>
+						<p>Accounts with their own progress, favourites, scores and playback limits. Friends on your server can share what they watch, if they choose to.</p>
+					</article>
+					<article class="card">
+						<h3>Built to be kept</h3>
+						<p>Online backups from a consistent snapshot, a restore that keeps the old data until it succeeds, and releases with checksums and build attestations.</p>
+					</article>
+				</div>
+				<figure class="frame wide">
+					<img src="assets/shots/settings-plugins.webp" width="1760" height="1100" alt="Settings, Plugins: every job the server does, in families, all healthy" loading="lazy" />
+					<figcaption>Every job the server does, and who does it. Replacing a provider is safe by design.</figcaption>
+				</figure>
+			</div>
+		</section>
+
+		<!-- install -->
+		<section class="section" id="install">
+			<div class="wrap">
+				<p class="eyebrow">Install</p>
+				<h2>Running in a minute.</h2>
+				<p class="sub">Open <code>http://localhost:9360</code>, create the first account, point lain at a folder. That is the whole setup.</p>
+				<div class="install" data-install>
+					<div class="tabs" role="tablist" aria-label="Ways to install">
+						<button role="tab" type="button" id="in-docker" aria-selected="true" aria-controls="pan-docker">Docker</button>
+						<button role="tab" type="button" id="in-script" aria-selected="false" aria-controls="pan-script" tabindex="-1">Linux installer</button>
+						<button role="tab" type="button" id="in-binary" aria-selected="false" aria-controls="pan-binary" tabindex="-1">Binary</button>
+						<button role="tab" type="button" id="in-android" aria-selected="false" aria-controls="pan-android" tabindex="-1">Android</button>
+					</div>
+					<div class="panel" id="pan-docker" role="tabpanel" aria-labelledby="in-docker" tabindex="0">
+						<p>The image runs on amd64 and arm64 and brings ffmpeg with it.</p>
+						<div class="code"><pre><code>docker run -d --name lain \
+  -p 9360:9360 \
+  -v lain-data:/data \
+  -v ~/Videos:/media/videos \
+  ghcr.io/enrell/lain:latest</code></pre><button class="copy" type="button" data-copy="docker run -d --name lain -p 9360:9360 -v lain-data:/data -v ~/Videos:/media/videos ghcr.io/enrell/lain:latest">Copy</button></div>
+					</div>
+					<div class="panel" id="pan-script" role="tabpanel" aria-labelledby="in-script" tabindex="0" hidden>
+						<p>An interactive script: Docker, a static binary or a user service, your media folders, the port. It prints what it will do before doing it.</p>
+						<div class="code"><pre><code>curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash</code></pre><button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash">Copy</button></div>
+					</div>
+					<div class="panel" id="pan-binary" role="tabpanel" aria-labelledby="in-binary" tabindex="0" hidden>
+						<p>One static file for Linux, macOS and Windows, with the web client inside. Put it on your path and run it.</p>
+						<div class="code"><pre><code>lain serve                 # http://localhost:9360
+lain service install       # or keep it running as a user service</code></pre><button class="copy" type="button" data-copy="lain serve">Copy</button></div>
+						<p><a class="link" href="https://github.com/enrell/lain/releases/latest" rel="noopener">Download from the latest release</a></p>
+					</div>
+					<div class="panel" id="pan-android" role="tabpanel" aria-labelledby="in-android" tabindex="0" hidden>
+						<p>Every release carries a signed APK. Install it, type your server's address, sign in. Point Obtainium at the repository to follow updates.</p>
+						<p><a class="link" href="https://github.com/enrell/lain/releases/latest" rel="noopener">Get the APK from the latest release</a></p>
+					</div>
 				</div>
 			</div>
 		</section>
 	</main>
 
 	<footer class="footer">
-		<div class="footer-word" aria-hidden="true">lain</div>
-		<div class="footer-grid">
-			<div class="footer-col">
-				<p class="mono footer-label">project</p>
-				<a href="https://github.com/enrell/lain" rel="noopener">server</a>
-				<a href="https://github.com/enrell/lain-desktop" rel="noopener">desktop</a>
-				<a href="https://github.com/enrell/lain/releases" rel="noopener">releases</a>
-				<a href="https://github.com/enrell/lain#api-map" rel="noopener">api map</a>
-			</div>
-			<div class="footer-col">
-				<p class="mono footer-label">docs</p>
-				<a href="https://github.com/enrell/lain/blob/main/docs/ARCHITECTURE.md" rel="noopener">architecture</a>
-				<a href="https://github.com/enrell/lain/blob/main/docs/CONTRACTS.md" rel="noopener">contracts</a>
-				<a href="https://github.com/enrell/lain/blob/main/docs/PLUGIN.md" rel="noopener">plugins</a>
-				<a href="https://github.com/enrell/lain/blob/main/docs/RECOVERY.md" rel="noopener">recovery</a>
-			</div>
-			<div class="footer-col">
-				<p class="mono footer-label">container</p>
-				<a href="https://github.com/enrell/lain/pkgs/container/lain" rel="noopener">ghcr.io/enrell/lain</a>
-				<span class="mono footer-muted">linux/amd64 · linux/arm64</span>
-			</div>
-		</div>
-		<div class="footer-base mono">
-			<span>Apache-2.0</span>
-			<span>built with Rust</span>
-			<span>no trackers on this page</span>
+		<div class="wrap footer-inner">
+			<p class="brand small"><span>lain</span> <span class="dim">Your media. Your machine. Your rules.</span></p>
+			<nav aria-label="Project links">
+				<a href="https://github.com/enrell/lain" rel="noopener">Source</a>
+				<a href="https://github.com/enrell/lain/releases" rel="noopener">Releases</a>
+				<a href="https://github.com/enrell/lain/blob/main/CHANGELOG.md" rel="noopener">Changelog</a>
+				<a href="https://github.com/enrell/lain/tree/main/docs" rel="noopener">Docs</a>
+				<a href="https://github.com/enrell/lain/blob/main/LICENSE" rel="noopener">Apache-2.0</a>
+			</nav>
 		</div>
 	</footer>
 
