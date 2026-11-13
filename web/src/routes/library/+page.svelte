@@ -158,7 +158,10 @@
 
 <svelte:head><title>{t('nav.library')} — Lain</title></svelte:head>
 
-<div class="space-y-6">
+<!-- Closer under the heading below md, where the header is the title and
+     its ⋯ alone: the sticky bar's own top padding and 24 px under a header
+     as tall as the ⋯ left a gap over "4 libraries" and the view switch. -->
+<div class="space-y-6 max-md:space-y-2">
 	<header class="flex flex-wrap items-end justify-between gap-3 max-md:flex-nowrap max-md:items-center">
 		<div>
 			<h1 class="page-title">{t('nav.library')}</h1>
