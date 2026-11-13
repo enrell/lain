@@ -30,20 +30,20 @@ would pick even if it were not yours: titles instead of files, one calm
 grid, and the next thing to watch always one key away. No account, no
 cloud, nothing between you and your files.
 
-> Every screenshot here is the real client on a demo library of generated
-> artwork.
+> Real screenshots of the client on its author's library. The reader and the
+> Android app show a demo library.
 
 ## A look around
 
 | | |
 |:---:|:---:|
-| <img src="site/assets/shots/library-all.webp" alt="All titles with filters" /> | <img src="site/assets/shots/title-series.webp" alt="A series page opened on the episode in progress" /> |
-| **Library.** A shelf per library, or every title in one grid with filters that say how many they leave. | **Title page.** Opens on the episode you are in. Resume names it; your score and downloads sit beside it. |
+| <img src="site/assets/shots/library.webp" alt="A library as a grid of posters, with filters beside it" /> | <img src="site/assets/shots/title-series.webp" alt="A series page opened on the episode in progress" /> |
+| **Library.** Every title in one calm grid, with filters that say how many they leave. | **Title page.** Opens on the episode you are in. Resume names it; your score and downloads sit beside it. |
 | <img src="site/assets/shots/player.webp" alt="The player with the episode list beside the picture" /> | <img src="site/assets/shots/reader.webp" alt="The comic reader" /> |
 | **Player.** Direct play first; a transcode only when it must, on the hardware the machine has. | **Reader.** Comics and manga next to the shows: left to right, right to left or webtoon, with spreads. |
 
 <p align="center">
-  <img src="site/assets/shots/phones.webp" alt="The web client on a phone: Home, a series page, the player and the reader" width="860" />
+  <img src="site/assets/shots/phones.webp" alt="The web client on a phone: Home, a library, a series page and the player" width="860" />
   <br />
   <em>The same web client on a phone.</em>
 </p>
