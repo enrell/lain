@@ -34,7 +34,7 @@
 	import Skeleton from '$lib/components/primitives/Skeleton.svelte';
 	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
 	import { guessFrame, settleFrame, shapesNow } from '$lib/stores/frames';
-	import { pictureShape, sampleArt, type Shape } from '$lib/stores/shapes.svelte';
+	import { pictureShape, sampleArt, splitByShape, type Shape } from '$lib/stores/shapes.svelte';
 	import {
 		ADDED, LISTED, NO_FILTERS, SHAPES, SORTS, WATCH,
 		activeCount, anyCount, apply, countBy, filtersFromParams, genreFacets, watchState, withFilters,
@@ -334,6 +334,29 @@
 			if ([...settled].some(([k, shape]) => guess.get(k) !== shape)) held = { key, shapes: settled };
 		})();
 	});
+	/*
+	 * The parts the grid is drawn in (TitleGrid), once their shapes are held.
+	 * The count line says how the titles divide between them: "33 titles"
+	 * over a part headed "Posters and covers · 21" read as twelve titles
+	 * gone, the other part being four rows further down.
+	 */
+	const parts = $derived(held ? splitByShape(results, shapeOf).map((p) => ({ shape: p.shape, count: p.items.length })) : []);
+	let bar = $state<HTMLElement | null>(null);
+	/** Scrolls a part's label to just under the sticky bar and puts the focus on its first title. */
+	async function toPart(shape: Shape): Promise<void> {
+		const before = parts.slice(0, parts.findIndex((p) => p.shape === shape)).reduce((n, p) => n + p.count, 0);
+		// A part past the titles drawn so far is drawn first.
+		if (shown <= before) {
+			shown = before + RENDER;
+			await tick();
+		}
+		const section = gridEl?.querySelector<HTMLElement>(`[data-part="${shape}"]`);
+		if (!section) return;
+		const under = (bar?.getBoundingClientRect().height ?? 0) + (window.innerWidth < 768 ? 48 : 80) + 12;
+		const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		window.scrollTo({ top: Math.max(0, section.getBoundingClientRect().top + window.scrollY - under), behavior: calm ? 'auto' : 'smooth' });
+		section.querySelector<HTMLElement>('[data-cards] a[href]')?.focus({ preventScroll: true });
+	}
 	// Back lands where it left once the grid stands at its full height.
 	$effect(() => {
 		const y = restoreTo;
@@ -664,7 +687,7 @@
 		     it: at rest the bar starts level with the heading. Its shadow shows only
 		     once the grid scrolls under it; at rest it drew a dark seam on the page. -->
 		{#if !bare || view}
-			<div class={['sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 transition-shadow sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-20', scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''].join(' ')}>
+			<div bind:this={bar} class={['sticky top-12 z-20 -mx-5 space-y-2 bg-background px-5 pb-2 pt-2 transition-shadow sm:-mx-3 sm:space-y-3 sm:px-3 sm:pb-3 md:top-20', scrollY > 40 ? 'shadow-[0_12px_16px_-12px_rgba(0,0,0,0.9)]' : ''].join(' ')}>
 				<!-- The first row is as tall as the shelves' band (LibraryShelves), and the
 				     view switch ends it in both: switching views leaves it where it was.
 				     It sat a row lower here, under the search. -->
@@ -766,6 +789,23 @@
 						{/if}
 						{#if loading && items.length > 0}<span class="text-muted/70"> · loading the rest…</span>{/if}
 					</p>
+					{#if parts.length > 1 && !bare}
+						<!-- How the count divides, each part a way to where it starts. -->
+						<span class="-ml-1 mr-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+							{#each parts as part (part.shape)}
+								{@const label = t(part.shape === 'portrait' ? 'browse.countPortrait' : 'browse.countLandscape', { count: part.count })}
+								<span class="text-muted/50" aria-hidden="true">·</span>
+								<button
+									type="button"
+									class="rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline"
+									title={t('browse.toPart', { part: label })}
+									onclick={() => void toPart(part.shape)}
+								>
+									{label}
+								</button>
+							{/each}
+						</span>
+					{/if}
 					{#each chips as chip (chip.label)}
 						<button
 							type="button"

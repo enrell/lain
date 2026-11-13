@@ -1609,6 +1609,10 @@ const en = {
 		// The parts of a grid whose pictures differ in shape (TitleGrid).
 		partPortrait: 'Posters and covers',
 		partLandscape: 'Widescreen',
+		// Beside a grid's count: how its titles divide between the parts; each goes to its part.
+		countPortrait: { one: '{count} poster or cover', other: '{count} posters and covers' },
+		countLandscape: { one: '{count} in widescreen', other: '{count} in widescreen' },
+		toPart: 'Go to {part}',
 		// A catalog kind as the Kind filter names it.
 		kind: {
 			video: 'Films and clips',
