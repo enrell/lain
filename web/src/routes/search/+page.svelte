@@ -333,9 +333,11 @@
 		<ErrorState message={error} retry={() => void run(query, true)} />
 	{:else if showIdle}
 		<!-- Before a query: what was searched lately, and the libraries to start
-		     from, side by side from md up so the newest titles start in the first
-		     screen and the rail after them shows its cards, not a lone heading. -->
-		<div class="grid gap-6 md:grid-cols-2 md:gap-10">
+		     from, side by side from lg up so the newest titles start in the first
+		     screen and the rail after them shows its cards, not a lone heading.
+		     Below lg a half is too narrow: Clear and Shows each wrapped to a line
+		     of their own, and a tablet's tall screen has room for both rows. -->
+		<div class="grid gap-6 lg:grid-cols-2 lg:gap-10">
 			{#if recentSearches.items.length > 0}
 				<section aria-label={t('search.recentLabel')}>
 					<!-- Clear ends the row of what it clears: at the far edge of a wide
