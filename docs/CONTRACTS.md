@@ -58,7 +58,21 @@ from the picture's header (a sidecar's; a frame's is the video's and is
 not known). The gateway fills it on `GET /api/catalog`,
 `/api/catalog/{id}`, `/api/catalog/{id}/episodes` and `/api/search` on
 every read; it is never stored or exported, and a catalog provider never
-sets it. An item with no resolved `file_path` has none.
+sets it. An item with no resolved `file_path` has none. `source` may also
+be `title` (D-287): the file cannot be reached, so the route serves its
+title's art (see `lain.transform.thumbnail@1`), shape unknown.
+
+`CatalogItem.offline` (D-287, additive, omitted when empty) says the file
+cannot be reached right now, filled by the gateway on the same answers as
+`thumbnail` and from the same folder listings, never stored or exported:
+`library` when the item's library folder is missing or empty (an
+unmounted disk often leaves its mount point behind, empty), `file` when
+that folder is there but the file is not. It is the live state, where
+`missing` is a scan's stored verdict, so a file whose disk is away is
+`offline` without a rescan, and the flag clears the moment the file is
+back. The playback plan of such an item is `unavailable` with the reason
+`the library's folder cannot be reached` (`library`) or `the file is no
+longer on disk` (`file`).
 
 ### Pages of titles (D-283)
 
@@ -743,6 +757,27 @@ one file (an episode's row, a continue card): `<name>-thumb.*` next to it,
 else the frame at `t` (10 s by default; a comic archive's cover page),
 never `<name>-poster.*` or the folder's `.metadata/thumbs/` still. An
 older server ignores it and answers the cover.
+
+When the file's own picture cannot be made (D-287), because the file
+cannot be reached or no frame could be cut (no ffmpeg, a broken file),
+the route answers the title's art instead of an error, in this order: a
+still that stands for the title next to the file (`<name>-poster.*`,
+`.metadata/thumbs/`); the picture of the title's metadata overlay (the
+item's own, else its title's other files', from libraries the caller may
+see; a 16:9 ask, `art=still` or `t`, takes the wide `cover` before the
+`poster`, the plain cover the poster first), served from disk when it is
+an `.nfo`'s picture named beside it (a picture's name, never a path out of
+the `.nfo`'s folder or a link) or as a `302` to the provider's `http(s)`
+address the overlay holds (the server fetches nothing); last a
+placeholder, `200 image/svg+xml`, the title's name lettered on the
+theme's surface (16:9, or 2:3 for a book's cover) with
+`Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'`.
+Each such answer carries `X-Lain-Thumbnail: title-art | placeholder`,
+`X-Lain-Thumbnail-Reason: source-unavailable | frame-unavailable` and
+`Cache-Control: private, max-age=60`, so a disk mounted again shows its
+stills within a minute; answers of the file's own picture carry neither
+header. A client that cannot draw SVG reads the header (or the type) and
+draws its own placeholder. Case: `watch/24-thumbnail-fallback.json`.
 
 `GET /api/items/{id}/storyboard` (D-275) is how a seek bar previews
 without a request per position: `{interval_sec, count, columns, rows,

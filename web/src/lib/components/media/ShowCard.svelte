@@ -4,8 +4,8 @@
 	import Play from '@lucide/svelte/icons/play';
 	import type { Progress } from '$lib/api/types';
 	import type { SeriesGroup } from '$lib/utilities/grouping';
-	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
-	import { artItem as pickArt } from '$lib/utilities/browse';
+	import { enrichmentCache, ensureEnrichments } from '$lib/stores/media-cache.svelte';
+	import { artItem as pickArt, posterItem } from '$lib/utilities/browse';
 	import { readingLabel } from '$lib/reader/kinds';
 	import { episodeLabel } from '$lib/utilities/grouping';
 	import { formatLength, timeLeft } from '$lib/utilities/format';
@@ -13,6 +13,7 @@
 	import CardProgress from './CardProgress.svelte';
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
+	import OfflineMark from './OfflineMark.svelte';
 
 	/**
 	 * Plex-style library card: one poster per show, never one per
@@ -39,6 +40,16 @@
 	} = $props();
 
 	const artItem = $derived(pickArt(group));
+	// The picture is the title's poster wherever an overlay of the title has
+	// one (see `posterItem`), never chosen by progress. When the first file
+	// has no overlay art, the others' overlays are read once (cached).
+	const lookup = (id: string) => enrichmentCache.get(id);
+	const picture = $derived(posterItem(group, lookup));
+	$effect(() => {
+		const e = enrichmentCache.get(artItem.id);
+		if (e === undefined || e?.poster || e?.cover) return;
+		void ensureEnrichments(group.items.map((i) => i.id));
+	});
 
 	/*
 	 * One rule for every card: a title under way says Watching (or Reading)
@@ -47,6 +58,9 @@
 	 * nothing. One episode's strip used to stand for the whole show.
 	 */
 	const reading = $derived(isReadable(group.items[0]?.kind));
+	// D-287: marked only when none of its files can be reached; a season on
+	// another disk still leaves the rest to play.
+	const offline = $derived(group.items.length > 0 && group.items.every((i) => !!i.offline));
 	const state = $derived.by(() => {
 		if (progressOf) {
 			let done = 0;
@@ -117,15 +131,15 @@
 <a
 	href={`/item/${artItem.id}`}
 	class="group block w-full shrink-0 text-left transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-	aria-label={`${group.title}, ${detail}`}
+	aria-label={`${offline ? t('unreachable.cardLabel', { title: group.title }) : group.title}, ${detail}`}
 >
 	<div
 		class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.16)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/15"
 	>
 		<div class={frame === 'landscape' ? 'aspect-video' : 'aspect-[2/3]'}>
 			<Poster
-				item={artItem}
-				enrichment={enrichmentCache.get(artItem.id) ?? null}
+				item={picture}
+				enrichment={enrichmentCache.get(picture.id) ?? null}
 				{priority}
 				{frame}
 				class="size-full transition-transform duration-500 ease-out group-hover:scale-[1.035]"
@@ -134,11 +148,15 @@
 		<div
 			class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent opacity-15 transition-opacity duration-300 group-hover:opacity-100"
 		></div>
-		<div
-			class="pointer-events-none absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/65 text-foreground opacity-0 backdrop-blur transition-opacity duration-300 group-hover:opacity-100"
-		>
-			<Play class="size-4 translate-x-px" aria-hidden="true" />
-		</div>
+		{#if offline}
+			<OfflineMark compact={state.started} class="absolute right-2 top-2" />
+		{:else}
+			<div
+				class="pointer-events-none absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/65 text-foreground opacity-0 backdrop-blur transition-opacity duration-300 group-hover:opacity-100"
+			>
+				<Play class="size-4 translate-x-px" aria-hidden="true" />
+			</div>
+		{/if}
 		{#if state.finished}
 			<span class="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-foreground backdrop-blur">
 				<Check class="size-3" aria-hidden="true" />{reading ? 'Read' : 'Watched'}

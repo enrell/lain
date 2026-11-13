@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
-import { NO_FILTERS, activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState, withFilters, type Context, type Filters } from './browse';
+import { posterItem, NO_FILTERS, activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState, withFilters, type Context, type Filters } from './browse';
 import { groupItems } from './grouping';
 
 const NOW = 1_000_000;
@@ -95,5 +95,19 @@ describe('URL', () => {
 		expect(filtersFromParams(new URLSearchParams(''), 'listed', offered).sort).toBe('listed');
 		expect(filtersFromParams(new URLSearchParams('sort=title'), 'listed', offered).sort).toBe('title');
 		expect(filtersToParams(f({ sort: 'listed' }), 'listed').toString()).toBe('');
+	});
+});
+
+describe('posterItem', () => {
+	const show = groupItems([item('e1', 'Show', 1), item('e6', 'Show', 6), item('e7', 'Show', 7)])[0];
+	const overlay = (over: Partial<Enrichment>) => ({ item_id: '', provider: 'p', remote_id: '', title: '', fetched_at: 0, ...over }) as Enrichment;
+	it('is the file whose overlay has the title poster, never the one being watched for its own sake', () => {
+		const e: Record<string, Enrichment> = { e6: overlay({ poster: 'p.jpg' }), e7: overlay({ cover: 'c.jpg' }) };
+		expect(posterItem(show, (id) => e[id] ?? null).id).toBe('e6');
+	});
+	it('takes a wide cover when no file has a poster, and the first episode when none has art', () => {
+		expect(posterItem(show, (id) => (id === 'e7' ? overlay({ cover: 'c.jpg' }) : null)).id).toBe('e7');
+		expect(posterItem(show, () => null).id).toBe('e1');
+		expect(posterItem(show, (id) => (id === 'e1' ? overlay({ poster: 'a.jpg' }) : overlay({ poster: 'b.jpg' }))).id).toBe('e1');
 	});
 });

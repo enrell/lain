@@ -28,6 +28,13 @@ export interface CatalogItem {
 	missing?: boolean;
 	/** What the item's thumbnail is (D-282); absent from an older server. */
 	thumbnail?: ThumbnailInfo;
+	/**
+	 * D-287: the file cannot be reached right now, told on every read and
+	 * never stored: `library` when its library's folder is missing or empty
+	 * (an unmounted disk), `file` when only the file is gone. Absent when it
+	 * is there, and from an older server.
+	 */
+	offline?: 'library' | 'file' | (string & {});
 }
 
 /**
@@ -36,7 +43,8 @@ export interface CatalogItem {
  * archive's cover page (upright), or a frame cut from the video.
  */
 export interface ThumbnailInfo {
-	source: 'sidecar' | 'cover' | 'frame' | (string & {});
+	/** `title` (D-287): the file cannot be reached; its title's art stands in. */
+	source: 'sidecar' | 'cover' | 'frame' | 'title' | (string & {});
 	/** Width over height, when the server read the picture's header. */
 	aspect?: number;
 }

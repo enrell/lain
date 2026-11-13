@@ -154,6 +154,11 @@ fn private_suite_passes() {
     let root = lain_store::test_dir("rs-private");
     let media = root.join("media");
     std::fs::create_dir_all(media.join("Frieren")).unwrap();
+    // The fixture's files are there, as conformance/run.sh makes them: a
+    // file that is not is told `offline` (D-287).
+    for n in ["01", "02"] {
+        std::fs::write(media.join(format!("Frieren/[Fansub-A] Frieren - {n} [1080p].mkv")), b"").unwrap();
+    }
     let data = root.join("data");
     std::fs::create_dir_all(&data).unwrap();
     let roots = json!({"format": "lain.roots@1", "roots": {"media": media.to_string_lossy()}});

@@ -3,7 +3,7 @@ import type { CatalogItem, Enrichment } from '$lib/api/types';
 import { groupItems } from '$lib/utilities/grouping';
 import {
 	SAMPLE, STILLS_CAP, frameDecided, frameFor, frameOf, guessShape, knownShape, measure, recordShape, sampleArt, shapeOf, showsOwnStill,
-	splitByShape, stillKey, tallyStill, toldShape, usualStill
+	splitByShape, stillKey, tallyStill, toldShape, usualStill, pictureShape
 } from './shapes.svelte';
 
 function item(id: string, title: string, kind = 'video', episode = 0, library = 'lib'): CatalogItem {
@@ -193,5 +193,18 @@ describe('splitByShape', () => {
 		expect(splitByShape(['w1', 'p1'], shape).map((p) => p.shape)).toEqual(['portrait', 'landscape']);
 		expect(splitByShape(['p1', 'p2'], shape)).toEqual([{ shape: 'portrait', items: ['p1', 'p2'] }]);
 		expect(splitByShape([], shape)).toEqual([]);
+	});
+});
+
+describe('a title in a poster frame', () => {
+	// The owner's Animes rail: the overlay is on the episode under way, the
+	// first episode has none and its picture is a wide frame. The card is the
+	// title's poster, whatever episode is being watched.
+	// The first episode's own picture is wide (its frame, as the server tells it).
+	const first = { ...item('pf1', 'Show', 'episode', 1, 'anime'), thumbnail: { source: 'sidecar', aspect: 1.778 } };
+	const show = groupItems([first, item('pf6', 'Show', 'episode', 6, 'anime'), item('pf7', 'Show', 'episode', 7, 'anime')])[0];
+	const overlays = new Map([['pf6', art('pf6')]]);
+	it('draws the poster any file of the title has', () => {
+		expect(pictureShape(show, (id) => overlays.get(id) ?? null)).toBe('portrait');
 	});
 });
