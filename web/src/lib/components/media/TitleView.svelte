@@ -23,6 +23,10 @@
 	import { episodeLabel, type SeriesGroup } from '$lib/utilities/grouping';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { wideStill } from '$lib/stores/frames';
+	import { posterItem } from '$lib/utilities/browse';
+	import OfflineMark from '$lib/components/media/OfflineMark.svelte';
+	import OfflineNotice from '$lib/components/media/OfflineNotice.svelte';
+	import PlaceholderPoster from '$lib/components/media/PlaceholderPoster.svelte';
 	import { api } from '$lib/api';
 	import { session } from '$lib/auth/session.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -116,7 +120,10 @@
 		(enrichments.map((e) => e?.genres ?? []).find((g) => g.length > 0) ?? about?.genres ?? []).slice(0, 3)
 	);
 	const backdrop = $derived(enrichments.map((e) => e?.cover).find((c) => c) ?? '');
-	const posterEnrichment = $derived(enrichmentCache.get(artItem.id) ?? null);
+	// The cover is the title's poster, from whichever file's overlay has one
+	// (see `posterItem`): the first episode may have none.
+	const posterOf = $derived(posterItem(group, (id) => enrichmentCache.get(id)));
+	const posterEnrichment = $derived(enrichmentCache.get(posterOf.id) ?? null);
 	// The provider's title wins over the parsed one, exactly like the
 	// single-title page: a scan reads "Frieren", the overlay knows
 	// "Frieren: Beyond Journey's End".
@@ -168,8 +175,22 @@
 	let confirmDelete = $state(false);
 	let deleting = $state(false);
 
+	// A file that cannot be reached (D-287) cannot play or be deleted either;
+	// unlike a missing one it is said calmly, since it comes back with its disk.
 	function isGone(item: CatalogItem): boolean {
-		return item.missing || deletedIds.has(item.id);
+		return item.missing || !!item.offline || deletedIds.has(item.id);
+	}
+	function isAway(item: CatalogItem): boolean {
+		return !!item.offline && !item.missing && !deletedIds.has(item.id);
+	}
+	const allAway = $derived(group.items.length > 0 && group.items.every(isAway));
+	const awayFromLibrary = $derived(group.items.some((i) => i.offline === 'library'));
+	// Pictures that failed to load, by item: the card then letters the title
+	// instead of standing empty (D-287).
+	let failedStills = $state<Set<string>>(new Set());
+	let backdropFailed = $state(false);
+	function stillFailed(id: string): void {
+		failedStills = new Set([...failedStills, id]);
 	}
 
 	function toggleSelect(id: string): void {
@@ -291,7 +312,7 @@
 					.filter(Boolean)
 					.join(' · ')
 			: available.length === 0
-				? t('title.allMissing')
+				? t(allAway ? 'unreachable.allAway' : 'title.allMissing')
 				: doneLine || t('title.notStarted')
 	);
 
@@ -460,10 +481,12 @@
 	<!-- Full-bleed title hero in the home hero's language: no box, no
 	     border; the art runs under the navigation and fades into the page. -->
 	<header class="title-hero relative -mx-5 -mt-5 overflow-hidden sm:-mx-8 md:mx-0 md:-mt-28">
-		{#if backdrop}
-			<img src={backdrop} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full object-cover object-center max-md:scale-150 max-md:opacity-55 max-md:blur-3xl" referrerpolicy="no-referrer" />
+		{#if backdropFailed}
+			<div class="absolute inset-0 bg-gradient-to-br from-surface-active to-background" aria-hidden="true"></div>
+		{:else if backdrop}
+			<img src={backdrop} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full object-cover object-center max-md:scale-150 max-md:opacity-55 max-md:blur-3xl" referrerpolicy="no-referrer" onerror={() => (backdropFailed = true)} />
 		{:else}
-			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md" />
+			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md" onerror={() => (backdropFailed = true)} />
 		{/if}
 		<div class="hero-monolith-shade absolute inset-0" aria-hidden="true"></div>
 		<!-- On a phone Back is the top bar's (AppShell): drawn here, it scrolled under that bar. -->
@@ -474,7 +497,7 @@
 		     the fold. -->
 		<div class="relative grid w-full grid-cols-[5.5rem_minmax(0,1fr)] items-end gap-x-4 gap-y-5 pb-6 pt-6 md:flex md:min-h-[26rem] md:flex-row md:items-start md:gap-10 md:pb-10 md:pt-32">
 			<div class="aspect-[2/3] w-full shrink-0 overflow-hidden rounded-xl shadow-[0_24px_60px_rgba(0,0,0,0.55)] ring-1 ring-white/10 md:w-52">
-				<Poster item={artItem} enrichment={posterEnrichment} priority class="size-full" />
+				<Poster item={posterOf} enrichment={posterEnrichment} priority class="size-full" />
 			</div>
 			<div class="hero-monolith-copy hero-monolith-split min-w-0 max-w-6xl flex-1">
 				<!-- The name block: beside the cover on a phone (the parent is `contents` there). -->
@@ -507,7 +530,7 @@
 							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
 						</LinkButton>
 					{:else}
-						<Button size="rowMain" disabled class="max-md:w-[calc(100%-3.25rem)]" title="The files are no longer on disk">
+						<Button size="rowMain" disabled class="max-md:w-[calc(100%-3.25rem)]" title={allAway ? t('unreachable.play') : 'The files are no longer on disk'}>
 							<Play class="size-4 fill-current" aria-hidden="true" /> {reading ? t('title.read') : t('title.play')}
 						</Button>
 					{/if}
@@ -548,6 +571,10 @@
 			</div>
 		</div>
 	</header>
+
+	{#if allAway}
+		<OfflineNotice reason={awayFromLibrary ? 'library' : 'file'} library={homeLibrary?.name ?? ''} many={group.items.length > 1} />
+	{/if}
 
 	<div>
 		<div class="min-w-0">
@@ -667,7 +694,7 @@
 							     not navigate. -->
 							<div
 								class="block opacity-60"
-								aria-label={`${label(item)}, missing from disk`}
+								aria-label={isAway(item) ? t('unreachable.cardLabel', { title: label(item) }) : `${label(item)}, missing from disk`}
 							>
 								{@render episodeCard(item, progress, ratio, gone)}
 							</div>
@@ -745,16 +772,23 @@
 			chosen ? 'ring-2 ring-accent' : current ? 'ring-2 ring-accent/70' : 'ring-1 ring-white/5 group-hover:ring-white/15'
 		].join(' ')}
 	>
-		<img
-			src={wideStill(item, 480)}
-			alt=""
-			aria-hidden="true"
-			loading="lazy"
-			decoding="async"
-			class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
-		/>
+		{#if failedStills.has(item.id)}
+			<PlaceholderPoster title={displayTitle} label={label(item)} wide={!reading} class="size-full" />
+		{:else}
+			<img
+				src={wideStill(item, 480)}
+				alt=""
+				aria-hidden="true"
+				loading="lazy"
+				decoding="async"
+				class="size-full object-cover {reading ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
+				onerror={() => stillFailed(item.id)}
+			/>
+		{/if}
 		<!-- No play badge while choosing: the card then toggles, it does not play. -->
-		{#if !gone && !choosing}
+		{#if isAway(item)}
+			<OfflineMark class="absolute right-2 top-2" />
+		{:else if !gone && !choosing}
 			<span
 				class="absolute right-2 top-2 flex size-8 items-center justify-center rounded-full bg-black/65 text-white opacity-0 backdrop-blur transition-opacity duration-200 group-hover:opacity-100"
 			>
@@ -777,8 +811,8 @@
 		{#if item.title !== group.title}
 			<p class="mt-0.5 truncate text-sm text-foreground/80">{item.title}</p>
 		{/if}
-		<p class={['mt-1 truncate text-xs', gone ? 'text-danger' : 'text-muted'].join(' ')}>
-			{gone ? 'Missing from disk' : cardLine(item, progress)}
+		<p class={['mt-1 truncate text-xs', gone && !isAway(item) ? 'text-danger' : 'text-muted'].join(' ')}>
+			{isAway(item) ? t(item.offline === 'library' ? 'unreachable.line' : 'unreachable.lineFile') : gone ? 'Missing from disk' : cardLine(item, progress)}
 		</p>
 	</div>
 {/snippet}

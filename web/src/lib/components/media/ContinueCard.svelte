@@ -10,6 +10,8 @@
 	import { isReadable, readingLabel } from '$lib/reader/kinds';
 	import { progressRatio } from '$lib/utilities/progress';
 	import CardProgress from './CardProgress.svelte';
+	import OfflineMark from './OfflineMark.svelte';
+	import PlaceholderPoster from './PlaceholderPoster.svelte';
 
 	let {
 		item,
@@ -65,7 +67,19 @@
 	);
 	const ratio = $derived(progress && !progress.completed ? progressRatio(progress) : 0);
 
-	let stillFailed = $state(false);
+	// D-287: never an empty box. The file's still, then the title's art from
+	// its overlay (wide first), then the lettered placeholder. A server since
+	// D-287 already answers the title's art for a file it cannot reach; this
+	// chain covers an older server, a broken picture and a provider that is
+	// down. Pictures that failed are remembered by address, so another item
+	// starts its own chain afresh.
+	const chain = $derived(
+		[still, enrichment?.cover, enrichment?.poster].filter((s, i, all): s is string => !!s && all.indexOf(s) === i)
+	);
+	let failed = $state<string[]>([]);
+	const shown = $derived(chain.find((s) => !failed.includes(s)) ?? '');
+	const placeholderLabel = $derived(item.episode > 0 && !reading ? epLabel : '');
+	const offline = $derived(!!item.offline);
 	// An upright picture (a file that came with its poster, a page) is shown
 	// whole over a blurred copy of itself, as a grid's frame treats it; cut
 	// to 16:9 a poster lost its title. Known before it loads when the server
@@ -77,37 +91,47 @@
 <a
 	href={`/item/${item.id}`}
 	class="group block transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-	aria-label={`${title}, ${subtitle}${ratio > 0 ? (reading ? ', reading' : ', watching') : ''}`}
+	aria-label={`${offline ? t('unreachable.cardLabel', { title }) : title}, ${subtitle}${ratio > 0 ? (reading ? ', reading' : ', watching') : ''}`}
 >
 	<div class="relative overflow-hidden rounded-xl bg-surface shadow-[0_18px_45px_rgba(0,0,0,0.18)] ring-1 ring-white/5 transition duration-300 group-hover:ring-white/14">
 		<div class="relative aspect-video">
-			{#if !stillFailed}
+			{#if shown}
 				{#if upright}
-					<img src={still} alt="" aria-hidden="true" decoding="async" class="absolute inset-0 size-full scale-125 object-cover opacity-50 blur-2xl" />
+					<img src={shown} alt="" aria-hidden="true" decoding="async" referrerpolicy="no-referrer" class="absolute inset-0 size-full scale-125 object-cover opacity-50 blur-2xl" />
 				{/if}
 				<img
-					src={still}
+					src={shown}
 					alt=""
 					aria-hidden="true"
 					loading="lazy"
 					decoding="async"
+					referrerpolicy="no-referrer"
 					class="relative size-full {upright ? 'object-contain' : 'object-cover'} {reading && !upright ? 'object-top' : ''} transition-transform duration-500 ease-out group-hover:scale-[1.035]"
 					onload={(e) => {
 						const img = e.currentTarget as HTMLImageElement;
 						measuredUpright = img.naturalWidth > 0 && img.naturalWidth <= img.naturalHeight * 1.15;
 					}}
-					onerror={() => (stillFailed = true)}
+					onerror={() => {
+						failed = [...failed, shown];
+						measuredUpright = null;
+					}}
 				/>
+			{:else}
+				<PlaceholderPoster title={series} label={placeholderLabel} wide class="size-full" />
 			{/if}
 		</div>
 		<div
 			class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/5 to-transparent opacity-30 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100"
 		></div>
-		<div
-			class="pointer-events-none absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/65 text-foreground opacity-0 backdrop-blur transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
-		>
-			<Play class="size-4 translate-x-px" aria-hidden="true" />
-		</div>
+		{#if offline}
+			<OfflineMark class="absolute right-2 top-2" />
+		{:else}
+			<div
+				class="pointer-events-none absolute right-2 top-2 flex size-9 items-center justify-center rounded-full bg-black/65 text-foreground opacity-0 backdrop-blur transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+			>
+				<Play class="size-4 translate-x-px" aria-hidden="true" />
+			</div>
+		{/if}
 		{#if ratio > 0}
 			<CardProgress {ratio} label={t('title.watchProgress')} />
 		{/if}

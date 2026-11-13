@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Cards are never empty boxes** (D-287): when a file's own picture
+  cannot be made (its disk unmounted, no frame to cut), the thumbnail
+  route answers the title's art instead of an error (a still beside the
+  file, the overlay's picture as a redirect, else a placeholder lettering
+  the title in the theme), saying so in `X-Lain-Thumbnail` and
+  `X-Lain-Thumbnail-Reason`. The web also walks each picture's fallbacks on
+  error and ends on the same lettered placeholder.
+- **Offline files are told, calmly** (D-287): catalog answers carry
+  `offline` (`library` when the library's folder is missing or empty,
+  `file` when only the file is gone), cards wear a small `Offline` mark,
+  and the title page says which folder cannot be reached instead of
+  offering a Play that fails; the playback plan's reason names the folder.
 - **Pages of titles** (D-283): `GET /api/catalog` and `GET /api/search`
   take `group=title`, which pages titles instead of files: `total`,
   `limit` and `offset` count titles and `items` holds every file of each
@@ -165,6 +177,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   under way says its page on Continue reading ("Vol 1 · page 4 of 8").
 
 ### Fixed
+- **A title in a poster rail shows its poster while you watch it**: a
+  show's card drew its first episode's overlay, and when only the episode
+  under way had one (a backfill cut short, metadata fetched from that
+  episode's page) the card showed the first episode's wide frame
+  letterboxed in the poster frame. Cards, the title page's cover and the
+  frame guess now take the poster from whichever file of the title has it.
 - **Web:** films and clips without a year are captioned with their length,
   not "video"; time left is said one way on every card and hero ("9 sec
   left", where a card said "1 min left"); a film card under way says what

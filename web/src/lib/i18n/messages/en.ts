@@ -17,6 +17,23 @@ const en = {
 		close: 'Close',
 		signOut: 'Sign out'
 	},
+	// D-287: a file whose disk is away, said calmly where it shows.
+	unreachable: {
+		mark: 'Offline',
+		cardLabel: '{title}, offline',
+		libraryTitle: 'The file cannot be reached.',
+		libraryBody:
+			'The folder of {library} is missing or empty, so its disk is probably not mounted. Progress and metadata are kept, and it plays again as soon as the folder is back.',
+		fileTitle: 'The file is not where it was.',
+		fileBody:
+			'The folder of {library} is there, but this file is not: it was moved or deleted. It stays in the catalog and plays again if the file comes back.',
+		seriesTitle: 'These files cannot be reached.',
+		itsLibrary: 'its library',
+		allAway: 'All files offline',
+		play: 'The library folder cannot be reached',
+		line: 'Offline · library folder not reachable',
+		lineFile: 'Offline · file not found'
+	},
 	// A row of cards' buttons for a mouse (Rail); the keyboard walks it with the arrows.
 	rail: {
 		previous: 'Earlier in this row',
