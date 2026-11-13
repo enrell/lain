@@ -156,7 +156,9 @@
 			if (!row) return;
 			const top = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
 			const bottom = top + row.offsetHeight;
-			if (top >= scroller.scrollTop && bottom <= scroller.scrollTop + scroller.clientHeight) return;
+			// In view means clear of the ends' fade (the list's scroll padding).
+			const pad = parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0;
+			if (top >= scroller.scrollTop + pad && bottom <= scroller.scrollTop + scroller.clientHeight - pad) return;
 			scroller.scrollTop = Math.max(0, top - (scroller.clientHeight - row.offsetHeight) / 2);
 		});
 	});
@@ -394,8 +396,9 @@
 				</div>
 				<!-- Fades where more episodes are hidden, above or below: at rest the
 				     last one in view was cut by the window's edge with nothing to say
-				     the list goes on. -->
-				<ul bind:this={listScroller} class="edge-fade-y min-h-0 flex-1 space-y-1 overflow-y-auto p-2" {@attach scrollEdges(undefined, '3rem', 'y')}>
+				     the list goes on. The scroll padding is the fade's 3rem, so an
+				     episode Tab moves to stops clear of it instead of under it. -->
+				<ul bind:this={listScroller} class="edge-fade-y min-h-0 flex-1 scroll-py-12 space-y-1 overflow-y-auto p-2" {@attach scrollEdges(undefined, '3rem', 'y')}>
 					{#each episodes as episode (episode.id)}
 						{@const current = episode.id === item.id}
 						{@const p = progressMap.get(episode.id)}
