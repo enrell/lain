@@ -285,8 +285,9 @@
 					aria-label={t('social.comments.label')}
 					placeholder={t('social.comments.placeholder')}
 				></textarea>
-				<div class="flex items-center justify-between">
-					<span class="flex items-center gap-1.5 font-mono text-[10px] text-muted"><Kbd>M</Kbd> {t('social.comments.focusHint')}</span>
+				<!-- The hint goes with its key on a touch screen (key-hint): alone, "to write" read as a stray word. -->
+				<div class="flex items-center justify-end">
+					<span class="key-hint me-auto flex items-center gap-1.5 font-mono text-[10px] text-muted"><Kbd>M</Kbd> {t('social.comments.focusHint')}</span>
 					<Button size="sm" loading={posting} disabled={!body.trim()} onclick={() => void post()}>
 						{t('social.comments.post')} <Kbd>Ctrl ↵</Kbd>
 					</Button>
