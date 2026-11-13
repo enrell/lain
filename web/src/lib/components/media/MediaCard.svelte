@@ -9,6 +9,7 @@
 	import type { Shape } from '$lib/stores/shapes.svelte';
 	import Poster from './Poster.svelte';
 	import CardProgress from './CardProgress.svelte';
+	import { t } from '$lib/i18n';
 
 	let {
 		item,
@@ -85,7 +86,7 @@
 			</span>
 		{/if}
 		{#if ratio > 0}
-			<CardProgress {ratio} label={reading ? "Reading progress" : "Watch progress"} />
+			<CardProgress {ratio} label={t(reading ? 'title.readProgress' : 'title.watchProgress')} />
 		{/if}
 	</div>
 	<div class="mt-3 min-w-0">

@@ -1685,6 +1685,8 @@ const en = {
 		noMatchTitle: 'Nothing tracked of this kind',
 		noMatchBody: 'Your accounts track other things. Clear the filters to see all of it.',
 		showEverything: 'Show everything',
+		// A tracked entry's card bar, for a screen reader.
+		entryProgress: 'Progress',
 		firstRun: {
 			eyebrow: 'First step',
 			title: 'Bring the list you keep elsewhere.',

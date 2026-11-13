@@ -149,7 +149,7 @@
 			</span>
 			<!-- The film cards' bar, inset and rounded: a flush strip here and an inset bar
 			     there drew one fact two ways in the same grid. -->
-			<CardProgress ratio={Math.min(1, state.fraction)} />
+			<CardProgress ratio={Math.min(1, state.fraction)} label={t(reading ? 'title.readProgress' : 'title.watchProgress')} />
 		{/if}
 	</div>
 	<div class="mt-3 min-w-0">
