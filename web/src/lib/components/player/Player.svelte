@@ -1175,6 +1175,13 @@
 	const bandClass = $derived(stacked ? '' : chromeClass);
 	// Every button of the deck: one touch-sized box, the shadow that keeps it on a bright frame.
 	const DECK = 'size-11 text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]';
+	// A wait or a failure owns the picture: the shade over the whole player, and the
+	// room for its words between the top bar and the deck (bottom: the deck's height).
+	const blocked = $derived(preparingTranscode || !!transcodeError || !!error);
+	const NOTE_SHADE = 'absolute inset-0 z-10 bg-background/85';
+	const noteRoom = $derived(
+		['absolute inset-x-0 top-0 flex flex-col overflow-y-auto overscroll-contain px-6 pb-4 text-center', stacked ? 'pt-12' : 'pt-16'].join(' ')
+	);
 
 	// The pointer wakes the chrome only where the chrome lives: when approaching
 	// close enough to touch the controls container
@@ -1814,6 +1821,8 @@
 	class={[
 		'relative flex w-full flex-col justify-end overflow-hidden bg-black',
 		stacked ? 'h-auto' : 'h-full',
+		// Upright, the wait's words are taller than the 16:9 band: the player grows for them.
+		stacked && preparingTranscode ? 'min-h-[30rem]' : '',
 		controlsVisible ? '' : 'cursor-none',
 		subtitleBgClass,
 		subtitleSizeClass
@@ -1995,83 +2004,95 @@
 
 	</div>
 
-	<!-- The waits and failures cover the whole player, above the touch surface (z-10)
+	<!-- The waits and failures shade the whole player above the touch surface (z-10),
 	     so their buttons take the click: in the picture's box they sat under that
-	     surface, which took every click and tap meant for Retry, and they did not fit
-	     a stacked phone's 16:9 band. -->
+	     surface, which took every click and tap meant for Retry. Their words sit in
+	     the room between the top bar and the deck, both of which stay usable above
+	     the shade (Back, and the settings' Open with while a transcode is prepared):
+	     centred on the whole player, the deck covered Back to details on a phone on
+	     its side, and on an upright phone the note ran over the seek bar. -->
 	{#if preparingTranscode}
-		<div class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/85 px-6 text-center">
-			<Spinner class="size-10 text-muted" label={t('player.prepare.label')} />
-			<div class="max-w-md">
-				<p class="text-sm text-foreground">
-					{seekTarget > 0 ? t('player.prepare.seeking', { time: formatTime(seekTarget) }) : t('player.prepare.first')}
-				</p>
-				<p class="mt-2 font-mono text-xs uppercase tracking-[0.14em] tabular-nums text-muted">
-					{t('player.prepare.elapsed', { time: formatTime(prepareElapsed) })}
-				</p>
-				{#if prepareProgress > 0}
-					<div
-						class="mx-auto mt-4 h-[3px] w-56 overflow-hidden bg-line/30"
-						role="progressbar"
-						aria-label={t('player.prepare.progress')}
-						aria-valuemin="0"
-						aria-valuemax="100"
-						aria-valuenow={preparePercent}
-					>
-						<div class="h-full bg-accent" style={`width:${preparePercent}%`}></div>
+		<div class={NOTE_SHADE}>
+			<div class={noteRoom} style:bottom={`${footHeight}px`}>
+				<div class="m-auto flex max-w-md flex-col items-center gap-3">
+					<Spinner class="size-10 text-muted" label={t('player.prepare.label')} />
+					<div>
+						<p class="text-sm text-foreground">
+							{seekTarget > 0 ? t('player.prepare.seeking', { time: formatTime(seekTarget) }) : t('player.prepare.first')}
+						</p>
+						<p class="mt-2 font-mono text-xs uppercase tracking-[0.14em] tabular-nums text-muted">
+							{t('player.prepare.elapsed', { time: formatTime(prepareElapsed) })}
+						</p>
+						{#if prepareProgress > 0}
+							<div
+								class="mx-auto mt-4 h-[3px] w-56 overflow-hidden bg-line/30"
+								role="progressbar"
+								aria-label={t('player.prepare.progress')}
+								aria-valuemin="0"
+								aria-valuemax="100"
+								aria-valuenow={preparePercent}
+							>
+								<div class="h-full bg-accent" style={`width:${preparePercent}%`}></div>
+							</div>
+							<p class="mt-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+								{t('player.prepare.percent', { percent: preparePercent })}
+							</p>
+						{/if}
+						<!-- A phone on its side keeps the wait, the time and the way out: the why is for a taller screen. -->
+						{#if seekTarget > 0}
+							<p class="mt-4 text-xs leading-relaxed text-muted [@media(max-height:500px)]:hidden">{t('player.prepare.seekHint')}</p>
+						{:else}
+							<p class="mt-4 text-xs leading-relaxed text-muted [@media(max-height:500px)]:hidden">{t('player.prepare.firstHint')}</p>
+						{/if}
+						<p class="mt-2 text-xs leading-relaxed text-muted">{t('player.prepare.leaveHint')}</p>
+						<button
+							class="mt-5 inline-flex items-center gap-1.5 border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
+							onclick={() => void goto(`/item/${item.id}`)}
+						>
+							<ArrowLeft class="size-3.5" aria-hidden="true" /> {t('player.backToDetails')}
+						</button>
 					</div>
-					<p class="mt-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-						{t('player.prepare.percent', { percent: preparePercent })}
-					</p>
-				{/if}
-				{#if seekTarget > 0}
-					<p class="mt-4 text-xs leading-relaxed text-muted">{t('player.prepare.seekHint')}</p>
-				{:else}
-					<p class="mt-4 text-xs leading-relaxed text-muted">{t('player.prepare.firstHint')}</p>
-				{/if}
-				<p class="mt-2 text-xs leading-relaxed text-muted">{t('player.prepare.leaveHint')}</p>
-				<button
-					class="mt-5 inline-flex items-center gap-1.5 border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
-					onclick={() => void goto(`/item/${item.id}`)}
-				>
-					<ArrowLeft class="size-3.5" aria-hidden="true" /> {t('player.backToDetails')}
-				</button>
+				</div>
 			</div>
 		</div>
 	{:else if transcodeError}
-		<div class="absolute inset-0 z-10 flex items-center justify-center bg-background/85 px-6" role="alert">
-			<div class="max-w-md text-center">
-				<TriangleAlert class="mx-auto size-8 text-warning" />
-				<p class="mt-3 text-sm text-foreground">{transcodeError}</p>
-				<button
-					class="mt-5 inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
-					onclick={() => void prepareTranscode()}
-				>
-					<RotateCcw class="size-3.5" aria-hidden="true" /> {t('player.prepare.retry')}
-				</button>
+		<div class={NOTE_SHADE} role="alert">
+			<div class={noteRoom} style:bottom={`${footHeight}px`}>
+				<div class="m-auto max-w-md">
+					<TriangleAlert class="mx-auto size-8 text-warning" />
+					<p class="mt-3 text-sm text-foreground">{transcodeError}</p>
+					<button
+						class="mt-5 inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
+						onclick={() => void prepareTranscode()}
+					>
+						<RotateCcw class="size-3.5" aria-hidden="true" /> {t('player.prepare.retry')}
+					</button>
+				</div>
 			</div>
 		</div>
 	{/if}
 
 	<!-- Error -->
 	{#if error}
-		<div class="absolute inset-0 z-10 flex items-center justify-center bg-background/85 px-6" role="alert">
-			<div class="max-w-md text-center">
-				<TriangleAlert class="mx-auto size-8 text-warning" />
-				<p class="mt-3 text-sm text-foreground">{error}</p>
-				<div class="mt-5 flex justify-center gap-2">
-					<button
-						class="inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
-						onclick={retryPlayback}
-					>
-						<RotateCcw class="size-3.5" aria-hidden="true" /> {t('player.error.retry')}
-					</button>
-					<a
-						href={`/item/${item.id}`}
-						class="inline-flex items-center border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
-					>
-						{t('player.backToDetails')}
-					</a>
+		<div class={NOTE_SHADE} role="alert">
+			<div class={noteRoom} style:bottom={`${footHeight}px`}>
+				<div class="m-auto max-w-md">
+					<TriangleAlert class="mx-auto size-8 text-warning" />
+					<p class="mt-3 text-sm text-foreground">{error}</p>
+					<div class="mt-5 flex justify-center gap-2">
+						<button
+							class="inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
+							onclick={retryPlayback}
+						>
+							<RotateCcw class="size-3.5" aria-hidden="true" /> {t('player.error.retry')}
+						</button>
+						<a
+							href={`/item/${item.id}`}
+							class="inline-flex items-center border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
+						>
+							{t('player.backToDetails')}
+						</a>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -2223,7 +2244,8 @@
 		</div>
 	{/if}
 
-	{#if directFallbackNote}
+	<!-- Not under a wait or failure note: "Preparing this video" beside "Request failed" contradicted it. -->
+	{#if directFallbackNote && !blocked}
 		<p
 			class={[
 				'relative z-20 bg-transparent px-4 pt-2 text-xs leading-relaxed text-muted drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]',
