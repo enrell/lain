@@ -199,11 +199,16 @@
 		<div class="min-w-0">
 			<!-- As typed: the card is the preview of what others see, and capitals here read "ANA" over a field that says "ana". -->
 			<p class="truncate text-2xl font-black tracking-[-0.03em] text-foreground">{displayName(preview)}</p>
-			<p class="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
-				<!-- One joined string: a block's leading space was trimmed into "ADMIN· SINCE".
-				     Each fact keeps its words together (no-break spaces), so a phone breaks
-				     the line between facts, not "2026" off on a line of its own. -->
-				{[`@${user.username}`, user.role, user.created_at ? t('settings.since', { date: formatDate(user.created_at) }) : ''].filter(Boolean).map((fact) => fact.replaceAll(' ', '\u00a0')).join(' · ')}
+			<!-- Each fact on one line, the line broken between facts ("2026" off on a
+			     line of its own read badly). The dot before a fact sits in the space
+			     the row is pulled left by and is clipped there for the first fact of a
+			     line: joined as text, a phone's line ended on a lone "·". -->
+			<p class="mt-1 overflow-hidden font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
+				<span class="-ms-5 flex flex-wrap">
+					{#each [`@${user.username}`, user.role, user.created_at ? t('settings.since', { date: formatDate(user.created_at) }) : ''].filter(Boolean) as fact (fact)}
+						<span class="whitespace-nowrap before:inline-block before:w-5 before:text-center before:tracking-normal before:content-['·']">{fact}</span>
+					{/each}
+				</span>
 			</p>
 			{#if bio.trim()}<p class="mt-2 max-w-xl whitespace-pre-line text-sm text-muted">{bio.trim()}</p>{/if}
 		</div>
