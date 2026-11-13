@@ -668,7 +668,8 @@ const en = {
 			jobs: { one: '{count} job', other: '{count} jobs' },
 			allHealthy: 'all healthy',
 			// Jobs bound to a component that is not installed (the optional bridges): an option, not a fault.
-			toInstall: { one: '{count} optional, available to install', other: '{count} optional, available to install' },
+			// The family's line; opening the family shows how to install each.
+			toInstall: { one: '{count} optional, not installed', other: '{count} optional, not installed' },
 			unhealthyCount: { one: '{count} provider unhealthy', other: '{count} providers unhealthy' },
 			generation: 'generation {n}',
 			replace: 'Replace',
