@@ -89,6 +89,11 @@
 		}
 	}
 
+	function signOut(): void {
+		session.logout();
+		void goto('/login');
+	}
+
 	// /settings reopens the section you were last in.
 	$effect(() => {
 		if (current) prefs.set('settings.last', current.href);
@@ -164,10 +169,7 @@
 		<button
 			type="button"
 			class="mt-7 flex h-8 w-full items-center gap-2 ps-[1.125rem] text-left text-[13px] tracking-wide text-muted transition-colors hover:text-foreground"
-			onclick={() => {
-				session.logout();
-				void goto('/login');
-			}}
+			onclick={signOut}
 		>
 			<LogOut class="size-3.5" aria-hidden="true" /> {t('common.signOut')}
 		</button>
@@ -232,4 +234,10 @@
 			</ul>
 		{/if}
 	{/each}
+	<!-- Leaving the account, as the wide rail offers it: on a phone the picker is that rail. -->
+	<div class="-mx-2 mt-4 border-t border-hairline pt-2">
+		<button type="button" class="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-start text-[15px] font-medium text-foreground active:bg-surface-hover" onclick={signOut}>
+			<LogOut class="size-5 text-muted" aria-hidden="true" /> {t('common.signOut')}
+		</button>
+	</div>
 </Modal>

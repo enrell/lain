@@ -176,7 +176,35 @@
 	// bar is drawn: while it shows, the browser's cues move up by its height
 	// (less its transparent fade) instead of being drawn under the buttons.
 	let footHeight = $state(0);
-	const cueLift = $derived(controlsVisible ? Math.max(0, footHeight - 32) : 0);
+	/*
+	 * How the player is held and pointed at. A touch screen gets the phone
+	 * players' pattern: play and the two skips in the middle of the picture,
+	 * the bar keeps the rest. A mouse gets the bar's play and nothing on the
+	 * picture: both at once was two play buttons on one paused frame. An
+	 * upright phone (not full screen) stacks the bands: the picture under
+	 * the top bar, the deck under the picture, so neither covers a frame
+	 * that small.
+	 */
+	let coarse = $state(false);
+	let upright = $state(false);
+	$effect(() => {
+		const touch = window.matchMedia('(pointer: coarse)');
+		const tall = window.matchMedia('(max-width: 767px) and (orientation: portrait)');
+		const sync = (): void => {
+			coarse = touch.matches;
+			upright = tall.matches;
+		};
+		sync();
+		touch.addEventListener('change', sync);
+		tall.addEventListener('change', sync);
+		return () => {
+			touch.removeEventListener('change', sync);
+			tall.removeEventListener('change', sync);
+		};
+	});
+	const stacked = $derived(upright && !fullscreen);
+	// Stacked, the deck is under the picture: nothing to lift the cues over.
+	const cueLift = $derived(controlsVisible && !stacked ? Math.max(0, footHeight - 32) : 0);
 	// Firefox cannot move its own cue box (see nativeCueBoxMovable): there the
 	// player draws the cues, as it does over the GPU renderer's canvas.
 	const cueBoxMovable = nativeCueBoxMovable();
@@ -1142,6 +1170,18 @@
 			controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
 		].join(' ')
 	);
+	// Stacked on an upright phone, the bars are bands of their own beside the
+	// picture, not over it: they stay, and only what sits on the picture fades.
+	const bandClass = $derived(stacked ? '' : chromeClass);
+	// Every button of the deck: one touch-sized box, the shadow that keeps it on a bright frame.
+	const DECK = 'size-11 text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]';
+	// A wait or a failure owns the picture: the shade over the whole player, and the
+	// room for its words between the top bar and the deck (bottom: the deck's height).
+	const blocked = $derived(preparingTranscode || !!transcodeError || !!error);
+	const NOTE_SHADE = 'absolute inset-0 z-10 bg-background/85';
+	const noteRoom = $derived(
+		['absolute inset-x-0 top-0 flex flex-col overflow-y-auto overscroll-contain px-6 pb-4 text-center', stacked ? 'pt-12' : 'pt-16'].join(' ')
+	);
 
 	// The pointer wakes the chrome only where the chrome lives: when approaching
 	// close enough to touch the controls container
@@ -1779,7 +1819,10 @@
 <div
 	bind:this={container}
 	class={[
-		'relative flex h-full w-full flex-col justify-end overflow-hidden bg-black',
+		'relative flex w-full flex-col justify-end overflow-hidden bg-black',
+		stacked ? 'h-auto' : 'h-full',
+		// Upright, the wait's words are taller than the 16:9 band: the player grows for them.
+		stacked && preparingTranscode ? 'min-h-[30rem]' : '',
 		controlsVisible ? '' : 'cursor-none',
 		subtitleBgClass,
 		subtitleSizeClass
@@ -1826,8 +1869,9 @@
 	<header
 		bind:this={headerEl}
 		class={[
-			'absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-4 bg-transparent bg-gradient-to-b from-black/60 to-transparent px-4 sm:px-6',
-			chromeClass
+			'absolute inset-x-0 top-0 z-20 flex items-center gap-4 bg-transparent bg-gradient-to-b from-black/60 to-transparent px-4 sm:px-6',
+			stacked ? 'h-12' : 'h-16',
+			bandClass
 		].join(' ')}
 	>
 		<button
@@ -1844,7 +1888,8 @@
 		</p>
 	</header>
 
-	<div class="absolute inset-0 letterbox bg-black">
+	<!-- Stacked, the picture is a 16:9 band of its own under the top bar (h-12). -->
+	<div class={['letterbox bg-black', stacked ? 'relative mt-12 aspect-video w-full shrink-0' : 'absolute inset-0'].join(' ')}>
 		<video
 			bind:this={video}
 			src={streamSrc}
@@ -1904,60 +1949,6 @@
 			<CueOverlay track={cueTrack} video={video} size={subtitleSize} lift={cueLift} />
 		{/if}
 
-	{#if preparingTranscode}
-		<div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/85 px-6 text-center">
-			<Spinner class="size-10 text-muted" label={t('player.prepare.label')} />
-			<div class="max-w-md">
-				<p class="text-sm text-foreground">
-					{seekTarget > 0 ? t('player.prepare.seeking', { time: formatTime(seekTarget) }) : t('player.prepare.first')}
-				</p>
-				<p class="mt-2 font-mono text-xs uppercase tracking-[0.14em] tabular-nums text-muted">
-					{t('player.prepare.elapsed', { time: formatTime(prepareElapsed) })}
-				</p>
-				{#if prepareProgress > 0}
-					<div
-						class="mx-auto mt-4 h-[3px] w-56 overflow-hidden bg-line/30"
-						role="progressbar"
-						aria-label={t('player.prepare.progress')}
-						aria-valuemin="0"
-						aria-valuemax="100"
-						aria-valuenow={preparePercent}
-					>
-						<div class="h-full bg-accent" style={`width:${preparePercent}%`}></div>
-					</div>
-					<p class="mt-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-						{t('player.prepare.percent', { percent: preparePercent })}
-					</p>
-				{/if}
-				{#if seekTarget > 0}
-					<p class="mt-4 text-xs leading-relaxed text-muted">{t('player.prepare.seekHint')}</p>
-				{:else}
-					<p class="mt-4 text-xs leading-relaxed text-muted">{t('player.prepare.firstHint')}</p>
-				{/if}
-				<p class="mt-2 text-xs leading-relaxed text-muted">{t('player.prepare.leaveHint')}</p>
-				<button
-					class="mt-5 inline-flex items-center gap-1.5 border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
-					onclick={() => void goto(`/item/${item.id}`)}
-				>
-					<ArrowLeft class="size-3.5" aria-hidden="true" /> {t('player.backToDetails')}
-				</button>
-			</div>
-		</div>
-	{:else if transcodeError}
-		<div class="absolute inset-0 flex items-center justify-center bg-background/85 px-6" role="alert">
-			<div class="max-w-md text-center">
-				<TriangleAlert class="mx-auto size-8 text-warning" />
-				<p class="mt-3 text-sm text-foreground">{transcodeError}</p>
-				<button
-					class="mt-5 inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
-					onclick={() => void prepareTranscode()}
-				>
-					<RotateCcw class="size-3.5" aria-hidden="true" /> {t('player.prepare.retry')}
-				</button>
-			</div>
-		</div>
-	{/if}
-
 	<!-- Buffering -->
 	{#if waiting && !error && !preparingTranscode}
 		<div class="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -1965,45 +1956,33 @@
 		</div>
 	{/if}
 
-	<!-- Error -->
-	{#if error}
-		<div class="absolute inset-0 flex items-center justify-center bg-background/85 px-6" role="alert">
-			<div class="max-w-md text-center">
-				<TriangleAlert class="mx-auto size-8 text-warning" />
-				<p class="mt-3 text-sm text-foreground">{error}</p>
-				<div class="mt-5 flex justify-center gap-2">
-					<button
-						class="inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
-						onclick={retryPlayback}
-					>
-						<RotateCcw class="size-3.5" aria-hidden="true" /> {t('player.error.retry')}
+	<!-- One play button for each kind of pointer. On a touch screen: play and
+	     the two skips in the middle of the picture, with the chrome, as phone
+	     players do; the bar drops its own. With a mouse: the bar's button, and
+	     a click on the paused picture plays it (D-064 lets a click never pause). -->
+	{#if transcodeReady && !error && !settingsOpen && !keysOpen}
+		{#if coarse}
+			<div class={['absolute inset-0 z-10 flex items-center justify-center gap-10', chromeClass, 'pointer-events-none'].join(' ')}>
+				<button type="button" class={['flex size-12 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur', controlsVisible ? 'pointer-events-auto' : ''].join(' ')} aria-label={t('player.backSeconds', { seconds: skipSec })} onclick={() => seekBy(-skipSec)}>
+					<span class="relative flex items-center justify-center"><SkipBack class="size-7" aria-hidden="true" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span></span>
+				</button>
+				{#if waiting && !ended}
+					<!-- The buffering spinner takes the middle meanwhile. -->
+					<span class="size-16" aria-hidden="true"></span>
+				{:else}
+					<button type="button" class={['flex size-16 items-center justify-center rounded-full border border-white/40 bg-black/65 text-white shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur', controlsVisible ? 'pointer-events-auto' : ''].join(' ')} aria-label={ended ? t('player.playAgain') : playing ? t('player.pause') : t('player.play')} onclick={togglePlay}>
+						{#if ended}<RotateCcw class="size-7" aria-hidden="true" />{:else if playing}<Pause class="size-7 fill-current" aria-hidden="true" />{:else}<Play class="size-7 translate-x-0.5 fill-current" aria-hidden="true" />{/if}
 					</button>
-					<a
-						href={`/item/${item.id}`}
-						class="inline-flex items-center border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
-					>
-						{t('player.backToDetails')}
-					</a>
-				</div>
+				{/if}
+				<button type="button" class={['flex size-12 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur', controlsVisible ? 'pointer-events-auto' : ''].join(' ')} aria-label={t('player.forwardSeconds', { seconds: skipSec })} onclick={() => seekBy(skipSec)}>
+					<span class="relative flex items-center justify-center"><SkipForward class="size-7" aria-hidden="true" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span></span>
+				</button>
 			</div>
-		</div>
+		{:else if ended || (!playing && !waiting)}
+			<!-- Not a second button: the bar's is the one to see and to reach with Tab. -->
+			<button type="button" class="absolute inset-0 z-10 cursor-pointer" tabindex="-1" aria-hidden="true" onclick={togglePlay}></button>
+		{/if}
 	{/if}
-
-	<!-- Paused start / ended: a large, unmissable play affordance. -->
-	{#if transcodeReady && (ended || (!playing && !error && !waiting)) && controlsVisible && !settingsOpen && !keysOpen}
-		<button
-			class="absolute inset-0 z-10 flex items-center justify-center"
-			onclick={togglePlay}
-			aria-label={ended ? t('player.playAgain') : t('player.play')}
-		>
-			<span
-				class="flex size-20 items-center justify-center rounded-full border border-white/40 bg-black/65 text-white shadow-[0_8px_30px_rgba(0,0,0,0.5)] backdrop-blur transition-transform duration-150 hover:scale-105 max-md:portrait:size-16"
-			>
-				<Play class="size-9 translate-x-0.5 fill-current" />
-			</span>
-		</button>
-	{/if}
-
 
 	<!-- A refused fullscreen request is a failure the viewer asked for: it is
 	     reported where they are looking, and playback keeps going windowed. -->
@@ -2024,6 +2003,101 @@
 	{/if}
 
 	</div>
+
+	<!-- The waits and failures shade the whole player above the touch surface (z-10),
+	     so their buttons take the click: in the picture's box they sat under that
+	     surface, which took every click and tap meant for Retry. Their words sit in
+	     the room between the top bar and the deck, both of which stay usable above
+	     the shade (Back, and the settings' Open with while a transcode is prepared):
+	     centred on the whole player, the deck covered Back to details on a phone on
+	     its side, and on an upright phone the note ran over the seek bar. -->
+	{#if preparingTranscode}
+		<div class={NOTE_SHADE}>
+			<div class={noteRoom} style:bottom={`${footHeight}px`}>
+				<div class="m-auto flex max-w-md flex-col items-center gap-3">
+					<Spinner class="size-10 text-muted" label={t('player.prepare.label')} />
+					<div>
+						<p class="text-sm text-foreground">
+							{seekTarget > 0 ? t('player.prepare.seeking', { time: formatTime(seekTarget) }) : t('player.prepare.first')}
+						</p>
+						<p class="mt-2 font-mono text-xs uppercase tracking-[0.14em] tabular-nums text-muted">
+							{t('player.prepare.elapsed', { time: formatTime(prepareElapsed) })}
+						</p>
+						{#if prepareProgress > 0}
+							<div
+								class="mx-auto mt-4 h-[3px] w-56 overflow-hidden bg-line/30"
+								role="progressbar"
+								aria-label={t('player.prepare.progress')}
+								aria-valuemin="0"
+								aria-valuemax="100"
+								aria-valuenow={preparePercent}
+							>
+								<div class="h-full bg-accent" style={`width:${preparePercent}%`}></div>
+							</div>
+							<p class="mt-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+								{t('player.prepare.percent', { percent: preparePercent })}
+							</p>
+						{/if}
+						<!-- A phone on its side keeps the wait, the time and the way out: the why is for a taller screen. -->
+						{#if seekTarget > 0}
+							<p class="mt-4 text-xs leading-relaxed text-muted [@media(max-height:500px)]:hidden">{t('player.prepare.seekHint')}</p>
+						{:else}
+							<p class="mt-4 text-xs leading-relaxed text-muted [@media(max-height:500px)]:hidden">{t('player.prepare.firstHint')}</p>
+						{/if}
+						<p class="mt-2 text-xs leading-relaxed text-muted">{t('player.prepare.leaveHint')}</p>
+						<button
+							class="mt-5 inline-flex items-center gap-1.5 border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
+							onclick={() => void goto(`/item/${item.id}`)}
+						>
+							<ArrowLeft class="size-3.5" aria-hidden="true" /> {t('player.backToDetails')}
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	{:else if transcodeError}
+		<div class={NOTE_SHADE} role="alert">
+			<div class={noteRoom} style:bottom={`${footHeight}px`}>
+				<div class="m-auto max-w-md">
+					<TriangleAlert class="mx-auto size-8 text-warning" />
+					<p class="mt-3 text-sm text-foreground">{transcodeError}</p>
+					<button
+						class="mt-5 inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
+						onclick={() => void prepareTranscode()}
+					>
+						<RotateCcw class="size-3.5" aria-hidden="true" /> {t('player.prepare.retry')}
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Error -->
+	{#if error}
+		<div class={NOTE_SHADE} role="alert">
+			<div class={noteRoom} style:bottom={`${footHeight}px`}>
+				<div class="m-auto max-w-md">
+					<TriangleAlert class="mx-auto size-8 text-warning" />
+					<p class="mt-3 text-sm text-foreground">{error}</p>
+					<div class="mt-5 flex justify-center gap-2">
+						<button
+							class="inline-flex items-center gap-1.5 bg-accent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-fg hover:bg-accent-hover"
+							onclick={retryPlayback}
+						>
+							<RotateCcw class="size-3.5" aria-hidden="true" /> {t('player.error.retry')}
+						</button>
+						<a
+							href={`/item/${item.id}`}
+							class="inline-flex items-center border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
+						>
+							{t('player.backToDetails')}
+						</a>
+					</div>
+				</div>
+			</div>
+		</div>
+	{/if}
+
 
 	<!-- Keep settings inside the player so they also work in fullscreen. -->
 	{#if settingsOpen}
@@ -2170,7 +2244,8 @@
 		</div>
 	{/if}
 
-	{#if directFallbackNote}
+	<!-- Not under a wait or failure note: "Preparing this video" beside "Request failed" contradicted it. -->
+	{#if directFallbackNote && !blocked}
 		<p
 			class={[
 				'relative z-20 bg-transparent px-4 pt-2 text-xs leading-relaxed text-muted drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]',
@@ -2187,8 +2262,10 @@
 		bind:clientHeight={footHeight}
 		class={[
 			// On the picture the controls are white, not the page's muted grey.
-			'relative z-20 bg-gradient-to-t from-black/90 via-black/55 to-transparent px-3 pb-3 pt-10 sm:px-6 sm:pb-4 [&_button:not(.bg-accent)]:text-white/90 [&_button:not(.bg-accent):hover]:text-white',
-			chromeClass
+			'relative z-20 px-3 pb-3 sm:px-6 sm:pb-4 [&_button:not(.bg-accent)]:text-white/90 [&_button:not(.bg-accent):hover]:text-white',
+			// Stacked, the deck is a band under the picture: no fade to lay over it.
+			stacked ? 'pt-2' : 'bg-gradient-to-t from-black/90 via-black/55 to-transparent pt-10',
+			bandClass
 		].join(' ')}
 	>
 		<!-- Where playback picked up, in the bar it belongs to. -->
@@ -2207,7 +2284,7 @@
 			onpointerleave={() => (hoverAt = null)}
 		>
 			{#if previewAt !== null && totalDuration > 0}
-				<div class="pointer-events-none absolute bottom-full left-0 right-[6.5rem] mb-2 sm:right-[7.5rem]" aria-hidden="true">
+				<div class={['pointer-events-none absolute bottom-full left-0 mb-2', coarse ? 'right-0' : 'right-[6.5rem] sm:right-[7.5rem]'].join(' ')} aria-hidden="true">
 					<div class="absolute bottom-0 w-44 -translate-x-1/2 sm:w-56" style={`left: clamp(5.5rem, ${previewLeft}%, calc(100% - 5.5rem))`}>
 						<div class="overflow-hidden rounded-lg border border-white/20 bg-black shadow-[0_10px_30px_rgba(0,0,0,0.6)]">
 							{#if board}
@@ -2265,86 +2342,102 @@
 					class="block size-4 rounded-full bg-accent shadow-[0_0_0_3px_rgba(0,0,0,0.25)] transition-transform duration-150 hover:scale-125 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 				/>
 			</Slider.Root>
-			<span class="shrink-0 text-xs tabular-nums text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] sm:text-sm">
-				{formatTime(scrubbing ? scrubValue : currentTime)} <span class="text-muted">/ {formatTime(totalDuration)}</span>
-			</span>
+			{#if !coarse}{@render clock()}{/if}
 		</div>
 
-		<!-- Transport -->
-		<div class="mt-1 flex items-center gap-1.5">
-			<!-- One of the bar's buttons, drawn like them: the accent block read as a second kind of play button beside the one on the picture. -->
-			<IconButton label={playing ? t('player.pause') : t('player.play')} class="size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={togglePlay}>
-				{#if playing}<Pause class="size-6 fill-current" />{:else}<Play class="size-6 fill-current" />{/if}
-			</IconButton>
-			<!-- The step inside the arrow's ring: at the bar's 24 px the two digits touched the
-			     ring, so the ring is a size up and the digits sit tight inside it. -->
-			<IconButton label={t('player.backSeconds', { seconds: skipSec })} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(-skipSec)}>
-				<SkipBack class="size-7" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span>
-			</IconButton>
-			<IconButton label={t('player.forwardSeconds', { seconds: skipSec })} class="relative size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => seekBy(skipSec)}>
-				<SkipForward class="size-7" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span>
-			</IconButton>
-			<!-- On to the next episode from the bar, where every other player keeps it: the list
-			     beside the picture is hidden on narrower screens, and the end card waits for the end. -->
-			{#if next}
-				<IconButton label={t('player.nextEpisodeNamed', { name: next.label })} class="size-11 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={() => next?.go()}>
-					<NextEpisode class="size-6" />
+		<!-- Transport: every button one size, one gap, so the row keeps one rhythm
+		     (the mute, list and full screen buttons were a size smaller than the rest).
+		     On a touch screen play and the skips are on the picture, and the time
+		     takes the row's start, across from the buttons. -->
+		<div class="mt-1 flex items-center gap-1">
+			{#if coarse}
+				<span class="ps-1">{@render clock()}</span>
+			{:else}
+				<!-- One of the bar's buttons, drawn like them: the accent block read as a second kind of play button beside the one on the picture. -->
+				<IconButton label={ended ? t('player.playAgain') : playing ? t('player.pause') : t('player.play')} class={DECK} onclick={togglePlay}>
+					{#if ended}<RotateCcw class="size-6" />{:else if playing}<Pause class="size-6 fill-current" />{:else}<Play class="size-6 fill-current" />{/if}
+				</IconButton>
+				<!-- The step inside the arrow's ring: at the bar's 24 px the two digits touched the
+				     ring, so the ring is a size up and the digits sit tight inside it. -->
+				<IconButton label={t('player.backSeconds', { seconds: skipSec })} class={`relative ${DECK}`} onclick={() => seekBy(-skipSec)}>
+					<SkipBack class="size-7" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span>
+				</IconButton>
+				<IconButton label={t('player.forwardSeconds', { seconds: skipSec })} class={`relative ${DECK}`} onclick={() => seekBy(skipSec)}>
+					<SkipForward class="size-7" /><span class="absolute text-[9px] font-semibold leading-none tracking-tight tabular-nums">{skipSec}</span>
 				</IconButton>
 			{/if}
 
-			<div class="flex items-center gap-1">
-				<IconButton label={muted ? t('player.unmute') : t('player.mute')} class="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" onclick={toggleMute}>
-					<VolumeIcon class="size-5" />
+			<div class={['flex items-center gap-1', coarse ? 'ms-auto' : ''].join(' ')}>
+				<!-- On to the next episode from the bar, where every other player keeps it: the list
+				     beside the picture is hidden on narrower screens, and the end card waits for the end. -->
+				{#if next}
+					<IconButton label={t('player.nextEpisodeNamed', { name: next.label })} class={DECK} onclick={() => next?.go()}>
+						<NextEpisode class="size-6" />
+					</IconButton>
+				{/if}
+				<IconButton label={muted ? t('player.unmute') : t('player.mute')} class={DECK} onclick={toggleMute}>
+					<VolumeIcon class="size-6" />
 				</IconButton>
-				<div class="hidden w-20 md:block">
-					<Slider.Root
-						type="single"
-						value={muted ? 0 : volume}
-						max={1}
-						step={0.02}
-						onValueChange={setVolume}
-						class="relative flex h-6 touch-none select-none items-center"
-					>
-						<span class="relative h-[3px] w-full grow overflow-hidden bg-line/25">
-							<Slider.Range class="absolute h-full bg-foreground" />
-						</span>
-						<Slider.Thumb
-							index={0}
-							aria-label={t('player.volume')}
-							class="block size-3 rounded-full bg-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-						/>
-					</Slider.Root>
-				</div>
+				<!-- A touch screen sets the volume with its own keys. -->
+				{#if !coarse}
+					<div class="hidden w-20 ps-1 md:block">
+						<Slider.Root
+							type="single"
+							value={muted ? 0 : volume}
+							max={1}
+							step={0.02}
+							onValueChange={setVolume}
+							class="relative flex h-6 touch-none select-none items-center"
+						>
+							<span class="relative h-[3px] w-full grow overflow-hidden bg-line/25">
+								<Slider.Range class="absolute h-full bg-foreground" />
+							</span>
+							<Slider.Thumb
+								index={0}
+								aria-label={t('player.volume')}
+								class="block size-3 rounded-full bg-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+							/>
+						</Slider.Root>
+					</div>
+				{/if}
 			</div>
 
-			<div class="ml-auto flex items-center gap-1.5">
-				<IconButton label={t('player.shortcuts')} class="max-md:hidden" onclick={() => (keysOpen = true)}>
-					<Keyboard class="size-5" />
-				</IconButton>
+			<div class={['flex items-center gap-1', coarse ? '' : 'ms-auto'].join(' ')}>
+				{#if !coarse}
+					<IconButton label={t('player.shortcuts')} class={`max-md:hidden ${DECK}`} onclick={() => (keysOpen = true)}>
+						<Keyboard class="size-6" />
+					</IconButton>
+				{/if}
 				{#if episodes}
 					<!-- The list beside the picture takes a quarter of a laptop's width: it can step aside.
 					     Narrower, the same button opens it as a drawer over the picture's edge. -->
 					<span class="contents" data-episodes-toggle>
-						<IconButton label={episodes.shown ? t('player.episodesHide') : t('player.episodesShow')} onclick={episodes.toggle}>
-							{#if episodes.shown}<PanelRightClose class="size-5" />{:else}<PanelRightOpen class="size-5" />{/if}
+						<IconButton label={episodes.shown ? t('player.episodesHide') : t('player.episodesShow')} class={DECK} onclick={episodes.toggle}>
+							{#if episodes.shown}<PanelRightClose class="size-6" />{:else}<PanelRightOpen class="size-6" />{/if}
 						</IconButton>
 					</span>
 				{/if}
-				<button bind:this={settingsButton} type="button" aria-label={t('player.settings.title')} aria-expanded={settingsOpen} aria-controls="player-settings" class="inline-flex size-11 items-center justify-center rounded-md text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] hover:bg-surface-hover/60" onclick={() => (settingsOpen = !settingsOpen)}>
-					<Settings class="size-5" />
+				<button bind:this={settingsButton} type="button" aria-label={t('player.settings.title')} aria-expanded={settingsOpen} aria-controls="player-settings" class={`inline-flex items-center justify-center rounded-md hover:bg-surface-hover/60 ${DECK}`} onclick={() => (settingsOpen = !settingsOpen)}>
+					<Settings class="size-6" />
 					<span class="sr-only">{t('player.settings.title')}</span>
 				</button>
 				<IconButton
 					label={fullscreen ? t('player.exitFullscreen') : t('player.fullscreen')}
-					class="drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+					class={DECK}
 					onclick={() => void toggleFullscreen()}
 				>
-					{#if fullscreen}<Minimize class="size-5" />{:else}<Maximize class="size-5" />{/if}
+					{#if fullscreen}<Minimize class="size-6" />{:else}<Maximize class="size-6" />{/if}
 				</IconButton>
 			</div>
 		</div>
 	</footer>
 </div>
+
+{#snippet clock()}
+	<span class="shrink-0 text-xs tabular-nums text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] sm:text-sm">
+		{formatTime(scrubbing ? scrubValue : currentTime)} <span class="text-muted">/ {formatTime(totalDuration)}</span>
+	</span>
+{/snippet}
 
 <Modal bind:open={keysOpen} title={t('shortcuts.title')}>
 	<dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-5 gap-y-2.5 text-sm">

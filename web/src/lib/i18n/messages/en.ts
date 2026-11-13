@@ -111,6 +111,8 @@ const en = {
 		settings: 'Settings',
 		// The phone bar's last tab: every place that is not one of its four.
 		more: 'More',
+		// The phone bar's arrow on a title page (AppShell).
+		back: 'Back',
 		accountMenu: 'Account menu',
 		scanning: 'scanning',
 		scanningPercent: 'scanning {percent}',
@@ -511,6 +513,8 @@ const en = {
 			roleSaved: 'Role changed for {name}.',
 			selfRole: 'Your own role and access are changed by another admin.',
 			signedInHere: 'Signed in here',
+			// The ⋯ that holds a row's actions below the table's width.
+			actionsFor: 'Actions for {name}',
 			active: 'Active',
 			playback: 'Playback',
 			resetPassword: 'Reset password',
@@ -601,6 +605,10 @@ const en = {
 			moveUp: 'Move {name} up',
 			moveDown: 'Move {name} down',
 			moveUpKey: 'Move up (Alt+↑)',
+			// A row's menu below the table's width: the entries, and the ⋯ that opens them.
+			moveUpShort: 'Move up',
+			moveDownShort: 'Move down',
+			actionsFor: 'Actions for {name}',
 			moveDownKey: 'Move down (Alt+↓)',
 			moveFailed: 'Could not change the order.',
 			keyEdit: 'Edit the library',
@@ -659,7 +667,8 @@ const en = {
 			installOther: 'Not installed on this server: add its component’s manifest to the plugins folder of the data directory.',
 			jobs: { one: '{count} job', other: '{count} jobs' },
 			allHealthy: 'all healthy',
-			missingCount: { one: '{count} not installed', other: '{count} not installed' },
+			// Jobs bound to a component that is not installed (the optional bridges): an option, not a fault.
+			toInstall: { one: '{count} optional, available to install', other: '{count} optional, available to install' },
 			unhealthyCount: { one: '{count} provider unhealthy', other: '{count} providers unhealthy' },
 			generation: 'generation {n}',
 			replace: 'Replace',
@@ -741,7 +750,11 @@ const en = {
 				label: 'HDR',
 				ready: 'HDR files are tone mapped for screens and browsers that cannot show them.',
 				missing: 'This ffmpeg cannot tone map: HDR files play only on devices that show HDR themselves.',
-				none: 'Not available'
+				none: 'Not available',
+				choose: 'HDR tone mapping',
+				off: 'Off',
+				// The hint with tone mapping off; the select beside it already says "Off".
+				offHint: 'HDR files are not tone mapped, so they cannot play in a browser.'
 			},
 			probe: {
 				title: 'What the probe found',
@@ -955,6 +968,7 @@ const en = {
 		recent: 'Recent',
 		recentLabel: 'Recent searches',
 		forget: 'Clear',
+		forgetLabel: 'Clear recent searches',
 		browse: 'Browse',
 		browseInstead: 'Browse instead',
 		orBrowse: 'Or browse',
@@ -1243,6 +1257,9 @@ const en = {
 			rtlLabel: 'Read right to left (R)',
 			ltr: 'LTR',
 			rtl: 'RTL',
+			// The phone's chip beside the page slider: the direction now, and what a tap does.
+			readsRtl: 'Reads right to left. Switch to left to right',
+			readsLtr: 'Reads left to right. Switch to right to left',
 			coverLabel: 'Cover on its own page',
 			cover: 'Cover',
 			coverAlone: 'Cover alone',
@@ -1387,6 +1404,9 @@ const en = {
 			unrated: 'No ratings yet.',
 			rate: 'Rate',
 			yourScore: 'Your score: {score}',
+			// The score button beside a title's main action: its tooltip, and everyone's average.
+			scoreHint: 'Your score (R)',
+			average: '{average} avg',
 			editReview: 'Edit review',
 			share: 'Share',
 			collect: 'Add to collection',
@@ -1572,6 +1592,11 @@ const en = {
 		readAgain: 'Read again',
 		watchedLength: 'Watched · {time}',
 		fileDetails: 'File details',
+		// The rows of File details (an admin's): the name the scan gave it, the metadata's source, the file's size and path.
+		indexedAs: 'Indexed as',
+		metadataFrom: 'Metadata from',
+		fileSize: 'Size',
+		filePath: 'Path',
 		episodes: { one: '{count} episode', other: '{count} episodes' },
 		volumes: { one: '{count} volume', other: '{count} volumes' },
 		issues: { one: '{count} issue', other: '{count} issues' },
@@ -1582,8 +1607,17 @@ const en = {
 		continueFromPage: 'Continue from page {page}',
 		continueFromPageIn: 'Continue from page {page} · {part}',
 		readingAt: '{part}: page {page} of {pages}',
+		// Under a synopsis cut to two lines, and under the whole of it once open.
+		synopsisMore: 'More',
+		synopsisLess: 'Less',
+		// The part under way, beside the bar that measures it (a title page's hero).
+		partLeft: '{part}: {time} left',
 		readOf: '{done} of {count} read',
 		watchedOf: '{done} of {count} watched',
+		// The whole title's count, named, beside the part under way.
+		episodesWatched: { one: '{done} of {count} episode watched', other: '{done} of {count} episodes watched' },
+		volumesRead: { one: '{done} of {count} volume read', other: '{done} of {count} volumes read' },
+		issuesRead: { one: '{done} of {count} issue read', other: '{done} of {count} issues read' },
 		notStarted: 'Not started',
 		// An episode or volume card's line before it is begun, when its length is unknown.
 		notWatched: 'Not watched',
@@ -1608,6 +1642,21 @@ const en = {
 		// The parts of a grid whose pictures differ in shape (TitleGrid).
 		partPortrait: 'Posters and covers',
 		partLandscape: 'Widescreen',
+		// Beside a grid's count: how its titles divide between the parts; each goes to its part.
+		countPortrait: { one: '{count} poster or cover', other: '{count} posters and covers' },
+		countLandscape: { one: '{count} in widescreen', other: '{count} in widescreen' },
+		toPart: 'Go to {part}',
+		// The toolbar's sheet: "Sort & filter" where the sort lives in it (a phone), "Filters" where the sort sits beside it.
+		sortAndFilter: 'Sort & filter',
+		filters: 'Filters',
+		filtersActive: { one: 'Filters ({count} active)', other: 'Filters ({count} active)' },
+		sortAndFilterActive: { one: 'Sort & filter ({count} active)', other: 'Sort & filter ({count} active)' },
+		// The sort dropdown's name, and the sheet's headings over the sort and the tile size.
+		sort: 'Sort',
+		tilesHeading: 'Tiles',
+		tileSize: { title: 'Tile size', large: 'Large', small: 'Small' },
+		// The toolbar's tile size button: what is set (as its visible "Tiles: large"), then what a press does.
+		tilesSwitch: 'Tiles: {size}. Switch to {other}.',
 		// A catalog kind as the Kind filter names it.
 		kind: {
 			video: 'Films and clips',
@@ -1630,7 +1679,9 @@ const en = {
 		lead: 'Everything Lain has indexed.',
 		scan: 'Scan',
 		scanning: 'Scanning…',
-		manage: 'Manage libraries'
+		manage: 'Manage libraries',
+		// The phone's ⋯ beside the title that holds Unlock, Scan and Manage libraries.
+		upkeep: 'Library actions'
 	},
 	favorites: {
 		title: 'Favorites',
@@ -1660,6 +1711,8 @@ const en = {
 		noMatchTitle: 'Nothing tracked of this kind',
 		noMatchBody: 'Your accounts track other things. Clear the filters to see all of it.',
 		showEverything: 'Show everything',
+		// A tracked entry's card bar, for a screen reader.
+		entryProgress: 'Progress',
 		firstRun: {
 			eyebrow: 'First step',
 			title: 'Bring the list you keep elsewhere.',

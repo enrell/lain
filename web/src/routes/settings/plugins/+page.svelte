@@ -130,15 +130,17 @@
 	$effect(() => {
 		for (const f of families) if (openFamilies[f.id] === undefined) openFamilies[f.id] = f.unhealthy > 0;
 	});
-	function familyLine(f: { bindings: unknown[]; missing: number; unhealthy: number }): string {
+	/*
+	 * A family's status is its installed providers' health. A job bound to a
+	 * component not installed (the optional bridges) is not part of it: it
+	 * is an option, said apart from the status (see the summary below), so
+	 * "3 not installed" no longer reads in the same grey as "all healthy".
+	 */
+	function familyLine(f: { bindings: unknown[]; unhealthy: number }): string {
 		return [
 			t('settings.pluginsPage.jobs', { count: f.bindings.length }),
-			f.missing ? t('settings.pluginsPage.missingCount', { count: f.missing }) : '',
-			f.unhealthy ? t('settings.pluginsPage.unhealthyCount', { count: f.unhealthy }) : '',
-			f.missing + f.unhealthy === 0 ? t('settings.pluginsPage.allHealthy') : ''
-		]
-			.filter(Boolean)
-			.join(' · ');
+			f.unhealthy ? t('settings.pluginsPage.unhealthyCount', { count: f.unhealthy }) : t('settings.pluginsPage.allHealthy')
+		].join(' · ');
 	}
 	// The bridges to the owner's standalone apps (lain-bridge's catalog):
 	// `lain component install` knows these ids, and no others.
@@ -280,7 +282,16 @@
 							<summary class="flex cursor-pointer list-none items-center gap-3 px-5 py-3.5 outline-offset-[-2px] hover:bg-surface-hover/40 max-sm:px-4 [&::-webkit-details-marker]:hidden">
 								<ChevronRight class="size-4 shrink-0 text-muted transition-transform group-open/family:rotate-90" aria-hidden="true" />
 								<span class="text-sm font-medium text-foreground">{t(family.title)}</span>
-								<span class="ms-auto text-end text-xs {family.unhealthy > 0 ? 'text-warning' : 'text-muted'}">{familyLine(family)}</span>
+								<span class="ms-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+									{#if family.missing > 0}
+										<!-- An option, drawn as one: a dashed outline with a plus, as an
+										     empty slot is drawn, not a status in the status's grey. -->
+										<span class="inline-flex items-center gap-1 rounded-full border border-dashed border-foreground/25 px-2 py-0.5 text-xs text-foreground/80">
+											<Plus class="size-3" aria-hidden="true" />{t('settings.pluginsPage.toInstall', { count: family.missing })}
+										</span>
+									{/if}
+									<span class="text-end text-xs {family.unhealthy > 0 ? 'text-warning' : 'text-muted'}">{familyLine(family)}</span>
+								</span>
 							</summary>
 							<ul class="settings-items border-t border-hairline">
 								<li class="hidden gap-x-6 py-2.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_7.5rem_5.5rem]" aria-hidden="true">
@@ -306,7 +317,8 @@
 										<div class="col-span-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 lg:col-span-1 lg:row-start-auto">
 											{#each binding.providers as id, index (id + index)}
 												{@const provider = providerInfo(id)}
-												<span class="inline-flex max-w-full items-center gap-2 rounded-full bg-field px-2.5 py-1 font-mono text-[11px] text-foreground">
+												<!-- Not installed: the option's dashed outline, as in the family's line. -->
+												<span class={['inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1 font-mono text-[11px] text-foreground', provider ? 'bg-field' : 'border border-dashed border-foreground/25 py-[3px]'].join(' ')}>
 													{#if !exactlyOne && binding.providers.length > 1}
 														<span class="text-muted">{index + 1}</span>
 													{/if}
