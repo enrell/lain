@@ -197,7 +197,8 @@
 	<div class="mb-10 flex items-center gap-5 rounded-card bg-panel p-5">
 		<Avatar user={preview} class="size-16 shrink-0" />
 		<div class="min-w-0">
-			<p class="truncate text-2xl font-black uppercase tracking-[-0.04em] text-foreground">{displayName(preview)}</p>
+			<!-- As typed: the card is the preview of what others see, and capitals here read "ANA" over a field that says "ana". -->
+			<p class="truncate text-2xl font-black tracking-[-0.03em] text-foreground">{displayName(preview)}</p>
 			<p class="mt-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted">
 				<!-- One joined string: a block's leading space was trimmed into "ADMIN· SINCE". -->
 				{[`@${user.username}`, user.role, user.created_at ? t('settings.since', { date: formatDate(user.created_at) }) : ''].filter(Boolean).join(' · ')}
