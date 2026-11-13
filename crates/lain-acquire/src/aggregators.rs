@@ -27,7 +27,7 @@ use lain_downloads::http::{Http, Request};
 use crate::errf;
 use crate::error::{CODE_FETCH, CODE_INVALID, Result};
 use crate::torznab::query_escape;
-use crate::util::{clip, http_url, url_host};
+use crate::util::{http_url, url_host};
 use crate::xml;
 
 const MAX_RESPONSE: usize = 4 << 20;
@@ -109,6 +109,12 @@ fn get(http: &dyn Http, url: &str, mut headers: Vec<(String, String)>, base: &st
     Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
+/// A name lain can store: no control characters, 60 characters at most.
+fn name_of(s: &str) -> String {
+    let s: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    s.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(60).collect()
+}
+
 fn privacy(s: &str) -> String {
     match s.to_ascii_lowercase().replace(['-', '_'], "").as_str() {
         "public" => "public".into(),
@@ -147,7 +153,7 @@ fn parse_prowlarr(body: &str, base: &str) -> Option<Vec<DiscoveredIndexer>> {
             .filter(|r| r.id > 0 && (r.protocol == "torrent" || r.protocol == "usenet"))
             .map(|r| DiscoveredIndexer {
                 source_id: r.id.to_string(),
-                name: clip(r.name.trim(), 60),
+                name: name_of(&r.name),
                 protocol: if r.protocol == "usenet" { INDEXER_NEWZNAB } else { INDEXER_TORZNAB }.into(),
                 url: format!("{base}/{}/api", r.id),
                 privacy: privacy(&r.privacy),
@@ -174,7 +180,7 @@ fn parse_jackett(body: &str, base: &str) -> Option<Vec<DiscoveredIndexer>> {
                 let id = n.attr("id").to_string();
                 let title = n.text_of("title");
                 DiscoveredIndexer {
-                    name: clip(if title.trim().is_empty() { &id } else { title.trim() }, 60),
+                    name: name_of(if title.trim().is_empty() { &id } else { &title }),
                     protocol: INDEXER_TORZNAB.into(),
                     url: format!("{base}/api/v2.0/indexers/{id}/results/torznab/"),
                     privacy: privacy(&n.text_of("type")),
@@ -209,7 +215,8 @@ mod tests {
     const PROWLARR: &str = r#"[
       {"id": 1, "name": "tracker-exemplo", "protocol": "torrent", "enable": true, "privacy": "public"},
       {"id": 7, "name": "usenet-exemplo", "protocol": "usenet", "enable": false, "privacy": "private"},
-      {"id": 9, "name": "odd", "protocol": "unknown", "enable": true}
+      {"id": 9, "name": "odd", "protocol": "unknown", "enable": true},
+      {"id": 12, "name": "bell\u0007 and \n tab", "protocol": "torrent", "enable": true}
     ]"#;
     const JACKETT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <indexers>
@@ -235,7 +242,8 @@ mod tests {
         let input =
             DiscoverInput { source: "prowlarr".into(), url: format!("{}/prowlarr/", fx.url), api_key: "k-1".into() };
         let got = discover(http().as_ref(), &input).unwrap();
-        assert_eq!(got.len(), 2, "unknown protocols are left out");
+        assert_eq!(got.len(), 3, "unknown protocols are left out");
+        assert_eq!(got[2].name, "bell and tab", "control characters never reach a stored name");
         assert_eq!(got[0].url, format!("{}/prowlarr/1/api", fx.url));
         assert_eq!((got[0].protocol.as_str(), got[0].privacy.as_str(), got[0].enabled), ("torznab", "public", true));
         assert_eq!((got[1].protocol.as_str(), got[1].source_id.as_str(), got[1].enabled), ("newznab", "7", false));
