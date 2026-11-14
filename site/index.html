@@ -47,7 +47,7 @@
 			<circle cx="32" cy="46" r="6" fill="currentColor" />
 		</svg>
 		<div class="loader-bar"><i data-loader-fill></i></div>
-		<p>Loading the client <span data-loader-pct>0</span>%</p>
+		<p>Loading the live client <span data-loader-pct>0</span>%</p>
 	</div>
 	<a class="skip" href="#main">Skip to content</a>
 
@@ -63,10 +63,12 @@
 				<span>lain</span>
 			</a>
 <span class="nav-gap"></span>
-			<button class="palette-open" type="button" data-palette-open aria-haspopup="dialog" aria-label="Jump to a section or action">
+			<button class="palette-open" type="button" data-palette-open aria-haspopup="dialog" aria-label="Menu: jump to a section or action">
 				<span>Jump to</span>
 				<span class="keys" aria-hidden="true"><kbd>Ctrl</kbd><kbd>K</kbd></span>
 			</button>
+			<button class="btn btn-quiet nav-demo" type="button" data-hero-open>Live demo <kbd>D</kbd></button>
+			<a class="btn btn-primary nav-install" href="#install">Install <kbd>I</kbd></a>
 			<a class="btn btn-quiet nav-gh" href="https://github.com/enrell/lain" rel="noopener">
 				<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" /></svg>
 				<span>GitHub</span>
@@ -99,22 +101,22 @@
 				<div class="planes" data-planes>
 				<figure class="plane p-desk" data-at="-33,-17,-220,0,24,-3,40" data-depth="0.5" data-kind="desk" data-route="/" tabindex="0" role="button" aria-label="Use the live client: Home, on a desktop">
 					<img src="assets/shots/home.webp" width="1760" height="1100" alt="" />
-					<iframe title="lain's web client, live: Home, on a desktop" data-src="demo/" width="1440" height="900" tabindex="-1" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
+					<iframe inert title="lain's web client, live: Home, on a desktop" data-src="demo/" width="1120" height="700" tabindex="-1" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
 					<figcaption><b>Home, on a desktop</b><span>Click to use it</span></figcaption>
 				</figure>
-				<figure class="plane p-play" data-at="32,22,-380,0,-22,2,40" data-depth="0.35" data-kind="desk" data-route="/player/039a34b14ce22380" tabindex="0" role="button" aria-label="Use the live client: The player, on a desktop">
-					<img src="assets/shots/player.webp" width="1760" height="1100" alt="" />
-					<iframe title="lain's web client, live: The player, on a desktop" data-src="demo/" width="1440" height="900" tabindex="-1" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
-					<figcaption><b>The player, on a desktop</b><span>Click to use it</span></figcaption>
+				<figure class="plane p-play" data-at="32,22,-380,0,-22,2,40" data-depth="0.35" data-kind="desk" data-route="/read/ab0fce996f9aa7f4" tabindex="0" role="button" aria-label="Use the live client: The reader, on a desktop">
+					<img src="assets/shots/reader.webp" width="1760" height="1100" alt="" />
+					<iframe inert title="lain's web client, live: The reader, on a desktop" data-src="demo/" width="1120" height="700" tabindex="-1" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
+					<figcaption><b>The reader, on a desktop</b><span>Click to use it</span></figcaption>
 				</figure>
-				<figure class="plane p-phone" data-at="27,-22,60,0,-24,5,12.5" data-depth="1" data-kind="phone" data-route="/" tabindex="0" role="button" aria-label="Use the live client: Home, on a phone">
+				<figure class="plane p-phone" data-at="27,-22,60,0,-24,5,12.5" data-narrow="-22,23,-4" data-depth="1" data-kind="phone" data-route="/" tabindex="0" role="button" aria-label="Use the live client: Home, on a phone">
 					<img src="assets/shots/phone-home.webp" width="640" height="1385" alt="" />
-					<iframe title="lain's web client, live: Home, on a phone" data-src="demo/" width="390" height="800" tabindex="-1" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
+					<iframe inert title="lain's web client, live: Home, on a phone" data-src="demo/" width="390" height="800" tabindex="-1" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
 					<figcaption><b>Home, on a phone</b><span>Click to use it</span></figcaption>
 				</figure>
-				<figure class="plane p-phone2" data-at="-26,27,130,0,20,-6,12.5" data-depth="1.4" data-kind="phone" data-route="/player/039a34b14ce22380" tabindex="0" role="button" aria-label="Use the live client: The player, on a phone">
+				<figure class="plane p-phone2" data-at="-26,27,130,0,20,-6,12.5" data-narrow="22,25,5" data-depth="1.4" data-kind="phone" data-route="/player/039a34b14ce22380" tabindex="0" role="button" aria-label="Use the live client: The player, on a phone">
 					<img src="assets/shots/phone-player.webp" width="640" height="1385" alt="" />
-					<iframe title="lain's web client, live: The player, on a phone" data-src="demo/" width="390" height="800" tabindex="-1" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
+					<iframe inert title="lain's web client, live: The player, on a phone" data-src="demo/" width="390" height="800" tabindex="-1" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
 					<figcaption><b>The player, on a phone</b><span>Click to use it</span></figcaption>
 				</figure>
 				</div>
@@ -123,14 +125,14 @@
 						<a class="release" href="https://github.com/enrell/lain/releases/latest" rel="noopener"><span data-release-version>v0.3.1</span> · <span data-release-date>12 Nov 2026</span></a>
 					</p>
 					<h1>Everything you watch <em>and read.</em></h1>
-					<p class="lede">A self-hosted media server.<br />One binary. No account, no cloud.</p>
+					<p class="lede">A self-hosted media server, written in Rust.<br />One binary. No sign-up, no cloud.</p>
 					<div class="cta">
 						<a class="btn btn-primary" href="#install">Install <kbd>I</kbd></a>
-						<button class="btn btn-quiet" type="button" data-hero-open>Use it live <kbd>D</kbd></button>
+						<button class="btn btn-quiet" type="button" data-hero-open>Live demo <kbd>D</kbd></button>
 					</div>
 				</div>
 				<button class="unfocus" type="button" data-unfocus hidden>Back to the page <kbd>Esc</kbd></button>
-				<p class="scroll-hint" aria-hidden="true"><span>Click a screen, or just scroll</span><i></i></p>
+				<p class="scroll-hint" aria-hidden="true"><span class="on-fine">Click a screen, or just scroll</span><span class="on-touch">Tap a screen, or just scroll</span><i></i></p>
 			</div>
 		</section>
 
@@ -162,18 +164,18 @@
 							<span class="status" data-status role="status">The real client, loading</span>
 						</div>
 						<div class="live-view">
-							<img class="shot is-on" src="assets/shots/home.webp" width="1760" height="1100" alt="Home, with a title to resume and a row per library" loading="lazy" />
-							<img class="shot" src="assets/shots/library.webp" width="1760" height="1100" alt="A library as a grid of posters, with filters beside it" loading="lazy" />
-							<img class="shot" src="assets/shots/title-series.webp" width="1760" height="1100" alt="A series page opened on the episode in progress" loading="lazy" />
-							<img class="shot" src="assets/shots/search.webp" width="1760" height="1100" alt="Search results as title cards" loading="lazy" />
-							<iframe title="lain's web client, live demo" data-src="demo/" width="1440" height="900" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
+							<picture><source media="(max-width: 600px)" srcset="assets/shots/phone-home.webp" width="640" height="1385" /><img class="shot is-on" src="assets/shots/home.webp" width="1760" height="1100" alt="Home, with a title to resume and a row per library" loading="lazy" /></picture>
+							<picture><source media="(max-width: 600px)" srcset="assets/shots/phone-library.webp" width="640" height="1385" /><img class="shot" src="assets/shots/library.webp" width="1760" height="1100" alt="A library as a grid of posters, with filters beside it" loading="lazy" /></picture>
+							<picture><source media="(max-width: 600px)" srcset="assets/shots/phone-title.webp" width="640" height="1385" /><img class="shot" src="assets/shots/title-series.webp" width="1760" height="1100" alt="A series page opened on the episode in progress" loading="lazy" /></picture>
+							<picture><img class="shot shot-left" src="assets/shots/search.webp" width="1760" height="1100" alt="Search results as title cards" loading="lazy" /></picture>
+							<iframe inert title="lain's web client, live demo" data-src="demo/" width="1120" height="700" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
 						</div>
 					</div>
 					<div class="reel-caps">
 						<div class="reel-cap is-on">
 							<p class="tagline">Home</p>
 							<h3>Pick up where you left off.</h3>
-							<p>The next thing to watch is one key away.</p>
+							<p>The next thing to watch is <span class="on-fine">one key</span><span class="on-touch">one tap</span> away.</p>
 						</div>
 						<div class="reel-cap">
 							<p class="tagline">Library</p>
@@ -187,9 +189,10 @@
 						</div>
 						<div class="reel-cap">
 							<p class="tagline">Search</p>
-							<h3>Press <kbd>/</kbd> anywhere.</h3>
+							<h3><span class="on-fine">Press <kbd>/</kbd> anywhere.</span><span class="on-touch">Search from anywhere.</span></h3>
 							<p>Results are titles, in the same cards as the library.</p>
 						</div>
+						<p class="still-note">Pictures of the phone layout. The live one is in chapter IV.</p>
 					</div>
 					<ol class="reel-dots" aria-label="Screens of the showcase">
 						<li><button type="button" aria-label="Screen 1 of 4" aria-current="true"></button></li>
@@ -217,7 +220,7 @@
 			</header>
 			<div class="grow" data-grow>
 				<div class="grow-stage">
-					<figure class="grow-art"><img src="assets/shots/player.webp" width="1760" height="1100" alt="The player with the episode list beside the picture" loading="lazy" /></figure>
+					<figure class="grow-art"><picture><source media="(max-width: 600px)" srcset="assets/shots/phone-player.webp" width="640" height="1385" /><img src="assets/shots/player.webp" width="1760" height="1100" alt="The player with the episode list beside the picture" loading="lazy" /></picture></figure>
 				</div>
 			</div>
 			<dl class="rows wrap">
@@ -240,7 +243,7 @@
 			</header>
 			<div class="grow" data-grow>
 				<div class="grow-stage">
-					<figure class="grow-art"><img src="assets/shots/reader.webp" width="1760" height="1100" alt="The reader on a two-page spread of Pepper&amp;Carrot" loading="lazy" /></figure>
+					<figure class="grow-art grow-page"><img src="assets/shots/reader.webp" width="1760" height="1100" alt="The reader on a two-page spread of Pepper&amp;Carrot" loading="lazy" /></figure>
 				</div>
 			</div>
 			<dl class="rows wrap">
@@ -267,8 +270,8 @@
 							<img class="shot" src="assets/shots/phone-library.webp" width="640" height="1385" alt="A library on a phone" loading="lazy" />
 							<img class="shot" src="assets/shots/phone-title.webp" width="640" height="1385" alt="A series page on a phone, with its AniList status" loading="lazy" />
 							<img class="shot" src="assets/shots/phone-player.webp" width="640" height="1385" alt="The player on an upright phone, over the episode list" loading="lazy" />
-							<img class="shot" src="assets/shots/android-home.webp" width="720" height="1600" alt="The Android app's Home" loading="lazy" />
-							<iframe title="lain's web client at phone size, live demo" data-src="demo/" width="390" height="800" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
+							<img class="shot shot-bottom" src="assets/shots/android-title.webp" width="720" height="1600" alt="A title in the Android app, with Resume, Download and a rating" loading="lazy" />
+							<iframe inert title="lain's web client at phone size, live demo" data-src="demo/" width="390" height="800" allow="fullscreen; autoplay; encrypted-media; picture-in-picture"></iframe>
 						</div>
 					</div>
 					<div class="reel-caps">
@@ -323,7 +326,7 @@
 				<p class="numeral" aria-hidden="true">V</p>
 				<p class="eyebrow"><b>V</b> Keys</p>
 				<h2>Every action <em>has a key.</em></h2>
-				<p class="sub">And shows it. Press one: this page listens too.</p>
+				<p class="sub">And shows it. <span class="on-fine">Press one: this page listens too.</span><span class="on-touch">On a keyboard, this page listens too.</span></p>
 			</header>
 			<ul class="caps wrap" data-caps>
 				<li data-key="/"><kbd>/</kbd><span>Search</span></li>
@@ -370,14 +373,16 @@
 				<figure class="diff" data-diff aria-label="A compose file before and after lain">
 					<figcaption><span>compose.yml</span><span class="dim">illustrative</span></figcaption>
 <pre><code><span class="ctx">services:</span>
-<span class="del">-  video-server:       # films, shows, anime</span>
-<span class="del">-  comic-reader:       # manga, with its own accounts</span>
-<span class="del">-  list-scrobbler:     # keeps AniList in step</span>
-<span class="del">-  download-client:    # and a script to move files</span>
+<span class="del">-  video-server:<span class="c">       # films, shows, anime</span></span>
+<span class="del">-  comic-reader:<span class="c">       # manga, with its own accounts</span></span>
+<span class="del">-  list-scrobbler:<span class="c">     # keeps AniList in step</span></span>
+<span class="del">-  download-client:<span class="c">    # and a script to move files</span></span>
 <span class="add">+  lain:</span>
-<span class="add">+    image: ghcr.io/enrell/lain</span>
+<span class="add">+    image: ghcr.io/enrell/lain:latest</span>
 <span class="add">+    ports: ["9360:9360"]</span>
-<span class="add">+    volumes: [lain-data:/data, ~/Videos:/media]</span></code></pre>
+<span class="add">+    volumes:</span>
+<span class="add">+      - lain-data:/data</span>
+<span class="add">+      - ~/Videos:/media/videos</span></code></pre>
 				</figure>
 				<dl class="stats">
 					<div><dt data-linux-size-short>8.7 MB</dt><dd>server, web client and CLI</dd></div>
@@ -429,6 +434,7 @@
 				<div class="install" data-install>
 					<div class="tabs" role="tablist" aria-label="Ways to install">
 						<button role="tab" type="button" id="in-docker" aria-selected="true" aria-controls="pan-docker">Docker</button>
+						<button role="tab" type="button" id="in-compose" aria-selected="false" aria-controls="pan-compose" tabindex="-1">Compose</button>
 						<button role="tab" type="button" id="in-script" aria-selected="false" aria-controls="pan-script" tabindex="-1">Linux installer</button>
 						<button role="tab" type="button" id="in-binary" aria-selected="false" aria-controls="pan-binary" tabindex="-1">Binary</button>
 						<button role="tab" type="button" id="in-android" aria-selected="false" aria-controls="pan-android" tabindex="-1">Android</button>
@@ -439,17 +445,40 @@
   -p 9360:9360 \
   -v lain-data:/data \
   -v ~/Videos:/media/videos \
-  ghcr.io/enrell/lain:latest</code></pre><button class="copy" type="button" data-copy="docker run -d --name lain -p 9360:9360 -v lain-data:/data -v ~/Videos:/media/videos ghcr.io/enrell/lain:latest" data-copy-main>Copy</button></div>
+  ghcr.io/enrell/lain:latest</code></pre><button class="copy" type="button" data-copy="docker run -d --name lain -p 9360:9360 -v lain-data:/data -v ~/Videos:/media/videos ghcr.io/enrell/lain:latest" data-copy-main>Copy <kbd>C</kbd></button></div>
+					</div>
+					<div class="panel" id="pan-compose" role="tabpanel" aria-labelledby="in-compose" tabindex="0" hidden>
+						<p>The same container as a compose file. Add a volume per media folder.</p>
+						<div class="code"><pre><code>services:
+  lain:
+    image: ghcr.io/enrell/lain:latest
+    ports: ["9360:9360"]
+    volumes:
+      - lain-data:/data
+      - ~/Videos:/media/videos
+    restart: unless-stopped
+volumes:
+  lain-data:</code></pre><button class="copy" type="button" data-copy-kbd data-copy="services:
+  lain:
+    image: ghcr.io/enrell/lain:latest
+    ports: [&quot;9360:9360&quot;]
+    volumes:
+      - lain-data:/data
+      - ~/Videos:/media/videos
+    restart: unless-stopped
+volumes:
+  lain-data:
+">Copy <kbd>C</kbd></button></div>
 					</div>
 					<div class="panel" id="pan-script" role="tabpanel" aria-labelledby="in-script" tabindex="0" hidden>
 						<p>An interactive script: Docker, a static binary or a user service, your media folders, the port. It prints what it will do before doing it, and the same script uninstalls.</p>
-						<div class="code"><pre><code>curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash</code></pre><button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash">Copy</button></div>
+						<div class="code"><pre><code>curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash</code></pre><button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/enrell/lain/main/scripts/install.sh | bash">Copy <kbd>C</kbd></button></div>
 						<p><a class="link" href="https://github.com/enrell/lain/blob/main/scripts/install.sh" rel="noopener">Read the script first</a></p>
 					</div>
 					<div class="panel" id="pan-binary" role="tabpanel" aria-labelledby="in-binary" tabindex="0" hidden>
 						<p>One static file for Linux, macOS and Windows, with the web client inside. Each archive ships with its SHA-256. Put it on your path and run it.</p>
 						<div class="code"><pre><code>lain serve                 # http://localhost:9360
-lain service install       # or keep it running as a user service</code></pre><button class="copy" type="button" data-copy="lain serve">Copy</button></div>
+lain service install       # or keep it running as a user service</code></pre><button class="copy" type="button" data-copy="lain serve">Copy <kbd>C</kbd></button></div>
 						<p><a class="link" href="https://github.com/enrell/lain/releases/latest" rel="noopener">Download from the latest release</a></p>
 					</div>
 					<div class="panel" id="pan-android" role="tabpanel" aria-labelledby="in-android" tabindex="0" hidden>
@@ -469,7 +498,8 @@ lain service install       # or keep it running as a user service</code></pre><b
 			<div class="wrap">
 				<p class="signoff-line">Your media.<br />Your machine.<br /><em>Your rules.</em></p>
 				<div class="cta">
-					<a class="btn btn-primary" href="#install">Install lain</a>
+					<a class="btn btn-primary" href="#install">Install lain <kbd>I</kbd></a>
+					<button class="btn btn-quiet" type="button" data-hero-open>Live demo <kbd>D</kbd></button>
 					<a class="btn btn-quiet" href="https://github.com/enrell/lain" rel="noopener">Read the source</a>
 				</div>
 			</div>
@@ -493,6 +523,8 @@ lain service install       # or keep it running as a user service</code></pre><b
 			</p>
 		</div>
 	</footer>
+
+	<p class="toast" data-toast role="status" aria-live="polite"></p>
 
 	<!-- the palette: every section and action of this page, by keyboard -->
 	<dialog class="palette" id="palette" aria-label="Jump to a section or run an action">

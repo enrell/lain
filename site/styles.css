@@ -102,7 +102,7 @@ button {
 }
 
 .skip {
-	position: absolute;
+	position: fixed;
 	left: 16px;
 	top: -60px;
 	z-index: 30;
@@ -122,22 +122,23 @@ button {
 .loader {
 	display: none;
 }
-.is-loading {
-	overflow: hidden;
-}
 .is-loading .loader,
 .is-ready .loader {
 	position: fixed;
-	inset: 0;
+	left: 50%;
+	bottom: 26px;
 	z-index: 100;
 	display: grid;
-	place-content: center;
 	justify-items: center;
-	gap: 22px;
-	background: var(--bg);
+	gap: 12px;
+	translate: -50% 0;
+	pointer-events: none;
 	transition:
 		opacity 0.7s ease,
 		visibility 0.7s;
+}
+.is-loading .scroll-hint {
+	opacity: 0;
 }
 .is-ready .loader {
 	opacity: 0;
@@ -145,8 +146,7 @@ button {
 	pointer-events: none;
 }
 .loader .mark {
-	color: var(--accent);
-	animation: breathe 1.8s ease-in-out infinite;
+	display: none;
 }
 @keyframes breathe {
 	50% {
@@ -167,7 +167,6 @@ button {
 	background: var(--accent);
 	transform: scaleX(0);
 	transform-origin: 0 50%;
-	transition: transform 0.25s linear;
 }
 .loader p {
 	margin: 0;
@@ -175,10 +174,6 @@ button {
 	font: 11px var(--mono);
 	letter-spacing: 0.26em;
 	text-transform: uppercase;
-}
-.is-loading .hero-words > *,
-.is-loading .scroll-hint {
-	animation-play-state: paused;
 }
 
 /* the sky: one shader behind everything, tinted by the chapter in view */
@@ -359,8 +354,34 @@ kbd {
 }
 .nav.is-stuck {
 	border-bottom-color: var(--line);
-	background: color-mix(in srgb, var(--bg) 72%, transparent);
+	background: color-mix(in srgb, var(--bg) 90%, transparent);
 	backdrop-filter: blur(14px) saturate(140%);
+}
+.nav::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 100%;
+	height: 28px;
+	background: linear-gradient(color-mix(in srgb, var(--bg) 80%, transparent), transparent);
+	opacity: 0;
+	transition: opacity 0.3s;
+	pointer-events: none;
+}
+.nav.is-stuck::after {
+	opacity: 1;
+}
+/* Install stays one click away once the hero has gone. */
+.nav-install {
+	display: none;
+	height: 36px;
+	padding: 0 8px 0 14px;
+	font-size: 0.86rem;
+}
+.past-hero .nav-install {
+	display: inline-flex;
+	animation: rise 0.5s var(--out) both;
 }
 .nav-inner {
 	display: flex;
@@ -454,7 +475,7 @@ kbd {
 	transition: color 0.25s;
 }
 .rail a {
-	color: var(--dim);
+	color: var(--muted);
 	font-size: 1.02rem;
 }
 .rail a::after {
@@ -485,7 +506,7 @@ kbd {
    through it, and a screen that is clicked comes to the centre to be used. */
 .hero {
 	position: relative;
-	height: 230svh;
+	height: 150svh;
 	margin-top: calc(var(--nav) * -1);
 }
 .hero-stage {
@@ -763,7 +784,7 @@ h1 em {
 
 /* the manifesto: words that light up as they pass */
 .manifesto {
-	padding: 18vh 0 10vh;
+	padding: 2vh 0 10vh;
 }
 .manifesto p {
 	width: min(var(--wrap), 980px);
@@ -779,7 +800,7 @@ h1 em {
 	color: var(--accent-hi);
 }
 .manifesto .w {
-	opacity: 0.14;
+	opacity: 0.24;
 	will-change: opacity;
 }
 
@@ -827,12 +848,16 @@ h2 .w {
 }
 h2 .w > span {
 	display: inline-block;
+	opacity: 0;
 	transform: translateY(105%) rotate(4deg);
 	transform-origin: 0 100%;
-	transition: transform 1s var(--out);
+	transition:
+		transform 1s var(--out),
+		opacity 0.5s ease;
 	transition-delay: calc(var(--i) * 70ms);
 }
 .is-in h2 .w > span {
+	opacity: 1;
 	transform: none;
 }
 .chapter-head .eyebrow,
@@ -1124,16 +1149,16 @@ h2 .w > span {
 }
 .grow-stage {
 	position: sticky;
-	top: 0;
+	top: var(--nav);
 	display: grid;
 	place-items: center;
-	height: 100svh;
+	height: calc(100svh - var(--nav));
 	overflow: clip;
 	perspective: 1500px;
 }
 .grow-art {
 	width: 100vw;
-	height: 100svh;
+	height: calc(100svh - var(--nav));
 	margin: 0;
 	overflow: hidden;
 	border: 1px solid var(--line-strong);
@@ -1198,6 +1223,8 @@ h2 .w > span {
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: center;
+	max-width: min(100%, 860px);
+	margin-inline: auto;
 	gap: clamp(14px, 2.4vw, 30px) clamp(12px, 2vw, 26px);
 	margin-block: 9vh 0;
 	padding: 0;
@@ -1680,6 +1707,7 @@ h2 .w > span {
 @media (hover: none) and (pointer: coarse) {
 	.unfocus kbd,
 	.btn kbd,
+	.copy kbd,
 	.palette-open .keys,
 	.palette-foot {
 		display: none;
@@ -1689,11 +1717,159 @@ h2 .w > span {
 	}
 }
 
-/* The rail needs a gutter to stand in. */
+/* Narrower, the rail keeps only its numerals and the chapter you are in. */
 @media (max-width: 1500px) {
+	.rail {
+		left: 14px;
+		width: auto;
+	}
+	.rail-title {
+		display: none;
+	}
+	.rail a {
+		gap: 10px;
+		font-size: 0.9rem;
+	}
+	.rail a::after {
+		display: none;
+	}
+	.rail a span {
+		order: 3;
+		font-size: 0.8rem;
+		opacity: 0;
+		transition: opacity 0.25s;
+	}
+	.rail a[aria-current='true'] span,
+	.rail a:hover span,
+	.rail a:focus-visible span {
+		opacity: 1;
+	}
+	.rail i {
+		order: 1;
+		min-width: 2.2em;
+	}
+}
+@media (max-width: 1000px) {
 	.rail {
 		display: none;
 	}
+}
+/* The rail stands on a scrim of its own, so it reads over a bright picture. */
+.rail {
+	padding: 14px 14px 12px;
+	border-radius: 14px;
+	background: color-mix(in srgb, var(--bg) 78%, transparent);
+	backdrop-filter: blur(10px);
+}
+.nav-demo {
+	display: none;
+	height: 36px;
+	padding: 0 8px 0 14px;
+	font-size: 0.86rem;
+}
+.still-note {
+	display: none;
+}
+@media (max-width: 600px) {
+	.reel:not(.reel-phone) .still-note {
+		display: block;
+		grid-area: 2 / 1;
+		margin: 14px 0 0;
+		color: var(--dim);
+		font: 11px var(--mono);
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+}
+.copy kbd {
+	font-size: 0.66rem;
+}
+.copy.is-done kbd {
+	display: none;
+}
+/* While a picture fills the window, the rail steps aside. */
+.is-full .rail {
+	opacity: 0;
+	pointer-events: none;
+}
+.past-hero .nav-demo {
+	display: inline-flex;
+	animation: rise 0.5s var(--out) both;
+}
+.shot-bottom {
+	object-position: bottom;
+}
+/* A picture is not a live client: its chip says so and does not pulse. */
+.is-still .status::before {
+	background: var(--dim);
+	animation: none;
+}
+/* Words for a mouse, and words for a finger. */
+.on-touch {
+	display: none;
+}
+@media (hover: none) and (pointer: coarse) {
+	.on-fine {
+		display: none;
+	}
+	.on-touch {
+		display: inline;
+	}
+	.copy,
+	.palette-open,
+	.nav-gh,
+	.nav-install,
+	.tabs [role='tab'] {
+		min-height: 44px;
+	}
+	/* No keyboard here: the chapter says so and shows no keys. */
+	.caps {
+		display: none;
+	}
+	.reel-cap .link[data-apk-link],
+	.docs .link {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+	}
+	.reel-cap .link[data-apk-link] {
+		display: flex;
+		width: fit-content;
+		margin: 10px auto 0;
+		padding: 0 16px;
+		border: 1px solid var(--line-strong);
+		border-radius: 999px;
+		text-decoration: none;
+	}
+}
+/* what a copy did, said once */
+.toast {
+	position: fixed;
+	left: 50%;
+	bottom: 26px;
+	z-index: 40;
+	max-width: min(92vw, 560px);
+	margin: 0;
+	padding: 10px 16px;
+	border: 1px solid var(--line-strong);
+	border-radius: 999px;
+	background: var(--panel);
+	color: var(--fg);
+	font: 600 0.84rem var(--sans);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	box-shadow: 0 20px 50px -20px #000;
+	opacity: 0;
+	translate: -50% 12px;
+	transition:
+		opacity 0.25s,
+		translate 0.4s var(--out);
+	pointer-events: none;
+}
+.toast.is-on {
+	opacity: 1;
+	translate: -50% 0;
 }
 
 @media (max-width: 940px) {
@@ -1758,6 +1934,70 @@ h2 .w > span {
 	.palette-open::before {
 		content: 'Menu';
 	}
+	.nav-inner {
+		gap: 8px;
+	}
+	.past-hero .nav-gh span {
+		display: none;
+	}
+	.past-hero .nav-gh {
+		padding: 0 11px;
+	}
+	/* A desktop client is unreadable at this width: the tour shows the phone layout. */
+	.reel:not(.reel-phone) .live {
+		width: min(250px, max(150px, (100svh - var(--nav) - 300px) * 0.462));
+		padding: 8px;
+		border-radius: 36px;
+		background: #050505;
+	}
+	.reel:not(.reel-phone) .live-bar {
+		display: none;
+	}
+	.reel:not(.reel-phone) .live-view {
+		aspect-ratio: 640 / 1385;
+		border-radius: 28px;
+	}
+	.shot-left {
+		object-position: left top;
+	}
+	.grow-art {
+		width: min(78vw, (100svh - 140px) * 0.462);
+		height: auto;
+		aspect-ratio: 640 / 1385;
+	}
+	.grow-art.grow-page {
+		width: min(88vw, (100svh - 140px) * 0.66);
+		aspect-ratio: 2 / 3;
+	}
+	.grow-page img {
+		object-position: 14% 50%;
+	}
+	.term .ln {
+		display: grid;
+	}
+	.term .c {
+		padding-left: 2ch;
+		font-size: 0.92em;
+	}
+	.nav-demo {
+		display: none !important;
+	}
+	/* Five tabs as three over two, none left alone on a row. */
+	.tabs {
+		display: grid;
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+		width: 100%;
+	}
+	.tabs [role='tab'] {
+		grid-column: span 2;
+		padding: 0 6px;
+	}
+	.tabs [role='tab']:nth-child(n + 4) {
+		grid-column: span 3;
+	}
+	.diff .c {
+		display: none;
+	}
 }
 
 /* Asked for less motion: nothing flies, nothing is pinned to a moving camera. */
@@ -1786,5 +2026,16 @@ h2 .w > span {
 	}
 	.hero {
 		height: 100svh;
+	}
+}
+
+/* An upright phone: the words at the top, the two phone screens side by side under them. */
+@media (max-width: 759px) {
+	.hero-stage {
+		place-items: start center;
+		padding-top: calc(var(--nav) + 3svh);
+	}
+	.hero .scroll-hint {
+		display: none;
 	}
 }
