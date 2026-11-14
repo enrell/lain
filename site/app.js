@@ -59,6 +59,14 @@
 		else scrollTo({ top: y, behavior: calm ? 'auto' : 'smooth' });
 	}
 	const scrollToEl = (el, gap = NAV + 16) => scrollToY(top(el) - gap);
+	// A jump also moves the keyboard: Tab goes on from the heading it landed on.
+	const jumpTo = (section) => {
+		const head = section.querySelector('.chapter-head') ?? section;
+		scrollToEl(head, NAV + 40);
+		const h = head.querySelector('h2') ?? head;
+		if (!h.hasAttribute('tabindex')) h.setAttribute('tabindex', '-1');
+		h.focus({ preventScroll: true });
+	};
 
 	// ---- the pointer, eased ------------------------------------------------
 	const mouse = { x: 0, y: 0, tx: 0, ty: 0 };
@@ -203,9 +211,45 @@
 		);
 	}
 
+	// A client in the page takes the keyboard only while someone is using it: it may
+	// not pull focus to itself on load or on a route change, and Esc inside it gives
+	// the keyboard back to the page (unless the client used Esc for itself).
+	function guard(frame, win, using, leave) {
+		win.addEventListener(
+			'focusin',
+			() => {
+				if (using()) return;
+				try {
+					win.document.activeElement?.blur();
+				} catch {
+					/* gone */
+				}
+				if (document.activeElement === frame) frame.blur();
+			},
+			true
+		);
+		win.addEventListener('keydown', (e) => {
+			if (e.key !== 'Escape' || e.defaultPrevented || !using()) return;
+			if (win.document.querySelector('dialog[open], [role="dialog"], [role="menu"]')) return;
+			leave();
+		});
+	}
+
 	// ---- hero: screens of the real client in depth, a camera the scroll flies
 	// through them, and whichever is clicked comes to the centre to be used.
 	const hero = document.getElementById('top');
+	const rail = document.querySelector('[data-rail]');
+	if (rail) rail.inert = true;
+	// A video started inside a client stops when the client is left: the client reloads
+	// on its route, back to the poster.
+	const hush = (frame) => {
+		try {
+			const doc = frame.contentDocument;
+			if (doc?.querySelector('iframe[src*="youtube"]')) frame.contentWindow.location.reload();
+		} catch {
+			/* not ours to touch */
+		}
+	};
 	const stage = document.querySelector('[data-stage]');
 	const planesEl = document.querySelector('[data-planes]');
 	const words = document.querySelector('[data-box]');
@@ -214,9 +258,12 @@
 	const planes = [...document.querySelectorAll('.plane')].map((el, i) => {
 		const [x, y, z, rx, ry, rz, w] = el.dataset.at.split(',').map(Number);
 		const phone = el.dataset.kind === 'phone';
-		const nw = phone ? 390 : 1440;
-		const nh = phone ? 800 : 900;
-		return { el, x, y, z, rx, ry, rz, w, phone, nw, nh, depth: Number(el.dataset.depth), i, f: 0, h: 0, h2: 0, base: 0, done: false, over: false, frame: el.querySelector('iframe'), route: el.dataset.route, asked: false };
+		const frameEl = el.querySelector('iframe');
+		const nw = Number(frameEl.getAttribute('width'));
+		const nh = Number(frameEl.getAttribute('height'));
+		// On an upright phone the two phone screens stand side by side under the words.
+		const [nx, ny, nrz] = (el.dataset.narrow ?? `${x},${y},${rz}`).split(',').map(Number);
+		return { el, x, y, z, rx, ry, rz, w, phone, nw, nh, nx, ny, nrz, depth: Number(el.dataset.depth), i, f: 0, h: 0, h2: 0, base: 0, done: false, over: false, frame: el.querySelector('iframe'), route: el.dataset.route, asked: false };
 	});
 	// A plane is laid out at the width it is shown at and the client inside it is
 	// zoomed, not scaled: its text is drawn at that size and stays sharp. The
@@ -245,11 +292,18 @@
 
 	function focusPlane(pl) {
 		if (focused === pl) return;
-		focused?.el.classList.remove('is-focused');
+		const was = focused;
+		was?.el.classList.remove('is-focused');
 		focused = pl;
 		planesEl.classList.toggle('has-focus', Boolean(pl));
 		if (unfocusBtn) unfocusBtn.hidden = !pl;
-		if (!pl) return;
+		for (const p of planes) p.frame.inert = p !== pl;
+		if (was) hush(was.frame);
+		if (!pl) {
+			// The keyboard comes back to the screen it left from.
+			if (was && (document.activeElement === was.frame || document.activeElement === document.body)) was.el.focus({ preventScroll: true });
+			return;
+		}
 		pl.el.classList.add('is-focused');
 		loadPlane(pl);
 		// The keys belong to the client once it is in the centre.
@@ -270,6 +324,7 @@
 				return;
 			}
 			if (pl.phone) touchify(win);
+			guard(pl.frame, win, () => focused === pl, unfocus);
 			// In the centre the client scrolls first and the page takes over at its edges.
 			win.addEventListener(
 				'wheel',
@@ -331,15 +386,23 @@
 	addEventListener('keydown', (e) => {
 		if (e.key === 'Escape' && focused) unfocus();
 	});
+	// From further down, the page rides up first and the screen comes forward on arrival.
+	let pending = null;
 	const openHero = () => {
+		const pl = planes.find((p) => (narrowNow() ? p.phone : !p.phone)) ?? planes[0];
+		if (heroP < 0.05) return focusPlane(pl);
+		pending = pl;
 		scrollToY(0);
-		focusPlane(planes.find((p) => (narrowNow() ? p.phone : !p.phone)) ?? planes[0]);
 	};
-	document.querySelector('[data-hero-open]')?.addEventListener('click', openHero);
+	for (const b of document.querySelectorAll('[data-hero-open]')) b.addEventListener('click', openHero);
 
 	const drawPlanes = (now) => {
 		const narrow = narrowNow();
 		const p = calm ? 0 : heroP;
+		if (pending && heroP < 0.05) {
+			focusPlane(pending);
+			pending = null;
+		}
 		// Scrolling on takes the camera with it: the screen goes back to its place.
 		if (focused && heroP > 0.1) unfocus();
 		away = lerp(away, focused ? 1 : 0, 0.09);
@@ -375,8 +438,8 @@
 			const dock = pl.dock ?? { x: 0, y: 0, w: 0, ry: 0 };
 			// Where it stands by itself, then eased towards its place in the margin.
 			const w0 = (pl.w * (narrow ? 2.7 : 1) * innerWidth) / 100;
-			const x0 = ((pl.x * (narrow ? 0.9 : 1) * innerWidth) / 100) * spread + mouse.x * -46 * pl.depth;
-			const y0 = ((clamp(pl.y * (narrow ? 1.55 : 1), -40, 40) * innerHeight) / 100) * spread + mouse.y * -30 * pl.depth;
+			const x0 = (((narrow ? pl.nx : pl.x) * innerWidth) / 100) * spread + mouse.x * -46 * pl.depth;
+			const y0 = (((narrow ? pl.ny : pl.y) * innerHeight) / 100) * spread + mouse.y * -30 * pl.depth;
 			const z0 = pl.z + p * (900 + pl.depth * 900) - (1 - t) * 1700 + pl.h * 90;
 			// Tilted, a screen is drawn at the client's full size and brought down by the
 			// transform: measured, that keeps its text cleanest. In the centre it is drawn
@@ -405,7 +468,7 @@
 			pl.el.style.transform =
 				`translate(-50%, -50%) translate3d(${lerp(x, 0, e).toFixed(1)}px, ${lerp(y, innerHeight * 0.035, e).toFixed(1)}px, ${lerp(z, 0, e).toFixed(1)}px) ` +
 				`rotateX(${((pl.rx + mouse.y * -5) * loose * (1 - others)).toFixed(2)}deg) rotateY(${(ry * loose * (1 - pl.h * 0.35)).toFixed(2)}deg) ` +
-				`rotateZ(${(pl.rz * loose * (1 - others)).toFixed(2)}deg) scale(${(lerp(w, fit(pl), e) / pl.base).toFixed(4)})`;
+				`rotateZ(${((narrow ? pl.nrz : pl.rz) * loose * (1 - others)).toFixed(2)}deg) scale(${(lerp(w, fit(pl), e) / pl.base).toFixed(4)})`;
 		}
 		if (words) {
 			const gone = Math.max(ramp(0.3, 0.62, p), away);
@@ -421,6 +484,8 @@
 			(p) => {
 				heroP = p;
 				document.body.classList.toggle('past-hero', p > 0.7);
+				// Invisible, the rail is out of the tab order too.
+				if (rail) rail.inert = p <= 0.7;
 			}
 		);
 	}
@@ -550,10 +615,17 @@
 		const live = () => el.classList.contains('is-live');
 		const say = (text) => status && (status.textContent = text);
 		// Driving: a click inside the client hands it the wheel too, until the next step.
+		const driving = () => el.classList.contains('is-driving');
+		const idle = () => (el.classList.contains('is-still') ? 'A picture of the Android app' : fine ? 'Live. Click and use it' : 'Live. Tap to use it');
 		const engage = (on) => {
-			if (el.classList.contains('is-driving') === on) return;
+			// Under the pointer the client can be clicked straight away; otherwise it is out of the tab order.
+			frame.inert = !on && !(fine && hover);
+			if (driving() === on) return;
 			el.classList.toggle('is-driving', on);
-			say(on ? (fine ? 'You are driving. Scroll past its edge to move on' : 'You are driving. Swipe outside it to move on') : fine ? 'Live. Click and use it' : 'Live. Tap to use it');
+			if (!on) hush(frame);
+			if (on) frame.focus({ preventScroll: true });
+			else if (document.activeElement === frame) holder.focus({ preventScroll: true });
+			say(on ? (fine ? 'You are driving. Esc or scroll past its edge to move on' : 'You are driving. Swipe outside it to move on') : idle());
 		};
 		const insideScrolls = (target, dy) => {
 			const doc = frame.contentDocument;
@@ -590,11 +662,12 @@
 				{ passive: false, capture: true }
 			);
 			win.addEventListener('pointerdown', () => engage(true), true);
+			guard(frame, win, driving, () => engage(false));
 			setTimeout(() => {
 				el.classList.add('is-live');
 				fit();
 				engage(false);
-				say(fine ? 'Live. Click and use it' : 'Live. Tap to use it');
+				say(idle());
 				if (routes[Math.max(0, at)] && win.location.hash.slice(1) !== route) win.location.hash = route;
 			}, 500);
 		};
@@ -618,10 +691,25 @@
 		// On a touch screen the client is behind glass until it is tapped, so a swipe
 		// over it still scrolls the page.
 		view.addEventListener('click', () => {
-			if (!fine && live()) engage(true);
+			if (live() && !el.classList.contains('is-still')) engage(true);
 		});
-		holder.addEventListener('pointerenter', () => (hover = 1));
-		holder.addEventListener('pointerleave', () => (hover = 0));
+		holder.addEventListener('pointerenter', () => {
+			hover = 1;
+			if (live()) frame.inert = false;
+		});
+		holder.addEventListener('pointerleave', () => {
+			hover = 0;
+			if (!driving()) frame.inert = true;
+		});
+		// By keyboard: the frame is a control; Enter hands it the keys.
+		holder.tabIndex = 0;
+		holder.setAttribute('role', 'button');
+		holder.setAttribute('aria-label', phone ? 'Use the live client at phone size' : 'Use the live client');
+		holder.addEventListener('keydown', (e) => {
+			if (e.target !== holder || (e.key !== 'Enter' && e.key !== ' ')) return;
+			e.preventDefault();
+			if (live() && !el.classList.contains('is-still')) engage(true);
+		});
 
 		const range = () => [top(el) - NAV, top(el) + el.offsetHeight - innerHeight];
 		const settle = (i) => {
@@ -648,7 +736,7 @@
 					s.style.opacity = '0';
 					return;
 				}
-				const far = ramp(0.3, 0.7, Math.abs(d));
+					const far = ramp(0.42, 0.58, Math.abs(d));
 				const e = Math.sign(d) * far;
 				s.style.opacity = (1 - far).toFixed(3);
 				s.style.transform = `translate3d(0, ${(-e * 9).toFixed(2)}%, 0) scale(${(1 + (e < 0 ? 0.08 : -0.06) * far).toFixed(4)})`;
@@ -656,15 +744,18 @@
 			// The live client cannot be in two places: it dips out, changes route in the
 			// dark at the halfway point, and comes back.
 			const d = f - i;
-			const dip = routes[i] ? ramp(0.3, 0.5, Math.abs(d)) : 1;
+			const dip = routes[i] ? ramp(0.43, 0.5, Math.abs(d)) : 1;
 			frame.style.opacity = (1 - dip).toFixed(3);
 			frame.style.translate = `0 ${(-Math.sign(d) * dip * 5).toFixed(2)}%`;
 			frame.style.pointerEvents = dip > 0.5 ? 'none' : '';
 			// A step with no route of its own (the Android app) shows its picture instead.
-			el.classList.toggle('is-still', !routes[i]);
+			if (el.classList.contains('is-still') !== !routes[i]) {
+				el.classList.toggle('is-still', !routes[i]);
+				if (live() && !driving()) say(idle());
+			}
 			caps.forEach((c, k) => {
 				const dc = f - k;
-				const far = ramp(0.22, 0.5, Math.abs(dc));
+				const far = ramp(0.41, 0.5, Math.abs(dc));
 				c.style.opacity = (1 - far).toFixed(3);
 				c.style.transform = `translate3d(0, ${(-Math.sign(dc) * far * 40).toFixed(1)}px, 0)`;
 			});
@@ -728,8 +819,6 @@
 		if (root.classList.contains('is-ready')) return;
 		root.classList.remove('is-loading');
 		root.classList.add('is-ready');
-		// The entrance plays now, not while the bar was up.
-		born = performance.now();
 		measure();
 		setTimeout(() => loader?.remove(), 900);
 		setTimeout(() => wide() && reels[0]?.load(), 1200);
@@ -751,15 +840,22 @@
 		let quiet = 0;
 		const prime = setInterval(() => {
 			let n = 0;
+			let ready = true;
 			try {
 				const win = mine[0].frame.contentWindow;
-				n = win.document.readyState === 'complete' ? win.performance.getEntriesByType('resource').length : 0;
+				// The demo answers from its service worker: a client opened before the worker
+				// has taken control asks the network for pictures that only the worker has.
+				const sw = win.navigator.serviceWorker;
+				ready = !sw || Boolean(sw.controller);
+				n = ready && win.document.readyState === 'complete' ? win.performance.getEntriesByType('resource').length : 0;
 			} catch {
 				n = 0;
 			}
 			quiet = n > 8 && n === count ? quiet + 1 : 0;
 			count = n;
-			if (quiet < 3 && !mine[0].done) return;
+			// Waited long enough (a worker that never takes control): go anyway.
+			if (performance.now() - since > 6000) ready = true;
+			if (!ready || (quiet < 3 && !mine[0].done)) return;
 			clearInterval(prime);
 			for (const pl of mine.slice(1)) loadPlane(pl);
 			try {
@@ -782,7 +878,7 @@
 			// The bar never stands still, and never claims more than it has.
 			shown = Math.max(shown, real, Math.min(0.9, waited / 7000));
 			if (fill) fill.style.transform = `scaleX(${shown.toFixed(3)})`;
-			if (pct) pct.textContent = String(Math.round(shown * 100));
+			if (pct) pct.textContent = String(Math.min(99, Math.round(shown * 100)));
 			// A client that will not come (no build beside the page, a dead network) does not hold the page.
 			if (real >= 1 || waited > 8000) return reveal();
 			requestAnimationFrame(tick);
@@ -794,7 +890,7 @@
 	function drive(reel, to) {
 		reel.show(to);
 		// The keys belong to the demo once it is on screen.
-		reel.frame.focus({ preventScroll: true });
+		reel.engage(true);
 	}
 	// Open a route of the live demo, on the step that shows it when there is one.
 	function demoGo(route) {
@@ -810,6 +906,7 @@
 	});
 
 	// ---- a picture that starts as a tilted card and grows into the window ------
+	const full = new Map();
 	for (const el of document.querySelectorAll('[data-grow]')) {
 		const art = el.querySelector('.grow-art');
 		const img = art.querySelector('img');
@@ -820,7 +917,11 @@
 				const e = ramp(0.05, 0.72, p);
 				art.style.transform = `rotateX(${lerp(34, 0, e).toFixed(2)}deg) scale(${lerp(0.46, 1, e).toFixed(4)})`;
 				art.style.borderRadius = `${lerp(36, 0, e).toFixed(1)}px`;
-				img.style.transform = `scale(${lerp(1.22, 1, e).toFixed(4)}) translate3d(0, ${lerp(-4, 0, e).toFixed(2)}%, 0)`;
+				// On a phone the picture is already the shape of its frame: it is not zoomed inside it.
+				if (innerWidth > 600) img.style.transform = `scale(${lerp(1.22, 1, e).toFixed(4)}) translate3d(0, ${lerp(-4, 0, e).toFixed(2)}%, 0)`;
+				else img.style.transform = '';
+				full.set(el, e > 0.9 && p < 0.97);
+				document.body.classList.toggle('is-full', [...full.values()].some(Boolean));
 			}
 		);
 	}
@@ -873,8 +974,11 @@
 		(entries) => {
 			for (const e of entries) {
 				if (!e.isIntersecting) continue;
-				for (const a of railLinks.values()) a.removeAttribute('aria-current');
-				railLinks.get(e.target.id)?.setAttribute('aria-current', 'true');
+				const link = railLinks.get(e.target.id);
+				if (link) {
+					for (const a of railLinks.values()) a.removeAttribute('aria-current');
+					link.setAttribute('aria-current', 'true');
+				}
 				const h = getComputedStyle(e.target).getPropertyValue('--hue').split(',').map(Number);
 				if (h.length === 3 && !h.some(Number.isNaN)) [hue.tr, hue.tg, hue.tb] = h;
 			}
@@ -1008,7 +1112,7 @@ void main(){
 		if (!to) return;
 		e.preventDefault();
 		if (to.id === 'top') scrollToY(0);
-		else scrollToEl(to.querySelector('.chapter-head') ?? to, NAV + 40);
+		else jumpTo(to);
 		history.replaceState(null, '', a.getAttribute('href'));
 	});
 
@@ -1036,11 +1140,25 @@ void main(){
 	}
 
 	// Copy buttons say so, briefly.
+	const toastEl = document.querySelector('[data-toast]');
+	let toastTimer = 0;
+	const toast = (text) => {
+		if (!toastEl) return;
+		toastEl.textContent = text;
+		toastEl.classList.add('is-on');
+		clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => toastEl.classList.remove('is-on'), 2200);
+	};
 	async function copy(b) {
 		if (!b) return;
 		try {
 			await navigator.clipboard.writeText(b.dataset.copy);
+			toast(`Copied: ${b.dataset.copy}`);
 		} catch {
+			// No clipboard here: select the command so it can be copied by hand.
+			const code = b.closest('.code')?.querySelector('code');
+			if (code) getSelection()?.selectAllChildren(code);
+			toast('Selected. Press Ctrl+C to copy');
 			return;
 		}
 		if (b.dataset.label) return;
@@ -1063,13 +1181,14 @@ void main(){
 	const input = document.getElementById('palette-input');
 	const list = document.getElementById('palette-list');
 	const mainCopy = document.querySelector('[data-copy-main]');
-	const toInstall = () => scrollToEl(document.querySelector('#install .chapter-head'), NAV + 40);
+	// C copies the command of the install tab that is showing (Docker when it has none).
+	const currentCopy = () => document.querySelector('[data-install] [role="tabpanel"]:not([hidden]) [data-copy]') ?? mainCopy;
+	const toInstall = () => jumpTo(document.getElementById('install'));
 	const open = (url) => window.open(url, '_blank', 'noopener');
 	const commands = [
-		...sections.map((s) => ({ kind: 'Chapter', label: s.dataset.section, run: () => scrollToEl(s.querySelector('.chapter-head') ?? s, NAV + 40) })),
+		...sections.map((s) => ({ kind: 'chapter' in s.dataset ? 'Chapter' : 'Section', label: s.dataset.section, keys: s.id === 'install' ? ['I'] : undefined, run: () => jumpTo(s) })),
 		{ kind: 'Action', label: 'Use the live client', keys: ['D'], run: openHero },
-		{ kind: 'Action', label: 'Copy the Docker command', keys: ['C'], run: () => copy(mainCopy) },
-		{ kind: 'Action', label: 'Go to Install', keys: ['I'], run: toInstall },
+		{ kind: 'Action', label: 'Copy the install command', keys: ['C'], run: () => copy(currentCopy()) },
 		{ kind: 'Demo', label: 'Open the library', run: () => demoGo('/library?view=all') },
 		{ kind: 'Demo', label: 'Open a series', run: () => demoGo('/item/039a34b14ce22380') },
 		{ kind: 'Demo', label: 'Open the player (Play has a surprise)', run: () => demoGo('/player/039a34b14ce22380') },
@@ -1174,7 +1293,7 @@ void main(){
 			k: () => step(-1),
 			d: openHero,
 			i: toInstall,
-			c: () => copy(mainCopy)
+			c: () => copy(currentCopy())
 		}[e.key.length === 1 ? e.key.toLowerCase() : e.key];
 		if (!act) return;
 		e.preventDefault();
