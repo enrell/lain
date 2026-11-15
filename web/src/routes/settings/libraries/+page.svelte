@@ -14,8 +14,11 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import LockOpen from '@lucide/svelte/icons/lock-open';
-	import type { BrowseDir, Library, LibraryRoot } from '$lib/api/types';
+	import type { Audience, BrowseDir, Library, LibraryRoot, User } from '$lib/api/types';
 	import { api } from '$lib/api';
+	import { isHidden, libraryAudience, type LibraryPatch, type Secret, type UnlockInput } from '$lib/api/libraries';
+	import { displayName } from '$lib/profile/mascots';
+	import { session } from '$lib/auth/session.svelte';
 	import { t } from '$lib/i18n';
 	import Switch from '$lib/components/primitives/Switch.svelte';
 	import UnlockLibraryDialog from '$lib/components/media/UnlockLibraryDialog.svelte';
@@ -32,6 +35,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
 	import { focusSoon } from '$lib/components/social/focus';
+	import { isTypingTarget } from '$lib/utilities/guards';
 	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	import { formatRelative } from '$lib/utilities/format';
 
@@ -44,7 +48,16 @@
 	// The dialog adds a library, or edits this one (same fields, same picker).
 	let editTarget = $state<Library | null>(null);
 	let formError = $state<string | null>(null);
-	let form = $state({ name: '', type: 'auto', path: '', private: false });
+	let form = $state({
+		name: '',
+		type: 'auto',
+		path: '',
+		private: false,
+		// A new library starts closed to restricted accounts (D-299).
+		audience: 'mature' as Audience,
+		members: [] as string[]
+	});
+	let serverUsers = $state<User[]>([]);
 	// The name follows the folder until the user types one.
 	let nameTouched = $state(false);
 
@@ -60,6 +73,71 @@
 	let pinBusy = $state(false);
 	let unlockTarget = $state<Library | null>(null);
 	let unlockOpen = $state(false);
+	// Edit asked on a locked library: it opens once the library is unlocked.
+	let editAfterUnlock = $state(false);
+
+	// D-293: a locked private library is changed or removed only with the
+	// PIN. The dialog asks for it and runs the change with it.
+	let confirmOpen = $state(false);
+	let confirmRun = $state<((secret: UnlockInput) => Promise<void>) | null>(null);
+
+	function withPin(lib: Library, run: (secret: Secret) => Promise<void>, failed: string): void {
+		if (isHidden(lib)) {
+			confirmRun = run;
+			confirmOpen = true;
+			return;
+		}
+		run(undefined).catch((err) => toasts.error(errorMessage(err, failed)));
+	}
+
+	function isMember(lib: Library): boolean {
+		const me = session.user?.id;
+		return !!me && (lib.owner === me || !!lib.members?.includes(me));
+	}
+
+	// D-296: a manager renames a library, sets its type, orders the list
+	// and scans. Adding and removing, the folder, privacy, members and the
+	// audience are the admin's; the server refuses them from anyone else.
+	const admin = $derived(session.isAdmin);
+
+	// D-294: a locked private library is not listed at all. One button
+	// asks for the PIN and shows them; the server locks them again by
+	// itself when this tab or the browser closes.
+	const visible = $derived(libraries.filter((l) => !isHidden(l)));
+	const unlockable = $derived(libraries.filter((l) => isHidden(l) && isMember(l)));
+	const opened = $derived(libraries.filter((l) => l.private && !l.locked));
+	let revealOpen = $state(false);
+
+	async function refreshList(): Promise<void> {
+		try {
+			libraries = await ensureLibraries(true);
+		} catch (err) {
+			toasts.error(errorMessage(err));
+		}
+	}
+
+	async function lockAll(): Promise<void> {
+		try {
+			for (const lib of opened) await api.libraries.lock(lib.id);
+			toasts.success(t('privateLibrary.lockedAllToast'));
+		} catch (err) {
+			toasts.error(errorMessage(err, t('privateLibrary.updateFailed')));
+		}
+		await refreshList();
+	}
+
+	// Shift+U anywhere on the page: show the private libraries, or lock them.
+	function pageKey(e: KeyboardEvent): void {
+		if (e.key !== 'U' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
+		if (createOpen || deleteOpen || unlockOpen || confirmOpen || revealOpen) return;
+		if (opened.length > 0) {
+			e.preventDefault();
+			void lockAll();
+		} else if (unlockable.length > 0) {
+			e.preventDefault();
+			revealOpen = true;
+		}
+	}
 
 	async function loadExtras(): Promise<void> {
 		try {
@@ -68,6 +146,10 @@
 		} catch {
 			roots = null;
 		}
+		api.users
+			.list()
+			.then((u) => (serverUsers = [...u].sort((a, b) => a.username.localeCompare(b.username))))
+			.catch(() => {});
 	}
 
 	function replace(lib: Library): void {
@@ -75,19 +157,22 @@
 		rememberLibrary(lib);
 	}
 
-	async function setPrivate(lib: Library, next: boolean): Promise<void> {
-		try {
-			const updated = await api.libraries.update(lib.id, { private: next });
-			replace(updated);
-			toasts.success(t(next ? 'privateLibrary.madePrivate' : 'privateLibrary.madePublic', { name: updated.name }));
-		} catch (err) {
-			toasts.error(errorMessage(err, t('privateLibrary.updateFailed')));
-		}
+	function setPrivate(lib: Library, next: boolean): void {
+		withPin(
+			lib,
+			async (secret) => {
+				const updated = await api.libraries.update(lib.id, { private: next }, secret);
+				replace(updated);
+				toasts.success(t(next ? 'privateLibrary.madePrivate' : 'privateLibrary.madePublic', { name: updated.name }));
+			},
+			t('privateLibrary.updateFailed')
+		);
 	}
 
 	async function toggleLock(lib: Library): Promise<void> {
 		if (!lib.private) return;
 		if (lib.locked) {
+			editAfterUnlock = false;
 			unlockTarget = lib;
 			unlockOpen = true;
 			return;
@@ -119,6 +204,9 @@
 	usePageKeys(() => [
 		...(roots !== null ? [{ keys: ['P'], label: t('pageKeys.libraryPrivate') }] : []),
 		{ keys: ['U'], label: t('pageKeys.libraryLock') },
+		...(opened.length > 0 || unlockable.length > 0
+			? [{ keys: ['Shift', 'U'], label: t(opened.length > 0 ? 'privateLibrary.lockPrivate' : 'privateLibrary.showPrivate') }]
+			: []),
 		{ keys: ['E'], label: t('settings.librariesPage.keyEdit') },
 		{ keys: ['Alt', '↑↓'], label: t('settings.librariesPage.keyMove') },
 		{ keys: ['Delete'], label: t('pageKeys.libraryRemove') }
@@ -130,8 +218,10 @@
 		return [
 			{ label: t('settings.librariesPage.edit'), icon: Pencil, kbd: 'E', onSelect: () => openEdit(lib) },
 			{ label: t('settings.librariesPage.moveUpShort'), icon: ArrowUp, disabled: index === 0, onSelect: () => void move(lib, -1) },
-			{ label: t('settings.librariesPage.moveDownShort'), icon: ArrowDown, disabled: index === libraries.length - 1, onSelect: () => void move(lib, 1) },
-			{ label: t('settings.librariesPage.remove'), icon: Trash2, kbd: 'Del', danger: true, separated: true, onSelect: () => askRemove(lib) }
+			{ label: t('settings.librariesPage.moveDownShort'), icon: ArrowDown, disabled: index === visible.length - 1, onSelect: () => void move(lib, 1) },
+			...(admin
+				? [{ label: t('settings.librariesPage.remove'), icon: Trash2, kbd: 'Del', danger: true, separated: true, onSelect: () => askRemove(lib) }]
+				: [])
 		];
 	}
 
@@ -150,13 +240,13 @@
 		if (key === 'e') {
 			e.preventDefault();
 			openEdit(lib);
-		} else if (key === 'p' && roots !== null) {
+		} else if (key === 'p' && roots !== null && admin) {
 			e.preventDefault();
 			void setPrivate(lib, !lib.private);
 		} else if (key === 'u' && lib.private) {
 			e.preventDefault();
 			void toggleLock(lib);
-		} else if (e.key === 'Delete') {
+		} else if (e.key === 'Delete' && admin) {
 			e.preventDefault();
 			askRemove(lib);
 		}
@@ -175,10 +265,11 @@
 	let pathEl = $state<HTMLInputElement | null>(null);
 
 	function openCreate(): void {
+		if (!admin) return;
 		editTarget = null;
 		createOpen = true;
 		formError = null;
-		form = { name: '', type: 'auto', path: '', private: false };
+		form = { name: '', type: 'auto', path: '', private: false, audience: 'mature', members: [] };
 		nameTouched = false;
 		pathDraft = '';
 		void loadBrowse();
@@ -189,10 +280,35 @@
 	// Editing opens the same dialog on the library as it is: its folder in
 	// the picker, its name kept (it does not follow the folder any more).
 	function openEdit(lib: Library): void {
+		// A locked library's name and folder are hidden (D-293): a member
+		// unlocks it first, and the dialog opens on what it really is.
+		if (isHidden(lib)) {
+			if (!isMember(lib)) {
+				toasts.info(t('privateLibrary.editMembersOnly'));
+				return;
+			}
+			editAfterUnlock = true;
+			unlockTarget = lib;
+			unlockOpen = true;
+			return;
+		}
 		editTarget = lib;
 		createOpen = true;
 		formError = null;
-		form = { name: lib.name, type: lib.type, path: lib.path, private: !!lib.private };
+		form = {
+			name: lib.name,
+			type: lib.type,
+			path: lib.path,
+			private: !!lib.private,
+			audience: libraryAudience(lib),
+			members: [...(lib.members ?? [])]
+		};
+		if (serverUsers.length === 0) {
+			api.users
+				.list()
+				.then((u) => (serverUsers = [...u].sort((a, b) => a.username.localeCompare(b.username))))
+				.catch(() => {});
+		}
 		nameTouched = true;
 		pathDraft = lib.path;
 		void loadBrowse(lib.path);
@@ -203,9 +319,11 @@
 	// the library page follow it). The list moves at once; a failure puts
 	// it back.
 	async function move(lib: Library, delta: number, refocus = false): Promise<void> {
+		// Among the listed ones: a hidden library keeps its place.
+		const neighbour = visible[visible.findIndex((l) => l.id === lib.id) + delta];
 		const from = libraries.findIndex((l) => l.id === lib.id);
-		const to = from + delta;
-		if (from < 0 || to < 0 || to >= libraries.length) return;
+		const to = neighbour ? libraries.findIndex((l) => l.id === neighbour.id) : -1;
+		if (from < 0 || to < 0) return;
 		const before = libraries;
 		const next = [...libraries];
 		[next[from], next[to]] = [next[to], next[from]];
@@ -310,15 +428,45 @@
 		void scan.watch();
 	});
 
+	const audienceOptions = $derived([
+		{ value: 'everyone', label: t('settings.librariesPage.audienceEveryone') },
+		{ value: 'teen', label: t('settings.librariesPage.audienceTeen') },
+		{ value: 'mature', label: t('settings.librariesPage.audienceMature') }
+	]);
+
+	function audienceLabel(level: Audience): string {
+		if (level === 'teen') return t('settings.librariesPage.audienceTeen');
+		if (level === 'mature') return t('settings.librariesPage.audienceMature');
+		return t('settings.librariesPage.audienceEveryone');
+	}
+
+	function toggleLibraryMember(userId: string): void {
+		form.members = form.members.includes(userId)
+			? form.members.filter((id) => id !== userId)
+			: [...form.members, userId];
+	}
+
+	function sameMemberList(a: string[], b: string[], ownerId: string): boolean {
+		const norm = (xs: string[]) => [...new Set(xs.filter((id) => id && id !== ownerId))].sort();
+		const na = norm(a);
+		const nb = norm(b);
+		return na.length === nb.length && na.every((v, i) => v === nb[i]);
+	}
+
 	// What an edit changes; a new folder or type is read by the next scan.
 	const editPatch = $derived.by(() => {
 		const lib = editTarget;
 		if (!lib) return {};
-		const patch: { name?: string; type?: string; path?: string; private?: boolean } = {};
+		const patch: LibraryPatch = {};
 		if (form.name.trim() && form.name.trim() !== lib.name) patch.name = form.name.trim();
 		if (form.type !== lib.type) patch.type = form.type;
 		if (form.path.trim() && form.path.trim() !== lib.path) patch.path = form.path.trim();
 		if (roots !== null && form.private !== !!lib.private) patch.private = form.private;
+		if (form.audience !== libraryAudience(lib)) patch.audience = form.audience;
+		const ownerId = lib.owner || session.user?.id || '';
+		if (roots !== null && form.private && !sameMemberList(form.members, lib.members ?? [], ownerId)) {
+			patch.members = form.members.filter((id) => id && id !== ownerId);
+		}
 		return patch;
 	});
 	const editNeedsScan = $derived(editPatch.type !== undefined || editPatch.path !== undefined);
@@ -330,12 +478,18 @@
 		formError = null;
 		try {
 			// Private first: a library made private must not be looked up
-			// online by the scan that follows.
+			// online by the scan that follows; include audience & members in
+			// that same call while the library is still unlocked.
 			const { private: priv, ...rest } = editPatch;
 			let updated = lib;
-			if (priv === true) updated = await api.libraries.update(lib.id, { private: true });
-			if (Object.keys(rest).length > 0) updated = await api.libraries.update(lib.id, rest);
-			if (priv === false) updated = await api.libraries.update(lib.id, { private: false });
+			if (priv === true) {
+				updated = await api.libraries.update(lib.id, { private: true, ...rest });
+			} else if (priv === false) {
+				if (Object.keys(rest).length > 0) updated = await api.libraries.update(lib.id, rest);
+				updated = await api.libraries.update(lib.id, { private: false });
+			} else if (Object.keys(rest).length > 0) {
+				updated = await api.libraries.update(lib.id, rest);
+			}
 			replace(updated);
 			createOpen = false;
 			editTarget = null;
@@ -365,16 +519,24 @@
 			let lib = await api.libraries.create({
 				name: form.name.trim(),
 				type: form.type,
-				path: form.path.trim()
+				path: form.path.trim(),
+				audience: form.audience
 			});
 			// Private before the first scan: a scan of a public library may
 			// look its titles up online.
-			if (form.private) lib = await api.libraries.update(lib.id, { private: true });
+			const initialPatch: LibraryPatch = {};
+			if (form.private) {
+				initialPatch.private = true;
+				if (form.members.length > 0) initialPatch.members = form.members;
+			}
+			if (Object.keys(initialPatch).length > 0) {
+				lib = await api.libraries.update(lib.id, initialPatch);
+			}
 			rememberLibrary(lib);
 			// The server's order: a new library goes after the ordered ones.
 			libraries = await ensureLibraries(true).catch(() => [...libraries, lib]);
 			createOpen = false;
-			form = { name: '', type: 'auto', path: '', private: false };
+			form = { name: '', type: 'auto', path: '', private: false, audience: 'mature', members: [] };
 			if (!scanAfter) {
 				toasts.success(t('scan.libraryAdded', { name: lib.name }));
 				return;
@@ -395,17 +557,27 @@
 		}
 	}
 
+	async function removeNow(target: Library, secret: Secret): Promise<void> {
+		await api.libraries.remove(target.id, secret);
+		libraries = libraries.filter((lib) => lib.id !== target.id);
+		forgetLibrary(target.id);
+		deleteOpen = false;
+		deleteTarget = null;
+		toasts.success(t('settings.librariesPage.removed', { name: target.name }));
+	}
+
 	async function remove(): Promise<void> {
 		const target = deleteTarget;
 		if (!target) return;
+		if (isHidden(target)) {
+			// Confirmed; the PIN comes next and the removal runs with it.
+			deleteOpen = false;
+			withPin(target, (secret) => removeNow(target, secret), t('settings.librariesPage.removeFailed'));
+			return;
+		}
 		deleting = true;
 		try {
-			await api.libraries.remove(target.id);
-			libraries = libraries.filter((lib) => lib.id !== target.id);
-			forgetLibrary(target.id);
-			deleteOpen = false;
-			deleteTarget = null;
-			toasts.success(t('settings.librariesPage.removed', { name: target.name }));
+			await removeNow(target, undefined);
 		} catch (err) {
 			toasts.error(errorMessage(err, t('settings.librariesPage.removeFailed')));
 		} finally {
@@ -433,6 +605,8 @@
 		return (TYPES as readonly string[]).includes(type) ? t(`settings.librariesPage.types.${type as (typeof TYPES)[number]}`) : type;
 	}
 </script>
+
+<svelte:window onkeydown={pageKey} />
 
 <svelte:head><title>{t('settings.librariesPage.pageTitle')}</title></svelte:head>
 
@@ -509,8 +683,9 @@
 					<ul class="mt-2 space-y-1.5 text-sm" aria-label={t('settings.librariesPage.unreadableRoots')}>
 						{#each stats.unreadable as root (root.library_id)}
 							<li class="text-warning">
-								<span class="font-medium">{root.name}</span>
-								<span class="font-mono text-xs text-muted">{root.path}</span>
+								<!-- A private library that is locked here comes without a name or a folder (D-293). -->
+								<span class="font-medium">{root.name || t('privateLibrary.hiddenName')}</span>
+								{#if root.path}<span class="font-mono text-xs text-muted">{root.path}</span>{/if}
 								— {t('settings.librariesPage.unreadableHint', { reason: root.reason })}
 							</li>
 						{/each}
@@ -524,23 +699,41 @@
 
 	<SettingsGroup id="libraries" title={t('settings.librariesPage.librariesTitle')} description={t('settings.groups.libraries.libraries')}>
 		{#snippet aside()}
-			<Button variant="tonal" size="field" onclick={() => openCreate()}>
-				<FolderPlus class="size-4" /> {t('settings.librariesPage.add')}
-			</Button>
+			<div class="flex flex-wrap justify-end gap-2">
+				{#if opened.length > 0}
+					<Button variant="ghost" size="field" onclick={() => void lockAll()}>
+						<LockIcon class="size-4" /> {t('privateLibrary.lockPrivate')}
+						<kbd class="ms-1 font-mono text-[10px] text-muted">Shift+U</kbd>
+					</Button>
+				{:else if unlockable.length > 0}
+					<Button variant="ghost" size="field" onclick={() => (revealOpen = true)}>
+						<LockOpen class="size-4" /> {t('privateLibrary.showPrivate')}
+						<kbd class="ms-1 font-mono text-[10px] text-muted">Shift+U</kbd>
+					</Button>
+				{/if}
+				{#if admin}
+					<Button variant="tonal" size="field" onclick={() => openCreate()}>
+						<FolderPlus class="size-4" /> {t('settings.librariesPage.add')}
+					</Button>
+				{/if}
+			</div>
 		{/snippet}
 		{#if loading}
 			<div class="py-4"><div class="h-12 animate-pulse rounded-md bg-field"></div></div>
 		{:else if error}
 			<div class="py-4"><ErrorState message={error} retry={() => void load()} /></div>
 		{:else if libraries.length === 0}
+			<!-- Nothing at all; with only hidden private ones the list is just empty. -->
 			<!-- The panel is the frame here: a boxed empty state inside it was a box in a box. -->
 			<div class="flex flex-col items-center px-6 py-10 text-center">
 				<FolderPlus class="size-6 text-muted" />
 				<p class="mt-3 text-base font-semibold text-foreground">{t('settings.librariesPage.emptyTitle')}</p>
 				<p class="mt-1 max-w-md text-sm text-muted">{t('settings.librariesPage.emptyBody')}</p>
-				<Button class="mt-5" size="field" onclick={() => openCreate()}>
-					<FolderPlus class="size-4" /> {t('settings.librariesPage.addFirst')}
-				</Button>
+				{#if admin}
+					<Button class="mt-5" size="field" onclick={() => openCreate()}>
+						<FolderPlus class="size-4" /> {t('settings.librariesPage.addFirst')}
+					</Button>
+				{/if}
 			</div>
 		{:else}
 			<!-- One table: the order handle, name and path, then the Private
@@ -552,7 +745,7 @@
 			     line and the order and the row's actions are one labelled menu
 			     (⋯) at the end of the name's line. -->
 			<ul class="settings-items">
-				{#each libraries as lib, index (lib.id)}
+				{#each visible as lib, index (lib.id)}
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 					<li
 						data-library={lib.id}
@@ -580,7 +773,7 @@
 								class="flex h-8 w-7 items-center justify-center rounded text-muted/60 transition-colors group-hover/row:text-muted group-focus-within/row:text-muted hover:bg-surface-hover hover:text-foreground! disabled:invisible xl:h-5 xl:w-6"
 								aria-label={t('settings.librariesPage.moveDown', { name: lib.name })}
 								title={t('settings.librariesPage.moveDownKey')}
-								disabled={index === libraries.length - 1}
+								disabled={index === visible.length - 1}
 								onclick={() => void move(lib, 1)}
 							>
 								<ChevronDown class="size-3.5" />
@@ -590,7 +783,7 @@
 							<!-- One tag style for what a library is (its type, private, its
 							     root); only a problem (unreadable) takes a colour. -->
 							<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-								<p class="truncate text-sm font-medium text-foreground">{lib.name}</p>
+								<p class={['truncate text-sm font-medium', isHidden(lib) ? 'text-muted italic' : 'text-foreground']}>{lib.name}</p>
 								<Badge>{typeLabel(lib.type)}</Badge>
 								{#if lib.private}
 									<Badge>
@@ -598,7 +791,10 @@
 										{lib.locked ? t('settings.librariesPage.privateLocked') : t('settings.librariesPage.privateOpen')}
 									</Badge>
 								{/if}
-								{#if lib.root}
+								{#if !isHidden(lib) && libraryAudience(lib) !== 'everyone'}
+									<Badge>{audienceLabel(libraryAudience(lib))}</Badge>
+								{/if}
+								{#if lib.root && !isHidden(lib)}
 									<Badge>{lib.root}:{lib.root_path || '/'}</Badge>
 								{/if}
 								{#if scan.status?.stats?.unreadable?.some((r) => r.library_id === lib.id)}
@@ -606,12 +802,16 @@
 								{/if}
 							</div>
 							<!-- A long path is cut at its start: the folder's own name is the part that tells libraries apart. -->
-							<details class="group/path mt-0.5 text-start font-mono text-xs text-muted">
-								<summary class="cursor-pointer list-none truncate hover:text-foreground [&::-webkit-details-marker]:hidden" title={t('settings.librariesPage.wholePath')}>
-									<span class="group-open/path:hidden">…/{lib.path.split(/[\\/]/).filter(Boolean).slice(-2).join('/')}</span>
-									<span class="hidden break-all whitespace-normal group-open/path:inline">{lib.path}</span>
-								</summary>
-							</details>
+							{#if isHidden(lib)}
+								<p class="mt-0.5 font-mono text-xs text-muted">{t('privateLibrary.hiddenPath')}</p>
+							{:else}
+								<details class="group/path mt-0.5 text-start font-mono text-xs text-muted">
+									<summary class="cursor-pointer list-none truncate hover:text-foreground [&::-webkit-details-marker]:hidden" title={t('settings.librariesPage.wholePath')}>
+										<span class="group-open/path:hidden">…/{lib.path.split(/[\\/]/).filter(Boolean).slice(-2).join('/')}</span>
+										<span class="hidden break-all whitespace-normal group-open/path:inline">{lib.path}</span>
+									</summary>
+								</details>
+							{/if}
 						</div>
 						<div class="-me-2 self-start xl:hidden">
 							<Menu label={t('settings.librariesPage.actionsFor', { name: lib.name })} entries={rowEntries(lib, index)} variant="ghost" size="icon">
@@ -652,16 +852,18 @@
 									<Pencil class="size-4" /> {t('settings.librariesPage.edit')}
 									<kbd class="ms-1 max-xl:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">E</kbd>
 								</Button>
-								<Button
-									variant="ghost"
-									size="field"
-									class="hover:text-danger! focus-visible:text-danger!"
-									aria-label={t('settings.librariesPage.removeFor', { name: lib.name })}
-									onclick={() => askRemove(lib)}
-								>
-									<Trash2 class="size-4" /> {t('settings.librariesPage.remove')}
-									<kbd class="ms-1 max-xl:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">Del</kbd>
-								</Button>
+								{#if admin}
+									<Button
+										variant="ghost"
+										size="field"
+										class="hover:text-danger! focus-visible:text-danger!"
+										aria-label={t('settings.librariesPage.removeFor', { name: lib.name })}
+										onclick={() => askRemove(lib)}
+									>
+										<Trash2 class="size-4" /> {t('settings.librariesPage.remove')}
+										<kbd class="ms-1 max-xl:hidden transition-opacity opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100">Del</kbd>
+									</Button>
+								{/if}
 							</div>
 						</div>
 					</li>
@@ -737,7 +939,19 @@
 	{/if}
 </div>
 
-<UnlockLibraryDialog bind:open={unlockOpen} library={unlockTarget} onunlocked={(lib) => replace(lib)} />
+<UnlockLibraryDialog
+	bind:open={unlockOpen}
+	library={unlockTarget}
+	onunlocked={(lib) => {
+		replace(lib);
+		if (editAfterUnlock) {
+			editAfterUnlock = false;
+			openEdit(lib);
+		}
+	}}
+/>
+<UnlockLibraryDialog bind:open={revealOpen} libraries={unlockable} onunlocked={() => void refreshList()} />
+<UnlockLibraryDialog bind:open={confirmOpen} onsecret={async (secret) => confirmRun?.(secret)} />
 
 <!-- Add, or edit: one dialog, one folder picker. -->
 <Modal
@@ -758,8 +972,8 @@
 			</div>
 		{/if}
 
-		<!-- The folder: one path bar, and the folders inside it. -->
-		<div class="space-y-1.5">
+		<!-- The folder: one path bar, and the folders inside it. The admin's (D-296). -->
+		<div class={['space-y-1.5', !admin && 'hidden']}>
 			<label for="library-path" class="block text-sm font-medium text-muted">{t('settings.librariesPage.folder')}</label>
 			<div class="flex gap-2">
 				<input
@@ -868,12 +1082,58 @@
 					: t('settings.librariesPage.typeVideo')}
 		</p>
 
-		{#if roots !== null}
+		{#if admin}
+			<div class="space-y-1.5">
+				<Select label={t('settings.librariesPage.audience')} bind:value={form.audience} options={audienceOptions} />
+				<p class="text-xs text-muted">{t('settings.librariesPage.audienceHint')}</p>
+			</div>
+		{/if}
+
+		{#if roots !== null && admin}
 			<Switch
 				bind:checked={form.private}
 				label={t('privateLibrary.makePrivate')}
 				description={t('privateLibrary.makePrivateHint')}
 			/>
+			{#if form.private && editTarget && !isHidden(editTarget) && serverUsers.length > 0}
+				{@const ownerId = editTarget.owner || session.user?.id || ''}
+				<fieldset class="space-y-2 rounded-md border border-line bg-surface/40 p-3">
+					<legend class="px-1 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+						{t('settings.librariesPage.members')}
+					</legend>
+					<p class="text-xs text-muted">{t('settings.librariesPage.membersHint')}</p>
+					<ul class="max-h-40 space-y-1.5 overflow-y-auto pt-1">
+						{#each serverUsers as member (member.id)}
+							{@const isOwner = member.id === ownerId}
+							<li>
+								<label
+									class={[
+										'flex items-center justify-between gap-3 rounded px-2 py-1 text-sm',
+										isOwner ? 'cursor-default text-muted' : 'cursor-pointer text-foreground hover:bg-surface-hover'
+									].join(' ')}
+								>
+									<span class="flex min-w-0 items-center gap-2.5">
+										<input
+											type="checkbox"
+											checked={isOwner || form.members.includes(member.id)}
+											disabled={isOwner}
+											onchange={() => toggleLibraryMember(member.id)}
+											class="size-4 rounded border-line accent-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+										/>
+										<span class="truncate">{displayName(member)}</span>
+										{#if member.profile?.display_name}
+											<span class="font-mono text-[11px] text-muted">@{member.username}</span>
+										{/if}
+									</span>
+									{#if isOwner}
+										<Badge tone="accent">{t('settings.librariesPage.ownerBadge')}</Badge>
+									{/if}
+								</label>
+							</li>
+						{/each}
+					</ul>
+				</fieldset>
+			{/if}
 		{/if}
 
 		<div class="flex flex-wrap justify-end gap-2 pt-1">

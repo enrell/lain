@@ -20,7 +20,7 @@ pub mod hls;
 pub mod policy;
 pub mod process;
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
@@ -55,7 +55,8 @@ pub const ACTION_SUBTITLES: &str = "subtitles";
 
 const LEGACY_PROFILE: &str = "mp4-compat-v1";
 // v2: the sidecar no longer carries ASS escapes (`\\h`, override blocks).
-const SUBTITLE_PROFILE: &str = "subs-vtt-v2";
+// v3: no vector drawings shown as text, no cue written twice.
+const SUBTITLE_PROFILE: &str = "subs-vtt-v3";
 const PROGRESSIVE_TIMEOUT: Duration = Duration::from_secs(3600);
 const SUBTITLE_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_QUEUE_CAPACITY: i64 = 64;
@@ -2416,7 +2417,104 @@ fn clean_webvtt(text: &str) -> String {
         }
     }
     out.push_str(rest);
+    drop_effects(&out)
+}
+
+/// What an ASS song effect leaves once ffmpeg has dropped its override
+/// blocks: the vector drawing of a `\p1` event (a particle, a shape)
+/// comes through as its commands (`m 50 0 b 22 0 ...`), an event layered
+/// for its outline and glow comes through once per layer, and a karaoke
+/// line placed syllable by syllable comes through as a pile of cues of
+/// one syllable each. A drawing line goes, a cue left without text goes
+/// with it, a cue with the timing and text of an earlier one is written
+/// once, and syllables shown [`SYLLABLE_PILE`] or more at a time go: no
+/// order of them is left to read, and the song's full lines stay.
+fn drop_effects(text: &str) -> String {
+    let mut seen: HashSet<(&str, String)> = HashSet::new();
+    // Each kept block, and when it shows if it is one syllable.
+    let mut kept: Vec<(std::borrow::Cow<'_, str>, Option<Span>)> = Vec::new();
+    let mut changed = false;
+    for block in text.split("\n\n") {
+        let lines: Vec<&str> = block.lines().collect();
+        let Some(at) = lines.iter().position(|l| l.contains("-->")) else {
+            kept.push((block.into(), None));
+            continue;
+        };
+        let words: Vec<&str> = lines[at + 1..].iter().copied().filter(|l| !ass_drawing(l)).collect();
+        if words.is_empty() || !seen.insert((lines[at], words.join("\n"))) {
+            changed = true;
+            continue;
+        }
+        let shown = if words.len() == 1 && syllable(words[0]) { cue_span(lines[at]) } else { None };
+        if words.len() == lines.len() - at - 1 {
+            kept.push((block.into(), shown));
+        } else {
+            changed = true;
+            kept.push(([&lines[..=at], &words[..]].concat().join("\n").into(), shown));
+        }
+    }
+    let mut spans: Vec<Span> = kept.iter().filter_map(|(_, s)| *s).collect();
+    spans.sort_unstable();
+    let piled = |(start, end): Span| {
+        let upto = spans.partition_point(|s| s.0 < end);
+        // The cue itself is one of them.
+        spans[..upto].iter().filter(|s| s.1 > start).count() >= SYLLABLE_PILE
+    };
+    let before = kept.len();
+    kept.retain(|(_, shown)| !shown.is_some_and(piled));
+    if !changed && kept.len() == before {
+        return text.to_string();
+    }
+    let mut out = kept.iter().map(|(b, _)| b.as_ref()).collect::<Vec<_>>().join("\n\n");
+    if text.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
     out
+}
+
+/// When a cue shows: its start and end in milliseconds.
+type Span = (u64, u64);
+
+/// One-syllable cues on screen at once that make a karaoke line taken
+/// apart; fewer are people talking over each other ("Eh?", "Hã?").
+const SYLLABLE_PILE: usize = 3;
+
+/// A cue that could be one syllable of a song: a single short word.
+fn syllable(line: &str) -> bool {
+    let word = line.trim();
+    !word.is_empty() && word.chars().count() <= 5 && word.chars().all(char::is_alphabetic)
+}
+
+/// A cue's start and end in milliseconds, from its timing line.
+fn cue_span(line: &str) -> Option<Span> {
+    fn clock(s: &str) -> Option<u64> {
+        let (rest, ms) = s.split_once('.')?;
+        let mut sec = 0u64;
+        for part in rest.split(':') {
+            sec = sec.checked_mul(60)?.checked_add(part.parse().ok()?)?;
+        }
+        sec.checked_mul(1000)?.checked_add(ms.parse().ok()?)
+    }
+    let (start, end) = line.split_once("-->")?;
+    Some((clock(start.trim())?, clock(end.split_whitespace().next()?)?))
+}
+
+/// Whether a line is ASS drawing commands and nothing else: it starts
+/// with a move (`m`) and holds only commands and coordinates.
+fn ass_drawing(line: &str) -> bool {
+    let mut numbers = 0;
+    let mut tokens = line.split_whitespace();
+    if tokens.next() != Some("m") {
+        return false;
+    }
+    for t in tokens {
+        if t.parse::<f64>().is_ok() {
+            numbers += 1;
+        } else if !matches!(t, "m" | "n" | "l" | "b" | "s" | "p" | "c") {
+            return false;
+        }
+    }
+    numbers >= 2
 }
 
 impl From<Fail> for String {

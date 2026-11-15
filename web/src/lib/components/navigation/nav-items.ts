@@ -5,7 +5,7 @@ export interface NavEntry {
 	href: string;
 	label: Key;
 	exact: boolean;
-	/** Only admins see it (acquisition is admin-only, D-116). */
+	/** Admin only. */
 	admin?: boolean;
 }
 
@@ -28,8 +28,8 @@ export const MOBILE_NAV: NavEntry[] = [
 export const MOBILE_BAR = ['/', '/library', '/search', '/favorites'];
 
 /** The entries a role sees, in order. */
-export function visibleNav(entries: NavEntry[], isAdmin: boolean): NavEntry[] {
-	return entries.filter((e) => isAdmin || !e.admin);
+export function visibleNav(entries: NavEntry[], admin: boolean): NavEntry[] {
+	return entries.filter((e) => admin || !e.admin);
 }
 
 /**

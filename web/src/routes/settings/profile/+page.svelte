@@ -4,6 +4,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { api } from '$lib/api';
 	import type { User } from '$lib/api/types';
+	import { isAdminRole, roleLabel } from '$lib/auth/roles';
 	import { session } from '$lib/auth/session.svelte';
 	import Avatar from '$lib/components/profile/Avatar.svelte';
 	import Mascot from '$lib/components/profile/Mascot.svelte';
@@ -336,8 +337,8 @@
 			<span class="font-mono text-sm text-foreground">@{user.username}</span>
 		</SettingRow>
 		<SettingRow label={t('settings.usersPage.role')}>
-			<span class="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] {user.role === 'admin' ? 'text-accent' : 'text-muted'}">
-				<span class="size-1.5 rounded-full {user.role === 'admin' ? 'bg-accent' : 'bg-muted'}" aria-hidden="true"></span>{user.role === 'admin' ? t('settings.usersPage.roleAdmin') : t('settings.usersPage.roleUser')}
+			<span class="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] {isAdminRole(user.role) ? 'text-accent' : 'text-muted'}">
+				<span class="size-1.5 rounded-full {isAdminRole(user.role) ? 'bg-accent' : 'bg-muted'}" aria-hidden="true"></span>{roleLabel(user.role)}
 			</span>
 		</SettingRow>
 		<SettingRow label={t('settings.profilePage.session')} hint={t('settings.profilePage.sessionHint')}>

@@ -29,6 +29,10 @@ pub struct SettingsState {
     pub pin_set: Load<bool>,
     pub integrations: Load<lain_client::types::IntegrationsView>,
     pub new_kind: String,
+    /// The audience a library gets when it is added (D-299: `mature`).
+    pub new_audience: String,
+    /// The user whose library list is open on Users.
+    pub libs_open: Option<String>,
     pub scan_dirty: bool,
     pub plugins_dirty: bool,
     pub scan_poll_at: Instant,
@@ -48,6 +52,8 @@ impl Default for SettingsState {
             pin_set: Load::Idle,
             integrations: Load::Idle,
             new_kind: "anime".into(),
+            new_audience: "mature".into(),
+            libs_open: None,
             scan_dirty: false,
             plugins_dirty: false,
             scan_poll_at: Instant::now(),
@@ -346,6 +352,46 @@ impl LainApp {
                 let patch = UserPatch { role: Some(role), ..Default::default() };
                 self.user_patch(id, patch, "Role changed", cx);
             }
+            Act::UserAudience(id, level) => {
+                let patch = UserPatch { max_audience: Some(level), ..Default::default() };
+                self.user_patch(id, patch, "Audience changed", cx);
+            }
+            Act::UserLibraries(id, libs) => {
+                let patch = UserPatch { libraries: Some(libs), ..Default::default() };
+                self.user_patch(id, patch, "Libraries changed", cx);
+            }
+            Act::UserLibrary(id, lib) => {
+                let current = match &self.settings.users {
+                    Load::Ready(us) => us.iter().find(|u| u.id == id).and_then(|u| u.libraries.clone()),
+                    _ => None,
+                };
+                let all: Vec<String> = match &self.libraries {
+                    Load::Ready(ls) => ls.iter().map(|l| l.id.clone()).collect(),
+                    _ => Vec::new(),
+                };
+                let patch = UserPatch {
+                    libraries: Some(crate::role::toggle_library(&current, &all, &lib)),
+                    ..Default::default()
+                };
+                self.user_patch(id, patch, "Libraries changed", cx);
+            }
+            Act::UserLibsPanel(id) => {
+                self.settings.libs_open =
+                    if self.settings.libs_open.as_deref() == Some(id.as_str()) { None } else { Some(id) };
+                cx.notify();
+            }
+            Act::LibraryAudience(id, level) => {
+                let patch = LibraryPatch { audience: Some(level), ..Default::default() };
+                self.spawn_ui(cx, async move { c.update_library(&id, patch).await }, |app, r, cx| {
+                    if app.report(&r, "Audience changed") {
+                        app.reload_libraries(cx);
+                    }
+                });
+            }
+            Act::NewLibraryAudience(level) => {
+                self.settings.new_audience = level;
+                cx.notify();
+            }
             Act::UserPassword(id) => {
                 let p = self.text("users.reset");
                 if p.is_empty() {
@@ -363,6 +409,7 @@ impl LainApp {
                     kind: self.settings.new_kind.clone(),
                     path: self.text("lib.path").trim().to_string(),
                     root: String::new(),
+                    audience: self.settings.new_audience.clone(),
                 };
                 if lib.name.is_empty() || lib.path.is_empty() {
                     self.toast("A library needs a name and a folder", true);
@@ -767,7 +814,7 @@ impl LainApp {
                 self.btn(&format!("priv.{}", l.id), "Lock", None, Tone::Ghost, Act::Lock(l.id.clone()), cx)
             };
             col = col.child(self.row(
-                &l.name,
+                &super::library_name(&l),
                 if locked { "locked: hidden everywhere" } else { "unlocked for this session" },
                 b,
             ));
@@ -897,17 +944,44 @@ impl LainApp {
                 for u in users {
                     let base = format!("user.{}", u.id);
                     let mut ctl = div().flex().gap(px(th.sp(1)));
+                    let admin = crate::role::is_admin_role(&u.role);
+                    if !admin {
+                        // What this account sees (D-295): an admin is never restricted.
+                        let level = u.effective_max_audience();
+                        let shown = match &u.libraries {
+                            None => "Libraries: all".to_string(),
+                            Some(l) => format!("Libraries: {}", l.len()),
+                        };
+                        ctl = ctl
+                            .child(self.btn(
+                                &format!("{base}.aud"),
+                                format!("Audience: {level}"),
+                                None,
+                                Tone::Quiet,
+                                Act::UserAudience(u.id.clone(), crate::role::next_audience(level).into()),
+                                cx,
+                            ))
+                            .child(self.btn(
+                                &format!("{base}.libs"),
+                                shown,
+                                None,
+                                Tone::Quiet,
+                                Act::UserLibsPanel(u.id.clone()),
+                                cx,
+                            ));
+                    }
                     if u.id != me {
+                        // user, manager, admin, and round again; a role this
+                        // screen does not know goes to user, never up.
+                        let next = crate::role::next_role(&u.role);
+                        let label = format!("Make {next}");
                         ctl = ctl
                             .child(self.btn(
                                 &format!("{base}.role"),
-                                if u.role == "admin" { "Make user" } else { "Make admin" },
+                                label,
                                 None,
                                 Tone::Quiet,
-                                Act::UserRole(
-                                    u.id.clone(),
-                                    if u.role == "admin" { "user".into() } else { "admin".into() },
-                                ),
+                                Act::UserRole(u.id.clone(), next.into()),
                                 cx,
                             ))
                             .child(self.btn(
@@ -928,12 +1002,44 @@ impl LainApp {
                         cx,
                     ));
                     let hint = format!(
-                        "{}{}{}",
+                        "{}{}{}{}",
                         u.role,
                         if u.disabled { " · disabled" } else { "" },
-                        if u.id == me { " · you" } else { "" }
+                        if u.id == me { " · you" } else { "" },
+                        if admin { " · sees everything" } else { "" }
                     );
                     col = col.child(self.row(&u.username, &hint, ctl));
+                    if self.settings.libs_open.as_deref() == Some(u.id.as_str()) && !admin {
+                        let mut panel = div().flex().flex_wrap().gap(px(th.sp(1)));
+                        if u.libraries.is_some() {
+                            panel = panel.child(self.btn(
+                                &format!("{base}.libs.all"),
+                                "All libraries",
+                                None,
+                                Tone::Primary,
+                                Act::UserLibraries(u.id.clone(), None),
+                                cx,
+                            ));
+                        }
+                        if let Load::Ready(libs) = self.libraries.clone() {
+                            for l in libs.iter().filter(|l| !(l.private && l.locked == Some(true))) {
+                                let on = u.libraries.as_ref().is_none_or(|v| v.contains(&l.id));
+                                panel = panel.child(self.btn(
+                                    &format!("{base}.lib.{}", l.id),
+                                    format!("{} {}", if on { "✓" } else { "·" }, l.name),
+                                    None,
+                                    if on { Tone::Quiet } else { Tone::Ghost },
+                                    Act::UserLibrary(u.id.clone(), l.id.clone()),
+                                    cx,
+                                ));
+                            }
+                        }
+                        col = col.child(self.row(
+                            "Libraries it can see",
+                            "Switch each one; locked private libraries are not listed",
+                            panel,
+                        ));
+                    }
                 }
             }
             Load::Failed(e) => col = col.child(self.error_notice("Users", &e)),
@@ -989,11 +1095,23 @@ impl LainApp {
         // existing libraries
         match self.libraries.clone() {
             Load::Ready(libs) => {
-                for l in libs {
+                // A private library that is locked here is not listed
+                // (D-293); it is managed after it is unlocked.
+                let locked = libs.iter().filter(|l| l.private && l.locked == Some(true)).count();
+                for l in libs.into_iter().filter(|l| !(l.private && l.locked == Some(true))) {
                     let base = format!("libs.{}", l.id);
+                    let level = l.effective_audience();
                     let ctl = div()
                         .flex()
                         .gap(px(th.sp(1)))
+                        .child(self.btn(
+                            &format!("{base}.aud"),
+                            format!("Audience: {level}"),
+                            None,
+                            Tone::Quiet,
+                            Act::LibraryAudience(l.id.clone(), crate::role::next_audience(level).into()),
+                            cx,
+                        ))
                         .child(self.btn(
                             &format!("{base}.priv"),
                             if l.private { "Make shared" } else { "Make private" },
@@ -1012,6 +1130,13 @@ impl LainApp {
                         ));
                     let hint = format!("{} · {}{}", l.kind, l.path, if l.private { " · private" } else { "" });
                     col = col.child(self.row(&l.name, &hint, ctl));
+                }
+                if locked > 0 {
+                    col = col.child(self.row(
+                        "Private libraries",
+                        &format!("{locked} locked: unlock them under Privacy to manage them"),
+                        div(),
+                    ));
                 }
             }
             Load::Failed(e) => col = col.child(self.error_notice("Libraries", &e)),
@@ -1045,12 +1170,26 @@ impl LainApp {
                     })),
             );
         }
+        let level = self.settings.new_audience.clone();
+        let audience = self.btn(
+            "lib.audience",
+            format!("Audience: {level}"),
+            None,
+            Tone::Quiet,
+            Act::NewLibraryAudience(crate::role::next_audience(&level).into()),
+            cx,
+        );
         col = col
             .child(div().pt(px(th.sp(5))).child(self.label("add a library")))
             .child(self.row(
                 "Name and kind",
                 "The kind picks the module (watch or read)",
                 div().flex().flex_col().gap(px(th.sp(1))).child(div().w(px(300.)).child(name)).child(kinds),
+            ))
+            .child(self.row(
+                "Audience",
+                "Who can see it: an account's ceiling hides what is above it. New libraries start closed",
+                audience,
             ))
             .child(self.row(
                 "Folder",

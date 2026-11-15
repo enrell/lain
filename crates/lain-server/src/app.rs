@@ -33,24 +33,29 @@ use crate::roots::{self, Roots};
 use lain_ingest::{ScanEvent, Scanner, SourceWatch};
 
 /// The composition document version.
-pub const COMPOSITION_VERSION: u32 = 9;
+pub const COMPOSITION_VERSION: u32 = 10;
 
 /// `Composition::upgrade` adds capabilities a saved document lacks, but
 /// keeps the provider list of the ones it has (an operator's override).
 /// A provider the defaults gained for an existing capability is placed
 /// here, once, when the document is older than the version that
-/// introduced it: version 9 put the import identifier (D-267) first.
-/// An operator who removes it afterwards keeps it removed, since the
+/// introduced it: version 9 put the import identifier (D-267) first,
+/// version 10 the sidecar identifier right after it (a file's own
+/// `.metadata/meta.toml` outranks what its name suggests).
+/// An operator who removes one afterwards keeps it removed, since the
 /// document is then saved at the new version.
 fn adopt_new_providers(saved: &mut Composition, from: u32) {
     use crate::integration::IDENTIFY_ID;
-    if from >= 9 {
-        return;
-    }
+    use lain_ingest::SIDECAR_ID;
     let Some(b) = saved.bindings.get_mut(lain_identify::CAP_MEDIA_IDENTIFY) else { return };
-    if !b.providers.iter().any(|p| p == IDENTIFY_ID) {
+    if from < 9 && !b.providers.iter().any(|p| p == IDENTIFY_ID) {
         b.providers.insert(0, IDENTIFY_ID.to_string());
         tracing::info!(provider = IDENTIFY_ID, "new default provider adopted");
+    }
+    if from < 10 && !b.providers.iter().any(|p| p == SIDECAR_ID) {
+        let at = b.providers.iter().position(|p| p == IDENTIFY_ID).map_or(0, |i| i + 1);
+        b.providers.insert(at, SIDECAR_ID.to_string());
+        tracing::info!(provider = SIDECAR_ID, "new default provider adopted");
     }
 }
 
@@ -79,7 +84,10 @@ pub fn default_composition() -> Composition {
     bindings.insert(lain_ingest::CAP_SOURCE_WATCH.into(), one(lain_ingest::WATCH_ID));
     bindings.insert(
         CAP_MEDIA_IDENTIFY.into(),
-        Binding::new(BindingMode::OrderedMany, &[crate::integration::IDENTIFY_ID, COMIC_ID, ANIME_ID, GENERIC_ID]),
+        Binding::new(
+            BindingMode::OrderedMany,
+            &[crate::integration::IDENTIFY_ID, lain_ingest::SIDECAR_ID, COMIC_ID, ANIME_ID, GENERIC_ID],
+        ),
     );
     // The lain-parser model (D-225) answers first when its component is
     // installed and healthy; the tokenizer answers whenever it declines.
@@ -130,6 +138,9 @@ pub struct Config {
     pub version: String,
     /// SSE keep-alive and token re-check interval.
     pub keep_alive: Duration,
+    /// How long a private-library unlock outlives the session's last
+    /// event stream (D-294).
+    pub unlock_grace: Duration,
     /// Debounce for the `modules.json` watch.
     pub reload_debounce: Duration,
     /// Metadata backfill after every scan (`LAIN_AUTO_ENRICH=0` turns it
@@ -169,6 +180,7 @@ impl Config {
             data_dir: data_dir.to_path_buf(),
             version: version.into(),
             keep_alive: Duration::from_secs(15),
+            unlock_grace: crate::privacy::LEASE_GRACE,
             reload_debounce: Duration::from_millis(200),
             auto_enrich: true,
             watch: true,
@@ -272,6 +284,7 @@ impl App {
         registry.register(Arc::new(Catalog::with_roots(store.clone(), roots.clone())));
         registry.register(Arc::new(Userstate::new(store.clone())));
         registry.register(Arc::new(crate::integration::ImportIdentifier::new(store.clone(), roots.clone())));
+        registry.register(Arc::new(lain_ingest::Sidecar));
         for id in lain_identify::Identifier::ALL {
             registry.register(Arc::new(id));
         }
@@ -298,7 +311,19 @@ impl App {
             ..lain_http::Config::default()
         })
         .map_err(|e| e.to_string())?;
-        for p in lain_metadata::Remote::new(http.clone(), cfg.metadata_endpoints.clone()).providers() {
+        // The metadata providers get a client that gives up on a dead
+        // host quickly: a scan asks them title after title and waits for
+        // each answer, and a provider that does not answer is left out
+        // after two failures, which the default connect timeout made a
+        // minute.
+        let metadata_http = lain_http::Client::new(lain_http::Config {
+            user_agent: format!("lain/{}", cfg.version),
+            offline: cfg.offline,
+            connect_timeout: Duration::from_secs(3),
+            ..lain_http::Config::default()
+        })
+        .map_err(|e| e.to_string())?;
+        for p in lain_metadata::Remote::new(metadata_http, cfg.metadata_endpoints.clone()).providers() {
             registry.register(p);
         }
         registry.register(Arc::new(lain_subtitle::OpenSubtitles::new(http.clone())));
@@ -352,7 +377,7 @@ impl App {
             avatars: Avatars::new(dir),
             libraries: Libraries::new(store.clone(), roots.clone()),
             roots,
-            unlocks: Unlocks::default(),
+            unlocks: Unlocks::with_grace(cfg.unlock_grace),
             store,
             http,
             links,
@@ -404,13 +429,42 @@ impl App {
 
     // ---- private libraries (D-156) ----------------------------------
 
+    /// Current account visibility policy for this verified identity.
+    pub fn access(&self, v: &Verified) -> privacy::Access {
+        self.access_for(&v.user_id, v.is_admin())
+    }
+
+    /// Current account visibility policy for a subscriber or account id.
+    pub fn access_for(&self, user_id: &str, admin: bool) -> privacy::Access {
+        if admin {
+            return privacy::Access::unrestricted(user_id, true);
+        }
+        match self.auth().get_public(user_id) {
+            Some(u) => privacy::Access::from_user(&u),
+            None => privacy::Access {
+                user_id: user_id.to_string(),
+                admin: false,
+                lists_private: false,
+                libraries: Some(Vec::new()),
+                max_audience: lain_api::AUDIENCE_EVERYONE.to_string(),
+            },
+        }
+    }
+
+    /// Whether the library record is listed for this session.
+    pub fn record_visible(&self, lib: &Library, v: &Verified) -> bool {
+        let access = self.access(v);
+        privacy::record_visible(lib, &access)
+    }
+
     /// Libraries whose items this session may not see.
     pub fn hidden_libraries(&self, v: &Verified) -> Vec<String> {
+        let access = self.access(v);
         self.libraries
             .list()
             .unwrap_or_default()
             .into_iter()
-            .filter(|l| !privacy::items_visible(l, &self.unlocks, &v.user_id, &v.session))
+            .filter(|l| !privacy::items_visible(l, &self.unlocks, &access, &v.session))
             .map(|l| l.id)
             .collect()
     }
@@ -419,8 +473,9 @@ impl App {
     pub fn visible_item(&self, v: &Verified, item_id: &str) -> Option<CatalogItem> {
         let (out, _) = self.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": item_id})).ok()?;
         let it: CatalogItem = serde_json::from_value(out).ok()?;
+        let access = self.access(v);
         match self.libraries.get(&it.library_id) {
-            Some(lib) if !privacy::items_visible(&lib, &self.unlocks, &v.user_id, &v.session) => None,
+            Some(lib) if !privacy::items_visible(&lib, &self.unlocks, &access, &v.session) => None,
             _ => Some(it),
         }
     }
@@ -430,27 +485,32 @@ impl App {
         self.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": item_id})).is_ok()
     }
 
-    /// The private library an item belongs to, if any (event filters).
-    pub(crate) fn private_library_of(&self, item_id: &str) -> Option<Library> {
+    /// The library an item belongs to, if any (event & visibility filters).
+    pub(crate) fn library_of(&self, item_id: &str) -> Option<Library> {
         let (out, _) = self.registry.call_one(CAP_CATALOG_READ, "get", json!({"id": item_id})).ok()?;
         let lib_id = out["library_id"].as_str()?.to_string();
-        self.libraries.get(&lib_id).filter(|l| l.private)
+        self.libraries.get(&lib_id)
     }
 
     /// `library-changed`, delivered only to who may see the record.
     pub fn publish_library(&self, lib: &Library, data: Value) {
         let lib = lib.clone();
-        self.events
-            .publish_where("library-changed", data, &|s: &SubInfo| privacy::record_visible(&lib, &s.user_id, s.admin));
+        self.events.publish_where("library-changed", data, &|s: &SubInfo| {
+            let access = self.access_for(&s.user_id, s.admin);
+            privacy::record_visible(&lib, &access)
+        });
     }
 
-    /// `progress-changed` for the user's own streams; for an item of a
-    /// private library only the sessions that unlocked it.
+    /// `progress-changed` for the user's own streams, delivered only to
+    /// sessions allowed to see the item's library.
     pub fn publish_progress(&self, user_id: &str, item_id: &str, data: Value) {
-        let lib = self.private_library_of(item_id);
+        let lib = self.library_of(item_id);
         self.events.publish_where("progress-changed", data, &|s: &SubInfo| {
             s.user_id == user_id
-                && lib.as_ref().is_none_or(|l| privacy::items_visible(l, &self.unlocks, &s.user_id, &s.session))
+                && lib.as_ref().is_none_or(|l| {
+                    let access = self.access_for(&s.user_id, s.admin);
+                    privacy::items_visible(l, &self.unlocks, &access, &s.session)
+                })
         });
     }
 
@@ -484,19 +544,56 @@ impl App {
             }
         }
         let full = status.as_ref().and_then(|s| s.stats.clone());
-        let mut admin = data.clone();
-        if let Some(stats) = &full {
-            admin["stats"] = json!(stats);
-            data["stats"] = json!(self.public_stats(stats.clone()));
-        }
-        self.events.publish(Scope::Admins, "scan-state", admin);
-        self.events.publish_where("scan-state", data, &|s: &SubInfo| !s.admin);
+        // Every subscriber gets the same progress, and the unreadable
+        // roots it may be told about: the folder and name of a private
+        // library that is locked in this session, or that its account
+        // cannot see, are never sent, admins included (D-293).
+        let base = data;
+        let libs = self.libraries.list().unwrap_or_default();
+        self.events.publish_each("scan-state", &|s: &SubInfo| {
+            let mut data = base.clone();
+            if let Some(stats) = &full {
+                let access = self.access_for(&s.user_id, s.admin);
+                data["stats"] = json!(self.scrub_stats(&libs, stats.clone(), &access, &s.session));
+            }
+            Some(data)
+        });
     }
 
-    /// Scan stats as a non-admin sees them: unreadable roots of private
-    /// libraries are left out (their names and paths are not theirs).
-    pub fn public_stats(&self, mut stats: lain_api::ScanStats) -> lain_api::ScanStats {
-        stats.unreadable.retain(|u| self.libraries.get(&u.library_id).is_none_or(|l| !l.private));
+    /// Scan stats as this session may read them (see [`Self::scrub_stats`]).
+    pub fn visible_stats(&self, v: &Verified, stats: lain_api::ScanStats) -> lain_api::ScanStats {
+        let libs = self.libraries.list().unwrap_or_default();
+        self.scrub_stats(&libs, stats, &self.access(v), &v.session)
+    }
+
+    /// Unreadable roots name a library and its folder. A library whose
+    /// items this session may see keeps its entry; a private one that is
+    /// locked here keeps a blank one (something is wrong, and that is all
+    /// it says); one the account cannot see at all is dropped.
+    fn scrub_stats(
+        &self,
+        libs: &[Library],
+        mut stats: lain_api::ScanStats,
+        access: &privacy::Access,
+        session: &str,
+    ) -> lain_api::ScanStats {
+        stats.unreadable = stats
+            .unreadable
+            .into_iter()
+            .filter_map(|mut u| {
+                let Some(lib) = libs.iter().find(|l| l.id == u.library_id) else { return Some(u) };
+                if privacy::items_visible(lib, &self.unlocks, access, session) {
+                    Some(u)
+                } else if privacy::record_visible(lib, access) {
+                    u.name.clear();
+                    u.path.clear();
+                    u.reason = "unreadable".into();
+                    Some(u)
+                } else {
+                    None
+                }
+            })
+            .collect();
         stats
     }
 
@@ -733,12 +830,15 @@ impl App {
         let weak = Arc::downgrade(self);
         self.media.transcoder.on_change(move |s| {
             let Some(app) = weak.upgrade() else { return };
-            let lib = if s.item_id.is_empty() { None } else { app.private_library_of(&s.item_id) };
+            let lib = if s.item_id.is_empty() { None } else { app.library_of(&s.item_id) };
             let data = json!({"session": s.session, "state": s.state, "item_id": s.item_id});
             let owner = s.user_id.clone();
             app.events.publish_where("transcode-changed", data, &|sub: &SubInfo| {
                 (sub.admin || (!owner.is_empty() && sub.user_id == owner))
-                    && lib.as_ref().is_none_or(|l| privacy::items_visible(l, &app.unlocks, &sub.user_id, &sub.session))
+                    && lib.as_ref().is_none_or(|l| {
+                        let access = app.access_for(&sub.user_id, sub.admin);
+                        privacy::items_visible(l, &app.unlocks, &access, &sub.session)
+                    })
             });
         });
         let weak = Arc::downgrade(self);

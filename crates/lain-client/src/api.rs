@@ -278,13 +278,40 @@ impl Client {
         Ok(me)
     }
 
-    /// Forgets the session here. Tokens are stateless on the server, so
-    /// nothing is sent; the token expires on its own (24 h), and a
-    /// password change ends every session at once.
+    /// Forgets the session here, and nothing more: the token stays
+    /// valid on the server until it expires (24 h) or the password
+    /// changes. Use [`Client::sign_out`], or pass the session to
+    /// [`Client::end_session`], to end it there too.
     pub fn logout(&self) -> Result<(), ClientError> {
         self.inner.tokens.clear(&self.inner.server)?;
         *self.inner.session.write().unwrap_or_else(|e| e.into_inner()) = None;
         Ok(())
+    }
+
+    /// Signs out (D-298): forgets the session here, then ends it on the
+    /// server so its token is refused from now on. The local part always
+    /// happens; `Ok(false)` means the server could not be told (offline,
+    /// or a server without the route) and the token only expires.
+    pub async fn sign_out(&self) -> Result<bool, ClientError> {
+        let session = self.session();
+        self.logout()?;
+        match session {
+            Some(s) => Ok(self.end_session(&s).await.is_ok()),
+            None => Ok(true),
+        }
+    }
+
+    /// `POST /api/auth/logout` for a session already forgotten here (a
+    /// caller that cleared it first and tells the server in the
+    /// background). A token the server no longer takes counts as ended.
+    pub async fn end_session(&self, session: &Session) -> Result<(), ClientError> {
+        let headers = [("authorization", format!("Bearer {}", session.token))];
+        let r =
+            http::send(&self.inner.url, Method::POST, "/api/auth/logout", &headers, None, self.inner.timeout).await?;
+        match r.status {
+            200..=299 | 401 => Ok(()),
+            status => Err(ClientError::from_response(status, "POST /api/auth/logout", &r.body)),
+        }
     }
 
     // ---- the account --------------------------------------------------

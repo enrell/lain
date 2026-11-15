@@ -7,6 +7,7 @@
 	import Settings from '@lucide/svelte/icons/settings';
 	import Play from '@lucide/svelte/icons/play';
 	import UserRound from '@lucide/svelte/icons/user-round';
+	import Users from '@lucide/svelte/icons/users';
 	import { goto } from '$app/navigation';
 	import { session } from '$lib/auth/session.svelte';
 	import { shortcutsDialog } from '$lib/stores/shortcuts.svelte';
@@ -22,6 +23,9 @@
 	} = $props();
 
 
+	// Switch account is the same path as Sign out: the token is dropped,
+	// the unlock lease's stream closes, and the server locks on its own.
+	// logout writes the tile before it clears the session.
 	function signOut(): void {
 		session.logout();
 		void goto('/login');
@@ -86,6 +90,12 @@
 				<kbd class="font-mono text-[10px] text-muted">?</kbd>
 			</DropdownMenu.Item>
 			<DropdownMenu.Separator class="my-1 h-px bg-hairline" />
+			<DropdownMenu.Item
+				class="flex cursor-default items-center gap-2 rounded-sm px-2.5 py-2 text-sm text-foreground outline-none data-[highlighted]:bg-surface-hover"
+				onSelect={signOut}
+			>
+				<Users class="size-4 text-muted" /> {t('userMenu.switchAccount')}
+			</DropdownMenu.Item>
 			<DropdownMenu.Item
 				class="flex cursor-default items-center gap-2 rounded-sm px-2.5 py-2 text-sm text-danger outline-none data-[highlighted]:bg-danger/10"
 				onSelect={signOut}

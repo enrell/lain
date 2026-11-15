@@ -40,8 +40,12 @@ export function stillOf(item: CatalogItem): StillOf | undefined {
 	return library && !library.private ? item : undefined;
 }
 
-/** Seconds into a video the server cuts its frame at when no time is asked for (D-269). */
-const FRAME_AT = 10;
+/**
+ * Asks for a frame the server picks (one that is a picture, not a black
+ * screen or a title card) and never the cover. A server that does not
+ * pick reads it as no time: its frame at 10 s.
+ */
+const FRAME_AT = 'auto';
 
 /**
  * The still for a 16:9 slot that stands for one video file (an episode's

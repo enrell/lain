@@ -44,3 +44,6 @@ __pycache__/
 # The live demo is built by the Pages workflow (web/demo/).
 site/demo/
 web/demo-out/
+
+# Isolated test-server media libraries (`just test-up`)
+/.test-media/

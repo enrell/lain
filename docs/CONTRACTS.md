@@ -738,12 +738,18 @@ implemented from this reserved family; see below.)
 
 ## lain.transform.thumbnail@1 (exactly-one)
 
-Input: `{file_path, time_sec, width}`. `file_path` is supplied by the
+Input: `{file_path, time_sec, width, pick}`. `file_path` is supplied by the
 gateway after catalog lookup; `width` is clamped to 32..1280. Output:
 `{path, width, cached}` pointing at a JPEG in the provider's cache —
 bytes never enter the call. Keys include source mtime/size, timestamp
 and width, so changed files regenerate without invalidation bookkeeping.
-A seek past the end retries at 0. The gateway streams the file with
+A seek past the end retries at 0. With `pick` (additive; the gateway sets
+it when `t` is absent or not a number, as in `t=auto`) the provider
+chooses the frame and `time_sec` is ignored: it tries 20%, 35%, 50% and
+65% of the file's length (10, 60, 180 and 300 s when the length is
+unknown) and keeps the first frame that is not flat, else the least flat.
+A frame is flat when 88% of it is at most three colors: a black or white
+screen, a fade, a logo or text on a plain ground. The gateway streams the file with
 `Cache-Control: private, max-age=86400` and `GET /api/items/{id}/thumbnail?t=&w=`
 accepts `?token=` (image elements cannot attach headers). ffmpeg is
 spawned by the provider with a 20s timeout and at most 2 concurrent
@@ -922,6 +928,16 @@ now `lain-identify-comic`, `lain-identify-anime`, `lain-identify-generic`
 (composition v8; a saved composition is upgraded in place). The comic
 identifier declines everything that is not `cbz`/`cbr`/`cb7`. It stores a
 volume as `season` and a chapter or issue as `episode`, each 0 when absent.
+
+Composition v10 adds `lain-identify-sidecar` after `lain-identify-import`
+(a saved composition gains it in place, once). It reads
+`.metadata/meta.toml` in the media file's folder, the sidecar of the
+one-folder-per-file layout: the flat `series = "…"` and `episode = "…"`
+keys before the first table. With both, the file is an `episode` of the
+series; with a series only, a `video` under that name. Without a series,
+with `media_type` other than `video`, or with a file over 256 KiB, it
+declines and the name-based identifiers run. This is what joins episodes
+that sit one per folder, where there are no siblings to number them by.
 
 Gateway routes: `GET /api/items/{id}/pages` (auth) returns
 `{kind, format, direction, pages[]}` with the kind's default direction
@@ -1483,19 +1499,50 @@ Served by the Rust server only (P1b); the Go server is unchanged.
 - **Library fields** (additive, omitted when unset): `private`, `owner`,
   `members`, `root`, `root_path`, and in responses `locked` for a
   private library (whether this session has unlocked it).
-- `PATCH /api/libraries/{id}` (admin): `{name?, type?, path?, private?,
-  owner?, members?}`. Making a library private makes the caller its owner
+- **An unlock is a lease on a live client** (D-294): it holds while the
+  session (the token) has a `GET /api/events` stream open, and for 20 s
+  after its last one closes (a page reload; the moment between
+  unlocking and connecting). Then the server locks by itself: no client
+  request ends it, so closing the tab, the browser or the app, or
+  losing the network, locks, and a dropped request can only lock
+  sooner. A new stream does not bring an ended unlock back. A client
+  that unlocks must keep the stream open; another login of the same
+  account is another session and never shares an unlock.
+- **A locked record gives nothing away** (D-293): while `locked` is
+  true the answer carries `name: ""`, `path: ""` and no `root_path`, to
+  every caller, admins included; clients show a neutral label. Unlocking
+  shows them again.
+- **Changing a locked library takes the PIN** (D-293): `PATCH` and
+  `DELETE /api/libraries/{id}` on a private library this session has not
+  unlocked need the caller's own `pin` or `password` in the JSON body
+  (next to the patch fields; `DELETE` takes `{pin}` or `{password}` as
+  its body), checked under the unlock attempt limit: 403 `pin or
+  password required to change a locked private library` without one,
+  403 `wrong pin or password`, 429 after five failures. An unlocked
+  session sends nothing extra. Making a public library private needs no
+  PIN.
+- `PATCH /api/libraries/{id}` (admin or manager): `{name?, type?, path?, private?,
+  owner?, members?, audience?, pin?, password?}`. A manager may send
+  `name` and `type` only (403 `admin required` when any of `path`,
+  `private`, `owner`, `members` or `audience` is present), and only for
+  a library it can see; any other id is 404 `unknown library`. Making a library private makes the caller its owner
   unless `owner` is given; making it public clears owner and members.
   A new `path` (absolute, recorded under a mapped root when inside one)
   must be a readable directory no other library reads; the id stays, so
   progress and overlays stay attached, and the next scan reads the new
   folder and marks what it no longer finds missing (D-068). `type`
   changes which files the next scan reads.
-- `PUT /api/libraries/order` (admin): `{ids}`, every library id once,
-  first to last; answers the list in that order. Libraries carry
+- `PUT /api/libraries/order` (admin or manager): `{ids}`. An admin names
+  every library id once, first to last. A manager names exactly the
+  libraries it can see, in the new order; hidden libraries stay in
+  their places. The answer is the list that caller can see, in the
+  resulting order. A repeated id is 400 `{id} is listed twice`; an id
+  the caller cannot see, or one that does not exist, is 404
+  `unknown library {id}`; a manager that omits one it can see is 400
+  `every library must be listed`. Libraries carry
   `position` (1 first; omitted, 0, for one never ordered), and every
   list of libraries is in that order, the never-ordered ones last by
-  name. 400 for a missing or repeated id, 404 for an unknown one.
+  name.
 - `POST /api/libraries/{id}/unlock` `{pin}` or `{password}` and
   `POST /api/libraries/{id}/lock`: per session (per token). Only the
   owner and members can unlock (403 `not a member of this library` for an
@@ -1513,7 +1560,9 @@ Served by the Rust server only (P1b); the Go server is unchanged.
   events about them reach only sessions that unlocked them, and
   `library-changed` of a private library only admins and members.
   Admins see the record (to manage it) but not its items unless they
-  are a member who unlocked it. Unlocks live in memory and end with the
+  are a member who unlocked it. A manager is not an admin here: it
+  sees a private library only as a member, and is not exempt from D-295.
+  Unlocks live in memory and end with the
   token. Every `lain-rs` token carries a random `jti` (its session), so
   two logins are two sessions; a token without one is refused.
 - **Roots**: `<data-dir>/roots.json` (`lain.roots@1`) maps root names to
@@ -1529,3 +1578,165 @@ Served by the Rust server only (P1b); the Go server is unchanged.
   plus per-item `root`/`rel_path`) and `lain-rs import --in` reads it
   back, replacing the catalog; @3 is the only version lain-rs reads
   (D-177). Nothing is imported from a Go data dir.
+
+## Account library access and audience levels (lain-rs, D-295)
+
+Additive controls on accounts and libraries; admins are never restricted by
+either control. A manager is restricted by its own allow-list and audience
+ceiling, the same as a user. Both are evaluated live on every request and
+event publication (no re-login required).
+
+- **Per-account library allow-list**: `User.libraries?: string[]` (omitted when
+  unset = every library; `[]` = no library). `PATCH /api/users/{id}` (admin)
+  accepts `libraries`: an array of known library ids (400 `unknown library
+  {id}` on unknown ids, `[]` for none), or `null` to clear back to all
+  libraries. Deleting a library (`DELETE /api/libraries/{id}`) drops its id
+  from every user's `libraries` list while preserving an empty `[]` if it was
+  the last entry.
+- **Audience levels (per-library)**: `Library.audience?: "everyone" | "teen" |
+  "mature"` (omitted when `"everyone"`; a library made without one is
+  stored as `"mature"`, D-299: `POST /api/libraries` takes an optional
+  `audience`, 400 `audience must be everyone, teen or mature`, and
+  storing a library again over the same folder keeps its audience
+  unless one is given; a private library is never stored again, 400
+  `another library already reads that folder`) and
+  `User.max_audience?: "everyone" | "teen" | "mature"` (omitted when
+  `"mature"`, the default). `PATCH /api/libraries/{id}` accepts `audience`
+  (requiring the caller's PIN/password when locked and private per D-293) and
+  `PATCH /api/users/{id}` accepts `max_audience`; invalid values return 400.
+  `everyone` is the children's setting; no per-title metadata rating is
+  stored.
+- **Single visibility gate (`privacy::record_visible` /
+  `privacy::items_visible`)**: a library outside `User.libraries` or above
+  `User.max_audience` is hidden in the same single gate as a locked or
+  non-member private library: omitted from `GET /api/libraries`, catalog,
+  search, Continue, item/stream/thumbnail/page routes (404 `unknown item`),
+  progress reads (default zero progress), social rows, scan unreadable stats,
+  and SSE (`library-changed`, `progress-changed`, `transcode-changed`,
+  `social-notification`). On `PATCH /api/libraries/{id}`, `library-changed` is
+  delivered to sessions that could see the library before or can see it now.
+  A manager is not an admin for this gate: the allow-list and the audience
+  ceiling still apply, and a private library it is not a member of does
+  not exist for it.
+
+## What a locked private library hides outside the catalog (lain-rs)
+
+The acquisition side, the scan status and the folder picker follow the
+same rule as the catalog: a library whose items a session may not see
+(a private one that is locked in that session, or one outside the
+account's allow-list or above its audience ceiling) leaves no trace in
+what it is shown, **admins included**.
+
+- **Acquisition** (`/api/acquire/*`, `/api/downloads*`, admin routes): the
+  lists of grabs, monitored titles, wanted titles, downloads, the
+  blocklist entries made for a monitored title, replaced files, the
+  subtitle ledger and the subtitle refusals leave out whatever belongs
+  to such a library (a file belongs to the deepest library folder that
+  holds it). Every lookup by id, and every action on one, answers
+  as an id that does not exist (`unknown grab`, `unknown monitored title`,
+  `unknown download`). Creating a grab, a monitored title or a download
+  in such a library, or moving a title into it, answers as a library
+  that does not exist (400 `no-library` for grabs and monitored titles,
+  404 `unknown library` for downloads). `POST /api/acquire/rss` leaves the
+  titles of such grabs out of `grabbed`. A record that names no library
+  that exists is the admin's. `grab-changed` and `download-changed` reach
+  only the admin sessions that may see the library. The item-addressed
+  subtitle routes already answered through the catalog's check.
+- **Scan status** (`GET /api/library/scan`, `scan-state`, for admins too):
+  an unreadable root of such a library keeps its `library_id` with
+  `name: ""`, `path: ""` and `reason: "unreadable"`; an account that cannot
+  see the library at all does not get the entry.
+- **Folder picker** (`GET /api/browse`): the folder of such a library is not
+  listed, and neither it nor anything inside it opens (400 `path is not a
+  readable directory`, the answer of a folder that is not there).
+
+## The manager role (lain-rs, D-296)
+
+`User.role` is `admin`, `manager` or `user`. Anything else is refused
+at create and at a role change (`400 unknown role`); a stored record
+keeps decoding. Only an admin can give or take `manager`. A manager
+cannot change any account, including its own role. The last enabled
+admin still cannot be demoted (`cannot demote yourself` when the
+caller targets itself, otherwise `cannot demote the last admin`) or
+deleted (`cannot delete the last admin`). A route the role may not
+call answers 403 `admin required`, the same text as before.
+
+A manager may, and an admin still may:
+
+- `PATCH /api/libraries/{id}` with `name` and `type` only
+- `PUT /api/libraries/order`
+- `POST /api/library/scan`, `GET /api/library/scan` (already any signed-in user; stats below)
+
+Only an admin may:
+
+- `POST /api/libraries`, `DELETE /api/libraries/{id}`, and a library's
+  `path`, `private`, `owner`, `members` and `audience`: each of them
+  decides what a library holds or who sees it
+- `GET /api/browse`, `GET /api/roots` (they name folders on the server's disk)
+- Every `/api/acquire/*` route (indexer routes also accept an
+  integration key with the `indexers` scope, `Gate::Indexers`), every
+  `/api/downloads` route, and subtitle translation
+  (`/api/items/{id}/sidecars/{n}/translate`,
+  `/api/subtitle-translations/{provider}/{job}`): their lists name titles
+  of every library, with no filter by the caller's allow-list, and they
+  write to the server's disk and hold indexer keys
+- `GET` and `POST /api/users`, `PATCH` and `DELETE /api/users/{id}`
+- `GET /api/plugins`, `POST /api/plugins/swap`, `POST /api/plugins/withdraw`
+- `GET /api/admin/backup`
+- `GET` and `PUT /api/admin/settings/transcode`, `GET /api/admin/transcodes`, `DELETE /api/admin/transcodes/{session}`
+- `GET` and `PUT /api/admin/settings/integrations`
+- `GET` and `POST /api/integrations`, `DELETE /api/integrations/{id}`
+- `DELETE /api/items/{id}` (deleting a file)
+- `POST` and `DELETE /api/catalog/{id}/enrich`
+- Catalog export, import and restore: operator CLI, not a session role
+- Theme: `GET /api/theme` stays public; there is no HTTP write
+- Comment moderation (`moderator` is `role == admin` only)
+
+`GET /api/modules` stays any signed-in user.
+
+Private libraries (D-156, D-293, D-294) treat a manager as any other
+account: it sees one only as a member, and changes one only after
+unlocking it. One it is not a member of, one outside its allow-list
+and one above its audience ceiling all answer 404 `unknown library`.
+
+`POST /api/library/scan` still walks every library. `GET` stats and
+the `scan-state` event tell each session of the unreadable roots it may
+be told about, admins included (see above). `grab-changed`,
+`download-changed` and `plugin-changed` go to admins only (the first two
+only where the admin may see the library). `transcode-changed` stays the
+session's owner and admins.
+
+## Switching accounts on a shared screen (web, D-297)
+
+No new route and no PIN login. `POST /api/auth/login` is still the
+username and the password. The web, per browser, remembers who has
+signed in, only enough to draw a tile: user id, username, display
+name, and an avatar reference (`kind` plus a mascot id, or `kind:
+upload`). An upload is drawn as initials, because the picture needs a
+session. A token, a password and a PIN are never stored there. The
+login page lists the tiles when there is at least one; choosing one
+fills the username and the password is still required. Forgetting a
+tile drops it on that browser only. A removed account fails sign-in
+like a wrong password (401 `invalid credentials`: the login never says
+whether a username exists), and its tile can be forgotten. Switch
+account is the same sign-out as Sign out (below).
+
+## Signing out (D-298)
+
+`POST /api/auth/logout` (any signed-in session, no body) ends the
+caller's session on the server: 200 `{"signed_out": true}`. From then
+on its token answers 401 `unauthorized` on every route, in the header
+and as `?token=`, including a second logout; the row is kept in the
+store until the token's own expiry, so a restart does not bring the
+session back. Its private-library unlocks are forgotten at once (no
+grace, D-294) and its open event streams close at their next liveness
+check. Other logins of the same account are untouched. Without a
+token the route answers 401. An integration key has no session and is
+refused like any wrong token.
+
+Clients forget the token first and then tell the server, so a sign-out
+works offline; in that case the token only expires (24 h) or dies with
+a password change, as before. The web sends the request with
+`keepalive`; `lain logout` says when the server could not be told;
+`lain-client` has `sign_out()` (both steps) and `end_session(session)`
+(the server step for a caller that already forgot it).

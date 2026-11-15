@@ -101,9 +101,10 @@ impl Enricher {
         Ok(saved)
     }
 
-    /// Cache, else the merge-many fan-out (cached when not empty and not
-    /// restricted to one provider). A failing provider degrades the
-    /// merge; only total failure is an error.
+    /// Cache, else the merge-many fan-out (cached when not restricted to
+    /// one provider; an empty answer only when no provider failed). A
+    /// failing provider degrades the merge; only total failure is an
+    /// error.
     /// A private library (D-156) says nothing about its titles to the
     /// outside: its items are enriched from the files next to them
     /// (`.nfo`) and never by a network provider.
@@ -150,6 +151,7 @@ impl Enricher {
         }
         let input = MetadataSearchInput { query: query.into(), kind: kind.into(), limit: 5, dir: dir.into() };
         let (outputs, skipped) = self.reg()?.call_merge_report(CAP_METADATA_SEARCH, "search", json!(input))?;
+        let all_answered = skipped.is_empty();
         if !skipped.is_empty() {
             let causes: Vec<String> = skipped.iter().map(|f| format!("{}: {}", f.provider, f.error)).collect();
             tracing::debug!(query, kind, causes = %causes.join("; "), "metadata providers skipped");
@@ -166,7 +168,9 @@ impl Enricher {
                 None => Vec::new(),
             }
         };
-        if only.is_empty() && !merged.is_empty() {
+        // "Nothing found" is cached only when every asked provider
+        // answered: a skipped one may know the title.
+        if only.is_empty() && (!merged.is_empty() || all_answered) {
             let _ = store::put_search(&self.store, kind, query, &merged, now);
         }
         Ok(merged)

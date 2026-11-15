@@ -52,6 +52,8 @@ export interface RequestOptions {
 	keepalive?: boolean;
 	/** Internal: keep 401 handling out of background probes. */
 	suppressAuthRedirect?: boolean;
+	/** Sent instead of the session's token (sign-out, once the session is cleared). */
+	token?: string;
 }
 
 let getToken: () => string | null = () => null;
@@ -64,6 +66,11 @@ export function configureApi(opts: {
 }): void {
 	getToken = opts.getToken;
 	notifyUnauthorized = opts.onUnauthorized ?? null;
+}
+
+/** The session's token, for the few callers that fetch by hand (the lease stream). */
+export function currentToken(): string | null {
+	return getToken();
 }
 
 export function buildUrl(path: string, query?: Record<string, QueryValue>): string {
@@ -126,7 +133,7 @@ function extractError(parsed: unknown): { message: string; code?: string } {
 export async function fetchRaw(path: string, opts: RequestOptions = {}): Promise<Response> {
 	const method = opts.method ?? 'GET';
 	const headers = new Headers();
-	const token = getToken();
+	const token = opts.token ?? getToken();
 	if (token) headers.set('Authorization', `Bearer ${token}`);
 
 	let body: string | Blob | undefined;

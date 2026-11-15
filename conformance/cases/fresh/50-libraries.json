@@ -16,7 +16,7 @@
     {"name": "admin creates libraries", "requires": ["media_dir", "media_dir2"], "steps": [
       {"req": {"method": "POST", "path": "/api/libraries", "auth": "admin_token", "body": {"name": "Anime", "path": "{{media_dir}}"}},
        "expect": {"status": 201, "body": {"id": "$prefix:lib-", "name": "Anime", "type": "anime", "path": "{{media_dir}}",
-         "source": "lain-source-filesystem", "created_at": "$int"}}, "save": {"lib_id": "/id"}},
+         "source": "lain-source-filesystem", "created_at": "$int", "audience": "mature"}}, "save": {"lib_id": "/id"}},
       {"req": {"method": "POST", "path": "/api/libraries", "auth": "admin_token", "body": {"name": "Movies", "type": "movie", "path": "{{media_dir2}}"}},
        "expect": {"status": 201, "body": {"type": "movie", "$open": true}}, "save": {"lib2_id": "/id"}}
     ]},

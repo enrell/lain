@@ -22,7 +22,7 @@ pub const MAX_ENRICH_BATCH: usize = 200;
 
 pub fn routes() -> Router<Arc<App>> {
     Router::new()
-        .route("/api/library/scan", route(POST, Gate::Admin, scan_start).merge(route(GET, Gate::User, scan_status)))
+        .route("/api/library/scan", route(POST, Gate::Manager, scan_start).merge(route(GET, Gate::User, scan_status)))
         .route("/api/browse", route(GET, Gate::Admin, browse))
         .route("/api/items/{id}", route(DELETE, Gate::Admin, item_delete))
         .route(
@@ -52,15 +52,39 @@ fn scan_start(app: &App, _: &Req, _: &Verified) -> Reply {
 
 fn scan_status(app: &App, _: &Req, v: &Verified) -> Reply {
     let mut st = app.scanner.status();
-    if !v.is_admin() {
-        st.stats = st.stats.map(|s| app.public_stats(s));
-    }
+    // Unreadable roots name libraries and folders: scrubbed for admins too (D-293).
+    st.stats = st.stats.map(|s| app.visible_stats(v, s));
     Reply::ok(json!(st))
 }
 
-fn browse(_: &App, req: &Req, _: &Verified) -> Reply {
-    match lain_ingest::browse::browse(req.query("path")) {
-        Ok(out) => Reply::ok(json!(out)),
+/// The folder picker lists what is on disk, so a library whose items this
+/// session may not see (a private one that is locked here) is left out of
+/// it: its folder is not listed, and neither it nor anything inside it can
+/// be opened, with the answer of a folder that is not there (D-293).
+fn browse(app: &App, req: &Req, v: &Verified) -> Reply {
+    use lain_ingest::browse::{browse as list, clean};
+    let access = app.access(v);
+    let closed: Vec<std::path::PathBuf> = app
+        .libraries
+        .list()
+        .unwrap_or_default()
+        .iter()
+        .filter(|l| !l.path.is_empty() && !crate::privacy::items_visible(l, &app.unlocks, &access, &v.session))
+        .map(|l| clean(std::path::Path::new(&l.path)))
+        .collect();
+    let inside = |p: &std::path::Path| closed.iter().any(|c| p.starts_with(c));
+    let asked = req.query("path").trim();
+    if !asked.is_empty() && inside(&clean(std::path::Path::new(asked))) {
+        return Reply::err(400, "path is not a readable directory");
+    }
+    match list(asked) {
+        Ok(mut out) => {
+            if inside(std::path::Path::new(&out.path)) {
+                return Reply::err(400, "path is not a readable directory");
+            }
+            out.dirs.retain(|d| !inside(std::path::Path::new(&d.path)));
+            Reply::ok(json!(out))
+        }
         Err(e) => Reply::err(400, e),
     }
 }

@@ -1,7 +1,8 @@
 import { api, ApiError } from '$lib/api';
 import type { User } from '$lib/api/types';
 import { configureApi } from '$lib/api/client';
-import { tokenStorage } from './storage';
+import { canManageRole, isAdminRole, isManagerRole } from './roles';
+import { rememberAccount, tokenStorage } from './storage';
 
 /*
  * The single global state that genuinely is global: who is signed in.
@@ -37,7 +38,17 @@ class Session {
 	}
 
 	get isAdmin(): boolean {
-		return this.user?.role === 'admin';
+		return isAdminRole(this.user?.role);
+	}
+
+	/** The manager role: library care, not the keys to the server (D-296). */
+	get isManager(): boolean {
+		return isManagerRole(this.user?.role);
+	}
+
+	/** Admin or manager. An unknown role is neither. */
+	get canManage(): boolean {
+		return canManageRole(this.user?.role);
 	}
 
 	async bootstrap(): Promise<void> {
@@ -55,6 +66,7 @@ class Session {
 				this.token = saved;
 				try {
 					this.user = await api.me.get();
+					rememberSignedIn(this.user);
 				} catch {
 					this.invalidate();
 				}
@@ -81,6 +93,7 @@ class Session {
 			this.token = token;
 			tokenStorage.save(token);
 			this.user = await api.me.get();
+			rememberSignedIn(this.user);
 			this.setupRequired = false;
 			this.bootError = null;
 		} catch (err) {
@@ -118,19 +131,43 @@ class Session {
 
 	async refreshUser(): Promise<void> {
 		this.user = await api.me.get();
+		rememberSignedIn(this.user);
 	}
 
-	/** Clears client auth state. Logout is local by design (JWT). */
+	/**
+	 * Clears client auth state and sends nothing (a 401 lands here: the
+	 * server already refuses the token). The account tile is written
+	 * first.
+	 */
 	invalidate(): void {
+		rememberSignedIn(this.user);
 		this.token = null;
 		this.user = null;
 		this.freshSetup = false;
 		tokenStorage.clear();
 	}
 
+	/**
+	 * Signs out (D-298): the page forgets the session at once, and the
+	 * server is told to refuse its token from now on. Unreachable, the
+	 * server keeps the token until it expires; nothing here waits on it.
+	 */
 	logout(): void {
+		const token = this.token;
 		this.invalidate();
+		if (token) void api.auth.logout(token).catch(() => {});
 	}
+}
+
+/** The tile for this browser. The token stays in its own key. */
+function rememberSignedIn(user: User | null): void {
+	if (!user) return;
+	rememberAccount({
+		id: user.id,
+		username: user.username,
+		displayName: user.profile?.display_name,
+		avatar: user.profile?.avatar
+	});
 }
 
 export const session = new Session();

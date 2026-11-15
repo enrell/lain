@@ -10,9 +10,11 @@
 	import Toaster from '$lib/components/primitives/Toaster.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { session } from '$lib/auth/session.svelte';
+	import { onLeaseResync, releaseLease } from '$lib/api/lease';
+	import { ensureLibraries } from '$lib/stores/media-cache.svelte';
 	import { t } from '$lib/i18n';
 	import { appearance } from '$lib/stores/appearance';
-	import { isAdminRoute, routeRedirect } from '$lib/utilities/guards';
+	import { routeAllowed, routeRedirect } from '$lib/utilities/guards';
 	import { keepLinksInside } from '$lib/demo/links';
 	import { pageTransitions } from '$lib/motion/page-transition';
 
@@ -58,6 +60,22 @@
 		return () => appearance.stop();
 	});
 
+	// The unlock lease (D-294): a private library unlocked in this
+	// session is found on load, so this tab keeps it alive too; signing
+	// out drops the stream, and the server locks by itself.
+	$effect(() => {
+		if (!session.authenticated) {
+			releaseLease();
+			return;
+		}
+		onLeaseResync(() => void ensureLibraries(true).catch(() => {}));
+		void ensureLibraries(true).catch(() => {});
+		return () => {
+			onLeaseResync(null);
+			releaseLease();
+		};
+	});
+
 	// Single guard for the whole app: first-run setup, login, admin.
 	$effect(() => {
 		const can = {
@@ -66,6 +84,7 @@
 			authenticated: session.authenticated,
 			freshSetup: session.freshSetup,
 			admin: session.isAdmin,
+			manager: session.isManager,
 			pathname: page.url.pathname
 		};
 		const target = routeRedirect(can);
@@ -89,8 +108,7 @@
 	const blockedAdmin = $derived(
 		session.ready &&
 			session.authenticated &&
-			!session.isAdmin &&
-			isAdminRoute(page.url.pathname)
+			!routeAllowed(page.url.pathname, session.isAdmin, session.isManager)
 	);
 </script>
 

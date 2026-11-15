@@ -100,10 +100,20 @@ impl Libraries {
     /// absolute `path` inside a mapped root is recorded under it. A
     /// rooted library's id derives from `root:root_path`, so it is the
     /// same on every machine. The message texts are the ones clients read.
-    pub fn create(&self, name: &str, kind: &str, path: &str, root: &str) -> Result<Library, String> {
+    ///
+    /// `audience` is who the library is for; left empty, a new library
+    /// is `mature` (D-299): one made without a thought stays out of a
+    /// restricted account's sight until an admin opens it. A library
+    /// that already reads the folder keeps its audience unless one is
+    /// given, and a private one is never stored again (D-293).
+    pub fn create(&self, name: &str, kind: &str, path: &str, root: &str, audience: &str) -> Result<Library, String> {
         if name.is_empty() || (path.is_empty() && root.is_empty()) {
             return Err("name and path required".into());
         }
+        let audience = match audience.trim() {
+            "" => None,
+            a => Some(lain_api::normalize_audience(a).ok_or("audience must be everyone, teen or mature")?),
+        };
         let roots = self.roots.read().unwrap_or_else(|e| e.into_inner()).clone();
         let (abs, root, root_path) = if root.is_empty() {
             match roots.relativize(path) {
@@ -128,7 +138,13 @@ impl Libraries {
         // a library that moved away keeps the id it was made with, so a
         // new one here takes the next free id instead of replacing it.
         let others = self.list().map_err(|e| e.to_string())?;
-        let id = match others.iter().find(|o| o.path == abs) {
+        let same = others.iter().find(|o| o.path == abs);
+        if same.is_some_and(|s| s.private) {
+            // Storing it again would rename it and make it public with no
+            // PIN (D-293); a private library changes through PATCH only.
+            return Err("another library already reads that folder".into());
+        }
+        let id = match same {
             Some(same) => same.id.clone(),
             None => std::iter::once(format!("lib-{}", short_id(&key)))
                 .chain((2..).map(|n| format!("lib-{}", short_id(&format!("{key}#{n}")))))
@@ -144,6 +160,12 @@ impl Libraries {
             created_at: lain_core::now_unix(),
             root,
             root_path,
+            audience: match (audience, same) {
+                (Some(lain_api::AUDIENCE_EVERYONE), _) => String::new(),
+                (Some(a), _) => a.to_string(),
+                (None, Some(same)) => same.audience.clone(),
+                (None, None) => lain_api::AUDIENCE_MATURE.to_string(),
+            },
             ..Library::default()
         };
         self.store.write(|tx| tx.put_json(Bucket::Libraries, lib.id.as_bytes(), &lib)).map_err(|e| e.to_string())?;
@@ -200,6 +222,12 @@ impl Libraries {
         if let Some(priv_) = p.private {
             lib.private = priv_;
         }
+        if let Some(aud) = &p.audience {
+            let Some(norm) = lain_api::normalize_audience(aud) else {
+                return Err("audience must be everyone, teen or mature".into());
+            };
+            lib.audience = if norm == lain_api::AUDIENCE_EVERYONE { String::new() } else { norm.to_string() };
+        }
         if lib.private {
             if let Some(o) = &p.owner {
                 lib.owner = o.clone();
@@ -253,12 +281,12 @@ mod tests {
         );
         let roots = Arc::new(RwLock::new(Roots::parse(doc.as_bytes()).unwrap()));
         let libs = Libraries::new(store.clone(), roots);
-        let by_root = libs.create("Anime", "", "anime", "media").unwrap();
+        let by_root = libs.create("Anime", "", "anime", "media", "").unwrap();
         assert_eq!((by_root.root.as_str(), by_root.root_path.as_str()), ("media", "anime"));
-        let by_path = libs.create("Anime", "", &media.join("anime").to_string_lossy(), "").unwrap();
+        let by_path = libs.create("Anime", "", &media.join("anime").to_string_lossy(), "", "").unwrap();
         assert_eq!(by_path.id, by_root.id, "same location, same id");
-        assert!(libs.create("x", "", "../etc", "media").is_err());
-        assert!(libs.create("x", "", "anime", "nope").unwrap_err().contains("unknown root"));
+        assert!(libs.create("x", "", "../etc", "media", "").is_err());
+        assert!(libs.create("x", "", "anime", "nope", "").unwrap_err().contains("unknown root"));
         let known = |u: &str| u == "user-admin" || u == "user-bob";
         let p = libs
             .update(&by_root.id, &LibraryPatch { private: Some(true), ..Default::default() }, "user-admin", &known)
@@ -303,16 +331,16 @@ mod tests {
         let store = Arc::new(Store::open(&dir.join("data")).unwrap());
         let libs = Libraries::new(store.clone(), Arc::new(RwLock::new(Roots::default())));
         let (old_s, new_s) = (old.to_string_lossy().into_owned(), new.to_string_lossy().into_owned());
-        let a = libs.create("Films", "movie", &old_s, "").unwrap();
+        let a = libs.create("Films", "movie", &old_s, "", "").unwrap();
         let known = |_: &str| true;
         let moved = libs
             .update(&a.id, &LibraryPatch { path: Some(new_s.clone()), ..Default::default() }, "user-admin", &known)
             .unwrap();
         assert_eq!((moved.id.as_str(), moved.path.as_str()), (a.id.as_str(), new_s.as_str()));
-        let b = libs.create("Old films", "movie", &old_s, "").unwrap();
+        let b = libs.create("Old films", "movie", &old_s, "", "").unwrap();
         assert_ne!(b.id, a.id, "a new library at the old folder takes a fresh id");
         assert_eq!(libs.get(&a.id).unwrap().path, new_s, "the moved library is untouched");
-        let again = libs.create("Films again", "movie", &new_s, "").unwrap();
+        let again = libs.create("Films again", "movie", &new_s, "", "").unwrap();
         assert_eq!(again.id, a.id, "the folder the moved library reads is its location");
         assert_eq!(libs.list().unwrap().len(), 2);
         assert_eq!(
@@ -320,6 +348,62 @@ mod tests {
                 .unwrap_err(),
             "another library already reads that folder"
         );
+        drop(libs);
+        drop(store);
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn audience_defaults_normalizes_and_validates() {
+        let dir = lain_store::test_dir("libs-aud");
+        let media = dir.join("media");
+        std::fs::create_dir_all(&media).unwrap();
+        let store = Arc::new(Store::open(&dir.join("data")).unwrap());
+        let libs = Libraries::new(store.clone(), Arc::new(RwLock::new(Roots::default())));
+        let path = media.to_string_lossy().to_string();
+        // D-299: a new library is `mature` until someone says otherwise.
+        let a = libs.create("Shows", "anime", &path, "", "").unwrap();
+        assert_eq!(a.effective_audience(), lain_api::AUDIENCE_MATURE);
+        assert_eq!(serde_json::to_value(&a).unwrap()["audience"], "mature");
+        assert_eq!(
+            libs.create("Shows", "anime", &path, "", "adult").unwrap_err(),
+            "audience must be everyone, teen or mature"
+        );
+        // Stored again: the audience given wins, and none given keeps it.
+        let open = libs.create("Shows", "anime", &path, "", " Everyone ").unwrap();
+        assert_eq!((open.id.as_str(), open.audience.as_str()), (a.id.as_str(), ""));
+        assert_eq!(
+            libs.create("Shows 2", "anime", &path, "", "").unwrap().effective_audience(),
+            lain_api::AUDIENCE_EVERYONE
+        );
+
+        let known = |_: &str| true;
+        let teen = libs
+            .update(&a.id, &LibraryPatch { audience: Some(" TEEN ".into()), ..Default::default() }, "u", &known)
+            .unwrap();
+        assert_eq!(teen.audience, "teen");
+        assert_eq!(teen.effective_audience(), lain_api::AUDIENCE_TEEN);
+
+        let back = libs
+            .update(&a.id, &LibraryPatch { audience: Some("everyone".into()), ..Default::default() }, "u", &known)
+            .unwrap();
+        assert_eq!(back.audience, "");
+        assert_eq!(back.effective_audience(), lain_api::AUDIENCE_EVERYONE);
+
+        assert_eq!(
+            libs.update(&a.id, &LibraryPatch { audience: Some("adult".into()), ..Default::default() }, "u", &known)
+                .unwrap_err(),
+            "audience must be everyone, teen or mature"
+        );
+        // A private library is never stored again: that would rename it
+        // and make it public without its PIN (D-293).
+        libs.update(&a.id, &LibraryPatch { private: Some(true), ..Default::default() }, "u", &known).unwrap();
+        assert_eq!(
+            libs.create("Mine now", "anime", &path, "", "").unwrap_err(),
+            "another library already reads that folder"
+        );
+        let kept = libs.get(&a.id).unwrap();
+        assert!(kept.private && kept.name == "Shows 2");
         drop(libs);
         drop(store);
         std::fs::remove_dir_all(dir).ok();

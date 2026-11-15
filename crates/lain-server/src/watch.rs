@@ -442,7 +442,9 @@ fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
         let kind = thumbnail::image_type(&art);
         return file(art, kind, headers, "thumbnail unavailable");
     }
-    let at = w.req.query("t").trim().parse::<f64>().ok().filter(|t| *t >= 0.0 && t.is_finite()).unwrap_or(10.0);
+    // No time, or one that is not a number (`t=auto`: a frame, never the
+    // cover): the provider picks a frame that is a picture.
+    let at = w.req.query("t").trim().parse::<f64>().ok().filter(|t| *t >= 0.0 && t.is_finite());
     let width = w.req.query("w").trim().parse::<i64>().ok().filter(|n| *n > 0).unwrap_or(480).clamp(32, 1280);
     // D-287: a file that cannot be reached (an unmounted disk) has no
     // frame; its title's art stands in rather than an error a card draws
@@ -450,7 +452,8 @@ fn thumbnail_get(app: &App, w: &WReq, v: &Verified) -> Out {
     if it.file_path.is_empty() || std::fs::metadata(media).is_err() {
         return title_art(app, v, &it, still || timed, width, art::SOURCE_UNAVAILABLE);
     }
-    let req = thumbnail::Request { file_path: it.file_path.clone(), time_sec: at, width };
+    let req =
+        thumbnail::Request { file_path: it.file_path.clone(), time_sec: at.unwrap_or(0.0), width, pick: at.is_none() };
     let thumb: thumbnail::Thumbnail =
         match app.registry.call_one(thumbnail::CAP, "thumbnail", serde_json::to_value(&req).unwrap_or_default()) {
             Ok((out, _)) => match serde_json::from_value::<thumbnail::Thumbnail>(out) {

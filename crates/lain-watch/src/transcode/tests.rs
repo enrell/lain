@@ -1026,3 +1026,27 @@ fn a_webvtt_sidecar_drops_ass_escapes() {
         "WEBVTT\n\n00:01.000 --> 00:02.000\nOlá.\n"
     );
 }
+
+#[test]
+fn a_webvtt_sidecar_drops_song_effects() {
+    let shape = "m 50 0 b 22 0 0 22 0 50 b 0 78 22 100 50 100";
+    let raw = format!(
+        "WEBVTT\n\n00:01.000 --> 00:02.000\n{shape}\n\n00:01.000 --> 00:02.000\nchi\n\n00:01.000 --> 00:02.000\nchi\n\n00:01.500 --> 00:02.000\n{shape}\nla la\n\n00:02.000 --> 00:03.000\nchi\n\n00:03.000 --> 00:04.000\n{shape}\n"
+    );
+    assert_eq!(
+        super::clean_webvtt(&raw),
+        "WEBVTT\n\n00:01.000 --> 00:02.000\nchi\n\n00:01.500 --> 00:02.000\nla la\n\n00:02.000 --> 00:03.000\nchi\n"
+    );
+    // A karaoke line taken apart goes; the line sung and two people
+    // answering at once stay.
+    let song = "WEBVTT\n\n00:10.000 --> 00:12.000\nKa\n\n00:10.000 --> 00:12.000\nwa\n\n00:10.000 --> 00:14.000\nO caminho árido\n\n00:10.500 --> 00:12.500 line:0\nku\n\n01:00:20.000 --> 01:00:21.000\nEh?\n\n01:00:20.500 --> 01:00:21.000\nHã\n";
+    assert_eq!(
+        super::clean_webvtt(song),
+        "WEBVTT\n\n00:10.000 --> 00:14.000\nO caminho árido\n\n01:00:20.000 --> 01:00:21.000\nEh?\n\n01:00:20.500 --> 01:00:21.000\nHã\n"
+    );
+    // Words that only begin like a drawing stay.
+    for said in ["m 50", "m 5 0 metros", "me 1 2 3", "1 2 3"] {
+        let cue = format!("WEBVTT\n\n00:01.000 --> 00:02.000\n{said}\n");
+        assert_eq!(super::clean_webvtt(&cue), cue);
+    }
+}

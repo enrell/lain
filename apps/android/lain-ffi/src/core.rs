@@ -244,11 +244,21 @@ impl LainCore {
         self.run(async move { Ok(b.client.login(&username, &password).await?.into()) }).await
     }
 
-    /// Forgets the session (queued progress stays for the next login).
+    /// Forgets the session (queued progress stays for the next login)
+    /// and tells the server in the background, so the token is refused
+    /// there too (D-298); offline, it only expires.
     pub fn logout(&self) -> Result<(), LainError> {
         let b = self.backend()?;
         self.close_events();
-        Ok(b.client.logout()?)
+        let session = b.client.session();
+        b.client.logout()?;
+        if let Some(session) = session {
+            let client = b.client.clone();
+            self.handle().spawn(async move {
+                let _ = client.end_session(&session).await;
+            });
+        }
+        Ok(())
     }
 
     pub async fn me(&self) -> Result<UserInfo, LainError> {

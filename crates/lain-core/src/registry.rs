@@ -355,7 +355,9 @@ impl Registry {
 
     /// Fans out to every healthy provider of a merge-many capability.
     /// Failures degrade the merge and are reported; only total failure
-    /// is `dependency-unavailable`. Outputs come back with their ids.
+    /// is `dependency-unavailable`. Outputs come back with their ids, in
+    /// binding order. The providers are asked at once, one thread each,
+    /// so a slow one costs its own time rather than adding to the rest.
     pub fn call_merge_report(
         &self,
         capability: &str,
@@ -363,10 +365,11 @@ impl Registry {
         input: Value,
     ) -> Result<(Outputs, Vec<ProviderError>), Error> {
         let (provs, _) = self.ordered(capability)?;
+        let results = invoke_all(&provs, capability, op, &input);
         let mut outputs = Vec::new();
         let mut failed = Vec::new();
-        for p in provs {
-            match p.invoke(capability, op, input.clone()) {
+        for (p, result) in provs.iter().zip(results) {
+            match result {
                 Ok(out) => outputs.push((p.id().to_string(), out)),
                 Err(error) => failed.push(ProviderError { provider: p.id().to_string(), error }),
             }
@@ -463,6 +466,35 @@ impl Registry {
         }
         view
     }
+}
+
+/// Invokes every provider concurrently (scoped threads) and returns the
+/// results in `provs` order. One provider is called inline; a thread
+/// that cannot be spawned runs its call inline; a panicking provider
+/// reads as an internal error, never a crash of the caller.
+fn invoke_all(provs: &[Arc<dyn Provider>], capability: &str, op: &str, input: &Value) -> Vec<Result<Value, Error>> {
+    if provs.len() < 2 {
+        return provs.iter().map(|p| p.invoke(capability, op, input.clone())).collect();
+    }
+    std::thread::scope(|s| {
+        let handles: Vec<_> = provs
+            .iter()
+            .map(|p| {
+                let call = move || p.invoke(capability, op, input.clone());
+                std::thread::Builder::new().name("lain-merge".into()).spawn_scoped(s, call).map_err(|e| (p, e))
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| match h {
+                Ok(h) => h.join().unwrap_or_else(|_| Err(Error::internal("provider panicked"))),
+                Err((p, e)) => {
+                    tracing::debug!(provider = p.id(), err = %e, "merge thread not spawned; calling inline");
+                    p.invoke(capability, op, input.clone())
+                }
+            })
+            .collect()
+    })
 }
 
 #[cfg(test)]
@@ -584,6 +616,40 @@ mod tests {
         assert_eq!(failed[0].provider, "id-a");
         b.fail.store(true, Ordering::SeqCst);
         assert_eq!(reg.call_merge_report(META, "search", Value::Null).unwrap_err().code, codes::DEPENDENCY_UNAVAILABLE);
+    }
+
+    /// Merge-many asks its providers at once: two that each take 300 ms
+    /// answer in about 300 ms, not 600, and the outputs keep binding
+    /// order.
+    #[test]
+    fn merge_asks_providers_at_once() {
+        struct Slow(&'static str);
+        impl Provider for Slow {
+            fn id(&self) -> &str {
+                self.0
+            }
+            fn capabilities(&self) -> Vec<String> {
+                vec![META.into()]
+            }
+            fn health(&self) -> Result<(), Error> {
+                Ok(())
+            }
+            fn invoke(&self, _cap: &str, _op: &str, _input: Value) -> Result<Value, Error> {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                Ok(Value::from(self.0))
+            }
+        }
+        let mut bindings = BTreeMap::new();
+        bindings.insert(META.to_string(), Binding::new(BindingMode::MergeMany, &["slow-a", "slow-b"]));
+        let reg = Registry::new(Composition { version: 1, bindings });
+        reg.register(Arc::new(Slow("slow-a")));
+        reg.register(Arc::new(Slow("slow-b")));
+        let t = std::time::Instant::now();
+        let (outs, failed) = reg.call_merge_report(META, "search", Value::Null).unwrap();
+        assert!(t.elapsed() < std::time::Duration::from_millis(550), "{:?}", t.elapsed());
+        assert!(failed.is_empty());
+        let ids: Vec<_> = outs.iter().map(|(id, v)| (id.as_str(), v.as_str().unwrap())).collect();
+        assert_eq!(ids, vec![("slow-a", "slow-a"), ("slow-b", "slow-b")]);
     }
 
     #[test]

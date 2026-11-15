@@ -11,7 +11,7 @@
 	import { session } from '$lib/auth/session.svelte';
 	import { t } from '$lib/i18n';
 	import { pageChords } from './nav-items';
-	import { SETTING_ENTRIES, entryLabel, fuzzyScore, sectionHint, sectionLabel, visibleSections } from '$lib/settings/sections';
+	import { SETTING_ENTRIES, entryLabel, entryVisible, fuzzyScore, sectionHint, sectionLabel, visibleSections } from '$lib/settings/sections';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/utilities/errors';
@@ -59,8 +59,9 @@
 
 	const staticCommands = $derived.by((): Cmd[] => {
 		const admin = session.isAdmin;
+		const manager = session.isManager;
 		const out: Cmd[] = [];
-		if (admin) {
+		if (admin || manager) {
 			out.push(
 				{
 					id: 'scan',
@@ -75,7 +76,11 @@
 							toasts.error(errorMessage(err, t('palette.action.scanFailed')));
 						}
 					}
-				},
+				}
+			);
+		}
+		if (admin) {
+			out.push(
 				{ id: 'add-library', group: 'actions', label: t('palette.action.addLibrary'), run: go('/settings/libraries?add') },
 				{ id: 'add-user', group: 'actions', label: t('palette.action.addUser'), run: go('/settings/users?add') },
 				{ id: 'backup', group: 'actions', label: t('palette.action.backup'), run: go('/settings/backup#backup') }
@@ -94,7 +99,7 @@
 		for (const e of pageChords(admin)) {
 			out.push({ id: `nav-${e.href}`, group: 'goTo', label: t(e.label), keys: `g ${e.key}`, run: go(e.href) });
 		}
-		for (const s of visibleSections(admin)) {
+		for (const s of visibleSections(admin, manager)) {
 			out.push({
 				id: `sec-${s.href}`,
 				group: 'goTo',
@@ -105,8 +110,8 @@
 			});
 		}
 		for (const e of SETTING_ENTRIES) {
-			if (e.admin && !admin) continue;
-			const section = visibleSections(admin).find((s) => s.href === e.href);
+			if (!entryVisible(e, admin, manager)) continue;
+			const section = visibleSections(admin, manager).find((s) => s.href === e.href);
 			out.push({
 				id: `set-${e.href}-${e.anchor}`,
 				group: 'settings',

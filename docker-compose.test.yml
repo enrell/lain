@@ -1,0 +1,33 @@
+# Isolated test-server environment for agents (`just test-up`).
+# Runs on :9370 with its own database (`lain-test-data`) and media libraries
+# (`./.test-media`), never touching production (:9360, ~/.local/share/lain).
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: lain-test-server
+    working_dir: /src
+    command: ["cargo", "run", "-p", "lain", "--", "serve", "--data-dir", "/data", "--port", "9360", "--bind", "0.0.0.0"]
+    volumes:
+      - .:/src
+      - test-cargo-target:/src/target
+      - test-cargo-registry:/usr/local/cargo/registry
+      - lain-test-data:/data
+      - ./.test-media:/media:rw
+    ports:
+      - "${LAIN_TEST_PORT:-9370}:9360"
+    environment:
+      CARGO_BUILD_JOBS: "4"
+      LAIN_LOG_LEVEL: debug
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9360/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 600s
+      retries: 3
+
+volumes:
+  lain-test-data:
+  test-cargo-target:
+  test-cargo-registry:

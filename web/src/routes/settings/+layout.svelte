@@ -22,7 +22,7 @@
 
 	let { children }: { children: Snippet } = $props();
 
-	const sections = $derived(visibleSections(session.isAdmin));
+	const sections = $derived(visibleSections(session.isAdmin, session.isManager));
 	const current = $derived(sectionFor(page.url.pathname));
 	let pane = $state<HTMLElement>();
 	// Phones pick a section from a sheet instead of two strips of tabs.

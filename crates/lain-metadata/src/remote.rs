@@ -10,14 +10,14 @@
 //! merge skips it.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Deserializer};
 use serde_json::{Value, json};
 
 use lain_core::{Error, Provider};
-use lain_http::{Client, path_escape, query_escape};
+use lain_http::{Client, ErrorKind, path_escape, query_escape};
 
 use crate::nfo::{CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH};
 use crate::types::{MetadataCandidate, MetadataRecord, MetadataResolveInput, MetadataSearchInput};
@@ -81,8 +81,10 @@ impl Endpoints {
 }
 
 /// The network providers' wiring: one HTTP client, the endpoints, and
-/// whether to pace requests per upstream host (Go's intervals: Kitsu
-/// 1 s, AniList 700 ms, Jikan 400 ms, TVMaze 1 s). Loopback endpoints
+/// whether to pace requests per upstream host (Kitsu 500 ms, AniList
+/// 700 ms, Jikan 400 ms, TVMaze 500 ms, its documented 20 calls in 10 s;
+/// a first scan costs each new title a search and a resolve, so the
+/// slowest host's interval is what a title costs). Loopback endpoints
 /// (fixture servers, a local mirror) are never paced: with every
 /// provider on one host, pacing would serialize them all at the
 /// longest interval.
@@ -111,7 +113,7 @@ impl Remote {
             let local = lain_http::Url::parse(base).is_ok_and(|u| is_loopback(&u.host));
             if self.pace && !local { Duration::from_millis(ms) } else { Duration::ZERO }
         };
-        for (base, ms) in [(&e.kitsu, 1000), (&e.anilist, 700), (&e.jikan, 400), (&e.tvmaze, 1000)] {
+        for (base, ms) in [(&e.kitsu, 500), (&e.anilist, 700), (&e.jikan, 400), (&e.tvmaze, 500)] {
             self.client.pace(base, gap(base, ms));
         }
         vec![
@@ -137,6 +139,84 @@ fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de> + Default>(d: D) -> R
 
 fn upstream(id: &str, e: lain_http::Error) -> Error {
     Error::unavailable(format!("{id}: {e}"))
+}
+
+/// Consecutive transport failures that take a provider out of the merge.
+const TRIP_AFTER: u32 = 2;
+/// How long a tripped provider stays out before it is asked again.
+const COOL_DOWN: Duration = Duration::from_secs(5 * 60);
+
+/// Takes an unreachable host out of the merge for a while. A dead
+/// upstream (no TCP answer) otherwise costs every title its full
+/// timeout and retries; after [`TRIP_AFTER`] transport failures in a
+/// row (connect, TLS, timeout, 5xx) `health` fails for [`COOL_DOWN`],
+/// so the registry leaves the provider out of the merge. The first call
+/// after the cool-down is a probe: a failure trips it again at once, an
+/// answer (any status a live server gives) closes it.
+pub(crate) struct Breaker {
+    state: Mutex<BreakerState>,
+    cool_down: Duration,
+}
+
+#[derive(Default)]
+struct BreakerState {
+    failures: u32,
+    open_until: Option<Instant>,
+}
+
+impl Default for Breaker {
+    fn default() -> Self {
+        Breaker::with_cool_down(COOL_DOWN)
+    }
+}
+
+impl Breaker {
+    pub(crate) fn with_cool_down(cool_down: Duration) -> Self {
+        Breaker { state: Mutex::default(), cool_down }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, BreakerState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn check(&self, id: &str) -> Result<(), Error> {
+        match self.lock().open_until {
+            Some(t) if Instant::now() < t => {
+                let secs = t.saturating_duration_since(Instant::now()).as_secs();
+                Err(Error::unavailable(format!("{id}: unreachable, asked again in {secs} s")))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn record<T>(&self, id: &str, r: Result<T, lain_http::Error>) -> Result<T, Error> {
+        let transport = match &r {
+            Ok(_) => false,
+            Err(e) => match e.kind {
+                ErrorKind::Connect | ErrorKind::Tls | ErrorKind::Timeout => true,
+                ErrorKind::Status(s) => s >= 500,
+                _ => false,
+            },
+        };
+        let mut st = self.lock();
+        if !transport {
+            if st.failures >= TRIP_AFTER {
+                tracing::info!(provider = id, "metadata provider reachable again");
+            }
+            *st = BreakerState::default();
+            return r.map_err(|e| upstream(id, e));
+        }
+        st.failures += 1;
+        if st.failures >= TRIP_AFTER {
+            st.open_until = Some(Instant::now() + self.cool_down);
+            if st.failures == TRIP_AFTER {
+                let err = r.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+                tracing::warn!(provider = id, err = %err, secs = self.cool_down.as_secs(), "metadata provider unreachable; left out of searches for a while");
+            }
+        }
+        drop(st);
+        r.map_err(|e| upstream(id, e))
+    }
 }
 
 fn decode<T: serde::de::DeserializeOwned>(id: &str, raw: &[u8]) -> Result<T, Error> {
@@ -222,7 +302,7 @@ macro_rules! provider {
                 vec![CAP_METADATA_SEARCH.into(), CAP_METADATA_RESOLVE.into()]
             }
             fn health(&self) -> Result<(), Error> {
-                Ok(())
+                self.breaker.check($id)
             }
             fn invoke(&self, cap: &str, op: &str, input: Value) -> Result<Value, Error> {
                 dispatch(cap, op, input, $kinds, |i| self.search(i), |id| self.resolve(id))
@@ -236,6 +316,7 @@ macro_rules! provider {
 pub struct Kitsu {
     http: Client,
     base: String,
+    breaker: Breaker,
 }
 
 #[derive(Deserialize, Default)]
@@ -288,11 +369,11 @@ fn first_image(v: &Value) -> String {
 
 impl Kitsu {
     pub fn new(http: Client, base: &str) -> Kitsu {
-        Kitsu { http, base: base.trim_end_matches('/').to_string() }
+        Kitsu { http, base: base.trim_end_matches('/').to_string(), breaker: Breaker::default() }
     }
 
     fn get(&self, url: &str) -> Result<Vec<u8>, Error> {
-        let r = self.http.get(url).send_blocking().and_then(|r| r.ok()).map_err(|e| upstream(KITSU_ID, e))?;
+        let r = self.breaker.record(KITSU_ID, self.http.get(url).send_blocking().and_then(|r| r.ok()))?;
         Ok(r.body)
     }
 
@@ -368,6 +449,7 @@ provider!(Kitsu, KITSU_ID, ANIME_KINDS);
 pub struct AniList {
     http: Client,
     base: String,
+    breaker: Breaker,
 }
 
 const ANILIST_FIELDS: &str = "id title { romaji english native } description coverImage { large extraLarge } bannerImage episodes startDate { year } genres synonyms";
@@ -436,19 +518,13 @@ fn leading_int(s: &str) -> Option<i64> {
 
 impl AniList {
     pub fn new(http: Client, base: &str) -> AniList {
-        AniList { http, base: base.trim_end_matches('/').to_string() }
+        AniList { http, base: base.trim_end_matches('/').to_string(), breaker: Breaker::default() }
     }
 
     fn query(&self, body: Value) -> Result<Vec<u8>, Error> {
         // A GraphQL read: safe to repeat.
-        let r = self
-            .http
-            .post(&self.base)
-            .json(&body)
-            .idempotent(true)
-            .send_blocking()
-            .and_then(|r| r.ok())
-            .map_err(|e| upstream(ANILIST_ID, e))?;
+        let sent = self.http.post(&self.base).json(&body).idempotent(true).send_blocking().and_then(|r| r.ok());
+        let r = self.breaker.record(ANILIST_ID, sent)?;
         Ok(r.body)
     }
 
@@ -532,6 +608,7 @@ provider!(AniList, ANILIST_ID, ANIME_KINDS);
 pub struct Jikan {
     http: Client,
     base: String,
+    breaker: Breaker,
 }
 
 #[derive(Deserialize, Default)]
@@ -611,11 +688,11 @@ impl JikanEntry {
 
 impl Jikan {
     pub fn new(http: Client, base: &str) -> Jikan {
-        Jikan { http, base: base.trim_end_matches('/').to_string() }
+        Jikan { http, base: base.trim_end_matches('/').to_string(), breaker: Breaker::default() }
     }
 
     fn get(&self, url: &str) -> Result<Vec<u8>, Error> {
-        let r = self.http.get(url).send_blocking().and_then(|r| r.ok()).map_err(|e| upstream(JIKAN_ID, e))?;
+        let r = self.breaker.record(JIKAN_ID, self.http.get(url).send_blocking().and_then(|r| r.ok()))?;
         Ok(r.body)
     }
 
@@ -682,6 +759,7 @@ provider!(Jikan, JIKAN_ID, ANIME_KINDS);
 pub struct TvMaze {
     http: Client,
     base: String,
+    breaker: Breaker,
 }
 
 #[derive(Deserialize, Default)]
@@ -721,11 +799,11 @@ impl TvMazeShow {
 
 impl TvMaze {
     pub fn new(http: Client, base: &str) -> TvMaze {
-        TvMaze { http, base: base.trim_end_matches('/').to_string() }
+        TvMaze { http, base: base.trim_end_matches('/').to_string(), breaker: Breaker::default() }
     }
 
     fn get(&self, url: &str) -> Result<Vec<u8>, Error> {
-        let r = self.http.get(url).send_blocking().and_then(|r| r.ok()).map_err(|e| upstream(TVMAZE_ID, e))?;
+        let r = self.breaker.record(TVMAZE_ID, self.http.get(url).send_blocking().and_then(|r| r.ok()))?;
         Ok(r.body)
     }
 
@@ -782,6 +860,55 @@ provider!(TvMaze, TVMAZE_ID, &["anime", "series", "episode", "video"]);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A port nothing listens on: connections are refused at once.
+    fn refused_base() -> String {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        drop(l);
+        format!("http://127.0.0.1:{port}")
+    }
+
+    fn fast_client() -> Client {
+        Client::new(lain_http::Config { backoff: Duration::from_millis(1), ..lain_http::Config::default() }).unwrap()
+    }
+
+    /// Two transport failures in a row take the provider out (health
+    /// fails, so the registry leaves it out of the merge); after the
+    /// cool-down one call probes it, and a failing probe takes it out
+    /// again at once. An answer of any kind from a live server closes it.
+    #[test]
+    fn an_unreachable_provider_is_left_out_for_a_while() {
+        let k = Kitsu {
+            http: fast_client(),
+            base: refused_base(),
+            breaker: Breaker::with_cool_down(Duration::from_millis(300)),
+        };
+        let ask = || k.invoke(CAP_METADATA_SEARCH, "search", json!({"query": "x", "kind": "anime"}));
+        assert!(k.health().is_ok());
+        assert_eq!(ask().unwrap_err().code, "dependency-unavailable");
+        assert!(k.health().is_ok(), "one failure is not an outage");
+        ask().unwrap_err();
+        let e = k.health().unwrap_err();
+        assert!(e.msg.contains("unreachable"), "{e}");
+
+        std::thread::sleep(Duration::from_millis(350));
+        assert!(k.health().is_ok(), "the cool-down is over: one probe is allowed");
+        ask().unwrap_err();
+        assert!(k.health().is_err(), "a failed probe trips it again at once");
+
+        // A live server's refusal (404) is an answer: the host is back.
+        let not_found =
+            lain_http::Error { kind: ErrorKind::Status(404), host: "h".into(), message: "status 404".into() };
+        k.breaker.record::<()>(KITSU_ID, Err(not_found)).unwrap_err();
+        assert!(k.health().is_ok());
+        // Decode errors and 4xx never count; 5xx does.
+        let five = || lain_http::Error { kind: ErrorKind::Status(502), host: "h".into(), message: "status 502".into() };
+        k.breaker.record::<()>(KITSU_ID, Err(five())).unwrap_err();
+        k.breaker.record::<()>(KITSU_ID, Ok(())).unwrap();
+        k.breaker.record::<()>(KITSU_ID, Err(five())).unwrap_err();
+        assert!(k.health().is_ok(), "a success between failures resets the count");
+    }
 
     #[test]
     fn small_parsers_match_go() {

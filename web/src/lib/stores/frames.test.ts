@@ -135,7 +135,7 @@ describe('a set drawn before its pictures', () => {
 	it('gives a wide slot an episode\'s frame in place of an upright still', () => {
 		const ep = { ...video('ep1', 'shows'), kind: 'episode', episode: 1 };
 		const asked = (url: string) => new URLSearchParams(url.split('?')[1]);
-		expect(asked(wideStill({ ...ep, thumbnail: { source: 'sidecar', aspect: 0.667 } }, 480)).get('t')).toBe('10');
+		expect(asked(wideStill({ ...ep, thumbnail: { source: 'sidecar', aspect: 0.667 } }, 480)).get('t')).toBe('auto');
 		// Otherwise the file's own picture (D-284): a poster whose shape went
 		// unread on a cold disk is never the episode's still.
 		for (const thumbnail of [{ source: 'sidecar', aspect: 1.778 }, { source: 'frame' }, { source: 'sidecar' }, undefined]) {

@@ -4,9 +4,11 @@ export interface ThumbnailOptions {
 	/**
 	 * Seconds into the file; a seek past the end falls back to frame 0 on the
 	 * server. Left out, the server picks the cover: the still that came with
-	 * the item when it has one, else the frame at 10 s.
+	 * the item when it has one, else a frame it chooses (the first of a few
+	 * places that is a picture, not a flat card). `auto` asks for that
+	 * chosen frame and never the cover.
 	 */
-	at?: number;
+	at?: number | 'auto';
 	/** Output width in pixels (the server clamps to 32..1280). */
 	width?: number;
 	/**

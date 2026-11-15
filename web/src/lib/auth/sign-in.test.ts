@@ -10,6 +10,10 @@ describe('signInRefusal', () => {
 	it('tells a disabled account apart: retyping the password cannot help', () => {
 		expect(signInRefusal(new ApiError('unauthorized', 'account disabled', 401))).toBe('disabled');
 	});
+	it('tells a removed account apart from a wrong password', () => {
+		expect(signInRefusal(new ApiError('not-found', 'unknown user', 404))).toBe('unknown');
+		expect(signInRefusal(new ApiError('not-found', 'unknown library', 404))).toBeNull();
+	});
 	it('leaves every other failure to the generic message', () => {
 		expect(signInRefusal(new ApiError('server', 'internal error', 500))).toBeNull();
 		expect(signInRefusal(new ApiError('network', 'offline', 0))).toBeNull();

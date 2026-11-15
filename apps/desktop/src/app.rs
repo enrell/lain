@@ -244,6 +244,16 @@ pub enum Act {
     CreateUser,
     UserDisabled(String, bool),
     UserRole(String, String),
+    /// A user's audience ceiling (`everyone`, `teen`, `mature`).
+    UserAudience(String, String),
+    /// A user's library allow-list; `None` is every library.
+    UserLibraries(String, Option<Vec<String>>),
+    /// Switch one library in a user's allow-list.
+    UserLibrary(String, String),
+    /// Open or close a user's library list.
+    UserLibsPanel(String),
+    LibraryAudience(String, String),
+    NewLibraryAudience(String),
     UserPassword(String),
     CreateLibrary,
     AskDeleteLibrary(String, String),
@@ -650,12 +660,21 @@ impl LainApp {
     }
 
     pub fn is_admin(&self) -> bool {
-        self.me.as_ref().map(|u| u.role == "admin").unwrap_or(false)
+        self.me.as_ref().map(|u| crate::role::is_admin_role(&u.role)).unwrap_or(false)
     }
 
     pub fn logout(&mut self, cx: &mut Context<Self>) {
         if let Some(b) = &self.backend {
+            // Forgotten here at once; the server is told in the
+            // background so its token dies too (D-298).
+            let session = b.client.session();
             let _ = b.client.logout();
+            if let Some(session) = session {
+                let client = b.client.clone();
+                b.spawn(async move {
+                    let _ = client.end_session(&session).await;
+                });
+            }
         }
         self.close_player(cx);
         self.ext.set_api(None);

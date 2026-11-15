@@ -251,7 +251,7 @@
 				description="Libraries are configured, but no media has been indexed yet."
 			>
 				{#snippet icon()}<ScanLine class="size-6 text-muted" />{/snippet}
-				{#if session.isAdmin}
+				{#if session.canManage}
 					<Button onclick={() => void startScan()} loading={scan.running}>
 						<ScanLine class="size-4" /> Scan now
 					</Button>

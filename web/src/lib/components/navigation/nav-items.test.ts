@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { MOBILE_BAR, MOBILE_NAV, visibleNav } from './nav-items';
 
 describe('mobile navigation', () => {
-	it('shows Acquire to admins only, before Settings', () => {
+	it('shows Acquire to people who manage the library, before Settings', () => {
 		const user = visibleNav(MOBILE_NAV, false).map((e) => e.href);
-		const admin = visibleNav(MOBILE_NAV, true).map((e) => e.href);
+		const staff = visibleNav(MOBILE_NAV, true).map((e) => e.href);
 		expect(user).not.toContain('/acquire');
-		expect(admin).toContain('/acquire');
-		expect(admin.indexOf('/acquire')).toBe(admin.indexOf('/settings') - 1);
-		expect(admin.at(-1)).toBe('/settings');
+		expect(staff).toContain('/acquire');
+		expect(staff.indexOf('/acquire')).toBe(staff.indexOf('/settings') - 1);
+		expect(staff.at(-1)).toBe('/settings');
 	});
 	it('shows Social to everyone', () => {
 		expect(visibleNav(MOBILE_NAV, false).map((e) => e.href)).toContain('/social');

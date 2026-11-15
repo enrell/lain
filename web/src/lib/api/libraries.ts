@@ -1,5 +1,43 @@
+import { t } from '$lib/i18n';
 import { request } from './client';
-import type { BrowseResult, Library, LibraryRoot, ScanStatus } from './types';
+import { holdLease, syncLease } from './lease';
+import type { Audience, BrowseResult, Library, LibraryRoot, ScanStatus } from './types';
+
+/** Effective audience level (`everyone` when omitted). */
+export function libraryAudience(lib: Pick<Library, 'audience'>): Audience {
+	return lib.audience ?? 'everyone';
+}
+
+/**
+ * Only libraries whose real name this session may see (filters out locked
+ * private libraries, which have no name per D-293).
+ */
+export function namedLibraries(list: Library[]): Library[] {
+	return list.filter((lib) => !isHidden(lib) && lib.name.trim().length > 0);
+}
+
+/** Deduplicated member ids of a private library with its owner first. */
+export function effectiveMembers(lib: Pick<Library, 'owner' | 'members'>): string[] {
+	const out: string[] = [];
+	if (lib.owner) out.push(lib.owner);
+	for (const m of lib.members ?? []) {
+		if (m && !out.includes(m)) out.push(m);
+	}
+	return out;
+}
+
+/**
+ * A locked private library comes without its name or folder (D-293).
+ * Every screen shows it under one neutral label instead of a blank.
+ */
+export function shown(lib: Library): Library {
+	return lib.locked && !lib.name ? { ...lib, name: t('privateLibrary.hiddenName') } : lib;
+}
+
+/** Whether a library's real name and folder are hidden from this session. */
+export function isHidden(lib: Library): boolean {
+	return !!lib.private && !!lib.locked;
+}
 
 /** An admin change (lain-rs): rename, type, folder, privacy, owner and members. */
 export interface LibraryPatch {
@@ -11,15 +49,24 @@ export interface LibraryPatch {
 	private?: boolean;
 	owner?: string;
 	members?: string[];
+	audience?: Audience;
 }
 
 /** Unlock with the account's PIN or its password (D-156). */
 export type UnlockInput = { pin: string } | { password: string };
 
+/**
+ * D-293: changing or removing a locked private library takes the PIN.
+ * A session that unlocked it sends nothing; any other sends its own.
+ */
+export type Secret = UnlockInput | undefined;
+
 export interface CreateLibraryInput {
 	name: string;
 	type: string;
 	path: string;
+	/** Left out, the server makes a new library `mature` (D-299). */
+	audience?: Audience;
 }
 
 /**
@@ -31,33 +78,50 @@ export interface CreateLibraryInput {
  * browser's; the UI must make that distinction explicit.
  */
 export const libraries = {
-	list: () => request<Library[]>('/api/libraries'),
+	list: async () => {
+		const libs = (await request<Library[]>('/api/libraries')).map(shown);
+		// What is unlocked holds only while this tab is seen alive (D-294).
+		syncLease(libs);
+		return libs;
+	},
 
 	create: (input: CreateLibraryInput) =>
 		request<Library>('/api/libraries', { method: 'POST', body: input }),
 
-	remove: (id: string) =>
+	remove: (id: string, secret?: Secret) =>
 		request<{ status: string }>(`/api/libraries/${encodeURIComponent(id)}`, {
-			method: 'DELETE'
+			method: 'DELETE',
+			...(secret ? { body: secret } : {})
 		}),
 
 	/** Starts a scan; while one runs the server queues one follow-up (D-286). */
 	scanStart: () => request<{ state: string; queued?: boolean }>('/api/library/scan', { method: 'POST' }),
 
 	/** The admin's order: every library id, first to last. */
-	order: (ids: string[]) => request<Library[]>('/api/libraries/order', { method: 'PUT', body: { ids } }),
+	order: async (ids: string[]) =>
+		(await request<Library[]>('/api/libraries/order', { method: 'PUT', body: { ids } })).map(shown),
 
 	scanStatus: () => request<ScanStatus>('/api/library/scan'),
 
-	update: (id: string, patch: LibraryPatch) =>
-		request<Library>(`/api/libraries/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+	update: async (id: string, patch: LibraryPatch, secret?: Secret) =>
+		shown(
+			await request<Library>(`/api/libraries/${encodeURIComponent(id)}`, {
+				method: 'PATCH',
+				body: { ...patch, ...secret }
+			})
+		),
 
 	/** Unlocks a private library for this session only. */
-	unlock: (id: string, input: UnlockInput) =>
-		request<Library>(`/api/libraries/${encodeURIComponent(id)}/unlock`, { method: 'POST', body: input }),
+	unlock: async (id: string, input: UnlockInput) => {
+		const lib = shown(
+			await request<Library>(`/api/libraries/${encodeURIComponent(id)}/unlock`, { method: 'POST', body: input })
+		);
+		holdLease();
+		return lib;
+	},
 
-	lock: (id: string) =>
-		request<Library>(`/api/libraries/${encodeURIComponent(id)}/lock`, { method: 'POST' }),
+	lock: async (id: string) =>
+		shown(await request<Library>(`/api/libraries/${encodeURIComponent(id)}/lock`, { method: 'POST' })),
 
 	/** lain-rs only; the Go server answers 404, which callers treat as "no roots". */
 	roots: () => request<{ format: string; roots: LibraryRoot[] }>('/api/roots'),

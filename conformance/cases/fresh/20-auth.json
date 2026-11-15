@@ -27,6 +27,17 @@
       {"req": {"method": "GET", "path": "/api/me", "auth": "header:Basic YWRtaW46cGFzc3dvcmQxMjM="}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
       {"req": {"method": "GET", "path": "/api/me?token=a.b.c"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
     ]},
+    {"name": "signing out ends that session on the server and no other (D-298)", "steps": [
+      {"req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "admin", "password": "password123"}},
+       "expect": {"status": 200, "body": {"token": "$nonempty"}}, "save": {"gone_token": "/token"}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "gone_token"}, "expect": {"status": 200, "body": {"id": "user-admin", "$open": true}}},
+      {"req": {"method": "POST", "path": "/api/auth/logout"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "POST", "path": "/api/auth/logout", "auth": "gone_token"}, "expect": {"status": 200, "body": {"signed_out": true}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "gone_token"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "query:gone_token"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "POST", "path": "/api/auth/logout", "auth": "gone_token"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}},
+      {"req": {"method": "GET", "path": "/api/me", "auth": "admin_token"}, "expect": {"status": 200, "body": {"id": "user-admin", "$open": true}}}
+    ]},
     {"name": "a Bearer header wins over ?token=", "steps": [
       {"req": {"method": "GET", "path": "/api/me?token={{admin_token}}", "auth": "header:Bearer garbage"}, "expect": {"status": 401, "body": {"error": "unauthorized"}}}
     ]}

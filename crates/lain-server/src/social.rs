@@ -432,16 +432,15 @@ pub(crate) fn record_progress(app: &App, user_id: &str, it: &CatalogItem, comple
 /// notification naming an item of a private library to a session that
 /// has not unlocked it (D-156).
 pub(crate) fn publish_notification(app: &App, n: &Notification) {
-    let lib = n
-        .work
-        .as_ref()
-        .filter(|w| !w.library_id.is_empty())
-        .and_then(|w| app.libraries.get(&w.library_id))
-        .filter(|l| l.private);
+    let lib = n.work.as_ref().filter(|w| !w.library_id.is_empty()).and_then(|w| app.libraries.get(&w.library_id));
     let data = json!({"id": n.id, "type": n.kind, "from_user_id": n.from_user_id});
     let to = n.user_id.clone();
     app.events.publish_where("social-notification", data, &|s| {
-        s.user_id == to && lib.as_ref().is_none_or(|l| privacy::items_visible(l, &app.unlocks, &s.user_id, &s.session))
+        s.user_id == to
+            && lib.as_ref().is_none_or(|l| {
+                let access = app.access_for(&s.user_id, s.admin);
+                privacy::items_visible(l, &app.unlocks, &access, &s.session)
+            })
     });
 }
 

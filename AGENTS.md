@@ -69,7 +69,9 @@ conformance suite it was checked against stays as the API spec.
   - `lain-ingest` — catalog population: the filesystem source, the scan
     pipeline, the `commit_scan` plan (moves D-019, missing D-068,
     locations D-157/D-186), the library watcher on `notify`, the scan
-    controller and the folder picker.
+    controller, the folder picker and the sidecar identifier
+    (`lain-identify-sidecar`: `.metadata/meta.toml` next to a file names
+    its series and episode).
   - `lain-metadata` — the metadata module: enrich (local-only for
     private libraries, D-268), the NFO provider,
     the network providers (Kitsu, AniList, Jikan, TVMaze, in-process,
@@ -291,6 +293,15 @@ apps/android/lain-ffi/Cargo.toml`), Kotlin compiles only in CI (the
    bad input; never silent failures — log or propagate.
 4. Small slices. Do not implement transcode/metadata/matrix-daemon mode
    "while here"; contracts for those are reserved, not started.
+5. Deploy to the owner's instance. The owner reports what they hit in
+   daily use of their own Lain (the `hq-lain` container on :9360), so a
+   fix is not done until it runs there. After a server change is
+   finished and checked (tests, fmt, clippy green), run
+   `just prod-deploy` without asking, then confirm it is up
+   (`docker ps`, `curl http://127.0.0.1:9360/health`) and, when the
+   report was about observable behavior, check the fix in its logs or
+   UI. The restart drops running playback sessions; say so in the
+   report. Never deploy a red or unchecked tree.
 
 ## Boundaries (load-bearing)
 

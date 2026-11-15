@@ -72,6 +72,20 @@ describe('routeRedirect', () => {
 			})
 		).toBeNull();
 	});
+
+	it('lets a manager into the libraries page and nothing else of the server', () => {
+		const state = { ...base, authenticated: true, admin: false, manager: true };
+		expect(routeRedirect({ ...state, pathname: '/settings/libraries' })).toBeNull();
+		expect(routeRedirect({ ...state, pathname: '/settings/downloads' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/settings/indexers' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/settings/acquisition' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/acquire' })).toBe('/');
+		expect(routeRedirect({ ...state, pathname: '/settings/users' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/settings/transcoding' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/settings/integrations' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/settings/plugins' })).toBe('/settings/profile');
+		expect(routeRedirect({ ...state, pathname: '/settings/backup' })).toBe('/settings/profile');
+	});
 });
 
 describe('admin gating helpers', () => {
@@ -96,7 +110,9 @@ describe('admin gating helpers', () => {
 
 	it('only the admin role passes', () => {
 		expect(canAccessAdmin('admin')).toBe(true);
+		expect(canAccessAdmin('manager')).toBe(false);
 		expect(canAccessAdmin('user')).toBe(false);
+		expect(canAccessAdmin('root')).toBe(false);
 		expect(canAccessAdmin(undefined)).toBe(false);
 	});
 });

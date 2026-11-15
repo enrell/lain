@@ -1,0 +1,2116 @@
+{
+  "tier": "v2",
+  "description": "D-296: the manager role renames and orders the libraries it can see and starts scans. Everything else stays the admin's: creating or removing a library, its folder, privacy, members and audience, the folder picker, roots, acquisition, downloads, indexers, subtitles, users, plugins, backup, integrations, transcoding, item deletion and metadata. D-295 still restricts a manager, and a private library it is not a member of does not exist for it.",
+  "cases": [
+    {
+      "name": "an admin can create a manager, and only a known role",
+      "requires": [
+        "lib_id",
+        "media_root"
+      ],
+      "steps": [
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/users",
+            "auth": "a0",
+            "body": {
+              "username": "mina",
+              "password": "minapassword",
+              "role": "manager"
+            }
+          },
+          "expect": {
+            "status": 201,
+            "body": {
+              "id": "user-mina",
+              "username": "mina",
+              "role": "manager",
+              "$open": true
+            }
+          },
+          "save": {
+            "mina_id": "/id"
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/auth/login",
+            "body": {
+              "username": "mina",
+              "password": "minapassword"
+            }
+          },
+          "expect": {
+            "status": 200
+          },
+          "save": {
+            "m0": "/token"
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/me",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "id": "user-mina",
+              "role": "manager",
+              "$open": true
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/users",
+            "auth": "a0",
+            "body": {
+              "username": "nope",
+              "password": "nopepassword",
+              "role": "root"
+            }
+          },
+          "expect": {
+            "status": 400,
+            "body": {
+              "error": "unknown role"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a manager may rename and order libraries and start scans, and nothing else about them",
+      "requires": [
+        "lib_id",
+        "media_root",
+        "m0",
+        "mina_id"
+      ],
+      "steps": [
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/libraries",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 200,
+            "body": [
+              {
+                "id": "{{lib_id}}",
+                "$open": true
+              }
+            ]
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/libraries",
+            "auth": "m0",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0",
+            "body": {
+              "audience": "nope"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/libraries/lib-ghost",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/libraries/order",
+            "auth": "m0",
+            "body": {
+              "ids": [
+                "{{lib_id}}"
+              ]
+            }
+          },
+          "expect": {
+            "status": 200,
+            "body": [
+              {
+                "id": "{{lib_id}}",
+                "$open": true
+              }
+            ]
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/roots",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/browse?path={{media_root}}",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/library/scan",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/library/scan",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 202,
+            "body": {
+              "state": "running",
+              "$open": true
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/modules",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0",
+            "body": {
+              "name": "Anime"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "id": "{{lib_id}}",
+              "name": "Anime",
+              "$open": true
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0",
+            "body": {
+              "path": "{{media_root}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0",
+            "body": {
+              "private": true
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0",
+            "body": {
+              "owner": "{{mina_id}}"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0",
+            "body": {
+              "members": [
+                "{{mina_id}}"
+              ]
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0",
+            "body": {
+              "audience": "everyone"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0",
+            "body": {
+              "name": "X",
+              "audience": "mature"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "acquisition, downloads, indexers and subtitles stay the admin's",
+      "requires": [
+        "item1",
+        "m0"
+      ],
+      "steps": [
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/settings",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/acquire/settings",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/indexers",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/indexers",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/indexers/probe",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/indexers/discover",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/indexers/import",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/acquire/indexers/nope",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/acquire/indexers/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/indexers/nope/test",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/search?q=frieren",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/parse?name=Show.S01E01",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/grabs",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/grabs",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/grabs/nope/cancel",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/acquire/grabs/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/profiles",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/profiles",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/acquire/profiles/nope",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/acquire/profiles/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/monitored",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/monitored",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/monitored/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/acquire/monitored/nope",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/acquire/monitored/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/monitored/nope/wanted",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/monitored/nope/search",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/monitored/nope/subtitles",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/monitored/nope/subtitles",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/wanted",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/rss",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/automation",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/blocklist",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/acquire/blocklist/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/replaced",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/replaced/purge",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/subtitle-providers",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/subtitle-providers",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/acquire/subtitle-providers/nope",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/acquire/subtitle-providers/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/items/{{item1}}/subtitles/status",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/acquire/items/{{item1}}/subtitles",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/acquire/items/{{item1}}/sidecars/no-such-sidecar",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/subtitles",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/subtitle-refusals",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/acquire/subtitle-refusals",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/acquire/subtitle-refusals/nope/no-file",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/downloads",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/downloads",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/downloads/settings",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/downloads/settings",
+            "auth": "m0",
+            "body": []
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/downloads/cleanup",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/downloads/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/downloads/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/downloads/nope/pause",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/items/{{item1}}/sidecars/0/translate",
+            "auth": "m0",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/subtitle-translations/nope/job",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/subtitle-translations/nope/job",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a manager may not hold the server keys, nor change any account",
+      "requires": [
+        "item1",
+        "mina_id",
+        "m0"
+      ],
+      "steps": [
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/users",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/users",
+            "auth": "m0",
+            "body": {
+              "username": "x",
+              "password": "xpassword",
+              "role": "admin"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/users/{{mina_id}}",
+            "auth": "m0",
+            "body": {
+              "role": "admin"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/users/user-admin",
+            "auth": "m0",
+            "body": {
+              "role": "user"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/users/user-bob",
+            "auth": "m0",
+            "body": {
+              "disabled": true
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/users/user-bob",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/plugins",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/plugins/swap",
+            "auth": "m0",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/plugins/withdraw",
+            "auth": "m0",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/admin/backup",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/admin/settings/transcode",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/admin/settings/transcode",
+            "auth": "m0",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/admin/transcodes",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/admin/transcodes/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/admin/settings/integrations",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/admin/settings/integrations",
+            "auth": "m0",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/integrations",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/integrations",
+            "auth": "m0",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/integrations/nope",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/items/{{item1}}",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/catalog/{{item1}}/enrich",
+            "auth": "m0",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/catalog/{{item1}}/enrich",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/me",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "id": "user-mina",
+              "role": "manager",
+              "$open": true
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/me",
+            "auth": "b0"
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "id": "user-bob",
+              "role": "user",
+              "disabled": false,
+              "$open": true
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/me",
+            "auth": "a0"
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "id": "user-admin",
+              "role": "admin",
+              "$open": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an ordinary account still may not do what a manager may",
+      "requires": [
+        "lib_id",
+        "item1",
+        "media_root"
+      ],
+      "steps": [
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/libraries",
+            "auth": "b0",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "b0",
+            "body": {
+              "name": "no"
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "b0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/libraries/order",
+            "auth": "b0",
+            "body": {
+              "ids": [
+                "{{lib_id}}"
+              ]
+            }
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/roots",
+            "auth": "b0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/browse?path={{media_root}}",
+            "auth": "b0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/library/scan",
+            "auth": "b0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/settings",
+            "auth": "b0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/acquire/indexers",
+            "auth": "b0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/downloads",
+            "auth": "b0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/items/{{item1}}/sidecars/0/translate",
+            "auth": "b0",
+            "body": {}
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a manager is still limited by its allow-list and audience",
+      "requires": [
+        "lib_id",
+        "media_root",
+        "mina_id",
+        "m0"
+      ],
+      "steps": [
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/users/{{mina_id}}",
+            "auth": "a0",
+            "body": {
+              "libraries": [
+                "{{lib_id}}"
+              ]
+            }
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "id": "{{mina_id}}",
+              "libraries": [
+                "{{lib_id}}"
+              ],
+              "$open": true
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/libraries",
+            "auth": "a0",
+            "body": {
+              "name": "Spare",
+              "path": "{{media_root}}"
+            }
+          },
+          "expect": {
+            "status": 201,
+            "body": {
+              "name": "Spare",
+              "$open": true
+            }
+          },
+          "save": {
+            "spare": "/id"
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/libraries",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 200,
+            "body": [
+              {
+                "id": "{{lib_id}}",
+                "$open": true
+              }
+            ]
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{spare}}",
+            "auth": "m0",
+            "body": {
+              "name": "Seen"
+            }
+          },
+          "expect": {
+            "status": 404,
+            "body": {
+              "error": "unknown library"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/libraries/{{spare}}",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 403,
+            "body": {
+              "error": "admin required"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/libraries/order",
+            "auth": "m0",
+            "body": {
+              "ids": [
+                "{{spare}}"
+              ]
+            }
+          },
+          "expect": {
+            "status": 404,
+            "body": {
+              "error": "unknown library {{spare}}"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/libraries/order",
+            "auth": "m0",
+            "body": {
+              "ids": []
+            }
+          },
+          "expect": {
+            "status": 400,
+            "body": {
+              "error": "every library must be listed"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/libraries/order",
+            "auth": "m0",
+            "body": {
+              "ids": [
+                "{{lib_id}}",
+                "{{lib_id}}"
+              ]
+            }
+          },
+          "expect": {
+            "status": 400,
+            "body": {
+              "error": "{{lib_id}} is listed twice"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/libraries/order",
+            "auth": "m0",
+            "body": {
+              "ids": [
+                "{{lib_id}}"
+              ]
+            }
+          },
+          "expect": {
+            "status": 200,
+            "body": [
+              {
+                "id": "{{lib_id}}",
+                "$open": true
+              }
+            ]
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/libraries",
+            "auth": "a0"
+          },
+          "expect": {
+            "status": 200,
+            "body": [
+              {
+                "id": "{{lib_id}}",
+                "name": "Anime",
+                "$open": true
+              },
+              {
+                "id": "{{spare}}",
+                "name": "Spare",
+                "$open": true
+              }
+            ]
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/users/{{mina_id}}",
+            "auth": "a0",
+            "body": {
+              "libraries": null,
+              "max_audience": "everyone"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "libraries": "$absent",
+              "max_audience": "everyone",
+              "$open": true
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{spare}}",
+            "auth": "a0",
+            "body": {
+              "audience": "mature"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "id": "{{spare}}",
+              "audience": "mature",
+              "$open": true
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/libraries",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 200,
+            "body": [
+              {
+                "id": "{{lib_id}}",
+                "$open": true
+              }
+            ]
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{spare}}",
+            "auth": "m0",
+            "body": {
+              "name": "Seen"
+            }
+          },
+          "expect": {
+            "status": 404,
+            "body": {
+              "error": "unknown library"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/libraries",
+            "auth": "a0"
+          },
+          "expect": {
+            "status": 200,
+            "body": [
+              {
+                "id": "{{lib_id}}",
+                "$open": true
+              },
+              {
+                "id": "{{spare}}",
+                "audience": "mature",
+                "$open": true
+              }
+            ]
+          }
+        },
+        {
+          "req": {
+            "method": "DELETE",
+            "path": "/api/libraries/{{spare}}",
+            "auth": "a0"
+          },
+          "expect": {
+            "status": 200
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/users/{{mina_id}}",
+            "auth": "a0",
+            "body": {
+              "max_audience": "mature"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "id": "{{mina_id}}",
+              "libraries": "$absent",
+              "max_audience": "$absent",
+              "$open": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a private library it is not a member of does not exist for a manager",
+      "requires": [
+        "lib_id",
+        "m0",
+        "c1"
+      ],
+      "steps": [
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "a0",
+            "body": {
+              "private": true
+            }
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "id": "{{lib_id}}",
+              "private": true,
+              "locked": true,
+              "name": "",
+              "owner": "user-admin",
+              "$open": true
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "GET",
+            "path": "/api/libraries",
+            "auth": "m0"
+          },
+          "expect": {
+            "status": 200,
+            "body": []
+          }
+        },
+        {
+          "req": {
+            "method": "POST",
+            "path": "/api/libraries/{{lib_id}}/unlock",
+            "auth": "m0",
+            "body": {
+              "password": "minapassword"
+            }
+          },
+          "expect": {
+            "status": 404,
+            "body": {
+              "error": "unknown library"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0",
+            "body": {
+              "name": "Mine"
+            }
+          },
+          "expect": {
+            "status": 404,
+            "body": {
+              "error": "unknown library"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "m0",
+            "body": {
+              "name": "Mine",
+              "password": "minapassword"
+            }
+          },
+          "expect": {
+            "status": 404,
+            "body": {
+              "error": "unknown library"
+            }
+          }
+        },
+        {
+          "req": {
+            "method": "PUT",
+            "path": "/api/libraries/order",
+            "auth": "m0",
+            "body": {
+              "ids": [
+                "{{lib_id}}"
+              ]
+            }
+          },
+          "expect": {
+            "status": 404
+          }
+        },
+        {
+          "req": {
+            "method": "PATCH",
+            "path": "/api/libraries/{{lib_id}}",
+            "auth": "c1",
+            "body": {
+              "private": false,
+              "password": "carolpassword"
+            }
+          },
+          "expect": {
+            "status": 200,
+            "body": {
+              "id": "{{lib_id}}",
+              "name": "Anime",
+              "private": "$absent",
+              "locked": "$absent",
+              "owner": "$absent",
+              "$open": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

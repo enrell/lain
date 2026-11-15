@@ -8,10 +8,11 @@
 //! | `library-changed`  | `{library_id, action, items_removed?}`       | everyone    |
 //! | `library-changed` `scanned` | `{library_id, action, items, missing, restored, migrated}` | who sees the library |
 //! | `library-changed` `item-deleted` | `{library_id, action, item_id}` | who sees the library |
-//! | `scan-state`       | `{state, trigger, libraries, libraries_done, stats?, error?}` | everyone (private unreadable roots: admins) |
+//! | `scan-state`       | `{state, trigger, libraries, libraries_done, stats?, error?}` | everyone; unreadable roots only for libraries that session may see (the full list: admins) |
 //! | `progress-changed` | `{item_id, progress}`                        | that user   |
-//! | `library-changed` of a private library | (same)                   | admins and members |
+//! | `library-changed` of a private library | (same)                   | admins, managers who may see it, and members |
 //! | `plugin-changed`   | `{provider, action}`                         | admins      |
+//! | `grab-changed`, `download-changed` | the job                               | admins and managers |
 //! | `transcode-changed`| `{session, state, item_id}` (D-193)          | its owner and admins |
 //!
 //! Events about items of a private library reach only sessions that
@@ -35,6 +36,8 @@ use tokio::sync::mpsc;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Scope {
     All,
+    /// Administrator only: plugin changes, the unfiltered scan stats,
+    /// another account's transcode.
     Admins,
     User(String),
 }
@@ -44,6 +47,8 @@ pub enum Scope {
 pub struct SubInfo {
     pub user_id: String,
     pub admin: bool,
+    /// The `manager` role. Not an admin: it does not receive [`Scope::Admins`].
+    pub manager: bool,
     /// The token's session (private-library unlocks are per session).
     pub session: String,
 }
@@ -90,6 +95,18 @@ impl EventBus {
         });
     }
 
+    /// One frame per subscriber `f` returns data for. `None` keeps the
+    /// subscriber and sends nothing, so a scan can carry each account's
+    /// own visible stats without a second shared payload.
+    pub fn publish_each(&self, event: &str, f: &dyn Fn(&SubInfo) -> Option<Value>) {
+        let id = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
+        let mut subs = self.subs.lock().unwrap_or_else(|e| e.into_inner());
+        subs.retain(|s| match f(&s.info) {
+            None => true,
+            Some(data) => s.tx.try_send(frame(id, event, &data)).is_ok(),
+        });
+    }
+
     /// Delivers to the streams `keep` accepts (privacy filters, D-156).
     pub fn publish_where(&self, event: &str, data: Value, keep: &dyn Fn(&SubInfo) -> bool) {
         let id = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
@@ -118,13 +135,29 @@ pub struct SseBody {
     rx: mpsc::Receiver<Bytes>,
     tick: tokio::time::Interval,
     still_valid: Check,
+    on_close: Option<Box<dyn FnOnce() + Send + Sync>>,
+}
+
+impl Drop for SseBody {
+    fn drop(&mut self) {
+        if let Some(f) = self.on_close.take() {
+            f();
+        }
+    }
 }
 
 impl SseBody {
     pub fn new(rx: mpsc::Receiver<Bytes>, keep_alive: Duration, still_valid: Check) -> Self {
         let mut tick = tokio::time::interval_at(tokio::time::Instant::now() + keep_alive, keep_alive);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        SseBody { rx, tick, still_valid }
+        SseBody { rx, tick, still_valid, on_close: None }
+    }
+
+    /// Runs `f` once when the stream ends, however it ends (the client
+    /// went away, the token died, shutdown).
+    pub fn on_close(mut self, f: impl FnOnce() + Send + Sync + 'static) -> Self {
+        self.on_close = Some(Box::new(f));
+        self
     }
 }
 
@@ -159,7 +192,8 @@ mod tests {
     #[test]
     fn scopes_and_slow_clients() {
         let bus = EventBus::new();
-        let info = |u: &str, admin: bool| SubInfo { user_id: u.into(), admin, session: format!("s-{u}") };
+        let info =
+            |u: &str, admin: bool| SubInfo { user_id: u.into(), admin, manager: false, session: format!("s-{u}") };
         let mut a = bus.subscribe(info("u1", false), &json!({}));
         let mut admin = bus.subscribe(info("u2", true), &json!({}));
         assert!(String::from_utf8_lossy(&a.try_recv().unwrap()).contains("event: ready"));
@@ -179,5 +213,31 @@ mod tests {
         }
         drop(admin);
         assert_eq!(bus.subscribers(), 0);
+    }
+
+    #[test]
+    fn admin_events_do_not_reach_a_manager() {
+        let bus = EventBus::new();
+        let mut manager = bus
+            .subscribe(SubInfo { user_id: "m".into(), admin: false, manager: true, session: "s-m".into() }, &json!({}));
+        let mut user = bus.subscribe(
+            SubInfo { user_id: "u".into(), admin: false, manager: false, session: "s-u".into() },
+            &json!({}),
+        );
+        manager.try_recv().unwrap();
+        user.try_recv().unwrap();
+        // Acquisition and downloads are the admin's (D-296): their events too.
+        bus.publish(Scope::Admins, "plugin-changed", json!({}));
+        bus.publish(Scope::Admins, "grab-changed", json!({"id": "g"}));
+        assert!(manager.try_recv().is_err());
+        assert!(user.try_recv().is_err());
+        // Per-subscriber payloads: the manager's frame is not the user's.
+        bus.publish_each("scan-state", &|s| {
+            if s.manager { Some(json!({"state": "done", "mine": true})) } else { Some(json!({"state": "done"})) }
+        });
+        let mgr = String::from_utf8_lossy(&manager.try_recv().unwrap()).into_owned();
+        let usr = String::from_utf8_lossy(&user.try_recv().unwrap()).into_owned();
+        assert!(mgr.contains("\"mine\":true"), "{mgr}");
+        assert!(!usr.contains("mine"), "{usr}");
     }
 }
