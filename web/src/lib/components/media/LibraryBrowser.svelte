@@ -446,6 +446,7 @@
 		{ keys: ['/'], label: searchLabel || t('pageKeys.librarySearch') },
 		{ keys: ['↑', '↓', '←', '→'], label: t('pageKeys.gridMove') },
 		{ keys: ['F'], label: t('pageKeys.filters') },
+		{ keys: ['X'], label: t('pageKeys.hideGenre') },
 		...(narrowed ? [{ keys: ['C'], label: t('pageKeys.clearFilters') }] : []),
 		...(scrollY > 400 ? [{ keys: ['T'], label: t('pageKeys.toTop') }] : []),
 		...(backHref ? [{ keys: ['Backspace'], label: t('pageKeys.back') }] : [])
@@ -492,7 +493,7 @@
 		class={[
 			// As wide as a genre's row beside its hide button (44 px, 28 on a wide screen,
 			// plus the gap), so every count in the panel stands in one column.
-			'flex min-h-11 w-[calc(100%-2.875rem)] items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition-colors disabled:opacity-35 lg:min-h-0 lg:w-[calc(100%-1.875rem)]',
+			'flex min-h-11 w-[calc(100%-2.875rem)] items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition-colors disabled:text-dim lg:min-h-0 lg:w-[calc(100%-1.875rem)]',
 			on ? 'bg-accent/15 text-foreground' : 'text-muted hover:bg-surface-hover hover:text-foreground'
 		].join(' ')}
 		onclick={pick}
@@ -646,7 +647,15 @@
 									'flex min-h-11 min-w-0 flex-1 items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition-colors lg:min-h-0',
 									want ? 'bg-accent/15 text-foreground' : not ? 'text-muted/60 line-through' : 'text-muted hover:bg-surface-hover hover:text-foreground'
 								].join(' ')}
+								aria-keyshortcuts="x"
 								onclick={() => genre(g.value, 'want')}
+								onkeydown={(e) => {
+									// X on a genre hides it (or shows it again): the hide button beside it
+									// is a pointer's, out of the Tab order, so the rail is one stop a genre.
+									if (e.key.toLowerCase() !== 'x' || e.ctrlKey || e.metaKey || e.altKey) return;
+									e.preventDefault();
+									genre(g.value, 'not');
+								}}
 							>
 								<!-- A square that fills: several genres can be picked together. -->
 								<span class="flex min-w-0 items-center gap-2.5">
@@ -659,6 +668,7 @@
 								type="button"
 								aria-pressed={not}
 								aria-label={not ? `Stop hiding ${g.value}` : `Hide ${g.value}`}
+								tabindex={-1}
 								title={not ? 'Stop hiding' : 'Hide titles with this genre'}
 								class={[
 									'flex size-11 shrink-0 items-center justify-center rounded-md text-base transition-opacity hover:bg-surface-hover hover:text-foreground lg:size-7 lg:text-sm',

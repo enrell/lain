@@ -115,7 +115,7 @@
 					</a>
 				</h2>
 				{#if shelf && !shelf.failed}
-					<a href={`/library/${lib.id}`} class="inline-flex min-h-6 shrink-0 items-center gap-1 text-sm text-foreground/70 transition-colors hover:text-foreground">
+					<a href={`/library/${lib.id}`} class="inline-flex min-h-11 shrink-0 items-center gap-1 md:min-h-6 text-sm text-foreground/70 transition-colors hover:text-foreground">
 						{t('library.viewAll')} <ChevronRight class="size-3.5" aria-hidden="true" />
 					</a>
 				{/if}

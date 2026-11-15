@@ -19,11 +19,13 @@
 	$effect(() => {
 		if (shortcutsDialog.open) railHere = [...document.querySelectorAll('#main .snap-x')].some((el) => getComputedStyle(el).overflowX === 'auto' && el.childElementCount > 1);
 	});
-	const here = $derived<KeyHint[]>([...pageKeys.rows, ...(railHere ? [{ keys: ['←', '→'], label: t('shortcuts.rail') }] : [])]);
+	const here = $derived<KeyHint[]>([...pageKeys.rows, ...(railHere ? [{ keys: ['←', '→', '↑', '↓'], label: t('shortcuts.rail') }] : [])]);
 	// A page with a filter of its own takes `/`; its row says what the key finds there.
 	const everywhere = $derived<KeyHint[]>([
 		...(pageKeys.has('/') ? [] : [{ keys: ['/'], label: t('shortcuts.search') }]),
 		{ keys: ['Ctrl', 'K'], label: t('shortcuts.quickFind') },
+		{ keys: ['g', '1…9'], label: t('shortcuts.goPage') },
+		{ keys: ['g', 'a…z'], label: t('shortcuts.goSettings') },
 		{ keys: ['Esc'], label: t('shortcuts.escape') },
 		{ keys: ['?'], label: t('shortcuts.help') }
 	]);

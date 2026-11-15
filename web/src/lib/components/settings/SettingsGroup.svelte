@@ -9,6 +9,7 @@
 	 */
 	import type { Snippet } from 'svelte';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import AccentTitle from '$lib/components/primitives/AccentTitle.svelte';
 
 	let {
 		id,
@@ -35,7 +36,7 @@
 {#snippet heading()}
 	<div class="min-w-0">
 		<h2 class="section-title flex items-center gap-2">
-			{title}
+			<span><AccentTitle text={title} /></span>
 			{#if collapsible}
 				<ChevronDown class="size-4 shrink-0 text-muted transition-transform group-open/settings:rotate-180" aria-hidden="true" />
 			{/if}

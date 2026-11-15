@@ -32,7 +32,7 @@
 	<DropdownMenu.Trigger
 		class={[
 			'flex items-center gap-2 rounded-full text-left transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-accent',
-			compact ? 'p-1' : 'w-full px-2 py-2'
+			compact ? 'p-1.5 md:p-1' : 'w-full px-2 py-2'
 		].join(' ')}
 		aria-label={t('nav.accountMenu')}
 	>

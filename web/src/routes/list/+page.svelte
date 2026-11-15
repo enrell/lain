@@ -240,13 +240,14 @@
 			{#if mediaOptions.length > 1}
 				<Segmented options={mediaOptions} value={media} label={t('tracking.media.label')} size="sm" onchange={pickMedia} />
 			{/if}
-			<div class="flex flex-wrap items-center gap-2" role="group" aria-label={t('tracking.statusFilter')}>
+			<!-- On a phone the statuses are one row that scrolls sideways, not four rows above the covers. -->
+			<div class="no-scrollbar flex items-center gap-2 max-sm:-mx-5 max-sm:w-[calc(100%+2.5rem)] max-sm:overflow-x-auto max-sm:px-5 max-sm:[mask-image:linear-gradient(to_right,black_82%,transparent)] sm:flex-wrap" role="group" aria-label={t('tracking.statusFilter')}>
 				{#each lists as l (l.id)}
 					<button
 						type="button"
 						aria-pressed={status === l.id}
 						class={[
-							'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors',
+							'inline-flex min-h-11 shrink-0 items-center gap-1.5 sm:min-h-9 whitespace-nowrap rounded-full border px-3.5 text-sm font-medium transition-colors',
 							status === l.id
 								? 'border-accent bg-accent/15 text-foreground'
 								: 'border-line bg-surface/60 text-muted hover:text-foreground'

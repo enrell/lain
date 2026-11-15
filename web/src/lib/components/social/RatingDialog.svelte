@@ -90,7 +90,7 @@
 <Modal bind:open title={t('social.rate.title', { title })} description={t('social.rate.description')}>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div onkeydown={onKey} class="space-y-4">
-		<div bind:this={scores} class="grid grid-cols-10 gap-1" role="group" aria-label={t('social.rate.score')}>
+		<div bind:this={scores} class="grid grid-cols-5 gap-1.5 sm:grid-cols-10 sm:gap-1" role="group" aria-label={t('social.rate.score')}>
 			{#each Array.from({ length: 10 }, (_, i) => i + 1) as n (n)}
 				<button
 					type="button"
@@ -98,7 +98,7 @@
 					aria-pressed={score === n}
 					aria-label={t('social.score', { score: n })}
 					onclick={() => (score = score === n ? 0 : n)}
-					class="h-9 rounded-md border font-mono text-sm transition-colors {score >= n && score > 0
+					class="h-11 rounded-md border font-mono text-sm sm:h-9 transition-colors {score >= n && score > 0
 						? 'border-accent bg-accent/15 text-foreground'
 						: 'border-hairline text-muted hover:text-foreground'}"
 				>
@@ -106,7 +106,8 @@
 				</button>
 			{/each}
 		</div>
-		<p class="font-mono text-[10px] text-muted">{t('social.rate.keys')}</p>
+		<!-- Keys only where there is a keyboard. -->
+		<p class="font-mono text-[10px] text-muted [@media(hover:none)_and_(pointer:coarse)]:hidden">{t('social.rate.keys')}</p>
 		<label class="block space-y-1.5">
 			<span class="text-xs text-muted">{t('social.rate.review')}</span>
 			<textarea bind:value={review} maxlength="2000" rows="5" class={FIELD} placeholder={t('social.rate.reviewPlaceholder')}></textarea>
