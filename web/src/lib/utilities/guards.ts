@@ -3,6 +3,8 @@
  * without mounting SvelteKit.
  */
 
+import { isAdminRole } from '$lib/auth/roles';
+
 export interface GuardState {
 	ready: boolean;
 	setupRequired: boolean;
@@ -11,6 +13,8 @@ export interface GuardState {
 	freshSetup: boolean;
 	/** True when the signed-in user has the admin role. */
 	admin: boolean;
+	/** True when the signed-in user has the manager role (not admin). */
+	manager?: boolean;
 	pathname: string;
 }
 
@@ -39,7 +43,9 @@ export function routeRedirect(state: GuardState): string | null {
 	// admin's, and bouncing between the two never settled.
 	// Acquire is not a settings page: an account without it lands on Home,
 	// not on its own profile with no word of why.
-	if (isAdminRoute(pathname) && !admin) return pathname.startsWith('/settings') ? ACCOUNT_SETTINGS : '/';
+	if (!routeAllowed(pathname, admin, state.manager ?? false)) {
+		return pathname.startsWith('/settings') ? ACCOUNT_SETTINGS : '/';
+	}
 	return null;
 }
 
@@ -63,8 +69,26 @@ export function isAdminRoute(pathname: string): boolean {
 	return ADMIN_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
 }
 
+/**
+ * Sections a manager may open: the libraries page, where it renames,
+ * orders and scans. Everything else on the server stays admin-only
+ * (D-296).
+ */
+export const MANAGER_ROUTES = ['/settings/libraries'] as const;
+
+export function isManagerRoute(pathname: string): boolean {
+	return MANAGER_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'));
+}
+
+/** Whether this role may open the path. Ordinary accounts never open a server route. */
+export function routeAllowed(pathname: string, admin: boolean, manager: boolean): boolean {
+	if (!isAdminRoute(pathname)) return true;
+	if (admin) return true;
+	return manager && isManagerRoute(pathname);
+}
+
 export function canAccessAdmin(role: string | undefined | null): boolean {
-	return role === 'admin';
+	return isAdminRole(role);
 }
 
 /**

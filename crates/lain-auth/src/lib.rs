@@ -18,7 +18,14 @@ use serde::{Deserialize, Serialize};
 use lain_store::{Bucket, Store, StoreError};
 
 pub const ROLE_ADMIN: &str = "admin";
+pub const ROLE_MANAGER: &str = "manager";
 pub const ROLE_USER: &str = "user";
+
+/// `admin`, `manager` or `user`. Anything else is refused at create and
+/// at a role change, so a stored record keeps decoding either way.
+pub fn known_role(role: &str) -> bool {
+    role == ROLE_ADMIN || role == ROLE_MANAGER || role == ROLE_USER
+}
 
 /// Token lifetime.
 pub const TOKEN_TTL_SECS: i64 = 24 * 3600;
@@ -70,6 +77,16 @@ pub struct User {
     pub playback: PlaybackPolicy,
     #[serde(default)]
     pub profile: Profile,
+    /// Per-account library allow-list (`None` = every library; `Some([])` = none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub libraries: Option<Vec<String>>,
+    /// Highest audience level this account may see (`""` = `"mature"`).
+    #[serde(default, skip_serializing_if = "is_default_max_audience")]
+    pub max_audience: String,
+}
+
+fn is_default_max_audience(v: &str) -> bool {
+    v.is_empty() || v == lain_api::AUDIENCE_MATURE
 }
 
 impl User {
@@ -102,6 +119,16 @@ impl User {
         self.preferred_language = t.legacy_language().to_string();
     }
 
+    /// Effective audience ceiling (`"mature"` when unset).
+    pub fn effective_max_audience(&self) -> &'static str {
+        if self.max_audience.is_empty() {
+            lain_api::AUDIENCE_MATURE
+        } else {
+            // Not a level: fail closed.
+            lain_api::normalize_audience(&self.max_audience).unwrap_or(lain_api::AUDIENCE_EVERYONE)
+        }
+    }
+
     fn password_ok(&self, password: &str) -> bool {
         self.pass_hash.as_deref().is_some_and(|h| verify_password(password, h))
     }
@@ -122,6 +149,12 @@ pub struct Verified {
 impl Verified {
     pub fn is_admin(&self) -> bool {
         self.role == ROLE_ADMIN
+    }
+
+    /// Looks after libraries and acquisition. Not exempt from per-account
+    /// visibility (D-295); that exemption is [`Self::is_admin`] only.
+    pub fn is_manager(&self) -> bool {
+        self.role == ROLE_MANAGER
     }
 }
 
@@ -171,6 +204,19 @@ struct Tombstone {
 
 fn tombstone_key(id: &str) -> Vec<u8> {
     format!("deleted-user\0{id}").into_bytes()
+}
+
+/// A signed-out session: the token's `jti`, kept until the token would
+/// have expired anyway (D-298).
+#[derive(Serialize, Deserialize)]
+struct Revoked {
+    exp: i64,
+}
+
+const REVOKED_PREFIX: &[u8] = b"revoked-session\0";
+
+fn revoked_key(session: &str) -> Vec<u8> {
+    [REVOKED_PREFIX, session.as_bytes()].concat()
 }
 
 fn msg(m: &str) -> AuthError {
@@ -306,7 +352,7 @@ impl<'s> Auth<'s> {
         if username.is_empty() || password.len() < 8 {
             return Err(msg("username required, password >= 8 chars"));
         }
-        if role != ROLE_ADMIN && role != ROLE_USER {
+        if !known_role(role) {
             return Err(msg("unknown role"));
         }
         let hash = hash_password(password)?;
@@ -421,15 +467,33 @@ impl<'s> Auth<'s> {
     }
 
     /// Changes the role; the token's role is re-read live on Verify.
+    /// The last enabled admin cannot become anything else: a server with
+    /// no admin can no longer create accounts or restore that role.
     pub fn set_role(&self, id: &str, role: &str) -> Result<(), AuthError> {
-        if role != ROLE_ADMIN && role != ROLE_USER {
+        if !known_role(role) {
             return Err(msg("unknown role"));
         }
-        self.update(id, |u| {
-            u.role = role.to_string();
-            Ok(())
-        })
-        .map(|_| ())
+        self.store
+            .write(|tx| {
+                let Some(mut u) = tx.get_json::<User>(Bucket::Users, id.as_bytes())? else {
+                    return Err(abort("unknown user"));
+                };
+                if u.role == ROLE_ADMIN && role != ROLE_ADMIN && !u.disabled {
+                    let admins = tx
+                        .all(Bucket::Users)?
+                        .iter()
+                        .filter_map(|(_, v)| serde_json::from_slice::<User>(v).ok())
+                        .filter(|o| o.role == ROLE_ADMIN && !o.disabled)
+                        .count();
+                    if admins <= 1 {
+                        return Err(abort("cannot demote the last admin"));
+                    }
+                }
+                u.role = role.to_string();
+                tx.put_json(Bucket::Users, id.as_bytes(), &u)
+            })
+            .map_err(AuthError::from)?;
+        Ok(())
     }
 
     pub fn set_playback(&self, id: &str, policy: PlaybackPolicy) -> Result<(), AuthError> {
@@ -448,6 +512,55 @@ impl<'s> Auth<'s> {
             Ok(())
         })
         .map(|_| ())
+    }
+
+    /// Sets the account's allowed library ids (`None` clears back to all
+    /// libraries; `Some(vec![])` allows none).
+    pub fn set_libraries(&self, id: &str, libraries: Option<Vec<String>>) -> Result<(), AuthError> {
+        let cleaned = libraries.map(|ids| {
+            let mut out = Vec::with_capacity(ids.len());
+            for lid in ids {
+                if !lid.is_empty() && !out.contains(&lid) {
+                    out.push(lid);
+                }
+            }
+            out
+        });
+        self.update(id, |u| {
+            u.libraries = cleaned.clone();
+            Ok(())
+        })
+        .map(|_| ())
+    }
+
+    /// Sets the account's audience ceiling (`everyone`, `teen`, or `mature`).
+    pub fn set_max_audience(&self, id: &str, audience: &str) -> Result<(), AuthError> {
+        let Some(norm) = lain_api::normalize_audience(audience) else {
+            return Err(msg("max_audience must be everyone, teen or mature"));
+        };
+        let stored = if norm == lain_api::AUDIENCE_MATURE { String::new() } else { norm.to_string() };
+        self.update(id, |u| {
+            u.max_audience = stored.clone();
+            Ok(())
+        })
+        .map(|_| ())
+    }
+
+    /// Drops a deleted library id from every user's allow-list, keeping an
+    /// explicit empty list (`Some([])`) intact rather than resetting to `None`.
+    pub fn remove_library_from_users(&self, library_id: &str) -> Result<(), AuthError> {
+        let users = self.list()?;
+        for u in users {
+            if u.libraries.as_ref().is_some_and(|libs| libs.iter().any(|x| x == library_id)) {
+                self.update(&u.id, |user| {
+                    if let Some(libs) = &mut user.libraries {
+                        libs.retain(|x| x != library_id);
+                    }
+                    Ok(())
+                })?;
+            }
+        }
+        Ok(())
     }
 
     /// Sets D-071's one language (an older client): both D-280
@@ -631,6 +744,27 @@ impl<'s> Auth<'s> {
         self.mint(&u, lain_core::now_unix())
     }
 
+    /// Ends a session for good (D-298): its token is refused from now
+    /// on, here and after a restart. The row is kept until the token's
+    /// own expiry, and rows past theirs are dropped on the way.
+    pub fn revoke(&self, v: &Verified) -> Result<(), AuthError> {
+        if v.session.is_empty() {
+            return Err(msg("no session"));
+        }
+        let now = lain_core::now_unix();
+        self.store.write(|tx| {
+            for (k, raw) in tx.scan_prefix(Bucket::Meta, REVOKED_PREFIX)? {
+                // A row that does not decode is dropped with the expired
+                // ones: it names no live token this code can check.
+                if serde_json::from_slice::<Revoked>(&raw).map(|r| r.exp < now).unwrap_or(true) {
+                    tx.delete(Bucket::Meta, &k)?;
+                }
+            }
+            tx.put_json(Bucket::Meta, &revoked_key(&v.session), &Revoked { exp: v.expires_at })
+        })?;
+        Ok(())
+    }
+
     /// Signs a token for `u` issued at `now`, with a fresh session id.
     pub fn mint(&self, u: &User, now: i64) -> Result<String, AuthError> {
         let head = crypto::b64_url(br#"{"alg":"HS256","typ":"JWT"}"#);
@@ -676,6 +810,20 @@ impl<'s> Auth<'s> {
         }
         if c.jti.is_empty() {
             return Err(msg("bad token"));
+        }
+        // A store that cannot answer refuses the token: a signed-out
+        // session must not come back because a read failed.
+        match self.store.read(|tx| tx.get(Bucket::Meta, &revoked_key(&c.jti))) {
+            Ok(None) => {}
+            Ok(Some(_)) => return Err(msg("signed out")),
+            Err(e) => return Err(AuthError::from(e)),
+        }
+        // A store that cannot answer refuses the token: a signed-out
+        // session must not come back because a read failed.
+        match self.store.read(|tx| tx.get(Bucket::Meta, &revoked_key(&c.jti))) {
+            Ok(None) => {}
+            Ok(Some(_)) => return Err(msg("signed out")),
+            Err(e) => return Err(AuthError::from(e)),
         }
         Ok(Verified { user_id: u.id, role: u.role, session: c.jti, expires_at: c.exp })
     }
@@ -840,6 +988,25 @@ mod tests {
     }
 
     #[test]
+    fn manager_is_a_role_and_the_last_admin_stays() {
+        let f = Fixture::new();
+        let a = f.auth();
+        a.setup("admin", "password123").unwrap();
+        let m = a.create("mina", "minapassword", "manager").unwrap();
+        assert_eq!(m.role, "manager");
+        assert!(!a.verify(&a.login("mina", "minapassword").unwrap()).unwrap().is_admin());
+        assert!(a.verify(&a.login("mina", "minapassword").unwrap()).unwrap().is_manager());
+        assert_eq!(a.set_role("user-admin", "manager").unwrap_err().to_string(), "cannot demote the last admin");
+        assert_eq!(a.set_role("user-admin", "user").unwrap_err().to_string(), "cannot demote the last admin");
+        a.create("carol", "carolpassword", "admin").unwrap();
+        a.set_role("user-carol", "manager").unwrap();
+        assert_eq!(a.get_public("user-carol").unwrap().role, "manager");
+        a.set_role("user-mina", "user").unwrap();
+        assert!(!a.get_public("user-mina").unwrap().role.is_empty());
+        assert_eq!(a.delete("user-admin").unwrap_err().to_string(), "cannot delete the last admin");
+    }
+
+    #[test]
     fn profile_and_preferences() {
         let f = Fixture::new();
         let a = f.auth();
@@ -1001,6 +1168,35 @@ mod tests {
         assert!(a.get("user-admin").unwrap().unwrap().pass_hash.unwrap().starts_with("$argon2id$"));
     }
 
+    /// D-298: a signed-out token is refused, another login of the same
+    /// account is not, and a spent row leaves with the next sign-out.
+    #[test]
+    fn a_revoked_session_is_refused_and_others_are_not() {
+        let f = Fixture::new();
+        let a = f.auth();
+        a.setup("admin", "password123").unwrap();
+        let (t1, t2) = (a.login("admin", "password123").unwrap(), a.login("admin", "password123").unwrap());
+        let v1 = a.verify(&t1).unwrap();
+        a.revoke(&v1).unwrap();
+        assert_eq!(a.verify(&t1).unwrap_err().to_string(), "signed out");
+        assert!(a.verify(&t2).is_ok(), "the other login stays");
+        // A new service on the same store still refuses it (a restart).
+        assert!(f.auth().verify(&t1).is_err());
+
+        let spent = Verified { session: "spent".into(), expires_at: lain_core::now_unix() - 1, ..v1.clone() };
+        a.revoke(&spent).unwrap();
+        let rows = |f: &Fixture| {
+            f.store.as_ref().unwrap().read(|tx| tx.scan_prefix(Bucket::Meta, REVOKED_PREFIX)).unwrap().len()
+        };
+        assert_eq!(rows(&f), 2);
+        a.revoke(&a.verify(&t2).unwrap()).unwrap();
+        assert_eq!(rows(&f), 2, "the spent row is gone, the live ones stay");
+        assert!(a.verify(&t1).is_err() && a.verify(&t2).is_err());
+
+        let none = Verified { session: String::new(), ..v1 };
+        assert_eq!(a.revoke(&none).unwrap_err().to_string(), "no session");
+    }
+
     #[test]
     fn tokens_without_a_session_id_are_refused() {
         let f = Fixture::new();
@@ -1014,5 +1210,41 @@ mod tests {
         let signing = format!("{head}.{body}");
         let tok = format!("{signing}.{}", crypto::b64_url(&crypto::hmac_sha256(&f.secret, signing.as_bytes())));
         assert_eq!(a.verify(&tok).unwrap_err().to_string(), "bad token");
+    }
+
+    #[test]
+    fn account_libraries_and_max_audience_round_trip_and_cleanup() {
+        let f = Fixture::new();
+        let a = f.auth();
+        a.setup("admin", "password123").unwrap();
+        let u = a.create("kid", "password123", "user").unwrap();
+        // Default account: unset libraries (all) and mature ceiling, omitted from JSON.
+        assert_eq!(u.libraries, None);
+        assert_eq!(u.effective_max_audience(), lain_api::AUDIENCE_MATURE);
+        let wire = serde_json::to_value(u.clone().public()).unwrap();
+        assert!(wire.get("libraries").is_none());
+        assert!(wire.get("max_audience").is_none());
+
+        // Set allow-list (deduped) and max_audience.
+        a.set_libraries(&u.id, Some(vec!["lib-a".into(), "lib-a".into(), "lib-b".into()])).unwrap();
+        a.set_max_audience(&u.id, " TEEN ").unwrap();
+        let got = a.get_public(&u.id).unwrap();
+        assert_eq!(got.libraries, Some(vec!["lib-a".into(), "lib-b".into()]));
+        assert_eq!(got.effective_max_audience(), lain_api::AUDIENCE_TEEN);
+        assert!(a.set_max_audience(&u.id, "x-rated").is_err());
+
+        // Deleting lib-a drops only lib-a; deleting lib-b leaves Some([]) ("no library").
+        a.remove_library_from_users("lib-a").unwrap();
+        assert_eq!(a.get_public(&u.id).unwrap().libraries, Some(vec!["lib-b".into()]));
+        a.remove_library_from_users("lib-b").unwrap();
+        assert_eq!(a.get_public(&u.id).unwrap().libraries, Some(vec![]));
+
+        // Setting None clears back to "all"; mature stores empty string and omits.
+        a.set_libraries(&u.id, None).unwrap();
+        a.set_max_audience(&u.id, "mature").unwrap();
+        let reset = a.get_public(&u.id).unwrap();
+        assert_eq!(reset.libraries, None);
+        assert_eq!(reset.max_audience, "");
+        assert_eq!(reset.effective_max_audience(), lain_api::AUDIENCE_MATURE);
     }
 }

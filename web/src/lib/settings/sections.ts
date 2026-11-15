@@ -42,8 +42,19 @@ export const SECTIONS: SettingsSection[] = [
 	{ href: '/settings/offline', id: 'offline', scope: 'you', key: 'o' }
 ];
 
-export function visibleSections(admin: boolean): SettingsSection[] {
-	return SECTIONS.filter((s) => admin || s.scope === 'you');
+/** Server sections a manager may open. The rest of `server` stays admin-only. */
+const MANAGER_SECTION_IDS = new Set<SectionId>(['libraries']);
+
+export function visibleSections(admin: boolean, manager = false): SettingsSection[] {
+	if (admin) return SECTIONS;
+	return SECTIONS.filter((s) => s.scope === 'you' || (manager && MANAGER_SECTION_IDS.has(s.id)));
+}
+
+/** Whether Ctrl+K and the page may offer this row to the role. */
+export function entryVisible(entry: SettingEntry, admin: boolean, manager: boolean): boolean {
+	if (!entry.admin) return true;
+	if (admin) return true;
+	return manager && entry.manager === true;
 }
 
 export function sectionFor(pathname: string): SettingsSection | undefined {
@@ -58,7 +69,10 @@ export interface SettingEntry {
 	anchor: string;
 	/** English search aliases: they work in every language (developers type them). */
 	keywords: string;
+	/** Server setting. Hidden from ordinary accounts. */
 	admin?: boolean;
+	/** A manager may open this admin setting (D-296). Absent means admin only. */
+	manager?: boolean;
 }
 
 export const entryLabel = (e: SettingEntry): string => t(`settings.entry.${e.id}`);
@@ -84,11 +98,11 @@ export const SETTING_ENTRIES: SettingEntry[] = [
 	{ id: 'discoverable', href: '/settings/privacy', anchor: 'privacy-discoverable', keywords: 'search find discoverable hidden friends social' },
 	{ id: 'friendRequests', href: '/settings/privacy', anchor: 'privacy-requests', keywords: 'friend requests block social' },
 	{ id: 'favorites', href: '/settings/privacy', anchor: 'privacy-favorites', keywords: 'favorites favourite profile social' },
-	{ id: 'libraries', href: '/settings/libraries', anchor: 'libraries', keywords: 'folder path library add remove root', admin: true },
-	{ id: 'libraryPin', href: '/settings/libraries', anchor: 'pin', keywords: 'pin private unlock lock hidden library', admin: true },
+	{ id: 'libraries', href: '/settings/libraries', anchor: 'libraries', keywords: 'folder path library add remove root audience teen mature members', admin: true, manager: true },
+	{ id: 'libraryPin', href: '/settings/libraries', anchor: 'pin', keywords: 'pin private unlock lock hidden library', admin: true, manager: true },
 	{ id: 'roots', href: '/settings/libraries', anchor: 'roots', keywords: 'root roots mapping portable path drive move machine', admin: true },
-	{ id: 'scan', href: '/settings/libraries', anchor: 'scan', keywords: 'scan rescan index refresh', admin: true },
-	{ id: 'users', href: '/settings/users', anchor: 'users', keywords: 'accounts roles admin disable reset password', admin: true },
+	{ id: 'scan', href: '/settings/libraries', anchor: 'scan', keywords: 'scan rescan index refresh', admin: true, manager: true },
+	{ id: 'users', href: '/settings/users', anchor: 'users', keywords: 'accounts roles admin disable reset password access libraries audience kids children parental', admin: true },
 	{ id: 'mode', href: '/settings/transcoding', anchor: 'mode', keywords: 'auto custom policy transcode', admin: true },
 	{ id: 'delivery', href: '/settings/transcoding', anchor: 'delivery', keywords: 'hls segment timeout throttle progressive delivery stream', admin: true },
 	{ id: 'encoding', href: '/settings/transcoding', anchor: 'encoding', keywords: 'crf preset hevc av1 h264 quality ladder bitrate deinterlace', admin: true },

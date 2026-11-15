@@ -1,0 +1,76 @@
+{
+  "tier": "v2",
+  "description": "A locked private library gives nothing away (D-293): a session that has not unlocked it sees the record without its name or folder, and changing or removing it takes a PIN or password, from the unlocked session or with the request. Carol is a second admin, not a member: the first admin's guesses are spent by the case before.",
+  "cases": [
+    {
+      "name": "a locked record shows no name or folder",
+      "requires": ["lib_id"],
+      "steps": [
+        {
+          "req": {"method": "POST", "path": "/api/users", "auth": "a2", "body": {"username": "carol", "password": "carolpassword", "role": "admin"}},
+          "expect": {"status": 201, "body": {"id": "user-carol", "role": "admin", "$open": true}}
+        },
+        {
+          "req": {"method": "POST", "path": "/api/auth/login", "body": {"username": "carol", "password": "carolpassword"}},
+          "expect": {"status": 200},
+          "save": {"c1": "/token"}
+        },
+        {
+          "req": {"method": "GET", "path": "/api/libraries", "auth": "c1"},
+          "expect": {
+            "status": 200,
+            "body": [{"id": "{{lib_id}}", "private": true, "locked": true, "name": "", "path": "", "root_path": "$absent", "$open": true}]
+          }
+        }
+      ]
+    },
+    {
+      "name": "changing or removing it takes a PIN or password",
+      "requires": ["lib_id"],
+      "steps": [
+        {
+          "req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "c1", "body": {"name": "Renamed"}},
+          "expect": {"status": 403, "body": {"error": "pin or password required to change a locked private library"}}
+        },
+        {
+          "req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "c1", "body": {"private": false}},
+          "expect": {"status": 403, "body": {"error": "pin or password required to change a locked private library"}}
+        },
+        {
+          "req": {"method": "DELETE", "path": "/api/libraries/{{lib_id}}", "auth": "c1"},
+          "expect": {"status": 403, "body": {"error": "pin or password required to change a locked private library"}}
+        },
+        {
+          "req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "c1", "body": {"name": "Renamed", "password": "wrong-password"}},
+          "expect": {"status": 403, "body": {"error": "wrong pin or password"}}
+        },
+        {
+          "req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "c1", "body": {"members": ["user-bob", "user-carol"], "password": "carolpassword"}},
+          "expect": {"status": 200, "body": {"id": "{{lib_id}}", "locked": true, "name": "", "members": ["user-bob", "user-carol"], "$open": true}}
+        },
+        {
+          "req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "a2", "body": {"name": "Anime"}},
+          "expect": {"status": 200, "body": {"locked": false, "name": "Anime", "$open": true}}
+        }
+      ]
+    },
+    {
+      "name": "unlocking shows the name, locking hides it again",
+      "requires": ["lib_id"],
+      "steps": [
+        {
+          "req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/unlock", "auth": "c1", "body": {"password": "carolpassword"}},
+          "expect": {"status": 200, "body": {"id": "{{lib_id}}", "locked": false, "name": "Anime", "$open": true}}
+        },
+        {
+          "req": {"method": "PATCH", "path": "/api/libraries/{{lib_id}}", "auth": "c1", "body": {"name": "Anime"}},
+          "expect": {"status": 200, "body": {"locked": false, "name": "Anime", "$open": true}}
+        },
+        {
+          "req": {"method": "POST", "path": "/api/libraries/{{lib_id}}/lock", "auth": "a2"},
+          "expect": {"status": 200, "body": {"locked": true, "name": "", "$open": true}}
+        }
+      ]
+    }
+  ]
+}

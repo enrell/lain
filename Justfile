@@ -12,6 +12,12 @@ dev-compose := if path_exists("/dev/dri/renderD128") == "true" {
     "docker compose -f docker-compose.dev.yml"
 }
 
+test-compose := if path_exists("/dev/dri/renderD128") == "true" {
+    "docker compose -p lain-test -f docker-compose.test.yml -f docker-compose.dev.gpu.yml"
+} else {
+    "docker compose -p lain-test -f docker-compose.test.yml"
+}
+
 # List recipes.
 default:
     @just --list
@@ -78,6 +84,34 @@ clean:
     mkdir -p crates/lain/webui
     touch crates/lain/webui/.gitkeep
     docker volume rm lain_lain-dev-data 2>/dev/null || true
+
+# --- Isolated test-server (agents) & production deploy -----------------------
+
+# Start/rebuild the isolated test-server (:9370, own DB & ./.test-media).
+test-up:
+    mkdir -p .test-media
+    {{test-compose}} up --build -d
+    @echo 'test-server: http://127.0.0.1:9370/'
+
+# Stop the isolated test-server (keeps test DB & ./.test-media).
+test-down:
+    {{test-compose}} down
+
+# Follow test-server logs.
+test-logs:
+    {{test-compose}} logs -f api
+
+# Wipe the isolated test-server database and ./.test-media.
+test-clean:
+    {{test-compose}} down -v
+    rm -rf .test-media
+
+# Promote the current tree to the production Docker instance (:9360, Waybar).
+prod-deploy:
+    @test -x "$HOME/hq/docker/build" || { echo "missing $HOME/hq/docker/build" >&2; exit 1; }
+    "$HOME/hq/docker/build" lain
+    docker compose -f "$HOME/hq/docker/compose.yml" up -d lain
+    @echo 'production lain updated on http://127.0.0.1:9360/'
 
 # --- QA agent fleet ----------------------------------------------------------
 # Specialist agents that drive a real browser against a disposable instance,

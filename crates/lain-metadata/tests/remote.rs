@@ -284,6 +284,64 @@ fn a_private_library_is_enriched_from_local_files_only() {
     std::fs::remove_dir_all(dir).ok();
 }
 
+/// A network provider that knows nothing, or fails, and counts calls.
+struct Blank {
+    fail: bool,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl Provider for Blank {
+    fn id(&self) -> &str {
+        "blank"
+    }
+    fn capabilities(&self) -> Vec<String> {
+        vec![CAP_METADATA_SEARCH.into(), CAP_METADATA_RESOLVE.into()]
+    }
+    fn health(&self) -> Result<(), lain_core::Error> {
+        Ok(())
+    }
+    fn invoke(&self, _cap: &str, _op: &str, _input: Value) -> Result<Value, lain_core::Error> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.fail { Err(lain_core::Error::unavailable("blank: down")) } else { Ok(json!([])) }
+    }
+}
+
+fn calls(b: &Blank) -> usize {
+    b.calls.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// "Nothing found" is cached when every provider answered, so a rescan
+/// of titles nobody knows asks nobody; when a provider failed it is not,
+/// since that provider may know the title.
+#[test]
+fn nothing_found_is_cached_only_when_every_provider_answered() {
+    for fail in [false, true] {
+        let dir = lain_store::test_dir("meta-empty");
+        let store = Arc::new(lain_store::Store::open(&dir).unwrap());
+        let mut bindings = BTreeMap::new();
+        bindings.insert(CAP_METADATA_SEARCH.into(), Binding::new(BindingMode::MergeMany, &[NFO_ID, "blank"]));
+        bindings.insert(CAP_METADATA_RESOLVE.into(), Binding::new(BindingMode::MergeMany, &[NFO_ID, "blank"]));
+        bindings.insert(CAP_METADATA_ENRICH.into(), Binding::new(BindingMode::ExactlyOne, &[ENRICH_ID]));
+        let reg = Arc::new(Registry::new(Composition { version: 8, bindings }));
+        let blank = Arc::new(Blank { fail, calls: Default::default() });
+        reg.register(Arc::new(Nfo));
+        reg.register(blank.clone());
+        reg.register(Arc::new(Enricher::new(&reg, store)));
+        let item =
+            CatalogItem { id: "c".into(), kind: "anime".into(), title: "Home Clip 3".into(), ..Default::default() };
+        for _ in 0..2 {
+            let e = reg.invoke_provider(CAP_METADATA_ENRICH, ENRICH_ID, "enrich", json!({"item": item})).unwrap_err();
+            assert_eq!(e.code, "not-found");
+        }
+        assert_eq!(calls(&blank), if fail { 2 } else { 1 }, "fail={fail}");
+        // Naming a provider bypasses the cache.
+        reg.invoke_provider(CAP_METADATA_ENRICH, ENRICH_ID, "enrich", json!({"item": item, "only": "blank"}))
+            .unwrap_err();
+        assert_eq!(calls(&blank), if fail { 3 } else { 2 }, "fail={fail}");
+        std::fs::remove_dir_all(dir).ok();
+    }
+}
+
 // ---- opt-in live smoke tests: one per provider ------------------------------
 
 fn live(p: &dyn Provider, query: &str) {

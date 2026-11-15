@@ -216,7 +216,11 @@ pub fn logout(args: &[String]) -> Result<(), String> {
     let server = flag(args, "server").unwrap_or_else(|| cfg.server.clone());
     if !server.is_empty() {
         let client = home.client(&server)?;
-        client.logout().map_err(|e| e.to_string())?;
+        // The session ends on the server too (D-298); offline, it is
+        // only forgotten here and the token runs out on its own.
+        if !runtime()?.block_on(client.sign_out()).map_err(|e| e.to_string())? {
+            eprintln!("the server could not be told; the session there ends when its token expires");
+        }
         if client.server() == cfg.server {
             cfg.server.clear();
             home.save(&cfg)?;

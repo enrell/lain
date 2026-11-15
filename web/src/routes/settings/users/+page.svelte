@@ -5,14 +5,18 @@
 	import { page } from '$app/state';
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import LockIcon from '@lucide/svelte/icons/lock';
+	import Shield from '@lucide/svelte/icons/shield';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import Users from '@lucide/svelte/icons/users';
-	import type { User } from '$lib/api/types';
+	import type { Audience, Library, User } from '$lib/api/types';
 	import { api } from '$lib/api';
+	import { libraryAudience, namedLibraries } from '$lib/api/libraries';
+	import { toggleUserLibrary, userMaxAudience } from '$lib/api/users';
+	import { roleLabel } from '$lib/auth/roles';
 	import { session } from '$lib/auth/session.svelte';
 	import Badge from '$lib/components/primitives/Badge.svelte';
 	import Button from '$lib/components/primitives/Button.svelte';
@@ -29,6 +33,7 @@
 	import { formatDate } from '$lib/utilities/format';
 
 	let users = $state<User[]>([]);
+	let serverLibraries = $state<Library[]>([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let rowBusy = $state<string | null>(null);
@@ -142,11 +147,83 @@
 		}
 	}
 
+	let accessTarget = $state<User | null>(null);
+	let accessOpen = $state(false);
+	let accessSaving = $state(false);
+	let accessForm = $state({
+		maxAudience: 'mature' as Audience,
+		allLibraries: true,
+		selectedIds: [] as string[]
+	});
+
+	const visibleLibraries = $derived(namedLibraries(serverLibraries));
+
+	const audienceOptions = $derived([
+		{ value: 'everyone', label: t('settings.librariesPage.audienceEveryone') },
+		{ value: 'teen', label: t('settings.librariesPage.audienceTeen') },
+		{ value: 'mature', label: t('settings.librariesPage.audienceMature') }
+	]);
+
+	function audienceLabel(level: Audience): string {
+		if (level === 'everyone') return t('settings.librariesPage.audienceEveryone');
+		if (level === 'teen') return t('settings.librariesPage.audienceTeen');
+		return t('settings.librariesPage.audienceMature');
+	}
+
+	function openAccess(user: User): void {
+		accessTarget = user;
+		accessForm = {
+			maxAudience: userMaxAudience(user),
+			allLibraries: user.libraries === undefined,
+			selectedIds: user.libraries ? [...user.libraries] : visibleLibraries.map((l) => l.id)
+		};
+		accessOpen = true;
+		api.libraries
+			.list()
+			.then((libs) => {
+				serverLibraries = libs;
+			})
+			.catch(() => {});
+	}
+
+	function toggleAccessLibrary(libId: string): void {
+		accessForm.selectedIds = toggleUserLibrary(
+			accessForm.selectedIds,
+			visibleLibraries.map((l) => l.id),
+			libId
+		);
+	}
+
+	async function saveAccess(): Promise<void> {
+		const target = accessTarget;
+		if (!target) return;
+		accessSaving = true;
+		try {
+			const updated = await api.users.patch(target.id, {
+				max_audience: accessForm.maxAudience,
+				libraries: accessForm.allLibraries ? null : accessForm.selectedIds
+			});
+			users = users.map((u) => (u.id === updated.id ? updated : u));
+			accessOpen = false;
+			accessTarget = null;
+			toasts.success(t('settings.usersPage.accessSaved', { name: target.username }));
+		} catch (err) {
+			toasts.error(errorMessage(err, t('settings.usersPage.accessFailed')));
+		} finally {
+			accessSaving = false;
+		}
+	}
+
 	async function load(): Promise<void> {
 		loading = true;
 		error = null;
 		try {
-			users = await api.users.list();
+			const [userList, libs] = await Promise.all([
+				api.users.list(),
+				api.libraries.list().catch(() => [] as Library[])
+			]);
+			users = userList;
+			serverLibraries = libs;
 		} catch (err) {
 			error = errorMessage(err);
 		} finally {
@@ -164,6 +241,9 @@
 	// as bare icons, a sliders glyph on a person's row did not say Playback.
 	function rowEntries(user: User): MenuEntry[] {
 		return [
+			...(user.role !== 'admin'
+				? [{ label: t('settings.usersPage.access'), icon: Shield, onSelect: () => openAccess(user) }]
+				: []),
 			{ label: t('settings.usersPage.playback'), icon: SlidersHorizontal, onSelect: () => openPlaybackLimits(user) },
 			{
 				label: t('settings.usersPage.resetPassword'),
@@ -203,7 +283,7 @@
 			const user = await api.users.create({
 				username: form.username.trim(),
 				password: form.password,
-				role: form.role as 'admin' | 'user'
+				role: form.role
 			});
 			users = [...users, user].sort((a, b) => a.username.localeCompare(b.username));
 			createOpen = false;
@@ -235,6 +315,7 @@
 
 	const roleOptions = $derived([
 		{ value: 'user', label: t('settings.usersPage.roleUser') },
+		{ value: 'manager', label: t('settings.usersPage.roleManager') },
 		{ value: 'admin', label: t('settings.usersPage.roleAdmin') }
 	]);
 </script>
@@ -269,7 +350,7 @@
 		<ul class="settings-items">
 			{#each users as user (user.id)}
 				{@const self = isSelf(user)}
-				<li class="group/row flex flex-wrap items-center gap-x-4 gap-y-3 py-3.5 xl:grid xl:grid-cols-[minmax(0,1fr)_8rem_7.5rem_22rem]">
+				<li class="group/row flex flex-wrap items-center gap-x-4 gap-y-3 py-3.5 xl:grid xl:grid-cols-[minmax(0,1fr)_8rem_7.5rem_28rem]">
 					<!-- Below xl the actions are one labelled menu (⋯) at the end of the
 					     name's line and role and access take the second: as a table
 					     beside the settings rail at 1024 px the name had no room. -->
@@ -281,16 +362,26 @@
 								{#if user.profile?.display_name}<span class="font-mono text-[11px] text-muted">@{user.username}</span>{/if}
 								{#if self}<Badge tone="accent">{t('settings.usersPage.you')}</Badge>{/if}
 								{#if user.disabled}<Badge tone="danger">{t('settings.usersPage.disabledBadge')}</Badge>{/if}
+								{#if user.role !== 'admin' && userMaxAudience(user) !== 'mature'}
+									<Badge>{t('settings.usersPage.accessAudienceBadge', { level: audienceLabel(userMaxAudience(user)) })}</Badge>
+								{/if}
+								{#if user.role !== 'admin' && user.libraries !== undefined}
+									<Badge>
+										{user.libraries.length === 0
+											? t('settings.usersPage.accessSummaryNone')
+											: t('settings.usersPage.accessSummaryCount', { count: user.libraries.length })}
+									</Badge>
+								{/if}
 								{#if rowBusy === user.id}<Spinner class="size-3.5 text-muted" />{/if}
 							</div>
 							<p class="mt-0.5 text-xs text-muted">
-								{t('settings.usersPage.joined', { role: user.role === 'admin' ? t('settings.usersPage.roleAdmin') : t('settings.usersPage.roleUser'), date: formatDate(user.created_at) })}
+								{t('settings.usersPage.joined', { role: roleLabel(user.role), date: formatDate(user.created_at) })}
 							</p>
 						</div>
 					</div>
 					{#if self}
 						<p class="flex h-9 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted max-xl:order-2 xl:w-32" title={t('settings.usersPage.selfRole')}>
-							<LockIcon class="size-3" aria-hidden="true" />{user.role === 'admin' ? t('settings.usersPage.roleAdmin') : t('settings.usersPage.roleUser')}
+							<LockIcon class="size-3" aria-hidden="true" />{roleLabel(user.role)}
 						</p>
 						<p class="flex h-9 items-center text-[13px] text-muted max-xl:order-2">{t('settings.usersPage.signedInHere')}</p>
 					{:else}
@@ -299,7 +390,7 @@
 								aria-label={t('settings.usersPage.roleFor', { name: user.username })}
 								value={user.role}
 								options={roleOptions}
-								onValueChange={(role) => void patch(user, { role: role as 'admin' | 'user' }, t('settings.usersPage.roleSaved', { name: user.username }))}
+								onValueChange={(role) => void patch(user, { role }, t('settings.usersPage.roleSaved', { name: user.username }))}
 							/>
 						</div>
 						<div class="flex h-9 items-center gap-2 text-sm text-muted max-xl:order-2">
@@ -329,6 +420,13 @@
 					     so an auto column was as wide as that row's buttons and the
 					     columns before it drifted from row to row. -->
 					<div class="flex flex-nowrap items-center justify-end gap-0.5 max-xl:hidden">
+						{#if user.role !== 'admin'}
+							<Button variant="ghost" size="field" class="w-[5.5rem]" title={t('settings.usersPage.access')} onclick={() => openAccess(user)}>
+								<Shield class="size-4" /> {t('settings.usersPage.access')}
+							</Button>
+						{:else}
+							<span class="block w-[5.5rem] shrink-0" aria-hidden="true"></span>
+						{/if}
 						<Button variant="ghost" size="field" title={t('settings.usersPage.playback')} onclick={() => openPlaybackLimits(user)}>
 							<SlidersHorizontal class="size-4" /> {t('settings.usersPage.playback')}
 						</Button>
@@ -422,6 +520,82 @@
 		<div class="flex justify-end gap-2 pt-1">
 			<Button type="button" variant="ghost" onclick={() => (resetOpen = false)}>{t('common.cancel')}</Button>
 			<Button type="submit" loading={resetting} disabled={resetPassword.length < 8}>{t('settings.usersPage.resetPassword')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd></Button>
+		</div>
+	</form>
+</Modal>
+
+<!-- Library access & audience ceiling (D-295) -->
+<Modal
+	bind:open={accessOpen}
+	title={t('settings.usersPage.accessTitle')}
+	description={t('settings.usersPage.accessBody')}
+>
+	<form
+		class="space-y-4"
+		onsubmit={(e) => {
+			e.preventDefault();
+			void saveAccess();
+		}}
+	>
+		<p class="text-sm text-muted">{t('settings.usersPage.accessFor', { name: accessTarget?.username ?? '' })}</p>
+		<div class="space-y-1.5">
+			<Select
+				label={t('settings.usersPage.maxAudience')}
+				value={accessForm.maxAudience}
+				options={audienceOptions}
+				onValueChange={(value) => (accessForm.maxAudience = value as Audience)}
+			/>
+			<p class="text-xs text-muted">{t('settings.usersPage.maxAudienceHint')}</p>
+		</div>
+		<Switch
+			label={t('settings.usersPage.allLibraries')}
+			description={t('settings.usersPage.allLibrariesHint')}
+			checked={accessForm.allLibraries}
+			onCheckedChange={(checked) => {
+				accessForm.allLibraries = checked;
+				if (!checked && accessTarget?.libraries === undefined) {
+					accessForm.selectedIds = visibleLibraries.map((l) => l.id);
+				}
+			}}
+		/>
+		{#if !accessForm.allLibraries}
+			<fieldset class="space-y-2 rounded-md border border-line bg-surface/40 p-3">
+				<legend class="px-1 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+					{t('settings.usersPage.chosenLibraries')}
+				</legend>
+				{#if visibleLibraries.length === 0}
+					<p class="text-xs text-muted">{t('settings.usersPage.noNamedLibraries')}</p>
+				{:else}
+					<ul class="max-h-48 space-y-1.5 overflow-y-auto pt-1">
+						{#each visibleLibraries as lib (lib.id)}
+							<li>
+								<label class="flex cursor-pointer items-center justify-between gap-3 rounded px-2 py-1 text-sm text-foreground hover:bg-surface-hover">
+									<span class="flex min-w-0 items-center gap-2.5">
+										<input
+											type="checkbox"
+											checked={accessForm.selectedIds.includes(lib.id)}
+											onchange={() => toggleAccessLibrary(lib.id)}
+											class="size-4 rounded border-line accent-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+										/>
+										<span class="truncate">{lib.name}</span>
+									</span>
+									{#if libraryAudience(lib) !== 'everyone'}
+										<Badge>{audienceLabel(libraryAudience(lib))}</Badge>
+									{/if}
+								</label>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</fieldset>
+		{/if}
+		<div class="flex justify-end gap-2 pt-1">
+			<Button type="button" variant="ghost" onclick={() => (accessOpen = false)}>
+				{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd>
+			</Button>
+			<Button type="submit" loading={accessSaving}>
+				{t('settings.usersPage.saveAccess')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
+			</Button>
 		</div>
 	</form>
 </Modal>

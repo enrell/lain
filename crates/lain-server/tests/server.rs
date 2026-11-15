@@ -222,6 +222,289 @@ fn scan_to_done(base: &Base, admin: &str) -> serde_json::Value {
     }
 }
 
+/// One folder per file, each with the downloader's `.metadata/meta.toml`:
+/// the sidecar names the series and the episode, so the episodes join
+/// into one title instead of standing as three videos. A file without a
+/// sidecar is still named by its own name.
+#[test]
+fn sidecars_join_one_folder_per_file_episodes() {
+    let dir = lain_store::test_dir("rs-sidecar");
+    let media = dir.join("media");
+    for n in 1..=3 {
+        let name = format!("Some Show {n}");
+        let folder = media.join(&name);
+        std::fs::create_dir_all(folder.join(".metadata/thumbs")).unwrap();
+        std::fs::write(folder.join(format!("{name}.mp4")), b"x").unwrap();
+        std::fs::write(folder.join(".metadata/thumbs/thumbnail.jpg"), b"x").unwrap();
+        let toml = format!(
+            "schema_version = 2\nmedia_type = \"video\"\ntitle = \"{name}\"\nseries = \"Some Show\"\nepisode = \"{n}\"\nsource_site = \"site-exemplo\"\n\n[local]\nmetadata_dir = \".metadata\"\n"
+        );
+        std::fs::write(folder.join(".metadata/meta.toml"), toml).unwrap();
+    }
+    std::fs::create_dir_all(media.join("Loose Clip")).unwrap();
+    std::fs::write(media.join("Loose Clip/Loose Clip.mp4"), b"x").unwrap();
+    let server = Server::start_with(&dir.join("data"), |c| c.watch = false);
+    let base = Base::parse(&server.url).unwrap();
+    call(&base, "POST", "/api/setup", "", Some(json!({"username": "admin", "password": "password123"})));
+    let admin = login(&base, "admin", "password123");
+    let (st, lib) = call(
+        &base,
+        "POST",
+        "/api/libraries",
+        &admin,
+        Some(json!({"name": "Shows", "type": "auto", "path": media.to_string_lossy()})),
+    );
+    assert_eq!(st, 201, "{lib}");
+    let st = scan_to_done(&base, &admin);
+    assert_eq!(st["stats"]["identified"], 4, "{st}");
+
+    let (_, files) = call(&base, "GET", "/api/catalog?limit=50", &admin, None);
+    let mut rows: Vec<(String, String, i64)> = files["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| {
+            (
+                i["title"].as_str().unwrap().to_string(),
+                i["kind"].as_str().unwrap().to_string(),
+                i["episode"].as_i64().unwrap_or(0),
+            )
+        })
+        .collect();
+    rows.sort();
+    let ep = |n: i64| ("Some Show".to_string(), "episode".to_string(), n);
+    assert_eq!(rows, vec![("Loose Clip".to_string(), "video".to_string(), 0), ep(1), ep(2), ep(3)], "{files}");
+    // Paged by title: one row for the show, one for the clip.
+    let (_, titles) = call(&base, "GET", "/api/catalog?group=title&limit=50", &admin, None);
+    assert_eq!(titles["total"], 2, "{titles}");
+    drop(server);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// What the acquisition side keeps about a private library follows its
+/// lock (D-293): its monitored titles and downloads are absent from every
+/// list and id lookup, and from the events, while it is locked in this
+/// session, admins included; unlocked, they are back.
+#[test]
+fn acquisition_follows_the_library_lock() {
+    let dir = lain_store::test_dir("rs-acq-lock");
+    let media = dir.join("media");
+    std::fs::create_dir_all(&media).unwrap();
+    let server = Server::start_with(&dir.join("data"), |c| c.watch = false);
+    let base = Base::parse(&server.url).unwrap();
+    call(&base, "POST", "/api/setup", "", Some(json!({"username": "admin", "password": "password123"})));
+    let admin = login(&base, "admin", "password123");
+    let (st, lib) = call(
+        &base,
+        "POST",
+        "/api/libraries",
+        &admin,
+        Some(json!({"name": "Late", "type": "anime", "path": media.to_string_lossy()})),
+    );
+    assert_eq!(st, 201, "{lib}");
+    let id = lib["id"].as_str().unwrap().to_string();
+    let (st, _) = call(&base, "PATCH", &format!("/api/libraries/{id}"), &admin, Some(json!({"private": true})));
+    assert_eq!(st, 200);
+    let unlock = || {
+        let r = call(
+            &base,
+            "POST",
+            &format!("/api/libraries/{id}/unlock"),
+            &admin,
+            Some(json!({"password": "password123"})),
+        );
+        assert_eq!(r.0, 200, "{}", r.1);
+    };
+    let lock = || assert_eq!(call(&base, "POST", &format!("/api/libraries/{id}/lock"), &admin, None).0, 200);
+
+    // A public library next to it, whose records stay visible throughout.
+    let other = dir.join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    let (_, open) = call(
+        &base,
+        "POST",
+        "/api/libraries",
+        &admin,
+        Some(json!({"name": "Plain", "type": "anime", "path": other.to_string_lossy(), "audience": "everyone"})),
+    );
+    let open_id = open["id"].as_str().unwrap().to_string();
+
+    unlock();
+    let mon = |library: &str, title: &str| {
+        call(
+            &base,
+            "POST",
+            "/api/acquire/monitored",
+            &admin,
+            Some(json!({"library_id": library, "kind": "anime", "title": title})),
+        )
+    };
+    let (st, m1) = mon(&id, "Hidden Show");
+    assert_eq!(st, 201, "{m1}");
+    let m1 = m1["id"].as_str().unwrap().to_string();
+    let (st, m2) = mon(&open_id, "Plain Show");
+    assert_eq!(st, 201, "{m2}");
+    let m2 = m2["id"].as_str().unwrap().to_string();
+    let (st, job) = call(
+        &base,
+        "POST",
+        "/api/downloads",
+        &admin,
+        Some(json!({"url": "http://127.0.0.1:9/hidden.bin", "library_id": id})),
+    );
+    assert_eq!(st, 201, "{job}");
+    let job = job["id"].as_str().unwrap().to_string();
+    let titles = |path: &str, key: &str, field: &str| -> Vec<String> {
+        let (st, v) = call(&base, "GET", path, &admin, None);
+        assert_eq!(st, 200, "{v}");
+        v[key].as_array().unwrap().iter().map(|x| x[field].as_str().unwrap_or("").to_string()).collect()
+    };
+    assert_eq!(titles("/api/acquire/monitored", "monitored", "title").len(), 2);
+    assert_eq!(titles("/api/downloads", "jobs", "id"), vec![job.clone()]);
+
+    lock();
+    let stream = http::open_sse(&base, &format!("/api/events?token={admin}"), &[]).unwrap();
+    assert_eq!(stream.events.recv_timeout(Duration::from_secs(5)).unwrap().event, "ready");
+    assert_eq!(titles("/api/acquire/monitored", "monitored", "title"), vec!["Plain Show"]);
+    assert_eq!(titles("/api/acquire/wanted", "titles", "monitored").len(), 1);
+    assert!(titles("/api/downloads", "jobs", "id").is_empty());
+    // Every way in by id answers like an id that does not exist.
+    for (method, path) in [
+        ("GET", format!("/api/acquire/monitored/{m1}")),
+        ("PUT", format!("/api/acquire/monitored/{m1}")),
+        ("DELETE", format!("/api/acquire/monitored/{m1}")),
+        ("GET", format!("/api/acquire/monitored/{m1}/wanted")),
+        ("POST", format!("/api/acquire/monitored/{m1}/search")),
+        ("GET", format!("/api/acquire/monitored/{m1}/subtitles")),
+        ("POST", format!("/api/acquire/monitored/{m1}/subtitles")),
+        ("GET", format!("/api/downloads/{job}")),
+        ("POST", format!("/api/downloads/{job}/pause")),
+        ("DELETE", format!("/api/downloads/{job}")),
+    ] {
+        let body = (method == "PUT").then(|| json!({"library_id": id, "kind": "anime", "title": "x"}));
+        let (st, v) = call(&base, method, &path, &admin, body);
+        assert_eq!(st, 404, "{method} {path}: {v}");
+    }
+    // The folder picker does not list its folder, nor open it (D-293).
+    let browse = |path: &std::path::Path| {
+        call(&base, "GET", &format!("/api/browse?path={}", path.to_string_lossy()), &admin, None)
+    };
+    let names = |v: &serde_json::Value| -> Vec<String> {
+        v["dirs"].as_array().unwrap().iter().map(|d| d["name"].as_str().unwrap().to_string()).collect()
+    };
+    let (st, v) = browse(&dir);
+    assert_eq!(st, 200, "{v}");
+    assert!(names(&v).contains(&"other".to_string()) && !names(&v).contains(&"media".to_string()), "{v}");
+    assert_eq!(browse(&media).0, 400);
+    assert_eq!(browse(&media.join("deeper/..")).0, 400, "a path that walks back in is the same folder");
+    // Nor can a record be made in it, nor a title moved into it.
+    let (st, v) = mon(&id, "Another");
+    assert_eq!(st, 400, "{v}");
+    let (st, v) = call(
+        &base,
+        "PUT",
+        &format!("/api/acquire/monitored/{m2}"),
+        &admin,
+        Some(json!({"library_id": id, "kind": "anime", "title": "Plain Show"})),
+    );
+    assert_eq!(st, 400, "{v}");
+    let (st, v) = call(
+        &base,
+        "POST",
+        "/api/downloads",
+        &admin,
+        Some(json!({"url": "http://127.0.0.1:9/x.bin", "library_id": id})),
+    );
+    assert_eq!(st, 404, "{v}");
+    // Its downloads' events do not reach a locked session; a public one's do.
+    let (st, j2) = call(
+        &base,
+        "POST",
+        "/api/downloads",
+        &admin,
+        Some(json!({"url": "http://127.0.0.1:9/plain.bin", "library_id": open_id})),
+    );
+    assert_eq!(st, 201, "{j2}");
+    std::thread::sleep(Duration::from_millis(600));
+    let mut seen = Vec::new();
+    while let Ok(ev) = stream.events.recv_timeout(Duration::from_millis(400)) {
+        if ev.event == "download-changed" {
+            let d: serde_json::Value = serde_json::from_str(&ev.data).unwrap();
+            seen.push(d["id"].as_str().unwrap_or("").to_string());
+        }
+    }
+    assert!(!seen.is_empty() && !seen.contains(&job), "{seen:?} (hidden job {job})");
+    assert!(seen.contains(&j2["id"].as_str().unwrap().to_string()), "{seen:?}");
+
+    unlock();
+    assert!(names(&browse(&dir).1).contains(&"media".to_string()), "unlocked, its folder is listed again");
+    assert_eq!(browse(&media).0, 200);
+    assert_eq!(titles("/api/acquire/monitored", "monitored", "title").len(), 2);
+    assert!(titles("/api/downloads", "jobs", "id").contains(&job));
+    assert_eq!(call(&base, "GET", &format!("/api/acquire/monitored/{m1}"), &admin, None).0, 200);
+    drop(stream);
+    drop(server);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// D-294: an unlock is a lease on the session's open event stream. The
+/// laptop unlocks; the TV, signed in to the same account, stays locked
+/// the whole time. Closing the laptop's stream (the tab) locks it on
+/// the server after the grace, with no request from the client, and a
+/// new stream does not bring the unlock back.
+#[test]
+fn an_unlock_ends_when_the_tab_closes() {
+    let dir = lain_store::test_dir("rs-lease");
+    let media = dir.join("media");
+    std::fs::create_dir_all(&media).unwrap();
+    let server = Server::start_with(&dir.join("data"), |c| {
+        c.watch = false;
+        c.unlock_grace = Duration::from_millis(400);
+    });
+    let base = Base::parse(&server.url).unwrap();
+    call(&base, "POST", "/api/setup", "", Some(json!({"username": "admin", "password": "password123"})));
+    let laptop = login(&base, "admin", "password123");
+    let tv = login(&base, "admin", "password123");
+    let (st, lib) =
+        call(&base, "POST", "/api/libraries", &laptop, Some(json!({"name": "Late", "path": media.to_string_lossy()})));
+    assert_eq!(st, 201, "{lib}");
+    let id = lib["id"].as_str().unwrap().to_string();
+    assert_eq!(call(&base, "PATCH", &format!("/api/libraries/{id}"), &laptop, Some(json!({"private": true}))).0, 200);
+    let locked = |token: &str| {
+        let (_, v) = call(&base, "GET", "/api/libraries", token, None);
+        (v[0]["locked"].as_bool().unwrap(), v[0]["name"].as_str().unwrap().to_string())
+    };
+    let open_stream = |token: &str| {
+        let s = http::open_sse(&base, &format!("/api/events?token={token}"), &[]).unwrap();
+        assert_eq!(s.events.recv_timeout(Duration::from_secs(5)).unwrap().event, "ready");
+        s
+    };
+    let wait = || std::thread::sleep(Duration::from_millis(900));
+
+    let tab = open_stream(&laptop);
+    let tv_stream = open_stream(&tv);
+    let unlock = json!({"password": "password123"});
+    assert_eq!(call(&base, "POST", &format!("/api/libraries/{id}/unlock"), &laptop, Some(unlock.clone())).0, 200);
+    wait();
+    assert_eq!(locked(&laptop), (false, "Late".to_string()), "held by the open stream");
+    assert_eq!(locked(&tv), (true, String::new()), "the TV's own login never unlocks with it");
+
+    drop(tab);
+    wait();
+    assert_eq!(locked(&laptop), (true, String::new()), "the tab closed: locked on the server");
+    let _tab = open_stream(&laptop);
+    assert!(locked(&laptop).0, "coming back does not unlock");
+
+    // Without any stream an unlock lasts the grace only.
+    assert_eq!(call(&base, "POST", &format!("/api/libraries/{id}/unlock"), &tv, Some(unlock)).0, 200);
+    drop(tv_stream);
+    assert!(!locked(&tv).0);
+    wait();
+    assert!(locked(&tv).0);
+    drop(server);
+    std::fs::remove_dir_all(dir).ok();
+}
+
 /// A rooted library (D-157) scans into `root` + `rel_path`, every new
 /// read path keeps a private library's items from another user
 /// (D-156), and a scan's events and unreadable roots follow suit.
@@ -356,6 +639,13 @@ fn rooted_private_scans_leak_nothing() {
     let _ = bob_view;
     let st = scan_to_done(&base, &admin);
     assert_eq!(st["stats"]["unreadable"].as_array().unwrap().len(), 1);
+    // The admin has not unlocked it: it is told something is unreadable and
+    // not which library, nor where (D-293).
+    let row = &st["stats"]["unreadable"][0];
+    assert_eq!((row["name"].as_str(), row["path"].as_str()), (Some(""), Some("")), "{row}");
+    assert_eq!(row["library_id"], gone_id);
+    let (_, admin_view) = call(&base, "GET", "/api/library/scan", &admin, None);
+    assert_eq!(admin_view["stats"]["unreadable"][0]["path"], "", "{admin_view}");
     let (_, bob_view) = call(&base, "GET", "/api/library/scan", &bob, None);
     assert!(bob_view["stats"].get("unreadable").is_none(), "{bob_view}");
     let mut names = Vec::new();

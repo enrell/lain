@@ -103,7 +103,7 @@
 
 	// Scanning is an action, not a setting: it lives where the media is.
 	async function rescan(): Promise<void> {
-		if (!session.isAdmin || scan.running) return;
+		if (!session.canManage || scan.running) return;
 		try {
 			toasts.success(t((await scan.start()) === 'queued' ? 'scan.queued' : 'palette.action.scanStarted'));
 		} catch (err) {
@@ -117,7 +117,7 @@
 		...(locked.length > 0 || open.length > 0
 			? [{ label: locked.length > 0 ? t('privateLibrary.unlock') : t('privateLibrary.lock'), icon: locked.length > 0 ? LockIcon : LockOpen, kbd: 'U', onSelect: () => void toggleLock() }]
 			: []),
-		...(session.isAdmin
+		...(session.canManage
 			? [
 					{ label: scan.running ? t('library.scanning') : t('library.scan'), icon: ScanLine, kbd: 'S', disabled: scan.running, onSelect: () => void rescan() },
 					{ label: t('library.manage'), icon: FolderCog, onSelect: () => void goto('/settings/libraries') }
@@ -128,7 +128,7 @@
 	usePageKeys(() => [
 		...(visible.length > 1 ? [{ keys: ['V'], label: t('pageKeys.libraryView') }] : []),
 		...(locked.length > 0 || open.length > 0 ? [{ keys: ['U'], label: t('pageKeys.unlock') }] : []),
-		...(session.isAdmin ? [{ keys: ['S'], label: t('pageKeys.scan') }] : [])
+		...(session.canManage ? [{ keys: ['S'], label: t('pageKeys.scan') }] : [])
 	]);
 
 	function onKey(e: KeyboardEvent): void {
@@ -187,7 +187,7 @@
 						<kbd class="text-muted/70">U</kbd>
 					</button>
 				{/if}
-				{#if session.isAdmin}
+				{#if session.canManage}
 					<button
 						type="button"
 						class="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:opacity-60"

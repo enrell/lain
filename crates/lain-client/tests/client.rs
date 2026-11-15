@@ -125,10 +125,18 @@ async fn auth_session_and_account() {
     bc.login("bob", &pw(3)).await.unwrap();
     assert_eq!(bc.me().await.unwrap().pwd_ver, 2);
 
-    // Logout forgets the session here and in the file.
-    c.logout().unwrap();
+    // Signing out forgets the session here and in the file, and ends it
+    // on the server: the token itself is refused afterwards (D-298).
+    let old = c.session().unwrap();
+    assert!(c.sign_out().await.unwrap(), "the server was told");
     assert_eq!(c.me().await.unwrap_err(), ClientError::Unauthorized);
     assert!(tokens.load(&server.url).unwrap().is_none());
+    tokens.save(&old).unwrap();
+    assert!(c.reload_session().unwrap());
+    assert_eq!(c.me().await.unwrap_err(), ClientError::Unauthorized, "the old token is dead on the server");
+    c.end_session(&old).await.unwrap();
+    c.logout().unwrap();
+    assert!(c.sign_out().await.unwrap(), "nothing to end is not a failure");
     drop(server);
     std::fs::remove_dir_all(root).ok();
 }
@@ -273,10 +281,25 @@ async fn libraries_catalog_and_private() {
     assert_eq!(admin.continue_watching().await.unwrap()[0].position_sec, 30.0);
     assert_eq!(admin.lock_library(LIB).await.unwrap().locked, Some(true));
     assert_eq!(admin.catalog(CatalogQuery::default()).await.unwrap().total, 0);
-    // A PIN unlocks too; repeated failures are rate limited.
+    // A PIN unlocks too.
     admin.set_pin(&pin(0), &pw(0)).await.unwrap();
     admin.unlock_library(LIB, Unlock::Pin(pin(0))).await.unwrap();
     assert_eq!(admin.catalog(CatalogQuery::default()).await.unwrap().total, 2);
+    // D-293: locked, the record has no name and changes only with the PIN.
+    let locked = admin.lock_library(LIB).await.unwrap();
+    assert_eq!((locked.name.as_str(), locked.path.as_str()), ("", ""));
+    assert!(matches!(
+        admin.update_library(LIB, LibraryPatch { private: Some(false), ..Default::default() }).await.unwrap_err(),
+        ClientError::Forbidden { .. }
+    ));
+    // Unlocked, it changes: made public, everyone sees it.
+    admin.unlock_library(LIB, Unlock::Pin(pin(0))).await.unwrap();
+    let lib = admin.update_library(LIB, LibraryPatch { private: Some(false), ..Default::default() }).await.unwrap();
+    assert_eq!((lib.private, lib.locked), (false, None));
+    assert_eq!(bob.catalog(CatalogQuery::default()).await.unwrap().total, 2);
+    // Private again (no PIN needed to hide more); repeated failures are rate limited.
+    let lib = admin.update_library(LIB, LibraryPatch { private: Some(true), ..Default::default() }).await.unwrap();
+    assert_eq!(lib.locked, Some(false), "this session unlocked it before");
     admin.lock_library(LIB).await.unwrap();
     for n in 1..=5 {
         assert!(matches!(
@@ -288,10 +311,7 @@ async fn libraries_catalog_and_private() {
         admin.unlock_library(LIB, Unlock::Pin(pin(0))).await.unwrap_err(),
         ClientError::RateLimited { .. }
     ));
-    // Made public again, everyone sees it.
-    let lib = admin.update_library(LIB, LibraryPatch { private: Some(false), ..Default::default() }).await.unwrap();
-    assert_eq!((lib.private, lib.locked), (false, None));
-    assert_eq!(bob.catalog(CatalogQuery::default()).await.unwrap().total, 2);
+    assert_eq!(bob.catalog(CatalogQuery::default()).await.unwrap().total, 0);
     drop(server);
     std::fs::remove_dir_all(root).ok();
 }

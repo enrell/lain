@@ -23,7 +23,8 @@ use serde_json::{Value, json};
 
 use lain_admin::{avatars, backup, theme};
 use lain_auth::{
-    AVATAR_UPLOAD, AuthError, MASCOTS, PlaybackPolicy, PreferencesPatch, ProfilePatch, ROLE_ADMIN, ROLE_USER, Verified,
+    AVATAR_UPLOAD, AuthError, MASCOTS, PlaybackPolicy, PreferencesPatch, ProfilePatch, ROLE_ADMIN, ROLE_MANAGER,
+    ROLE_USER, Verified,
 };
 use lain_core::codes;
 
@@ -126,21 +127,28 @@ impl Req {
         .filter(|t| !t.is_empty())
     }
 
-    /// Decodes a JSON body like Go's `json.Decoder`: the first value,
-    /// which must be an object (or `null`); `null` fields are no-ops.
-    pub(crate) fn decode<T: for<'de> Deserialize<'de>>(&self) -> Result<T, Reply> {
+    /// Parses the raw JSON body object (or `null` -> `{}`) without stripping
+    /// `null` fields, so callers that distinguish `"field": null` from an
+    /// omitted field can inspect it first.
+    pub(crate) fn decode_raw_object(&self) -> Result<serde_json::Map<String, Value>, Reply> {
         let invalid = || Reply::err(400, "invalid json");
         let mut it = serde_json::Deserializer::from_slice(&self.body).into_iter::<Value>();
         let v = match it.next() {
             Some(Ok(v)) => v,
             _ => return Err(invalid()),
         };
-        let v = match v {
-            Value::Null => json!({}),
-            Value::Object(_) => strip_nulls(v),
-            _ => return Err(invalid()),
-        };
-        serde_json::from_value(v).map_err(|_| invalid())
+        match v {
+            Value::Null => Ok(serde_json::Map::new()),
+            Value::Object(o) => Ok(o),
+            _ => Err(invalid()),
+        }
+    }
+
+    /// Decodes a JSON body like Go's `json.Decoder`: the first value,
+    /// which must be an object (or `null`); `null` fields are no-ops.
+    pub(crate) fn decode<T: for<'de> Deserialize<'de>>(&self) -> Result<T, Reply> {
+        let obj = self.decode_raw_object()?;
+        serde_json::from_value(strip_nulls(Value::Object(obj))).map_err(|_| Reply::err(400, "invalid json"))
     }
 }
 
@@ -195,10 +203,25 @@ fn atoi(s: &str) -> i64 {
 pub(crate) enum Gate {
     Public,
     User,
+    /// Renaming and ordering the libraries the caller can see, and
+    /// starting a scan (D-296). An admin or a manager.
+    Manager,
     Admin,
-    /// An admin session, or an integration key with the `indexers`
-    /// scope (D-290). Only the `/api/acquire/indexers*` routes use it.
+    /// An admin session, or an integration key with the
+    /// `indexers` scope (D-290). Only the `/api/acquire/indexers*` routes
+    /// use it.
     Indexers,
+}
+
+/// Whether a signed-in role may pass `gate`. Integration keys are decided
+/// before this, in [`authorize`].
+pub(crate) fn gate_allows(gate: Gate, role: &str) -> bool {
+    match gate {
+        Gate::Public | Gate::User => true,
+        Gate::Manager => role == ROLE_ADMIN || role == ROLE_MANAGER,
+        Gate::Indexers => role == ROLE_ADMIN,
+        Gate::Admin => role == ROLE_ADMIN,
+    }
 }
 
 pub(crate) type Handler = fn(&App, &Req, &Verified) -> Reply;
@@ -218,7 +241,7 @@ pub(crate) fn authorize(app: &App, req: &Req, gate: Gate) -> Result<Verified, Re
         });
     }
     let v = req.token().and_then(|t| app.verify(t)).ok_or_else(|| Reply::err(401, "unauthorized"))?;
-    if matches!(gate, Gate::Admin | Gate::Indexers) && v.role != ROLE_ADMIN {
+    if !gate_allows(gate, &v.role) {
         return Err(Reply::err(403, "admin required"));
     }
     Ok(v)
@@ -263,6 +286,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/setup/status", route(GET, Gate::Public, setup_status))
         .route("/api/setup", route(POST, Gate::Public, setup))
         .route("/api/auth/login", route(POST, Gate::Public, login))
+        .route("/api/auth/logout", route(POST, Gate::User, logout))
         .route("/api/me", route(GET, Gate::User, me))
         .route("/api/me/preferences", route(PATCH, Gate::User, me_preferences))
         .route("/api/me/password", route(PATCH, Gate::User, me_password))
@@ -292,9 +316,9 @@ pub fn router(app: Arc<App>) -> Router {
         )
         .route(
             "/api/libraries/{id}",
-            route(DELETE, Gate::Admin, libraries_delete).merge(route(PATCH, Gate::Admin, libraries_patch)),
+            route(DELETE, Gate::Admin, libraries_delete).merge(route(PATCH, Gate::Manager, libraries_patch)),
         )
-        .route("/api/libraries/order", route(PUT, Gate::Admin, libraries_order))
+        .route("/api/libraries/order", route(PUT, Gate::Manager, libraries_order))
         .route("/api/libraries/{id}/unlock", route(POST, Gate::User, libraries_unlock))
         .route("/api/libraries/{id}/lock", route(POST, Gate::User, libraries_lock))
         .route(
@@ -374,6 +398,22 @@ fn login(app: &App, req: &Req, _: &Verified) -> Reply {
             // Username only: passwords never enter a log line.
             tracing::warn!(username = %c.username, "login failed");
             Reply::err(401, &e.to_string())
+        }
+    }
+}
+
+/// `POST /api/auth/logout` (D-298): the session ends on the server. Its
+/// token is refused from now on, its unlocks are forgotten at once, and
+/// its event streams close at their next liveness check.
+fn logout(app: &App, _: &Req, v: &Verified) -> Reply {
+    match app.auth().revoke(v) {
+        Ok(()) => {
+            app.unlocks.forget(&v.session);
+            Reply::ok(json!({"signed_out": true}))
+        }
+        Err(e) => {
+            tracing::error!(user = %v.user_id, error = %e, "sign-out failed");
+            Reply::err(500, "sign-out failed")
         }
     }
 }
@@ -719,13 +759,41 @@ fn users_patch(app: &App, req: &Req, v: &Verified) -> Reply {
         role: Option<String>,
         password: Option<String>,
         playback: Option<PlaybackPolicy>,
+        max_audience: Option<String>,
     }
     let id = req.param("id");
-    let i: In = match req.decode() {
-        Ok(i) => i,
+    let mut raw = match req.decode_raw_object() {
+        Ok(o) => o,
         Err(r) => return r,
     };
+    let libraries_patch: Option<Option<Vec<String>>> = match raw.remove("libraries") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(val) => match serde_json::from_value::<Vec<String>>(val) {
+            Ok(ids) => Some(Some(ids)),
+            Err(_) => return Reply::err(400, "invalid json"),
+        },
+    };
+    let i: In = match serde_json::from_value(strip_nulls(Value::Object(raw))) {
+        Ok(i) => i,
+        Err(_) => return Reply::err(400, "invalid json"),
+    };
     let auth = app.auth();
+    if auth.get_public(id).is_none() {
+        return Reply::err(404, "unknown user");
+    }
+    if let Some(Some(ids)) = &libraries_patch {
+        for lid in ids {
+            if app.libraries.get(lid).is_none() {
+                return Reply::err(400, &format!("unknown library {lid}"));
+            }
+        }
+    }
+    if let Some(aud) = &i.max_audience
+        && lain_api::normalize_audience(aud).is_none()
+    {
+        return Reply::err(400, "max_audience must be everyone, teen or mature");
+    }
     if id == v.user_id && i.disabled == Some(true) {
         return Reply::err(400, "cannot disable yourself");
     }
@@ -749,6 +817,16 @@ fn users_patch(app: &App, req: &Req, v: &Verified) -> Reply {
     }
     if let Some(p) = i.playback
         && let Err(e) = auth.set_playback(id, p)
+    {
+        return Reply::err(400, &e.to_string());
+    }
+    if let Some(libs) = libraries_patch
+        && let Err(e) = auth.set_libraries(id, libs)
+    {
+        return Reply::err(400, &e.to_string());
+    }
+    if let Some(aud) = &i.max_audience
+        && let Err(e) = auth.set_max_audience(id, aud)
     {
         return Reply::err(400, &e.to_string());
     }
@@ -822,24 +900,96 @@ fn users_delete(app: &App, req: &Req, v: &Verified) -> Reply {
 
 // ---- libraries ------------------------------------------------------------
 
-/// One library as this viewer sees it: private ones carry `locked`.
+/// One library as this viewer sees it: private ones carry `locked`, and
+/// a locked one shows no name and no folder (D-293): the record says a
+/// private library exists, never what is in it, so a settings screen on
+/// a shared TV gives nothing away. Unlocking it shows them again.
 fn library_view(app: &App, lib: &Library, v: &Verified) -> Value {
     let mut out = json!(lib);
     if lib.private {
-        out["locked"] = json!(!privacy::items_visible(lib, &app.unlocks, &v.user_id, &v.session));
+        let access = app.access(v);
+        let locked = !privacy::items_visible(lib, &app.unlocks, &access, &v.session);
+        out["locked"] = json!(locked);
+        if locked {
+            out["name"] = json!("");
+            out["path"] = json!("");
+            if let Some(o) = out.as_object_mut() {
+                o.remove("root_path");
+                o.remove("audience");
+            }
+        }
     }
     out
+}
+
+/// Checks the caller's own PIN or password, under the unlock attempt
+/// limit (D-156). `missing` is the answer when neither was sent.
+fn check_secret(
+    app: &App,
+    v: &Verified,
+    pin: Option<&str>,
+    password: Option<&str>,
+    missing: (u16, &str),
+) -> Result<(), Reply> {
+    if pin.is_none() && password.is_none() {
+        return Err(Reply::err(missing.0, missing.1));
+    }
+    if !app.unlocks.may_try(&v.user_id) {
+        return Err(Reply::err(429, "too many attempts; try again in a few minutes"));
+    }
+    let auth = app.auth();
+    let ok = match (pin, password) {
+        (Some(pin), _) => auth.check_pin(&v.user_id, pin),
+        (None, Some(pw)) => auth.check_password(&v.user_id, pw),
+        (None, None) => false,
+    };
+    if !ok {
+        app.unlocks.failed(&v.user_id);
+        return Err(Reply::err(403, "wrong pin or password"));
+    }
+    app.unlocks.succeeded(&v.user_id);
+    Ok(())
+}
+
+/// D-293: changing or removing a private library takes the PIN. A
+/// session that unlocked it has given it; any other caller (an admin who
+/// is not a member, a session that never unlocked) sends its own PIN or
+/// password with the request, as `pin` or `password` in the JSON body.
+fn library_change_allowed(app: &App, req: &Req, v: &Verified, lib: &Library) -> Result<(), Reply> {
+    let access = app.access(v);
+    if !lib.private || privacy::items_visible(lib, &app.unlocks, &access, &v.session) {
+        return Ok(());
+    }
+    #[derive(Deserialize, Default)]
+    struct Secret {
+        pin: Option<String>,
+        password: Option<String>,
+    }
+    let s: Secret = if req.body.trim_ascii().is_empty() { Secret::default() } else { req.decode()? };
+    check_secret(
+        app,
+        v,
+        s.pin.as_deref(),
+        s.password.as_deref(),
+        (403, "pin or password required to change a locked private library"),
+    )
 }
 
 fn libraries_list(app: &App, _: &Req, v: &Verified) -> Reply {
     match app.libraries.list() {
         Ok(l) => Reply::ok(json!(
-            l.iter()
-                .filter(|lib| privacy::record_visible(lib, &v.user_id, v.is_admin()))
-                .map(|lib| library_view(app, lib, v))
-                .collect::<Vec<_>>()
+            l.iter().filter(|lib| app.record_visible(lib, v)).map(|lib| library_view(app, lib, v)).collect::<Vec<_>>()
         )),
         Err(e) => Reply::err(500, &e.to_string()),
+    }
+}
+
+/// A library this caller may manage. One they cannot see answers the
+/// same as one that does not exist (D-296).
+fn manageable(app: &App, v: &Verified, id: &str) -> Result<Library, Reply> {
+    match app.libraries.get(id) {
+        Some(lib) if app.record_visible(&lib, v) => Ok(lib),
+        _ => Err(Reply::err(404, "unknown library")),
     }
 }
 
@@ -848,22 +998,34 @@ fn libraries_patch(app: &App, req: &Req, v: &Verified) -> Reply {
         Ok(p) => p,
         Err(r) => return r,
     };
+    // D-296: a manager renames a library and sets what the scan reads.
+    // Where it lives and who may see it (folder, privacy, owner, members,
+    // audience) are the admin's: each of them can expose a library.
+    if !v.is_admin()
+        && (p.path.is_some() || p.private.is_some() || p.owner.is_some() || p.members.is_some() || p.audience.is_some())
+    {
+        return Reply::err(403, "admin required");
+    }
     let auth = app.auth();
-    let before = app.libraries.get(req.param("id"));
+    let before = match manageable(app, v, req.param("id")) {
+        Ok(lib) => Some(lib),
+        Err(r) => return r,
+    };
+    if let Some(b) = &before
+        && let Err(r) = library_change_allowed(app, req, v, b)
+    {
+        return r;
+    }
     match app.libraries.update(req.param("id"), &p, &v.user_id, &|u| auth.get_public(u).is_some()) {
         Ok(lib) => {
             let data = json!({"library_id": lib.id, "action": "updated"});
-            // Who could see it before (made private) and after (made public).
-            if let Some(b) = before.filter(|b| b.private && !lib.private) {
-                app.publish_library(&b, data.clone());
-                let public = Library { private: false, ..lib.clone() };
-                app.events.publish_where("library-changed", data, &|s: &SubInfo| {
-                    !privacy::record_visible(&b, &s.user_id, s.admin)
-                        && privacy::record_visible(&public, &s.user_id, s.admin)
-                });
-            } else {
-                app.publish_library(&lib, data);
-            }
+            // Notify subscribers who saw the record before or see it now
+            // (covers `private` and `audience` changes alike).
+            app.events.publish_where("library-changed", data, &|s: &SubInfo| {
+                let access = app.access_for(&s.user_id, s.admin);
+                privacy::record_visible(&lib, &access)
+                    || before.as_ref().is_some_and(|b| privacy::record_visible(b, &access))
+            });
             Reply::ok(library_view(app, &lib, v))
         }
         Err(e) if e == "unknown library" => Reply::err(404, &e),
@@ -871,19 +1033,57 @@ fn libraries_patch(app: &App, req: &Req, v: &Verified) -> Reply {
     }
 }
 
-/// The admin's order of the libraries (every id, first to last): Home,
-/// the library page and every client list them in it.
+/// The order of the libraries (every id the caller can see, first to
+/// last): Home, the library page and every client list them in it. An
+/// admin names every library. A manager names the ones it can see; the
+/// others stay in their places, and an id it cannot see is `unknown library`.
 fn libraries_order(app: &App, req: &Req, v: &Verified) -> Reply {
     let i: lain_api::LibraryOrder = match req.decode() {
         Ok(i) => i,
         Err(r) => return r,
     };
-    match app.libraries.reorder(&i.ids) {
+    let ids = if v.is_admin() {
+        i.ids
+    } else {
+        let all = match app.libraries.list() {
+            Ok(l) => l,
+            Err(e) => return Reply::err(500, &e.to_string()),
+        };
+        let visible: Vec<String> = all.iter().filter(|l| app.record_visible(l, v)).map(|l| l.id.clone()).collect();
+        let mut seen = std::collections::BTreeSet::new();
+        if let Some(dup) = i.ids.iter().find(|id| !seen.insert(id.as_str())) {
+            return Reply::err(400, &format!("{dup} is listed twice"));
+        }
+        for id in &i.ids {
+            if !visible.iter().any(|known| known == id) {
+                return Reply::err(404, &format!("unknown library {id}"));
+            }
+        }
+        if i.ids.len() != visible.len() {
+            return Reply::err(400, "every library must be listed");
+        }
+        let mut next = i.ids.into_iter();
+        let mut full = Vec::with_capacity(all.len());
+        for lib in &all {
+            if visible.iter().any(|id| id == &lib.id) {
+                full.push(next.next().expect("one id per visible library"));
+            } else {
+                full.push(lib.id.clone());
+            }
+        }
+        full
+    };
+    match app.libraries.reorder(&ids) {
         Ok(list) => {
             for lib in &list {
                 app.publish_library(lib, json!({"library_id": lib.id, "action": "updated"}));
             }
-            Reply::ok(json!(list.iter().map(|lib| library_view(app, lib, v)).collect::<Vec<_>>()))
+            Reply::ok(json!(
+                list.iter()
+                    .filter(|lib| app.record_visible(lib, v))
+                    .map(|lib| library_view(app, lib, v))
+                    .collect::<Vec<_>>()
+            ))
         }
         Err(e) if e.starts_with("unknown library") => Reply::err(404, &e),
         Err(e) => Reply::err(400, &e),
@@ -900,8 +1100,7 @@ fn libraries_unlock(app: &App, req: &Req, v: &Verified) -> Reply {
         Ok(i) => i,
         Err(r) => return r,
     };
-    let Some(lib) = app.libraries.get(req.param("id")).filter(|l| privacy::record_visible(l, &v.user_id, v.is_admin()))
-    else {
+    let Some(lib) = app.libraries.get(req.param("id")).filter(|l| app.record_visible(l, v)) else {
         return Reply::err(404, "unknown library");
     };
     if !lib.private {
@@ -910,27 +1109,15 @@ fn libraries_unlock(app: &App, req: &Req, v: &Verified) -> Reply {
     if !lib.is_member(&v.user_id) {
         return Reply::err(403, "not a member of this library");
     }
-    if !app.unlocks.may_try(&v.user_id) {
-        return Reply::err(429, "too many attempts; try again in a few minutes");
+    if let Err(r) = check_secret(app, v, i.pin.as_deref(), i.password.as_deref(), (400, "pin or password required")) {
+        return r;
     }
-    let auth = app.auth();
-    let ok = match (&i.pin, &i.password) {
-        (Some(pin), _) => auth.check_pin(&v.user_id, pin),
-        (None, Some(pw)) => auth.check_password(&v.user_id, pw),
-        (None, None) => return Reply::err(400, "pin or password required"),
-    };
-    if !ok {
-        app.unlocks.failed(&v.user_id);
-        return Reply::err(403, "wrong pin or password");
-    }
-    app.unlocks.succeeded(&v.user_id);
     app.unlocks.unlock(v, &lib.id);
     Reply::ok(library_view(app, &lib, v))
 }
 
 fn libraries_lock(app: &App, req: &Req, v: &Verified) -> Reply {
-    let Some(lib) = app.libraries.get(req.param("id")).filter(|l| privacy::record_visible(l, &v.user_id, v.is_admin()))
-    else {
+    let Some(lib) = app.libraries.get(req.param("id")).filter(|l| app.record_visible(l, v)) else {
         return Reply::err(404, "unknown library");
     };
     app.unlocks.lock(v, &lib.id);
@@ -975,12 +1162,14 @@ fn libraries_create(app: &App, req: &Req, _: &Verified) -> Reply {
         path: String,
         #[serde(default)]
         root: String,
+        #[serde(default)]
+        audience: String,
     }
     let i: In = match req.decode() {
         Ok(i) => i,
         Err(r) => return r,
     };
-    match app.libraries.create(&i.name, &i.kind, &i.path, &i.root) {
+    match app.libraries.create(&i.name, &i.kind, &i.path, &i.root, &i.audience) {
         Ok(lib) => {
             app.publish_library(&lib, json!({"library_id": lib.id, "action": "created"}));
             Reply::json(201, json!(lib))
@@ -989,9 +1178,17 @@ fn libraries_create(app: &App, req: &Req, _: &Verified) -> Reply {
     }
 }
 
-fn libraries_delete(app: &App, req: &Req, _: &Verified) -> Reply {
+fn libraries_delete(app: &App, req: &Req, v: &Verified) -> Reply {
     let id = req.param("id");
-    let record = app.libraries.get(id);
+    let record = match manageable(app, v, id) {
+        Ok(lib) => Some(lib),
+        Err(r) => return r,
+    };
+    if let Some(lib) = &record
+        && let Err(r) = library_change_allowed(app, req, v, lib)
+    {
+        return r;
+    }
     if let Err(e) = app.libraries.delete(id) {
         return Reply::err(404, &e);
     }
@@ -1004,6 +1201,10 @@ fn libraries_delete(app: &App, req: &Req, _: &Verified) -> Reply {
             return Reply::err(500, "library removed, but its catalog entries could not be deleted");
         }
     };
+    if let Err(e) = app.auth().remove_library_from_users(id) {
+        tracing::error!(library = %id, err = %e, "user library allow-list cleanup failed");
+        return Reply::err(500, "library removed, but account allow-lists could not be updated");
+    }
     if let Some(lib) = record {
         app.publish_library(&lib, json!({"library_id": id, "action": "deleted", "items_removed": removed}));
     }
@@ -1101,10 +1302,14 @@ fn progress_put(app: &App, req: &Req, v: &Verified) -> Reply {
         Ok((out, _)) => {
             app.publish_progress(&v.user_id, &p.item_id, json!({"item_id": p.item_id, "progress": out}));
             if let Some(it) = crate::social::catalog_item(app, &p.item_id) {
-                if p.completed && !prev.completed {
-                    crate::lists::scrobble_after(app, &v.user_id, &it);
+                let allowed =
+                    app.libraries.get(&it.library_id).is_none_or(|lib| privacy::account_allows(&lib, &app.access(v)));
+                if allowed {
+                    if p.completed && !prev.completed {
+                        crate::lists::scrobble_after(app, &v.user_id, &it);
+                    }
+                    crate::social::record_progress(app, &v.user_id, &it, p.completed, prev.completed);
                 }
-                crate::social::record_progress(app, &v.user_id, &it, p.completed, prev.completed);
             }
             Reply::ok(out)
         }
@@ -1200,11 +1405,21 @@ async fn events(State(app): State<Arc<App>>, uri: Uri, headers: HeaderMap) -> Re
         Ok(Err(r)) => return r.into_response(),
         Err(_) => return Reply::err(500, "internal error").into_response(),
     };
-    let info = SubInfo { user_id: v.user_id.clone(), admin: v.is_admin(), session: v.session.clone() };
+    let info = SubInfo {
+        user_id: v.user_id.clone(),
+        admin: v.is_admin(),
+        manager: v.is_manager(),
+        session: v.session.clone(),
+    };
     let rx = app.events.subscribe(info, &json!({"server": "lain-rs", "version": app.version}));
     let check_app = app.clone();
     let check = Box::new(move || check_app.verify(&token).is_some());
-    let mut r = Response::new(Body::new(SseBody::new(rx, app.keep_alive, check)));
+    // The stream is the lease private-library unlocks hold on (D-294).
+    app.unlocks.stream_opened(&v);
+    let (lease_app, lease_session) = (app.clone(), v.session.clone());
+    let body =
+        SseBody::new(rx, app.keep_alive, check).on_close(move || lease_app.unlocks.stream_closed(&lease_session));
+    let mut r = Response::new(Body::new(body));
     let h = r.headers_mut();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
@@ -1294,6 +1509,17 @@ impl From<AuthError> for Reply {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_gate_admits_a_manager_only_where_it_may_act() {
+        assert!(gate_allows(Gate::Manager, ROLE_ADMIN) && gate_allows(Gate::Manager, ROLE_MANAGER));
+        assert!(!gate_allows(Gate::Manager, ROLE_USER) && !gate_allows(Gate::Manager, "root"));
+        assert!(gate_allows(Gate::Indexers, ROLE_ADMIN));
+        assert!(!gate_allows(Gate::Indexers, ROLE_MANAGER) && !gate_allows(Gate::Indexers, ROLE_USER));
+        assert!(gate_allows(Gate::Admin, ROLE_ADMIN));
+        assert!(!gate_allows(Gate::Admin, ROLE_MANAGER) && !gate_allows(Gate::Admin, ROLE_USER));
+        assert!(gate_allows(Gate::User, ROLE_MANAGER) && gate_allows(Gate::User, "nope"));
+    }
 
     #[test]
     fn query_decoding() {

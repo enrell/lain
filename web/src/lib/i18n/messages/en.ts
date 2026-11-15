@@ -69,7 +69,13 @@ const en = {
 			failed: 'Sign in failed.',
 			mismatch: 'That username and password do not match. Check both and try again.',
 			disabled: 'This account is disabled. An administrator of this server can turn it back on.',
-			forgot: 'Forgot your password? An administrator of this server can set a new one.'
+			unknown: 'No account on this server has that username. Forget it on this device if it should not be listed.',
+			forgot: 'Forgot your password? An administrator of this server can set a new one.',
+			who: 'Who is watching?',
+			tile: '{name} (@{username})',
+			tileKeys: 'Arrows move, Enter chooses, Esc returns to the form. This key forgets the focused account.',
+			forget: 'Forget {name} on this device',
+			orForm: 'Or sign in with a username and password.'
 		}
 	},
 	privateLibrary: {
@@ -106,7 +112,15 @@ const en = {
 		pinClear: 'Remove PIN',
 		pinSaved: 'PIN saved.',
 		pinCleared: 'PIN removed.',
-		pinFailed: 'Could not change the PIN.'
+		pinFailed: 'Could not change the PIN.',
+		showPrivate: 'Show private libraries',
+		lockPrivate: 'Lock private libraries',
+		hiddenName: 'Private library',
+		hiddenPath: 'Folder hidden until unlocked',
+		confirmTitle: 'Confirm with your PIN',
+		confirmDescription: 'This library is private and locked. Changing or removing it takes your library PIN or your password.',
+		confirm: 'Confirm',
+		editMembersOnly: 'Only a member can edit a locked library: its name and folder stay hidden from everyone else.'
 	},
 	roots: {
 		heading: 'Library roots',
@@ -163,7 +177,8 @@ const en = {
 		profile: 'Profile',
 		playback: 'Playback',
 		allSettings: 'All settings',
-		shortcuts: 'Keyboard shortcuts'
+		shortcuts: 'Keyboard shortcuts',
+		switchAccount: 'Switch account'
 	},
 	time: {
 		justNow: 'just now'
@@ -528,6 +543,7 @@ const en = {
 			disabledBadge: 'disabled',
 			joined: '{role} · joined {date}',
 			roleUser: 'User',
+			roleManager: 'Manager',
 			roleAdmin: 'Admin',
 			roleFor: 'Role of {name}',
 			roleSaved: 'Role changed for {name}.',
@@ -584,7 +600,23 @@ const en = {
 			subtitleDefault: 'The server’s setting',
 			saveLimits: 'Save limits',
 			limitsSaved: 'Playback limits saved for {name}.',
-			limitsFailed: 'Could not save the playback limits.'
+			limitsFailed: 'Could not save the playback limits.',
+			access: 'Access',
+			accessTitle: 'Library access and audience',
+			accessBody: 'Choose which libraries this account may see. Admins always see everything.',
+			accessFor: 'Settings for {name}.',
+			maxAudience: 'Maximum audience',
+			maxAudienceHint: 'Caps which libraries this account sees. Everyone is the children’s setting.',
+			allLibraries: 'All libraries',
+			allLibrariesHint: 'Include every library below the audience cap, now and in the future.',
+			chosenLibraries: 'Allowed libraries',
+			noNamedLibraries: 'No libraries can be shown right now.',
+			saveAccess: 'Save access',
+			accessSaved: 'Access saved for {name}.',
+			accessFailed: 'Could not save account access.',
+			accessSummaryNone: 'No libraries',
+			accessSummaryCount: { one: '{count} library', other: '{count} libraries' },
+			accessAudienceBadge: 'Max: {level}'
 		},
 		// Settings › Libraries.
 		librariesPage: {
@@ -665,6 +697,14 @@ const en = {
 			typeAuto: 'Auto reads videos and comic archives, and tells each file apart by itself.',
 			typeComics: 'Only comic archives (cbz, cbr, cb7) in the folder are read.',
 			typeVideo: 'Only video files in the folder are read.',
+			audience: 'Audience',
+			audienceHint: 'A new library starts as Mature. Teen and Mature hide it from stricter accounts; Everyone opens it to family and children’s accounts.',
+			audienceEveryone: 'Everyone',
+			audienceTeen: 'Teen',
+			audienceMature: 'Mature',
+			members: 'Private members',
+			membersHint: 'Who may see and unlock this library. The owner is always a member.',
+			ownerBadge: 'Owner',
 			addOnly: 'Add',
 			addAndScan: 'Add and scan',
 			save: 'Save',

@@ -28,6 +28,11 @@ pub struct Request {
     pub time_sec: f64,
     #[serde(default)]
     pub width: i64,
+    /// The provider chooses the frame (`time_sec` is ignored): the first
+    /// of a few places in the file that is a picture, not a flat card
+    /// (see [`flatness`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pick: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -371,7 +376,10 @@ impl Generator {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        let key = crate::settings::sha256_hex(&format!("{}|{mtime}|{}|{at:.1}|{width}", req.file_path, meta.len()));
+        // A comic's cover is its first page whatever is asked.
+        let pick = req.pick && !comic(&req.file_path);
+        let place = if pick { "pick".to_string() } else { format!("{at:.1}") };
+        let key = crate::settings::sha256_hex(&format!("{}|{mtime}|{}|{place}|{width}", req.file_path, meta.len()));
         let out = self.dir.join(format!("{key}.jpg"));
         let cached = |p: &Path| std::fs::metadata(p).is_ok_and(|m| m.len() > 0);
         let hit = || Thumbnail { path: out.to_string_lossy().into_owned(), width, cached: true };
@@ -384,10 +392,13 @@ impl Generator {
             return Ok(hit());
         }
         let made = Thumbnail { path: out.to_string_lossy().into_owned(), width, cached: false };
-        match extract(&req.file_path, at, width, &out) {
-            Ok(()) => Ok(made),
+        if pick && choose(&req.file_path, width, &out).is_ok() {
+            return Ok(made);
+        }
+        match extract(&req.file_path, at, width, &out, false) {
+            Ok(_) => Ok(made),
             // A seek past the end yields nothing; the start always exists.
-            Err(_) if at > 0.0 && extract(&req.file_path, 0.0, width, &out).is_ok() => Ok(made),
+            Err(_) if at > 0.0 && extract(&req.file_path, 0.0, width, &out, false).is_ok() => Ok(made),
             Err(e) => Err(Error::unavailable(format!("ffmpeg: {e}"))),
         }
     }
@@ -451,9 +462,86 @@ impl Drop for Slot<'_> {
     }
 }
 
+/// The frame analysed for flatness: small, and sampled without blending
+/// so a card's two colors stay two.
+const PROBE_W: usize = 96;
+const PROBE_H: usize = 54;
+/// A frame is flat when this share of it is at most [`FLAT_COLORS`] colors.
+const FLAT: f64 = 0.88;
+const FLAT_COLORS: usize = 3;
+/// How far (per channel) a pixel may be from a color and still be it:
+/// room for compression noise and a soft edge.
+const SAME_COLOR: i32 = 28;
+/// Frames tried before the least flat one is taken.
+const PICKS: usize = 4;
+
+/// The share (0..=1) of an RGB24 frame covered by its three most common
+/// colors. A black or white screen, a fade, a logo or a line of text on a
+/// plain ground is nearly all of it; a scene is not.
+pub fn flatness(rgb: &[u8]) -> f64 {
+    let mut left: Vec<[i32; 3]> = rgb.as_chunks::<3>().0.iter().map(|p| p.map(i32::from)).collect();
+    let total = left.len();
+    if total == 0 {
+        return 0.0;
+    }
+    for _ in 0..FLAT_COLORS {
+        // The most common coarse color, then its mean as the color itself.
+        let mut seen: HashMap<[i32; 3], (usize, [i64; 3])> = HashMap::new();
+        for p in &left {
+            let e = seen.entry([p[0] >> 3, p[1] >> 3, p[2] >> 3]).or_default();
+            e.0 += 1;
+            for c in 0..3 {
+                e.1[c] += p[c] as i64;
+            }
+        }
+        let Some((n, sum)) = seen.into_values().max_by_key(|(n, _)| *n) else { break };
+        let mean = [(sum[0] / n as i64) as i32, (sum[1] / n as i64) as i32, (sum[2] / n as i64) as i32];
+        left.retain(|p| (0..3).any(|c| (p[c] - mean[c]).abs() > SAME_COLOR));
+    }
+    (total - left.len()) as f64 / total as f64
+}
+
+/// Where a frame is looked for: past the cold open and the opening
+/// credits first, by the file's length when ffprobe tells it.
+fn pick_times(path: &str) -> Vec<f64> {
+    let duration =
+        lain_probe::probe(lain_probe::binary(""), Path::new(path), TIMEOUT).map(|r| r.duration_sec()).unwrap_or(0.0);
+    if duration > 0.0 {
+        [0.2, 0.35, 0.5, 0.65].iter().map(|f| f * duration).collect()
+    } else {
+        vec![10.0, 60.0, 180.0, 300.0]
+    }
+}
+
+/// Writes to `out` the first frame of [`pick_times`] that is not flat, or
+/// the least flat of them, and returns its time.
+fn choose(path: &str, width: i64, out: &Path) -> Result<f64, String> {
+    let mut best: Option<(f64, f64, PathBuf)> = None;
+    for (i, at) in pick_times(path).into_iter().take(PICKS).enumerate() {
+        let candidate = out.with_extension(format!("pick{i}.jpg"));
+        // Past the end, or unreadable there: the next place.
+        let Ok(flat) = extract(path, at, width, &candidate, true) else { continue };
+        let better = best.as_ref().is_none_or(|(b, _, _)| flat < *b);
+        if better {
+            if let Some((_, _, old)) = best.replace((flat, at, candidate)) {
+                let _ = std::fs::remove_file(old);
+            }
+        } else {
+            let _ = std::fs::remove_file(candidate);
+        }
+        if flat < FLAT {
+            break;
+        }
+    }
+    let (_, at, file) = best.ok_or("no frame")?;
+    std::fs::rename(&file, out).map_err(|e| e.to_string())?;
+    Ok(at)
+}
+
 /// Seeks before `-i` (keyframe-fast) and writes one JPEG atomically; a
-/// comic archive's cover page is piped in instead.
-fn extract(path: &str, at: f64, width: i64, out: &Path) -> Result<(), String> {
+/// comic archive's cover page is piped in instead. With `measure`, the
+/// same frame's [`flatness`] comes back (0 when it could not be read).
+fn extract(path: &str, at: f64, width: i64, out: &Path, measure: bool) -> Result<f64, String> {
     let tmp = out.with_extension("jpg.tmp");
     let _ = std::fs::remove_file(&tmp);
     let mut cmd = Command::new("ffmpeg");
@@ -466,6 +554,10 @@ fn extract(path: &str, at: f64, width: i64, out: &Path) -> Result<(), String> {
         None
     };
     cmd.args(["-frames:v", "1", "-vf", &format!("scale={width}:-2"), "-q:v", "4", "-f", "image2", "-y"]).arg(&tmp);
+    if measure {
+        let small = format!("scale={PROBE_W}:{PROBE_H}:flags=neighbor");
+        cmd.args(["-frames:v", "1", "-vf", &small, "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]);
+    }
     let o = exec::run(cmd, stdin, TIMEOUT).map_err(|e| e.to_string())?;
     if !o.status.success() {
         let _ = std::fs::remove_file(&tmp);
@@ -475,7 +567,8 @@ fn extract(path: &str, at: f64, width: i64, out: &Path) -> Result<(), String> {
         let _ = std::fs::remove_file(&tmp);
         return Err(format!("no frame at {at:.1}s"));
     }
-    std::fs::rename(&tmp, out).map_err(|e| e.to_string())
+    std::fs::rename(&tmp, out).map_err(|e| e.to_string())?;
+    Ok(if o.stdout.len() == PROBE_W * PROBE_H * 3 { flatness(&o.stdout) } else { 0.0 })
 }
 
 /// One ffmpeg run over the file: keyframes only (decoding every frame of
@@ -560,6 +653,69 @@ mod tests {
             g.storyboard(&StoryboardRequest { duration_sec: 0.0, ..req.clone() }).unwrap_err().code,
             "invalid-message"
         );
+    }
+
+    #[test]
+    fn flat_frames_are_told_from_pictures() {
+        let px = PROBE_W * PROBE_H;
+        let solid = |c: [u8; 3]| c.repeat(px);
+        assert_eq!(flatness(&[]), 0.0);
+        assert_eq!(flatness(&solid([0, 0, 0])), 1.0, "black");
+        assert_eq!(flatness(&solid([255, 255, 255])), 1.0, "white");
+        assert_eq!(flatness(&solid([200, 30, 30])), 1.0, "any one color");
+        // A ground, a line of text on it and its shadow, with noise.
+        let mut card = Vec::new();
+        for i in 0..px {
+            let n = (i % 7) as u8;
+            card.extend(match i % 20 {
+                0 | 1 => [20 + n, 20, 24],
+                2 => [120, 120 + n, 120],
+                _ => [240 + n, 236, 240],
+            });
+        }
+        assert!(flatness(&card) >= FLAT, "a text card: {}", flatness(&card));
+        // A scene: many colors, none of them most of the frame.
+        let mut scene = Vec::new();
+        for i in 0..px {
+            let (x, y) = (i % PROBE_W, i / PROBE_W);
+            scene.extend([(x * 255 / PROBE_W) as u8, (y * 255 / PROBE_H) as u8, ((x + y) % 256) as u8]);
+        }
+        assert!(flatness(&scene) < FLAT, "a scene: {}", flatness(&scene));
+    }
+
+    #[test]
+    fn a_picked_frame_skips_a_flat_opening() {
+        if lain_probe::exec::look_path("ffmpeg").is_none() || lain_probe::exec::look_path("ffprobe").is_none() {
+            assert!(std::env::var("LAIN_REQUIRE_FFMPEG").is_err(), "LAIN_REQUIRE_FFMPEG is set but ffmpeg is missing");
+            return;
+        }
+        let dir = lain_store::test_dir("thumb-pick");
+        std::fs::create_dir_all(&dir).unwrap();
+        // 9 s of black, then 11 s of a test picture: 20% and 35% are black.
+        let video = dir.join("clip.mp4");
+        let made = Command::new("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error"])
+            .args(["-f", "lavfi", "-i", "color=black:size=320x180:rate=10:duration=9"])
+            .args(["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=10:duration=11"])
+            .args(["-filter_complex", "[0:v][1:v]concat=n=2:v=1", "-g", "10", "-pix_fmt", "yuv420p", "-y"])
+            .arg(&video)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        let path = video.to_string_lossy().into_owned();
+        let out = dir.join("out.jpg");
+        let at = choose(&path, 96, &out).unwrap();
+        assert!(at >= 9.0, "picked {at}");
+        assert_eq!(&std::fs::read(&out).unwrap()[..2], &[0xFF, 0xD8]);
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left.len(), 2, "no candidate is left behind: {left:?}");
+        // Through the provider: its own cache entry, apart from a timed frame's.
+        let g = Generator::new(&dir.join("cache"));
+        let req = Request { file_path: path, width: 96, pick: true, ..Default::default() };
+        let first = g.generate(&req).unwrap();
+        assert!(!first.cached && g.generate(&req).unwrap().cached);
+        assert_ne!(g.generate(&Request { pick: false, ..req }).unwrap().path, first.path);
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]

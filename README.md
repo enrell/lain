@@ -445,6 +445,7 @@ GET  /health  /api/health
 GET  /api/theme             (public, normalized semantic colors)
 GET  /api/setup/status      POST /api/setup          (first admin)
 POST /api/auth/login        GET  /api/me
+POST /api/auth/logout       (ends the session on the server)
 PATCH /api/me/password      GET  /api/me/continue
 GET  /api/me/links          GET  /api/me/links/{platform}/authorize
 GET  /api/me/links/{platform}/pin    POST /api/me/links/{platform}/code

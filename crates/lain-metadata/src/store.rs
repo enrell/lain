@@ -13,6 +13,10 @@ use crate::types::{MetadataCandidate, MetadataRecord};
 /// Search answers go stale fast (new seasons); records are stable.
 pub const SEARCH_TTL_SECS: i64 = 7 * 24 * 3600;
 pub const RECORD_TTL_SECS: i64 = 30 * 24 * 3600;
+/// "Nothing found" is kept a day: a rescan of titles no provider knows
+/// (home videos, clips) asks nobody again, and a title added upstream
+/// shows up by tomorrow.
+pub const EMPTY_SEARCH_TTL_SECS: i64 = 24 * 3600;
 
 pub fn save(store: &Store, item_id: &str, rec: &MetadataRecord, now: i64) -> Result<Enrichment, StoreError> {
     let e = Enrichment {
@@ -101,11 +105,17 @@ fn put(store: &Store, key: &[u8], data: Value, now: i64) -> Result<(), StoreErro
     store.write(|tx| tx.put_json(Bucket::MetadataCache, key, &CacheEntry { at: now, data }))
 }
 
-/// Fresh cached candidates; an empty answer is a miss, so an outage
-/// never poisons later enrichments.
+/// Fresh cached candidates. An empty list is a cached "nothing found"
+/// and lives [`EMPTY_SEARCH_TTL_SECS`] only; the enricher stores one
+/// only when every provider answered, so an outage never poisons later
+/// enrichments.
 pub fn cached_search(store: &Store, kind: &str, query: &str, now: i64) -> Option<Vec<MetadataCandidate>> {
     let v = cached(store, &search_key(kind, query), SEARCH_TTL_SECS, now)?;
-    serde_json::from_value::<Vec<MetadataCandidate>>(v).ok().filter(|l| !l.is_empty())
+    let list = serde_json::from_value::<Vec<MetadataCandidate>>(v).ok()?;
+    if list.is_empty() && cached(store, &search_key(kind, query), EMPTY_SEARCH_TTL_SECS, now).is_none() {
+        return None;
+    }
+    Some(list)
 }
 
 pub fn put_search(
@@ -152,7 +162,8 @@ mod tests {
         assert_eq!(cached_search(&store, "anime", "frieren", 100 + SEARCH_TTL_SECS).unwrap(), c);
         assert!(cached_search(&store, "anime", "frieren", 101 + SEARCH_TTL_SECS).is_none());
         put_search(&store, "anime", "empty", &[], 100).unwrap();
-        assert!(cached_search(&store, "anime", "empty", 100).is_none());
+        assert_eq!(cached_search(&store, "anime", "empty", 100 + EMPTY_SEARCH_TTL_SECS).unwrap(), vec![]);
+        assert!(cached_search(&store, "anime", "empty", 101 + EMPTY_SEARCH_TTL_SECS).is_none());
         put_record(&store, &rec, 100).unwrap();
         assert_eq!(cached_record(&store, "p", "1", 100 + RECORD_TTL_SECS).unwrap(), rec);
         assert!(cached_record(&store, "p", "1", 101 + RECORD_TTL_SECS).is_none());

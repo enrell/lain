@@ -15,6 +15,7 @@ mod mpv;
 #[cfg(unix)]
 mod mpv_ipc;
 mod platform;
+mod role;
 mod screens;
 mod theme;
 mod ui;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SECTIONS, SETTING_ENTRIES, entryLabel, fuzzyScore, sectionFor, sectionHint, sectionLabel, visibleSections } from './sections';
+import { SECTIONS, SETTING_ENTRIES, entryLabel, entryVisible, fuzzyScore, sectionFor, sectionHint, sectionLabel, visibleSections } from './sections';
 
 describe('settings sections', () => {
 	it('gives every section a unique chord key', () => {
@@ -9,6 +9,24 @@ describe('settings sections', () => {
 	it('hides server sections from non-admins', () => {
 		expect(visibleSections(false).every((s) => s.scope === 'you')).toBe(true);
 		expect(visibleSections(true)).toHaveLength(SECTIONS.length);
+	});
+	it('shows a manager the libraries page and nothing else of the server', () => {
+		const server = visibleSections(false, true)
+			.filter((s) => s.scope === 'server')
+			.map((s) => s.id);
+		expect(server).toEqual(['libraries']);
+		const ids = SETTING_ENTRIES.filter((e) => entryVisible(e, false, true)).map((e) => e.id);
+		expect(ids).toContain('libraries');
+		expect(ids).toContain('scan');
+		expect(ids).not.toContain('roots');
+		expect(ids).not.toContain('indexers');
+		expect(ids).not.toContain('acquisitionSubtitles');
+		expect(ids).not.toContain('downloadQueue');
+		expect(ids).not.toContain('users');
+		expect(ids).not.toContain('plugins');
+		expect(ids).not.toContain('backup');
+		expect(ids).not.toContain('integrations');
+		expect(ids).not.toContain('mode');
 	});
 	it('resolves nested paths to their section', () => {
 		expect(sectionFor('/settings/libraries/x')?.id).toBe('libraries');

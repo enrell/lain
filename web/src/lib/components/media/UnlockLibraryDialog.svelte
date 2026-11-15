@@ -1,9 +1,12 @@
 <script lang="ts">
-	// Unlocks a private library for this session (D-156). Keyboard-first:
-	// the dialog traps focus and lands on the secret field, Enter unlocks,
-	// Esc closes, Alt+P switches between PIN and password.
+	// Unlocks a private library for this session (D-156), or, with
+	// `onsecret`, confirms a change to a locked one with the PIN (D-293):
+	// the secret goes with the change and nothing is unlocked. Keyboard-
+	// first: the dialog traps focus and lands on the secret field, Enter
+	// submits, Esc closes, Alt+P switches between PIN and password.
 	import { tick } from 'svelte';
 	import type { Library } from '$lib/api/types';
+	import type { UnlockInput } from '$lib/api/libraries';
 	import { api } from '$lib/api';
 	import { t } from '$lib/i18n';
 	import Button from '$lib/components/primitives/Button.svelte';
@@ -16,7 +19,8 @@
 		open = $bindable(false),
 		library = null,
 		libraries = [],
-		onunlocked
+		onunlocked,
+		onsecret
 	}: {
 		open?: boolean;
 		/** One library, named in the title (the settings page). */
@@ -27,9 +31,12 @@
 		 */
 		libraries?: Library[];
 		onunlocked?: (lib: Library) => void;
+		/** Confirm mode: runs the change with the secret; a throw shows its error. */
+		onsecret?: (secret: UnlockInput) => Promise<void>;
 	} = $props();
 
 	const discreet = $derived(!library && libraries.length > 0);
+	const confirming = $derived(!!onsecret);
 
 	let usePassword = $state(false);
 	let secret = $state('');
@@ -52,11 +59,16 @@
 
 	async function submit(): Promise<void> {
 		const targets = library ? [library] : libraries;
-		if (targets.length === 0 || !secret) return;
+		if (!secret || (targets.length === 0 && !onsecret)) return;
 		busy = true;
 		error = null;
 		try {
 			const credentials = usePassword ? { password: secret } : { pin: secret };
+			if (onsecret) {
+				await onsecret(credentials);
+				open = false;
+				return;
+			}
 			// One secret opens them all; a wrong one stops at the first, so it
 			// costs one failed attempt, not one per library.
 			let last: Library | null = null;
@@ -68,7 +80,7 @@
 			open = false;
 			onunlocked?.(last);
 		} catch (err) {
-			error = errorMessage(err, t('privateLibrary.unlockFailed'));
+			error = errorMessage(err, t(confirming ? 'privateLibrary.updateFailed' : 'privateLibrary.unlockFailed'));
 		} finally {
 			busy = false;
 		}
@@ -86,8 +98,12 @@
 
 <Modal
 	bind:open
-	title={discreet ? t('privateLibrary.unlock') : t('privateLibrary.unlockTitle', { name: library?.name ?? '' })}
-	description={t('privateLibrary.unlockDescription')}
+	title={confirming
+		? t('privateLibrary.confirmTitle')
+		: discreet
+			? t('privateLibrary.unlock')
+			: t('privateLibrary.unlockTitle', { name: library?.name ?? '' })}
+	description={confirming ? t('privateLibrary.confirmDescription') : t('privateLibrary.unlockDescription')}
 >
 	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<form
@@ -125,7 +141,8 @@
 					{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd>
 				</Button>
 				<Button type="submit" loading={busy} disabled={!secret}>
-					{t('privateLibrary.unlock')} <kbd class="ms-1 font-mono text-[10px] text-muted">Enter</kbd>
+					{confirming ? t('privateLibrary.confirm') : t('privateLibrary.unlock')}
+					<kbd class="ms-1 font-mono text-[10px] text-muted">Enter</kbd>
 				</Button>
 			</div>
 		</div>

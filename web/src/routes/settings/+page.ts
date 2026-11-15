@@ -2,7 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { session } from '$lib/auth/session.svelte';
 import { prefs } from '$lib/auth/storage';
 import { sectionFor } from '$lib/settings/sections';
-import { isAdminRoute, ACCOUNT_SETTINGS } from '$lib/utilities/guards';
+import { routeAllowed, ACCOUNT_SETTINGS } from '$lib/utilities/guards';
 import type { PageLoad } from './$types';
 
 // /settings has no page of its own: it reopens the last section visited
@@ -17,7 +17,10 @@ export const load: PageLoad = ({ url }) => {
 	const resolved = resolveLoadUrl(url);
 	const oauth = resolved.searchParams.has('linked') || resolved.searchParams.has('link_error');
 	const last = prefs.get('settings.last');
-	const lastAllowed = last && sectionFor(last) && !(session.authenticated && !session.isAdmin && isAdminRoute(last));
+	const lastAllowed =
+		last &&
+		sectionFor(last) &&
+		!(session.authenticated && !routeAllowed(last, session.isAdmin, session.isManager));
 	const target = oauth ? '/settings/connections' : lastAllowed ? last : ACCOUNT_SETTINGS;
 	redirect(307, target + resolved.search);
 };

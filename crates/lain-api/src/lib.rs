@@ -36,6 +36,51 @@ fn is_zero_u64(v: &u64) -> bool {
     *v == 0
 }
 
+/// Audience levels for libraries and accounts, ordered from least to most
+/// permissive (D-295).
+pub const AUDIENCE_EVERYONE: &str = "everyone";
+pub const AUDIENCE_TEEN: &str = "teen";
+pub const AUDIENCE_MATURE: &str = "mature";
+pub const AUDIENCES: [&str; 3] = [AUDIENCE_EVERYONE, AUDIENCE_TEEN, AUDIENCE_MATURE];
+
+/// Normalizes an audience level (`everyone`, `teen`, `mature`), or returns
+/// `None` if unrecognized.
+pub fn normalize_audience(raw: &str) -> Option<&'static str> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        AUDIENCE_EVERYONE => Some(AUDIENCE_EVERYONE),
+        AUDIENCE_TEEN => Some(AUDIENCE_TEEN),
+        AUDIENCE_MATURE => Some(AUDIENCE_MATURE),
+        _ => None,
+    }
+}
+
+/// Ordinal rank of a normalized audience level (`everyone` < `teen` < `mature`).
+/// An unknown level ranks lowest; callers that read a stored value go
+/// through `effective_*`, which fail closed on their own side.
+pub fn audience_rank(audience: &str) -> u8 {
+    match normalize_audience(audience) {
+        Some(AUDIENCE_TEEN) => 1,
+        Some(AUDIENCE_MATURE) => 2,
+        Some(AUDIENCE_EVERYONE) | Some(_) | None => 0,
+    }
+}
+
+fn is_default_audience(v: &str) -> bool {
+    v.is_empty() || v == AUDIENCE_EVERYONE
+}
+
+fn is_default_max_audience(v: &str) -> bool {
+    v.is_empty() || v == AUDIENCE_MATURE
+}
+
+fn deserialize_double_option<'de, D, T>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Deserialize::deserialize(de).map(Some)
+}
+
 // ---- accounts ---------------------------------------------------------------
 
 /// Per-user playback limits (D-042). Unset means unrestricted.
@@ -107,6 +152,22 @@ pub struct User {
     pub playback: PlaybackPolicy,
     #[serde(default)]
     pub profile: Profile,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub libraries: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "is_default_max_audience")]
+    pub max_audience: String,
+}
+
+impl User {
+    /// Effective audience ceiling (`"mature"` when unset). A stored value
+    /// that is not a level fails closed: the account sees `everyone` only.
+    pub fn effective_max_audience(&self) -> &'static str {
+        if self.max_audience.is_empty() {
+            AUDIENCE_MATURE
+        } else {
+            normalize_audience(&self.max_audience).unwrap_or(AUDIENCE_EVERYONE)
+        }
+    }
 }
 
 impl User {
@@ -228,6 +289,10 @@ pub struct UserPatch {
     pub password: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub playback: Option<PlaybackPolicy>,
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_double_option")]
+    pub libraries: Option<Option<Vec<String>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_audience: Option<String>,
 }
 
 /// `GET /health`.
@@ -308,8 +373,22 @@ pub struct Library {
     /// ones by name.
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub position: i64,
+    #[serde(default, skip_serializing_if = "is_default_audience")]
+    pub audience: String,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
+}
+
+impl Library {
+    /// Effective audience level (`"everyone"` when unset). A stored value
+    /// that is not a level fails closed: the library reads as `mature`.
+    pub fn effective_audience(&self) -> &'static str {
+        if self.audience.is_empty() {
+            AUDIENCE_EVERYONE
+        } else {
+            normalize_audience(&self.audience).unwrap_or(AUDIENCE_MATURE)
+        }
+    }
 }
 
 impl Library {
@@ -328,6 +407,10 @@ pub struct NewLibrary {
     pub path: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub root: String,
+    /// `everyone`, `teen` or `mature`; left out, a new library is
+    /// `mature` (D-299).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub audience: String,
 }
 
 /// `PATCH /api/libraries/{id}` (admin).
@@ -350,6 +433,8 @@ pub struct LibraryPatch {
     pub owner: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audience: Option<String>,
 }
 
 /// `PUT /api/libraries/order` (admin): every library id, first to last.

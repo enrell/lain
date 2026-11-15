@@ -13,3 +13,9 @@ pub mod reader;
 pub mod search;
 pub mod settings;
 pub mod transcode;
+
+/// A library's name as shown: a locked private library comes without one
+/// (D-293), so it reads under one neutral label instead of a blank.
+pub fn library_name(l: &lain_client::types::Library) -> String {
+    if l.name.is_empty() && l.locked == Some(true) { "Private library".into() } else { l.name.clone() }
+}

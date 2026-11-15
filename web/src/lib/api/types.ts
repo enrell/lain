@@ -64,6 +64,9 @@ export interface CatalogPage {
 }
 
 /** internal/contracts.Library (media.go). */
+/** Audience level for libraries and account ceilings (D-295). */
+export type Audience = 'everyone' | 'teen' | 'mature';
+
 export interface Library {
 	id: string;
 	name: string;
@@ -77,6 +80,8 @@ export interface Library {
 	members?: string[];
 	/** Present on private libraries: whether this session has not unlocked it. */
 	locked?: boolean;
+	/** Audience level (`everyone` when omitted). */
+	audience?: Audience;
 	/** lain-rs (D-157): the named root and the path inside it. */
 	root?: string;
 	root_path?: string;
@@ -393,7 +398,8 @@ export interface User {
 	/** D-280: absent is `auto`. Read all three with `trackPreferences()`. */
 	preferred_subtitle_mode?: 'auto' | 'always' | 'forced' | 'off';
 	username: string;
-	role: 'admin' | 'user';
+	/** `admin`, `manager`, `user`, or a role this build does not know. */
+	role: string;
 	disabled: boolean;
 	pwd_ver: number;
 	created_at: number;
@@ -401,6 +407,10 @@ export interface User {
 	playback?: UserPlaybackPolicy;
 	/** Public face of the account (D-086). */
 	profile?: UserProfile;
+	/** Allowed library ids; absent means every library, `[]` means none. */
+	libraries?: string[];
+	/** Highest audience level this account may see (`mature` when omitted). */
+	max_audience?: Audience;
 }
 
 /** internal/auth.Profile (profile.go). */

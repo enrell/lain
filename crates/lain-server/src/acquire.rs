@@ -30,8 +30,9 @@ use lain_identify::CAP_RELEASE_PARSE;
 
 use crate::app::App;
 use crate::catalog::CAP_CATALOG_READ;
-use crate::events::Scope;
+use crate::events::SubInfo;
 use crate::gateway::{DELETE, GET, Gate, PATCH, POST, PUT, Reply, Req, route};
+use crate::privacy;
 
 /// The lain-parser model's provider id (Go `release.ModelID`).
 const PARSER_MODEL_ID: &str = "lain-release-model";
@@ -104,6 +105,81 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/api/downloads/cleanup", route(POST, a, download_cleanup))
         .route("/api/downloads/{id}", route(GET, a, download_get).merge(route(DELETE, a, download_remove)))
         .route("/api/downloads/{id}/{action}", route(POST, a, download_action))
+}
+
+// ---- what a session may be told about a library ----------------------------
+
+/// What the acquisition side may show a session. Grabs, monitored titles
+/// and downloads name titles, and a title is the library's: it shows
+/// only to a session that can see the library's items, so a private
+/// library that is locked here, or one the account is kept out of, is
+/// absent from every list, id lookup and event, admins included (D-293).
+/// A record that names no library that exists has nothing to protect and
+/// is the admin's.
+pub(crate) struct Open<'a> {
+    app: &'a App,
+    libs: &'a [Library],
+    access: privacy::Access,
+    session: String,
+    admin: bool,
+}
+
+impl<'a> Open<'a> {
+    pub(crate) fn new(
+        app: &'a App,
+        libs: &'a [Library],
+        access: privacy::Access,
+        session: String,
+        admin: bool,
+    ) -> Self {
+        Open { app, libs, access, session, admin }
+    }
+
+    fn lib_open(&self, lib: &Library) -> bool {
+        privacy::items_visible(lib, &self.app.unlocks, &self.access, &self.session)
+    }
+
+    /// A record about the library `id`.
+    pub(crate) fn library(&self, id: &str) -> bool {
+        match self.libs.iter().find(|l| l.id == id) {
+            Some(lib) => self.lib_open(lib),
+            None => self.admin,
+        }
+    }
+
+    /// A file: open when the deepest library folder that holds it is.
+    pub(crate) fn path(&self, path: &str) -> bool {
+        let p = Path::new(path);
+        let home =
+            self.libs.iter().filter(|l| !l.path.is_empty() && p.starts_with(&l.path)).max_by_key(|l| l.path.len());
+        match home {
+            Some(lib) => self.lib_open(lib),
+            None => self.admin,
+        }
+    }
+}
+
+/// Runs `f` with what this session may see.
+fn with_open<R>(app: &App, v: &Verified, f: impl FnOnce(&Open) -> R) -> R {
+    let libs = app.libraries.list().unwrap_or_default();
+    f(&Open::new(app, &libs, app.access(v), v.session.clone(), v.is_admin()))
+}
+
+impl App {
+    /// An acquisition event about `library_id`, to the admins whose session
+    /// may see that library.
+    pub(crate) fn publish_acquire(&self, event: &str, library_id: &str, data: Value) {
+        let libs = self.libraries.list().unwrap_or_default();
+        self.events.publish_where(event, data, &|s: &SubInfo| {
+            s.admin
+                && Open::new(self, &libs, self.access_for(&s.user_id, true), s.session.clone(), true)
+                    .library(library_id)
+        });
+    }
+}
+
+fn unknown(what: &str) -> Reply {
+    acq_err(AcqError::new(CODE_NOT_FOUND, format!("unknown {what}")))
 }
 
 // ---- wiring ---------------------------------------------------------------
@@ -262,7 +338,7 @@ impl App {
         let w1 = w.clone();
         d.on_grab = Some(Arc::new(move |g: &Grab| {
             if let Some(a) = w1.upgrade() {
-                a.events.publish(Scope::Admins, "grab-changed", json!(g));
+                a.publish_acquire("grab-changed", &g.library_id, json!(g));
             }
         }));
         d.tick = tick;
@@ -296,7 +372,7 @@ impl App {
         let w = Arc::downgrade(self);
         self.downloads.on_change(Arc::new(move |j| {
             if let Some(a) = w.upgrade() {
-                a.events.publish(Scope::Admins, "download-changed", json!(j));
+                a.publish_acquire("download-changed", &j.library_id, json!(j));
             }
         }));
         let w = Arc::downgrade(self);
@@ -531,8 +607,17 @@ fn parse(app: &App, req: &Req, _: &Verified) -> Reply {
 
 // ---- grabs ----------------------------------------------------------------
 
-fn grabs(app: &App, _: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| Reply::ok(json!(GrabList { grabs: m.grabs(), usage: m.usage() })))
+fn grabs(app: &App, _: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let grabs = with_open(app, v, |o| m.grabs().into_iter().filter(|g| o.library(&g.library_id)).collect());
+        Reply::ok(json!(GrabList { grabs, usage: m.usage() }))
+    })
+}
+
+/// The grab `id`, when this session may see it.
+fn grab_open(app: &App, v: &Verified, m: &Manager, id: &str) -> Option<Grab> {
+    let g = m.grabs().into_iter().find(|g| g.id == id)?;
+    with_open(app, v, |o| o.library(&g.library_id)).then_some(g)
 }
 
 fn grab(app: &App, req: &Req, v: &Verified) -> Reply {
@@ -541,29 +626,40 @@ fn grab(app: &App, req: &Req, v: &Verified) -> Reply {
             Ok(v) => v,
             Err(r) => return r,
         };
+        // A library this session cannot see answers like one that is not there.
+        if !input.library_id.is_empty() && !with_open(app, v, |o| o.library(&input.library_id)) {
+            return acq_err(AcqError::new(lain_acquire::error::CODE_NO_LIBRARY, "choose the library to import into"));
+        }
         created_or(m.grab(GrabRequest { input, created_by: v.user_id.clone(), ..Default::default() }).map(|g| json!(g)))
     })
 }
 
-fn grab_action(app: &App, req: &Req, _: &Verified) -> Reply {
+fn grab_action(app: &App, req: &Req, v: &Verified) -> Reply {
     with_acq(app, |m| {
         let id = req.param("id");
-        let r = match req.param("action") {
+        let action = req.param("action");
+        if !matches!(action, "pause" | "resume" | "import") {
+            return acq_err(AcqError::new(CODE_NOT_FOUND, "unknown action"));
+        }
+        if grab_open(app, v, m, id).is_none() {
+            return unknown("grab");
+        }
+        let r = match action {
             "pause" => m.pause(id),
             "resume" => m.resume(id),
-            "import" => m.retry_import(id),
-            _ => return acq_err(AcqError::new(CODE_NOT_FOUND, "unknown action")),
+            _ => m.retry_import(id),
         };
         ok_or(r.map(|g| json!(g)))
     })
 }
 
-fn grab_delete(app: &App, req: &Req, _: &Verified) -> Reply {
+fn grab_delete(app: &App, req: &Req, v: &Verified) -> Reply {
     with_acq(app, |m| {
         let id = req.param("id");
+        let Some(g) = grab_open(app, v, m, id) else { return unknown("grab") };
         let r = m.remove(id, req.query("data") == "1");
         if r.is_ok() {
-            app.events.publish(Scope::Admins, "grab-changed", json!({"id": id, "removed": true}));
+            app.publish_acquire("grab-changed", &g.library_id, json!({"id": id, "removed": true}));
         }
         removed(r)
     })
@@ -593,40 +689,87 @@ fn profile_delete(app: &App, req: &Req, _: &Verified) -> Reply {
     with_acq(app, |m| removed(m.delete_profile(req.param("id"))))
 }
 
-fn monitored(app: &App, _: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| Reply::ok(json!({"monitored": m.monitored_list()})))
-}
-
-fn monitored_create(app: &App, req: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| match decode::<Monitored>(req) {
-        Ok(x) => created_or(m.create_monitored(x).map(|x| json!(x))),
-        Err(r) => r,
-    })
-}
-
-fn monitored_get(app: &App, req: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| ok_or(m.monitored(req.param("id")).map(|x| json!(x))))
-}
-
-fn monitored_update(app: &App, req: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| match decode::<Monitored>(req) {
-        Ok(x) => ok_or(m.update_monitored(req.param("id"), x).map(|x| json!(x))),
-        Err(r) => r,
-    })
-}
-
-fn monitored_delete(app: &App, req: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| removed(m.delete_monitored(req.param("id"))))
-}
-
-fn wanted_one(app: &App, req: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| ok_or(m.wanted_for(req.param("id")).map(|w| json!(w))))
-}
-
-fn wanted(app: &App, _: &Req, _: &Verified) -> Reply {
+fn monitored(app: &App, _: &Req, v: &Verified) -> Reply {
     with_acq(app, |m| {
-        let titles: Vec<WantedRow> = m
-            .monitored_list()
+        let list: Vec<Monitored> =
+            with_open(app, v, |o| m.monitored_list().into_iter().filter(|x| o.library(&x.library_id)).collect());
+        Reply::ok(json!({"monitored": list}))
+    })
+}
+
+/// The monitored title `id`, when this session may see its library.
+fn monitored_open(app: &App, v: &Verified, m: &Manager, id: &str) -> Result<Monitored, Reply> {
+    let x = m.monitored(id).map_err(acq_err)?;
+    if with_open(app, v, |o| o.library(&x.library_id)) { Ok(x) } else { Err(unknown("monitored title")) }
+}
+
+fn monitored_create(app: &App, req: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| match decode::<Monitored>(req) {
+        Ok(x) => {
+            if !x.library_id.is_empty() && !with_open(app, v, |o| o.library(&x.library_id)) {
+                return acq_err(AcqError::new(
+                    lain_acquire::error::CODE_NO_LIBRARY,
+                    "choose the library to keep complete",
+                ));
+            }
+            created_or(m.create_monitored(x).map(|x| json!(x)))
+        }
+        Err(r) => r,
+    })
+}
+
+fn monitored_get(app: &App, req: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| match monitored_open(app, v, m, req.param("id")) {
+        Ok(x) => Reply::ok(json!(x)),
+        Err(r) => r,
+    })
+}
+
+fn monitored_update(app: &App, req: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let id = req.param("id");
+        if let Err(r) = monitored_open(app, v, m, id) {
+            return r;
+        }
+        match decode::<Monitored>(req) {
+            Ok(x) => {
+                // Moving it into a library this session cannot see is no more allowed than creating it there.
+                if !x.library_id.is_empty() && !with_open(app, v, |o| o.library(&x.library_id)) {
+                    return acq_err(AcqError::new(
+                        lain_acquire::error::CODE_NO_LIBRARY,
+                        "choose the library to keep complete",
+                    ));
+                }
+                ok_or(m.update_monitored(id, x).map(|x| json!(x)))
+            }
+            Err(r) => r,
+        }
+    })
+}
+
+fn monitored_delete(app: &App, req: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        if let Err(r) = monitored_open(app, v, m, req.param("id")) {
+            return r;
+        }
+        removed(m.delete_monitored(req.param("id")))
+    })
+}
+
+fn wanted_one(app: &App, req: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        if let Err(r) = monitored_open(app, v, m, req.param("id")) {
+            return r;
+        }
+        ok_or(m.wanted_for(req.param("id")).map(|w| json!(w)))
+    })
+}
+
+fn wanted(app: &App, _: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let shown: Vec<Monitored> =
+            with_open(app, v, |o| m.monitored_list().into_iter().filter(|x| o.library(&x.library_id)).collect());
+        let titles: Vec<WantedRow> = shown
             .into_iter()
             .filter_map(|mon| {
                 let w = m.wanted_for(&mon.id).ok()?;
@@ -642,28 +785,61 @@ fn wanted(app: &App, _: &Req, _: &Verified) -> Reply {
     })
 }
 
-fn monitored_search(app: &App, req: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| ok_or(m.search_monitored(req.param("id")).map(|r| json!(r))))
+fn monitored_search(app: &App, req: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        if let Err(r) = monitored_open(app, v, m, req.param("id")) {
+            return r;
+        }
+        ok_or(m.search_monitored(req.param("id")).map(|r| json!(r)))
+    })
 }
 
-fn rss(app: &App, _: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| ok_or(m.rss_sync().map(|r| json!(r))))
+/// A sync of every feed. What it grabbed is told by title, so the
+/// titles of grabs this session may not see are left out of the answer.
+fn rss(app: &App, _: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let r = m.rss_sync();
+        let hidden: Vec<String> = with_open(app, v, |o| {
+            m.grabs().into_iter().filter(|g| !o.library(&g.library_id)).map(|g| g.title).collect()
+        });
+        ok_or(r.map(|mut r| {
+            r.grabbed.retain(|t| !hidden.contains(t));
+            json!(r)
+        }))
+    })
 }
 
 fn automation(app: &App, _: &Req, _: &Verified) -> Reply {
     with_acq(app, |m| Reply::ok(json!(m.automation_status())))
 }
 
-fn blocklist(app: &App, _: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| Reply::ok(json!({"blocklist": m.blocklist()})))
+fn blocklist(app: &App, _: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        // An entry made for a monitored title follows that title's library.
+        let shown = with_open(app, v, |o| {
+            let mon = m.monitored_list();
+            m.blocklist()
+                .into_iter()
+                .filter(|b| {
+                    b.monitored_id.is_empty()
+                        || mon.iter().find(|x| x.id == b.monitored_id).is_none_or(|x| o.library(&x.library_id))
+                })
+                .collect::<Vec<_>>()
+        });
+        Reply::ok(json!({"blocklist": shown}))
+    })
 }
 
 fn unblock(app: &App, req: &Req, _: &Verified) -> Reply {
     with_acq(app, |m| removed(m.unblock(req.param("id"))))
 }
 
-fn replaced(app: &App, _: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| Reply::ok(json!({"files": m.replaced()})))
+fn replaced(app: &App, _: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let files: Vec<HeldFile> =
+            with_open(app, v, |o| m.replaced().into_iter().filter(|f| o.path(&f.path)).collect());
+        Reply::ok(json!({"files": files}))
+    })
 }
 
 fn purge(app: &App, _: &Req, _: &Verified) -> Reply {
@@ -758,16 +934,30 @@ fn item_subtitle_download(app: &App, req: &Req, v: &Verified) -> Reply {
     })
 }
 
-fn monitored_subtitles(app: &App, req: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| ok_or(m.subtitle_status(req.param("id")).map(|f| json!({"files": f}))))
+fn monitored_subtitles(app: &App, req: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        if let Err(r) = monitored_open(app, v, m, req.param("id")) {
+            return r;
+        }
+        ok_or(m.subtitle_status(req.param("id")).map(|f| json!({"files": f})))
+    })
 }
 
-fn monitored_subtitle_pass(app: &App, req: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| ok_or(m.subtitles_for_monitored(req.param("id")).map(|n| json!({"written": n}))))
+fn monitored_subtitle_pass(app: &App, req: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        if let Err(r) = monitored_open(app, v, m, req.param("id")) {
+            return r;
+        }
+        ok_or(m.subtitles_for_monitored(req.param("id")).map(|n| json!({"written": n})))
+    })
 }
 
-fn subtitle_ledger(app: &App, _: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| Reply::ok(json!({"subtitles": m.subtitle_ledger()})))
+fn subtitle_ledger(app: &App, _: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let rows: Vec<SubtitleRecord> =
+            with_open(app, v, |o| m.subtitle_ledger().into_iter().filter(|r| o.path(&r.media_path)).collect());
+        Reply::ok(json!({"subtitles": rows}))
+    })
 }
 
 fn item_subtitle_status(app: &App, req: &Req, v: &Verified) -> Reply {
@@ -791,8 +981,12 @@ fn sidecar_remove(app: &App, req: &Req, v: &Verified) -> Reply {
     })
 }
 
-fn subtitle_refusals(app: &App, _: &Req, _: &Verified) -> Reply {
-    with_acq(app, |m| Reply::ok(json!({"refusals": m.subtitle_refusals()})))
+fn subtitle_refusals(app: &App, _: &Req, v: &Verified) -> Reply {
+    with_acq(app, |m| {
+        let rows: Vec<SubtitleRefusal> =
+            with_open(app, v, |o| m.subtitle_refusals().into_iter().filter(|r| o.path(&r.media_path)).collect());
+        Reply::ok(json!({"refusals": rows}))
+    })
 }
 
 fn subtitle_refusal_clear(app: &App, req: &Req, _: &Verified) -> Reply {
@@ -818,9 +1012,20 @@ fn dl_err(e: lain_downloads::Error) -> Reply {
     Reply::json(status, json!({"error": e.msg, "code": e.code}))
 }
 
-fn downloads_list(app: &App, _: &Req, _: &Verified) -> Reply {
+fn downloads_list(app: &App, _: &Req, v: &Verified) -> Reply {
     let d = &app.downloads;
-    Reply::ok(json!(DownloadsView { jobs: d.list(), usage: d.usage(), settings: d.settings() }))
+    let jobs = with_open(app, v, |o| d.list().into_iter().filter(|j| o.library(&j.library_id)).collect());
+    Reply::ok(json!(DownloadsView { jobs, usage: d.usage(), settings: d.settings() }))
+}
+
+/// The download `id`, when this session may see it.
+fn download_open(app: &App, v: &Verified, id: &str) -> Result<lain_api::downloads::Job, Reply> {
+    let j = app.downloads.get(id).map_err(dl_err)?;
+    if with_open(app, v, |o| o.library(&j.library_id)) {
+        Ok(j)
+    } else {
+        Err(dl_err(lain_downloads::Error::new(lain_downloads::CODE_NOT_FOUND, "unknown download")))
+    }
 }
 
 fn download_add(app: &App, req: &Req, v: &Verified) -> Reply {
@@ -830,7 +1035,7 @@ fn download_add(app: &App, req: &Req, v: &Verified) -> Reply {
     };
     let mut add = AddInput { url: input.url, name: input.name, created_by: v.user_id.clone(), ..Default::default() };
     if !input.library_id.is_empty() {
-        let Some(lib) = app.libraries.get(&input.library_id) else {
+        let Some(lib) = app.libraries.get(&input.library_id).filter(|l| with_open(app, v, |o| o.library(&l.id))) else {
             return dl_err(lain_downloads::Error::new(lain_downloads::CODE_NOT_FOUND, "unknown library"));
         };
         let lib: Library = lib;
@@ -846,20 +1051,26 @@ fn download_add(app: &App, req: &Req, v: &Verified) -> Reply {
     }
 }
 
-fn download_get(app: &App, req: &Req, _: &Verified) -> Reply {
-    match app.downloads.get(req.param("id")) {
+fn download_get(app: &App, req: &Req, v: &Verified) -> Reply {
+    match download_open(app, v, req.param("id")) {
         Ok(j) => Reply::ok(json!(j)),
-        Err(e) => dl_err(e),
+        Err(r) => r,
     }
 }
 
-fn download_action(app: &App, req: &Req, _: &Verified) -> Reply {
+fn download_action(app: &App, req: &Req, v: &Verified) -> Reply {
     let id = req.param("id");
-    let r = match req.param("action") {
+    let action = req.param("action");
+    if !matches!(action, "pause" | "resume" | "cancel") {
+        return Reply::err(404, "unknown action");
+    }
+    if let Err(r) = download_open(app, v, id) {
+        return r;
+    }
+    let r = match action {
         "pause" => app.downloads.pause(id),
         "resume" => app.downloads.resume(id),
-        "cancel" => app.downloads.cancel(id),
-        _ => return Reply::err(404, "unknown action"),
+        _ => app.downloads.cancel(id),
     };
     match r {
         Ok(j) => Reply::ok(json!(j)),
@@ -867,11 +1078,15 @@ fn download_action(app: &App, req: &Req, _: &Verified) -> Reply {
     }
 }
 
-fn download_remove(app: &App, req: &Req, _: &Verified) -> Reply {
+fn download_remove(app: &App, req: &Req, v: &Verified) -> Reply {
     let id = req.param("id");
+    let j = match download_open(app, v, id) {
+        Ok(j) => j,
+        Err(r) => return r,
+    };
     match app.downloads.remove(id) {
         Ok(()) => {
-            app.events.publish(Scope::Admins, "download-changed", json!({"id": id, "removed": true}));
+            app.publish_acquire("download-changed", &j.library_id, json!({"id": id, "removed": true}));
             Reply::ok(json!({"status": "ok"}))
         }
         Err(e) => dl_err(e),

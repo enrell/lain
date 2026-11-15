@@ -227,15 +227,15 @@
 	// What an admin can do with the title, behind one "Manage" menu. The
 	// entries act on the item the route opened, so removing one overlay can
 	// never strip a sibling episode's metadata.
-	const manage = $derived<MenuEntry[]>(
-		session.isAdmin
-			? [
-					{ label: t(enrichment ? 'title.refetchMetadata' : 'title.fetchMetadata'), icon: Sparkles, disabled: enriching, onSelect: () => void fetchMetadata() },
-					...(subtitleItems.length ? [{ label: t('acquire.subtitles.itemAction'), icon: Captions, kbd: 't', onSelect: () => (subtitlesOpen = true) }] : []),
-					...(enrichment ? [{ label: t('title.removeMetadata'), icon: Trash2, onSelect: () => (confirmRemove = true) }] : [])
-				]
-			: []
-	);
+	const manage = $derived<MenuEntry[]>([
+		...(session.isAdmin
+			? [{ label: t(enrichment ? 'title.refetchMetadata' : 'title.fetchMetadata'), icon: Sparkles, disabled: enriching, onSelect: () => void fetchMetadata() }]
+			: []),
+		...(session.isAdmin && subtitleItems.length
+			? [{ label: t('acquire.subtitles.itemAction'), icon: Captions, kbd: 't', onSelect: () => (subtitlesOpen = true) }]
+			: []),
+		...(session.isAdmin && enrichment ? [{ label: t('title.removeMetadata'), icon: Trash2, onSelect: () => (confirmRemove = true) }] : [])
+	]);
 	const manageSingle = $derived<MenuEntry[]>(
 		session.isAdmin && item && !away
 			? [...manage, { label: t('title.deleteFile'), icon: Trash2, danger: true, separated: true, onSelect: () => (confirmDeleteFile = true) }]

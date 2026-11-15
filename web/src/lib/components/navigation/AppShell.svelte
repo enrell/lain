@@ -27,7 +27,7 @@
 		{ href: '/favorites', label: t('nav.favorites'), exact: false },
 		{ href: '/list', label: t('nav.list'), exact: false },
 		{ href: '/social', label: t('nav.social'), exact: false },
-		// Acquisition is admin-only (docs/slices/acquisition.md, A-9).
+		// Acquisition is the admin's (D-296).
 		...(session.isAdmin ? [{ href: '/acquire', label: t('nav.acquire'), exact: false }] : []),
 		{ href: '/settings', label: t('nav.settings'), exact: false }
 	]);
