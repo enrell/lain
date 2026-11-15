@@ -28,6 +28,7 @@
 		type="button"
 		class="inline-flex size-11 shrink-0 items-center justify-center rounded-md bg-foreground/[0.08] text-foreground transition-colors hover:bg-foreground/[0.14] focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
 		aria-pressed={favoriteState.on}
+		aria-keyshortcuts="f"
 		aria-label={favoriteState.on ? t('social.title.favorite') : t('social.title.addFavorite')}
 		title={`${favoriteState.on ? t('social.title.favorite') : t('social.title.addFavorite')} (F)`}
 		disabled={favoriteState.busy}

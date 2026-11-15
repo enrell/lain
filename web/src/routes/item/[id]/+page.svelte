@@ -444,7 +444,8 @@
 										: progress?.completed
 											? t('title.watchAgain')
 											: t('title.play')}
-							</LinkButton>
+							<kbd class="ms-1 opacity-70">P</kbd>
+						</LinkButton>
 						{:else}
 							<Button size="rowMain" class="max-md:w-[calc(100%-3.25rem)]" disabled title={item.missing ? 'The file is no longer on disk' : item.offline === 'library' ? t('unreachable.play') : (plan?.reason ?? 'Not playable in the browser')}>
 								<Play class="size-4" /> Play
@@ -482,7 +483,7 @@
 					{/if}
 
 					{#if enrichment?.synopsis || about?.summary}
-						<p class="mt-5 max-w-2xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{enrichment?.synopsis || about?.summary}</p>
+						<p class="mt-5 max-w-2xl font-serif text-lg leading-6 text-foreground/75 sm:text-xl sm:leading-7">{enrichment?.synopsis || about?.summary}</p>
 					{/if}
 					<!-- The title on the viewer's linked lists (D-289): status, progress and score, set from here. -->
 					<div class="mt-5 max-w-3xl"><TitleTracking itemId={item.id} {reading} /></div>

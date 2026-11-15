@@ -11,6 +11,7 @@
 	import HeaderSearch from './HeaderSearch.svelte';
 	import KeyboardHelp from './KeyboardHelp.svelte';
 	import RailKeys from './RailKeys.svelte';
+	import GoKeys from './GoKeys.svelte';
 	import { scan } from '$lib/stores/scan.svelte';
 	import { socialBadge } from '$lib/stores/social.svelte';
 	import { session } from '$lib/auth/session.svelte';
@@ -127,6 +128,14 @@
 					</a>
 				{/if}
 				<HeaderSearch />
+				<!-- Quick find, shown with its key (DESIGN.md §3 Header): Ctrl+K works anywhere. -->
+				<button
+					type="button"
+					class="hidden shrink-0 items-center gap-2 rounded-md border border-hairline px-2.5 py-1.5 text-[12px] text-muted transition-colors hover:border-accent/50 hover:text-foreground lg:inline-flex"
+					onclick={() => window.dispatchEvent(new CustomEvent('lain-palette'))}
+				>
+					{t('nav.quickFind')} <span class="flex gap-1"><kbd>Ctrl</kbd><kbd>K</kbd></span>
+				</button>
 				<UserMenu side="bottom" compact />
 			</div>
 		</div>
@@ -161,6 +170,7 @@
 	<CommandPalette />
 	<KeyboardHelp />
 	<RailKeys />
+	<GoKeys />
 
 	<main id="main" tabindex="-1" class="overflow-x-clip">
 		<div class={page.url.pathname === '/' ? 'w-full pb-24 md:pb-0' : 'mx-auto w-full max-w-[1800px] px-5 sm:px-8 lg:px-10 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-5 md:pb-14 md:pt-28'}>

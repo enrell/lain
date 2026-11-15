@@ -116,6 +116,7 @@ const en = {
 		aliases: 'also matches {paths}'
 	},
 	nav: {
+		quickFind: 'Jump to',
 		primary: 'Primary',
 		home: 'Home',
 		library: 'Library',
@@ -958,7 +959,9 @@ const en = {
 		move: 'move',
 		run: 'run',
 		toggle: 'toggle',
+		close: 'close',
 		group: {
+			page: 'On this page',
 			actions: 'Actions',
 			goTo: 'Go to',
 			settings: 'Settings',
@@ -1015,10 +1018,12 @@ const en = {
 		newest: 'New in your library'
 	},
 	shortcuts: {
+		goPage: 'Go to a page: Home, Library, … in the order of the navigation',
+		goSettings: 'Go to a settings section (its letter is in the settings rail)',
 		title: 'Keyboard shortcuts',
 		search: 'Search titles',
 		quickFind: 'Quick find: settings, actions and titles',
-		rail: 'Along a row of cards',
+		rail: 'Along a row of cards, and to the row above or below',
 		escape: 'Close a dialog, clear a field',
 		help: 'This list',
 		here: 'On this page',
@@ -1056,6 +1061,7 @@ const en = {
 	},
 	// What `?` lists for each screen (usePageKeys), beside the actions they press.
 	pageKeys: {
+		hideGenre: 'Hide the focused genre, or show it again',
 		gridMove: 'Move between titles',
 		episodesMove: 'Move between episodes (up from the first row: Play)',
 		partsMove: 'Move between volumes (up from the first row: Read)',
@@ -1593,6 +1599,13 @@ const en = {
 		setupNote: 'Your browser may ask before opening the player. Playback uses the CLI login and saves your progress.',
 		playing: 'Playing in {player} on this machine.',
 		failed: 'Could not start local playback.'
+	},
+	hero: {
+		continue: 'Continue',
+		episode: 'E{n}',
+		play: 'Play',
+		read: 'Read',
+		details: 'Details'
 	},
 	title: {
 		// The title's entry on a linked list (AniList), under its hero.

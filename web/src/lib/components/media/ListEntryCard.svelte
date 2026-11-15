@@ -74,7 +74,8 @@
 				<PlaceholderPoster title={entry.title} seed={entry.id} class="size-full" />
 			{/if}
 		</div>
-		<span class="absolute start-2 top-2 rounded-full bg-black/65 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground backdrop-blur">
+		<!-- On a phone the cover is too narrow for two pills: the page already says which list it is. -->
+		<span class="absolute start-2 top-2 rounded-full bg-black/65 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-foreground backdrop-blur max-sm:hidden">
 			{platformName(entry.platform)}
 		</span>
 		{#if inLibrary}
