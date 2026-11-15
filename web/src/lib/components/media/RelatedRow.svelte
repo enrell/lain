@@ -1,4 +1,5 @@
 <script lang="ts">
+	import AccentTitle from '$lib/components/primitives/AccentTitle.svelte';
 	/*
 	 * Where to go from a title: the other titles of its library, as one
 	 * rail under the page. Fetched once per title; a failure or an empty
@@ -108,7 +109,7 @@
 
 {#each rails as rail, r (rail.shape)}
 	<section class={['space-y-4', r === 0 ? className : 'mt-12'].join(' ')} aria-label={rail.heading}>
-		<h2 class="section-title">{rail.heading}</h2>
+		<h2 class="section-title"><AccentTitle text={rail.heading} /></h2>
 		<!-- Through the gutter to the window's edge, as MediaRow's rails. -->
 		<Rail class={RAIL[rail.shape]}>
 			{#each rail.groups as group (group.key)}

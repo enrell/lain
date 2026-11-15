@@ -13,7 +13,7 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import BookOpen from '@lucide/svelte/icons/book-open';
-	import { onMount, tick } from 'svelte';
+	import { onMount } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import Play from '@lucide/svelte/icons/play';
@@ -435,35 +435,11 @@
 	}
 
 	/*
-	 * On arrival the part the main button opens is brought into view, when
-	 * the title is under way and it is below the fold: a viewer on Episode 8
-	 * landed on Episodes 1 to 4, and on a phone on none at all. Only as far
-	 * as needed, so as much of the hero stays; never on Back, which returns
-	 * to where the page was, and never moving the focus.
+	 * A title under way opens at the top, not scrolled down to the episode in
+	 * progress: the hero's Resume names that episode and opens it. Scrolled to
+	 * the episode, the page always cut the breadcrumb, the year or the name
+	 * under the header.
 	 */
-	let arrived = false;
-	$effect(() => {
-		const target = resumeTarget;
-		if (arrived || returned || !target || !progressMap || !(resuming || watched > 0)) return;
-		arrived = true;
-		// A phone on its side is too short for both: the hero (the name and the button
-		// that opens this very part) stays, rather than a grid with no title above it.
-		if (window.innerHeight < 500) return;
-		void tick().then(() => {
-			const card = document.querySelector<HTMLElement>(`[data-episode-grid] [data-part="${CSS.escape(target.id)}"]`);
-			if (!card) return;
-			// Clear of the phone's bottom bar.
-			const floor = window.innerHeight - (window.matchMedia('(min-width: 768px)').matches ? 24 : 96);
-			const box = card.getBoundingClientRect();
-			// A card already half in view is found: nudging the page for its caption
-			// only slid the top of the hero under the bar.
-			if (box.top + box.height / 2 <= floor) return;
-			const below = box.bottom - floor;
-			if (below <= 0) return;
-			const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-			window.scrollBy({ top: below, behavior: calm ? 'auto' : 'smooth' });
-		});
-	});
 
 	function stillUrl(id: string): string {
 		return api.thumbnail.url(id, session.token, { width: 480 });
@@ -487,7 +463,7 @@
 		{#if backdropFailed}
 			<div class="absolute inset-0 bg-gradient-to-br from-surface-active to-background" aria-hidden="true"></div>
 		{:else if backdrop}
-			<img src={backdrop} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full object-cover object-center max-md:scale-150 max-md:opacity-55 max-md:blur-3xl" referrerpolicy="no-referrer" onerror={() => (backdropFailed = true)} />
+			<img src={backdrop} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full object-cover object-center [mask-image:linear-gradient(to_bottom,black_55%,transparent),linear-gradient(to_left,transparent,black_6%)] [mask-composite:intersect] max-md:scale-150 max-md:opacity-55 max-md:blur-3xl" referrerpolicy="no-referrer" onerror={() => (backdropFailed = true)} />
 		{:else}
 			<img src={stillUrl(artItem.id)} alt="" aria-hidden="true" class="hero-monolith-art absolute inset-y-0 right-0 h-full w-full scale-110 object-cover object-top opacity-80 blur-md" onerror={() => (backdropFailed = true)} />
 		{/if}
@@ -531,6 +507,7 @@
 					{#if resumeTarget}
 						<LinkButton href={playHref(resumeTarget.id)} size="rowMain" class="max-md:w-[calc(100%-3.25rem)] max-[380px]:px-3" data-title-play aria-keyshortcuts="p" onclick={(e) => playExternalClick(e, resumeTarget.id, player)}>
 							{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if} {resumeLabel}
+						<kbd class="ms-1 opacity-70">P</kbd>
 						</LinkButton>
 					{:else}
 						<Button size="rowMain" disabled class="max-md:w-[calc(100%-3.25rem)]" title={allAway ? t('unreachable.play') : 'The files are no longer on disk'}>
@@ -555,7 +532,7 @@
 				{#if synopsis}
 					<!-- Clamped, it is not a block: `block` overrode the clamp's box and three lines showed on a phone. -->
 					{#snippet synopsisText()}
-						<span bind:this={synopsisEl} class={['text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7', synopsisOpen ? 'block' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
+						<span bind:this={synopsisEl} class={['font-serif text-lg leading-6 text-foreground/75 sm:text-xl sm:leading-7', synopsisOpen ? 'block' : 'line-clamp-2 md:line-clamp-3'].join(' ')}>{synopsis}</span>
 					{/snippet}
 					{#if synopsisCut || synopsisOpen}
 						<!-- A cut synopsis says it goes on and opens on a tap: an ellipsis with no way past it was a dead end. -->

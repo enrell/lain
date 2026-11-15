@@ -63,6 +63,7 @@
 
 <div class="group/rail relative -mx-5 sm:-mx-8 lg:-mx-10">
 	<div
+		data-rail
 		bind:this={row}
 		class={['flex snap-x scroll-px-5 gap-3.5 overflow-x-auto px-5 pb-4 no-scrollbar sm:scroll-px-8 sm:px-8 md:gap-4 lg:scroll-px-10 lg:px-10', className].join(' ')}
 		{@attach scrollEdges((next) => {

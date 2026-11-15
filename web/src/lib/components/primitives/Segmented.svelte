@@ -99,7 +99,7 @@
 			tabindex={o.value === tabStop ? 0 : -1}
 			class={[
 				'min-w-0 truncate rounded-md px-3 text-[13px] tracking-[0.01em] transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-				size === 'sm' ? 'h-9 md:h-7' : 'h-8',
+				size === 'sm' ? 'h-11 md:h-7' : 'h-11 md:h-8',
 				on
 					? 'bg-surface-active font-semibold text-foreground ring-1 ring-accent/50'
 					: 'font-medium text-muted hover:bg-surface-hover hover:text-foreground'

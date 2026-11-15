@@ -304,7 +304,7 @@
 		<a href="/settings/privacy" class="inline-flex min-h-9 items-center gap-1 text-sm text-foreground/70 hover:text-foreground">{t('social.privacyLink')} <ChevronRight class="size-3.5" aria-hidden="true" /></a>
 	</header>
 
-	<div class="flex flex-wrap gap-6 border-b border-hairline" role="tablist" aria-label={t('social.heading')} tabindex="-1" onkeydown={onTabKey}>
+	<div class="tab-strip flex w-fit max-w-full flex-wrap gap-1 rounded-xl border border-hairline bg-surface p-1" role="tablist" aria-label={t('social.heading')} tabindex="-1" onkeydown={onTabKey}>
 		{#each TABS as x (x.id)}
 			<button
 				type="button"
@@ -313,15 +313,15 @@
 				aria-selected={tab === x.id}
 				tabindex={tab === x.id ? 0 : -1}
 				onclick={() => setTab(x.id)}
-				class="-mb-px flex min-h-11 items-center gap-2 border-b-2 pb-2 text-sm transition-colors md:min-h-0 {tab === x.id
-					? 'border-accent text-foreground'
-					: 'border-transparent text-muted hover:text-foreground'}"
+				class="flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm transition-colors md:min-h-9 {tab === x.id
+					? 'palette-on text-foreground'
+					: 'text-muted hover:text-foreground'}"
 			>
-				<Kbd>{x.key}</Kbd>
 				{x.label()}
 				{#if x.id === 'notifications' && socialBadge.unread > 0}
 					<span class="rounded-full bg-accent px-1.5 font-mono text-[10px] text-background">{socialBadge.unread}</span>
 				{/if}
+				<Kbd>{x.key}</Kbd>
 			</button>
 		{/each}
 	</div>

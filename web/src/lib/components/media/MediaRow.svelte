@@ -1,4 +1,5 @@
 <script lang="ts">
+	import AccentTitle from '$lib/components/primitives/AccentTitle.svelte';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import type { CatalogItem, Progress } from '$lib/api/types';
 	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
@@ -33,13 +34,13 @@
 
 <section class="space-y-4">
 	<div class="flex items-baseline justify-between gap-4">
-		<h2 class="section-title flex items-center gap-1">
-			{title}
+		<h2 class="section-title">
+			<AccentTitle text={title} />
 		</h2>
 		{#if href}
 			<a
 				href={href}
-				class="inline-flex min-h-6 items-center gap-1 text-sm text-foreground/70 transition-colors hover:text-foreground"
+				class="inline-flex min-h-11 items-center gap-1 md:min-h-6 text-sm text-foreground/70 transition-colors hover:text-foreground"
 			>
 				{actionLabel} <ChevronRight class="size-3.5" aria-hidden="true" />
 			</a>

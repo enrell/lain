@@ -1,4 +1,5 @@
 <script lang="ts">
+	import AccentTitle from '$lib/components/primitives/AccentTitle.svelte';
 	/*
 	 * What a page is for, before it has anything of yours to show: an
 	 * accent eyebrow, a large tight line and one or two of plain text, the
@@ -114,7 +115,7 @@
 	{#if lead}
 		<!-- The lead title's colours behind everything, faded out on every side. -->
 		<div
-			class="pointer-events-none absolute -top-16 -right-10 -z-10 h-[calc(100%+8rem)] w-[calc(100%+5rem)] overflow-hidden opacity-45 [mask-image:radial-gradient(closest-side,black_15%,transparent)] md:w-[75%]"
+			class="pointer-events-none absolute -top-16 -right-10 -z-10 h-[calc(100%+8rem)] w-[calc(100%+5rem)] overflow-hidden opacity-25 [mask-image:radial-gradient(closest-side,black_15%,transparent)] md:w-[75%]"
 			aria-hidden="true"
 		>
 			<Poster item={lead.item} enrichment={enrichmentCache.get(lead.item.id) ?? null} class="size-full scale-110 blur-3xl" />
@@ -127,9 +128,9 @@
 		<div class="min-w-0 py-2 md:py-8">
 			<p class="font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">{eyebrow}</p>
 			<h2 class="mt-4 max-w-[18ch] text-[2rem] font-semibold leading-[1.04] tracking-[-0.035em] text-balance text-foreground sm:text-5xl sm:leading-[1.02] md:text-4xl lg:text-5xl">
-				{title}
+				<AccentTitle text={title} />
 			</h2>
-			<p class="mt-4 max-w-xl text-sm leading-6 text-foreground/70 sm:text-base sm:leading-7">{body}</p>
+			<p class="mt-4 max-w-xl font-serif text-lg leading-6 text-foreground/75 sm:text-xl sm:leading-7">{body}</p>
 			{#if children}
 				<div class="mt-7 flex flex-wrap items-center gap-3">
 					{@render children()}
@@ -143,8 +144,8 @@
 					<!-- A list kept elsewhere: a sheet of titles, how far along each one is,
 					     over a second sheet behind it. -->
 					<div class="relative w-64 lg:w-[22rem]">
-						<div class="absolute inset-0 translate-x-3 translate-y-4 rotate-[4deg] rounded-2xl bg-surface/50 ring-1 ring-white/5"></div>
-						<ol class="relative -rotate-[2deg] rounded-2xl bg-surface/85 px-4 py-2 shadow-[0_30px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/10 backdrop-blur">
+						<div class="absolute inset-0 translate-x-3 translate-y-3 rounded-2xl bg-surface/50 ring-1 ring-white/5"></div>
+						<ol class="relative rounded-2xl bg-surface/85 px-4 py-2 shadow-[0_30px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/10 backdrop-blur">
 							{#each picks.slice(0, 4) as p, i (p.item.id)}
 								<li class="flex items-center gap-3 border-hairline py-2.5 [&:not(:first-child)]:border-t">
 									{@render thumb(p, 'w-9 lg:w-10')}
@@ -179,7 +180,7 @@
 				{:else}
 					<!-- Releases on their way into the library: one in, one coming, one waiting. -->
 					<div class="relative w-64 lg:w-[22rem]">
-						<ol class="relative rotate-[2deg] rounded-2xl bg-surface/85 px-4 py-2 shadow-[0_30px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/10 backdrop-blur">
+						<ol class="relative rounded-2xl bg-surface/85 px-4 py-2 shadow-[0_30px_70px_rgba(0,0,0,0.55)] ring-1 ring-white/10 backdrop-blur">
 							{#each picks.slice(0, 3) as p, i (p.item.id)}
 								{@const row = QUEUE[i]}
 								<li class="flex items-center gap-3 border-hairline py-3 [&:not(:first-child)]:border-t">

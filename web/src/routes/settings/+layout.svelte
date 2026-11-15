@@ -18,6 +18,7 @@
 	import Modal from '$lib/components/primitives/Modal.svelte';
 	import { sectionFor, sectionHint, sectionLabel, visibleSections } from '$lib/settings/sections';
 	import { usePageKeys } from '$lib/stores/page-keys.svelte';
+	import { goKeys } from '$lib/components/navigation/go-keys.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -30,8 +31,6 @@
 		void page.url.pathname;
 		picker = false;
 	});
-	let chord = $state(false);
-	let chordTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function typing(t: EventTarget | null): boolean {
 		const el = t as HTMLElement | null;
@@ -57,21 +56,8 @@
 		if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
 		if (typing(e.target) || document.querySelector('[role="dialog"]')) return;
 		const at = sections.findIndex((s) => s.href === current?.href);
-		if (chord) {
-			chord = false;
-			clearTimeout(chordTimer);
-			const target = sections.find((s) => s.key === e.key.toLowerCase());
-			if (target) {
-				e.preventDefault();
-				void goto(target.href);
-			}
-			return;
-		}
-		if (e.key === 'g') {
-			chord = true;
-			chordTimer = setTimeout(() => (chord = false), 1200);
-			return;
-		}
+		// g + a section's letter is global (GoKeys, in the shell).
+		if (goKeys.pending || e.key === 'g') return;
 		if (e.key === ']' || e.key === '[') {
 			e.preventDefault();
 			const to = (at + (e.key === ']' ? 1 : -1) + sections.length) % sections.length;
@@ -79,7 +65,8 @@
 			return;
 		}
 		if (e.key === 'j' || e.key === 'k') {
-			const list = focusables();
+			// Fields are skipped: a j that landed in one was typed into it by the next press.
+			const list = focusables().filter((el) => !el.matches('input, textarea, select'));
 			if (list.length === 0) return;
 			e.preventDefault();
 			const i = list.indexOf(document.activeElement as HTMLElement);
@@ -158,7 +145,7 @@
 									: 'border-transparent text-muted hover:border-hairline hover:text-foreground'}"
 							>
 								<span class="truncate">{sectionLabel(s)}</span>
-								<kbd class={chord ? 'text-accent' : on ? 'text-muted' : 'text-muted/60'}>g{s.key}</kbd>
+								<kbd class={goKeys.pending ? 'text-accent' : 'text-muted'}>g{s.key}</kbd>
 							</a>
 						</li>
 					{/each}

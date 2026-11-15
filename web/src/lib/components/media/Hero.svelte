@@ -8,6 +8,7 @@
 	import { session } from '$lib/auth/session.svelte';
 	import { mediaSubtitle, timeLeft } from '$lib/utilities/format';
 	import { t } from '$lib/i18n';
+	import { buttonClasses } from '$lib/components/primitives/button-styles';
 	import { progressRatio } from '$lib/utilities/progress';
 	import ProgressBar from './ProgressBar.svelte';
 	import OfflineMark from './OfflineMark.svelte';
@@ -92,7 +93,21 @@
 		[unit && unit !== String(item.year) ? unit : '', left, resume ? '' : year, ...(enrichment?.genres ?? []).slice(0, 2)].filter(Boolean)
 	);
 	const ratio = $derived(resume && progress && !progress.completed ? progressRatio(progress) : 0);
+
+	// P plays (or continues) what the hero shows, as it does on a title's page.
+	function onKey(e: KeyboardEvent): void {
+		if (e.key !== 'p' || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+		const el = e.target as HTMLElement | null;
+		if (el && (['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable)) return;
+		if (document.querySelector('[role="dialog"]')) return;
+		const play = document.querySelector<HTMLAnchorElement>('a[data-hero-play]');
+		if (!play) return;
+		e.preventDefault();
+		play.click();
+	}
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <section class="hero-monolith relative overflow-hidden bg-background" aria-label={title}>
 	{#if !artwork}
@@ -107,7 +122,7 @@
 			decoding="async"
 			referrerpolicy="no-referrer"
 			onerror={fail}
-			class="absolute inset-0 size-full scale-125 object-cover opacity-30 blur-3xl"
+			class="absolute inset-0 size-full scale-125 object-cover opacity-60 blur-3xl"
 		/>
 		{#if poster}<img
 			src={poster}
@@ -159,7 +174,7 @@
 					decoding="async"
 					referrerpolicy="no-referrer"
 					onerror={fail}
-					class="mb-5 max-h-40 w-auto max-w-full rounded-xl object-contain shadow-[0_20px_50px_rgba(0,0,0,0.5)] ring-1 ring-white/10 md:hidden"
+					class="mb-4 max-h-32 w-auto max-w-full rounded-xl object-contain shadow-[0_20px_50px_rgba(0,0,0,0.5)] ring-1 ring-white/10 md:hidden"
 				/>
 			{/if}
 			<p class="mb-4 flex items-center gap-3 font-mono text-[10px] font-semibold uppercase tracking-[0.26em] text-accent sm:text-[11px]">
@@ -178,7 +193,7 @@
 				<ProgressBar {ratio} class="mt-4 max-w-xs" />
 			{/if}
 			{#if enrichment?.synopsis}
-				<p class="mt-5 line-clamp-3 max-w-xl text-sm leading-6 text-white/68 sm:text-base sm:leading-7">
+				<p class="mt-5 line-clamp-2 max-w-xl font-serif text-lg md:line-clamp-3 leading-6 text-white/72 sm:text-xl sm:leading-7">
 					{enrichment.synopsis}
 				</p>
 			{/if}
@@ -186,20 +201,20 @@
 				<a
 					href={playHref(item)}
 					onclick={(e) => playExternalClick(e, item.id, playerFor(item))}
-					class="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-6 text-sm font-bold text-black transition duration-300 ease-out hover:-translate-y-0.5 hover:bg-white/88 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+					class={buttonClasses('primary', 'rowMain', 'font-semibold')}
+					data-hero-play
+					aria-keyshortcuts="p"
 				>
 					{#if reading}<BookOpen class="size-4" aria-hidden="true" />{:else}<Play class="size-4 fill-current" aria-hidden="true" />{/if}
 					{#if resume}
-						Continue{#if !reading && item.episode > 0}<span class="font-semibold opacity-60">· E{item.episode}</span>{/if}
+						{t('hero.continue')}{#if !reading && item.episode > 0}<span class="font-medium opacity-70">· {t('hero.episode', { n: item.episode })}</span>{/if}
 					{:else}
-						{isReadable(item.kind) ? 'Read' : 'Play'}
+						{isReadable(item.kind) ? t('hero.read') : t('hero.play')}
 					{/if}
+					<kbd class="ms-1 opacity-70">P</kbd>
 				</a>
-				<a
-					href={`/item/${item.id}`}
-					class="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/16 bg-black/20 px-5 text-sm font-semibold text-white backdrop-blur-md transition duration-300 ease-out hover:-translate-y-0.5 hover:bg-white/10"
-				>
-					<Info class="size-4" aria-hidden="true" /> Details
+				<a href={`/item/${item.id}`} class={buttonClasses('tonal', 'row', 'backdrop-blur-md')}>
+					<Info class="size-4" aria-hidden="true" /> {t('hero.details')}
 				</a>
 			</div>
 		</div>

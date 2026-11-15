@@ -1,5 +1,22 @@
 @import 'tailwindcss';
 
+/* The serif of the design system (DESIGN.md §2.2): Instrument Serif, SIL OFL
+   (lib/assets/fonts/OFL.txt), self-hosted. Ledes and the accent word only. */
+@font-face {
+	font-family: 'Instrument Serif';
+	src: url('./lib/assets/fonts/instrument-serif-latin-400-normal.woff2') format('woff2');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'Instrument Serif';
+	src: url('./lib/assets/fonts/instrument-serif-latin-400-italic.woff2') format('woff2');
+	font-weight: 400;
+	font-style: italic;
+	font-display: swap;
+}
+
 /*
  * Lain design tokens. Semantic names only: components talk about
  * background/surface/accent, never raw zinc-800-style values. Dark is
@@ -13,6 +30,8 @@
 	--color-surface-active: #1e222c;
 	--color-foreground: #e7e9f0;
 	--color-muted: #8a90a3;
+	/* The third text step (DESIGN.md §2.1): numerals, hints, footnotes. */
+	--color-dim: color-mix(in srgb, var(--color-muted) 72%, var(--color-background));
 	--color-line: #1f2430;
 	--color-accent: #5ce1c4;
 	--color-accent-hover: #7af0d6;
@@ -34,6 +53,7 @@
 	--font-sans:
 		ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
 		sans-serif;
+	--font-serif: 'Instrument Serif', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
 	--font-mono:
 		ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
@@ -41,11 +61,17 @@
 
 	/* Player and card motion: quick, purposeful, interruptible. */
 	--ease-out-quick: cubic-bezier(0.2, 0.8, 0.2, 1);
+	/* Entrances (DESIGN.md §2.6): fast start, long soft landing. */
+	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer base {
 	html {
 		color-scheme: dark;
+		/* What the keyboard brings into view stops clear of the fixed header
+		   (and, on a phone, of the bottom bar). */
+		scroll-padding-top: 4.5rem;
+		scroll-padding-bottom: 5.5rem;
 		background: var(--color-background);
 		/* Reserve the scrollbar's width on every page, so moving between a
 		   page that scrolls and one that does not never shifts the layout. */
@@ -157,6 +183,19 @@
 .page-title + p {
 	margin-top: 0.25rem;
 }
+/* The lead line speaks in the serif, as the landing page's subs do (DESIGN.md §2.2). */
+.page-title + p {
+	font-family: var(--font-serif);
+	font-size: 1.125rem;
+	line-height: 1.35;
+	letter-spacing: -0.005em;
+	color: var(--color-muted);
+}
+@media (min-width: 48rem) {
+	.page-title + p {
+		font-size: 1.25rem;
+	}
+}
 
 @utility section-title {
 	font-size: 1.25rem;
@@ -231,12 +270,11 @@ video::cue {
 }
 
 .hero-monolith-title {
-	max-width: 12ch;
-	font-size: clamp(2.5rem, 6.5vw, 6.5rem);
-	font-weight: 900;
-	letter-spacing: -0.045em;
-	line-height: 0.95;
-	text-transform: uppercase;
+	max-width: 14ch;
+	font-size: clamp(2.6rem, 6.5vw, 6.6rem);
+	font-weight: 700;
+	letter-spacing: -0.055em;
+	line-height: 0.92;
 	text-wrap: balance;
 }
 
@@ -348,10 +386,9 @@ details.settings-group > summary::-webkit-details-marker {
 .title-hero-name {
 	max-width: 18ch;
 	font-size: clamp(2.25rem, 5vw, 4.75rem);
-	font-weight: 900;
-	letter-spacing: -0.045em;
+	font-weight: 700;
+	letter-spacing: -0.055em;
 	line-height: 0.95;
-	text-transform: uppercase;
 	text-wrap: balance;
 }
 
@@ -360,7 +397,7 @@ details.settings-group > summary::-webkit-details-marker {
 }
 
 .hero-monolith-copy {
-	animation: hero-enter 0.8s 0.08s var(--ease-out-quick) both;
+	animation: hero-enter 0.7s 0.06s var(--ease-out) both;
 }
 
 /* A title page on a phone (TitleView, the item page) sets the name beside
@@ -376,7 +413,7 @@ details.settings-group > summary::-webkit-details-marker {
 		display: contents;
 	}
 	.hero-monolith-split > * {
-		animation: hero-enter 0.8s 0.08s var(--ease-out-quick) both;
+		animation: hero-enter 0.7s 0.06s var(--ease-out) both;
 	}
 	.hero-monolith-split .title-hero-name {
 		font-size: min(2.25rem, 13.5cqi);
@@ -489,18 +526,19 @@ details.settings-group > summary::-webkit-details-marker {
 	textarea {
 		font-size: 16px;
 	}
-	/* A row of tabs scrolls sideways instead of wrapping or being cut. */
-	[role='tablist'] {
+	/* A row of tabs scrolls sideways instead of wrapping or being cut. A tab
+	   strip (DESIGN.md §3 Tabs, a framed row) wraps inside its frame instead. */
+	[role='tablist']:not(.tab-strip) {
 		flex-wrap: nowrap;
 		overflow-x: auto;
 		scrollbar-width: none;
 		margin-inline: -1.25rem;
 		padding-inline: 1.25rem;
 	}
-	[role='tablist']::-webkit-scrollbar {
+	[role='tablist']:not(.tab-strip)::-webkit-scrollbar {
 		display: none;
 	}
-	[role='tablist'] > * {
+	[role='tablist']:not(.tab-strip) > * {
 		flex-shrink: 0;
 	}
 	.settings-body :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']), select, textarea) {
@@ -567,4 +605,103 @@ select:not(.chrome-select, [multiple], [size]) {
 .bg-accent kbd {
 	color: inherit;
 	opacity: 0.8;
+}
+
+/* A page's own name arrives with it: it rises once, when the page mounts. */
+@keyframes title-rise {
+	from {
+		opacity: 0;
+		transform: translateY(14px);
+	}
+}
+@media (prefers-reduced-motion: no-preference) {
+	.page-title {
+		animation: title-rise 0.6s var(--ease-out) both;
+	}
+	.page-title + p {
+		animation: title-rise 0.6s var(--ease-out) 0.08s both;
+	}
+}
+
+/*
+ * Dialogs arrive the way the landing page's palette does (DESIGN.md §2.6):
+ * the backdrop fades, the panel rises a little and settles. A phone's sheet
+ * comes up from the bottom edge. Only the opening moves; closing is instant,
+ * so a dismissed dialog never stands between the viewer and the page.
+ */
+@keyframes motion-fade {
+	from {
+		opacity: 0;
+	}
+}
+@keyframes motion-pop {
+	from {
+		opacity: 0;
+		transform: translateY(10px) scale(0.98);
+	}
+}
+@keyframes motion-sheet {
+	from {
+		transform: translateY(40px);
+		opacity: 0.4;
+	}
+}
+@media (prefers-reduced-motion: no-preference) {
+	.motion-fade {
+		animation: motion-fade 0.2s ease-out both;
+	}
+	.motion-pop {
+		animation: motion-pop 0.32s var(--ease-out) both;
+	}
+	.motion-sheet {
+		animation: motion-sheet 0.38s var(--ease-out) both;
+	}
+	@media (min-width: 40rem) {
+		.motion-sheet {
+			animation-name: motion-pop;
+			animation-duration: 0.32s;
+		}
+	}
+}
+
+/* The palette's chosen row: the accent-tinted panel of DESIGN.md §2.1, with
+   the label and its detail kept at full contrast on it. */
+.palette-on {
+	background: color-mix(in srgb, var(--color-accent) 22%, var(--color-panel));
+}
+.palette-on .text-muted {
+	color: color-mix(in srgb, var(--color-foreground) 78%, transparent);
+}
+
+/* The accent word of a heading (AccentTitle, DESIGN.md §2.2). */
+.accent-word {
+	font-family: var(--font-serif);
+	font-size: 1.14em;
+	font-style: italic;
+	font-weight: 400;
+	letter-spacing: -0.02em;
+	line-height: 0.9;
+	color: var(--color-accent-hover);
+}
+
+/* A device with no keyboard is not shown keys it cannot press (DESIGN.md §3 Keycap). */
+@media (hover: none) and (pointer: coarse) {
+	button kbd,
+	a kbd {
+		display: none;
+	}
+}
+
+/* The page's content takes the focus after a navigation only so that Tab
+   goes on from there: a ring around the whole window says nothing. */
+#main:focus,
+#main:focus-visible {
+	outline: none;
+}
+
+@media (min-width: 48rem) {
+	html {
+		scroll-padding-top: 6rem;
+		scroll-padding-bottom: 1rem;
+	}
 }

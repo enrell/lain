@@ -53,6 +53,34 @@
 	});
 
 	afterNavigate((nav) => {
+		// Forward to a new page: the keyboard starts at the top of its content,
+		// not back at the header (Tab after a link walked the whole header again).
+		// A field that kept the focus (the header search typing its way to
+		// /search) keeps it.
+		if (nav.type !== 'popstate' && nav.from?.url && nav.to?.url && nav.from.url.pathname !== nav.to.url.pathname) {
+			const active = document.activeElement;
+			if (!active || active === document.body || !active.isConnected) {
+				// On the page's own name when it has one, so the focus is somewhere you
+				// can see; on the content otherwise. Either way Tab goes on from there.
+				const main = document.getElementById('main');
+				main?.focus({ preventScroll: true });
+				// The name comes with the page's data, a moment later: move to it then,
+				// unless the viewer has moved the focus meanwhile.
+				let tries = 0;
+				const toHeading = (): void => {
+					const now = document.activeElement;
+					if (now !== main && now !== document.body) return;
+					const heading = document.querySelector<HTMLElement>('#main h1');
+					if (!heading) {
+						if (++tries < 12) setTimeout(toHeading, 100);
+						return;
+					}
+					if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+					heading.focus({ preventScroll: true, focusVisible: keyboard });
+				};
+				toHeading();
+			}
+		}
 		if (nav.type !== 'popstate' || !nav.to) return;
 		let opened: Opened | null = null;
 		try {
