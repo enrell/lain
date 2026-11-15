@@ -25,6 +25,7 @@
 		class="inline-flex h-11 shrink-0 items-center gap-2 rounded-md bg-foreground/[0.08] px-4 text-sm font-medium text-foreground transition-colors hover:bg-foreground/[0.14]"
 		title={t('social.title.scoreHint')}
 		aria-label={name}
+		aria-keyshortcuts="r"
 		onclick={() => ratingState.ask()}
 	>
 		<Star class={ratingState.mine > 0 ? 'size-4 fill-accent text-accent' : 'size-4'} aria-hidden="true" />
@@ -35,6 +36,7 @@
 		{:else}
 			{t('social.title.rate')}
 		{/if}
-		{#if average}<span class="text-muted">· {average}</span>{/if}
+		{#if average}<span class="text-muted max-sm:hidden">· {average}</span>{/if}
+		<kbd class="ms-1 opacity-70 max-md:hidden">R</kbd>
 	</button>
 {/if}

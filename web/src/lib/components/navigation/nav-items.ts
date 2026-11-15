@@ -31,3 +31,13 @@ export const MOBILE_BAR = ['/', '/library', '/search', '/favorites'];
 export function visibleNav(entries: NavEntry[], isAdmin: boolean): NavEntry[] {
 	return entries.filter((e) => isAdmin || !e.admin);
 }
+
+/**
+ * The top-level pages by key: `g` then 1, 2, ... in the order the
+ * navigation lists them (Settings is reached by its sections' letters).
+ */
+export function pageChords(isAdmin: boolean): { href: string; label: Key; key: string }[] {
+	return visibleNav(MOBILE_NAV, isAdmin)
+		.filter((e) => e.href !== '/settings')
+		.map((e, i) => ({ href: e.href, label: e.label, key: String(i + 1) }));
+}

@@ -68,3 +68,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Instrument Serif
+
+The web client and the site use Instrument Serif (regular and italic, Latin
+subset), copyright 2022 The Instrument Serif Project Authors
+(<https://github.com/Instrument/instrument-serif>), under the SIL Open Font
+License 1.1. The font files and the licence text are in
+`web/src/lib/assets/fonts/` and `site/assets/fonts/`.

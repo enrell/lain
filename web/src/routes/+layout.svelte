@@ -14,8 +14,11 @@
 	import { appearance } from '$lib/stores/appearance';
 	import { isAdminRoute, routeRedirect } from '$lib/utilities/guards';
 	import { keepLinksInside } from '$lib/demo/links';
+	import { pageTransitions } from '$lib/motion/page-transition';
 
 	let { children } = $props();
+
+	pageTransitions();
 
 	beforeNavigate((nav) => {
 		if (import.meta.env.DEV) console.debug('[nav] before', nav.to?.url?.pathname, nav.type);

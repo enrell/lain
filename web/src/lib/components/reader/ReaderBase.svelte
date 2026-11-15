@@ -286,7 +286,7 @@
 			e.preventDefault();
 			return openChapter(prev);
 		}
-		if (k === 'b' || e.key === 'Backspace') {
+		if (k === 'b' || e.key === 'Backspace' || e.key === 'Escape') {
 			e.preventDefault();
 			return void goto(backHref);
 		}
@@ -329,7 +329,7 @@
 		}
 		if (k === 'n' || e.key === ']') return openChapter(next);
 		if (k === 'p' || e.key === '[') return openChapter(prev);
-		if (k === 'b' || e.key === 'Backspace') {
+		if (k === 'b' || e.key === 'Backspace' || e.key === 'Escape') {
 			e.preventDefault();
 			return void goto(backHref);
 		}
@@ -467,7 +467,7 @@
 			</a>
 			<div class="min-w-0 flex-1 px-1">
 				<p class="truncate font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">{label}</p>
-				<p class="truncate text-sm font-semibold tracking-[-0.01em] text-foreground">{item.title}</p>
+				<h1 class="truncate text-sm font-semibold tracking-[-0.01em] text-foreground">{item.title}</h1>
 			</div>
 			{#if counter}
 				<p class="shrink-0 px-2 font-mono text-xs tabular-nums text-muted max-sm:px-1" aria-live="polite">{counter}</p>
