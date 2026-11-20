@@ -3,11 +3,13 @@
 //! `lain-ingest`, `lain-metadata` and `lain-subtitle`; these decode,
 //! check visibility (D-156) and answer the Go server's JSON.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::Router;
 use serde_json::{Value, json};
 
+use lain_api::ItemRemoval;
 use lain_auth::Verified;
 use lain_core::{Error, codes};
 use lain_ingest::scanner::ScanRequest;
@@ -91,10 +93,14 @@ fn browse(app: &App, req: &Req, v: &Verified) -> Reply {
 
 // ---- items ----------------------------------------------------------------
 
-/// Removes the item's file (D-073, admin). The row is never deleted: it
-/// reads `missing` (D-068), so progress and overlays stay attached and
-/// a file back at the same place restores it. Deleting a missing item
-/// answers 200 too: the end state is the same.
+/// Deletes the item's file (D-073, admin) and what only existed for it
+/// (D-301): its subtitle sidecars and stills, the folders the deletion
+/// left empty, and the torrent copy that still holds its bytes. A
+/// monitored title stops wanting it. The row is never deleted: it reads
+/// `missing` (D-068), so progress and overlays stay attached and a file
+/// back at the same place restores it. The answer is the item with
+/// `removal`, what this call did. Deleting a missing item answers 200
+/// too: the end state is the same.
 fn item_delete(app: &App, req: &Req, v: &Verified) -> Reply {
     let id = req.param("id");
     let Some(mut it) = app.visible_item(v, id) else { return Reply::err(404, "unknown item") };
@@ -103,21 +109,131 @@ fn item_delete(app: &App, req: &Req, v: &Verified) -> Reply {
         // no file to remove here.
         return Reply::err(409, "the item's root is not mapped on this machine");
     }
-    if let Err(e) = std::fs::remove_file(&it.file_path)
-        && e.kind() != std::io::ErrorKind::NotFound
-    {
-        tracing::error!(item = %id, path = %it.file_path, err = %e, "item file delete failed");
-        return Reply::err(500, &format!("remove {}: {e}", it.file_path));
+    let path = Path::new(&it.file_path);
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let lib = app.libraries.get(&it.library_id);
+    let mut removal = ItemRemoval::default();
+    let (mut linked, mut file_bytes) = (false, 0);
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) => {
+            if let Err(e) = std::fs::remove_file(path) {
+                tracing::error!(item = %id, path = %it.file_path, err = %e, "item file delete failed");
+                return Reply::err(500, &format!("could not delete {name}: {e}"));
+            }
+            removal.file = true;
+            file_bytes = meta.len() as i64;
+            removal.freed_bytes = file_bytes;
+            linked = hard_links(&meta) > 1;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Not there. With the library's folder away (an unmounted
+            // disk) that says nothing about the file: it would be back,
+            // undeleted, with the disk (D-287).
+            let reachable = lib.as_ref().is_some_and(|l| {
+                !l.path.is_empty() && std::fs::read_dir(&l.path).is_ok_and(|mut entries| entries.next().is_some())
+            });
+            if !it.missing && !reachable {
+                return Reply::err(409, "the library's folder cannot be reached, so nothing was deleted");
+            }
+        }
+        Err(e) => {
+            tracing::error!(item = %id, path = %it.file_path, err = %e, "item file delete failed");
+            return Reply::err(500, &format!("could not delete {name}: {e}"));
+        }
+    }
+    for side in companions(path) {
+        let size = std::fs::symlink_metadata(&side).map(|m| m.len() as i64).unwrap_or(0);
+        match std::fs::remove_file(&side) {
+            Ok(()) => {
+                removal.sidecars += 1;
+                removal.freed_bytes += size;
+            }
+            Err(e) => tracing::warn!(item = %id, path = %side.display(), err = %e, "sidecar delete failed"),
+        }
+    }
+    if let Some(lib) = &lib {
+        removal.folders = prune_empty_dirs(path, Path::new(&lib.path));
     }
     if let Err(e) = app.registry.call_one(CAP_CATALOG_WRITE, "set_missing", json!({"id": id, "missing": true})) {
         tracing::error!(item = %id, err = %e, "item missing-flag failed after file delete");
         return Reply::err(500, "file removed, but the catalog entry could not be marked missing");
     }
     it.missing = true;
-    if let Some(lib) = app.libraries.get(&it.library_id) {
+    if let Some(m) = app.acquire.get() {
+        let forgotten = m.library_file_deleted(&it);
+        removal.downloads = forgotten.downloads;
+        removal.not_wanted = forgotten.skipped;
+    }
+    if linked && removal.downloads == 0 {
+        // Another hard link still holds the bytes: nothing was freed.
+        removal.still_linked = true;
+        removal.freed_bytes -= file_bytes;
+    }
+    tracing::info!(
+        item = %id, file = removal.file, freed = removal.freed_bytes, sidecars = removal.sidecars,
+        folders = removal.folders, downloads = removal.downloads, not_wanted = removal.not_wanted,
+        still_linked = removal.still_linked, "item deleted"
+    );
+    it.extra.insert("removal".into(), json!(removal));
+    if let Some(lib) = lib {
         app.publish_library(&lib, json!({"library_id": lib.id, "action": "item-deleted", "item_id": it.id}));
     }
     Reply::ok(json!(it))
+}
+
+#[cfg(unix)]
+fn hard_links(meta: &std::fs::Metadata) -> u64 {
+    std::os::unix::fs::MetadataExt::nlink(meta)
+}
+
+#[cfg(not(unix))]
+fn hard_links(_: &std::fs::Metadata) -> u64 {
+    1
+}
+
+/// The files that only exist for one media file: its subtitle sidecars
+/// (`<name>.<lang>.srt`, D-202) and its own stills (`<name>-poster.*`,
+/// `<name>-thumb.*`). By name, in its folder, never a symlink's target.
+fn companions(media: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = lain_subtitle::discover(media).into_iter().map(|f| f.path).collect();
+    if let (Some(dir), Some(stem)) = (media.parent(), media.file_stem()) {
+        let stem = stem.to_string_lossy();
+        for suffix in ["-poster", "-thumb"] {
+            for ext in ["jpg", "jpeg", "png", "webp"] {
+                let p = dir.join(format!("{stem}{suffix}.{ext}"));
+                if std::fs::symlink_metadata(&p).is_ok_and(|m| m.is_file()) {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Removes the folders a deleted file left empty, from its own up to,
+/// never including, the library's. `remove_dir` only removes an empty
+/// folder, so anything else in one keeps it. The library's folder is
+/// never left empty: an empty one reads as an unmounted disk (D-287).
+fn prune_empty_dirs(file: &Path, root: &Path) -> i64 {
+    let root = lain_ingest::browse::clean(root);
+    if root.as_os_str().is_empty() {
+        return 0;
+    }
+    let mut removed = 0;
+    let mut dir = file.parent().map(lain_ingest::browse::clean);
+    while let Some(d) = dir {
+        if d == root || !d.starts_with(&root) {
+            break;
+        }
+        let last_of_root = d.parent() == Some(root.as_path())
+            && std::fs::read_dir(&root).map(|entries| entries.take(2).count() < 2).unwrap_or(true);
+        if last_of_root || std::fs::remove_dir(&d).is_err() {
+            break;
+        }
+        removed += 1;
+        dir = d.parent().map(Path::to_path_buf);
+    }
+    removed
 }
 
 // ---- metadata overlays ----------------------------------------------------

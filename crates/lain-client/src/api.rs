@@ -532,7 +532,9 @@ impl Client {
         self.call(Method::GET, &format!("/api/browse{}", query(&[("path", path.to_string())])), Body::None).await
     }
 
-    /// Deletes an item's file (admin); the item stays, `missing`.
+    /// Deletes an item's file (admin) with its sidecars, emptied folders
+    /// and torrent copy (D-301); the item stays, `missing`, and its
+    /// `extra["removal"]` is an [`lain_api::ItemRemoval`].
     pub async fn delete_item(&self, item_id: &str) -> Result<CatalogItem, ClientError> {
         self.call(Method::DELETE, &format!("/api/items/{}", encode(item_id)), Body::None).await
     }

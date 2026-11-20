@@ -9,6 +9,21 @@
  */
 
 /** internal/contracts.CatalogItem (media.go). */
+/** What `DELETE /api/items/{id}` did (D-301), on the item it answers. */
+export interface ItemRemoval {
+	/** The file was there and is gone; false when it was already gone. */
+	file: boolean;
+	/** Bytes released: the file and its sidecars (nothing for a file another hard link holds). */
+	freed_bytes: number;
+	sidecars: number;
+	folders: number;
+	/** Torrent copies removed, their seeding stopped. */
+	downloads: number;
+	/** A monitored title will not fetch it again. */
+	not_wanted: boolean;
+	still_linked: boolean;
+}
+
 export interface CatalogItem {
 	id: string;
 	library_id: string;
@@ -35,6 +50,8 @@ export interface CatalogItem {
 	 * is there, and from an older server.
 	 */
 	offline?: 'library' | 'file' | (string & {});
+	/** Only on the answer of a delete (D-301). */
+	removal?: ItemRemoval;
 }
 
 /**

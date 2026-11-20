@@ -523,6 +523,27 @@ pub struct CatalogItem {
     pub extra: BTreeMap<String, Value>,
 }
 
+/// `removal` on the item `DELETE /api/items/{id}` answers (D-301): what
+/// the call did, so a client can say it instead of "deleted".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemRemoval {
+    /// The file was there and is gone; false when it was already gone.
+    pub file: bool,
+    /// Bytes this call released: the file and its sidecars. A file whose
+    /// bytes another hard link still holds counts nothing.
+    pub freed_bytes: i64,
+    /// Subtitle sidecars and stills of the file, removed with it.
+    pub sidecars: i64,
+    /// Folders the deletion left empty, removed.
+    pub folders: i64,
+    /// Torrent copies of the file removed, their seeding stopped.
+    pub downloads: i64,
+    /// A monitored title will not fetch it again (`Monitored.skipped`).
+    pub not_wanted: bool,
+    /// Another hard link still holds the file's bytes.
+    pub still_linked: bool,
+}
+
 /// `CatalogItem.offline` when the library's folder is not reachable.
 pub const OFFLINE_LIBRARY: &str = "library";
 /// `CatalogItem.offline` when only the file is gone.

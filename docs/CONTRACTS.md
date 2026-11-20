@@ -40,11 +40,61 @@ count. Item id is stable over library+path.
 
 `CatalogItem.missing` (additive, `omitempty`) marks an item whose file
 vanished from its library root (D-068). Missing rows stay in the
-catalog — list, search, detail and episode-grouping reads all return
-them — because the stable id keeps progress and enrichment reattaching
-when the same path comes back. A clean rescan of the library clears
-the flag. Missing is a state, never a deletion: progress and
-enrichment documents are never swept.
+catalog because the stable id keeps progress and enrichment
+reattaching when the same path comes back: detail and
+episode-grouping reads always return them. A clean rescan of the
+library clears the flag. Missing is a state, never a deletion:
+progress and enrichment documents are never swept.
+
+A title with no file left is not listed (D-301). `GET /api/catalog` and
+`GET /api/search`, pages of files and of titles alike, leave out every
+file of a title whose files in the page's scope (the visible libraries,
+the `library_id`, the query) are all `missing`, and `total` does not
+count them. A title that still has one file keeps its missing ones on
+the page, since they say which episodes are gone. The rows are not
+deleted and a file that returns lists the title again. The gateway asks
+for it with `PageParams.HideGone` (Rust-only); a provider read without
+it (`list`, the acquire module's view of a library) still returns every
+row.
+
+### Deleting a file (D-073, D-301)
+
+`DELETE /api/items/{id}` (admin) deletes the item's file from disk and
+answers the item, now `missing`, with `removal`:
+`{file, freed_bytes, sidecars, folders, downloads, not_wanted,
+still_linked}`, what the call did. With the file go the things that
+only existed for it:
+
+- its subtitle sidecars (`<name>.<lang>.srt`, D-202) and its own stills
+  (`<name>-poster.*`, `<name>-thumb.*`), counted in `sidecars`;
+- the folders the deletion left empty, from the file's own up to, never
+  including, the library's (`folders`). A folder that holds anything
+  else stays, and the library's folder is never left empty (an empty
+  one reads as an unmounted disk, D-287);
+- the torrent copy that still holds the file's bytes (`downloads`): an
+  import hardlinks or copies, so the bytes stay on disk while the grab
+  seeds or keeps its data. The grab's copy is dropped through the
+  acquire module's own cleanup, which never touches a library file, its
+  seeding stops, and the grab reads `done` with `data_removed`. The
+  other files of a pack stay in the library.
+
+`freed_bytes` counts the file and its sidecars; a file whose bytes
+another hard link still holds counts nothing and says `still_linked`.
+A monitored title that covers the item records the unit in
+`Monitored.skipped` (`not_wanted`), or its next search would fetch the
+file again: a skipped unit is neither missing nor past an open edge.
+`skipped` is the server's on a `PUT /api/acquire/monitored/{id}` that
+does not name it (an older client's whole record keeps the list); an
+empty list clears it and the units are wanted again.
+
+Errors: 404 `unknown item`; 409 when the item's root is not mapped on
+this machine, and 409 `the library's folder cannot be reached, so
+nothing was deleted` when the file is absent because its library's
+folder is (the file would be back with the disk); 500 `could not
+delete <name>: <reason>` when the filesystem refuses. A file that was
+already gone answers 200 with `removal.file` false. The row is never
+deleted and progress and overlays stay attached. `library-changed`
+`item-deleted` follows. Case: `scan/40-browse-delete.json`.
 
 Portable document `lain.catalog-export@1` is the replacement contract.
 

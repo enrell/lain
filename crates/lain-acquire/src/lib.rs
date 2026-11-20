@@ -28,7 +28,7 @@ mod xml;
 #[cfg(test)]
 mod testsupport;
 
-pub use manager::{Deps, GrabRequest, Manager, SearchQuery, default_settings, validate_settings};
+pub use manager::{Deps, Forgotten, GrabRequest, Manager, SearchQuery, default_settings, validate_settings};
 pub use torznab::{TORZNAB_ID, Torznab};
 #[cfg(test)]
 mod subtitle_tests;

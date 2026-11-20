@@ -72,7 +72,17 @@
 			{/if}
 		</DropdownMenu.Trigger>
 		<DropdownMenu.Portal>
-			<DropdownMenu.Content {align} sideOffset={6} class="z-50 min-w-56 rounded-lg border border-line bg-surface p-1 shadow-2xl">
+			<!-- An entry that opens a dialog hands the focus to it: sent back to
+			     the trigger, Enter reopened the menu under the dialog instead of
+			     answering it. -->
+			<DropdownMenu.Content
+				{align}
+				sideOffset={6}
+				onCloseAutoFocus={(e) => {
+					if (document.querySelector('[role="dialog"]')) e.preventDefault();
+				}}
+				class="z-50 min-w-56 rounded-lg border border-line bg-surface p-1 shadow-2xl"
+			>
 				{#each entries as entry (entry.label)}
 					{#if entry.separated}<DropdownMenu.Separator class="my-1 h-px bg-hairline" />{/if}
 					<DropdownMenu.Item

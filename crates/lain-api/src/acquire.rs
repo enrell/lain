@@ -631,6 +631,12 @@ pub struct Monitored {
     pub last_subtitle_at: i64,
     #[serde(default)]
     pub created_at: i64,
+    /// D-301: units an admin deleted from the library on purpose. They
+    /// are not wanted again until the list is cleared. Absent on a write
+    /// keeps the stored list (an older client's whole-record `PUT`); an
+    /// empty list clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<Vec<Unit>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

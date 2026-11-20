@@ -208,6 +208,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   under way says its page on Continue reading ("Vol 1 · page 4 of 8").
 
 ### Fixed
+- **Deleting a file leaves nothing behind, and says what it did**
+  (D-301): `DELETE /api/items/{id}` also removes the file's subtitle
+  sidecars and stills, the folders it leaves empty and the torrent copy
+  that still held its bytes (an import hardlinks or copies, so a seeding
+  grab kept them on disk), and a monitored title no longer fetches the
+  deleted episode again (`Monitored.skipped`; Acquire › Wanted, `w` wants
+  it back). The answer carries `removal` and the web says it: files
+  deleted, space freed, downloads stopped, and each failure with its
+  reason. A delete while the library's folder is unreachable is refused
+  instead of answering 200. A title with no file left is off the catalog
+  and search lists (its rows stay); the title page shows the delete's
+  progress, has keys for the selection (`a`, `w`, `n`, `Del`) and leaves
+  for the library once nothing is left.
 - **Subtitles**: a track inside the file (ASS) no longer shows `\h` or
   override blocks as text; a hard space is a space, and the cached
   sidecars are made again.

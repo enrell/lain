@@ -19,9 +19,12 @@
 	import Play from '@lucide/svelte/icons/play';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import X from '@lucide/svelte/icons/x';
-	import type { CatalogItem, Library, Progress } from '$lib/api/types';
+	import { goto } from '$app/navigation';
+	import type { CatalogItem, ItemRemoval, Library, Progress } from '$lib/api/types';
+	import { isTypingTarget } from '$lib/utilities/guards';
+	import { removalMessage, totalRemovals } from '$lib/utilities/removal';
 	import { episodeLabel, type SeriesGroup } from '$lib/utilities/grouping';
-	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
+	import { enrichmentCache, itemCache } from '$lib/stores/media-cache.svelte';
 	import { wideStill } from '$lib/stores/frames';
 	import { posterItem } from '$lib/utilities/browse';
 	import OfflineMark from '$lib/components/media/OfflineMark.svelte';
@@ -38,7 +41,7 @@
 	import { RAIL } from '$lib/components/media/grid';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import ExternalPlayers from '$lib/components/player/ExternalPlayers.svelte';
-	import { formatLength, formatTime, timeLeft } from '$lib/utilities/format';
+	import { formatBytes, formatLength, formatTime, timeLeft } from '$lib/utilities/format';
 	import { playTarget } from '$lib/utilities/progress';
 	import Menu, { type MenuEntry } from '$lib/components/primitives/Menu.svelte';
 	import Settings2 from '@lucide/svelte/icons/settings-2';
@@ -171,12 +174,25 @@
 	// into toggles instead of play links, with bulk delete routed through
 	// DELETE /api/items/{id}. The server keeps the catalog row as
 	// `missing`, so ids that were deleted this session render like any
-	// other missing episode until the next reload confirms it.
+	// other missing episode until the next reload confirms it. Once no
+	// file of the title is left the page is left too: the title is off
+	// the lists (D-301).
 	let selecting = $state(false);
 	let selected = $state<Set<string>>(new Set());
 	let deletedIds = $state<Set<string>>(new Set());
 	let confirmDelete = $state(false);
 	let deleting = $state(false);
+	let deleteDone = $state(0);
+	const selectedBytes = $derived(group.items.filter((i) => selected.has(i.id)).reduce((sum, i) => sum + (i.size || 0), 0));
+	// Every file the title still has is in the selection.
+	const deletesWhole = $derived(
+		selected.size > 0 && group.items.every((i) => i.missing || deletedIds.has(i.id) || selected.has(i.id))
+	);
+
+	function askDelete(): void {
+		if (selected.size === 0) return;
+		confirmDelete = true;
+	}
 
 	// A file that cannot be reached (D-287) cannot play or be deleted either;
 	// unlike a missing one it is said calmly, since it comes back with its disk.
@@ -220,7 +236,15 @@
 
 	usePageKeys(() => [
 		...(group.items.length > 1 ? [{ keys: ['↑', '↓', '←', '→'], label: t(reading ? 'pageKeys.partsMove' : 'pageKeys.episodesMove') }] : []),
-		...(selecting ? [{ keys: ['Esc'], label: t('pageKeys.selectDone') }] : [])
+		...(selecting
+			? [
+					{ keys: ['a'], label: t('pageKeys.selectAll') },
+					{ keys: ['w'], label: t('pageKeys.selectWatched') },
+					{ keys: ['n'], label: t('pageKeys.selectNone') },
+					{ keys: ['Del'], label: t('pageKeys.selectDelete') },
+					{ keys: ['Esc'], label: t('pageKeys.selectDone') }
+				]
+			: [])
 	]);
 
 	// One click for the whole title: select every episode that still has
@@ -228,34 +252,41 @@
 	// the same confirmation the manual selection uses.
 	function deleteAllFiles(): void {
 		selected = new Set(group.items.filter((i) => !isGone(i)).map((i) => i.id));
-		confirmDelete = true;
+		askDelete();
 	}
 
 	async function deleteSelected(): Promise<void> {
 		if (deleting || selected.size === 0) return;
 		deleting = true;
+		deleteDone = 0;
 		const ids = [...selected];
-		const gone = new Set(deletedIds);
+		const removals: (ItemRemoval | undefined)[] = [];
 		const failed: { id: string; err: unknown }[] = [];
 		for (const id of ids) {
 			try {
-				await api.items.remove(id);
-				gone.add(id);
+				const { removal, ...item } = await api.items.remove(id);
+				removals.push(removal);
+				// The cards turn as the files go, and the other pages read the same cache.
+				deletedIds = new Set([...deletedIds, id]);
+				itemCache.set(id, item);
 			} catch (err) {
 				failed.push({ id, err });
 			}
+			deleteDone += 1;
 		}
-		deletedIds = gone;
 		confirmDelete = false;
 		deleting = false;
-		if (failed.length === 0) {
-			toasts.success(ids.length === 1 ? 'Episode deleted.' : `${ids.length} episodes deleted.`);
-			exitSelecting();
-		} else {
+		const deleted = ids.length - failed.length;
+		if (deleted > 0) toasts.success(removalMessage(deleted, totalRemovals(removals)));
+		if (failed.length > 0) {
 			// Keep the failures selected so it is obvious which ones stayed.
+			selecting = true;
 			selected = new Set(failed.map((f) => f.id));
-			toasts.error(errorMessage(failed[0].err, `${failed.length} of ${ids.length} episodes could not be deleted.`));
+			toasts.error(t('title.delete.failed', { count: failed.length, reason: errorMessage(failed[0].err, t('title.delete.noReason')) }));
+			return;
 		}
+		exitSelecting();
+		if (group.items.every((i) => i.missing || deletedIds.has(i.id))) await goto('/library');
 	}
 
 	// Resume at the first started-but-unfinished episode; otherwise play
@@ -599,35 +630,38 @@
 					{/if}
 				</h2>
 				{#if session.isAdmin}
-					<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Episode selection">
+					<div class="flex flex-wrap items-center gap-2" role="group" aria-label={t('title.delete.selection')}>
 						{#if selecting}
 							<button
 								type="button"
 								onclick={selectAll}
 								class="rounded-full bg-surface px-3.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
 							>
-								All
+								{t('title.delete.all')} <kbd class="ms-1 font-mono text-[10px] opacity-70">a</kbd>
 							</button>
 							<button
 								type="button"
 								onclick={selectWatched}
 								class="rounded-full bg-surface px-3.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
 							>
-								Watched
+								{t('title.delete.watched')} <kbd class="ms-1 font-mono text-[10px] opacity-70">w</kbd>
 							</button>
 							<button
 								type="button"
 								onclick={() => (selected = new Set())}
 								class="rounded-full bg-surface px-3.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-foreground"
 							>
-								None
+								{t('title.delete.none')} <kbd class="ms-1 font-mono text-[10px] opacity-70">n</kbd>
 							</button>
+							<span class="font-mono text-[10px] uppercase tracking-[0.2em] text-muted" aria-live="polite">
+								{t('title.delete.selected', { count: selected.size })}{selectedBytes > 0 ? ` · ${formatBytes(selectedBytes)}` : ''}
+							</span>
 							<DownloadFileButton items={group.items.filter((i) => selected.has(i.id))} hotkey />
-							<Button variant="danger" size="sm" disabled={selected.size === 0} onclick={() => (confirmDelete = true)}>
-								<Trash2 class="size-3.5" aria-hidden="true" /> Delete
+							<Button variant="danger" size="sm" disabled={selected.size === 0} onclick={askDelete}>
+								<Trash2 class="size-3.5" aria-hidden="true" /> {t('title.delete.action')} <kbd class="ms-1 font-mono text-[10px] opacity-70">Del</kbd>
 							</Button>
 							<Button variant="ghost" size="sm" onclick={exitSelecting}>
-								<X class="size-3.5" aria-hidden="true" /> Done
+								<X class="size-3.5" aria-hidden="true" /> {t('title.delete.done')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd>
 							</Button>
 						{/if}
 					</div>
@@ -675,7 +709,7 @@
 							     not navigate. -->
 							<div
 								class="block opacity-60"
-								aria-label={isAway(item) ? t('unreachable.cardLabel', { title: label(item) }) : `${label(item)}, missing from disk`}
+								aria-label={isAway(item) ? t('unreachable.cardLabel', { title: label(item) }) : t('title.delete.missingLabel', { title: label(item) })}
 							>
 								{@render episodeCard(item, progress, ratio, gone)}
 							</div>
@@ -793,29 +827,41 @@
 			<p class="mt-0.5 truncate text-sm text-foreground/80">{item.title}</p>
 		{/if}
 		<p class={['mt-1 truncate text-xs', gone && !isAway(item) ? 'text-danger' : 'text-muted'].join(' ')}>
-			{isAway(item) ? t(item.offline === 'library' ? 'unreachable.line' : 'unreachable.lineFile') : gone ? 'Missing from disk' : cardLine(item, progress)}
+			{isAway(item) ? t(item.offline === 'library' ? 'unreachable.line' : 'unreachable.lineFile') : gone ? t('title.delete.missingCard') : cardLine(item, progress)}
 		</p>
 	</div>
 {/snippet}
 
 <svelte:window
 	onkeydown={(e) => {
-		if (e.key === 'Escape' && selecting && !confirmDelete) exitSelecting();
+		if (!selecting || confirmDelete || e.ctrlKey || e.metaKey || e.altKey) return;
+		if (e.key === 'Escape') return exitSelecting();
+		if (isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+		const act = { a: selectAll, w: selectWatched, n: () => (selected = new Set()), Delete: askDelete }[e.key];
+		if (!act) return;
+		e.preventDefault();
+		act();
 	}}
 />
 
 <Modal
 	bind:open={confirmDelete}
-	title={`Delete ${selected.size} ${selected.size === 1 ? 'episode' : 'episodes'}?`}
-	description="The files are removed from disk for every user. The catalog entries stay as missing, so progress and metadata are preserved and an episode restores itself if its file returns."
+	title={t('title.delete.confirmTitle', { count: selected.size })}
+	description={t('title.delete.confirmBody')}
 >
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (confirmDelete = false)}>Cancel</Button>
-		<Button variant="danger" loading={deleting} onclick={() => void deleteSelected()}>
-			Delete {selected.size === 1 ? 'file' : `${selected.size} files`}
+		<Button variant="ghost" disabled={deleting} onclick={() => (confirmDelete = false)}>{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
+		<Button data-autofocus variant="danger" loading={deleting} onclick={() => void deleteSelected()}>
+			{#if deleting}
+				<span aria-live="polite">{t('title.delete.progress', { done: deleteDone, count: selected.size })}</span>
+			{:else}
+				{t('title.delete.confirm', { count: selected.size })} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
+			{/if}
 		</Button>
 	{/snippet}
-	<p class="text-sm text-muted">This cannot be undone — the media bytes are gone.</p>
+	{#if selectedBytes > 0}<p class="font-mono text-xs text-foreground">{t('title.delete.confirmSize', { size: formatBytes(selectedBytes) })}</p>{/if}
+	{#if deletesWhole}<p class="text-sm text-foreground">{t('title.delete.confirmWhole', { title: displayTitle })}</p>{/if}
+	<p class="text-sm text-muted">{t('title.delete.irreversible')}</p>
 </Modal>
 
 <Modal

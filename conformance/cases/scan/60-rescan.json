@@ -149,7 +149,7 @@
      "expect": {
       "status": 200,
       "body": {
-       "total": 4,
+       "total": 3,
        "$open": true
       }
      }
