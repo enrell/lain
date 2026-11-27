@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
-import { posterItem, NO_FILTERS, activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState, withFilters, type Context, type Filters } from './browse';
+import { playsDirectly, posterItem, NO_FILTERS, activeCount, anyCount, apply, countBy, filtersFromParams, filtersToParams, genreFacets, watchState, withFilters, type Context, type Filters } from './browse';
 import { groupItems } from './grouping';
 
 const NOW = 1_000_000;
@@ -25,6 +25,23 @@ const groups = groupItems([
 ]);
 const f = (over: Partial<Filters>): Filters => ({ ...NO_FILTERS, ...over });
 const titles = (over: Partial<Filters>) => apply(groups, f(over), ctx).map((g) => g.title);
+
+describe('playsDirectly', () => {
+	const overlay = (o: Partial<Enrichment>): Enrichment => ({ item_id: 'a', provider: 'p', remote_id: '1', title: 'T', fetched_at: 1, ...o }) as Enrichment;
+	it('plays a video nothing is known about', () => {
+		expect(playsDirectly({ kind: 'video' }, null)).toBe(true);
+		expect(playsDirectly({ kind: 'movie' }, undefined)).toBe(true);
+		expect(playsDirectly({ kind: 'video' }, overlay({ poster: 'x', synopsis: ' ' }))).toBe(true);
+	});
+	it('keeps the page of a title with something to read', () => {
+		expect(playsDirectly({ kind: 'movie' }, overlay({ synopsis: 'A keeper returns.' }))).toBe(false);
+		expect(playsDirectly({ kind: 'movie' }, overlay({ genres: ['Drama'] }))).toBe(false);
+	});
+	it('never for books or files out of reach', () => {
+		expect(playsDirectly({ kind: 'manga' }, null)).toBe(false);
+		expect(playsDirectly({ kind: 'video', offline: 'file' }, null)).toBe(false);
+	});
+});
 
 describe('filters', () => {
 	it('searches titles without minding case, accents or word order', () => {

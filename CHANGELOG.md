@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **A lone clip plays from its card**: a title of one video with nothing
+  to read about it (no synopsis or genres: clips no provider knows, home videos)
+  plays on click instead of opening a page that only repeats the card;
+  the page stays on the card's ⓘ and on `I`.
 - **A scan never waits on metadata** (D-302): a scan ends when the catalog
   is committed; the metadata pass runs as its own job (`enrich` on
   `GET /api/library/scan`, `enrich-state` on `/api/events`,

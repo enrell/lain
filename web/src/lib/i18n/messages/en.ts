@@ -1773,6 +1773,10 @@ const en = {
 	},
 	browse: {
 		any: 'Any',
+		// A card that plays its title (one video, nothing to read): its name, and the way to the page.
+		playTitle: 'Play {title}',
+		details: 'Details',
+		detailsFor: 'Details of {title} (I)',
 		tiles: 'Tiles: {size}',
 		tilesLarge: 'large',
 		tilesSmall: 'small',
