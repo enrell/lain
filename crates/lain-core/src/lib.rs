@@ -14,7 +14,7 @@ mod registry;
 
 pub use composition::{Binding, BindingMode, BindingView, Composition};
 pub use error::{Error, codes};
-pub use registry::{Deliveries, Event, Outputs, Provider, ProviderError, ProviderInfo, Registry};
+pub use registry::{Deliveries, Event, Outputs, Provider, ProviderError, ProviderInfo, Registry, clean_notice};
 
 /// Seconds since the Unix epoch (the wire's timestamp unit).
 pub fn now_unix() -> i64 {

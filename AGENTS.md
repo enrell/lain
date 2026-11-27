@@ -412,3 +412,9 @@ obey it: `answered` cite `D-XXX` and proceed; `needs-user` append the
 row to `docs/advisor/open-questions.md` and STOP that slice until the
 user answers. Plans MUST cite decisions (`D-001`, ...) for every
 load-bearing choice.
+
+## Scope
+
+- This file covers this project. Work only inside `~/code/media/lain`.
+- Do not read, list, search or change other folders under `~/code` (sibling projects, the group folder, other groups) unless the user asks for it in this conversation and names the path.
+- If the task depends on another project, stop and ask before opening it.

@@ -732,6 +732,7 @@ const en = {
 			note: 'Replacing a plugin is safe: a new plugin that is unhealthy is refused, and one that fails later falls back to the one that worked. The id under each sentence is the job’s technical name.',
 			healthy: 'healthy',
 			unhealthy: 'unhealthy',
+			notices: 'Notices from plugins',
 			notInstalled: 'not installed',
 			installHint: 'Not installed on this server. To add it, run',
 			installOther: 'Not installed on this server: add its component’s manifest to the plugins folder of the data directory.',

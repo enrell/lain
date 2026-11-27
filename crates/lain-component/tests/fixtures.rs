@@ -301,6 +301,9 @@ impl Provider for Echo {
             _ => Err(Error::not_found(format!("no op {op}"))),
         }
     }
+    fn notice(&self) -> Option<String> {
+        Some("echo has an update:\n run  the installer".into())
+    }
 }
 
 /// A Rust component (`serve`) under the Rust host, through the
@@ -322,6 +325,8 @@ fn rust_component_under_the_rust_host() {
     let p = Process::spawn_with(m, &dir, t).unwrap();
     assert!(p.wait_ready(Duration::from_secs(20)), "never ready: {:?}", p.health());
     p.health().unwrap();
+    // The component's notice rides its health answer, as one line (D-300).
+    assert_eq!(p.notice().as_deref(), Some("echo has an update: run the installer"));
     let big = "x".repeat(200_000);
     let out = p.invoke("lain.test.echo@1", "echo", json!({"n": 1, "big": big})).unwrap();
     assert_eq!(out["echo"]["n"], 1);

@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Plugins can tell the operator something** (D-300): a provider that
+  works can still carry one line for the operator, such as the
+  lain-parser daemon reporting a newer model on its release channel. It
+  rides the component health answer as `notice` (additive on the wire),
+  shows as `notice` in `GET /api/plugins` and under Settings › Plugins,
+  and the server never acts on it.
 - **A lone clip plays from its card**: a title of one video with nothing
   to read about it (no synopsis or genres: clips no provider knows, home videos)
   plays on click instead of opening a page that only repeats the card;

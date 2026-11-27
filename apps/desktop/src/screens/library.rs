@@ -170,7 +170,7 @@ impl LainApp {
                             .text_size(px(th.ts(2)))
                             .font_weight(if on { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
                             .text_color(if on { pal.text } else { pal.muted })
-                            .child(super::library_name(&l)),
+                            .child(super::library_name(l)),
                     )
                     .when(l.private, |d| {
                         d.child(self.icon(if l.locked == Some(true) { "lock" } else { "unlock" }, 14., pal.muted))

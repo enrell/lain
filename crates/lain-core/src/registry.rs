@@ -24,6 +24,24 @@ pub trait Provider: Send + Sync {
     fn describe(&self, _capability: &str) -> Option<String> {
         None
     }
+    /// One line for the operator that is not a failure (D-300): the
+    /// provider works, and something about it is worth knowing (its app
+    /// has an update). Read after `health`, shown on operator surfaces,
+    /// never acted on by the server.
+    fn notice(&self) -> Option<String> {
+        None
+    }
+}
+
+/// The longest notice an operator surface shows.
+pub const MAX_NOTICE: usize = 300;
+
+/// A provider's notice as one bounded line: control characters become
+/// spaces, runs of spaces collapse, and the text stops at `MAX_NOTICE`
+/// characters.
+pub fn clean_notice(text: &str) -> String {
+    let line: String = text.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    line.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(MAX_NOTICE).collect()
 }
 
 pub use lain_api::{ProviderInfo, RegistryEvent as Event};
@@ -424,10 +442,11 @@ impl Registry {
         let provs: Vec<_> = self.read().providers.values().cloned().collect();
         provs
             .into_iter()
-            .map(|p| ProviderInfo {
-                id: p.id().to_string(),
-                capabilities: p.capabilities(),
-                healthy: p.health().is_ok(),
+            .map(|p| {
+                let healthy = p.health().is_ok();
+                let notice =
+                    if healthy { p.notice().map(|n| clean_notice(&n)).unwrap_or_default() } else { String::new() };
+                ProviderInfo { id: p.id().to_string(), capabilities: p.capabilities(), healthy, notice }
             })
             .collect()
     }
@@ -540,6 +559,47 @@ mod tests {
             }
             Ok(self.answer.clone())
         }
+    }
+
+    struct Noted(bool);
+
+    impl Provider for Noted {
+        fn id(&self) -> &str {
+            "noted"
+        }
+        fn capabilities(&self) -> Vec<String> {
+            vec![CAT.into()]
+        }
+        fn health(&self) -> Result<(), Error> {
+            if self.0 { Ok(()) } else { Err(Error::unavailable("down")) }
+        }
+        fn invoke(&self, _cap: &str, _op: &str, _input: Value) -> Result<Value, Error> {
+            Ok(Value::Null)
+        }
+        fn notice(&self) -> Option<String> {
+            Some(format!("a newer\tmodel\n is out {}", "x".repeat(400)))
+        }
+    }
+
+    #[test]
+    fn a_notice_reaches_provider_infos_as_one_bounded_line() {
+        let reg = Registry::new(Composition { version: 1, bindings: BTreeMap::new() });
+        reg.register(Arc::new(Noted(true)));
+        let info = reg.provider_infos().remove(0);
+        assert!(info.notice.starts_with("a newer model is out xxx"));
+        assert_eq!(info.notice.chars().count(), MAX_NOTICE);
+        // A provider that says nothing serializes without the field.
+        let quiet = ProviderInfo { id: "q".into(), capabilities: vec![], healthy: true, notice: String::new() };
+        assert!(serde_json::to_value(&quiet).unwrap().get("notice").is_none());
+    }
+
+    #[test]
+    fn an_unhealthy_provider_shows_its_failure_not_a_notice() {
+        let reg = Registry::new(Composition { version: 1, bindings: BTreeMap::new() });
+        reg.register(Arc::new(Noted(false)));
+        let info = reg.provider_infos().remove(0);
+        assert!(!info.healthy);
+        assert_eq!(info.notice, "");
     }
 
     const CAT: &str = "lain.catalog.read@1";

@@ -50,7 +50,12 @@ pub(crate) fn answer(p: &dyn Provider, req: Request) -> Response {
     let seq = req.seq;
     let result = catch_unwind(AssertUnwindSafe(|| -> Result<Value, Error> {
         if req.cap.is_empty() && req.op == HEALTH_OP {
-            return p.health().map(|_| json!({"ok": true}));
+            // A notice rides the health answer (D-300); a host that does
+            // not know the field ignores it.
+            return p.health().map(|_| match p.notice().map(|n| lain_core::clean_notice(&n)) {
+                Some(n) if !n.is_empty() => json!({"ok": true, "notice": n}),
+                _ => json!({"ok": true}),
+            });
         }
         if req.cap.is_empty() {
             return Err(Error::invalid("cap required"));
