@@ -484,6 +484,25 @@ async function pressKey(key, code, keyCode) {
 	}
 }
 
+/**
+ * Opens a title's page from its card. A title of one video with nothing
+ * to read plays from its card (`playsDirectly`); its page is then the
+ * card's details link, which this follows, so the steps after it read the
+ * same page either way.
+ */
+async function openTitle(name) {
+	await settle();
+	const details = await evalValue(`(() => {
+		const card = [...document.querySelectorAll('a[href]')].find((a) => (a.textContent || '').trim().includes(${JSON.stringify(name)}));
+		if (!card || !(card.getAttribute('href') || '').startsWith('/player/')) return null;
+		const link = card.parentElement?.querySelector('a[href^="/item/"]');
+		return link ? link.getAttribute('href') : null;
+	})()`);
+	if (!details) return clickText(name);
+	await evalValue(`document.querySelector('a[href=${JSON.stringify(details)}]').click()`);
+	await waitFor(`location.pathname === ${JSON.stringify(details)}`, 10000, `the page of ${name}`);
+}
+
 async function navigate(url) {
 	requests.length = 0;
 	requestCount.clear();
@@ -642,11 +661,11 @@ try {
 	await clickText('Home');
 	await homeRows();
 	await waitFor(
-		`[...document.querySelectorAll('a[href^="/item/"]')].length >= 3`,
+		`[...document.querySelectorAll('a[href^="/item/"], a[href^="/player/"]')].length >= 3`,
 		15000,
 		'the libraries\' rows of titles'
 	);
-	const cards = await evalValue(`document.querySelectorAll('a[href^="/item/"]').length`);
+	const cards = await evalValue(`document.querySelectorAll('a[href^="/item/"], a[href^="/player/"]').length`);
 	console.log(`   ${cards} media cards on Home`);
 
 	/* ---------------- the header's search field ---------------- */
@@ -768,7 +787,7 @@ try {
 	step('item detail and NFO enrichment');
 	await clickText('Home');
 	await homeRows();
-	await clickText('Frieren');
+	await openTitle('Frieren');
 	// Scans auto-enrich now, so strip any existing overlay first: the
 	// manual fetch below must exercise the full NFO path. Either button
 	// proves the controls rendered (enrichment loads async after the item).
@@ -847,7 +866,7 @@ try {
 		mobile: false
 	});
 	await navigate(`${BASE}/library`);
-	await clickText('Frieren');
+	await openTitle('Frieren');
 	await waitText('Episodes', 15000);
 	const grid = await evalValue(`(() => {
 		const links = [...document.querySelectorAll('[data-episode-grid] a[href^="/player/"]')];
@@ -966,7 +985,7 @@ try {
 	);
 	console.log(`   ${thumbResponses.length} thumbnail frame(s) served to unenriched cards`);
 
-	await clickText('Other Show');
+	await openTitle('Other Show');
 	await waitFor(
 		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
 		15000,
@@ -1037,7 +1056,7 @@ try {
 	await navigate(`${BASE}/library`);
 	// navigate() clears the request log, so count from zero after it.
 	const playlistsBeforeReplay = hlsPlaylists().length;
-	await clickText('Other Show');
+	await openTitle('Other Show');
 	await waitFor(
 		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
 		15000,
@@ -1244,7 +1263,7 @@ try {
 	// with Range in a real browser — the coverage the HLS default replaced.
 	await writeDelivery('progressive');
 	await navigate(`${BASE}/library`);
-	await clickText('Other Show');
+	await openTitle('Other Show');
 	await waitFor(
 		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
 		15000,
@@ -1299,7 +1318,7 @@ try {
 		hardware_encode: false
 	});
 	await navigate(`${BASE}/library`);
-	await clickText('Long Show');
+	await openTitle('Long Show');
 	await waitFor(
 		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
 		15000,
@@ -1556,7 +1575,7 @@ try {
 	// seek cost the eight seconds a session restart costs.
 	step('a capable browser direct-plays Matroska over Range');
 	await navigate(`${BASE}/library`);
-	await clickText('Direct Show');
+	await openTitle('Direct Show');
 	await waitFor(
 		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
 		15000,
@@ -1631,7 +1650,7 @@ try {
 	step('a capability claim decides the plan and nothing more');
 	{
 		await navigate(`${BASE}/library`);
-		await clickText('Other Show');
+		await openTitle('Other Show');
 		await waitFor(`location.pathname.startsWith('/item/')`, 15000, 'the HEVC item page');
 		const token = await evalValue(`localStorage.getItem('lain.token')`);
 		const id = await evalValue(`location.pathname.split('/').pop()`);
@@ -1685,7 +1704,7 @@ try {
 		`
 	});
 	await navigate(`${BASE}/library`);
-	await clickText('Other Show');
+	await openTitle('Other Show');
 	await waitFor(
 		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
 		15000,
@@ -1730,7 +1749,7 @@ try {
 	/* ---------------- playback ---------------- */
 	step('playback: start, Range, keyboard seek, progress');
 	await navigate(`${BASE}/library`);
-	await clickText('Frieren');
+	await openTitle('Frieren');
 	await waitFor(
 		`document.body.innerText.includes('Play') || document.body.innerText.includes('Resume from')`,
 		15000,
@@ -2060,7 +2079,7 @@ try {
 
 	step('direct-play subtitle extraction serves playable WebVTT');
 	await navigate(`${BASE}/library`);
-	await clickText('Frieren');
+	await openTitle('Frieren');
 	// A previous step may have left progress, which replaces the Play button
 	// with Resume/Start over; pick whichever affordance is present.
 	await waitFor(
