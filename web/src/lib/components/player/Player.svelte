@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { leavePlayback } from '$lib/navigation/return';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { Slider } from 'bits-ui';
@@ -1902,7 +1903,7 @@
 		<button
 			type="button"
 			class="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md px-2 text-sm text-foreground drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] transition-colors hover:bg-surface-hover/60"
-			onclick={() => void goto(`/item/${item.id}`)}
+			onclick={() => leavePlayback(`/item/${item.id}`)}
 		>
 			<ArrowLeft class="size-5" aria-hidden="true" /> {t('player.back')}
 		</button>
@@ -2072,7 +2073,7 @@
 						<p class="mt-2 text-xs leading-relaxed text-muted">{t('player.prepare.leaveHint')}</p>
 						<button
 							class="mt-5 inline-flex items-center gap-1.5 border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
-							onclick={() => void goto(`/item/${item.id}`)}
+							onclick={() => leavePlayback(`/item/${item.id}`)}
 						>
 							<ArrowLeft class="size-3.5" aria-hidden="true" /> {t('player.backToDetails')}
 						</button>
@@ -2113,6 +2114,10 @@
 						</button>
 						<a
 							href={`/item/${item.id}`}
+							onclick={(e) => {
+								e.preventDefault();
+								leavePlayback(`/item/${item.id}`);
+							}}
 							class="inline-flex items-center border border-line/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-foreground hover:bg-surface-hover"
 						>
 							{t('player.backToDetails')}

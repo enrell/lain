@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { Tooltip } from 'bits-ui';
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
+	import { noteNavigation } from '$lib/navigation/return';
 	import { page } from '$app/state';
 	import AppShell from '$lib/components/navigation/AppShell.svelte';
 	import BootScreen from '$lib/components/navigation/BootScreen.svelte';
@@ -27,6 +28,7 @@
 	});
 	afterNavigate((nav) => {
 		if (import.meta.env.DEV) console.debug('[nav] after', nav.to?.url?.pathname);
+		noteNavigation(nav.from?.url, nav.to?.url);
 	});
 
 	// The site's live demo routes by hash; see $lib/demo/links.

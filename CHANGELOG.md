@@ -218,6 +218,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   under way says its page on Continue reading ("Vol 1 · page 4 of 8").
 
 ### Fixed
+- **Back never lands in the player**: leaving the player or the reader
+  goes back in history to the title page it was opened from (or replaces
+  its own entry), the next episode replaces the player instead of
+  stacking one entry per file, and the title page's back arrow, reached
+  from a player, goes to the last list page. Tablets get the title
+  page's back button in the wide header too.
 - **Deleting a file leaves nothing behind, and says what it did**
   (D-301): `DELETE /api/items/{id}` also removes the file's subtitle
   sidecars and stills, the folders it leaves empty and the torrent copy
