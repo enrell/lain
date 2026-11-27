@@ -1,0 +1,66 @@
+{
+ "tier": "v1",
+ "description": "POST /api/library/enrich (D-302): the metadata pass is a job of its own beside the scan. Managers start it (or queue one more behind a running one); GET /api/library/scan reports it as `enrich`. The suite runs with post-scan enrichment off and the search binding swapped to the NFO provider (30-enrich), so nothing reaches the network.",
+ "cases": [
+  {
+   "name": "managers start the metadata pass and read it on the scan status",
+   "requires": [
+    "scan_media"
+   ],
+   "steps": [
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/enrich",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 403,
+      "body": {
+       "error": "$string"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "POST",
+      "path": "/api/library/enrich",
+      "auth": "admin",
+      "body": {
+       "retry": true
+      }
+     },
+     "expect": {
+      "status": 202,
+      "body": {
+       "state": "running"
+      }
+     }
+    },
+    {
+     "wait_for": {
+      "req": {
+       "method": "GET",
+       "path": "/api/library/scan",
+       "auth": "bob"
+      },
+      "expect": {
+       "status": 200,
+       "body": {
+        "$open": true,
+        "enrich": {
+         "state": "done",
+         "started_at": "$int",
+         "finished_at": "$int",
+         "total": "$int",
+         "done": "$int",
+         "enriched": "$int"
+        }
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

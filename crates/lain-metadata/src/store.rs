@@ -136,6 +136,36 @@ pub fn put_record(store: &Store, rec: &MetadataRecord, now: i64) -> Result<(), S
     put(store, &record_key(&rec.provider, &rec.remote_id), serde_json::to_value(rec).unwrap_or(Value::Null), now)
 }
 
+fn miss_key(item_id: &str) -> Vec<u8> {
+    format!("m\0{item_id}").into_bytes()
+}
+
+/// D-302: every network provider answered and none knew this item.
+/// The backfill leaves it out until a pass asks with `retry`.
+pub fn put_miss(store: &Store, item_id: &str, now: i64) -> Result<(), StoreError> {
+    put(store, &miss_key(item_id), Value::Null, now)
+}
+
+pub fn is_miss(store: &Store, item_id: &str) -> bool {
+    store.read(|tx| tx.get(Bucket::MetadataCache, &miss_key(item_id))).ok().flatten().is_some()
+}
+
+pub fn clear_miss(store: &Store, item_id: &str) -> Result<(), StoreError> {
+    store.write(|tx| tx.delete(Bucket::MetadataCache, &miss_key(item_id))).map(|_| ())
+}
+
+/// Forgets every remembered miss; returns how many there were.
+pub fn clear_misses(store: &Store) -> Result<i64, StoreError> {
+    store.write(|tx| {
+        let keys: Vec<Vec<u8>> =
+            tx.all(Bucket::MetadataCache)?.into_iter().map(|(k, _)| k).filter(|k| k.starts_with(b"m\0")).collect();
+        for k in &keys {
+            tx.delete(Bucket::MetadataCache, k)?;
+        }
+        Ok(keys.len() as i64)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +197,16 @@ mod tests {
         put_record(&store, &rec, 100).unwrap();
         assert_eq!(cached_record(&store, "p", "1", 100 + RECORD_TTL_SECS).unwrap(), rec);
         assert!(cached_record(&store, "p", "1", 101 + RECORD_TTL_SECS).is_none());
+
+        assert!(!is_miss(&store, "i9"));
+        put_miss(&store, "i9", 100).unwrap();
+        put_miss(&store, "i8", 100).unwrap();
+        assert!(is_miss(&store, "i9"));
+        clear_miss(&store, "i9").unwrap();
+        assert!(!is_miss(&store, "i9") && is_miss(&store, "i8"));
+        assert_eq!(clear_misses(&store).unwrap(), 1);
+        assert!(!is_miss(&store, "i8"));
+        assert_eq!(cached_record(&store, "p", "1", 100).unwrap(), rec, "clearing misses keeps the cache");
         drop(store);
         std::fs::remove_dir_all(dir).ok();
     }

@@ -84,6 +84,7 @@
 						{:else}
 							<MediaCard
 								item={group.items[0]}
+								single
 								enrichment={enrichmentCache.get(group.items[0].id) ?? null}
 								progress={progressOf?.(group.items[0].id) ?? null}
 								priority={first}

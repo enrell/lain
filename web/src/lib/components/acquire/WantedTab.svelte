@@ -98,6 +98,20 @@
 		}
 	}
 
+	// Units deleted from the library on purpose are not wanted (D-301);
+	// this takes that back, and the next search fetches them.
+	async function wantAgain(row: WantedRow): Promise<void> {
+		if (!row.skipped?.length) return;
+		try {
+			const { wanted: _w, missing_count: _m, upgrade_count: _u, ...mon } = row;
+			await api.acquire.updateMonitored(row.id, { ...mon, skipped: [] });
+			toasts.success(t('acquire.wanted.wantedAgain', { title: row.title }));
+			await load();
+		} catch (err) {
+			toasts.error(errorMessage(err, t('acquire.monitor.failed')));
+		}
+	}
+
 	function askRemove(row: WantedRow): void {
 		removing = row;
 		removeOpen = true;
@@ -132,6 +146,9 @@
 				break;
 			case ' ':
 				void toggle(row);
+				break;
+			case 'w':
+				void wantAgain(row);
 				break;
 			case 'Delete':
 				askRemove(row);
@@ -225,11 +242,17 @@
 						<p class="mt-0.5 text-xs text-muted">{t('acquire.wanted.upgrades', { count: row.upgrade_count, units: compressUnits(row.wanted.upgrades.map((u) => u.unit), row.numbering) })}</p>
 					{/if}
 					{#if openEdge(row)}<p class="mt-0.5 text-xs text-muted">{openEdge(row)}</p>{/if}
+					{#if row.skipped?.length}
+						<p class="mt-0.5 text-xs text-muted">{t('acquire.wanted.skipped', { count: row.skipped.length, units: compressUnits(row.skipped, row.numbering) })}</p>
+					{/if}
 				</div>
 				<div class="flex flex-wrap items-center gap-1.5" role="gridcell">
 					<Button size="sm" variant="ghost" tabindex={-1} loading={busy === row.id} onclick={() => void search(row)}>{t('acquire.wanted.search')} <kbd class="ms-1 font-mono text-[10px] text-muted">s</kbd></Button>
 					<Button size="sm" variant="ghost" tabindex={-1} onclick={() => { subsFor = row; subsOpen = true; }}>{t('acquire.wanted.subtitles')} <kbd class="ms-1 font-mono text-[10px] text-muted">t</kbd></Button>
 					<Button size="sm" variant="ghost" tabindex={-1} onclick={() => openDialog(row)}>{t('acquire.indexers.edit')} <kbd class="ms-1 font-mono text-[10px] text-muted">e</kbd></Button>
+					{#if row.skipped?.length}
+						<Button size="sm" variant="ghost" tabindex={-1} onclick={() => void wantAgain(row)}>{t('acquire.wanted.wantAgain')} <kbd class="ms-1 font-mono text-[10px] text-muted">w</kbd></Button>
+					{/if}
 					<Button size="sm" variant="ghost" tabindex={-1} onclick={() => askRemove(row)}>{t('acquire.wanted.unmonitor')} <kbd class="ms-1 font-mono text-[10px] text-muted">Del</kbd></Button>
 				</div>
 			</div>

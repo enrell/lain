@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { leavePlayback, playbackTo } from '$lib/navigation/return';
 	import { formatLength } from '$lib/utilities/format';
 	import { onDestroy, onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -184,7 +185,7 @@
 
 	function playNext(target: CatalogItem): void {
 		cancelUpNext();
-		void goto(playHref(target.id));
+		void playbackTo(playHref(target.id));
 	}
 
 	// The episode after this one, for the bar's Next button and Shift+N.
@@ -339,7 +340,7 @@
 							<p class="mt-3 text-xs leading-relaxed text-muted/80">{t('player.unavailable.noTranscoder')}</p>
 						{/if}
 						<div class="mt-7 flex flex-wrap items-center justify-center gap-2">
-							<Button variant="secondary" onclick={() => void goto(detailHref)}>
+							<Button variant="secondary" onclick={() => leavePlayback(detailHref)}>
 								<ArrowLeft class="size-4" /> {t('player.backToDetails')}
 							</Button>
 							<Button variant="ghost" onclick={() => void goto('/library')}>{t('player.browseLibrary')}</Button>
@@ -467,7 +468,7 @@
 					{[item.year > 0 ? String(item.year) : '', formatLength(plan?.duration_sec), ...(about?.genres ?? []).slice(0, 2)].filter(Boolean).join('  ·  ')}
 				</p>
 				{#if about?.synopsis}<p class="mt-4 text-sm leading-6 text-foreground/75">{about.synopsis}</p>{/if}
-				<a href={`/item/${item.id}`} class="mt-5 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover">{t('player.details')}</a>
+				<a href={`/item/${item.id}`} onclick={(e) => { e.preventDefault(); leavePlayback(detailHref); }} class="mt-5 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium text-foreground hover:bg-surface-hover">{t('player.details')}</a>
 			</div>
 		{/if}
 	</div>

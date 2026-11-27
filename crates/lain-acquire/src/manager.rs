@@ -1359,6 +1359,57 @@ impl Manager {
     // root because of an unusual folder layout. Every deletion of
     // torrent data goes through `discard`.
 
+    /// An admin deleted a library file on purpose (D-301): its bytes go
+    /// and stay gone. The torrent copy that still holds them (a hardlink
+    /// shares them, a copy doubles them) is dropped with its seeding,
+    /// through `discard` like every other cleanup, so the pack's other
+    /// files in the library stay. A monitored title stops wanting the
+    /// unit, or the next search would fetch it again.
+    pub fn library_file_deleted(&self, it: &CatalogItem) -> Forgotten {
+        let mut out = Forgotten::default();
+        let target = crate::util::clean_path(Path::new(&it.file_path));
+        let same = |p: &String| crate::util::clean_path(Path::new(p)) == target;
+        for mut g in self.st.grabs() {
+            if it.file_path.is_empty() || !g.imported.iter().any(same) {
+                continue;
+            }
+            g.imported.retain(|p| !same(p));
+            if !g.data_removed && !g.info_hash.is_empty() && matches!(g.state.as_str(), GRAB_SEEDING | GRAB_DONE) {
+                let t = self.total(&g, None);
+                g.downloaded = t[0];
+                g.uploaded = t[1];
+                g.data_removed = self.discard(&g);
+                g.state = GRAB_DONE.into();
+                if g.data_removed {
+                    out.downloads += 1;
+                }
+                tracing::info!(grab = %g.id, removed = g.data_removed, "torrent copy dropped: its library file was deleted");
+            }
+            self.save(&mut g);
+        }
+        if !it.file_path.is_empty() {
+            self.st.remove(Bucket::AcqQuality, &it.file_path);
+        }
+        let key = loose_key(&it.title);
+        for mut m in self.st.monitored() {
+            if m.library_id != it.library_id || !crate::monitored::names(&m).contains(&key) {
+                continue;
+            }
+            let Some(u) = crate::monitored::unit_of(&m, it) else { continue };
+            let mut skipped = m.skipped.take().unwrap_or_default();
+            if !skipped.contains(&u) {
+                skipped.push(u);
+                skipped.sort();
+            }
+            m.skipped = Some(skipped);
+            match self.st.put(Bucket::AcqMonitored, &m.id, &m) {
+                Ok(()) => out.skipped = true,
+                Err(e) => tracing::warn!(monitored = %m.id, err = %e, "could not record the deleted unit"),
+            }
+        }
+        out
+    }
+
     pub(crate) fn library_roots(&self) -> Vec<PathBuf> {
         (self.d.libraries)().into_iter().filter(|l| !l.path.is_empty()).map(|l| PathBuf::from(l.path)).collect()
     }
@@ -1430,6 +1481,15 @@ impl Manager {
         }
         clean
     }
+}
+
+/// What deleting a library file changed in the acquire module (D-301).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Forgotten {
+    /// Torrent copies removed, their seeding stopped.
+    pub downloads: i64,
+    /// A monitored title will not fetch the unit again.
+    pub skipped: bool,
 }
 
 /// Go's `time.Duration.String` for whole hours, minutes and seconds

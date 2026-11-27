@@ -35,12 +35,12 @@ class ScanStore {
 			this.status = await api.libraries.scanStatus();
 			this.now = Date.now();
 			this.error = null;
-			if (this.status.state !== 'running') {
-				this.stop();
-				if (this.localQueue) {
-					this.localQueue = false;
-					void this.start().catch((err: unknown) => (this.error = errorMessage(err)));
-				}
+			// A metadata pass may still run after the scan ends (D-302):
+			// keep polling for it, but the queued scan starts now.
+			if (!this.busy) this.stop();
+			if (!this.running && this.localQueue) {
+				this.localQueue = false;
+				void this.start().catch((err: unknown) => (this.error = errorMessage(err)));
 			}
 		} catch (err) {
 			this.error = errorMessage(err);
@@ -77,10 +77,46 @@ class ScanStore {
 		return this.running && (this.status?.queued === true || this.localQueue);
 	}
 
-	/** Read the status once and keep polling if a scan is running. */
+	/** Read the status once and keep polling if a scan or a metadata pass runs. */
 	async watch(): Promise<void> {
 		await this.refresh();
-		if (this.running) this.follow();
+		if (this.busy) this.follow();
+	}
+
+	/**
+	 * Starts the metadata pass (D-302), or one more behind the running
+	 * one; `retry` asks again about titles no provider knew.
+	 */
+	async enrich(retry = false): Promise<'started' | 'queued'> {
+		this.error = null;
+		const queued = (await api.libraries.enrichStart(retry)).queued === true;
+		await this.refresh();
+		this.follow();
+		return queued ? 'queued' : 'started';
+	}
+
+	/** The metadata pass runs (D-302): apart from the scan, which may be over. */
+	get enriching(): boolean {
+		return this.status?.enrich?.state === 'running';
+	}
+
+	/** Something to poll for: a scan or a metadata pass. */
+	get busy(): boolean {
+		return this.running || this.enriching;
+	}
+
+	/** The metadata pass in one line; '' when none runs. */
+	get enrichLine(): string {
+		const e = this.status?.enrich;
+		if (e?.state !== 'running') return '';
+		const n = (v: number | undefined) => i18n.formatNumber(v ?? 0);
+		return e.total ? t('scan.enrich', { done: n(e.done), total: n(e.total) }) : t('scan.enrichStarting');
+	}
+
+	/** How far the metadata pass is, 0..1, or null before it has a total. */
+	get enrichFraction(): number | null {
+		const e = this.status?.enrich;
+		return e?.state === 'running' && e.total ? Math.min(1, e.done / e.total) : null;
 	}
 
 	/** Begin polling while a scan runs; safe to call repeatedly. */
@@ -117,10 +153,6 @@ class ScanStore {
 			}
 			case 'commit':
 				return t('scan.commit', { done: n(p.libraries_done), libraries: n(p.libraries) });
-			case 'enrich':
-				return p.enrich_total
-					? t('scan.enrich', { done: n(p.enrich_done), total: n(p.enrich_total) })
-					: t('scan.enrichStarting');
 			default:
 				return t('scan.running');
 		}
@@ -141,8 +173,6 @@ class ScanStore {
 				return p.libraries_walked < p.libraries ? null : of(p.files_done, p.files);
 			case 'commit':
 				return p.libraries > 1 ? of(p.libraries_done, p.libraries) : null;
-			case 'enrich':
-				return of(p.enrich_done, p.enrich_total);
 			default:
 				return null;
 		}

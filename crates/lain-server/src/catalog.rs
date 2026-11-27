@@ -164,6 +164,7 @@ impl Catalog {
 
     /// Filters by library, substring and kind, sorts, then pages; the
     /// total counts the filtered set. A negative limit is unbounded.
+    /// `hide_gone` drops the titles with no file left before counting.
     /// Grouped by title (D-283), the page and the total count titles.
     pub fn query(&self, q: &str, kind: &str, p: &PageParams) -> Result<(Vec<CatalogItem>, i64), Error> {
         let ql = q.trim().to_lowercase();
@@ -177,6 +178,13 @@ impl Catalog {
             .filter(|it| kl.is_empty() || it.kind.to_lowercase() == kl)
             .filter(|it| ql.is_empty() || it.title.to_lowercase().contains(&ql))
             .collect();
+        if p.hide_gone {
+            // A title whose every file is gone is not listed (D-301); one
+            // that still has a file keeps its missing ones (D-068).
+            let live: std::collections::HashSet<String> =
+                out.iter().filter(|it| !it.missing).map(|it| title_key(&it.title)).collect();
+            out.retain(|it| live.contains(&title_key(&it.title)));
+        }
         if p.sort == "recent" {
             out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then(a.id.cmp(&b.id)));
         } else {
@@ -535,6 +543,17 @@ mod tests {
         assert!(cat.set_missing("a", true).unwrap());
         assert!(cat.get("a").unwrap().unwrap().missing);
         assert!(!cat.set_missing("zz", true).unwrap());
+        // D-301: a title is left out of a page only once no file of it is left.
+        let mut live = PageParams::normalize(0, 0, "");
+        live.hide_gone = true;
+        assert_eq!(ids(cat.page(&live).unwrap().items), vec!["a", "c"], "one file left keeps its missing ones");
+        assert!(cat.set_missing("c", true).unwrap());
+        assert_eq!(cat.page(&live).unwrap().total, 0);
+        live.group = GROUP_TITLE.into();
+        assert_eq!(cat.page(&live).unwrap().total, 0);
+        assert_eq!(cat.page(&p).unwrap().total, 2, "the rows stay (D-068)");
+        assert!(cat.get("c").unwrap().is_some());
+        assert!(cat.set_missing("c", false).unwrap());
         assert!(cat.import(&ExportDoc { format: "x".into(), version: 3, ..ExportDoc::default() }).is_err());
         for v in [1, 2, 4] {
             assert!(

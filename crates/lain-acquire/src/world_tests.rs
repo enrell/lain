@@ -1025,6 +1025,43 @@ fn cleanup_after_seeding_keeps_hardlinked_library_files() {
 }
 
 #[test]
+fn deleting_a_library_file_drops_its_seeding_copy_and_its_want() {
+    let w = World::new();
+    let m = w.manager(&tmp("acq-c5"), AcquireSettings { seed_minutes: 60, ..settings(0.0) });
+    add_indexer(&m, &w);
+    let mo = monitor(&m, &w, mon("Show", 1, 2));
+    let rep = m.search_monitored(&mo.id).unwrap();
+    let g = wait_grab(&m, &rep.grabbed[0], &[GRAB_SEEDING]);
+    let lib = library_files(&w);
+    let copy = Path::new(&m.settings().dir).join(&g.id).join(&w.mi.info.name).join(&w.files[0].path[0]);
+    assert!(copy.exists());
+    // What the gateway does on DELETE /api/items/{id}: the file, then this.
+    let gone = World::library_items(&w.lib).into_iter().find(|it| Path::new(&it.file_path) == lib[0]).unwrap();
+    std::fs::remove_file(&lib[0]).unwrap();
+    let out = m.library_file_deleted(&gone);
+    assert_eq!((out.downloads, out.skipped), (1, true));
+    assert!(!copy.exists(), "the seeding copy still holds the deleted bytes");
+    let after = m.get(&g.id).unwrap();
+    assert!(after.data_removed && after.state == GRAB_DONE && after.imported.len() == lib.len() - 1, "{after:?}");
+    for p in &lib[1..] {
+        assert!(p.exists(), "{} is another file of the pack and stays", p.display());
+        #[cfg(unix)]
+        assert_eq!(nlink(p), 1);
+    }
+    // Not wanted again, until the list is cleared.
+    assert!(m.wanted_for(&mo.id).unwrap().missing.is_empty());
+    assert!(m.search_monitored(&mo.id).unwrap().grabbed.is_empty(), "a deleted episode came back");
+    let kept = m.update_monitored(&mo.id, Monitored { skipped: None, ..m.monitored(&mo.id).unwrap() }).unwrap();
+    assert_eq!(kept.skipped.as_ref().map(Vec::len), Some(1), "a write that does not name the list keeps it");
+    let cleared = m.update_monitored(&mo.id, Monitored { skipped: Some(Vec::new()), ..kept }).unwrap();
+    assert!(cleared.skipped.is_none());
+    assert_eq!(m.wanted_for(&mo.id).unwrap().missing.len(), 1);
+    // Again is nothing new.
+    assert_eq!(m.library_file_deleted(&gone).downloads, 0);
+    m.close();
+}
+
+#[test]
 fn cleanup_after_move_import_keeps_library_files() {
     let w = World::new();
     let m = w.manager(&tmp("acq-c2"), AcquireSettings { import_mode: IMPORT_MOVE.into(), ..settings(0.0) });

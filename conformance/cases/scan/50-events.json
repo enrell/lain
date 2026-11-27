@@ -87,6 +87,7 @@
        "status": 200,
        "body": {
         "state": "done",
+        "enrich": "$object",
         "started_at": "$int",
         "finished_at": "$int",
         "trigger": "manual",

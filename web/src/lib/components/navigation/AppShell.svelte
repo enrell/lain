@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isPlayback, listFallback } from '$lib/navigation/return';
 	import { i18n, t } from '$lib/i18n';
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
@@ -59,13 +60,21 @@
 	 */
 	const backable = $derived(page.route.id === '/item/[id]');
 	let cameFromApp = $state(false);
+	// Reached from a player or reader, the page before is the player: back
+	// then goes to the last list page instead (see $lib/navigation/return).
+	let cameFromPlayback = $state(false);
 	// Its name says where it goes when that is not the page before.
-	const backLabel = $derived(cameFromApp ? t('nav.back') : t('nav.backToLibrary'));
+	const backLabel = $derived(cameFromApp && !cameFromPlayback ? t('nav.back') : t('nav.backToLibrary'));
 	afterNavigate((nav) => {
 		if (nav.from !== null && nav.type !== 'enter') cameFromApp = true;
+		if (nav.to?.url.pathname !== nav.from?.url.pathname || nav.from === null) {
+			// Back from the player (popstate) leaves the list page right behind.
+			cameFromPlayback = !!nav.from && nav.type !== 'popstate' && isPlayback(nav.from.url.pathname);
+		}
 	});
 	function goBack(): void {
-		if (cameFromApp) history.back();
+		if (cameFromPlayback) void goto(listFallback());
+		else if (cameFromApp) history.back();
 		else void goto('/library');
 	}
 
@@ -88,10 +97,24 @@
 
 	<header class="group/header fixed inset-x-0 top-0 z-40 hidden border-b border-white/5 bg-background/55 backdrop-blur-xl md:block">
 		<div class="mx-auto grid h-20 w-full max-w-[1800px] grid-cols-[1fr_auto_1fr] items-center px-5 sm:px-8 lg:px-10">
-			<a href="/" class="flex shrink-0 items-center gap-2.5 justify-self-start" aria-label={t('common.home')}>
-				<SignalMark class="size-5 text-accent" />
-				<span class="text-base font-bold tracking-[0.24em] text-foreground">lain</span>
-			</a>
+			<div class="flex items-center gap-2 justify-self-start">
+				{#if backable}
+					<!-- A tablet has no back key of its own: the title page's way back. -->
+					<button
+						type="button"
+						class="-ms-2 flex size-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-surface-hover"
+						aria-label={backLabel}
+						title={backLabel}
+						onclick={goBack}
+					>
+						<ArrowLeft class="size-5" aria-hidden="true" />
+					</button>
+				{/if}
+				<a href="/" class="flex shrink-0 items-center gap-2.5" aria-label={t('common.home')}>
+					<SignalMark class="size-5 text-accent" />
+					<span class="text-base font-bold tracking-[0.24em] text-foreground">lain</span>
+				</a>
+			</div>
 
 			<!-- Tighter below xl, so the search field keeps room for its words. Below lg
 			     the focused field opens over the links, and they step aside meanwhile. -->

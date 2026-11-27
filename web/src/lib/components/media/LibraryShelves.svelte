@@ -143,6 +143,7 @@
 							{:else}
 								<MediaCard
 									item={group.items[0]}
+									single
 									enrichment={enrichmentCache.get(group.items[0].id) ?? null}
 									progress={progressMap.get(group.items[0].id) ?? null}
 									{frame}

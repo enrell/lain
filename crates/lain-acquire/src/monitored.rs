@@ -157,7 +157,7 @@ pub fn settle_for(m: &Monitored, rel: Release, claimed: &BTreeSet<String>) -> Re
 }
 
 /// A present catalog item as a unit of this title.
-fn unit_of(m: &Monitored, it: &CatalogItem) -> Option<Unit> {
+pub(crate) fn unit_of(m: &Monitored, it: &CatalogItem) -> Option<Unit> {
     let map = SeasonMap(&m.season_map);
     let u = |season, number| Some(Unit { season, number });
     match m.numbering.as_str() {
@@ -199,8 +199,11 @@ pub fn wanted(m: &Monitored, items: &[CatalogItem], p: &Profile, quality: &dyn F
         }
     }
     let mut w = Wanted { present: present.len() as i64, ..Wanted::default() };
+    // Units deleted on purpose (D-301) are neither missing nor past an
+    // open edge: they count as had.
+    let skipped: &[Unit] = m.skipped.as_deref().unwrap_or_default();
     let want = |u: Unit, w: &mut Wanted| {
-        if !present.contains_key(&u) {
+        if !present.contains_key(&u) && !skipped.contains(&u) {
             w.missing.push(u);
         }
     };
@@ -211,7 +214,7 @@ pub fn wanted(m: &Monitored, items: &[CatalogItem], p: &Profile, quality: &dyn F
                 let mut top = s.to;
                 if top == 0 {
                     top = s.from - 1;
-                    for u in present.keys() {
+                    for u in present.keys().chain(skipped) {
                         if u.season == s.season && u.number > top {
                             top = u.number;
                         }
@@ -230,7 +233,7 @@ pub fn wanted(m: &Monitored, items: &[CatalogItem], p: &Profile, quality: &dyn F
                 if m.numbering == NUMBER_ABSOLUTE && m.metadata_episodes > top {
                     top = m.metadata_episodes;
                 }
-                for u in present.keys() {
+                for u in present.keys().chain(skipped) {
                     top = top.max(u.number);
                 }
                 w.open_from = Some(Unit { season: 0, number: top + 1 });
@@ -529,6 +532,15 @@ mod tests {
         let w = wanted(&m, &items, &p, &quality("anime"));
         assert_eq!(w.missing, vec![u(0, 3)]);
         assert_eq!(w.open_from, Some(u(0, 5)));
+        // D-301: a unit deleted on purpose is not wanted, and neither is
+        // the open edge behind it.
+        m.skipped = Some(vec![u(0, 3), u(0, 7)]);
+        let w = wanted(&m, &items, &p, &quality("anime"));
+        assert_eq!(w.missing, vec![u(0, 5), u(0, 6)]);
+        assert_eq!(w.open_from, Some(u(0, 8)));
+        assert!(!needs(&w, u(0, 3)) && !needs(&w, u(0, 7)) && needs(&w, u(0, 8)));
+        let film = Monitored { skipped: Some(vec![u(0, 1)]), ..mon("movie", "Film", NUMBER_MOVIE) };
+        assert!(wanted(&film, &[], &p, &quality("movie")).missing.is_empty());
     }
 
     #[test]

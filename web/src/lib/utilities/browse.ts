@@ -1,10 +1,25 @@
-import type { Enrichment, Progress } from '$lib/api/types';
+import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
+import { isReadable } from '$lib/reader/kinds';
 import type { SeriesGroup } from './grouping';
 
 type Lookup = (id: string) => Enrichment | null | undefined;
 type ProgressLookup = (id: string) => Progress | undefined;
 
 /** The file whose picture stands for a group on its card. */
+/**
+ * Whether a title's card plays it instead of opening its page: the title
+ * is one video and there is nothing about it to read (no overlay with a
+ * synopsis or genres). The page of a clip from a folder no provider knows
+ * (personal clips, home videos) only repeats the card, so the click goes where
+ * the user was going anyway; a film with metadata, a series, a book and
+ * a file that cannot be reached keep their page. The page stays one key
+ * away on the card (`I`).
+ */
+export function playsDirectly(item: Pick<CatalogItem, 'kind' | 'offline'>, enrichment: Enrichment | null | undefined): boolean {
+	if (isReadable(item.kind) || item.offline) return false;
+	return !enrichment?.synopsis?.trim() && !enrichment?.genres?.length;
+}
+
 export function artItem(group: SeriesGroup) {
 	return group.items.find((i) => i.episode > 0) ?? group.items[0];
 }

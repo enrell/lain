@@ -375,6 +375,11 @@ pub struct Library {
     pub position: i64,
     #[serde(default, skip_serializing_if = "is_default_audience")]
     pub audience: String,
+    /// D-302: metadata for its items comes from the files next to them
+    /// (`.nfo`) only, never from a network provider ("Fetch metadata
+    /// online" off). A private library always behaves so (D-268).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub local_metadata: bool,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -435,6 +440,8 @@ pub struct LibraryPatch {
     pub members: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audience: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_metadata: Option<bool>,
 }
 
 /// `PUT /api/libraries/order` (admin): every library id, first to last.
@@ -521,6 +528,27 @@ pub struct CatalogItem {
     pub offline: String,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
+}
+
+/// `removal` on the item `DELETE /api/items/{id}` answers (D-301): what
+/// the call did, so a client can say it instead of "deleted".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemRemoval {
+    /// The file was there and is gone; false when it was already gone.
+    pub file: bool,
+    /// Bytes this call released: the file and its sidecars. A file whose
+    /// bytes another hard link still holds counts nothing.
+    pub freed_bytes: i64,
+    /// Subtitle sidecars and stills of the file, removed with it.
+    pub sidecars: i64,
+    /// Folders the deletion left empty, removed.
+    pub folders: i64,
+    /// Torrent copies of the file removed, their seeding stopped.
+    pub downloads: i64,
+    /// A monitored title will not fetch it again (`Monitored.skipped`).
+    pub not_wanted: bool,
+    /// Another hard link still holds the file's bytes.
+    pub still_linked: bool,
 }
 
 /// `CatalogItem.offline` when the library's folder is not reachable.
@@ -749,6 +777,8 @@ pub struct ScanStats {
     pub missing: i64,
     pub restored: i64,
     pub migrated: i64,
+    /// Always 0 since D-302: the scan no longer enriches; the count is
+    /// `EnrichStatus.enriched`. Kept for older clients.
     pub enriched: i64,
     pub walk_errors: i64,
     /// The roots behind `walk_errors` and any inaccessible root, in
@@ -768,8 +798,9 @@ pub struct ScanStats {
 /// Where a running scan is (`ScanStatus.progress`). `phase` is the
 /// furthest step reached: `walk` (roots are being listed), `identify`
 /// (`files_done` of `files`; `files` grows as roots finish their walk,
-/// `libraries_walked` of `libraries`), `commit` (`libraries_done` of
-/// `libraries`) or `enrich` (`enrich_done` of `enrich_total`).
+/// `libraries_walked` of `libraries`) or `commit` (`libraries_done` of
+/// `libraries`). Metadata is not a scan phase (D-302): see
+/// [`EnrichStatus`].
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScanProgress {
     pub phase: String,
@@ -778,10 +809,38 @@ pub struct ScanProgress {
     pub libraries_done: i64,
     pub files: i64,
     pub files_done: i64,
+}
+
+/// The metadata pass (D-302), its own job beside the scan: a finished
+/// scan starts it, `POST /api/library/enrich` asks for it. `state` is
+/// `running`, `done` or `error`; `done` of `total` items without an
+/// overlay were asked about so far, `enriched` of them got one.
+/// `skipped`: items left out because no provider knew them last time.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnrichStatus {
+    pub state: String,
     #[serde(default, skip_serializing_if = "is_zero_i64")]
-    pub enrich_total: i64,
+    pub started_at: i64,
     #[serde(default, skip_serializing_if = "is_zero_i64")]
-    pub enrich_done: i64,
+    pub finished_at: i64,
+    #[serde(default)]
+    pub total: i64,
+    #[serde(default)]
+    pub done: i64,
+    #[serde(default)]
+    pub enriched: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub skipped: i64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub error: String,
+}
+
+/// `POST /api/library/enrich` (admin): `retry` asks again about the
+/// items no provider knew last time.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnrichRequest {
+    #[serde(default)]
+    pub retry: bool,
 }
 
 /// `GET /api/library/scan`: `state` is `idle`, `running`, `done` or
@@ -806,6 +865,9 @@ pub struct ScanStatus {
     /// itself when this one ends.
     #[serde(default, skip_serializing_if = "is_false")]
     pub queued: bool,
+    /// D-302: the metadata pass, absent until one has run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enrich: Option<EnrichStatus>,
 }
 
 // ---- metadata and sidecars --------------------------------------------------

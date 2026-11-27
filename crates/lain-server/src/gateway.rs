@@ -1132,6 +1132,7 @@ fn search(app: &App, req: &Req, v: &Verified) -> Reply {
     let mut p = PageParams::normalize(atoi(req.query("limit")), atoi(req.query("offset")), req.query("sort"));
     p.exclude_libraries = app.hidden_libraries(v);
     p.group = PageParams::grouping(req.query("group"));
+    p.hide_gone = true;
     let input = json!({"q": req.query("q"), "kind": req.query("kind"), "page": p});
     match app.registry.call_one(CAP_CATALOG_READ, "query", input) {
         Ok((out, _)) => Reply::ok(page_with_thumbnails(app, out)),
@@ -1218,6 +1219,7 @@ fn catalog_list(app: &App, req: &Req, v: &Verified) -> Reply {
     p.library_id = req.query("library_id").to_string();
     p.exclude_libraries = app.hidden_libraries(v);
     p.group = PageParams::grouping(req.query("group"));
+    p.hide_gone = true;
     match app.registry.call_one(CAP_CATALOG_READ, "page", json!({"page": p})) {
         Ok((out, _)) => Reply::ok(page_with_thumbnails(app, out)),
         Err(e) => Reply::err(500, &e.to_string()),

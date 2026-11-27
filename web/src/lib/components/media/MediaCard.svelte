@@ -1,5 +1,12 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import Check from '@lucide/svelte/icons/check';
+	import Info from '@lucide/svelte/icons/info';
+	import { session } from '$lib/auth/session.svelte';
+	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
+	import { playsDirectly } from '$lib/utilities/browse';
+	import { enrichmentCache } from '$lib/stores/media-cache.svelte';
 	import { isReadable } from '$lib/reader/kinds';
 	import Play from '@lucide/svelte/icons/play';
 	import type { CatalogItem, Enrichment, Progress } from '$lib/api/types';
@@ -17,7 +24,8 @@
 		enrichment = null,
 		progress = null,
 		priority = false,
-		frame = undefined
+		frame = undefined,
+		single = false
 	}: {
 		item: CatalogItem;
 		enrichment?: Enrichment | null;
@@ -26,7 +34,31 @@
 		/** Fill the container's width in the frame its grid or rail shares
 		 * (see `guessFrame`); a picture of the other shape is contained. */
 		frame?: Shape;
+		/** The card stands for a whole title (one file): it may then play
+		 * the title instead of opening its page (see `playsDirectly`). */
+		single?: boolean;
 	} = $props();
+
+	let player = $state<PreferredPlayer>('browser');
+	let origin = $state('');
+	onMount(() => {
+		origin = window.location.origin;
+		if (session.user) player = loadPreferredPlayer(session.user.id);
+	});
+	const detailsHref = $derived(`/item/${item.id}`);
+	// Decided once the overlay is known (`null`: none): a film whose
+	// synopsis has not arrived yet must not play on an early click.
+	const direct = $derived(single && enrichmentCache.has(item.id) && playsDirectly(item, enrichment ?? enrichmentCache.get(item.id)));
+	const href = $derived(direct ? playbackHref(origin, item.id, player, item.kind) : detailsHref);
+	function play(e: MouseEvent): void {
+		if (direct) playExternalClick(e, item.id, player);
+	}
+	// I on a card that plays opens the page it skips.
+	function key(e: KeyboardEvent): void {
+		if (!direct || e.ctrlKey || e.metaKey || e.altKey || (e.key !== 'i' && e.key !== 'I')) return;
+		e.preventDefault();
+		void goto(detailsHref);
+	}
 
 	const title = $derived(enrichment?.title || item.title);
 
@@ -58,12 +90,16 @@
 	// The link's aria-label replaces its inner text, so the visual 'Watching'
 	// badge has to be part of the name or a screen reader never hears it.
 	const accessibleName = $derived(
-		[item.offline ? t('unreachable.cardLabel', { title }) : title, subtitle, ratio > 0 ? (reading ? 'reading' : 'watching') : ''].filter(Boolean).join(', ')
+		[item.offline ? t('unreachable.cardLabel', { title }) : direct ? t('browse.playTitle', { title }) : title, subtitle, ratio > 0 ? (reading ? 'reading' : 'watching') : ''].filter(Boolean).join(', ')
 	);
 </script>
 
+<div class="group/card relative shrink-0">
 <a
-	href={`/item/${item.id}`}
+	{href}
+	onclick={play}
+	onkeydown={key}
+	aria-keyshortcuts={direct ? 'I' : undefined}
 	class="group block shrink-0 rounded-card transition-transform duration-300 ease-out hover:-translate-y-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
 	aria-label={accessibleName}
 >
@@ -111,3 +147,16 @@
 		{/if}
 	</div>
 </a>
+{#if direct}
+	<!-- The page this card skips: a sibling link (a link inside a link is not
+	     allowed), shown on hover and focus; I on the focused card opens it too. -->
+	<a
+		href={detailsHref}
+		class="absolute left-2 top-2 flex size-8 items-center justify-center rounded-full bg-black/65 text-foreground opacity-0 backdrop-blur transition-opacity duration-150 hover:text-accent focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-accent group-hover/card:opacity-100 group-focus-within/card:opacity-100 {ratio > 0 || progress?.completed ? 'top-9' : ''}"
+		aria-label={t('browse.detailsFor', { title })}
+		title={t('browse.detailsFor', { title })}
+	>
+		<Info class="size-4" aria-hidden="true" />
+	</a>
+{/if}
+</div>

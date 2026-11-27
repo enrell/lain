@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { leavePlayback, playbackTo } from '$lib/navigation/return';
 	/*
 	 * The shared reading engine (D-085): page fetching, paged and strip
 	 * views, direction-aware navigation, preloading, progress reporting
@@ -220,7 +221,7 @@
 	}
 
 	function openChapter(target: Neighbour | null): void {
-		if (target) void goto(target.href);
+		if (target) void playbackTo(target.href);
 	}
 
 	function openJump(): void {
@@ -288,7 +289,7 @@
 		}
 		if (k === 'b' || e.key === 'Backspace' || e.key === 'Escape') {
 			e.preventDefault();
-			return void goto(backHref);
+			return leavePlayback(backHref);
 		}
 		const action = keyAction(e.key, e.shiftKey, settings.mode === 'strip' ? 'ltr' : settings.direction);
 		const stripNext = settings.mode === 'strip' && (e.key === 'ArrowDown' || e.key === 'ArrowRight');
@@ -331,7 +332,7 @@
 		if (k === 'p' || e.key === '[') return openChapter(prev);
 		if (k === 'b' || e.key === 'Backspace' || e.key === 'Escape') {
 			e.preventDefault();
-			return void goto(backHref);
+			return leavePlayback(backHref);
 		}
 		if (k === 'm') return settings.setMode(settings.mode === 'strip' ? 'paged' : 'strip');
 		if (profile.controls.fit && k === 'w' && settings.mode === 'paged')
@@ -460,6 +461,7 @@
 		>
 			<a
 				href={backHref}
+				onclick={(e) => { e.preventDefault(); leavePlayback(backHref); }}
 				class="inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-hover hover:text-foreground sm:size-9"
 				aria-label={t('reader.back', { title: item.title })}
 			>
@@ -728,7 +730,7 @@
 			<span>{t('reader.end.previous', { label: prev.label })}</span><kbd>P</kbd>
 		</a>
 	{/if}
-	<a href={backHref} class="flex items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:bg-surface-hover focus-visible:text-foreground">
+	<a href={backHref} onclick={(e) => { e.preventDefault(); leavePlayback(backHref); }} class="flex items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:bg-surface-hover focus-visible:text-foreground">
 		<span>{t('reader.end.back', { title: item.title })}</span><kbd>B</kbd>
 	</a>
 {/snippet}

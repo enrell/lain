@@ -54,7 +54,7 @@
 				{#if group.count > 1}
 					<ShowCard {group} {frame} progressOf={(id) => progressMap?.get(id)} />
 				{:else}
-					<MediaCard item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} progress={progressMap?.get(group.items[0].id) ?? null} {frame} />
+					<MediaCard single item={group.items[0]} enrichment={enrichmentCache.get(group.items[0].id) ?? null} progress={progressMap?.get(group.items[0].id) ?? null} {frame} />
 				{/if}
 			</div>
 		{/each}

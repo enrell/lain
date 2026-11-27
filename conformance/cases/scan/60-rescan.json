@@ -29,6 +29,7 @@
        "status": 200,
        "body": {
         "state": "done",
+        "enrich": "$object",
         "started_at": "$int",
         "finished_at": "$int",
         "trigger": "manual",
@@ -102,6 +103,7 @@
        "status": 200,
        "body": {
         "state": "done",
+        "enrich": "$object",
         "started_at": "$int",
         "finished_at": "$int",
         "trigger": "manual",
@@ -149,7 +151,7 @@
      "expect": {
       "status": 200,
       "body": {
-       "total": 4,
+       "total": 3,
        "$open": true
       }
      }
@@ -189,6 +191,7 @@
        "status": 200,
        "body": {
         "state": "done",
+        "enrich": "$object",
         "started_at": "$int",
         "finished_at": "$int",
         "trigger": "manual",
@@ -270,6 +273,7 @@
        "status": 200,
        "body": {
         "state": "done",
+        "enrich": "$object",
         "started_at": "$int",
         "finished_at": "$int",
         "trigger": "manual",

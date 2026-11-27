@@ -108,6 +108,7 @@ impl Manager {
         m.id = new_id();
         m.created_at = now();
         m.enabled = true;
+        m.skipped = None;
         self.st.put(Bucket::AcqMonitored, &m.id, &m)?;
         Ok(m)
     }
@@ -122,6 +123,16 @@ impl Manager {
         if m.metadata_episodes == 0 {
             m.metadata_episodes = old.metadata_episodes;
         }
+        // The skipped units are the server's unless the write names them:
+        // an empty list wants them again (D-301).
+        m.skipped = match m.skipped {
+            None => old.skipped,
+            Some(mut v) => {
+                v.sort();
+                v.dedup();
+                (!v.is_empty()).then_some(v)
+            }
+        };
         self.st.put(Bucket::AcqMonitored, id, &m)?;
         Ok(m)
     }

@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **A lone clip plays from its card**: a title of one video with nothing
+  to read about it (no synopsis or genres: clips no provider knows, home videos)
+  plays on click instead of opening a page that only repeats the card;
+  the page stays on the card's ⓘ and on `I`.
+- **A scan never waits on metadata** (D-302): a scan ends when the catalog
+  is committed; the metadata pass runs as its own job (`enrich` on
+  `GET /api/library/scan`, `enrich-state` on `/api/events`,
+  `POST /api/library/enrich` to start one). A library's "Fetch metadata
+  online" switch (`local_metadata`) keeps it to `.nfo` files, and a title
+  no provider knew is not asked about again until "Retry unknown titles".
 - **Cards are never empty boxes** (D-287): when a file's own picture
   cannot be made (its disk unmounted, no frame to cut), the thumbnail
   route answers the title's art instead of an error (a still beside the
@@ -208,6 +218,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   under way says its page on Continue reading ("Vol 1 · page 4 of 8").
 
 ### Fixed
+- **Back never lands in the player**: leaving the player or the reader
+  goes back in history to the title page it was opened from (or replaces
+  its own entry), the next episode replaces the player instead of
+  stacking one entry per file, and the title page's back arrow, reached
+  from a player, goes to the last list page. Tablets get the title
+  page's back button in the wide header too.
+- **Deleting a file leaves nothing behind, and says what it did**
+  (D-301): `DELETE /api/items/{id}` also removes the file's subtitle
+  sidecars and stills, the folders it leaves empty and the torrent copy
+  that still held its bytes (an import hardlinks or copies, so a seeding
+  grab kept them on disk), and a monitored title no longer fetches the
+  deleted episode again (`Monitored.skipped`; Acquire › Wanted, `w` wants
+  it back). The answer carries `removal` and the web says it: files
+  deleted, space freed, downloads stopped, and each failure with its
+  reason. A delete while the library's folder is unreachable is refused
+  instead of answering 200. A title with no file left is off the catalog
+  and search lists (its rows stay); the title page shows the delete's
+  progress, has keys for the selection (`a`, `w`, `n`, `Del`) and leaves
+  for the library once nothing is left.
 - **Subtitles**: a track inside the file (ASS) no longer shows `\h` or
   override blocks as text; a hard space is a space, and the cached
   sidecars are made again.

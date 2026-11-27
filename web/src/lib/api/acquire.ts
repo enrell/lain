@@ -248,6 +248,11 @@ export interface Monitored {
 	enabled: boolean;
 	last_search_at?: number;
 	created_at: number;
+	/**
+	 * Units deleted from the library on purpose (D-301): not wanted again.
+	 * A write without it keeps the server's list; an empty one clears it.
+	 */
+	skipped?: Unit[];
 }
 
 export interface Wanted {

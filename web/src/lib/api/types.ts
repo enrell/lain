@@ -9,6 +9,21 @@
  */
 
 /** internal/contracts.CatalogItem (media.go). */
+/** What `DELETE /api/items/{id}` did (D-301), on the item it answers. */
+export interface ItemRemoval {
+	/** The file was there and is gone; false when it was already gone. */
+	file: boolean;
+	/** Bytes released: the file and its sidecars (nothing for a file another hard link holds). */
+	freed_bytes: number;
+	sidecars: number;
+	folders: number;
+	/** Torrent copies removed, their seeding stopped. */
+	downloads: number;
+	/** A monitored title will not fetch it again. */
+	not_wanted: boolean;
+	still_linked: boolean;
+}
+
 export interface CatalogItem {
 	id: string;
 	library_id: string;
@@ -35,6 +50,8 @@ export interface CatalogItem {
 	 * is there, and from an older server.
 	 */
 	offline?: 'library' | 'file' | (string & {});
+	/** Only on the answer of a delete (D-301). */
+	removal?: ItemRemoval;
 }
 
 /**
@@ -87,6 +104,8 @@ export interface Library {
 	root_path?: string;
 	/** The admin's order, 1 first; absent for a library never ordered. */
 	position?: number;
+	/** D-302: metadata from the files next to the items only ("Fetch metadata online" off). */
+	local_metadata?: boolean;
 }
 
 /** GET /api/roots (lain-rs): this machine's root mapping. */
@@ -329,6 +348,7 @@ export interface ScanStats {
 	/** Missing items whose file reappeared under the same path. */
 	restored: number;
 	migrated: number;
+	/** Always 0 since D-302: see `ScanStatus.enrich`. */
 	enriched: number;
 	walk_errors: number;
 	/** Roots behind walk_errors and any inaccessible root, in library order. */
@@ -343,7 +363,7 @@ export type ScanState = 'idle' | 'running' | 'done' | 'error';
 
 /** Where a running scan is; `phase` is the furthest step reached. */
 export interface ScanProgress {
-	phase: 'walk' | 'identify' | 'commit' | 'enrich';
+	phase: 'walk' | 'identify' | 'commit';
 	libraries: number;
 	/** Roots whose listing finished; `files` grows with it. */
 	libraries_walked: number;
@@ -351,8 +371,20 @@ export interface ScanProgress {
 	libraries_done: number;
 	files: number;
 	files_done: number;
-	enrich_total?: number;
-	enrich_done?: number;
+}
+
+/** D-302: the metadata pass, a job of its own beside the scan. */
+export interface EnrichStatus {
+	state: 'running' | 'done' | 'error';
+	started_at?: number;
+	finished_at?: number;
+	/** Items without an overlay to ask about (grows to its value as the pass starts). */
+	total: number;
+	done: number;
+	enriched: number;
+	/** Left out: no provider knew them last time (retry asks again). */
+	skipped?: number;
+	error?: string;
 }
 
 export interface ScanStatus {
@@ -367,6 +399,8 @@ export interface ScanStatus {
 	trigger?: 'manual' | 'watch';
 	/** D-286: a scan asked for while this one runs; it starts by itself after. */
 	queued?: boolean;
+	/** D-302: the metadata pass; absent until one has run. */
+	enrich?: EnrichStatus;
 }
 
 /** internal/contracts.Enrichment (media.go). */

@@ -27,6 +27,12 @@ pub struct PageParams {
     /// file of each title on it. Rust-only field.
     #[serde(rename = "Group", default, skip_serializing_if = "String::is_empty")]
     pub group: String,
+    /// D-301: leave out every title that has no file left (all of its
+    /// files on the page's scope are `missing`). Set by the list and
+    /// search routes; a read by id still answers such a file. Rust-only
+    /// field.
+    #[serde(rename = "HideGone", default, skip_serializing_if = "std::ops::Not::not")]
+    pub hide_gone: bool,
 }
 
 /// The one `group` a catalog page knows (D-283).
@@ -43,6 +49,7 @@ impl PageParams {
             library_id: String::new(),
             exclude_libraries: Vec::new(),
             group: String::new(),
+            hide_gone: false,
         }
     }
 

@@ -1,6 +1,6 @@
 {
  "tier": "v1",
- "description": "The folder picker (GET /api/browse, admin) and item deletion (DELETE /api/items/{id}, admin): the file goes, the row stays missing (D-068, D-073).",
+ "description": "The folder picker (GET /api/browse, admin) and item deletion (DELETE /api/items/{id}, admin): the file goes with the folder it leaves empty, the answer says what was done, the row stays missing (D-068, D-073) and its title, with no file left, is off the lists (D-301).",
  "cases": [
   {
    "name": "browse lists visible subdirectories",
@@ -154,7 +154,7 @@
    ]
   },
   {
-   "name": "the file goes, the row stays missing",
+   "name": "the file goes, the row stays missing, the title leaves the lists",
    "requires": [
     "scan_media"
    ],
@@ -189,7 +189,16 @@
        "updated_at": "$int",
        "$open": true,
        "title": "Show Name",
-       "missing": true
+       "missing": true,
+       "removal": {
+        "file": true,
+        "freed_bytes": 1,
+        "sidecars": 0,
+        "folders": 1,
+        "downloads": 0,
+        "not_wanted": false,
+        "still_linked": false
+       }
       }
      }
     },
@@ -242,7 +251,12 @@
        "size": 1,
        "updated_at": "$int",
        "$open": true,
-       "missing": true
+       "missing": true,
+       "removal": {
+        "file": false,
+        "freed_bytes": 0,
+        "$open": true
+       }
       }
      }
     },
@@ -253,12 +267,39 @@
       "auth": "admin"
      },
      "expect": {
+      "status": 400,
+      "body": {
+       "error": "path is not a readable directory"
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/search?q=show%20name",
+      "auth": "bob"
+     },
+     "expect": {
       "status": 200,
       "body": {
-       "path": "$string",
-       "parent": "$string",
-       "detected": false,
-       "dirs": []
+       "items": [],
+       "total": 0,
+       "$open": true
+      }
+     }
+    },
+    {
+     "req": {
+      "method": "GET",
+      "path": "/api/search?q=show%20name&group=title",
+      "auth": "bob"
+     },
+     "expect": {
+      "status": 200,
+      "body": {
+       "items": [],
+       "total": 0,
+       "$open": true
       }
      }
     }

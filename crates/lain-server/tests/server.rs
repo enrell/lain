@@ -222,6 +222,19 @@ fn scan_to_done(base: &Base, admin: &str) -> serde_json::Value {
     }
 }
 
+/// Waits for the metadata pass (D-302) and returns its status.
+fn enrich_to_done(base: &Base, admin: &str) -> serde_json::Value {
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        let (_, v) = call(base, "GET", "/api/library/scan", admin, None);
+        if v["enrich"]["state"] == "done" || v["enrich"]["state"] == "error" {
+            return v["enrich"].clone();
+        }
+        assert!(std::time::Instant::now() < deadline, "metadata pass did not finish: {v}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// One folder per file, each with the downloader's `.metadata/meta.toml`:
 /// the sidecar names the series and the episode, so the episodes join
 /// into one title instead of standing as three videos. A file without a
@@ -277,6 +290,106 @@ fn sidecars_join_one_folder_per_file_episodes() {
     // Paged by title: one row for the show, one for the clip.
     let (_, titles) = call(&base, "GET", "/api/catalog?group=title&limit=50", &admin, None);
     assert_eq!(titles["total"], 2, "{titles}");
+    drop(server);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// Deleting from the title page (D-301): the file goes with what only
+/// existed for it, the folders it leaves empty go too, the answer says
+/// what happened, and a title with no file left is off the lists while
+/// its rows stay. Nothing is deleted from a library that is not there.
+#[test]
+fn deleting_files_leaves_nothing_behind_and_says_what_it_did() {
+    let dir = lain_store::test_dir("rs-delete");
+    let media = dir.join("media");
+    let show = media.join("Show");
+    std::fs::create_dir_all(&show).unwrap();
+    std::fs::create_dir_all(media.join("Other")).unwrap();
+    std::fs::write(show.join("[Fansub-A] Show - 01 [1080p].mkv"), b"12345").unwrap();
+    std::fs::write(show.join("[Fansub-A] Show - 01 [1080p].en.srt"), b"123").unwrap();
+    std::fs::write(show.join("[Fansub-A] Show - 01 [1080p]-thumb.jpg"), b"12").unwrap();
+    std::fs::write(show.join("[Fansub-A] Show - 02 [1080p].mkv"), b"1234567").unwrap();
+    std::fs::write(media.join("Other/[Fansub-A] Other - 01 [1080p].mkv"), b"1").unwrap();
+    std::fs::write(media.join("Other/notes.txt"), b"mine").unwrap();
+    let server = Server::start_with(&dir.join("data"), |c| c.watch = false);
+    let base = Base::parse(&server.url).unwrap();
+    call(&base, "POST", "/api/setup", "", Some(json!({"username": "admin", "password": "password123"})));
+    let admin = login(&base, "admin", "password123");
+    let (st, lib) = call(
+        &base,
+        "POST",
+        "/api/libraries",
+        &admin,
+        Some(json!({"name": "Shows", "type": "anime", "path": media.to_string_lossy()})),
+    );
+    assert_eq!(st, 201, "{lib}");
+    scan_to_done(&base, &admin);
+    let (_, files) = call(&base, "GET", "/api/catalog?limit=50", &admin, None);
+    let id_of = |name: &str| {
+        let it = files["items"].as_array().unwrap().iter().find(|i| i["file_path"].as_str().unwrap().ends_with(name));
+        it.unwrap_or_else(|| panic!("{name} not in {files}"))["id"].as_str().unwrap().to_string()
+    };
+    let (one, two, other) = (
+        id_of("[Fansub-A] Show - 01 [1080p].mkv"),
+        id_of("[Fansub-A] Show - 02 [1080p].mkv"),
+        id_of("[Fansub-A] Other - 01 [1080p].mkv"),
+    );
+    let titles =
+        |q: &str| call(&base, "GET", &format!("/api/{q}group=title&limit=50"), &admin, None).1["total"].clone();
+    assert_eq!(titles("catalog?"), 2);
+
+    // The library's folder is away: nothing is deleted, and it is said.
+    let away = dir.join("media.away");
+    std::fs::rename(&media, &away).unwrap();
+    let (st, v) = call(&base, "DELETE", &format!("/api/items/{one}"), &admin, None);
+    assert_eq!(
+        (st, v["error"].as_str()),
+        (409, Some("the library's folder cannot be reached, so nothing was deleted"))
+    );
+    std::fs::rename(&away, &media).unwrap();
+    let (_, v) = call(&base, "GET", &format!("/api/catalog/{one}"), &admin, None);
+    assert!(v["missing"].is_null(), "{v}");
+
+    // One episode: its subtitle and still go with it, the folder stays for the other.
+    let (st, v) = call(&base, "DELETE", &format!("/api/items/{one}"), &admin, None);
+    assert_eq!(st, 200, "{v}");
+    assert_eq!(
+        v["removal"],
+        json!({"file": true, "freed_bytes": 10, "sidecars": 2, "folders": 0, "downloads": 0,
+               "not_wanted": false, "still_linked": false})
+    );
+    assert_eq!(std::fs::read_dir(&show).unwrap().count(), 1, "only the other episode is left");
+    assert_eq!(titles("catalog?"), 2, "a title with a file left keeps its card");
+    let (_, v) = call(&base, "GET", "/api/search?q=show&limit=50", &admin, None);
+    assert_eq!(v["total"], 2, "and its missing episode: {v}");
+
+    // The last one: the folder goes, and the title is off the lists.
+    let (st, v) = call(&base, "DELETE", &format!("/api/items/{two}"), &admin, None);
+    assert_eq!((st, &v["removal"]["folders"], &v["removal"]["freed_bytes"]), (200, &json!(1), &json!(7)), "{v}");
+    assert!(!show.exists());
+    assert_eq!(titles("catalog?"), 1);
+    assert_eq!(titles("search?q=show&"), 0);
+    let (_, v) = call(&base, "GET", "/api/search?q=show&limit=50", &admin, None);
+    assert_eq!(v["total"], 0, "{v}");
+    // The rows stay (D-068): by id, and as the title's episodes.
+    let (st, v) = call(&base, "GET", &format!("/api/catalog/{two}/episodes"), &admin, None);
+    assert_eq!((st, v["items"].as_array().map(Vec::len)), (200, Some(2)));
+    // Again changes nothing and still answers.
+    let (st, v) = call(&base, "DELETE", &format!("/api/items/{two}"), &admin, None);
+    assert_eq!((st, &v["removal"]["file"]), (200, &json!(false)), "{v}");
+
+    // A folder holding something else stays, and so does the library's own.
+    #[cfg(unix)]
+    std::fs::hard_link(media.join("Other/[Fansub-A] Other - 01 [1080p].mkv"), dir.join("elsewhere.mkv")).unwrap();
+    let (st, v) = call(&base, "DELETE", &format!("/api/items/{other}"), &admin, None);
+    assert_eq!((st, &v["removal"]["folders"]), (200, &json!(0)), "{v}");
+    #[cfg(unix)]
+    assert_eq!((&v["removal"]["still_linked"], &v["removal"]["freed_bytes"]), (&json!(true), &json!(0)), "{v}");
+    assert!(media.join("Other/notes.txt").exists() && !media.join("Other/[Fansub-A] Other - 01 [1080p].mkv").exists());
+    assert_eq!(titles("catalog?"), 0);
+    // A rescan agrees: nothing comes back.
+    scan_to_done(&base, &admin);
+    assert_eq!(titles("catalog?"), 0);
     drop(server);
     std::fs::remove_dir_all(dir).ok();
 }
@@ -543,7 +656,15 @@ fn rooted_private_scans_leak_nothing() {
 
     let st = scan_to_done(&base, &admin);
     assert_eq!(st["stats"]["identified"], 1, "{st}");
-    assert_eq!(st["stats"]["enriched"], 1, "the post-scan NFO pass: {st}");
+    assert_eq!(st["stats"]["enriched"], 0, "the scan itself fetches no metadata (D-302): {st}");
+    let e = enrich_to_done(&base, &admin);
+    assert_eq!((e["state"].as_str(), e["enriched"].as_i64()), (Some("done"), Some(1)), "the post-scan NFO pass: {e}");
+    let (code, v) = call(&base, "POST", "/api/library/enrich", &admin, Some(json!({"retry": true})));
+    assert_eq!((code, v["state"].as_str()), (202, Some("running")), "{v}");
+    let (code, _) = call(&base, "POST", "/api/library/enrich", &bob, None);
+    assert_eq!(code, 403, "a user cannot start the metadata pass");
+    let e = enrich_to_done(&base, &admin);
+    assert_eq!(e["enriched"], 0, "nothing left without an overlay: {e}");
     assert_eq!(st["stats"]["unreadable"].as_array().unwrap().len(), 1);
     let (_, page) = call(&base, "GET", "/api/catalog", &admin, None);
     let item = page["items"][0].clone();
@@ -711,8 +832,12 @@ fn watched_libraries_rescan_on_file_events() {
     assert_eq!(page["items"][0]["title"], "Show Name");
     let (_, st) = call(&base, "GET", "/api/library/scan", &admin, None);
     assert_eq!(st["trigger"], "watch");
+    let id = page["items"][0]["id"].as_str().unwrap().to_string();
     std::fs::remove_file(&file).unwrap();
-    wait(&|p| p["items"][0]["missing"] == true);
+    // Its only file is gone: the title is off the list (D-301), the row stays.
+    wait(&|p| p["total"] == 0);
+    let (_, row) = call(&base, "GET", &format!("/api/catalog/{id}"), &admin, None);
+    assert_eq!(row["missing"], true, "{row}");
     drop(server);
     std::fs::remove_dir_all(dir).ok();
 }

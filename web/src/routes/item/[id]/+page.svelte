@@ -36,6 +36,7 @@
 	import TitleTracking from '$lib/components/media/TitleTracking.svelte';
 	import SubtitlePanel from '$lib/components/acquire/SubtitlePanel.svelte';
 	import { t } from '$lib/i18n';
+	import { removalMessage, totalRemovals } from '$lib/utilities/removal';
 	import { isTypingTarget } from '$lib/utilities/guards';
 	import {
 		applyEnrichment,
@@ -291,16 +292,18 @@
 
 	// File delete (admin): the media bytes go away for every user; the
 	// catalog row stays as `missing`, so progress and metadata survive
-	// and the item restores itself if the file comes back (D-073).
+	// and the item restores itself if the file comes back (D-073). The
+	// title has no file left, so it is off the lists (D-301).
 	async function deleteFile(): Promise<void> {
 		if (!item || deletingFile) return;
 		deletingFile = true;
 		try {
-			await api.items.remove(item.id);
-			toasts.success('File deleted.');
+			const { removal, ...gone } = await api.items.remove(item.id);
+			itemCache.set(gone.id, gone);
+			toasts.success(removalMessage(1, totalRemovals([removal])));
 			await goto('/library');
 		} catch (err) {
-			toasts.error(errorMessage(err, 'Could not delete the file.'));
+			toasts.error(t('title.delete.failed', { count: 1, reason: errorMessage(err, t('title.delete.noReason')) }));
 			confirmDeleteFile = false;
 		} finally {
 			deletingFile = false;
@@ -567,13 +570,14 @@
 	</p>
 </Modal>
 
-<Modal bind:open={confirmDeleteFile} title="Delete file?" description="The file is removed from disk for every user. The catalog entry stays as missing, so progress and metadata are preserved and the item restores itself if the file returns.">
+<Modal bind:open={confirmDeleteFile} title={t('title.delete.confirmTitle', { count: 1 })} description={t('title.delete.confirmBody')}>
 	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (confirmDeleteFile = false)}>Cancel</Button>
-		<Button variant="danger" loading={deletingFile} onclick={() => void deleteFile()}>
-			Delete file
+		<Button variant="ghost" disabled={deletingFile} onclick={() => (confirmDeleteFile = false)}>{t('common.cancel')} <kbd class="ms-1 font-mono text-[10px] text-muted">Esc</kbd></Button>
+		<Button data-autofocus variant="danger" loading={deletingFile} onclick={() => void deleteFile()}>
+			{t('title.delete.confirm', { count: 1 })} <kbd class="ms-1 font-mono text-[10px] opacity-70">Enter</kbd>
 		</Button>
 	{/snippet}
 	<p class="break-all font-mono text-xs text-muted">{item?.file_path}</p>
-	<p class="text-sm text-muted">This cannot be undone — the media bytes are gone.</p>
+	{#if item?.size}<p class="font-mono text-xs text-foreground">{t('title.delete.confirmSize', { size: formatBytes(item.size) })}</p>{/if}
+	<p class="text-sm text-muted">{t('title.delete.irreversible')}</p>
 </Modal>
