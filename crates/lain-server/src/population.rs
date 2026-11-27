@@ -25,6 +25,7 @@ pub const MAX_ENRICH_BATCH: usize = 200;
 pub fn routes() -> Router<Arc<App>> {
     Router::new()
         .route("/api/library/scan", route(POST, Gate::Manager, scan_start).merge(route(GET, Gate::User, scan_status)))
+        .route("/api/library/enrich", route(POST, Gate::Manager, enrich_start))
         .route("/api/browse", route(GET, Gate::Admin, browse))
         .route("/api/items/{id}", route(DELETE, Gate::Admin, item_delete))
         .route(
@@ -50,6 +51,25 @@ fn scan_start(app: &App, _: &Req, _: &Verified) -> Reply {
         ScanRequest::Started => Reply::json(202, json!({"state": "running"})),
         ScanRequest::Queued => Reply::json(202, json!({"state": "running", "queued": true})),
     }
+}
+
+/// Starts the metadata pass (D-302), or one more behind the running
+/// one. `retry` asks again about items no provider knew last time.
+fn enrich_start(app: &App, req: &Req, _: &Verified) -> Reply {
+    let r: lain_api::EnrichRequest = if req.body.trim_ascii().is_empty() {
+        lain_api::EnrichRequest::default()
+    } else {
+        match req.decode() {
+            Ok(r) => r,
+            Err(e) => return e,
+        }
+    };
+    let started = app.scanner.request_enrich(r.retry);
+    let mut body = json!({"state": "running"});
+    if !started {
+        body["queued"] = json!(true);
+    }
+    Reply::json(202, body)
 }
 
 fn scan_status(app: &App, _: &Req, v: &Verified) -> Reply {

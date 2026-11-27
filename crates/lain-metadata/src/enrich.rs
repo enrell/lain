@@ -2,7 +2,8 @@
 //! overlay pipeline end to end. Ops: `enrich` (one item, optionally
 //! one named provider), `get`, `batch`, `delete`, `backfill` (every
 //! catalog item without an overlay, one at a time so provider APIs see
-//! a trickle, never a burst).
+//! a trickle, never a burst; an item no network provider knew is left
+//! out until a backfill asks with `retry`, D-302).
 
 use std::sync::{Arc, Weak};
 
@@ -39,6 +40,38 @@ struct EnrichInput {
     item: CatalogItem,
     #[serde(default)]
     only: String,
+}
+
+#[derive(Deserialize, Default)]
+struct BackfillInput {
+    #[serde(default)]
+    retry: bool,
+}
+
+/// What one backfill did: `checked` items without an overlay were
+/// asked about, `enriched` got one, `skipped` were left out as known
+/// misses.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+pub struct Backfill {
+    pub checked: i64,
+    pub enriched: i64,
+    pub skipped: i64,
+}
+
+/// Why one item got no overlay.
+enum Failed {
+    /// Every provider asked answered and none knew the title.
+    Unknown(Error),
+    /// Anything else: a provider was down, a store failed.
+    Other(Error),
+}
+
+impl Failed {
+    fn into_error(self) -> Error {
+        match self {
+            Failed::Unknown(e) | Failed::Other(e) => e,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -80,23 +113,36 @@ impl Enricher {
 
     /// Searches, picks, resolves and saves one overlay.
     pub fn enrich(&self, item: &CatalogItem, only: &str) -> Result<Enrichment, Error> {
+        self.enrich_item(item, only, self.local_only(&item.library_id)).map_err(Failed::into_error)
+    }
+
+    fn enrich_item(&self, item: &CatalogItem, only: &str, local: bool) -> Result<Enrichment, Failed> {
         let kind = if item.kind.is_empty() || item.kind == "episode" || item.kind == "video" {
             "anime"
         } else {
             item.kind.as_str()
         };
-        let local = self.local_only(&item.library_id);
-        let merged = self.search(&item.title, kind, &dir_of(&item.file_path), only, local).inspect_err(|e| {
-            tracing::warn!(item = %item.id, title = %item.title, err = %e, "enrich search failed");
-        })?;
+        let (merged, complete) = self
+            .search(&item.title, kind, &dir_of(&item.file_path), only, local)
+            .inspect_err(|e| {
+                tracing::warn!(item = %item.id, title = %item.title, err = %e, "enrich search failed");
+            })
+            .map_err(Failed::Other)?;
         let Some(best) = merged.first() else {
-            tracing::warn!(item = %item.id, title = %item.title, kind, "enrich no match");
-            return Err(Error::not_found("no metadata found"));
+            // Debug: a library of home videos says this once per file.
+            tracing::debug!(item = %item.id, title = %item.title, kind, local, "enrich no match");
+            let e = Error::not_found("no metadata found");
+            return Err(if complete { Failed::Unknown(e) } else { Failed::Other(e) });
         };
-        let rec = self.resolve(&best.provider, &best.remote_id).inspect_err(|e| {
-            tracing::warn!(item = %item.id, provider = %best.provider, remote_id = %best.remote_id, err = %e, "enrich resolve failed");
-        })?;
-        let saved = store::save(&self.store, &item.id, &rec, lain_core::now_unix()).map_err(store_err)?;
+        let rec = self
+            .resolve(&best.provider, &best.remote_id)
+            .inspect_err(|e| {
+                tracing::warn!(item = %item.id, provider = %best.provider, remote_id = %best.remote_id, err = %e, "enrich resolve failed");
+            })
+            .map_err(Failed::Other)?;
+        let saved =
+            store::save(&self.store, &item.id, &rec, lain_core::now_unix()).map_err(|e| Failed::Other(store_err(e)))?;
+        let _ = store::clear_miss(&self.store, &item.id);
         tracing::debug!(item = %item.id, title = %saved.title, provider = %saved.provider, "enrich ok");
         Ok(saved)
     }
@@ -106,31 +152,39 @@ impl Enricher {
     /// failing provider degrades the merge; only total failure is an
     /// error.
     /// A private library (D-156) says nothing about its titles to the
-    /// outside: its items are enriched from the files next to them
-    /// (`.nfo`) and never by a network provider.
+    /// outside, and a library with "Fetch metadata online" off (D-302)
+    /// holds titles no provider knows: their items are enriched from the
+    /// files next to them (`.nfo`) and never by a network provider.
     fn local_only(&self, library_id: &str) -> bool {
         if library_id.is_empty() {
             return false;
         }
         let lib: Option<Library> =
             self.store.read(|tx| tx.get_json(Bucket::Libraries, library_id.as_bytes())).ok().flatten();
-        lib.is_some_and(|l| l.private)
+        lib.is_some_and(|l| l.private || l.local_metadata)
     }
 
     /// The local providers only, each asked on its own: the merge-many
     /// call would reach the network ones too, and the answer is about
     /// one folder, so it is not cached under the title either.
-    fn search_local(&self, input: &MetadataSearchInput, only: &str) -> Result<Vec<MetadataCandidate>, Error> {
+    fn search_local(&self, input: &MetadataSearchInput, only: &str) -> Result<(Vec<MetadataCandidate>, bool), Error> {
         let reg = self.reg()?;
+        let mut complete = true;
         let lists: Vec<Vec<MetadataCandidate>> = LOCAL_PROVIDERS
             .iter()
             .filter(|id| only.is_empty() || **id == only)
-            .filter_map(|id| reg.invoke_provider(CAP_METADATA_SEARCH, id, "search", json!(input)).ok())
+            .filter_map(|id| {
+                reg.invoke_provider(CAP_METADATA_SEARCH, id, "search", json!(input))
+                    .inspect_err(|_| complete = false)
+                    .ok()
+            })
             .map(|v| serde_json::from_value::<Vec<MetadataCandidate>>(v).unwrap_or_default())
             .collect();
-        Ok(merge_candidates(&input.query, &lists, 10))
+        Ok((merge_candidates(&input.query, &lists, 10), complete))
     }
 
+    /// The candidates, and whether every provider asked answered (an
+    /// empty answer is then a real "nobody knows it").
     fn search(
         &self,
         query: &str,
@@ -138,7 +192,7 @@ impl Enricher {
         dir: &str,
         only: &str,
         local: bool,
-    ) -> Result<Vec<MetadataCandidate>, Error> {
+    ) -> Result<(Vec<MetadataCandidate>, bool), Error> {
         if local {
             let input = MetadataSearchInput { query: query.into(), kind: kind.into(), limit: 5, dir: dir.into() };
             return self.search_local(&input, only);
@@ -147,7 +201,7 @@ impl Enricher {
         if only.is_empty()
             && let Some(hit) = store::cached_search(&self.store, kind, query, now)
         {
-            return Ok(hit);
+            return Ok((hit, true));
         }
         let input = MetadataSearchInput { query: query.into(), kind: kind.into(), limit: 5, dir: dir.into() };
         let (outputs, skipped) = self.reg()?.call_merge_report(CAP_METADATA_SEARCH, "search", json!(input))?;
@@ -173,7 +227,7 @@ impl Enricher {
         if only.is_empty() && (!merged.is_empty() || all_answered) {
             let _ = store::put_search(&self.store, kind, query, &merged, now);
         }
-        Ok(merged)
+        Ok((merged, all_answered))
     }
 
     /// Cache, else the winning provider itself (through authority).
@@ -191,13 +245,31 @@ impl Enricher {
     }
 
     /// Enriches every catalog item without an overlay; per-item failures
-    /// are skipped, never failing the scan that just succeeded.
-    pub fn backfill(&self) -> Result<i64, Error> {
+    /// are skipped, never failing the pass. An item every network
+    /// provider answered "unknown" for is remembered and left out of
+    /// later passes (D-302) until one asks with `retry`; items of a
+    /// local-only library are always asked again (it costs a file read).
+    pub fn backfill(&self, retry: bool) -> Result<Backfill, Error> {
         let (out, _) = self.reg()?.call_one(CAP_CATALOG_READ, "list", Value::Null)?;
         let items: Vec<CatalogItem> =
             serde_json::from_value(out).map_err(|_| Error::internal("catalog read returned a bad shape"))?;
-        let pending: Vec<CatalogItem> =
-            items.into_iter().filter(|it| store::get(&self.store, &it.id).is_none()).collect();
+        if retry {
+            let _ = store::clear_misses(&self.store);
+        }
+        let mut local_of = std::collections::HashMap::<String, bool>::new();
+        let mut result = Backfill::default();
+        let mut pending: Vec<(CatalogItem, bool)> = Vec::new();
+        for it in items {
+            if store::get(&self.store, &it.id).is_some() {
+                continue;
+            }
+            let local = *local_of.entry(it.library_id.clone()).or_insert_with(|| self.local_only(&it.library_id));
+            if !local && store::is_miss(&self.store, &it.id) {
+                result.skipped += 1;
+                continue;
+            }
+            pending.push((it, local));
+        }
         let total = pending.len() as i64;
         let report = |n: i64| {
             if let Some(p) = &self.progress {
@@ -205,14 +277,26 @@ impl Enricher {
             }
         };
         report(0);
-        let mut done = 0;
-        for (n, it) in pending.iter().enumerate() {
-            if self.enrich(it, "").is_ok() {
-                done += 1;
+        let now = lain_core::now_unix();
+        for (n, (it, local)) in pending.iter().enumerate() {
+            match self.enrich_item(it, "", *local) {
+                Ok(_) => result.enriched += 1,
+                Err(Failed::Unknown(_)) if !*local => {
+                    let _ = store::put_miss(&self.store, &it.id, now);
+                }
+                Err(_) => {}
             }
+            result.checked += 1;
             report(n as i64 + 1);
         }
-        Ok(done)
+        tracing::info!(
+            checked = result.checked,
+            enriched = result.enriched,
+            skipped = result.skipped,
+            retry,
+            "metadata backfill done"
+        );
+        Ok(result)
     }
 }
 
@@ -252,7 +336,14 @@ impl Provider for Enricher {
                 store::delete(&self.store, &i.item_id).map_err(store_err)?;
                 Ok(json!(true))
             }
-            "backfill" => Ok(json!({"enriched": self.backfill()?})),
+            "backfill" => {
+                let i: BackfillInput = if input.is_null() {
+                    BackfillInput::default()
+                } else {
+                    serde_json::from_value(input).map_err(bad)?
+                };
+                Ok(json!(self.backfill(i.retry)?))
+            }
             _ => Err(Error::invalid(format!("capability {cap} has no op {op}"))),
         }
     }

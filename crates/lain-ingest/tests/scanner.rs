@@ -41,6 +41,10 @@ fn setup(fail: bool) -> (Arc<Registry>, Arc<Mutex<()>>, Arc<SourceWatch>) {
     let mut bindings = std::collections::BTreeMap::new();
     bindings.insert(CAP_INGEST_SCAN.to_string(), Binding::new(BindingMode::ExactlyOne, &["stub-scan"]));
     bindings.insert(CAP_SOURCE_WATCH.to_string(), Binding::new(BindingMode::ExactlyOne, &[lain_ingest::WATCH_ID]));
+    bindings.insert(
+        lain_ingest::scanner::CAP_METADATA_ENRICH.to_string(),
+        Binding::new(BindingMode::ExactlyOne, &["stub-enrich"]),
+    );
     let reg = Arc::new(Registry::new(Composition { version: 8, bindings }));
     let gate = Arc::new(Mutex::new(()));
     reg.register(Arc::new(SlowScan { gate: gate.clone(), fail }));
@@ -115,7 +119,7 @@ fn a_running_scan_reports_its_position() {
     let p = s.status().progress.unwrap();
     assert_eq!((p.phase.as_str(), p.libraries_walked, p.files, p.files_done), ("identify", 1, 3, 2));
     s.enrich_progress(1, 9);
-    assert_eq!(s.status().progress.unwrap().enrich_total, 0, "a backfill outside the enrich phase is not the scan's");
+    assert!(s.status().enrich.is_none(), "a backfill this controller did not start is not its own");
     s.step(Step::Committing);
     s.step(Step::Walked { files: 0 });
     assert_eq!(s.status().progress.unwrap().phase, "commit", "a late walk does not move the scan back");
@@ -123,7 +127,6 @@ fn a_running_scan_reports_its_position() {
     assert_eq!(s.status().progress.unwrap().libraries_done, 1);
     let v = json!(s.status());
     assert_eq!(v["progress"]["phase"], "commit");
-    assert!(v["progress"].get("enrich_total").is_none(), "{v}");
     drop(held);
     assert!(s.wait_idle(Duration::from_secs(5)));
     let st = s.status();
@@ -175,4 +178,67 @@ fn a_scan_asked_for_while_one_runs_follows_it_once() {
     let st = s.status();
     assert_eq!((st.state.as_str(), st.queued), ("done", false));
     assert!(json!(st).get("queued").is_none(), "false is left out of the answer");
+}
+
+/// A backfill that waits on a gate, as a slow provider would.
+struct SlowEnrich {
+    gate: Arc<Mutex<()>>,
+    calls: Arc<Mutex<Vec<Value>>>,
+}
+
+impl Provider for SlowEnrich {
+    fn id(&self) -> &str {
+        "stub-enrich"
+    }
+    fn capabilities(&self) -> Vec<String> {
+        vec![lain_ingest::scanner::CAP_METADATA_ENRICH.into()]
+    }
+    fn health(&self) -> Result<(), Error> {
+        Ok(())
+    }
+    fn invoke(&self, _: &str, _: &str, input: Value) -> Result<Value, Error> {
+        self.calls.lock().unwrap().push(input);
+        let _held = self.gate.lock().unwrap();
+        Ok(json!({"checked": 4, "enriched": 3, "skipped": 2}))
+    }
+}
+
+/// D-302: a scan ends when the catalog is committed; the metadata pass
+/// runs on its own, a scan can start while it runs, and a pass asked
+/// for meanwhile follows it once, with `retry` carried over.
+#[test]
+fn the_metadata_pass_runs_apart_from_the_scan() {
+    let (reg, _gate, _) = setup(false);
+    let egate = Arc::new(Mutex::new(()));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    reg.register(Arc::new(SlowEnrich { gate: egate.clone(), calls: calls.clone() }));
+    let s = Scanner::new(&reg, libs(), true);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let ev = events.clone();
+    s.set_sink(Arc::new(move |e| ev.lock().unwrap().push(e)));
+
+    let held = egate.lock().unwrap();
+    assert!(s.start_all("manual"));
+    assert!(s.wait_idle(Duration::from_secs(5)), "the scan does not wait for metadata");
+    assert_eq!(s.status().state, "done");
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while calls.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(s.enriching());
+    assert_eq!(s.status().enrich.unwrap().state, "running");
+    s.enrich_progress(1, 4);
+    assert_eq!(s.status().enrich.map(|e| (e.done, e.total)), Some((1, 4)));
+    assert!(s.start_all("manual"), "a scan starts while metadata is fetched");
+    assert!(s.wait_idle(Duration::from_secs(5)));
+    assert!(!s.request_enrich(true), "asked while running: one more pass follows");
+    drop(held);
+    assert!(s.wait_enriched(Duration::from_secs(5)));
+    let e = s.status().enrich.unwrap();
+    assert_eq!((e.state.as_str(), e.enriched, e.skipped), ("done", 3, 2));
+    assert!(e.finished_at >= e.started_at && e.started_at > 0);
+    let got = calls.lock().unwrap().clone();
+    assert_eq!(got, vec![json!({"retry": false}), json!({"retry": true})], "two passes, not three");
+    let enrich_events = events.lock().unwrap().iter().filter(|e| matches!(e, ScanEvent::Enrich(_))).count();
+    assert_eq!(enrich_events, 2, "started and finished");
 }

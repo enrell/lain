@@ -35,3 +35,28 @@ still holds the bytes. A delete while the library's folder is unreachable
 is refused (409) instead of answering 200 for a file that would come back
 with the disk. Not done: a list of hidden titles for admins, and purging
 long-missing rows (D-068's deferred retention question).
+
+## D-302 — metadata is its own pass, not a scan phase
+
+2026-11-27, asked for by the owner: "you must separate enrich from scan".
+A scan of 872 files walked, identified and committed in about 100 ms, then
+spent minutes in its `enrich` phase asking Kitsu, AniList, Jikan and TVMaze
+about titles none of them can know (personal clips), about 0.7 s
+each, every scan: "nothing found" is only cached when every provider
+answered, and for a day.
+
+- The scan ends at commit. `Scanner` runs the backfill on its own thread
+  (`lain-enrich`) with its own status (`ScanStatus.enrich`, `EnrichStatus`)
+  and event (`enrich-state`); a scan may start while it runs, and a pass
+  asked for meanwhile runs once after it. `POST /api/library/enrich`
+  (manager) starts one. The `enrich` scan phase and
+  `progress.enrich_total/enrich_done` are gone; `stats.enriched` stays,
+  always 0, for older clients.
+- `Library.local_metadata` ("Fetch metadata online" off): the library's
+  items are enriched like a private library's (D-268), from `.nfo` only.
+  Default off, so every existing library keeps fetching.
+- An item every network provider answered "unknown" for is remembered
+  (`m\0<item>` in the metadata cache table) and left out of later
+  backfills until one asks with `retry`; a skipped (failed) provider
+  never makes a miss, and a manual `POST /api/catalog/{id}/enrich` always
+  asks. Items of local-only libraries are never remembered (a file read).

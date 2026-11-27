@@ -518,6 +518,11 @@ impl App {
     /// unreadable roots of private libraries only to admins), and
     /// `library-changed` `scanned` to who may see the library.
     fn publish_scan(&self, ev: ScanEvent) {
+        if let ScanEvent::Enrich(st) = ev {
+            // Counts only, nothing about a library: everyone may hear it.
+            self.events.publish(crate::events::Scope::All, "enrich-state", json!(st));
+            return;
+        }
         let (state, trigger, libraries, libraries_done, status) = match ev {
             ScanEvent::Started { trigger, libraries } => ("running".to_string(), trigger, libraries, 0, None),
             ScanEvent::Library { done, libraries, libraries_done, trigger } => {
@@ -532,6 +537,7 @@ impl App {
                 ("running".to_string(), trigger, libraries, libraries_done, None)
             }
             ScanEvent::Finished(st) => (st.state.clone(), st.trigger.clone(), 0, 0, Some(*st)),
+            ScanEvent::Enrich(_) => return,
         };
         let mut data =
             json!({"state": state, "trigger": trigger, "libraries": libraries, "libraries_done": libraries_done});

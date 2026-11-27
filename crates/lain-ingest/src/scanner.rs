@@ -1,9 +1,12 @@
 //! The scan controller behind `POST/GET /api/library/scan`: one scan at
-//! a time, run on its own thread through `lain.ingest.scan@1`, then the
-//! metadata backfill (`lain.metadata.enrich@1` `backfill`, on unless
-//! turned off); and the watch loop that polls `lain.source.watch@1` and
-//! rescans dirty libraries. Observers hear every state change (the
-//! server turns them into `/api/events`).
+//! a time, run on its own thread through `lain.ingest.scan@1`; the
+//! metadata pass (`lain.metadata.enrich@1` `backfill`, D-302), its own
+//! job on its own thread that a finished scan starts (unless turned
+//! off) and `POST /api/library/enrich` asks for, so a scan ends when
+//! the catalog is committed and never waits on a provider; and the
+//! watch loop that polls `lain.source.watch@1` and rescans dirty
+//! libraries. Observers hear every state change (the server turns them
+//! into `/api/events`).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
@@ -11,7 +14,7 @@ use std::time::Duration;
 
 use serde_json::json;
 
-use lain_api::{Library, ScanProgress, ScanStats, ScanStatus};
+use lain_api::{EnrichStatus, Library, ScanProgress, ScanStats, ScanStatus};
 use lain_core::Registry;
 
 use crate::scan::{CAP_INGEST_SCAN, LibraryDone, ScanInput, Step};
@@ -26,9 +29,19 @@ pub const WATCH_POLL: Duration = Duration::from_millis(500);
 /// What observers hear.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScanEvent {
-    Started { trigger: String, libraries: i64 },
-    Library { done: LibraryDone, libraries: i64, libraries_done: i64, trigger: String },
+    Started {
+        trigger: String,
+        libraries: i64,
+    },
+    Library {
+        done: LibraryDone,
+        libraries: i64,
+        libraries_done: i64,
+        trigger: String,
+    },
     Finished(Box<ScanStatus>),
+    /// The metadata pass started or ended (D-302).
+    Enrich(EnrichStatus),
 }
 
 pub type Sink = Arc<dyn Fn(ScanEvent) + Send + Sync>;
@@ -44,6 +57,16 @@ struct Run {
     queued: bool,
 }
 
+/// The metadata pass. `again`: asked for while it ran (a scan ended,
+/// or someone asked): one more pass follows, so items a later scan
+/// added are not left waiting; `retry` is carried to it.
+#[derive(Default)]
+struct EnrichRun {
+    status: Option<EnrichStatus>,
+    again: bool,
+    retry: bool,
+}
+
 /// What [`Scanner::request_all`] did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScanRequest {
@@ -55,7 +78,7 @@ pub enum ScanRequest {
 /// Phases only move forward: roots walk in parallel, so a late walk
 /// must not pull a scan that is already identifying back to `walk`.
 fn advance(p: &mut ScanProgress, phase: &str) {
-    const ORDER: [&str; 4] = ["walk", "identify", "commit", "enrich"];
+    const ORDER: [&str; 3] = ["walk", "identify", "commit"];
     let rank = |s: &str| ORDER.iter().position(|o| *o == s);
     if rank(phase) > rank(&p.phase) {
         p.phase = phase.into();
@@ -66,6 +89,7 @@ pub struct Scanner {
     registry: Weak<Registry>,
     libraries: LibrarySource,
     run: Mutex<Run>,
+    enrich: Mutex<EnrichRun>,
     sink: RwLock<Option<Sink>>,
     auto_enrich: AtomicBool,
     stopping: Arc<AtomicBool>,
@@ -81,6 +105,7 @@ impl Scanner {
                 status: ScanStatus { state: "idle".into(), ..ScanStatus::default() },
                 queued: false,
             }),
+            enrich: Mutex::new(EnrichRun::default()),
             sink: RwLock::new(None),
             auto_enrich: AtomicBool::new(auto_enrich),
             stopping: Arc::new(AtomicBool::new(false)),
@@ -107,9 +132,23 @@ impl Scanner {
         self.run.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    fn lock_enrich(&self) -> std::sync::MutexGuard<'_, EnrichRun> {
+        self.enrich.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     pub fn status(&self) -> ScanStatus {
+        let enrich = self.enrich_status();
         let r = self.lock();
-        ScanStatus { queued: r.queued, ..r.status.clone() }
+        ScanStatus { queued: r.queued, enrich, ..r.status.clone() }
+    }
+
+    /// The metadata pass, `None` until one has run.
+    pub fn enrich_status(&self) -> Option<EnrichStatus> {
+        self.lock_enrich().status.clone()
+    }
+
+    pub fn enriching(&self) -> bool {
+        self.lock_enrich().status.as_ref().is_some_and(|s| s.state == "running")
     }
 
     pub fn running(&self) -> bool {
@@ -150,15 +189,83 @@ impl Scanner {
     }
 
     /// The enricher's backfill hook: `done` of `total` items. Heard
-    /// only in the scan's own enrich phase, so a backfill someone else
-    /// asked for never moves a scan that is still reading files.
+    /// only while this controller's pass runs.
     pub fn enrich_progress(&self, done: i64, total: i64) {
-        if let Some(p) = self.lock().status.progress.as_mut()
-            && p.phase == "enrich"
+        if let Some(st) = self.lock_enrich().status.as_mut()
+            && st.state == "running"
         {
-            p.enrich_done = done;
-            p.enrich_total = total;
+            st.done = done;
+            st.total = total;
         }
+    }
+
+    /// Starts the metadata pass, or, while one runs, one more behind it
+    /// (`false` then). `retry` asks again about remembered misses.
+    pub fn request_enrich(self: &Arc<Self>, retry: bool) -> bool {
+        let status = {
+            let mut e = self.lock_enrich();
+            if e.status.as_ref().is_some_and(|s| s.state == "running") {
+                e.again = true;
+                e.retry |= retry;
+                return false;
+            }
+            let st =
+                EnrichStatus { state: "running".into(), started_at: lain_core::now_unix(), ..EnrichStatus::default() };
+            e.status = Some(st.clone());
+            st
+        };
+        self.emit(ScanEvent::Enrich(status));
+        let me = self.clone();
+        let spawned = std::thread::Builder::new().name("lain-enrich".into()).spawn(move || me.run_enrich(retry));
+        if let Err(e) = spawned {
+            self.end_enrich(EnrichStatus { state: "error".into(), error: e.to_string(), ..EnrichStatus::default() });
+        }
+        true
+    }
+
+    fn run_enrich(self: &Arc<Self>, mut retry: bool) {
+        let started_at = self.enrich_status().map(|s| s.started_at).unwrap_or_default();
+        loop {
+            let Some(reg) = self.registry.upgrade() else { return };
+            tracing::info!(retry, "metadata pass started");
+            let out = reg.call_one(CAP_METADATA_ENRICH, "backfill", json!({"retry": retry}));
+            let st = match out {
+                Ok((v, _)) => EnrichStatus {
+                    state: "done".into(),
+                    total: v["checked"].as_i64().unwrap_or(0),
+                    done: v["checked"].as_i64().unwrap_or(0),
+                    enriched: v["enriched"].as_i64().unwrap_or(0),
+                    skipped: v["skipped"].as_i64().unwrap_or(0),
+                    ..EnrichStatus::default()
+                },
+                Err(e) => {
+                    tracing::warn!(err = %e, "metadata pass failed");
+                    EnrichStatus { state: "error".into(), error: e.to_string(), ..EnrichStatus::default() }
+                }
+            };
+            {
+                let mut e = self.lock_enrich();
+                if std::mem::take(&mut e.again) {
+                    retry = std::mem::take(&mut e.retry);
+                    if let Some(cur) = e.status.as_mut() {
+                        (cur.done, cur.total) = (0, 0);
+                    }
+                    continue;
+                }
+            }
+            self.end_enrich(EnrichStatus { started_at, finished_at: lain_core::now_unix(), ..st });
+            return;
+        }
+    }
+
+    fn end_enrich(&self, st: EnrichStatus) {
+        {
+            let mut e = self.lock_enrich();
+            e.status = Some(st.clone());
+            e.again = false;
+            e.retry = false;
+        }
+        self.emit(ScanEvent::Enrich(st));
     }
 
     /// Starts a scan of `libs` unless one is running (`false` then).
@@ -237,7 +344,7 @@ impl Scanner {
         let started_at = self.status().started_at;
         let Some(reg) = self.registry.upgrade() else { return };
         let out = reg.call_one(CAP_INGEST_SCAN, "scan", json!(ScanInput { libraries: libs }));
-        let mut stats = match out.and_then(|(v, _)| {
+        let stats = match out.and_then(|(v, _)| {
             serde_json::from_value::<ScanStats>(v).map_err(|e| lain_core::Error::internal(e.to_string()))
         }) {
             Ok(s) => s,
@@ -254,21 +361,6 @@ impl Scanner {
                 return;
             }
         };
-        // Enrichment runs with the state still "running" but outside the
-        // lock, so status reads never wait behind a long backlog.
-        if self.auto_enrich.load(Ordering::SeqCst) {
-            if let Some(p) = self.lock().status.progress.as_mut() {
-                advance(p, "enrich");
-            }
-            tracing::info!(trigger, "scan committed; enriching metadata");
-            stats.enriched = match reg.call_one(CAP_METADATA_ENRICH, "backfill", json!({})) {
-                Ok((v, _)) => v["enriched"].as_i64().unwrap_or(0),
-                Err(e) => {
-                    tracing::warn!(err = %e, "auto-enrich failed");
-                    0
-                }
-            };
-        }
         tracing::info!(
             candidates = stats.candidates,
             identified = stats.identified,
@@ -276,7 +368,6 @@ impl Scanner {
             migrated = stats.migrated,
             missing = stats.missing,
             restored = stats.restored,
-            enriched = stats.enriched,
             errors = stats.errors,
             trigger,
             "scan done"
@@ -289,6 +380,10 @@ impl Scanner {
             trigger: trigger.into(),
             ..ScanStatus::default()
         });
+        // D-302: the scan is over; metadata follows on its own thread.
+        if self.auto_enrich.load(Ordering::SeqCst) {
+            self.request_enrich(false);
+        }
     }
 
     /// Rescans one library for the watcher; while a scan runs the
@@ -344,6 +439,18 @@ impl Scanner {
     /// Ends the watch loop.
     pub fn stop(&self) {
         self.stopping.store(true, Ordering::SeqCst);
+    }
+
+    /// Waits until no metadata pass runs (tests); `false` on timeout.
+    pub fn wait_enriched(&self, timeout: Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        while self.enriching() {
+            if std::time::Instant::now() > deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        true
     }
 
     /// Waits until no scan runs (tests, shutdown); `false` on timeout.

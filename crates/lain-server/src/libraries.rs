@@ -222,6 +222,9 @@ impl Libraries {
         if let Some(priv_) = p.private {
             lib.private = priv_;
         }
+        if let Some(local) = p.local_metadata {
+            lib.local_metadata = local;
+        }
         if let Some(aud) = &p.audience {
             let Some(norm) = lain_api::normalize_audience(aud) else {
                 return Err("audience must be everyone, teen or mature".into());

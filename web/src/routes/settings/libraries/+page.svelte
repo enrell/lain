@@ -55,7 +55,9 @@
 		private: false,
 		// A new library starts closed to restricted accounts (D-299).
 		audience: 'mature' as Audience,
-		members: [] as string[]
+		members: [] as string[],
+		// D-302: "Fetch metadata online"; off reads .nfo files only.
+		online: true
 	});
 	let serverUsers = $state<User[]>([]);
 	// The name follows the folder until the user types one.
@@ -128,6 +130,14 @@
 
 	// Shift+U anywhere on the page: show the private libraries, or lock them.
 	function pageKey(e: KeyboardEvent): void {
+		// Shift+M fetches metadata, Shift+R retries the titles no provider knew (D-302).
+		if ((e.key === 'M' || e.key === 'R') && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !isTypingTarget(e.target)) {
+			if (createOpen || deleteOpen || unlockOpen || confirmOpen || revealOpen || !admin) return;
+			if (e.key === 'R' && !scan.status?.enrich?.skipped) return;
+			e.preventDefault();
+			void startEnrich(e.key === 'R');
+			return;
+		}
 		if (e.key !== 'U' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
 		if (createOpen || deleteOpen || unlockOpen || confirmOpen || revealOpen) return;
 		if (opened.length > 0) {
@@ -269,7 +279,7 @@
 		editTarget = null;
 		createOpen = true;
 		formError = null;
-		form = { name: '', type: 'auto', path: '', private: false, audience: 'mature', members: [] };
+		form = { name: '', type: 'auto', path: '', private: false, audience: 'mature', members: [], online: true };
 		nameTouched = false;
 		pathDraft = '';
 		void loadBrowse();
@@ -301,7 +311,8 @@
 			path: lib.path,
 			private: !!lib.private,
 			audience: libraryAudience(lib),
-			members: [...(lib.members ?? [])]
+			members: [...(lib.members ?? [])],
+			online: !lib.local_metadata
 		};
 		if (serverUsers.length === 0) {
 			api.users
@@ -463,6 +474,7 @@
 		if (form.path.trim() && form.path.trim() !== lib.path) patch.path = form.path.trim();
 		if (roots !== null && form.private !== !!lib.private) patch.private = form.private;
 		if (form.audience !== libraryAudience(lib)) patch.audience = form.audience;
+		if (form.online === !!lib.local_metadata) patch.local_metadata = !form.online;
 		const ownerId = lib.owner || session.user?.id || '';
 		if (roots !== null && form.private && !sameMemberList(form.members, lib.members ?? [], ownerId)) {
 			patch.members = form.members.filter((id) => id && id !== ownerId);
@@ -525,6 +537,7 @@
 			// Private before the first scan: a scan of a public library may
 			// look its titles up online.
 			const initialPatch: LibraryPatch = {};
+			if (!form.online) initialPatch.local_metadata = true;
 			if (form.private) {
 				initialPatch.private = true;
 				if (form.members.length > 0) initialPatch.members = form.members;
@@ -536,7 +549,7 @@
 			// The server's order: a new library goes after the ordered ones.
 			libraries = await ensureLibraries(true).catch(() => [...libraries, lib]);
 			createOpen = false;
-			form = { name: '', type: 'auto', path: '', private: false, audience: 'mature', members: [] };
+			form = { name: '', type: 'auto', path: '', private: false, audience: 'mature', members: [], online: true };
 			if (!scanAfter) {
 				toasts.success(t('scan.libraryAdded', { name: lib.name }));
 				return;
@@ -582,6 +595,16 @@
 			toasts.error(errorMessage(err, t('settings.librariesPage.removeFailed')));
 		} finally {
 			deleting = false;
+		}
+	}
+
+	const enrich = $derived(scan.status?.enrich);
+
+	async function startEnrich(retry: boolean): Promise<void> {
+		try {
+			if ((await scan.enrich(retry)) === 'queued') toasts.success(t('settings.librariesPage.enrichQueued'));
+		} catch (err) {
+			toasts.error(errorMessage(err, t('settings.librariesPage.enrichStartFailed')));
 		}
 	}
 
@@ -638,11 +661,6 @@
 						</span>
 					{/if}
 				</div>
-				{#if scan.status?.progress?.phase === 'enrich'}
-					<!-- This phase asks the network about every title and can take
-					     long; nothing waits on it. -->
-					<p class="mt-2 text-xs text-muted">{t('scan.enrichHint')}</p>
-				{/if}
 				{#if scan.queued}
 					<p class="mt-1 text-xs text-muted">{t('scan.queuedLine')}</p>
 				{/if}
@@ -670,8 +688,7 @@
 						? t(scan.status.trigger === 'watch' ? 'settings.librariesPage.lastScanWatch' : 'settings.librariesPage.lastScan', { when: formatRelative(scan.status.finished_at) })
 						: t('settings.librariesPage.lastScanDone')}
 					<span class="text-foreground">{t('settings.librariesPage.statIdentified', { count: stats.identified })}</span> ·
-					<span class="text-foreground">{t('settings.librariesPage.statUnidentified', { count: stats.unidentified })}</span> ·
-					<span class="text-foreground">{t('settings.librariesPage.statEnriched', { count: stats.enriched })}</span>
+					<span class="text-foreground">{t('settings.librariesPage.statUnidentified', { count: stats.unidentified })}</span>
 					{#if stats.missing > 0}· <span class="text-warning">{t('settings.librariesPage.statMissing', { count: stats.missing })}</span>{/if}
 					{#if stats.restored > 0}· <span class="text-foreground">{t('settings.librariesPage.statRestored', { count: stats.restored })}</span>{/if}
 					{#if stats.walk_errors > 0}· <span class="text-warning">{t('settings.librariesPage.statUnreadable', { count: stats.walk_errors })}</span>{/if}
@@ -694,6 +711,55 @@
 			{:else}
 				<p class="text-muted">{t('settings.librariesPage.noScan')}</p>
 			{/if}
+			<!-- D-302: metadata is its own pass. The scan above is over when the
+			     catalog is; this one asks providers title by title. -->
+			<div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-hairline pt-4">
+				{#if enrich?.state === 'running'}
+					{@const fraction = scan.enrichFraction}
+					<div class="flex min-w-0 flex-1 flex-col">
+						<div class="flex items-center gap-2 text-accent" role="status">
+							<Spinner class="size-4" />
+							<span class="tabular-nums">{scan.enrichLine}</span>
+						</div>
+						<p class="mt-1 text-xs text-muted">{t('scan.enrichHint')}</p>
+						<div
+							class="mt-2 h-0.5 w-full max-w-md overflow-hidden rounded-full bg-hairline"
+							role="progressbar"
+							aria-label={t('scan.enrichStarting')}
+							aria-valuemin={0}
+							aria-valuemax={100}
+							aria-valuenow={fraction === null ? undefined : Math.round(fraction * 100)}
+						>
+							<div
+								class="h-full bg-accent transition-[width] duration-500 {fraction === null ? 'animate-pulse' : ''}"
+								style:width="{fraction === null ? 100 : fraction * 100}%"
+							></div>
+						</div>
+					</div>
+				{:else if enrich?.state === 'error'}
+					<p class="flex-1 text-danger" role="alert">{t('settings.librariesPage.enrichFailed', { error: enrich.error ?? '' })}</p>
+				{:else if enrich?.state === 'done'}
+					<p class="flex-1 text-muted">
+						{t('settings.librariesPage.lastEnrich', { when: formatRelative(enrich.finished_at ?? 0) })}
+						<span class="text-foreground">{t('settings.librariesPage.statEnriched', { count: enrich.enriched })}</span>
+						{#if enrich.skipped}· <span class="text-foreground">{t('settings.librariesPage.statSkipped', { count: enrich.skipped })}</span>{/if}
+					</p>
+				{:else}
+					<span class="flex-1"></span>
+				{/if}
+				{#if admin}
+					{#if enrich?.skipped && enrich.state !== 'running'}
+						<Button size="field" variant="secondary" onclick={() => void startEnrich(true)}>
+							{t('settings.librariesPage.enrichRetry')}
+							<kbd class="ms-1 font-mono text-[10px] text-muted">Shift+R</kbd>
+						</Button>
+					{/if}
+					<Button size="field" variant="tonal" onclick={() => void startEnrich(false)}>
+						{t('settings.librariesPage.enrichNow')}
+						<kbd class="ms-1 font-mono text-[10px] text-muted">Shift+M</kbd>
+					</Button>
+				{/if}
+			</div>
 		</div>
 	</SettingsGroup>
 
@@ -1087,6 +1153,17 @@
 				<Select label={t('settings.librariesPage.audience')} bind:value={form.audience} options={audienceOptions} />
 				<p class="text-xs text-muted">{t('settings.librariesPage.audienceHint')}</p>
 			</div>
+		{/if}
+
+		{#if admin}
+			<!-- D-302: a private library never fetches online; the switch shows it off. -->
+			<Switch
+				checked={form.online && !form.private}
+				disabled={form.private}
+				onCheckedChange={(on: boolean) => (form.online = on)}
+				label={t('settings.librariesPage.fetchOnline')}
+				description={form.private ? t('settings.librariesPage.fetchOnlinePrivate') : t('settings.librariesPage.fetchOnlineHint')}
+			/>
 		{/if}
 
 		{#if roots !== null && admin}

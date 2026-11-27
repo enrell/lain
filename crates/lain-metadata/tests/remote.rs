@@ -342,6 +342,81 @@ fn nothing_found_is_cached_only_when_every_provider_answered() {
     }
 }
 
+/// The catalog a backfill reads (`lain.catalog.read@1` `list`).
+struct Catalog(Vec<CatalogItem>);
+
+impl Provider for Catalog {
+    fn id(&self) -> &str {
+        "stub-catalog"
+    }
+    fn capabilities(&self) -> Vec<String> {
+        vec!["lain.catalog.read@1".into()]
+    }
+    fn health(&self) -> Result<(), lain_core::Error> {
+        Ok(())
+    }
+    fn invoke(&self, _cap: &str, _op: &str, _input: Value) -> Result<Value, lain_core::Error> {
+        Ok(json!(self.0))
+    }
+}
+
+/// D-302: a backfill asks the network only about items of libraries
+/// that fetch metadata online; an item every provider answered
+/// "unknown" for is left out of later passes until one asks with
+/// `retry`, and an item a provider failed on is asked again.
+#[test]
+fn backfill_remembers_misses_and_keeps_local_libraries_local() {
+    for fail in [false, true] {
+        let dir = lain_store::test_dir("meta-backfill");
+        let store = Arc::new(lain_store::Store::open(&dir).unwrap());
+        for lib in [
+            lain_api::Library { id: "lib-on".into(), ..Default::default() },
+            lain_api::Library { id: "lib-off".into(), local_metadata: true, ..Default::default() },
+        ] {
+            store.write(|tx| tx.put_json(lain_store::Bucket::Libraries, lib.id.as_bytes(), &lib)).unwrap();
+        }
+        let mut bindings = BTreeMap::new();
+        bindings.insert(CAP_METADATA_SEARCH.into(), Binding::new(BindingMode::MergeMany, &[NFO_ID, "blank"]));
+        bindings.insert(CAP_METADATA_RESOLVE.into(), Binding::new(BindingMode::MergeMany, &[NFO_ID, "blank"]));
+        bindings.insert(CAP_METADATA_ENRICH.into(), Binding::new(BindingMode::ExactlyOne, &[ENRICH_ID]));
+        bindings.insert("lain.catalog.read@1".into(), Binding::new(BindingMode::ExactlyOne, &["stub-catalog"]));
+        let reg = Arc::new(Registry::new(Composition { version: 8, bindings }));
+        let blank = Arc::new(Blank { fail, calls: Default::default() });
+        reg.register(Arc::new(Nfo));
+        reg.register(blank.clone());
+        let item = |id: &str, lib: &str, title: &str| CatalogItem {
+            id: id.into(),
+            library_id: lib.into(),
+            kind: "anime".into(),
+            title: title.into(),
+            ..Default::default()
+        };
+        reg.register(Arc::new(Catalog(vec![
+            item("on-1", "lib-on", "Home Clip 1"),
+            item("off-1", "lib-off", "Home Clip 2"),
+        ])));
+        reg.register(Arc::new(Enricher::new(&reg, store.clone())));
+        let pass = |retry: bool| {
+            reg.invoke_provider(CAP_METADATA_ENRICH, ENRICH_ID, "backfill", json!({"retry": retry})).unwrap()
+        };
+        assert_eq!(pass(false), json!({"checked": 2, "enriched": 0, "skipped": 0}), "fail={fail}");
+        assert_eq!(calls(&blank), 1, "only the online library's item reached the network");
+        // The search cache is what a second ask would hit: clear it so
+        // only the remembered miss can keep the provider quiet.
+        store.write(|tx| tx.delete(lain_store::Bucket::MetadataCache, "q\0anime\0home clip 1".as_bytes())).unwrap();
+        if fail {
+            assert_eq!(pass(false), json!({"checked": 2, "enriched": 0, "skipped": 0}));
+            assert_eq!(calls(&blank), 2, "a failed provider is asked again");
+        } else {
+            assert_eq!(pass(false), json!({"checked": 1, "enriched": 0, "skipped": 1}));
+            assert_eq!(calls(&blank), 1, "a known miss is not asked again");
+            assert_eq!(pass(true), json!({"checked": 2, "enriched": 0, "skipped": 0}));
+            assert_eq!(calls(&blank), 2, "retry asks again");
+        }
+        std::fs::remove_dir_all(dir).ok();
+    }
+}
+
 // ---- opt-in live smoke tests: one per provider ------------------------------
 
 fn live(p: &dyn Provider, query: &str) {

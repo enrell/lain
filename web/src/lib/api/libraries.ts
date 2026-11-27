@@ -50,6 +50,8 @@ export interface LibraryPatch {
 	owner?: string;
 	members?: string[];
 	audience?: Audience;
+	/** D-302: `true` turns "Fetch metadata online" off. */
+	local_metadata?: boolean;
 }
 
 /** Unlock with the account's PIN or its password (D-156). */
@@ -102,6 +104,10 @@ export const libraries = {
 		(await request<Library[]>('/api/libraries/order', { method: 'PUT', body: { ids } })).map(shown),
 
 	scanStatus: () => request<ScanStatus>('/api/library/scan'),
+
+	/** Starts the metadata pass (D-302); `retry` asks again about titles no provider knew. */
+	enrichStart: (retry = false) =>
+		request<{ state: string; queued?: boolean }>('/api/library/enrich', { method: 'POST', body: { retry } }),
 
 	update: async (id: string, patch: LibraryPatch, secret?: Secret) =>
 		shown(

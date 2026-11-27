@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **A scan never waits on metadata** (D-302): a scan ends when the catalog
+  is committed; the metadata pass runs as its own job (`enrich` on
+  `GET /api/library/scan`, `enrich-state` on `/api/events`,
+  `POST /api/library/enrich` to start one). A library's "Fetch metadata
+  online" switch (`local_metadata`) keeps it to `.nfo` files, and a title
+  no provider knew is not asked about again until "Retry unknown titles".
 - **Cards are never empty boxes** (D-287): when a file's own picture
   cannot be made (its disk unmounted, no frame to cut), the thumbnail
   route answers the title's art instead of an error (a still beside the

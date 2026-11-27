@@ -409,8 +409,27 @@ files_done, enrich_total?, enrich_done?}`. `phase` is the furthest step
 reached and never goes back: `walk` (roots being listed), `identify`
 (`files_done` of `files`; `files` grows until `libraries_walked`
 reaches `libraries`, since roots walk in parallel), `commit`
-(`libraries_done` of `libraries`) and `enrich` (the metadata backfill,
-`enrich_done` of `enrich_total`). It is absent in every other state.
+(`libraries_done` of `libraries`). It is absent in every other state.
+
+The metadata pass is not part of a scan (D-302): a scan is `done` as
+soon as the catalog is committed, and a finished scan (unless
+`LAIN_AUTO_ENRICH=0`) then starts the pass as a job of its own.
+`GET /api/library/scan` carries it as `enrich: {state, started_at,
+finished_at, total, done, enriched, skipped?, error?}` (`running`,
+`done` or `error`; absent until one has run), and `GET /api/events`
+sends `enrich-state` with the same object when it starts and ends. A
+scan can start while the pass runs. `POST /api/library/enrich`
+(manager) starts the pass, or, while one runs, one more behind it:
+202 `{state: "running"}` or `{state: "running", queued: true}`. Body
+`{retry?: bool}`: an item every network provider answered "unknown"
+for is remembered and left out of later passes (`skipped`) until one
+asks with `retry: true`; a provider that failed never counts as
+"unknown". `stats.enriched` stays on the wire and is always 0.
+
+A library with `local_metadata: true` ("Fetch metadata online" off,
+`PATCH /api/libraries/{id}`) is enriched from the `.nfo` next to its
+files only, never from a network provider, like a private library
+(D-268).
 
 `POST /api/library/scan` (admin) answers 202 `{state: "running"}` when
 it starts a scan. While one runs it queues one follow-up scan of every
@@ -889,7 +908,7 @@ The enrichment pipeline as one capability (D-076). Ops:
 - `get` `{item_id}` → `Enrichment`. `not-found` on absence.
 - `batch` `{ids}` → `{items}`: overlays for a grid page.
 - `delete` `{item_id}` → bool.
-- `backfill` → `{checked, enriched}`: overlay-less items enriched in
+- `backfill` `{retry?}` → `{checked, enriched, skipped}` (D-302): overlay-less items enriched in
   one pass (auto-enrich after scans).
 
 The built-in provider (`lain-metadata-enrich`) owns the saver and

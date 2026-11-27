@@ -222,6 +222,19 @@ fn scan_to_done(base: &Base, admin: &str) -> serde_json::Value {
     }
 }
 
+/// Waits for the metadata pass (D-302) and returns its status.
+fn enrich_to_done(base: &Base, admin: &str) -> serde_json::Value {
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        let (_, v) = call(base, "GET", "/api/library/scan", admin, None);
+        if v["enrich"]["state"] == "done" || v["enrich"]["state"] == "error" {
+            return v["enrich"].clone();
+        }
+        assert!(std::time::Instant::now() < deadline, "metadata pass did not finish: {v}");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// One folder per file, each with the downloader's `.metadata/meta.toml`:
 /// the sidecar names the series and the episode, so the episodes join
 /// into one title instead of standing as three videos. A file without a
@@ -643,7 +656,15 @@ fn rooted_private_scans_leak_nothing() {
 
     let st = scan_to_done(&base, &admin);
     assert_eq!(st["stats"]["identified"], 1, "{st}");
-    assert_eq!(st["stats"]["enriched"], 1, "the post-scan NFO pass: {st}");
+    assert_eq!(st["stats"]["enriched"], 0, "the scan itself fetches no metadata (D-302): {st}");
+    let e = enrich_to_done(&base, &admin);
+    assert_eq!((e["state"].as_str(), e["enriched"].as_i64()), (Some("done"), Some(1)), "the post-scan NFO pass: {e}");
+    let (code, v) = call(&base, "POST", "/api/library/enrich", &admin, Some(json!({"retry": true})));
+    assert_eq!((code, v["state"].as_str()), (202, Some("running")), "{v}");
+    let (code, _) = call(&base, "POST", "/api/library/enrich", &bob, None);
+    assert_eq!(code, 403, "a user cannot start the metadata pass");
+    let e = enrich_to_done(&base, &admin);
+    assert_eq!(e["enriched"], 0, "nothing left without an overlay: {e}");
     assert_eq!(st["stats"]["unreadable"].as_array().unwrap().len(), 1);
     let (_, page) = call(&base, "GET", "/api/catalog", &admin, None);
     let item = page["items"][0].clone();
