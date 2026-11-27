@@ -53,11 +53,34 @@ pub struct ReleaseModel {
     endpoint: Endpoint,
     timeout: Duration,
     health: Mutex<Option<(Instant, Result<(), Error>)>>,
+    /// The update the daemon's last health answer reported (D-300).
+    notice: Mutex<Option<String>>,
+}
+
+/// The operator's line for a daemon that reports a newer model on its
+/// release channel (`update` in `GET /health`, lain-parser 1.4.0), or
+/// `None`. The daemon's own command is repeated only when it is one plain
+/// line; the bridge never runs it.
+fn update_notice(health: &Value) -> Option<String> {
+    let model = health["update"]["model"].as_str().map(str::trim).filter(|m| !m.is_empty())?;
+    let serving = health["artifact"].as_str().unwrap_or_default();
+    let mut line = if serving.is_empty() {
+        format!("lain-parser has a newer model: {model}.")
+    } else {
+        format!("lain-parser has a newer model: {model} (running {serving}).")
+    };
+    if let Some(cmd) = health["update"]["command"].as_str().map(str::trim)
+        && !cmd.is_empty()
+        && !cmd.chars().any(char::is_control)
+    {
+        line.push_str(&format!(" Update on the host with: {cmd}"));
+    }
+    Some(line)
 }
 
 impl ReleaseModel {
     pub fn new(endpoint: Endpoint) -> Self {
-        ReleaseModel { endpoint, timeout: Duration::from_secs(3), health: Mutex::new(None) }
+        ReleaseModel { endpoint, timeout: Duration::from_secs(3), health: Mutex::new(None), notice: Mutex::new(None) }
     }
 
     /// Where the daemon is, in Go's order: `LAIN_PARSER_URL`, then
@@ -106,7 +129,10 @@ impl ReleaseModel {
             return Err(Self::unavailable("parser unhealthy"));
         }
         match res.json() {
-            Some(v) if v["status"] == "ok" => Ok(()),
+            Some(v) if v["status"] == "ok" => {
+                *self.notice.lock().unwrap_or_else(|e| e.into_inner()) = update_notice(&v);
+                Ok(())
+            }
             _ => Err(Self::unavailable("parser unhealthy")),
         }
     }
@@ -266,6 +292,10 @@ impl Provider for ReleaseModel {
         r
     }
 
+    fn notice(&self) -> Option<String> {
+        self.notice.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
     fn invoke(&self, cap: &str, op: &str, input: Value) -> Result<Value, Error> {
         if cap != CAP_RELEASE_PARSE {
             return Err(Error::invalid(format!("unsupported cap {cap}")));
@@ -387,6 +417,24 @@ mod tests {
         // The tokenizer's other year for a title that holds its last one.
         let out = alternatives(vec![rec("Blade Runner 2049", None, None, None)], own(), &[2017, 2049]);
         assert_eq!((out[0].title.as_str(), out[0].year), ("Blade Runner 2049", 2017));
+    }
+
+    #[test]
+    fn a_newer_channel_model_becomes_one_operator_line() {
+        let health = json!({"status": "ok", "artifact": "model-a",
+            "update": {"model": "model-b", "command": "bash /opt/parser/install.sh --update"}});
+        assert_eq!(
+            update_notice(&health).unwrap(),
+            "lain-parser has a newer model: model-b (running model-a). Update on the host with: bash /opt/parser/install.sh --update"
+        );
+        assert_eq!(update_notice(&json!({"status": "ok", "artifact": "model-a"})), None);
+        assert_eq!(update_notice(&json!({"status": "ok", "update": {"model": "  "}})), None);
+        assert_eq!(update_notice(&json!({"status": "ok", "update": "model-b"})), None);
+        // A command that is not one plain line is left out, never repeated.
+        assert_eq!(
+            update_notice(&json!({"status": "ok", "update": {"model": "model-b", "command": "a\nb"}})).unwrap(),
+            "lain-parser has a newer model: model-b."
+        );
     }
 
     #[test]

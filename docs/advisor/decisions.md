@@ -3,6 +3,19 @@
 Reset on 2026-11-13. The earlier log is in git history
 (`git log -p -- docs/advisor/decisions.md`).
 
+## D-300 — a provider may give the operator a notice
+
+2026-11-15, asked for by the owner. A provider that works can still have
+something the operator should know: the lain-parser daemon reports a newer
+model on its release channel. `Provider::notice()` returns one line (default
+none); a component sends it as `notice` in its health output, the host keeps
+the last one, and `ProviderInfo.notice` carries it to `GET /api/plugins` and
+the plugins page. Additive on the component wire: old hosts ignore the field,
+old components omit it, the recorded fixture is unchanged. The server never
+acts on a notice and never downloads anything; the text is the provider's own
+English sentence, like `describe` (D-285). `lain-release-model` builds its
+line from `update` in the daemon's `GET /health` (lain-parser 1.4.0).
+
 ## D-301 — deleting a file leaves nothing behind
 
 2026-11-20, asked for by the owner: deleting from the title page "is buggy,

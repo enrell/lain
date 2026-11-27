@@ -149,6 +149,8 @@
 	const exactlyOne = $derived(swapTarget?.mode === 'exactly-one');
 	const canSwap = $derived(exactlyOne ? selected.length === 1 : selected.length >= 1);
 
+	const notices = $derived((info?.provider_info ?? []).filter((p) => !!p.notice));
+
 	function providerInfo(id: string): ProviderInfo | undefined {
 		return info?.provider_info.find((p) => p.id === id);
 	}
@@ -270,6 +272,18 @@
 	{:else if info}
 		<SettingsGroup id="capabilities" title={t('settings.pluginsPage.capabilities')} description={t('settings.groups.plugins.capabilities')}>
 			<p class="settings-note">{t('settings.pluginsPage.note')}</p>
+			<!-- What an installed plugin wants the operator to know without being
+			     unhealthy (D-300: its app has an update). The text is the plugin's. -->
+			{#if notices.length > 0}
+				<ul class="mb-3 space-y-1.5" aria-label={t('settings.pluginsPage.notices')}>
+					{#each notices as provider (provider.id)}
+						<li class="rounded-md border border-warning/40 bg-surface px-3 py-2 text-sm text-foreground">
+							<span class="font-mono text-xs text-warning">{provider.id}</span>
+							<span class="ml-2 break-words select-text">{provider.notice}</span>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 			<!-- The jobs in families, each closed to one line (how many, and
 			     whether any needs a look) until opened: thirty-four rows made a
 			     page of 4,000 px that read as one wall. A family with an unhealthy

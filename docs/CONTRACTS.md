@@ -1503,7 +1503,12 @@ sides speak NDJSON frames:
   empty op resolves when the capability has exactly one input shape.
 - **Health**: `{seq, op:"health", input:null}` → `{seq, output:{ok:true}}`
   or `{seq, error}` — transport-level, never routed through a
-  capability.
+  capability. The output may carry `notice`, one line for the operator
+  that is not a failure (D-300: "a newer model is available"). The host
+  keeps the last one, bounds it to one line of 300 characters and shows
+  it as `notice` on the provider in `GET /api/plugins`; it never acts on
+  it. A host that does not know the field ignores it, and a component
+  with nothing to say omits it.
 
 Recorded sessions live in `conformance/component/*.ndjson`; the Go
 component side and the Rust host and component sides replay them.

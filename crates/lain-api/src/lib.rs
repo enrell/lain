@@ -1324,6 +1324,10 @@ pub struct ProviderInfo {
     pub id: String,
     pub capabilities: Vec<String>,
     pub healthy: bool,
+    /// One line the provider wants the operator to read (D-300), such as
+    /// "a newer model is available"; empty when it has nothing to say.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notice: String,
 }
 
 /// A composition change or recovery action, kept for diagnostics.

@@ -505,6 +505,8 @@ export interface ProviderInfo {
 	id: string;
 	capabilities: string[];
 	healthy: boolean;
+	/** One line the provider wants the operator to read (D-300); absent when it has none. */
+	notice?: string;
 }
 
 /** gateway handlePlugins. */

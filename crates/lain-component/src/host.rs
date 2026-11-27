@@ -48,6 +48,8 @@ struct State {
     ready: bool,
     /// The last lifecycle error, surfaced through health.
     last: String,
+    /// What the last health answer carried as `notice` (D-300).
+    notice: String,
     seq: u64,
 }
 
@@ -375,10 +377,17 @@ impl Provider for Process {
                 format!("component down: {}", st.last)
             }));
         }
-        self.shared
-            .round_trip(&mut st, HEALTH_OP, "", Value::Null, self.shared.timeouts.health)
-            .map(|_| ())
-            .map_err(|e| Error::unavailable(format!("component unhealthy: {e}")))
+        let answer = self.shared.round_trip(&mut st, HEALTH_OP, "", Value::Null, self.shared.timeouts.health);
+        st.notice = match &answer {
+            Ok(v) => lain_core::clean_notice(v["notice"].as_str().unwrap_or_default()),
+            Err(_) => String::new(),
+        };
+        answer.map(|_| ()).map_err(|e| Error::unavailable(format!("component unhealthy: {e}")))
+    }
+
+    fn notice(&self) -> Option<String> {
+        let st = lock(&self.shared.state);
+        (st.ready && !st.notice.is_empty()).then(|| st.notice.clone())
     }
 
     fn invoke(&self, cap: &str, op: &str, input: Value) -> Result<Value, Error> {
