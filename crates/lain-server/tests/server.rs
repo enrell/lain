@@ -857,7 +857,7 @@ fn read_suite_passes() {
     let roots = json!({"format": "lain.roots@1", "roots": {"media": media.to_string_lossy()}});
     std::fs::write(data.join("roots.json"), serde_json::to_vec(&roots).unwrap()).unwrap();
     let raw = std::fs::read(fixtures().join("read-catalog.json")).unwrap();
-    assert_eq!(lain_server::import(&data, &serde_json::from_slice(&raw).unwrap()).unwrap(), 5);
+    assert_eq!(lain_server::import(&data, &serde_json::from_slice(&raw).unwrap()).unwrap(), 8);
     // The fixture catalog stays as imported: no watch, no scan.
     let server = Server::start_with(&data, |c| {
         c.watch = false;

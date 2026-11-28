@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use gpui::prelude::*;
 use gpui::{Context, ImageSource, ObjectFit, Window, div, img, px};
+use lain_client::ClientError;
 use lain_client::types::ComicPages;
 
 use crate::app::{Act, LainApp, Load};
@@ -19,6 +20,9 @@ pub struct ReaderState {
     pub page: usize,
     pub saved_page: usize,
     pub last_turn: Instant,
+    /// A reflowable book (EPUB, MOBI, AZW3) is read in the server's web
+    /// reader (D-306): its address, opened in the browser.
+    pub web: Option<String>,
 }
 
 impl LainApp {
@@ -30,20 +34,36 @@ impl LainApp {
             page: 0,
             saved_page: 0,
             last_turn: Instant::now(),
+            web: None,
         });
         let (c, want) = (b.client.clone(), id.to_string());
         let sync = b.sync.clone();
         self.spawn_ui(
             cx,
             async move {
+                // A book read by chapters has no pages: the web reads it.
+                if let Ok(b) = c.book(&want).await
+                    && b.layout == "reflowable"
+                {
+                    let url = format!("{}/read/{}", c.server().trim_end_matches('/'), want);
+                    return (Err(ClientError::NotFound { message: url }), None, true);
+                }
                 let pages = c.comic_pages(&want).await;
                 let p = match sync {
                     Some(s) => s.fetch(&want).await.ok(),
                     None => c.progress(&want).await.ok(),
                 };
-                (pages, p)
+                (pages, p, false)
             },
-            |app, (pages, p), _| {
+            |app, (pages, p, web), _| {
+                if web {
+                    if let (Some(r), Err(ClientError::NotFound { message })) = (app.reader.as_mut(), &pages) {
+                        crate::platform::open_url(message);
+                        r.web = Some(message.clone());
+                        r.pages = Load::Idle;
+                    }
+                    return;
+                }
                 if let Some(r) = app.reader.as_mut() {
                     let n = pages.as_ref().map(|p| p.pages.len()).unwrap_or(0);
                     let resume = p
@@ -133,6 +153,15 @@ impl LainApp {
                     Notice::Disabled,
                     "The read module is off",
                     "An admin turned reading off on this server.",
+                )))
+                .child(top);
+        }
+        if let Some(url) = self.reader.as_ref().and_then(|r| r.web.clone()) {
+            return root
+                .child(div().size_full().flex().items_center().justify_center().child(self.notice(
+                    Notice::Disabled,
+                    "Opened in your browser",
+                    &format!("This book is read by chapters, in Lain's web reader: {url}"),
                 )))
                 .child(top);
         }

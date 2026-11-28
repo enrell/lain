@@ -11,7 +11,7 @@
          "$contains": [
            {"id": "core", "required": true, "enabled": true, "state": "active", "$open": true},
            {"id": "watch", "required": false, "enabled": true, "library_kinds": ["anime", "movie", "video"], "$open": true},
-           {"id": "read", "library_kinds": ["manga", "comic"], "$open": true},
+           {"id": "read", "library_kinds": ["manga", "comic", "book"], "$open": true},
            {"id": "acquire", "$open": true}, {"id": "subtitles", "$open": true}, {"id": "identify", "$open": true},
            {"id": "metadata", "$open": true}, {"id": "lists", "$open": true}, {"id": "social", "$open": true},
            {"id": "lab", "enabled": false, "state": "disabled", "$open": true}]}}}}

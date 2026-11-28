@@ -41,7 +41,7 @@ async fn watch_server(root: &std::path::Path) -> Server {
 
 /// The read fixture: comics and manga under `conformance/fixtures/read`.
 async fn read_server(root: &std::path::Path) -> Server {
-    import(&root.join("data"), &fixtures().join("read"), "read-catalog.json", 5);
+    import(&root.join("data"), &fixtures().join("read"), "read-catalog.json", 8);
     Server::start_with(&root.join("data"), |c| {
         c.watch = false;
         c.auto_enrich = false;

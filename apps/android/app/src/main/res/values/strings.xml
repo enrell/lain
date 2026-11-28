@@ -64,6 +64,7 @@
     <string name="player_burn_in">Burn in %1$s</string>
 
     <!-- reader -->
+    <string name="reader_web">This book opens in Lain\'s web reader, in your browser.</string>
     <string name="reader_empty">This book has no pages.</string>
     <string name="reader_offline">Offline copy</string>
 

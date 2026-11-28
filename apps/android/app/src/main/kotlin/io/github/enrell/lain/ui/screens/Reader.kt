@@ -109,12 +109,30 @@ fun ReaderScreen(
     val model = remember(itemId) { ReaderModel(core, itemId, scope) }
     val state by model.state.collectAsState()
     val focus = remember { FocusRequester() }
-    LaunchedEffect(itemId) { model.load() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var web by remember(itemId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(itemId) {
+        // A book read by chapters opens in the server's web reader (D-306).
+        val url = runCatching { core.webReaderUrl(itemId) }.getOrNull()
+        if (url != null) {
+            web = url
+            runCatching {
+                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+            }
+            onBack()
+        } else {
+            model.load()
+        }
+    }
     DisposableEffect(itemId) {
         onDispose {
             val job = model.close()
             if (job == null) scope.cancel() else job.invokeOnCompletion { scope.cancel() }
         }
+    }
+    if (web != null) {
+        Centered { Text(stringResource(R.string.reader_web), color = l.muted) }
+        return
     }
     val book = state.book
     if (book == null) {

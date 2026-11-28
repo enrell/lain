@@ -33,7 +33,7 @@ use crate::roots::{self, Roots};
 use lain_ingest::{ScanEvent, Scanner, SourceWatch};
 
 /// The composition document version.
-pub const COMPOSITION_VERSION: u32 = 10;
+pub const COMPOSITION_VERSION: u32 = 11;
 
 /// `Composition::upgrade` adds capabilities a saved document lacks, but
 /// keeps the provider list of the ones it has (an operator's override).
@@ -41,12 +41,27 @@ pub const COMPOSITION_VERSION: u32 = 10;
 /// here, once, when the document is older than the version that
 /// introduced it: version 9 put the import identifier (D-267) first,
 /// version 10 the sidecar identifier right after it (a file's own
-/// `.metadata/meta.toml` outranks what its name suggests).
+/// `.metadata/meta.toml` outranks what its name suggests), version 11
+/// the book identifier (D-306) before the comic one, so an ebook never
+/// reaches the anime parser, and the book metadata provider (D-308)
+/// after `.nfo`.
 /// An operator who removes one afterwards keeps it removed, since the
 /// document is then saved at the new version.
 fn adopt_new_providers(saved: &mut Composition, from: u32) {
     use crate::integration::IDENTIFY_ID;
     use lain_ingest::SIDECAR_ID;
+    if from < 11 {
+        // The book module's embedded metadata (D-308), right after `.nfo`.
+        for cap in [lain_metadata::CAP_METADATA_SEARCH, lain_metadata::CAP_METADATA_RESOLVE] {
+            if let Some(m) = saved.bindings.get_mut(cap)
+                && !m.providers.iter().any(|p| p == lain_metadata::BOOK_ID)
+            {
+                let at = m.providers.iter().position(|p| p == lain_metadata::NFO_ID).map_or(0, |i| i + 1);
+                m.providers.insert(at, lain_metadata::BOOK_ID.to_string());
+                tracing::info!(provider = lain_metadata::BOOK_ID, capability = cap, "new default provider adopted");
+            }
+        }
+    }
     let Some(b) = saved.bindings.get_mut(lain_identify::CAP_MEDIA_IDENTIFY) else { return };
     if from < 9 && !b.providers.iter().any(|p| p == IDENTIFY_ID) {
         b.providers.insert(0, IDENTIFY_ID.to_string());
@@ -56,6 +71,15 @@ fn adopt_new_providers(saved: &mut Composition, from: u32) {
         let at = b.providers.iter().position(|p| p == IDENTIFY_ID).map_or(0, |i| i + 1);
         b.providers.insert(at, SIDECAR_ID.to_string());
         tracing::info!(provider = SIDECAR_ID, "new default provider adopted");
+    }
+    if from < 11 && !b.providers.iter().any(|p| p == lain_identify::BOOK_ID) {
+        let at = b
+            .providers
+            .iter()
+            .position(|p| p == lain_identify::COMIC_ID || p == lain_identify::ANIME_ID)
+            .unwrap_or(b.providers.len());
+        b.providers.insert(at, lain_identify::BOOK_ID.to_string());
+        tracing::info!(provider = lain_identify::BOOK_ID, "new default provider adopted");
     }
 }
 
@@ -72,7 +96,7 @@ pub const COMPONENT_SERVED: &[&str] =
 /// metadata with its network providers, subtitle providers, theme,
 /// backup, comic pages).
 pub fn default_composition() -> Composition {
-    use lain_identify::{ANIME_ID, CAP_MEDIA_IDENTIFY, CAP_RELEASE_PARSE, COMIC_ID, GENERIC_ID, TOKENIZER_ID};
+    use lain_identify::{ANIME_ID, BOOK_ID, CAP_MEDIA_IDENTIFY, CAP_RELEASE_PARSE, COMIC_ID, GENERIC_ID, TOKENIZER_ID};
     use lain_metadata::{CAP_METADATA_ENRICH, CAP_METADATA_RESOLVE, CAP_METADATA_SEARCH, DEFAULT_PROVIDERS, ENRICH_ID};
     let mut bindings = BTreeMap::new();
     let one = |id: &str| Binding::new(BindingMode::ExactlyOne, &[id]);
@@ -86,7 +110,7 @@ pub fn default_composition() -> Composition {
         CAP_MEDIA_IDENTIFY.into(),
         Binding::new(
             BindingMode::OrderedMany,
-            &[crate::integration::IDENTIFY_ID, lain_ingest::SIDECAR_ID, COMIC_ID, ANIME_ID, GENERIC_ID],
+            &[crate::integration::IDENTIFY_ID, lain_ingest::SIDECAR_ID, BOOK_ID, COMIC_ID, ANIME_ID, GENERIC_ID],
         ),
     );
     // The lain-parser model (D-225) answers first when its component is
@@ -101,6 +125,7 @@ pub fn default_composition() -> Composition {
     bindings.insert(CAP_UI_THEME.into(), one(theme_mod::PROVIDER_ID));
     bindings.insert(CAP_BACKUP_CREATE.into(), one(backup_mod::PROVIDER_ID));
     bindings.insert(CAP_COMIC_PAGES.into(), one(lain_read::PROVIDER_ID));
+    bindings.insert(lain_read::book::CAP_BOOK_MANIFEST.into(), one(lain_read::book::PROVIDER_ID));
     // The watch module's in-process providers (D-190).
     for (cap, b) in lain_watch::Watch::bindings() {
         bindings.insert(cap.into(), b);
@@ -341,6 +366,8 @@ impl App {
         registry.register(Arc::new(theme_mod::Theme));
         registry.register(Arc::new(backup_mod::Bundle));
         registry.register(Arc::new(ComicArchive::new()));
+        registry.register(Arc::new(lain_read::book::BookProvider { books: crate::books::books() }));
+        registry.register(Arc::new(lain_read::book::BookMetadata { books: crate::books::books() }));
         // First boot adopts integration credentials from the environment;
         // an operator's save is never overwritten.
         if let Some(seed) = lain_admin::integrations::from_env() {

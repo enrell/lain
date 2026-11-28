@@ -4,6 +4,7 @@
 //! - `"$any"`, `"$string"`, `"$nonempty"`, `"$number"`, `"$int"`,
 //!   `"$bool"`, `"$null"`, `"$array"`, `"$object"` match by type.
 //! - `"$prefix:<p>"` matches a string starting with `<p>`;
+//!   `"$lacks:<p>"` a string that does not contain `<p>`;
 //!   `"$substr:<s>"` one containing `<s>`.
 //! - Objects match key by key and must have the same key set, unless
 //!   the expectation has `"$open": true`. An expected value of
@@ -51,7 +52,8 @@ fn at(path: &str, want: &Value, got: &Value) -> Result<(), String> {
             _ => s
                 .strip_prefix("$prefix:")
                 .map(|p| got.as_str().is_some_and(|g| g.starts_with(p)))
-                .or_else(|| s.strip_prefix("$substr:").map(|p| got.as_str().is_some_and(|g| g.contains(p)))),
+                .or_else(|| s.strip_prefix("$substr:").map(|p| got.as_str().is_some_and(|g| g.contains(p))))
+                .or_else(|| s.strip_prefix("$lacks:").map(|p| got.as_str().is_some_and(|g| !g.contains(p)))),
         };
         if let Some(ok) = ok {
             return if ok { Ok(()) } else { fail(format!("want {s}, got {}", short(got))) };
