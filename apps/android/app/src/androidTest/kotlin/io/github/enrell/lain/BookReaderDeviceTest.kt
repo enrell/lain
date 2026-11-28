@@ -13,7 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -57,6 +57,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * `password`, `epub` and `pdf` (item ids). Without a `phase` both tests
  * are skipped, so a plain `connectedAndroidTest` passes. Screenshots go
  * to the app's `files/screens/`, which the script pulls with `run-as`.
+ *
+ * The v2 rule: its effects run on a standard test dispatcher, so a call
+ * on the core resumes in a queued task, as on the app's main dispatcher,
+ * never inline on the core's thread that finished it. The waits drive
+ * that queue with `waitForIdle`.
  */
 @RunWith(AndroidJUnit4::class)
 class BookReaderDeviceTest {
@@ -165,6 +170,7 @@ class BookReaderDeviceTest {
         var last: Throwable? = null
         while (SystemClock.uptimeMillis() < end) {
             try {
+                compose.waitForIdle()
                 if (check()) return
             } catch (e: Throwable) {
                 last = e
