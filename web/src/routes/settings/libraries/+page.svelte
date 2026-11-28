@@ -616,9 +616,9 @@
 		}
 	}
 
-	// Auto takes videos and comic archives alike; the others only filter
-	// which files of the folder count.
-	const TYPES = ['auto', 'anime', 'series', 'movie', 'manga', 'comic'] as const;
+	// Auto takes videos, comic archives and books alike; the others only
+	// filter which files of the folder count.
+	const TYPES = ['auto', 'anime', 'series', 'movie', 'manga', 'comic', 'book'] as const;
 	const typeOptions = $derived([
 		...TYPES.map((value) => ({ value, label: t(`settings.librariesPage.types.${value}`) })),
 		// A type set elsewhere (the API, an older client) stays selectable as it is.
@@ -1145,7 +1145,9 @@
 				? t('settings.librariesPage.typeAuto')
 				: form.type === 'manga' || form.type === 'comic'
 					? t('settings.librariesPage.typeComics')
-					: t('settings.librariesPage.typeVideo')}
+					: form.type === 'book'
+						? t('settings.librariesPage.typeBooks')
+						: t('settings.librariesPage.typeVideo')}
 		</p>
 
 		{#if admin}

@@ -9,7 +9,7 @@ export type ReaderFit = 'contain' | 'width';
  * page is fetched or how progress is saved.
  */
 export interface ReaderProfile {
-	kind: 'manga' | 'comic';
+	kind: 'manga' | 'comic' | 'pdf';
 	/** Direction when the title has no saved choice; the server sends the kind's default. */
 	direction: Direction;
 	mode: ReaderMode;
@@ -52,6 +52,23 @@ export const MANGA_PROFILE: ReaderProfile = {
  */
 export const COMIC_PROFILE: ReaderProfile = {
 	kind: 'comic',
+	direction: 'ltr',
+	mode: 'paged',
+	dual: false,
+	coverAlone: true,
+	fit: 'contain',
+	controls: { direction: false, dual: true, coverAlone: false, strip: true, fit: true, zoom: true },
+	stripLabel: 'Scroll'
+};
+
+/**
+ * PDF books (D-306): the comic reading engine over rendered pages, one
+ * page at a time and left to right, fit and zoom for small print (a
+ * zoomed page is fetched sharper), spreads on request, and a continuous
+ * scroll for long documents.
+ */
+export const PDF_PROFILE: ReaderProfile = {
+	kind: 'pdf',
 	direction: 'ltr',
 	mode: 'paged',
 	dual: false,

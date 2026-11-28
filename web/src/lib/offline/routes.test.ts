@@ -36,4 +36,14 @@ describe('offline routes', () => {
 		expect(keys).toContain('/api/catalog/a%20b/episodes');
 		expect(keys).toHaveLength(6);
 	});
+
+	it('serves saved books and finds a PDF page saved at another width', async () => {
+		const { fallbackKey } = await import('./routes');
+		const o = 'http://x';
+		for (const p of ['/api/items/a/book', '/api/items/a/book/chapters/3', '/api/items/a/book/res/OEBPS/i.png']) {
+			expect(classify(new URL(o + p), 'GET', 'cors', o, new Set())).toBe('saved');
+		}
+		expect(fallbackKey(new URL(o + '/api/items/a/pages/2?w=2048&token=t'))).toBe('/api/items/a/pages/2?w=1536');
+		expect(fallbackKey(new URL(o + '/api/items/a/pages/2'))).toBe(null);
+	});
 });

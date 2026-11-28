@@ -702,10 +702,12 @@ const en = {
 				series: 'Series',
 				movie: 'Movies',
 				manga: 'Manga',
-				comic: 'Comics'
+				comic: 'Comics',
+				book: 'Books'
 			},
-			typeAuto: 'Auto reads videos and comic archives, and tells each file apart by itself.',
+			typeAuto: 'Auto reads videos, comic archives and books, and tells each file apart by itself.',
 			typeComics: 'Only comic archives (cbz, cbr, cb7) in the folder are read.',
+			typeBooks: 'Only books (epub, pdf, mobi, azw3) in the folder are read. Their details come from the files themselves, never from the internet.',
 			typeVideo: 'Only video files in the folder are read.',
 			audience: 'Audience',
 			audienceHint: 'A new library starts as Mature. Teen and Mature hide it from stricter accounts; Everyone opens it to family and children’s accounts.',
@@ -1241,6 +1243,53 @@ const en = {
 			diskFull: 'The disk would drop under the free-space floor.'
 		}
 	},
+	book: {
+		info: {
+			label: 'From the book',
+			field: { authors: 'By', publisher: 'Publisher', language: 'Language', published: 'Published', format: 'Format' },
+			pages: { one: '{count} page of text', other: '{count} pages of text' },
+			realPages: { one: '{count} page', other: '{count} pages' },
+			fontsMissing: 'some fonts are not installed on the server'
+		},
+		chapter: 'Chapter {number}',
+		pageOf: 'Page {page} of {pages}',
+		percent: '{percent}%',
+		toc: 'Contents',
+		opening: 'Opening the book',
+		frameTitle: '{title}, the text',
+		end: {
+			kicker: 'The end',
+			stay: 'Stay on the last page'
+		},
+		keys: {
+			ends: 'Start / end of the chapter',
+			nextChapter: 'Next chapter',
+			previousChapter: 'Previous chapter',
+			toc: 'Contents',
+			look: 'Text and page settings',
+			size: 'Text bigger / smaller / reset',
+			layout: 'Pages / continuous scroll'
+		},
+		look: {
+			title: 'Text and page',
+			size: 'Text size',
+			smaller: 'Smaller text',
+			bigger: 'Bigger text',
+			fontLabel: 'Font',
+			font: { book: 'Book', serif: 'Serif', sans: 'Sans', mono: 'Mono' },
+			themeLabel: 'Colours',
+			theme: { auto: 'Lain', paper: 'Paper', light: 'Light', dark: 'Dark', original: 'Book' },
+			layoutLabel: 'Layout',
+			paged: 'Pages',
+			scroll: 'Scroll',
+			spacing: 'Line spacing',
+			margins: 'Margins',
+			narrow: 'Narrow',
+			normal: 'Normal',
+			wide: 'Wide',
+			justify: 'Justified text'
+		}
+	},
 	reader: {
 		info: {
 			label: 'From the archive',
@@ -1404,6 +1453,7 @@ const en = {
 			movie: 'Movie',
 			manga: 'Manga',
 			comic: 'Comic',
+			book: 'Book',
 			// A catalog video: a film or a clip.
 			video: 'Video'
 		},
@@ -1741,6 +1791,7 @@ const en = {
 		episodes: { one: '{count} episode', other: '{count} episodes' },
 		volumes: { one: '{count} volume', other: '{count} volumes' },
 		issues: { one: '{count} issue', other: '{count} issues' },
+		books: { one: '{count} book', other: '{count} books' },
 		length: 'Length',
 		playPart: 'Play · {part}',
 		readPart: 'Read · {part}',
@@ -1807,7 +1858,8 @@ const en = {
 			video: 'Films and clips',
 			episode: 'Episodes',
 			manga: 'Manga',
-			comic: 'Comics'
+			comic: 'Comics',
+			book: 'Books'
 		}
 	},
 	library: {

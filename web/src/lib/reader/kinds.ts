@@ -1,7 +1,7 @@
 import { t } from '$lib/i18n';
 
-/** Catalog kinds that open in the reader instead of the video player (D-085). */
-const READABLE = new Set(['comic', 'manga']);
+/** Catalog kinds that open in the reader instead of the video player (D-085, D-306). */
+const READABLE = new Set(['comic', 'manga', 'book']);
 
 export function isReadable(kind: string | undefined | null): boolean {
 	return !!kind && READABLE.has(kind);
