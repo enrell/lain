@@ -283,6 +283,10 @@ Kotlin + Jetpack Compose + Media3 on `lain-client`. Two builds:
   `aar` in the app, the jar in JVM tests); tests: `junit`,
   `kotlinx-coroutines-test`. No navigation, image-loading or DI library:
   a screen stack, `BitmapFactory` and one `AppGraph` do those jobs.
+  Device test only (`app/src/androidTest`, the emulator run of the
+  `android-device` workflow): `androidx.test:runner`,
+  `androidx.test.ext:junit`, Compose `ui-test-junit4` and (debug)
+  `ui-test-manifest`.
 
 `scripts/build-rust.sh` builds the host library, generates the Kotlin
 bindings into `app/generated/uniffi` (git-ignored) and builds the ABIs

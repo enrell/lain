@@ -40,6 +40,8 @@ android {
         targetSdk = 36
         versionCode = lainVersionCode
         versionName = lainVersion
+        // The device test (src/androidTest) runs on an emulator in CI only.
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -133,6 +135,14 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     // The desktop JNA (with its host dispatch library) for JVM tests.
     testImplementation(libs.jna)
+
+    // The device test against a real server (the android-device CI job).
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    // The empty activity the Compose test rule starts, in debug builds only.
+    debugImplementation(libs.compose.ui.test.manifest)
 }
 
 // AGP 9's built-in Kotlin compiles the variant's kotlin sources; register
