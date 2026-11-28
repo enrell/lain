@@ -6,8 +6,11 @@
 //! The parser is a small tolerant tokenizer, not an HTML engine: the
 //! server already removed scripts, forms and foreign URLs (D-305) and
 //! balanced the markup, so what is left is structure (headings,
-//! paragraphs, lists, quotes, tables, images) and inline emphasis. Styles
-//! are ignored, except a centered alignment. Bad markup never fails:
+//! paragraphs, lists, quotes, tables, images) and inline emphasis. Of the
+//! book's CSS (the chapter's `<style>` sheets and `style=""` attributes)
+//! only what maps onto blocks is honoured: `text-align`, `font-style`,
+//! `font-weight` and `display: none`, on simple selectors (`p`, `.c`,
+//! `p.c`, `#id`); everything else is ignored. Bad markup never fails:
 //! stray end tags are skipped and unclosed elements end with the chapter.
 
 use std::collections::HashMap;
@@ -62,13 +65,23 @@ pub enum Kind {
     Row,
 }
 
+/// A block's horizontal alignment (`text-align`, `align`, `<center>`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Align {
+    #[default]
+    Start,
+    Center,
+    Right,
+    Justify,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Block {
     pub kind: Kind,
     pub spans: Vec<Span>,
     /// Nesting of quotes and lists.
     pub indent: u8,
-    pub center: bool,
+    pub align: Align,
     /// Non-whitespace characters of the block's text (the server's rule).
     pub chars: usize,
 }
@@ -77,6 +90,21 @@ impl Block {
     #[cfg(test)]
     pub fn text(&self) -> String {
         self.spans.iter().map(|s| s.text.as_str()).collect()
+    }
+
+    /// The block's links in order: each a run of neighbouring spans with
+    /// the same target (`<a>x <b>y</b></a>` is one link), as the range of
+    /// span indices it covers.
+    pub fn links(&self) -> Vec<(std::ops::Range<usize>, Link)> {
+        let mut out: Vec<(std::ops::Range<usize>, Link)> = Vec::new();
+        for (i, s) in self.spans.iter().enumerate() {
+            let Some(l) = &s.link else { continue };
+            match out.last_mut() {
+                Some((r, last)) if r.end == i && last == l => r.end = i + 1,
+                _ => out.push((i..i + 1, l.clone())),
+            }
+        }
+        out
     }
 }
 
@@ -95,15 +123,49 @@ impl Doc {
     pub fn anchor(&self, id: &str) -> Option<usize> {
         self.anchors.get(id).map(|&i| i.min(self.blocks.len().saturating_sub(1)))
     }
+
+    /// Every link of the chapter in reading order, as (block, n-th link of
+    /// that block): the order Tab walks.
+    pub fn links(&self) -> Vec<(usize, usize)> {
+        self.blocks.iter().enumerate().flat_map(|(i, b)| (0..b.links().len()).map(move |n| (i, n))).collect()
+    }
+}
+
+/// The link Tab (`fwd`) or Shift+Tab moves the focus to. `links` are the
+/// chapter's (block, n) in order, `cur` the focused one and `view` the
+/// first and last block on screen. A focused link still on screen steps to
+/// its neighbour, wrapping at the ends; with none (or one scrolled away)
+/// the walk starts at the first link on screen (the last, backwards), or
+/// the next one past the view when the screen has none.
+pub fn link_step(links: &[(usize, usize)], cur: Option<usize>, view: (usize, usize), fwd: bool) -> Option<usize> {
+    let n = links.len();
+    if n == 0 {
+        return None;
+    }
+    let (top, bottom) = view;
+    if let Some(c) = cur.filter(|&c| c < n && (top..=bottom).contains(&links[c].0)) {
+        return Some(if fwd { (c + 1) % n } else { (c + n - 1) % n });
+    }
+    if fwd {
+        Some(links.iter().position(|l| l.0 >= top).unwrap_or(0))
+    } else {
+        Some(links.iter().rposition(|l| l.0 <= bottom).unwrap_or(n - 1))
+    }
 }
 
 // ---- tokenizer ------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Tok {
-    Start { name: String, attrs: Vec<(String, String)>, closed: bool },
+    Start {
+        name: String,
+        attrs: Vec<(String, String)>,
+        closed: bool,
+    },
     End(String),
     Text(String),
+    /// A `<style>` element's sheet.
+    Css(String),
 }
 
 /// Elements whose content is not markup; skipped whole.
@@ -228,9 +290,14 @@ fn tokenize(src: &str) -> Vec<Tok> {
             continue;
         }
         if !closed && RAW.contains(&name.as_str()) {
-            // Skip to the matching end tag; nothing inside is shown.
+            // Skip to the matching end tag; nothing inside is shown (a
+            // style sheet is kept for its few honoured rules).
             let close = format!("</{name}");
-            i = find(&lower, j, &close).map_or(b.len(), |p| find(src, p, ">").map_or(b.len(), |q| q + 1));
+            let at = find(&lower, j, &close);
+            if name == "style" {
+                out.push(Tok::Css(src[j..at.unwrap_or(b.len())].to_string()));
+            }
+            i = at.map_or(b.len(), |p| find(src, p, ">").map_or(b.len(), |q| q + 1));
             text_at = i;
             continue;
         }
@@ -444,9 +511,15 @@ const CELL_GAP: &str = "  |  ";
 
 struct Open {
     name: String,
+    /// Style bits this element sets, after clearing `clear`.
     style: u8,
+    /// Bits its CSS turns off (`font-weight: normal` in a `<b>`).
+    clear: u8,
     link: Option<Link>,
-    center: bool,
+    /// Its own alignment (block elements only).
+    align: Option<Align>,
+    /// `display: none`: nothing inside is shown.
+    hidden: bool,
     /// `ol`/`ul`: ordered, and the next number.
     list: Option<(bool, i64)>,
 }
@@ -454,6 +527,7 @@ struct Open {
 #[derive(Default)]
 struct Builder {
     doc: Doc,
+    sheet: Sheet,
     stack: Vec<Open>,
     cur: Option<Block>,
     marker: Option<String>,
@@ -469,14 +543,209 @@ fn attr<'a>(attrs: &'a [(String, String)], key: &str) -> Option<&'a str> {
     attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
 }
 
-fn centered(attrs: &[(String, String)]) -> bool {
-    if attr(attrs, "align").is_some_and(|a| a.eq_ignore_ascii_case("center")) {
-        return true;
-    }
-    attr(attrs, "style").is_some_and(|s| {
-        let s: String = s.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
-        s.contains("text-align:center")
+/// The presentational `align` attribute.
+fn align_attr(attrs: &[(String, String)]) -> Option<Align> {
+    align_word(attr(attrs, "align")?)
+}
+
+fn align_word(v: &str) -> Option<Align> {
+    Some(match v.trim().to_ascii_lowercase().as_str() {
+        "left" | "start" => Align::Start,
+        "center" | "-webkit-center" | "middle" => Align::Center,
+        "right" | "end" => Align::Right,
+        "justify" => Align::Justify,
+        _ => return None,
     })
+}
+
+// ---- the honoured CSS -------------------------------------------------------
+
+/// The declarations the reader honours; `None` leaves a property alone.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Decl {
+    align: Option<Align>,
+    bold: Option<bool>,
+    italic: Option<bool>,
+    hidden: Option<bool>,
+}
+
+impl Decl {
+    /// A declaration block (`a: b; c: d`); unknown properties and values
+    /// are skipped.
+    fn parse(s: &str) -> Decl {
+        let mut d = Decl::default();
+        for part in s.split(';') {
+            let Some((k, v)) = part.split_once(':') else { continue };
+            let k = k.trim().to_ascii_lowercase();
+            let v = v.trim().to_ascii_lowercase();
+            let v = v.strip_suffix("!important").unwrap_or(&v).trim();
+            match k.as_str() {
+                "text-align" => d.align = align_word(v).or(d.align),
+                "font-weight" => {
+                    d.bold = match v {
+                        "bold" | "bolder" => Some(true),
+                        "normal" | "lighter" => Some(false),
+                        n => n.parse::<u16>().ok().map(|n| n >= 600),
+                    }
+                    .or(d.bold)
+                }
+                "font-style" => {
+                    d.italic = match v {
+                        "normal" => Some(false),
+                        v if v == "italic" || v.starts_with("oblique") => Some(true),
+                        _ => d.italic,
+                    }
+                }
+                "display" if !v.is_empty() => d.hidden = Some(v == "none"),
+                _ => {}
+            }
+        }
+        d
+    }
+
+    fn merge(&mut self, o: Decl) {
+        self.align = o.align.or(self.align);
+        self.bold = o.bold.or(self.bold);
+        self.italic = o.italic.or(self.italic);
+        self.hidden = o.hidden.or(self.hidden);
+    }
+
+    fn is_empty(&self) -> bool {
+        *self == Decl::default()
+    }
+}
+
+/// A compound selector: an element name, classes and an id, no
+/// combinators, pseudo-classes or attributes (those rules are ignored).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Sel {
+    tag: Option<String>,
+    id: Option<String>,
+    classes: Vec<String>,
+}
+
+impl Sel {
+    fn parse(s: &str) -> Option<Sel> {
+        let s = s.trim();
+        if s.is_empty() || !s.chars().all(|c| c.is_alphanumeric() || matches!(c, '.' | '#' | '-' | '_' | '*' | '|')) {
+            return None;
+        }
+        let mut sel = Sel { tag: None, id: None, classes: Vec::new() };
+        let mut rest = s;
+        let first = rest.find(['.', '#']).unwrap_or(rest.len());
+        let tag = &rest[..first];
+        if !tag.is_empty() && tag != "*" {
+            sel.tag = Some(local(tag));
+        }
+        rest = &rest[first..];
+        while let Some(c) = rest.chars().next() {
+            let end = rest[1..].find(['.', '#']).map_or(rest.len(), |p| p + 1);
+            let name = &rest[1..end];
+            if name.is_empty() || name.contains(['*', '|']) {
+                return None;
+            }
+            if c == '.' {
+                sel.classes.push(name.to_string());
+            } else if sel.id.replace(name.to_string()).is_some() {
+                return None;
+            }
+            rest = &rest[end..];
+        }
+        Some(sel)
+    }
+
+    fn specificity(&self) -> (usize, usize, usize) {
+        (self.id.is_some() as usize, self.classes.len(), self.tag.is_some() as usize)
+    }
+
+    fn matches(&self, tag: &str, attrs: &[(String, String)]) -> bool {
+        if self.tag.as_ref().is_some_and(|t| t != tag) {
+            return false;
+        }
+        if self.id.as_ref().is_some_and(|id| attr(attrs, "id") != Some(id.as_str())) {
+            return false;
+        }
+        let class = attr(attrs, "class").unwrap_or("");
+        self.classes.iter().all(|c| class.split_whitespace().any(|x| x == c))
+    }
+}
+
+/// The chapter's style sheets, reduced to the honoured rules.
+#[derive(Debug, Default)]
+struct Sheet {
+    rules: Vec<(Sel, Decl)>,
+}
+
+/// More rules than any book needs is a hostile sheet: the rest is ignored.
+const MAX_RULES: usize = 4096;
+
+impl Sheet {
+    fn add(&mut self, css: &str) {
+        // Comments out first; a sheet never fails, a bad rule is skipped.
+        let mut clean = String::with_capacity(css.len());
+        let mut rest = css;
+        while let Some(at) = rest.find("/*") {
+            clean.push_str(&rest[..at]);
+            rest = rest[at + 2..].find("*/").map_or("", |e| &rest[at + 2 + e + 2..]);
+        }
+        clean.push_str(rest);
+        let b = clean.as_bytes();
+        let mut i = 0;
+        while i < b.len() && self.rules.len() < MAX_RULES {
+            let Some(open) = clean[i..].find('{').map(|p| p + i) else { break };
+            // The block's end, skipping nested blocks (`@media { p { } }`).
+            let (mut depth, mut j) = (0usize, open);
+            while j < b.len() {
+                match b[j] {
+                    b'{' => depth += 1,
+                    b'}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            let prelude = clean[i..open].trim();
+            // A stray `;` before a rule (`@charset "x";`) is not part of it.
+            let prelude = prelude.rsplit(';').next().unwrap_or("").trim();
+            let body = &clean[open + 1..j.min(b.len())];
+            i = j + 1;
+            if prelude.starts_with('@') || body.contains('{') {
+                continue;
+            }
+            let decl = Decl::parse(body);
+            if decl.is_empty() {
+                continue;
+            }
+            for s in prelude.split(',').filter_map(Sel::parse) {
+                self.rules.push((s, decl));
+            }
+        }
+    }
+
+    /// The honoured style of an element: matching rules by specificity
+    /// (later wins a tie), then its own `style` attribute.
+    fn style(&self, tag: &str, attrs: &[(String, String)]) -> Decl {
+        let mut hits: Vec<(usize, &Sel, Decl)> = self
+            .rules
+            .iter()
+            .enumerate()
+            .filter(|(_, (s, _))| s.matches(tag, attrs))
+            .map(|(i, (s, d))| (i, s, *d))
+            .collect();
+        hits.sort_by_key(|(i, s, _)| (s.specificity(), *i));
+        let mut d = Decl::default();
+        for (_, _, h) in hits {
+            d.merge(h);
+        }
+        if let Some(inline) = attr(attrs, "style") {
+            d.merge(Decl::parse(inline));
+        }
+        d
+    }
 }
 
 fn style_of(name: &str) -> u8 {
@@ -511,6 +780,16 @@ impl Builder {
         self.stack.iter().any(|o| o.name == name)
     }
 
+    /// Inside a `display: none` element.
+    fn hidden(&self) -> bool {
+        self.stack.iter().any(|o| o.hidden)
+    }
+
+    /// The alignment of a block starting now: the innermost aligned one.
+    fn align(&self) -> Align {
+        self.stack.iter().rev().find_map(|o| o.align).unwrap_or_default()
+    }
+
     fn indent(&self) -> u8 {
         self.stack.iter().filter(|o| matches!(o.name.as_str(), "blockquote" | "ul" | "ol" | "dd")).count().min(8) as u8
     }
@@ -532,12 +811,12 @@ impl Builder {
             } else {
                 Kind::Para
             };
-            let center = self.stack.iter().any(|o| o.center);
+            let align = self.align();
             let at = self.doc.blocks.len();
             for a in self.pending.drain(..) {
                 self.doc.anchors.entry(a).or_insert(at);
             }
-            self.cur = Some(Block { kind, spans: Vec::new(), indent: self.indent(), center, chars: 0 });
+            self.cur = Some(Block { kind, spans: Vec::new(), indent: self.indent(), align, chars: 0 });
         }
         self.cur.as_mut().expect("just set")
     }
@@ -577,14 +856,14 @@ impl Builder {
         for a in self.pending.drain(..) {
             self.doc.anchors.entry(a).or_insert(at);
         }
-        let center = self.stack.iter().any(|o| o.center);
-        self.doc.blocks.push(Block { kind, spans: Vec::new(), indent: self.indent(), center, chars: 0 });
+        let align = self.align();
+        self.doc.blocks.push(Block { kind, spans: Vec::new(), indent: self.indent(), align, chars: 0 });
     }
 
     /// Appends text with the open elements' style; `counted` is false for
     /// the app's own separators.
     fn append(&mut self, text: &str, counted: bool) {
-        let style = self.stack.iter().fold(0, |s, o| s | o.style);
+        let style = self.stack.iter().fold(0, |s, o| (s & !o.clear) | o.style);
         let link = self.stack.iter().rev().find_map(|o| o.link.clone());
         let pre = self.in_stack("pre");
         let fresh = self.cur.is_none();
@@ -625,7 +904,11 @@ impl Builder {
         if self.head > 0 {
             return;
         }
+        // Hidden text still counts: the server's rule knows no CSS.
         self.doc.chars += raw.chars().filter(|c| !c.is_whitespace()).count();
+        if self.hidden() {
+            return;
+        }
         if self.in_stack("pre") {
             let t = raw.replace("\r\n", "\n");
             // The newline right after `<pre>` is not content.
@@ -671,6 +954,15 @@ impl Builder {
             {
                 self.pending.push(id.to_string());
             }
+        }
+        let css = self.sheet.style(&name, &attrs);
+        // A hidden element (or one inside) adds nothing; its ids land on
+        // the next shown block.
+        if self.hidden() || css.hidden == Some(true) {
+            if !closed && !VOID.contains(&name.as_str()) && self.stack.len() < 512 {
+                self.stack.push(Open { name, style: 0, clear: 0, link: None, align: None, hidden: true, list: None });
+            }
+            return;
         }
         match name.as_str() {
             "br" => {
@@ -728,10 +1020,20 @@ impl Builder {
             _ => None,
         };
         let link = if name == "a" { link_of(&attrs) } else { None };
-        let center = centered(&attrs);
+        let block = BLOCKS.contains(&name.as_str()) || matches!(name.as_str(), "td" | "th");
+        let align = if name == "center" { Some(Align::Center) } else { css.align.or_else(|| align_attr(&attrs)) };
+        let bit = |on: Option<bool>, b: u8| match on {
+            Some(true) => (b, 0),
+            Some(false) => (0, b),
+            None => (0, 0),
+        };
+        let (bold_on, bold_off) = bit(css.bold, BOLD);
+        let (it_on, it_off) = bit(css.italic, ITALIC);
+        let clear = bold_off | it_off;
+        let style = (style_of(&name) & !clear) | bold_on | it_on;
         // A deep stack is malformed input, not a book: stop nesting.
         if self.stack.len() < 512 {
-            self.stack.push(Open { style: style_of(&name), name, link, center, list });
+            self.stack.push(Open { style, clear, name, link, align: align.filter(|_| block), hidden: false, list });
         }
     }
 
@@ -758,11 +1060,19 @@ impl Builder {
 /// Parses one sanitized chapter document into blocks.
 pub fn parse(html: &str) -> Doc {
     let mut b = Builder::default();
-    for t in tokenize(html) {
+    let toks = tokenize(html);
+    // Sheets apply to the whole chapter, wherever they stand.
+    for t in &toks {
+        if let Tok::Css(css) = t {
+            b.sheet.add(css);
+        }
+    }
+    for t in toks {
         match t {
             Tok::Start { name, attrs, closed } => b.start(name, attrs, closed),
             Tok::End(name) => b.end(&name),
             Tok::Text(t) => b.text(&t),
+            Tok::Css(_) => {}
         }
     }
     b.flush();
@@ -862,7 +1172,7 @@ mod tests {
         );
         assert_eq!(texts(&d), ["Café & Co", "One\u{a0}two — “three” &bogus; &amp", "Quoted", "", "  a\n  b"]);
         assert_eq!(d.blocks[0].kind, Kind::Heading(1));
-        assert!(d.blocks[0].center);
+        assert_eq!(d.blocks[0].align, Align::Center);
         assert_eq!(d.blocks[2].indent, 1);
         assert_eq!(d.blocks[3].kind, Kind::Rule);
         assert_eq!(d.blocks[4].kind, Kind::Pre);
@@ -978,6 +1288,101 @@ mod tests {
         assert_eq!(d.blocks[2].kind, Kind::Image { src: "OEBPS/cover.png".into(), alt: "cover".into() });
         let two = parse(&format!("{head}</head><body><p id=\"end\">The end.</p></body></html>"));
         assert_eq!((two.chars, two.anchor("end")), (7, Some(0)));
+    }
+
+    #[test]
+    fn book_css_aligns_emphasises_and_hides() {
+        let d = parse(
+            "<html><head><style>/* a comment { } */ @charset \"utf-8\"; \
+             p.r { text-align: right } .c, h2 { text-align:CENTER !important; color: red } \
+             .j{text-align:justify} .it { font-style: italic } span.b { font-weight: 700 } \
+             .gone { display: none } #keep { display: block } div p { text-align: center } \
+             a:hover { font-weight: bold } @media print { p { display: none } }</style></head><body>\
+             <p class=\"r x\">right</p><p class=\"c\">center</p><h2>head</h2><p class=\"j\">just</p>\
+             <p><span class=\"it\">it</span> <span class=\"b\">bold</span> <b style=\"font-weight:normal\">plain</b> \
+             <i style=\"font-style: normal\">up</i> <a href=\"#x\">link</a></p>\
+             <div class=\"gone\" id=\"g\"><p>hidden</p><img src=\"/api/items/i/book/res/a.png\"></div>\
+             <p class=\"gone\" id=\"keep\">shown by id</p><p style=\"display:none\">inline hidden</p>\
+             <div style=\"text-align: center\"><p>inherits</p><p style=\"text-align:left\">own</p></div>\
+             <p>plain <span style=\"text-align:right\">inline ignored</span></p><center>old</center>\
+             <p align=\"right\">attr</p><p style=\"text-align: right; text-align: sideways\">last good</p></body></html>",
+        );
+        assert_eq!(
+            texts(&d),
+            [
+                "right",
+                "center",
+                "head",
+                "just",
+                "it bold plain up link",
+                "shown by id",
+                "inherits",
+                "own",
+                "plain inline ignored",
+                "old",
+                "attr",
+                "last good"
+            ]
+        );
+        let aligns: Vec<Align> = d.blocks.iter().map(|b| b.align).collect();
+        use Align::*;
+        assert_eq!(aligns, [Right, Center, Center, Justify, Start, Start, Center, Start, Start, Center, Right, Right]);
+        let styles: Vec<(&str, u8)> = d.blocks[4].spans.iter().map(|s| (s.text.as_str(), s.style)).collect();
+        assert_eq!(styles[0], ("it", ITALIC));
+        assert!(styles.contains(&("bold", BOLD)));
+        // `font-weight: normal` in a `<b>`, `font-style: normal` in an `<i>`;
+        // `a:hover` is not a simple selector, so the link stays plain.
+        assert!(styles.iter().all(|(t, s)| !t.contains("plain") && !t.contains("up") || *s == 0), "{styles:?}");
+        assert_eq!(d.blocks[4].spans.last().map(|s| s.style), Some(0));
+        // A hidden element's id lands on the next shown block, and its
+        // text still counts (the server's rule knows no CSS).
+        assert_eq!(d.anchor("g"), Some(5));
+        assert!(!d.blocks.iter().any(|b| matches!(b.kind, Kind::Image { .. })));
+        assert!(d.chars > d.blocks.iter().map(|b| b.chars).sum::<usize>());
+    }
+
+    #[test]
+    fn bad_css_is_ignored() {
+        for css in ["p {", "}", "{}", "p { text-align", ".{display:none}", "#a#b{display:none}", "@media {", "p{{}}"] {
+            let d = parse(&format!("<style>{css}</style><p id=\"a\">x</p>"));
+            assert_eq!(texts(&d), ["x"], "{css}");
+        }
+        // A rule list too long for any book stops growing.
+        let huge = ".a{font-weight:bold}".repeat(MAX_RULES + 10);
+        let mut s = Sheet::default();
+        s.add(&huge);
+        assert_eq!(s.rules.len(), MAX_RULES);
+        assert_eq!(Sel::parse("p.a.b#c").map(|s| s.specificity()), Some((1, 2, 1)));
+        assert_eq!(Sel::parse("ul li"), None);
+        assert_eq!(Sel::parse("a[href]"), None);
+    }
+
+    #[test]
+    fn links_group_and_walk_in_order() {
+        let d = parse(
+            "<p><a href=\"#a\">one <b>bold</b></a> and <a href=\"#b\">two</a></p><p>none</p>\
+             <p><a href=\"https://example.org/\">web</a></p><p><a data-lain-chapter=\"2\" href=\"#\">next</a></p>",
+        );
+        assert_eq!(d.blocks[0].links().iter().map(|(r, _)| r.clone()).collect::<Vec<_>>(), [0..2, 3..4]);
+        let links = d.links();
+        assert_eq!(links, [(0, 0), (0, 1), (2, 0), (3, 0)]);
+        // Nothing focused: Tab starts at the first link on screen, Shift+Tab
+        // at the last one.
+        assert_eq!(link_step(&links, None, (0, 3), true), Some(0));
+        assert_eq!(link_step(&links, None, (0, 3), false), Some(3));
+        assert_eq!(link_step(&links, None, (1, 2), true), Some(2));
+        assert_eq!(link_step(&links, None, (1, 2), false), Some(2));
+        // No link on screen: the next one past the view (or the first).
+        assert_eq!(link_step(&links, None, (1, 1), true), Some(2));
+        assert_eq!(link_step(&links, None, (9, 9), true), Some(0));
+        // A focused link on screen steps and wraps.
+        assert_eq!(link_step(&links, Some(1), (0, 3), true), Some(2));
+        assert_eq!(link_step(&links, Some(3), (0, 3), true), Some(0));
+        assert_eq!(link_step(&links, Some(0), (0, 3), false), Some(3));
+        // One scrolled away restarts from the view.
+        assert_eq!(link_step(&links, Some(0), (2, 3), true), Some(2));
+        assert_eq!(link_step(&links, Some(7), (0, 3), true), Some(0));
+        assert_eq!(link_step(&[], None, (0, 0), true), None);
     }
 
     #[test]

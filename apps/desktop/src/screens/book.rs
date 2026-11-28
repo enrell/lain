@@ -17,7 +17,7 @@ use gpui::{
 use lain_client::types::{BookManifest, BookTocEntry, Progress};
 
 use crate::app::{Act, LainApp, Load};
-use crate::book::{self, Block, Doc, Kind, Link};
+use crate::book::{self, Align, Block, Doc, Kind, Link};
 use crate::images::{ImgKey, Source};
 use crate::ui::{Notice, Tone};
 
@@ -68,6 +68,8 @@ pub struct BookView {
     toc_open: bool,
     toc_sel: usize,
     toc_scroll: ScrollHandle,
+    /// The link Tab focused (an index into `Doc::links`): Enter follows it.
+    link_sel: Option<usize>,
 }
 
 fn flatten(out: &mut Vec<TocRow>, entries: &[BookTocEntry], depth: usize, order: &dyn Fn(i64) -> Option<usize>) {
@@ -112,6 +114,7 @@ impl BookView {
             toc_open: false,
             toc_sel: 0,
             toc_scroll: ScrollHandle::new(),
+            link_sel: None,
         }
     }
 
@@ -206,6 +209,57 @@ impl BookView {
         let (_, max, _) = self.view();
         self.scroll.set_offset(point(px(0.), px(-y.clamp(0., max))));
         self.land = None;
+        // The focused link may be off screen now: Enter must not follow
+        // what the reader cannot see.
+        self.link_sel = None;
+    }
+
+    /// A laid-out block's top and height in the scroll's content.
+    fn block_span(&self, i: usize) -> Option<(f32, f32)> {
+        let top = f32::from(self.scroll.bounds().top());
+        self.scroll.bounds_for_item(i).map(|b| (f32::from(b.top()) - top, f32::from(b.size.height)))
+    }
+
+    /// The first and last block on screen.
+    fn visible_blocks(&self) -> Option<(usize, usize)> {
+        let doc = self.laid_out()?;
+        let (off, _, h) = self.view();
+        let first = self.scroll.top_item().min(doc.blocks.len() - 1);
+        let mut last = first;
+        for i in first..doc.blocks.len() {
+            match self.block_span(i) {
+                Some((y, _)) if y < off + h => last = i,
+                _ => break,
+            }
+        }
+        Some((first, last))
+    }
+
+    /// Moves the link focus (Tab, Shift+Tab) and brings the link's block
+    /// into view; false when the chapter has no links.
+    fn link_move(&mut self, fwd: bool) -> bool {
+        let Some(doc) = self.laid_out().cloned() else { return false };
+        let links = doc.links();
+        let Some(view) = self.visible_blocks() else { return false };
+        let Some(sel) = book::link_step(&links, self.link_sel, view, fwd) else { return false };
+        let block = links[sel].0;
+        if let Some((y, bh)) = self.block_span(block) {
+            let (off, _, h) = self.view();
+            if y < off || y + bh.min(h) > off + h {
+                // A third down the screen: the text around it stays readable.
+                self.scroll_to(y - h / 3.);
+            }
+        }
+        self.land = None;
+        self.link_sel = Some(sel);
+        true
+    }
+
+    /// The focused link's target.
+    fn focused_link(&self) -> Option<Link> {
+        let doc = self.doc.ready()?;
+        let (block, n) = *doc.links().get(self.link_sel?)?;
+        doc.blocks.get(block)?.links().into_iter().nth(n).map(|(_, l)| l)
     }
 }
 
@@ -252,6 +306,7 @@ impl LainApp {
         v.land_until = Instant::now() + SETTLE;
         v.scroll = ScrollHandle::new();
         v.toc_open = false;
+        v.link_sel = None;
         let (want, id, index) = (v.load_gen, v.id.clone(), v.manifest.chapters[n].index);
         let cached = v.cache.get(&n).cloned();
         match cached {
@@ -369,6 +424,7 @@ impl LainApp {
     /// Follows a link in a chapter.
     pub fn book_follow(&mut self, link: Link, cx: &mut Context<Self>) {
         let Some(v) = self.bv() else { return };
+        v.link_sel = None;
         match link {
             Link::Anchor(a) => {
                 v.land = Some(Land::Anchor(a));
@@ -468,6 +524,15 @@ impl LainApp {
         }
         let fwd = if v.manifest.direction == "rtl" { -1 } else { 1 };
         match k {
+            // Links: Tab walks them, Enter follows, Esc lets go. A chapter
+            // without links leaves Tab to the window's focus order.
+            "tab" => return v.link_move(!m.shift),
+            "enter" if v.link_sel.is_some() => {
+                if let Some(l) = v.focused_link() {
+                    self.book_follow(l, cx);
+                }
+            }
+            "escape" if v.link_sel.is_some() => v.link_sel = None,
             "right" => self.book_turn(fwd, cx),
             "left" => self.book_turn(-fwd, cx),
             "pagedown" => self.book_turn(1, cx),
@@ -565,6 +630,12 @@ impl LainApp {
         let scroll = v.scroll.clone();
         let id = v.id.clone();
         let toc_open = v.toc_open;
+        // The focused link as (block, n-th link of the block).
+        let focus = match &doc {
+            Load::Ready(d) => v.link_sel.and_then(|i| d.links().get(i).copied()),
+            _ => None,
+        };
+        let has_links = doc.ready().is_some_and(|d| d.blocks.iter().any(|b| b.spans.iter().any(|s| s.link.is_some())));
         let root = div().size_full().relative().bg(pal.bg);
         let back = self.btn("reader.back", "Back", Some("B"), Tone::Quiet, Act::Back, cx);
         let top = div()
@@ -636,10 +707,12 @@ impl LainApp {
                         // The reader took over: stop holding a landing.
                         if let Some(v) = app.bv() {
                             v.land = None;
+                            v.link_sel = None;
                         }
                     }));
                 for (i, b) in d.blocks.iter().enumerate() {
-                    col = col.child(self.book_block(&id, i, b, fs, col_w, sf, &weak, cx));
+                    let f = focus.filter(|f| f.0 == i).map(|f| f.1);
+                    col = col.child(self.book_block(&id, i, b, f, fs, col_w, sf, &weak, cx));
                 }
                 stage.child(col)
             }
@@ -674,12 +747,25 @@ impl LainApp {
                     .gap(px(4.))
                     .text_size(px(th.ts(-2)))
                     .text_color(pal.muted)
-                    .child(self.kbd("← →"))
-                    .child("turn")
-                    .child(self.kbd("T"))
-                    .child("contents")
-                    .child(self.kbd("+ -"))
-                    .child("size"),
+                    // A focused link swaps in its own keys: the row stays one line.
+                    .when(focus.is_none(), |d| {
+                        d.child(self.kbd("← →"))
+                            .child("turn")
+                            .child(self.kbd("T"))
+                            .child("contents")
+                            .child(self.kbd("+ -"))
+                            .child("size")
+                            .when(has_links, |d| d.child(self.kbd("Tab")).child("links"))
+                    })
+                    .when(focus.is_some(), |d| {
+                        d.child(self.kbd("Tab"))
+                            .child(self.kbd("Shift+Tab"))
+                            .child("move")
+                            .child(self.kbd("Enter"))
+                            .child("follow")
+                            .child(self.kbd("Esc"))
+                            .child("clear")
+                    }),
             );
         let mut root = root.child(stage).child(top).child(bottom);
         if toc_open {
@@ -694,6 +780,7 @@ impl LainApp {
         id: &str,
         i: usize,
         b: &Block,
+        focus: Option<usize>,
         fs: f32,
         col_w: f32,
         sf: f32,
@@ -703,7 +790,12 @@ impl LainApp {
         let pal = &self.pal;
         let indent = b.indent as f32 * fs * 1.5;
         let cell = div().w(px(col_w)).flex_none().pl(px(indent));
-        let cell = if b.center { cell.text_center() } else { cell };
+        // GPUI has no justified text: `justify` reads as start-aligned.
+        let cell = match b.align {
+            Align::Center => cell.text_center(),
+            Align::Right => cell.text_right(),
+            Align::Start | Align::Justify => cell,
+        };
         match &b.kind {
             Kind::Rule => cell
                 .py(px(fs))
@@ -744,7 +836,7 @@ impl LainApp {
                     Kind::Row => (fs * 0.92, 1.45, self.fonts.ui.clone(), 0., fs * 0.3),
                     _ => (fs, 1.6, self.fonts.ui.clone(), 0., fs * 0.8),
                 };
-                let (text, runs, links) = self.book_runs(b, &family, matches!(kind, Kind::Heading(_)));
+                let (text, runs, links) = self.book_runs(b, &family, matches!(kind, Kind::Heading(_)), focus);
                 let styled = StyledText::new(text).with_runs(runs);
                 let body: AnyElement = if links.is_empty() {
                     styled.into_any_element()
@@ -776,21 +868,25 @@ impl LainApp {
         }
     }
 
-    /// A block's text, its font runs and its links (byte ranges).
+    /// A block's text, its font runs and its links (byte ranges, one per
+    /// link of `Block::links`); the `focus`-th link wears the focus ring.
     #[allow(clippy::type_complexity)]
     fn book_runs(
         &self,
         b: &Block,
         family: &gpui::SharedString,
         heading: bool,
+        focus: Option<usize>,
     ) -> (String, Vec<TextRun>, Vec<(std::ops::Range<usize>, Link)>) {
         let pal = &self.pal;
+        let groups = b.links();
         let mut text = String::new();
         let mut runs = Vec::with_capacity(b.spans.len());
-        let mut links = Vec::new();
-        for s in &b.spans {
-            let start = text.len();
+        let mut starts = vec![0usize; b.spans.len() + 1];
+        for (si, s) in b.spans.iter().enumerate() {
+            starts[si] = text.len();
             text.push_str(&s.text);
+            let focused = focus.and_then(|n| groups.get(n)).is_some_and(|(r, _)| r.contains(&si));
             let mut f = gpui::font(if s.style & book::CODE != 0 { self.fonts.mono.clone() } else { family.clone() });
             f.weight = if s.style & book::BOLD != 0 {
                 FontWeight::BOLD
@@ -809,26 +905,31 @@ impl LainApp {
             } else {
                 pal.text
             };
-            let line = |c: gpui::Hsla| Some(UnderlineStyle { thickness: px(1.), color: Some(c), wavy: false });
+            let line = |c: gpui::Hsla, w: f32| Some(UnderlineStyle { thickness: px(w), color: Some(c), wavy: false });
             runs.push(TextRun {
                 len: s.text.len(),
                 font: f,
-                color,
-                background_color: (s.style & book::CODE != 0).then(|| pal.surface.opacity(0.7)),
-                underline: if s.link.is_some() {
-                    line(pal.accent.opacity(0.5))
+                color: if focused { pal.text } else { color },
+                background_color: if focused {
+                    Some(pal.accent.opacity(0.32))
+                } else {
+                    (s.style & book::CODE != 0).then(|| pal.surface.opacity(0.7))
+                },
+                underline: if focused {
+                    line(pal.accent, 2.)
+                } else if s.link.is_some() {
+                    line(pal.accent.opacity(0.5), 1.)
                 } else if s.style & book::UNDERLINE != 0 {
-                    line(color)
+                    line(color, 1.)
                 } else {
                     None
                 },
                 strikethrough: (s.style & book::STRIKE != 0)
                     .then_some(StrikethroughStyle { thickness: px(1.), color: Some(color) }),
             });
-            if let Some(l) = &s.link {
-                links.push((start..text.len(), l.clone()));
-            }
         }
+        starts[b.spans.len()] = text.len();
+        let links = groups.into_iter().map(|(r, l)| (starts[r.start]..starts[r.end], l)).collect();
         (text, runs, links)
     }
 

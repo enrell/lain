@@ -98,6 +98,10 @@ object Ic {
     val HeartFilled by lazy { stroke("M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z", filled = true) }
     val CheckCircle by lazy { stroke("M21.8 10A10 10 0 1 1 17 3.34", "m9 11 3 3L22 4") }
     val Swap by lazy { stroke("M8 3 4 7l4 4", "M4 7h16", "m16 21 4-4-4-4", "M20 17H4") }
+    /** Two pages side by side: the paged book layout. */
+    val Pages by lazy { stroke("M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M12 3v18") }
+    /** Lines running down: the scrolled book layout. */
+    val Scroll by lazy { stroke("M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M7 8h10", "M7 12h10", "M7 16h6") }
     val Check by lazy { stroke("M20 6 9 17l-5-5") }
     // The ring without its tick: what "mark unwatched" leaves.
     val Circle by lazy { stroke("M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20") }

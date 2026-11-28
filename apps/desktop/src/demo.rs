@@ -12,7 +12,8 @@
 //!   chrome visible), `seek:<s>`, `sub:<id>`
 //! - `theme:<id>`, `focus:<widget id>`, `tab`, `key:<down|up|right|left>`
 //!   (in-app focus moves, not OS input; in the reader, any reader key
-//!   such as `key:pagedown`, `key:n` or `key:t`)
+//!   such as `key:pagedown`, `key:n`, `key:t` or `key:tab`; `shift-`
+//!   holds Shift, as `key:shift-tab`)
 //! - `set:<field>=<text>`, `kind:<library kind>`, `run:<create-library|scan|refresh|set-pin|save-profile|save-pathmap|download>`
 //!   (fill fields and run actions as a user would)
 //! - `ext-install:<path>` (an extension folder or zip), `ext-allow`,
@@ -283,8 +284,14 @@ fn step_now(app: &mut LainApp, cmd: &str, arg: &str, window: &mut gpui::Window, 
         "tab" => app.move_focus(1),
         "key" => {
             // In-app focus movement for screenshots of focus states.
+            // `shift-<key>` holds Shift (`key:shift-tab`).
+            let (shift, key) = match arg.strip_prefix("shift-") {
+                Some(k) if !k.is_empty() => (true, k),
+                _ => (false, arg),
+            };
+            let modifiers = gpui::Modifiers { shift, ..Default::default() };
             let ev = gpui::KeyDownEvent {
-                keystroke: gpui::Keystroke { modifiers: Default::default(), key: arg.to_string(), key_char: None },
+                keystroke: gpui::Keystroke { modifiers, key: key.to_string(), key_char: None },
                 is_held: false,
             };
             match app.screen {

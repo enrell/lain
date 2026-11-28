@@ -107,7 +107,12 @@ shown next to actions.
   jump, `↑/↓` volume, `M` mute, `A`/`S` cycle audio/subtitles, `N` next,
   `F` fullscreen, `Esc` back. Next episode after a 5 s countdown.
 - **Reader:** one page fit to the window, arrows in the archive's direction
-  (`rtl` for manga), `Space`/`PgDn` forward, `Home/End`.
+  (`rtl` for manga), `Space`/`PgDn` forward, `Home/End`. A reflowable book
+  (EPUB, MOBI, AZW3) scrolls by chapters: `←/→` turn, `N`/`P` chapters, `T`
+  contents, `+`/`-` size; `Tab`/`Shift+Tab` walk the chapter's links with a
+  focus ring (from the first one on screen), `Enter` follows, `Esc` lets go.
+  Of the book's CSS only `text-align`, `font-style`, `font-weight` and
+  `display: none` on simple selectors are honoured.
 - **Downloads:** offline copies with live progress; play, pause, resume, remove.
 - **Settings:** YOU (account, profile and avatar, private libraries and PIN,
   appearance, playback & downloads) and, for admins, SERVER (users,
