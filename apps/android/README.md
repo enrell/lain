@@ -87,6 +87,16 @@ JVM unit tests: `./gradlew :app:testDebugUnitTest`; add
 `-PlainHostLib=<path to the host liblain_ffi.so>` to run the bindings smoke
 test through JNA.
 
+Device test (CI only, the `android-device` workflow): on an API 34 x86_64
+emulator, `scripts/device-test.sh` starts `lain serve` with a book library
+of the conformance fixtures, then runs `BookReaderDeviceTest`
+(`app/src/androidTest`) twice: online (log in through the core, the EPUB's
+text in the reader's WebView, a chapter turn saved as progress, the EPUB
+downloaded, the PDF's pages drawn) and, with the server stopped, offline
+(the downloaded EPUB opens). Screenshots are the `android-device-screens`
+artifact. Without `-e phase` both tests skip, so a plain
+`./gradlew connectedDebugAndroidTest` passes on any device.
+
 ## Releases (D-278)
 
 A `v*` tag attaches `lain_<version>_android.apk` to the GitHub release when

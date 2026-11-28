@@ -53,6 +53,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -639,7 +640,8 @@ fun BookReaderScreen(
                     Text(title.ifEmpty { book.title }, color = l.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
                         stringResource(R.string.progress_page, page, pages) + " · " + stringResource(R.string.book_chapter_n, spot.chapter + 1, count),
-                        Modifier.padding(top = 2.dp), color = l.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        // The device test (app/src/androidTest) waits on this line.
+                        Modifier.padding(top = 2.dp).testTag(BOOK_STATUS_TAG), color = l.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
                 SizeBtn("A−", stringResource(R.string.book_text_smaller)) { setZoom(zoom - 10) }
@@ -693,6 +695,9 @@ fun BookReaderScreen(
         }
     }
 }
+
+/** The book reader's "Page X of Y · Chapter N of M" line, for the device test. */
+const val BOOK_STATUS_TAG = "book-status"
 
 /** A small text button of the bar (the text size). */
 @Composable

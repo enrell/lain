@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import kotlinx.coroutines.launch
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.shape.CircleShape
@@ -277,7 +278,7 @@ fun ReaderScreen(
                         val bytes = model.page(i)
                         value = bytes?.let { withContext(Dispatchers.Default) { decode(it, 2400) } }
                     }
-                    bmp?.let { Image(it, contentDescription = stringResource(R.string.progress_page, i + 1, book.pages.size), contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth()) }
+                    bmp?.let { Image(it, contentDescription = stringResource(R.string.progress_page, i + 1, book.pages.size), contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth().testTag(readerPageTag(i))) }
                         // A page not here yet holds a page's room, so the strip does not jump as it arrives.
                         ?: Box(Modifier.fillMaxWidth().aspectRatio(0.7f), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(36.dp), color = l.muted, strokeWidth = 2.dp) }
                 }
@@ -337,7 +338,7 @@ fun ReaderScreen(
                 bmp?.let {
                     Image(
                         it, contentDescription = null, contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y },
+                        modifier = Modifier.fillMaxSize().testTag(readerPageTag(i)).graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y },
                     )
                 }
                     ?: CircularProgressIndicator(Modifier.size(36.dp), color = l.muted, strokeWidth = 2.dp)
@@ -444,6 +445,9 @@ fun ReaderScreen(
         }
     }
 }
+
+/** A drawn page of the page reader (there only once its picture is decoded), for the device test. */
+fun readerPageTag(index: Int): String = "reader-page-$index"
 
 /**
  * The page being read in scroll mode: of the visible pages ([visible] holds each one's

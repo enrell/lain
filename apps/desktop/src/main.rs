@@ -10,6 +10,7 @@ mod demo;
 mod engine;
 mod ext;
 mod images;
+mod justify;
 mod layout;
 mod local_book;
 #[cfg(windows)]
@@ -84,9 +85,12 @@ const FONTS: &[&[u8]] = &[
     include_bytes!("../assets/fonts/inter-latin-400-normal.ttf"),
     include_bytes!("../assets/fonts/inter-latin-500-normal.ttf"),
     include_bytes!("../assets/fonts/inter-latin-600-normal.ttf"),
+    include_bytes!("../assets/fonts/inter-latin-400-italic.ttf"),
+    include_bytes!("../assets/fonts/inter-latin-600-italic.ttf"),
     include_bytes!("../assets/fonts/fraunces-latin-400-normal.ttf"),
     include_bytes!("../assets/fonts/fraunces-latin-600-normal.ttf"),
     include_bytes!("../assets/fonts/fraunces-latin-700-normal.ttf"),
+    include_bytes!("../assets/fonts/fraunces-latin-400-italic.ttf"),
     include_bytes!("../assets/fonts/jetbrains-mono-latin-400-normal.ttf"),
 ];
 

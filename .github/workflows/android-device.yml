@@ -1,0 +1,121 @@
+name: Android device
+
+# The Android book readers on an emulator against a real `lain serve`
+# (apps/android/scripts/device-test.sh): the app's core through its
+# UniFFI bindings, the reader screens through Compose UI tests, online
+# and then with the server stopped. Screenshots are uploaded.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/android/**
+      - crates/**
+      - .github/workflows/android-device.yml
+  pull_request:
+    paths:
+      - apps/android/**
+      - crates/**
+      - .github/workflows/android-device.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-device-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  device:
+    name: android device (emulator, book readers)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: "4"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal \
+            --target aarch64-linux-android,x86_64-linux-android
+          rustc --version
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.cargo/bin/cargo-ndk
+            apps/android/lain-ffi/target
+            target
+          key: android-device-${{ hashFiles('Cargo.lock', 'apps/android/lain-ffi/Cargo.lock') }}-${{ hashFiles('crates/**/*.rs', 'crates/**/Cargo.toml', 'apps/android/lain-ffi/src/**') }}
+          restore-keys: |
+            android-device-${{ hashFiles('Cargo.lock', 'apps/android/lain-ffi/Cargo.lock') }}-
+            android-device-
+      - name: cargo-ndk
+        run: command -v cargo-ndk >/dev/null || cargo install cargo-ndk --locked --version 4.1.2
+      - name: Lint the device script
+        run: sh -n apps/android/scripts/device-test.sh && shellcheck apps/android/scripts/device-test.sh
+      # The server the emulator talks to; the web UI is not needed.
+      - name: Server (release)
+        run: cargo build --release --locked -p lain
+      # The android job's build: lain-ffi for both ABIs and its Kotlin bindings.
+      - name: Rust libraries and Kotlin bindings
+        working-directory: apps/android
+        run: ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" scripts/build-rust.sh
+      - name: App and device-test APKs
+        working-directory: apps/android
+        run: ./gradlew --no-daemon --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: AVD cache
+        uses: actions/cache@v6
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-34-google_apis-x86_64
+      - name: AVD snapshot
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Generated the AVD snapshot for caching."
+      - name: Device test
+        timeout-minutes: 30
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          working-directory: apps/android
+          script: scripts/device-test.sh "${{ github.workspace }}/target/release/lain" "${{ runner.temp }}/device"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-device-screens
+          path: |
+            ${{ runner.temp }}/device/screens/
+            ${{ runner.temp }}/device/*.txt
+            ${{ runner.temp }}/device/server.log
+          if-no-files-found: warn
+          retention-days: 14

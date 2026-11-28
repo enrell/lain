@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, Div, FontStyle, FontWeight, ImageSource, InteractiveText, ScrollHandle, StrikethroughStyle,
-    StyledText, TextRun, UnderlineStyle, Window, div, img, point, px,
+    AnyElement, Context, Div, ElementId, FontStyle, FontWeight, ImageSource, InteractiveText, ScrollHandle,
+    StrikethroughStyle, StyledText, TextRun, UnderlineStyle, Window, WindowTextSystem, div, img, point, px,
 };
 use lain_client::types::{BookManifest, BookTocEntry, Progress};
 
@@ -710,9 +710,10 @@ impl LainApp {
                             v.link_sel = None;
                         }
                     }));
+                let ts = window.text_system().clone();
                 for (i, b) in d.blocks.iter().enumerate() {
                     let f = focus.filter(|f| f.0 == i).map(|f| f.1);
-                    col = col.child(self.book_block(&id, i, b, f, fs, col_w, sf, &weak, cx));
+                    col = col.child(self.book_block(&id, i, b, f, fs, col_w, sf, &ts, &weak, cx));
                 }
                 stage.child(col)
             }
@@ -784,13 +785,15 @@ impl LainApp {
         fs: f32,
         col_w: f32,
         sf: f32,
+        ts: &Arc<WindowTextSystem>,
         weak: &gpui::WeakEntity<LainApp>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let pal = &self.pal;
         let indent = b.indent as f32 * fs * 1.5;
         let cell = div().w(px(col_w)).flex_none().pl(px(indent));
-        // GPUI has no justified text: `justify` reads as start-aligned.
+        // GPUI has no justified text: body paragraphs break their own lines
+        // (`book_justified`), anything else reads as start-aligned.
         let cell = match b.align {
             Align::Center => cell.text_center(),
             Align::Right => cell.text_right(),
@@ -837,21 +840,12 @@ impl LainApp {
                     _ => (fs, 1.6, self.fonts.ui.clone(), 0., fs * 0.8),
                 };
                 let (text, runs, links) = self.book_runs(b, &family, matches!(kind, Kind::Heading(_)), focus);
-                let styled = StyledText::new(text).with_runs(runs);
-                let body: AnyElement = if links.is_empty() {
-                    styled.into_any_element()
-                } else {
-                    let ranges: Vec<_> = links.iter().map(|(r, _)| r.clone()).collect();
-                    let targets: Vec<Link> = links.into_iter().map(|(_, l)| l).collect();
-                    let weak = weak.clone();
-                    InteractiveText::new(("book.text", i), styled)
-                        .on_click(ranges, move |ix, _, cx| {
-                            if let Some(l) = targets.get(ix).cloned() {
-                                let _ = weak.update(cx, |app, cx| app.book_follow(l, cx));
-                            }
-                        })
-                        .into_any_element()
-                };
+                let spread = b.align == Align::Justify && matches!(kind, Kind::Para | Kind::Item(_));
+                let marker_w = if matches!(kind, Kind::Item(_)) { fs * 1.8 } else { 0. };
+                let body = spread
+                    .then(|| book_justified(i, &text, &runs, &links, size, col_w - indent - marker_w, ts, weak))
+                    .flatten()
+                    .unwrap_or_else(|| book_piece(("book.text", i).into(), &text, &runs, &links, 0..text.len(), weak));
                 let cell = cell.pt(px(before)).pb(px(after)).text_size(px(size)).line_height(px(size * lh));
                 match kind {
                     Kind::Item(marker) => cell
@@ -994,4 +988,96 @@ impl LainApp {
                 .child(list),
         )
     }
+}
+
+/// Part of a block's text (`range`) as one element: its slice of the font
+/// runs, clickable where it overlaps a link (`links` are block-wide byte
+/// ranges, like `book_runs` returns them).
+fn book_piece(
+    id: ElementId,
+    text: &str,
+    runs: &[TextRun],
+    links: &[(std::ops::Range<usize>, Link)],
+    range: std::ops::Range<usize>,
+    weak: &gpui::WeakEntity<LainApp>,
+) -> AnyElement {
+    let sub = piece_runs(runs, range.clone());
+    let styled = StyledText::new(text[range.clone()].to_string()).with_runs(sub);
+    let (mut ranges, mut targets) = (Vec::new(), Vec::new());
+    for (r, l) in links {
+        let (s, e) = (r.start.max(range.start), r.end.min(range.end));
+        if s < e {
+            ranges.push(s - range.start..e - range.start);
+            targets.push(l.clone());
+        }
+    }
+    if ranges.is_empty() {
+        return styled.into_any_element();
+    }
+    let weak = weak.clone();
+    InteractiveText::new(id, styled)
+        .on_click(ranges, move |ix, _, cx| {
+            if let Some(l) = targets.get(ix).cloned() {
+                let _ = weak.update(cx, |app, cx| app.book_follow(l, cx));
+            }
+        })
+        .into_any_element()
+}
+
+/// The font runs that cover `range` of a block's text.
+fn piece_runs(runs: &[TextRun], range: std::ops::Range<usize>) -> Vec<TextRun> {
+    let lens: Vec<usize> = runs.iter().map(|r| r.len).collect();
+    crate::justify::slice_runs(&lens, range).into_iter().map(|(i, len)| TextRun { len, ..runs[i].clone() }).collect()
+}
+
+/// A paragraph set in `text-align: justify`: broken into lines from the
+/// text system's widths of its words (`crate::justify`), every full line
+/// spread edge to edge, the last and the short ones left ragged. `None`
+/// when it cannot be measured, and the caller draws it start-aligned.
+#[allow(clippy::too_many_arguments)]
+fn book_justified(
+    i: usize,
+    text: &str,
+    runs: &[TextRun],
+    links: &[(std::ops::Range<usize>, Link)],
+    size: f32,
+    width: f32,
+    ts: &WindowTextSystem,
+    weak: &gpui::WeakEntity<LainApp>,
+) -> Option<AnyElement> {
+    let words = crate::justify::words(text);
+    let first = runs.first()?;
+    // A pixel of slack: shaping a whole line may round wider than its words.
+    let width = width - 1.;
+    if words.len() < 2 || width <= 0. {
+        return None;
+    }
+    let measure = |r: std::ops::Range<usize>| {
+        f32::from(ts.layout_line(&text[r.clone()], px(size), &piece_runs(runs, r), None).width)
+    };
+    let widths: Vec<f32> = words.iter().map(|w| measure(w.range.clone())).collect();
+    let space_run = TextRun { len: 1, ..first.clone() };
+    let space = f32::from(ts.layout_line(" ", px(size), &[space_run], None).width);
+    if space <= 0. || widths.iter().any(|w| *w <= 0.) {
+        return None;
+    }
+    let hard: Vec<bool> = words.iter().map(|w| w.hard_break).collect();
+    let mut n = 0usize;
+    let mut piece = |r: std::ops::Range<usize>| {
+        n += 1;
+        book_piece(("book.word", n).into(), text, runs, links, r, weak)
+    };
+    let mut body = div().id(("book.para", i)).flex().flex_col().w_full();
+    for line in crate::justify::break_lines(&widths, &hard, space, width) {
+        let ws = &words[line.words.clone()];
+        let row = div().flex().w_full().whitespace_nowrap();
+        let row = if line.justify {
+            ws.iter().fold(row.justify_between(), |row, w| row.child(piece(w.range.clone())))
+        } else {
+            let (Some(a), Some(b)) = (ws.first(), ws.last()) else { continue };
+            row.child(piece(a.range.start..b.range.end))
+        };
+        body = body.child(row);
+    }
+    Some(body.into_any_element())
 }

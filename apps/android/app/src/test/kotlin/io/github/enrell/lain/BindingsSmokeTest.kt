@@ -4,6 +4,7 @@ import io.github.enrell.lain.core.LainCore
 import io.github.enrell.lain.core.LainException
 import io.github.enrell.lain.core.builtinThemes
 import io.github.enrell.lain.core.coreVersion
+import io.github.enrell.lain.core.keepCallbackThreadsAttached
 import io.github.enrell.lain.core.parseTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -47,6 +48,7 @@ class BindingsSmokeTest {
     @Test
     fun anUnreachableServerIsATypedOfflineError() = runBlocking {
         val dir = Files.createTempDirectory("lain-core").toFile()
+        keepCallbackThreadsAttached()
         val core = LainCore(dir.resolve("state").path, dir.resolve("copies").path)
         try {
             assertNull(core.session())
