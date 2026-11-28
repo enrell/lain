@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **Books** (D-303..D-309): a library type `book` reads EPUB, PDF, MOBI and
+  AZW3 (`auto` libraries take them too). EPUBs open in a new reader, paged
+  or scrolled, with contents, text size, fonts, colours and the reading
+  keys; MOBI and AZW3 are converted to EPUB on the fly; PDFs are drawn by
+  Lain's own PDF library (`lain-pdf`, no outside code) and read like comic
+  pages. Progress is kept in virtual pages, so every device shows the same
+  page. A book's title, description, subjects and cover come from the file
+  itself, never from the internet. DRM-protected books are refused. Books
+  can be saved for offline reading in the browser; the desktop and Android
+  apps read PDFs in their page readers and open EPUBs in the web reader.
 - **Plugins can tell the operator something** (D-300): a provider that
   works can still carry one line for the operator, such as the
   lain-parser daemon reporting a newer model on its release channel. It

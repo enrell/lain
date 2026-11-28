@@ -105,7 +105,7 @@ does not serve.
 |---|---|---|---|
 | **core** (always) | auth, libraries/roots, catalog, userstate, search, settings, theme, backup | Home, Search, Settings | `main` |
 | **watch** | playback plan, transcode, probe, thumbnail, local playback, external player handoff | Library (video kinds), Player | `main` |
-| **read** | comic pages, reader, offline pages | Read (manga, comic) | `main`; books later (§5.4) |
+| **read** | comic pages, books (EPUB, PDF, MOBI, AZW3), readers, offline pages | Read (manga, comic, book) | `main`; books since D-303 |
 | **acquire** | release parse, indexer, torrent engine, downloads, source watch | Acquire | `main`; adds **web extraction** via Anything (§6) |
 | **subtitles** | `lain.subtitle@1` (search/download) → **adds `lain.subtitle.translate@1`** | in Item and Player, plus Settings | `main` + animesubs component (§6) |
 | **identify** | `lain.release.parse@1`, `lain.media.identify@1` | none (works behind the scenes) | in-tree tokenizer + lain-parser component |
@@ -440,7 +440,7 @@ embedded web SPA and the command-line client.
 2. Should the Android app also target **Android TV** in v1?
 3. Should **hfest** downloads feed a private manga library, or does hfest stay
    fully separate?
-4. **Books:** is reading EPUB/PDF in lain wanted soon enough to plan the `book`
+4. **Books (answered by D-303: the `book` kind exists, with EPUB, PDF, MOBI and AZW3):** is reading EPUB/PDF in lain wanted soon enough to plan the `book`
    kind in P1's roots migration?
 5. **Remote access:** native clients outside the LAN mean Tailscale/WireGuard
    (owner's "no internet exposure" rule). Should `lain-client` support a direct

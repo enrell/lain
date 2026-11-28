@@ -73,3 +73,117 @@ answered, and for a day.
   backfills until one asks with `retry`; a skipped (failed) provider
   never makes a miss, and a manual `POST /api/catalog/{id}/enrich` always
   asks. Items of local-only libraries are never remembered (a file read).
+
+## D-303 — books: EPUB, PDF, MOBI and AZW3 in the read module
+
+2026-11-27, asked for by the owner: "full book support ... EPUB, PDF (our
+own library written from scratch in Rust), MOBI (converted to EPUB) and
+AZW3 (likewise). Online search stays out". This answers DESIGN-v2 §12 Q4
+and amends D-085 (which left `pdf` unread) and D-195 ("no PDF").
+
+- The read module (D-154) reads `manga`, `comic` and now `book`: its
+  capabilities are `lain.comic.pages@1` and `lain.book.manifest@1`, its
+  routes `/api/items/{id}/pages*` and `/api/items/{id}/book*`, so
+  disabling it unmounts both.
+- No online metadata for books, ever (D-308). Audiobooks stay out (D-016).
+- The web saves books for offline reading like comics (the manifest,
+  chapters and their resources, or a PDF's pages at 1536 px, which the
+  service worker serves at any width asked).
+- The desktop and Android apps read PDF books in their page readers
+  (`/pages`); a reflowable book opens in the server's web reader in the
+  system browser (`LainCore::web_reader_url`, the desktop's
+  `platform::open_url`). Not done: a native EPUB renderer in either app.
+
+## D-304 — `lain-pdf`, an in-tree PDF library
+
+2026-11-27, the owner's order (D-303). A workspace crate with no crate
+beyond `miniz_oxide` (DEFLATE, PNG) and `sha2` (the AES-256 revision's
+hash): the file structure with xref tables and streams, object streams,
+incremental updates and a rebuild by scanning when the xref is broken; the
+standard security handler for the empty user password (RC4, AES-128/256,
+MD5 in-tree); the stream filters, a JPEG decoder and encoder, a JPEG 2000
+decoder (Part 1: JP2 and raw codestreams, every progression and code-block
+mode, both wavelets, palettes), PNG, CCITT G3/G4 and JBIG2; TrueType, CFF (CID-keyed too) and Type 1 font programs,
+the standard encodings and the Adobe Glyph List; simple, composite and
+Type 3 fonts with CMaps; colour spaces, functions, shadings (meshes
+included), tiling patterns, transparency groups, soft masks, optional
+content and annotation appearances; an exact-area anti-aliased
+rasterizer with a stroker. A page is drawn as a picture (`render_page`,
+then JPEG when pictures cover most of it, else PNG), so every client reads
+PDFs the way it reads comic pages.
+
+- Fonts a PDF names without embedding are drawn with installed
+  look-alikes (`font::system`: URW base 35 first, the standard 14's metric
+  clones; then Liberation, the usual Windows and macOS names, DejaVu). The
+  Docker image installs `font-urw-base35`; with none installed, the
+  manifest warns `fonts-missing` and the text is not drawn.
+- Work is bounded: an operator budget and a deadline per page, capped
+  images, pages, decoded streams and nesting; hostile input is a typed
+  error, never a panic. Rendered pages are cached in memory (128 MB).
+
+## D-305 — EPUB, and MOBI/AZW3 converted to EPUB
+
+2026-11-27 (D-303). An EPUB is read in place (container, package
+document, EPUB 3 navigation or NCX, IDPF and Adobe font obfuscation). A
+MOBI (MOBI 6/7, PalmDOC and HUFF/CDIC) or AZW3 (KF8, joint files
+included) is converted to an EPUB 3 in memory and served exactly like an
+EPUB; the conversion is deterministic and takes tens of milliseconds.
+DRM (encrypted MOBI records, or an EPUB whose content documents use an
+encryption other than font obfuscation) is refused as `drm-protected`.
+
+- A chapter is sanitized on the server: rebuilt as HTML from an
+  allowlist of elements and attributes; scripts, handlers, forms, frames
+  and every URL leaving the book are dropped; links between chapters carry
+  `data-lain-chapter`/`data-lain-anchor`; resources point at the
+  resource route; the chapter's stylesheets are inlined with their URLs
+  rewritten. Chapters and resources are served with
+  `Content-Security-Policy: sandbox …` and the web shows them in a frame
+  that runs no script.
+- Converted books are kept in memory (bounded, 512 MB with PDFs), never
+  written to the data dir: nothing to back up (D-197) or clean (D-301).
+
+## D-306 — the `book` kind, its routes and the readers
+
+2026-11-27 (D-303). A library type `book` (`epub`, `pdf`, `mobi`, `azw3`);
+`auto` (D-270) takes them too. The book identifier
+(`lain-identify-book`) runs before the comic and anime ones (composition
+version 11 adopts it into saved documents) and declines every other
+extension, so the parity fixture does not move; the kind is always
+`book`. Routes (D-169, conformance `read/00-read.json`):
+`GET /api/items/{id}/book` (the manifest), `/book/chapters/{n}` (a
+sanitized chapter), `/book/res/{*path}` (a resource, `?token=` like
+pages); a PDF book is read through `/api/items/{id}/pages` (sizes in
+points) and `/pages/{n}?w=` (rendered `w` pixels wide). The web reads a
+PDF with the comic engine (ReaderBase) and a reflowable book with a
+reader of its own: paged in columns or scrolled, contents, text size,
+font, colours, spacing and margins (personal, applied at once), and the
+reading keys of D-086. Integrations may send `book` (D-266); `lain watch`
+refuses it like a comic.
+
+## D-307 — reading progress of books in virtual pages
+
+2026-11-27 (D-303), amending D-085's page/page-count rule for reflowable
+books only: a page there depends on the screen, so progress is counted in
+virtual pages of 1024 characters (`BOOK_PAGE_CHARS`): `position_sec` is
+the 1-based page, fractional to keep the exact place, `duration_sec` the
+book's page count, so "page 183 of 512" reads the same on every client.
+Characters are counted by a versioned rule (`text@1`: non-whitespace
+characters of the sanitized chapter's body), named in the manifest's
+`count_rule`. A PDF keeps D-085's real pages.
+
+## D-308 — book metadata comes from the book only
+
+2026-11-27 (D-303). The enrich pass (D-302) asks `lain-metadata-book`, a
+local provider like `.nfo` files, for a book's own title, description
+(`synopsis`), subjects (`genres`) and year; `book` items are local-only
+whatever their library says, and never remembered as misses. The overlay
+stays as D-032 froze it: authors, language and publisher are in the
+`/book` manifest. Covers come from the book (its cover image, or a PDF's
+first page) through the thumbnail route.
+
+## D-309 — `auto` libraries take books
+
+2026-11-27 (D-303, D-270). `auto` is "a folder that holds more than one
+kind", so it takes the four book formats with the video and comic ones.
+An existing `auto` library imports the books (and PDFs) its folder holds
+on its next scan.
