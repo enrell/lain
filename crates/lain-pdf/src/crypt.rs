@@ -413,11 +413,8 @@ impl Md5 {
         for c in all.as_chunks::<64>().0.iter() {
             self.block(c);
         }
-        let mut out = [0u8; 16];
-        for (i, w) in self.state.iter().enumerate() {
-            out[i * 4..i * 4 + 4].copy_from_slice(&w.to_le_bytes());
-        }
-        out
+        let state = self.state;
+        std::array::from_fn(|i| state[i / 4].to_le_bytes()[i % 4])
     }
 }
 

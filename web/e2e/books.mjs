@@ -154,6 +154,9 @@ async function waitFor(expression, timeoutMs = 15000, label = expression) {
 }
 
 async function key(k, code, keyCode, shift = false) {
+	// The reader ignores page turns closer than 110 ms (a held key): a
+	// fast machine would otherwise lose a turn right after a chapter loads.
+	await sleep(200);
 	for (const type of ['keyDown', 'keyUp']) {
 		await page.send('Input.dispatchKeyEvent', { type, key: k, code, windowsVirtualKeyCode: keyCode, modifiers: shift ? 8 : 0 });
 	}
