@@ -15,7 +15,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   page. A book's title, description, subjects and cover come from the file
   itself, never from the internet. DRM-protected books are refused. Books
   can be saved for offline reading in the browser; the desktop and Android
-  apps read PDFs in their page readers and open EPUBs in the web reader.
+  apps read PDFs in their page readers and EPUB, MOBI and AZW3 in native
+  readers of their own.
 - **Plugins can tell the operator something** (D-300): a provider that
   works can still carry one line for the operator, such as the
   lain-parser daemon reporting a newer model on its release channel. It

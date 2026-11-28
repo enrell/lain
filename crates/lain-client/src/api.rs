@@ -607,6 +607,23 @@ impl Client {
         self.call(Method::GET, &format!("/api/items/{}/book", encode(item_id)), Body::None).await
     }
 
+    /// Chapter `n` of a reflowable book as the server's sanitized HTML
+    /// (D-305). Invalid UTF-8 is replaced rather than failing the chapter.
+    pub async fn book_chapter(&self, item_id: &str, n: i64) -> Result<String, ClientError> {
+        let path = format!("/api/items/{}/book/chapters/{n}", encode(item_id));
+        let body = self.raw(Method::GET, &path, Body::None, true).await?;
+        Ok(String::from_utf8_lossy(&body).into_owned())
+    }
+
+    /// The bytes of one book member (an image a chapter shows). `path` is
+    /// the member path inside the book, decoded; each segment is encoded
+    /// here so the route's `{*path}` sees the same folders.
+    pub async fn book_resource(&self, item_id: &str, path: &str) -> Result<Vec<u8>, ClientError> {
+        let member: Vec<String> = path.split('/').map(encode).collect();
+        let path = format!("/api/items/{}/book/res/{}", encode(item_id), member.join("/"));
+        Ok(self.raw(Method::GET, &path, Body::None, true).await?.to_vec())
+    }
+
     /// One page's image bytes; `index` is the page's `index`.
     pub async fn comic_page(&self, item_id: &str, index: i64) -> Result<Vec<u8>, ClientError> {
         let path = format!("/api/items/{}/pages/{index}", encode(item_id));

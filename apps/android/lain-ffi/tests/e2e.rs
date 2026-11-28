@@ -423,6 +423,71 @@ async fn read_offline_copy() {
     std::fs::remove_dir_all(root).ok();
 }
 
+/// The native book reader's calls (D-306): the manifest, a chapter
+/// ready for a WebView (absolute resources with the token, chapter links
+/// on `lain-chapter://`), and progress on the shared virtual pages.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn read_a_reflowable_book() {
+    let root = temp("ffi-book");
+    let server = read_server(&root).await;
+    let (_admin, _bob) = admin_and_bob(&server.url).await;
+    let proxy = Proxy::start(server.addr).await;
+    let core = core(&root);
+    let base = core.set_server(proxy.url.clone()).unwrap();
+    core.login("bob".into(), pw(2)).await.unwrap();
+
+    let book = core.book("item-read-epub".into()).await.unwrap();
+    assert_eq!(
+        (book.layout.as_str(), book.title.as_str(), book.direction.as_str()),
+        ("reflowable", "Tiny Book", "ltr")
+    );
+    assert_eq!(book.authors, ["A. Writer"]);
+    assert_eq!((book.chapters.len(), book.chapters[1], book.pages), (2, 7, 1));
+    let toc: Vec<_> = book.toc.iter().map(|t| (t.title.as_str(), t.chapter, t.anchor.as_str(), t.depth)).collect();
+    assert_eq!(toc, [("One", 0, "", 0), ("Two", 1, "end", 0)]);
+    let pdf = core.book("item-read-pdf".into()).await.unwrap();
+    assert_eq!((pdf.layout.as_str(), pdf.pages), ("pages", 2));
+    assert!(
+        matches!(core.book("item-read-manga".into()).await, Err(LainError::Api { status: 400, ref code, .. }) if code == "not-a-book")
+    );
+
+    let html = core.book_chapter("item-read-epub".into(), 0).await.unwrap();
+    assert!(html.contains("href=\"lain-chapter://1#end\" data-lain-chapter=\"1\""), "{html}");
+    assert!(!html.contains("steal"));
+    let token = core_token(&root, &base);
+    let cover = format!("{}/api/items/item-read-epub/book/res/OEBPS/cover.png?token=", base.trim_end_matches('/'));
+    let at = html.find(&cover).unwrap_or_else(|| panic!("{html}"));
+    let url = &html[at..at + html[at..].find('"').unwrap()];
+    assert!(url.ends_with(&lain_client::http::encode(&token)), "{url}");
+    // The URL loads on its own, as a WebView would ask for it.
+    let r = lain_http::Client::new(lain_http::Config::default()).unwrap().get(url).send().await.unwrap();
+    assert_eq!((r.status, r.header("content-type")), (200, Some("image/png")));
+    assert!(matches!(core.book_chapter("item-read-epub".into(), 2).await, Err(LainError::NotFound { .. })));
+    assert!(matches!(core.book_chapter("item-read-epub".into(), -1).await, Err(LainError::Invalid { .. })));
+
+    // Progress: the end of the last chapter finishes the book, and the
+    // place comes back from the saved record.
+    let p = lain_ffi::book_progress_at(book.chapters.clone(), 0, 0.5);
+    assert_eq!(p.duration, book.pages as f64);
+    core.save_progress("item-read-epub".into(), p.position, p.duration, p.completed).await.unwrap();
+    let saved = core.progress("item-read-epub".into()).await.unwrap();
+    let place = lain_ffi::book_position_of(book.chapters.clone(), saved.position_sec, saved.completed);
+    assert_eq!(place.chapter, 0);
+    assert!(lain_ffi::book_progress_at(book.chapters.clone(), 1, 1.0).completed);
+
+    proxy.set_online(false);
+    assert!(core.book_chapter("item-read-epub".into(), 1).await.unwrap_err().is_offline());
+    drop(core);
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// The session token the core keeps for `server` (its token store file).
+fn core_token(root: &std::path::Path, server: &str) -> String {
+    let store = lain_client::FileTokenStore::new(root.join("app/sessions.json"));
+    lain_client::TokenStore::load(&store, server).unwrap().expect("a session").token
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn events_push_queued_progress_on_connect() {
     let root = temp("ffi-events");

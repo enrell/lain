@@ -24,6 +24,8 @@ pub struct Config {
     pub path_map: Vec<(String, String)>,
     /// Per extension: enabled, granted and reviewed scopes (`ext/mod.rs`).
     pub extensions: std::collections::BTreeMap<String, crate::ext::ExtSettings>,
+    /// The book reader's text size, in steps from the theme's (+/-/0).
+    pub book_text: i32,
 }
 
 impl Default for Config {
@@ -36,6 +38,7 @@ impl Default for Config {
             autoplay_next: true,
             path_map: Vec::new(),
             extensions: Default::default(),
+            book_text: 0,
         }
     }
 }

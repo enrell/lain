@@ -735,6 +735,7 @@ dependencies = [
  "lain-client",
  "lain-conformance",
  "lain-core",
+ "lain-http",
  "lain-read",
  "lain-server",
  "lain-store",

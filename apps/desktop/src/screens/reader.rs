@@ -2,13 +2,15 @@
 //! one page fit to the window, turned with the arrows in the archive's
 //! reading direction (`rtl` for manga). Progress uses the same record as
 //! video: `position_sec` is the 1-based page, `duration_sec` the count.
+//! A reflowable book (EPUB, MOBI, AZW3) is read by chapters in
+//! `screens/book.rs` instead; a PDF book is pages, like a comic.
 
 use std::time::Instant;
 
 use gpui::prelude::*;
 use gpui::{Context, ImageSource, ObjectFit, Window, div, img, px};
 use lain_client::ClientError;
-use lain_client::types::ComicPages;
+use lain_client::types::{BookManifest, ComicPages, Progress};
 
 use crate::app::{Act, LainApp, Load};
 use crate::images::{ImgKey, Source};
@@ -20,9 +22,14 @@ pub struct ReaderState {
     pub page: usize,
     pub saved_page: usize,
     pub last_turn: Instant,
-    /// A reflowable book (EPUB, MOBI, AZW3) is read in the server's web
-    /// reader (D-306): its address, opened in the browser.
-    pub web: Option<String>,
+    /// A reflowable book, read by chapters (D-306).
+    pub book: Option<crate::screens::book::BookView>,
+}
+
+/// What an item opens as.
+enum Opened {
+    Pages(Result<ComicPages, ClientError>, Option<Progress>),
+    Book(BookManifest, Option<Progress>),
 }
 
 impl LainApp {
@@ -34,36 +41,40 @@ impl LainApp {
             page: 0,
             saved_page: 0,
             last_turn: Instant::now(),
-            web: None,
+            book: None,
         });
-        let (c, want) = (b.client.clone(), id.to_string());
+        let (c, want, id_done) = (b.client.clone(), id.to_string(), id.to_string());
         let sync = b.sync.clone();
         self.spawn_ui(
             cx,
             async move {
-                // A book read by chapters has no pages: the web reads it.
-                if let Ok(b) = c.book(&want).await
-                    && b.layout == "reflowable"
-                {
-                    let url = format!("{}/read/{}", c.server().trim_end_matches('/'), want);
-                    return (Err(ClientError::NotFound { message: url }), None, true);
-                }
-                let pages = c.comic_pages(&want).await;
                 let p = match sync {
                     Some(s) => s.fetch(&want).await.ok(),
                     None => c.progress(&want).await.ok(),
                 };
-                (pages, p, false)
-            },
-            |app, (pages, p, web), _| {
-                if web {
-                    if let (Some(r), Err(ClientError::NotFound { message })) = (app.reader.as_mut(), &pages) {
-                        crate::platform::open_url(message);
-                        r.web = Some(message.clone());
-                        r.pages = Load::Idle;
-                    }
-                    return;
+                // A book read by chapters has no pages: the book reader
+                // takes it. Anything else (or a server without the book
+                // routes) is a page reader.
+                if let Ok(b) = c.book(&want).await
+                    && b.layout == "reflowable"
+                {
+                    return Opened::Book(b, p);
                 }
+                Opened::Pages(c.comic_pages(&want).await, p)
+            },
+            move |app, opened, cx| {
+                let (pages, p) = match opened {
+                    Opened::Book(m, p) => {
+                        if app.reader.as_ref().is_some_and(|r| r.id == id_done) {
+                            if let Some(r) = app.reader.as_mut() {
+                                r.pages = Load::Idle;
+                            }
+                            app.open_book(&id_done, m, p, cx);
+                        }
+                        return;
+                    }
+                    Opened::Pages(pages, p) => (pages, p),
+                };
                 if let Some(r) = app.reader.as_mut() {
                     let n = pages.as_ref().map(|p| p.pages.len()).unwrap_or(0);
                     let resume = p
@@ -103,6 +114,9 @@ impl LainApp {
     }
 
     pub fn reader_key(&mut self, ev: &gpui::KeyDownEvent, cx: &mut Context<Self>) -> bool {
+        if self.reader.as_ref().is_some_and(|r| r.book.is_some()) {
+            return self.book_key(ev, cx);
+        }
         let rtl = self.reader.as_ref().and_then(|r| r.pages.ready()).is_some_and(|p| p.direction == "rtl");
         let fwd = if rtl { -1 } else { 1 };
         match ev.keystroke.key.as_str() {
@@ -124,6 +138,9 @@ impl LainApp {
         let sf = window.scale_factor();
         if self.reader.as_ref().map(|r| r.id != id).unwrap_or(true) {
             self.open_reader(id, cx);
+        }
+        if self.module_on("read") && self.reader.as_ref().is_some_and(|r| r.book.is_some()) {
+            return self.render_book(window, cx);
         }
         let title = self.by_id.get(id).map(|&i| self.catalog[i].title.clone()).unwrap_or_default();
         let back = self.btn("reader.back", "Back", Some("Esc"), Tone::Quiet, Act::Back, cx);
@@ -153,15 +170,6 @@ impl LainApp {
                     Notice::Disabled,
                     "The read module is off",
                     "An admin turned reading off on this server.",
-                )))
-                .child(top);
-        }
-        if let Some(url) = self.reader.as_ref().and_then(|r| r.web.clone()) {
-            return root
-                .child(div().size_full().flex().items_center().justify_center().child(self.notice(
-                    Notice::Disabled,
-                    "Opened in your browser",
-                    &format!("This book is read by chapters, in Lain's web reader: {url}"),
                 )))
                 .child(top);
         }

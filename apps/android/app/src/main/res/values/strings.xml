@@ -64,7 +64,15 @@
     <string name="player_burn_in">Burn in %1$s</string>
 
     <!-- reader -->
-    <string name="reader_web">This book opens in Lain\'s web reader, in your browser.</string>
+    <string name="book_chapter_n">Chapter %1$d of %2$d</string>
+    <string name="book_contents">Contents</string>
+    <string name="book_no_contents">This book has no table of contents.</string>
+    <string name="book_previous">Previous chapter</string>
+    <string name="book_next">Next chapter</string>
+    <string name="book_back">Back</string>
+    <string name="book_retry">Try again</string>
+    <string name="book_text_smaller">Smaller text</string>
+    <string name="book_text_larger">Larger text</string>
     <string name="reader_empty">This book has no pages.</string>
     <string name="reader_offline">Offline copy</string>
 

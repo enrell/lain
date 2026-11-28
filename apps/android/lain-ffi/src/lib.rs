@@ -13,10 +13,12 @@
 //! otherwise write twice: the play-source order (offline copy, then the
 //! server's plan, D-246), the offline reading of CBZ copies (D-248), the
 //! catalog and art snapshot for offline browsing, and the
-//! `lain.ui.theme@1` parser (D-249).
+//! `lain.ui.theme@1` parser (D-249), and a reflowable book's chapters
+//! and progress mapping for the native book reader (D-306, D-307).
 
 uniffi::setup_scaffolding!();
 
+pub mod book;
 mod cache;
 mod core;
 mod error;
@@ -26,6 +28,7 @@ mod task;
 pub mod theme;
 pub mod types;
 
+pub use crate::book::{book_position_of, book_progress_at, prepare_chapter};
 pub use crate::core::LainCore;
 pub use error::LainError;
 pub use types::*;

@@ -200,7 +200,17 @@ class FakeCore : LainCoreInterface {
     }
     override suspend fun comic(itemId: String): ComicBook = book
     override suspend fun comicPage(itemId: String, index: Long): ByteArray = byteArrayOf(index.toByte())
-    override suspend fun webReaderUrl(itemId: String): String? = null
+    /** The book manifests [book] answers; any other item is not a book, as on the server. */
+    val books = mutableMapOf<String, io.github.enrell.lain.core.BookInfo>()
+    val chapters = mutableMapOf<Pair<String, Long>, String>()
+    override suspend fun book(itemId: String): io.github.enrell.lain.core.BookInfo {
+        reachable()
+        return books[itemId] ?: throw LainException.Api(400.toUShort(), "not-a-book", "item is not a book")
+    }
+    override suspend fun bookChapter(itemId: String, n: Long): String {
+        reachable()
+        return chapters[itemId to n] ?: throw LainException.NotFound("no such chapter")
+    }
 
     private fun copy(id: String, state: CopyState) = OfflineCopy(id, "t", "episode", 0, 1, 100, 0, state, "", "", false)
 }

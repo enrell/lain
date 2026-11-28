@@ -4,6 +4,7 @@
 
 mod app;
 mod backend;
+mod book;
 mod config;
 mod demo;
 mod engine;

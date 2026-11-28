@@ -39,6 +39,14 @@ describe('virtual pages', () => {
 		expect(positionOf(null, chapters)).toEqual({ chapter: 0, fraction: 0 });
 	});
 
+	it('reopens a chapter start that was rounded on the way at that chapter', () => {
+		const ch = [{ chars: 1000 }, { chars: 3000 }];
+		const p = progressAt({ chapter: 1, fraction: 0 }, ch);
+		// Saved with three decimals, the place lands a hair before the boundary.
+		const rounded = { ...p, position_sec: Math.floor(p.position_sec * 1000) / 1000 };
+		expect(positionOf(rounded, ch).chapter).toBe(1);
+	});
+
 	it('skips empty chapters when resuming and clamps past the end', () => {
 		// Page 1 exactly is the start; a cover chapter with no text is not a landing place.
 		expect(positionOf({ position_sec: 1.5, duration_sec: 4, completed: false }, chapters)).toEqual({ chapter: 1, fraction: 0.25 });

@@ -112,6 +112,11 @@ class Prefs(private val sp: SharedPreferences) {
     fun readingWayOf(title: String): String? = sp.getString("reader_way:" + title.trim().lowercase(), null)
     fun setReadingWayOf(title: String, way: String) = sp.edit().putString("reader_way:" + title.trim().lowercase(), way).apply()
 
+    /** The book reader's text size, in percent (WebView text zoom). */
+    var bookTextZoom: Int
+        get() = sp.getInt("book_text_zoom", 110)
+        set(v) = sp.edit().putInt("book_text_zoom", v).apply()
+
     /** The reader's gestures were explained once. */
     var readerHintSeen: Boolean
         get() = sp.getBoolean("reader_hint_seen", false)
