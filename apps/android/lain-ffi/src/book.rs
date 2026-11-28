@@ -9,13 +9,48 @@
 //! address and the session token (a WebView sends no bearer header) and
 //! turns links to other chapters into `lain-chapter://<n>#<anchor>`, so
 //! the app sees them as navigations it handles itself.
+//!
+//! When this device holds an offline copy of the book, the manifest and
+//! chapters come from the file through the read module's book reader
+//! (the server's own code), with no server at all: [`inline_chapter`]
+//! puts each resource in the page as a `data:` URI, since a WebView
+//! offline has nothing to fetch it from.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 use lain_api::{BOOK_PAGE_CHARS, BookManifest, BookTocEntry};
 use lain_client::http::encode;
+use lain_read::book::{BookError, markup};
 
 use crate::LainCore;
+use crate::core::Backend;
 use crate::error::LainError;
+use crate::task::blocking;
 use crate::types::{BookInfo, BookPlace, BookProgress, BookTocItem};
+
+/// A resource larger than this stays a URL (and fails to load offline)
+/// rather than bloat the chapter string handed across the bindings.
+pub const MAX_INLINE: usize = 4 << 20;
+/// All of a chapter's inlined resources together, at most.
+pub const MAX_INLINE_TOTAL: usize = 32 << 20;
+
+pub(crate) fn book_err(e: BookError) -> LainError {
+    lain_core::Error::from(e).into()
+}
+
+/// The local copy of an item in a book format, if this device has one.
+pub(crate) fn local_book(b: &Backend, item_id: &str) -> Result<Option<PathBuf>, LainError> {
+    Ok(b.offline
+        .local_path(&b.server(), item_id)?
+        .map(PathBuf::from)
+        .filter(|p| !lain_read::book::format(p).is_empty()))
+}
+
+/// The resource route's prefix, the same the server writes.
+fn res_prefix(item_id: &str) -> String {
+    format!("/api/items/{item_id}/book/res/")
+}
 
 /// The scheme of a link to another chapter, after [`prepare_chapter`].
 pub const CHAPTER_SCHEME: &str = "lain-chapter";
@@ -122,16 +157,11 @@ fn url_end(b: u8) -> bool {
     matches!(b, b'"' | b'\'' | b'(' | b')' | b'<' | b'>' | b'?' | b'#') || b.is_ascii_whitespace()
 }
 
-/// A chapter made ready for a WebView loaded with the server as its base
-/// URL: resource URLs (`/api/items/{id}/book/res/…`, as the server writes
-/// them at the start of an attribute value or a CSS `url()`) become
-/// absolute and carry `?token=`, and links to other chapters
-/// (`href="#a" data-lain-chapter="n"`) become `lain-chapter://n#a`.
-/// Same-chapter `#anchor` links and external links are left alone.
-pub fn prepare_chapter(html: &str, server: &str, item_id: &str, token: &str) -> String {
-    let server = server.trim_end_matches('/');
-    let prefix = format!("/api/items/{item_id}/book/res/");
-    let token = encode(token);
+/// Every resource URL (`/api/items/{id}/book/res/…`, as the server
+/// writes them at the start of an attribute value or a CSS `url()`)
+/// replaced by what `to` answers for it; `None` leaves it as it is.
+fn rewrite_resources(html: &str, item_id: &str, mut to: impl FnMut(&str) -> Option<String>) -> String {
+    let prefix = res_prefix(item_id);
     let mut out = String::with_capacity(html.len() + 256);
     let mut rest = html;
     while let Some(at) = rest.find(&prefix) {
@@ -140,19 +170,86 @@ pub fn prepare_chapter(html: &str, server: &str, item_id: &str, token: &str) -> 
         // inside another site's link that happens to hold the same path.
         let starts = head.trim_end().as_bytes().last().is_some_and(|b| matches!(b, b'"' | b'\'' | b'('));
         let len = tail.bytes().position(url_end).unwrap_or(tail.len());
+        let url = &tail[..len];
         out.push_str(head);
-        if starts {
-            out.push_str(server);
-            out.push_str(&tail[..len]);
-            out.push_str("?token=");
-            out.push_str(&token);
-        } else {
-            out.push_str(&tail[..len]);
+        match starts.then(|| to(url)).flatten() {
+            Some(new) => out.push_str(&new),
+            None => out.push_str(url),
         }
         rest = &tail[len..];
     }
     out.push_str(rest);
+    out
+}
+
+/// A chapter made ready for a WebView loaded with the server as its base
+/// URL: resource URLs become absolute and carry `?token=`, and links to
+/// other chapters (`href="#a" data-lain-chapter="n"`) become
+/// `lain-chapter://n#a`. Same-chapter `#anchor` links and external links
+/// are left alone.
+pub fn prepare_chapter(html: &str, server: &str, item_id: &str, token: &str) -> String {
+    let server = server.trim_end_matches('/');
+    let token = encode(token);
+    chapter_links(&rewrite_resources(html, item_id, |url| Some(format!("{server}{url}?token={token}"))))
+}
+
+/// A chapter read from a local copy, made ready for a WebView with no
+/// server: each resource `load` finds (by its member path) becomes a
+/// `data:` URI, once per chapter however often it is used; one over
+/// [`MAX_INLINE`], or past [`MAX_INLINE_TOTAL`], stays a URL that simply
+/// fails to load. Chapter links as in [`prepare_chapter`].
+pub fn inline_chapter(html: &str, item_id: &str, mut load: impl FnMut(&str) -> Option<(Vec<u8>, String)>) -> String {
+    let prefix = res_prefix(item_id);
+    let mut seen: HashMap<String, Option<String>> = HashMap::new();
+    let mut total = 0usize;
+    let out = rewrite_resources(html, item_id, |url| {
+        if let Some(done) = seen.get(url) {
+            return done.clone();
+        }
+        let member = markup::percent_decode(&url[prefix.len()..]);
+        let uri = load(&member)
+            .filter(|(data, _)| data.len() <= MAX_INLINE && total + data.len() <= MAX_INLINE_TOTAL)
+            .map(|(data, mime)| {
+                total += data.len();
+                format!("data:{};base64,{}", data_mime(&mime), base64(&data))
+            });
+        seen.insert(url.to_string(), uri.clone());
+        uri
+    });
     chapter_links(&out)
+}
+
+/// The media type a `data:` URI may carry: documents never become pages
+/// (as the server serves them, as plain text), and anything that could
+/// end the attribute or the `url()` it sits in is replaced.
+fn data_mime(mime: &str) -> &str {
+    let m = mime.trim();
+    if m.contains("html") || m.contains("xml") && !m.contains("svg") {
+        return "text/plain";
+    }
+    if m.is_empty() || !m.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'+' | b'-' | b'.')) {
+        return "application/octet-stream";
+    }
+    m
+}
+
+/// Standard base64 with padding (RFC 4648), for `data:` URIs; no crate
+/// in the tree exposes one.
+fn base64(data: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for c in data.chunks(3) {
+        let n =
+            (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
+        for i in 0..4 {
+            if i <= c.len() {
+                out.push(A[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 /// `href="#a" data-lain-chapter="n"` (the sanitizer writes the two
@@ -195,9 +292,15 @@ fn chapter_links(html: &str) -> String {
 impl LainCore {
     /// A book's manifest (D-306). A comic or manga answers an
     /// `Api` error (`not-a-book`).
+    /// From the offline copy when this device has one.
     pub async fn book(&self, item_id: String) -> Result<BookInfo, LainError> {
         let b = self.backend()?;
         self.run(async move {
+            if let Some(path) = local_book(&b, &item_id)? {
+                let m = blocking(move || lain_read::book::shared().manifest(&path).map_err(book_err)).await?;
+                b.offline.touch(&b.server(), &item_id)?;
+                return Ok(info(item_id, m));
+            }
             let m = b.client.book(&item_id).await?;
             Ok(info(item_id, m))
         })
@@ -205,12 +308,25 @@ impl LainCore {
     }
 
     /// Chapter `n` (0-based, reading order) of a reflowable book as HTML
-    /// for a WebView whose base URL is the server ([`prepare_chapter`]).
+    /// for a WebView whose base URL is the server ([`prepare_chapter`]),
+    /// or, from the offline copy, self-contained ([`inline_chapter`]).
     pub async fn book_chapter(&self, item_id: String, n: i64) -> Result<String, LainError> {
         let b = self.backend()?;
         self.run(async move {
             if n < 0 {
                 return Err(LainError::Invalid { detail: "bad chapter".into() });
+            }
+            if let Some(path) = local_book(&b, &item_id)? {
+                let id = item_id.clone();
+                let html = blocking(move || {
+                    let books = lain_read::book::shared();
+                    let prefix = res_prefix(&id);
+                    let html = books.chapter(&path, n as usize, &prefix).map_err(book_err)?;
+                    Ok(inline_chapter(&html, &id, |member| books.resource(&path, member, &prefix).ok()))
+                })
+                .await?;
+                b.offline.touch(&b.server(), &item_id)?;
+                return Ok(html);
             }
             let token = b.client.session().map(|s| s.token).ok_or(LainError::Unauthorized)?;
             let server = b.server();
@@ -343,6 +459,50 @@ mod tests {
             "another site's link is left alone: {out}"
         );
         assert!(!out.contains("x.png?token"));
+    }
+
+    #[test]
+    fn a_local_chapter_inlines_its_resources() {
+        let html = concat!(
+            r##"<style>p{background:url("/api/items/I/book/res/OEBPS/a.png")}</style>"##,
+            r##"<img src="/api/items/I/book/res/OEBPS/a.png"><img src="/api/items/I/book/res/OEBPS/img/a%20b.svg">"##,
+            r##"<img src="/api/items/I/book/res/big.png"><img src="/api/items/I/book/res/gone.png">"##,
+            r##"<a href="/api/items/I/book/res/t.xhtml">t</a>"##,
+            r##"<a href="#sec" data-lain-chapter="2" data-lain-anchor="sec">next</a>"##,
+        );
+        let mut asked = Vec::new();
+        let out = inline_chapter(html, "I", |m| {
+            asked.push(m.to_string());
+            match m {
+                "OEBPS/a.png" => Some((b"Man".to_vec(), "image/png".into())),
+                "OEBPS/img/a b.svg" => Some((b"<svg/>".to_vec(), "image/svg+xml".into())),
+                "big.png" => Some((vec![0; MAX_INLINE + 1], "image/png".into())),
+                "t.xhtml" => Some((b"x".to_vec(), "application/xhtml+xml".into())),
+                _ => None,
+            }
+        });
+        assert_eq!(asked.iter().filter(|m| *m == "OEBPS/a.png").count(), 1, "loaded once: {asked:?}");
+        assert!(out.contains(r##"url("data:image/png;base64,TWFu")"##), "{out}");
+        assert!(out.contains(r##"<img src="data:image/png;base64,TWFu">"##), "{out}");
+        assert!(out.contains(r##"<img src="data:image/svg+xml;base64,PHN2Zy8+">"##), "{out}");
+        assert!(out.contains(r##"<img src="/api/items/I/book/res/big.png">"##), "too large: {out}");
+        assert!(out.contains(r##"<img src="/api/items/I/book/res/gone.png">"##), "{out}");
+        assert!(out.contains(r##"<a href="data:text/plain;base64,eA==">"##), "{out}");
+        assert!(out.contains(r##"href="lain-chapter://2#sec""##), "{out}");
+    }
+
+    #[test]
+    fn base64_and_mime_are_safe() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"f"), "Zg==");
+        assert_eq!(base64(b"fo"), "Zm8=");
+        assert_eq!(base64(b"foo"), "Zm9v");
+        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
+        assert_eq!(base64(&[0xff, 0xfe, 0xfd]), "//79");
+        assert_eq!(data_mime("image/jpeg"), "image/jpeg");
+        assert_eq!(data_mime("text/html"), "text/plain");
+        assert_eq!(data_mime("image/png\"onload=\"x"), "application/octet-stream");
+        assert_eq!(data_mime(""), "application/octet-stream");
     }
 
     #[test]

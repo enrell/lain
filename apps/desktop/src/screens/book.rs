@@ -259,11 +259,23 @@ impl LainApp {
             None => {
                 v.doc = Load::Loading;
                 let c = b.client.clone();
+                let local = crate::local_book::path(&b, &id);
                 // Parsed on the network runtime: a long chapter never
-                // stalls the UI thread.
+                // stalls the UI thread. A downloaded book reads its file
+                // (on the blocking pool), with no server.
                 self.spawn_ui(
                     cx,
-                    async move { c.book_chapter(&id, index).await.map(|h| Arc::new(book::parse(&h))) },
+                    async move {
+                        let html = match local {
+                            Some(path) => {
+                                tokio::task::spawn_blocking(move || crate::local_book::chapter(&path, &id, index))
+                                    .await
+                                    .unwrap_or_else(|e| Err(lain_client::ClientError::Store { message: e.to_string() }))
+                            }
+                            None => c.book_chapter(&id, index).await,
+                        };
+                        html.map(|h| Arc::new(book::parse(&h)))
+                    },
                     move |app, r, _| {
                         let Some(v) = app.bv() else { return };
                         if v.load_gen != want {

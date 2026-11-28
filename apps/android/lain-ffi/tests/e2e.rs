@@ -482,6 +482,63 @@ async fn read_a_reflowable_book() {
     std::fs::remove_dir_all(root).ok();
 }
 
+/// Downloaded books read with no server (D-306): the manifest and a
+/// chapter from the device's copy (resources inlined as `data:` URIs),
+/// and a PDF's pages drawn on the device for the page reader.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn read_books_offline() {
+    let root = temp("ffi-book-offline");
+    let server = read_server(&root).await;
+    let (_admin, _bob) = admin_and_bob(&server.url).await;
+    let proxy = Proxy::start(server.addr).await;
+    let core = core(&root);
+    core.set_server(proxy.url.clone()).unwrap();
+    core.login("bob".into(), pw(2)).await.unwrap();
+
+    let online = core.book("item-read-epub".into()).await.unwrap();
+    let online_pdf = core.comic("item-read-pdf".into()).await.unwrap();
+    assert!(!online_pdf.offline);
+    for id in ["item-read-epub", "item-read-pdf"] {
+        core.offline_add(id.into()).await.unwrap();
+        assert_eq!(core.offline_fetch(id.into(), None).await.unwrap().state, CopyState::Done);
+    }
+    let p = lain_ffi::book_progress_at(online.chapters.clone(), 0, 0.5);
+
+    proxy.set_online(false);
+    assert!(core.health().await.unwrap_err().is_offline());
+    let book = core.book("item-read-epub".into()).await.unwrap();
+    assert_eq!(
+        (book.title.as_str(), book.layout.as_str(), &book.chapters, &book.authors),
+        ("Tiny Book", "reflowable", &online.chapters, &online.authors)
+    );
+    assert_eq!(book.toc.len(), online.toc.len());
+    let html = core.book_chapter("item-read-epub".into(), 0).await.unwrap();
+    assert!(html.contains("src=\"data:image/png;base64,iVBORw0KGgo"), "{html}");
+    assert!(!html.contains("/book/res/OEBPS/cover.png"), "{html}");
+    assert!(html.contains("href=\"lain-chapter://1#end\" data-lain-chapter=\"1\""), "{html}");
+    assert!(!html.contains("steal"));
+    assert!(!core.book_chapter("item-read-epub".into(), 1).await.unwrap().is_empty());
+    assert!(matches!(core.book_chapter("item-read-epub".into(), 2).await, Err(LainError::NotFound { .. })));
+    // Progress keeps going through the offline queue.
+    let q = core.save_progress("item-read-epub".into(), p.position, p.duration, p.completed).await.unwrap();
+    assert!(matches!(q, SaveOutcome::Queued { .. }), "{q:?}");
+
+    // The PDF: its manifest says pages, and the page reader draws them.
+    let pdf = core.book("item-read-pdf".into()).await.unwrap();
+    assert_eq!((pdf.layout.as_str(), pdf.pages), ("pages", 2));
+    let pages = core.comic("item-read-pdf".into()).await.unwrap();
+    assert!(pages.offline);
+    let shape = |b: &lain_ffi::ComicBook| b.pages.iter().map(|p| (p.index, p.width, p.height)).collect::<Vec<_>>();
+    assert_eq!(shape(&pages), shape(&online_pdf));
+    let page = core.comic_page("item-read-pdf".into(), 1).await.unwrap();
+    assert!(page.starts_with(b"\x89PNG") || page.starts_with(b"\xff\xd8"), "an image");
+    assert!(matches!(core.comic_page("item-read-pdf".into(), 2).await, Err(LainError::NotFound { .. })));
+    assert!(matches!(core.comic_page("item-read-pdf".into(), -1).await, Err(LainError::NotFound { .. })));
+    drop(core);
+    drop(server);
+    std::fs::remove_dir_all(root).ok();
+}
+
 /// The session token the core keeps for `server` (its token store file).
 fn core_token(root: &std::path::Path, server: &str) -> String {
     let store = lain_client::FileTokenStore::new(root.join("app/sessions.json"));

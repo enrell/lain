@@ -3121,6 +3121,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lain-core"
+version = "0.3.1"
+dependencies = [
+ "lain-api",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "lain-desktop-gpui"
 version = "0.1.0"
 dependencies = [
@@ -3129,6 +3139,7 @@ dependencies = [
  "image",
  "lain-client",
  "lain-http",
+ "lain-read",
  "raw-window-handle",
  "serde",
  "serde_json",
@@ -3152,6 +3163,28 @@ dependencies = [
  "tokio-rustls",
  "tracing",
  "webpki-roots",
+]
+
+[[package]]
+name = "lain-pdf"
+version = "0.3.1"
+dependencies = [
+ "miniz_oxide 0.8.9",
+ "sha2 0.11.1",
+]
+
+[[package]]
+name = "lain-read"
+version = "0.3.1"
+dependencies = [
+ "lain-api",
+ "lain-core",
+ "lain-pdf",
+ "miniz_oxide 0.8.9",
+ "serde",
+ "serde_json",
+ "sha1",
+ "tracing",
 ]
 
 [[package]]
@@ -5171,6 +5204,17 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "sha1"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aacc4cc499359472b4abe1bf11d0b12e688af9a805fa5e3016f9a386dc2d0214"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.1",
+ "digest 0.11.3",
 ]
 
 [[package]]

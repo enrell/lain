@@ -42,3 +42,13 @@ where
 {
     Task(rt.spawn(f))
 }
+
+/// Runs blocking work (parsing a book, drawing a PDF page) on the
+/// runtime's blocking pool, so it never stalls the async workers.
+pub(crate) async fn blocking<T, F>(f: F) -> Result<T, LainError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, LainError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f).await.map_err(|e| LainError::Internal { detail: format!("task failed: {e}") })?
+}
