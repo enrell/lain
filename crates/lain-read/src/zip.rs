@@ -63,18 +63,47 @@ fn u64_at(b: &[u8], i: usize) -> u64 {
     u64::from_le_bytes(a)
 }
 
-/// An opened archive: its path and member list. Reads reopen the file,
-/// so an `Archive` is cheap to keep and safe to share.
+/// Where an archive's bytes are: a file (reopened for every read), or
+/// a buffer (a book converted in memory).
+#[derive(Debug, Clone)]
+enum Source {
+    File(PathBuf),
+    Memory(std::sync::Arc<[u8]>),
+}
+
+trait ReadSeek: Read + Seek {}
+impl<T: Read + Seek> ReadSeek for T {}
+
+impl Source {
+    fn open(&self) -> Result<Box<dyn ReadSeek>, ZipError> {
+        Ok(match self {
+            Source::File(p) => Box::new(File::open(p).map_err(io)?),
+            Source::Memory(b) => Box::new(std::io::Cursor::new(b.clone())),
+        })
+    }
+}
+
+/// An opened archive: its source and member list. Reads reopen the
+/// file, so an `Archive` is cheap to keep and safe to share.
 #[derive(Debug, Clone)]
 pub struct Archive {
-    path: PathBuf,
+    source: Source,
     entries: Vec<Entry>,
 }
 
 impl Archive {
     pub fn open(path: &Path) -> Result<Archive, ZipError> {
-        let mut f = File::open(path).map_err(io)?;
-        let len = f.metadata().map_err(io)?.len();
+        Archive::from_source(Source::File(path.to_path_buf()))
+    }
+
+    /// An archive held in memory.
+    pub fn from_bytes(data: std::sync::Arc<[u8]>) -> Result<Archive, ZipError> {
+        Archive::from_source(Source::Memory(data))
+    }
+
+    fn from_source(source: Source) -> Result<Archive, ZipError> {
+        let mut f = source.open()?;
+        let len = f.seek(SeekFrom::End(0)).map_err(io)?;
         let (cd_offset, cd_size, count) = directory(&mut f, len)?;
         if cd_size > MAX_DIRECTORY || cd_offset.checked_add(cd_size).is_none_or(|end| end > len) {
             return err("central directory out of bounds");
@@ -123,7 +152,7 @@ impl Archive {
         if entries.is_empty() && count > 0 {
             return err("truncated central directory");
         }
-        Ok(Archive { path: path.to_path_buf(), entries })
+        Ok(Archive { source, entries })
     }
 
     pub fn entries(&self) -> &[Entry] {
@@ -135,14 +164,14 @@ impl Archive {
         self.entries.iter().find(|e| e.name == name)
     }
 
-    fn data(&self, e: &Entry) -> Result<File, ZipError> {
+    fn data(&self, e: &Entry) -> Result<Box<dyn ReadSeek>, ZipError> {
         if e.flags & 1 != 0 {
             return err("encrypted member");
         }
         if e.method != 0 && e.method != 8 {
             return err(format!("unsupported compression method {}", e.method));
         }
-        let mut f = File::open(&self.path).map_err(io)?;
+        let mut f = self.source.open()?;
         f.seek(SeekFrom::Start(e.header_offset)).map_err(io)?;
         let mut h = [0u8; 30];
         f.read_exact(&mut h).map_err(|_| ZipError("truncated local header".into()))?;
@@ -217,7 +246,7 @@ impl Archive {
 }
 
 /// Finds the end-of-central-directory record: (offset, size, count).
-fn directory(f: &mut File, len: u64) -> Result<(u64, u64, u64), ZipError> {
+fn directory(f: &mut Box<dyn ReadSeek>, len: u64) -> Result<(u64, u64, u64), ZipError> {
     if len < 22 {
         return err("not a zip file");
     }

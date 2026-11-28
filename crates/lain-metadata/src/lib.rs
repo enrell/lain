@@ -24,10 +24,20 @@ pub use types::{MetadataCandidate, MetadataRecord, MetadataResolveInput, Metadat
 /// search provider, so it is never asked; the record is stored as is.
 pub const IMPORT_ID: &str = "lain-import";
 
-/// The providers that read files next to the media and never the
-/// network.
-pub const LOCAL_PROVIDERS: &[&str] = &[NFO_ID];
+/// The book module's embedded-metadata provider (D-308, served by
+/// `lain-read`): it reads a book's own title, description and subjects.
+pub const BOOK_ID: &str = lain_api::BOOK_METADATA_ID;
+
+/// The providers that read files next to the media (or the file itself)
+/// and never the network.
+pub const LOCAL_PROVIDERS: &[&str] = &[NFO_ID, BOOK_ID];
 
 /// The default precedence of the merge-many metadata bindings: local
 /// first, then the remote providers Go ships.
-pub const DEFAULT_PROVIDERS: &[&str] = &[NFO_ID, KITSU_ID, ANILIST_ID, JIKAN_ID, TVMAZE_ID];
+pub const DEFAULT_PROVIDERS: &[&str] = &[NFO_ID, BOOK_ID, KITSU_ID, ANILIST_ID, JIKAN_ID, TVMAZE_ID];
+
+/// Kinds no network provider knows: their items are enriched from their
+/// own files only, wherever their library is (D-308).
+pub fn local_kind(kind: &str) -> bool {
+    kind == "book"
+}

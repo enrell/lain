@@ -113,7 +113,7 @@ impl Enricher {
 
     /// Searches, picks, resolves and saves one overlay.
     pub fn enrich(&self, item: &CatalogItem, only: &str) -> Result<Enrichment, Error> {
-        self.enrich_item(item, only, self.local_only(&item.library_id)).map_err(Failed::into_error)
+        self.enrich_item(item, only, self.local_for(item)).map_err(Failed::into_error)
     }
 
     fn enrich_item(&self, item: &CatalogItem, only: &str, local: bool) -> Result<Enrichment, Failed> {
@@ -123,7 +123,7 @@ impl Enricher {
             item.kind.as_str()
         };
         let (merged, complete) = self
-            .search(&item.title, kind, &dir_of(&item.file_path), only, local)
+            .search(&item.title, kind, &dir_of(&item.file_path), &item.file_path, only, local)
             .inspect_err(|e| {
                 tracing::warn!(item = %item.id, title = %item.title, err = %e, "enrich search failed");
             })
@@ -155,6 +155,10 @@ impl Enricher {
     /// outside, and a library with "Fetch metadata online" off (D-302)
     /// holds titles no provider knows: their items are enriched from the
     /// files next to them (`.nfo`) and never by a network provider.
+    fn local_for(&self, item: &CatalogItem) -> bool {
+        crate::local_kind(&item.kind) || self.local_only(&item.library_id)
+    }
+
     fn local_only(&self, library_id: &str) -> bool {
         if library_id.is_empty() {
             return false;
@@ -190,11 +194,18 @@ impl Enricher {
         query: &str,
         kind: &str,
         dir: &str,
+        path: &str,
         only: &str,
         local: bool,
     ) -> Result<(Vec<MetadataCandidate>, bool), Error> {
         if local {
-            let input = MetadataSearchInput { query: query.into(), kind: kind.into(), limit: 5, dir: dir.into() };
+            let input = MetadataSearchInput {
+                query: query.into(),
+                kind: kind.into(),
+                limit: 5,
+                dir: dir.into(),
+                path: path.into(),
+            };
             return self.search_local(&input, only);
         }
         let now = lain_core::now_unix();
@@ -203,7 +214,13 @@ impl Enricher {
         {
             return Ok((hit, true));
         }
-        let input = MetadataSearchInput { query: query.into(), kind: kind.into(), limit: 5, dir: dir.into() };
+        let input = MetadataSearchInput {
+            query: query.into(),
+            kind: kind.into(),
+            limit: 5,
+            dir: dir.into(),
+            path: String::new(),
+        };
         let (outputs, skipped) = self.reg()?.call_merge_report(CAP_METADATA_SEARCH, "search", json!(input))?;
         let all_answered = skipped.is_empty();
         if !skipped.is_empty() {
@@ -263,7 +280,8 @@ impl Enricher {
             if store::get(&self.store, &it.id).is_some() {
                 continue;
             }
-            let local = *local_of.entry(it.library_id.clone()).or_insert_with(|| self.local_only(&it.library_id));
+            let local = crate::local_kind(&it.kind)
+                || *local_of.entry(it.library_id.clone()).or_insert_with(|| self.local_only(&it.library_id));
             if !local && store::is_miss(&self.store, &it.id) {
                 result.skipped += 1;
                 continue;

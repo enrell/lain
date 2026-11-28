@@ -18,15 +18,15 @@ const VIDEO: &[&str] = &["mkv", "mp4", "avi", "mov", "m4v", "webm"];
 
 /// A folder that holds more than one kind: every video and reading
 /// extension. Each file is still identified by its own extension.
-const AUTO: &[&str] = &["mkv", "mp4", "avi", "mov", "m4v", "webm", "cbz", "cbr", "cb7"];
+const AUTO: &[&str] = &["mkv", "mp4", "avi", "mov", "m4v", "webm", "cbz", "cbr", "cb7", "epub", "pdf", "mobi", "azw3"];
 
 /// The extensions a library type recognizes; unknown types are video.
-/// `auto` takes videos and comic archives alike (D-269).
+/// `auto` takes videos, comic archives and books alike (D-270, D-309).
 pub fn extensions(kind: &str) -> &'static [&'static str] {
     match kind.to_lowercase().as_str() {
         "auto" => AUTO,
         "music" => &["mp3", "flac", "m4a", "aac", "ogg", "opus", "wav"],
-        "book" => &["pdf", "epub", "mobi", "azw3"],
+        "book" => &lain_identify::BOOK_EXTENSIONS,
         "comic" | "manga" => &["cbz", "cbr", "cb7"],
         "photo" => &["jpg", "jpeg", "png", "webp", "gif", "heic", "avif"],
         _ => VIDEO,
@@ -177,6 +177,16 @@ impl Provider for Filesystem {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn auto_and_book_libraries_take_every_book_extension() {
+        for e in lain_identify::BOOK_EXTENSIONS {
+            assert!(extensions("auto").contains(&e), "{e}");
+            assert!(extensions("BOOK").contains(&e), "{e}");
+            assert!(!extensions("anime").contains(&e), "{e}");
+        }
+    }
+
     use super::*;
 
     fn tmp(tag: &str) -> std::path::PathBuf {
