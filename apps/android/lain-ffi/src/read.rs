@@ -155,7 +155,7 @@ async fn book(b: Arc<Backend>, books: Arc<Books>, item_id: String) -> Result<Com
 impl LainCore {
     /// A comic or manga's page list (offline copy first).
     pub async fn comic(&self, item_id: String) -> Result<ComicBook, LainError> {
-        let b = self.backend()?;
+        let b = self.backend_async().await?;
         let books = self.books.clone();
         self.run(book(b, books, item_id)).await
     }
@@ -163,7 +163,7 @@ impl LainCore {
     /// One page's image bytes, by its `index`. Call [`LainCore::comic`]
     /// first: it decides whether pages come from the device.
     pub async fn comic_page(&self, item_id: String, index: i64) -> Result<Vec<u8>, LainError> {
-        let b = self.backend()?;
+        let b = self.backend_async().await?;
         let books = self.books.clone();
         self.run(async move {
             if let Some(r) = books.page(&item_id, index).await {

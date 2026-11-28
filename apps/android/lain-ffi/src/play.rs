@@ -260,14 +260,14 @@ impl LainCore {
         caps: Vec<String>,
         audio_language: String,
     ) -> Result<PlaySource, LainError> {
-        let b = self.backend()?;
+        let b = self.backend_async().await?;
         self.run(resolve(b, item_id, caps, audio_language)).await
     }
 
     /// The ASS fallback (D-247): an HLS session with the embedded
     /// subtitle `stream` burned in by the server, from `start_sec`.
     pub async fn play_burned_in(&self, item_id: String, stream: i64, start_sec: f64) -> Result<PlaySource, LainError> {
-        let b = self.backend()?;
+        let b = self.backend_async().await?;
         self.run(async move {
             let c = &b.client;
             let session = hls(c, &item_id, selection(start_sec, "", Some(stream), None)).await?;
@@ -302,7 +302,7 @@ impl LainCore {
         burn_stream: Option<i64>,
         audio_stream: Option<i64>,
     ) -> Result<PlaySource, LainError> {
-        let b = self.backend()?;
+        let b = self.backend_async().await?;
         self.run(async move {
             let c = &b.client;
             let start = start_sec.max(0.);
@@ -333,7 +333,7 @@ impl LainCore {
 
     /// The qualities the server offers for a transcode.
     pub async fn play_qualities(&self) -> Result<Vec<QualityInfo>, LainError> {
-        let b = self.backend()?;
+        let b = self.backend_async().await?;
         self.run(async move {
             Ok(b.client
                 .playback_options()
@@ -349,7 +349,7 @@ impl LainCore {
     /// The item's storyboard: its layout and the picture. The first call
     /// for an item waits while the server makes the picture.
     pub async fn storyboard(&self, item_id: String) -> Result<StoryboardSheet, LainError> {
-        let b = self.backend()?;
+        let b = self.backend_async().await?;
         self.run(async move {
             let l = b.client.storyboard_layout(&item_id).await?;
             let image = b.client.storyboard_image(&item_id).await?;
@@ -367,7 +367,7 @@ impl LainCore {
 
     /// Stops a transcode session this app started (player closed).
     pub async fn stop_transcode(&self, item_id: String, session: String) -> Result<(), LainError> {
-        let b = self.backend()?;
+        let b = self.backend_async().await?;
         self.run(async move {
             b.client.cancel_transcode(&item_id, &session).await?;
             Ok(())
