@@ -464,6 +464,19 @@ async fn read_a_reflowable_book() {
     assert_eq!((r.status, r.header("content-type")), (200, Some("image/png")));
     assert!(matches!(core.book_chapter("item-read-epub".into(), 2).await, Err(LainError::NotFound { .. })));
     assert!(matches!(core.book_chapter("item-read-epub".into(), -1).await, Err(LainError::Invalid { .. })));
+    // Anchors are placed by their share of the chapter's text (no script).
+    assert_eq!(core.book_anchor_fraction("item-read-epub".into(), 1, "end".into()).await.unwrap(), 0.0);
+    assert_eq!(core.book_anchor_fraction("item-read-epub".into(), 1, "nowhere".into()).await.unwrap(), 0.0);
+    let two = core.book_chapter("item-read-epub".into(), 1).await.unwrap();
+    assert_eq!(lain_ffi::book_anchor_fraction_in(two, "end".into()), 0.0);
+    assert!(matches!(
+        core.book_anchor_fraction("item-read-epub".into(), 2, "end".into()).await,
+        Err(LainError::NotFound { .. })
+    ));
+    assert!(matches!(
+        core.book_anchor_fraction("item-read-epub".into(), -1, "end".into()).await,
+        Err(LainError::Invalid { .. })
+    ));
 
     // Progress: the end of the last chapter finishes the book, and the
     // place comes back from the saved record.
@@ -518,6 +531,11 @@ async fn read_books_offline() {
     assert!(html.contains("href=\"lain-chapter://1#end\" data-lain-chapter=\"1\""), "{html}");
     assert!(!html.contains("steal"));
     assert!(!core.book_chapter("item-read-epub".into(), 1).await.unwrap().is_empty());
+    assert_eq!(core.book_anchor_fraction("item-read-epub".into(), 1, "end".into()).await.unwrap(), 0.0);
+    assert!(matches!(
+        core.book_anchor_fraction("item-read-epub".into(), 2, "end".into()).await,
+        Err(LainError::NotFound { .. })
+    ));
     assert!(matches!(core.book_chapter("item-read-epub".into(), 2).await, Err(LainError::NotFound { .. })));
     // Progress keeps going through the offline queue.
     let q = core.save_progress("item-read-epub".into(), p.position, p.duration, p.completed).await.unwrap();

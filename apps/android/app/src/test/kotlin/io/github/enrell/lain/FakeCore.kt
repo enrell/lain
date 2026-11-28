@@ -211,6 +211,13 @@ class FakeCore : LainCoreInterface {
         reachable()
         return chapters[itemId to n] ?: throw LainException.NotFound("no such chapter")
     }
+    /** Where [anchors] puts an anchor; any other is the chapter's start, as in the core. */
+    val anchors = mutableMapOf<Triple<String, Long, String>, Double>()
+    override suspend fun bookAnchorFraction(itemId: String, n: Long, anchor: String): Double {
+        reachable()
+        if (chapters[itemId to n] == null) throw LainException.NotFound("no such chapter")
+        return anchors[Triple(itemId, n, anchor)] ?: 0.0
+    }
 
     private fun copy(id: String, state: CopyState) = OfflineCopy(id, "t", "episode", 0, 1, 100, 0, state, "", "", false)
 }

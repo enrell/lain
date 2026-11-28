@@ -117,6 +117,11 @@ class Prefs(private val sp: SharedPreferences) {
         get() = sp.getInt("book_text_zoom", 110)
         set(v) = sp.edit().putInt("book_text_zoom", v).apply()
 
+    /** The book reader turns pages (true, the default) or scrolls down a chapter. */
+    var bookPaged: Boolean
+        get() = sp.getBoolean("book_paged", true)
+        set(v) = sp.edit().putBoolean("book_paged", v).apply()
+
     /** The reader's gestures were explained once. */
     var readerHintSeen: Boolean
         get() = sp.getBoolean("reader_hint_seen", false)

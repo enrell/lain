@@ -73,6 +73,8 @@
     <string name="book_retry">Try again</string>
     <string name="book_text_smaller">Smaller text</string>
     <string name="book_text_larger">Larger text</string>
+    <string name="book_layout_scroll">Scroll the chapter (L)</string>
+    <string name="book_layout_paged">Turn pages (L)</string>
     <string name="reader_empty">This book has no pages.</string>
     <string name="reader_offline">Offline copy</string>
 

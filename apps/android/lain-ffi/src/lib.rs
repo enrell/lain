@@ -28,7 +28,7 @@ mod task;
 pub mod theme;
 pub mod types;
 
-pub use crate::book::{book_position_of, book_progress_at, prepare_chapter};
+pub use crate::book::{book_anchor_fraction_in, book_paged_css, book_position_of, book_progress_at, prepare_chapter};
 pub use crate::core::LainCore;
 pub use error::LainError;
 pub use types::*;
