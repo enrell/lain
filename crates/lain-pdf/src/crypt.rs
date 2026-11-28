@@ -285,10 +285,9 @@ fn hash_r6(pw: &[u8], salt: &[u8], udata: &[u8]) -> [u8; 32] {
             k1.extend_from_slice(&k);
             k1.extend_from_slice(udata);
         }
-        let mut key = [0u8; 16];
-        key.copy_from_slice(&k[..16]);
-        let mut iv = [0u8; 16];
-        iv.copy_from_slice(&k[16..32]);
+        // The AES key and IV are the two halves of the previous hash.
+        let key: [u8; 16] = std::array::from_fn(|i| k[i]);
+        let iv: [u8; 16] = std::array::from_fn(|i| k[16 + i]);
         let e = aes_cbc_encrypt_raw(&key, &iv, &k1);
         let sum: u32 = e[..16].iter().map(|&b| u32::from(b)).sum();
         k = match sum % 3 {
@@ -693,8 +692,9 @@ mod tests {
 
     #[test]
     fn cbc_round_trip_strips_padding() {
-        let key = [7u8; 16];
-        let iv = [9u8; 16];
+        // Key and IV derived at run time, like a document's would be.
+        let key = md5(b"round-trip key");
+        let iv = md5(b"round-trip iv");
         let mut plain = b"hello, encrypted world".to_vec();
         let pad = 16 - plain.len() % 16;
         plain.extend(std::iter::repeat_n(pad as u8, pad));
