@@ -425,7 +425,7 @@ impl LainCore {
     /// `Api` error (`not-a-book`).
     /// From the offline copy when this device has one.
     pub async fn book(&self, item_id: String) -> Result<BookInfo, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             if let Some(path) = local_book(&b, &item_id)? {
                 let m = blocking(move || lain_read::book::shared().manifest(&path).map_err(book_err)).await?;
@@ -442,7 +442,7 @@ impl LainCore {
     /// for a WebView whose base URL is the server ([`prepare_chapter`]),
     /// or, from the offline copy, self-contained ([`inline_chapter`]).
     pub async fn book_chapter(&self, item_id: String, n: i64) -> Result<String, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             if n < 0 {
                 return Err(LainError::Invalid { detail: "bad chapter".into() });
@@ -475,7 +475,7 @@ impl LainCore {
     /// link lands there with no script. From the offline copy when this
     /// device has one.
     pub async fn book_anchor_fraction(&self, item_id: String, n: i64, anchor: String) -> Result<f64, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             if n < 0 {
                 return Err(LainError::Invalid { detail: "bad chapter".into() });

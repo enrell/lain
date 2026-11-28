@@ -111,16 +111,6 @@ impl LainCore {
         self.backend.read().unwrap_or_else(|e| e.into_inner()).clone().ok_or(LainError::NoServer)
     }
 
-    /// [`LainCore::backend`] for async exports: a missing server is
-    /// reported through the runtime like any result, never on UniFFI's
-    /// first poll (see [`crate::task::Task`]).
-    pub(crate) async fn backend_async(&self) -> Result<Arc<Backend>, LainError> {
-        match self.backend() {
-            Ok(b) => Ok(b),
-            Err(e) => self.run(async move { Err(e) }).await,
-        }
-    }
-
     pub(crate) fn run<T, F>(&self, f: F) -> Task<T>
     where
         T: Send + 'static,
@@ -238,18 +228,18 @@ impl LainCore {
 
     /// `GET /health`: the server's version.
     pub async fn health(&self) -> Result<String, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move { Ok(b.client.health().await?.version) }).await
     }
 
     pub async fn setup_required(&self) -> Result<bool, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move { Ok(b.client.setup_status().await?.setup_required) }).await
     }
 
     /// Logs in; the session is saved for the next start.
     pub async fn login(&self, username: String, password: String) -> Result<UserInfo, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.close_events();
         self.run(async move { Ok(b.client.login(&username, &password).await?.into()) }).await
     }
@@ -272,7 +262,7 @@ impl LainCore {
     }
 
     pub async fn me(&self) -> Result<UserInfo, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move { Ok(b.client.me().await?.into()) }).await
     }
 
@@ -280,7 +270,7 @@ impl LainCore {
     /// empty for the file's own choice), the one the web client's Settings
     /// edits too; answers the account as it then is.
     pub async fn set_preferred_language(&self, language: String) -> Result<UserInfo, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move { Ok(b.client.set_preferred_language(language.trim()).await?.into()) }).await
     }
 
@@ -295,7 +285,7 @@ impl LainCore {
         subtitle_language: String,
         subtitle_mode: String,
     ) -> Result<UserInfo, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let t = lain_api::TrackPreferences {
                 audio_language: audio_language.trim().into(),
@@ -318,7 +308,7 @@ impl LainCore {
 
     /// `GET /api/modules`: what the navigation shows.
     pub async fn modules(&self) -> Result<Vec<ModuleInfo>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let v = b.client.modules().await?;
             Ok(v.modules
@@ -342,7 +332,7 @@ impl LainCore {
 
     /// Every item this session may see; offline, the last snapshot.
     pub async fn catalog(&self) -> Result<CatalogSnapshot, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             match all_items(&b.client).await {
                 Ok(items) => {
@@ -369,7 +359,7 @@ impl LainCore {
     }
 
     pub async fn libraries(&self) -> Result<Vec<LibraryInfo>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             Ok(b.client
                 .libraries()
@@ -389,13 +379,13 @@ impl LainCore {
 
     /// One title's files (`/api/catalog/{id}/episodes`).
     pub async fn episodes(&self, item_id: String) -> Result<Vec<Item>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move { Ok(b.client.episodes(&item_id).await?.iter().map(Item::from).collect()) }).await
     }
 
     /// The Continue rail: unfinished records, newest first.
     pub async fn continue_watching(&self) -> Result<Vec<ProgressInfo>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let mut v: Vec<ProgressInfo> =
                 b.client.continue_watching().await?.into_iter().filter(|p| !p.completed).map(Into::into).collect();
@@ -409,7 +399,7 @@ impl LainCore {
     /// included: what a library's posters and filters are marked from.
     /// Newest first.
     pub async fn all_progress(&self) -> Result<Vec<ProgressInfo>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let mut v: Vec<ProgressInfo> = b.client.continue_watching().await?.into_iter().map(Into::into).collect();
             v.sort_by_key(|p| std::cmp::Reverse(p.updated_at));
@@ -420,7 +410,7 @@ impl LainCore {
 
     /// `GET /api/search`; offline, a title match over the snapshot.
     pub async fn search(&self, query: String, limit: i64) -> Result<Vec<Item>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let q = SearchQuery { q: query.clone(), limit, ..Default::default() };
             match b.client.search(q).await {
@@ -443,7 +433,7 @@ impl LainCore {
 
     /// The item's position: the server's, or offline the queued one.
     pub async fn progress(&self, item_id: String) -> Result<ProgressInfo, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move { Ok(b.sync.fetch(&item_id).await?.into()) }).await
     }
 
@@ -455,7 +445,7 @@ impl LainCore {
         duration_sec: f64,
         completed: bool,
     ) -> Result<SaveOutcome, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let update =
                 ProgressUpdate { position_sec: position_sec.max(0.), duration_sec: duration_sec.max(0.), completed };
@@ -470,7 +460,7 @@ impl LainCore {
 
     /// Pushes queued progress (the event stream does it on connect).
     pub async fn flush_progress(&self) -> Result<FlushSummary, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move { Ok(summary(b.sync.flush().await?)) }).await
     }
 
@@ -493,7 +483,7 @@ impl LainCore {
         secret: String,
         pin: bool,
     ) -> Result<LibraryInfo, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let how = if pin { lain_client::Unlock::Pin(secret) } else { lain_client::Unlock::Password(secret) };
             let l = b.client.unlock_library(&library_id, how).await?;
@@ -510,7 +500,7 @@ impl LainCore {
 
     /// Locks a private library again for this session.
     pub async fn lock_library(&self, library_id: String) -> Result<LibraryInfo, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let l = b.client.lock_library(&library_id).await?;
             Ok(LibraryInfo {
@@ -526,14 +516,14 @@ impl LainCore {
 
     /// A frame of the item at `at_sec`, for the seek bar's preview.
     pub async fn frame(&self, item_id: String, at_sec: f64, width: u32) -> Result<Vec<u8>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move { Ok(b.client.frame(&item_id, at_sec, width).await?) }).await
     }
 
     /// The works this account keeps as favourites (the social module's
     /// list, the same one the web client shows).
     pub async fn favorites(&self) -> Result<Vec<FavoriteInfo>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(
             async move { Ok(b.client.social_settings().await?.favorites.into_iter().map(favorite_info).collect()) },
         )
@@ -544,7 +534,7 @@ impl LainCore {
     /// answers the list as it then stands. A work is its kind and title, so
     /// any episode of a series names the series.
     pub async fn set_favorite(&self, item_id: String, on: bool) -> Result<Vec<FavoriteInfo>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let target = lain_api::WorkRef { item_id, ..Default::default() };
             let work = b.client.work(&target).await?.work;
@@ -563,7 +553,7 @@ impl LainCore {
     /// How the work an item belongs to is rated (the social module's
     /// ratings, the ones the web client shows).
     pub async fn rating(&self, item_id: String) -> Result<RatingInfo, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let target = lain_api::WorkRef { item_id, ..Default::default() };
             Ok(rating_info(&b.client.work(&target).await?))
@@ -575,7 +565,7 @@ impl LainCore {
     /// back with 0; answers how the work is then rated. A review written
     /// on the web is kept as it is.
     pub async fn rate(&self, item_id: String, score: u32) -> Result<RatingInfo, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let target = lain_api::WorkRef { item_id, ..Default::default() };
             let mine = b.client.work(&target).await?.mine;
@@ -594,7 +584,7 @@ impl LainCore {
 
     /// How long these videos are (the ones the server can tell).
     pub async fn durations(&self, item_ids: Vec<String>) -> Result<Vec<DurationInfo>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let mut out = Vec::new();
             for chunk in item_ids.chunks(100) {
@@ -609,7 +599,7 @@ impl LainCore {
 
     /// The metadata overlays that exist for these items (genres, synopsis).
     pub async fn overlays(&self, item_ids: Vec<String>) -> Result<Vec<Overlay>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let mut out = Vec::new();
             for chunk in item_ids.chunks(150) {
@@ -630,7 +620,7 @@ impl LainCore {
 
     /// The item's cover or frame; offline, the last one seen.
     pub async fn thumbnail(&self, item_id: String) -> Result<Vec<u8>, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             match b.client.thumbnail(&item_id).await {
                 Ok(bytes) => {
@@ -684,7 +674,7 @@ impl LainCore {
     /// Queues an item for an offline copy (or requeues a paused or
     /// failed one).
     pub async fn offline_add(&self, item_id: String) -> Result<OfflineCopy, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let item = LainCore::catalog_item(&b, &item_id).await?;
             Ok(b.offline.add(&b.server(), &item)?.into())
@@ -698,7 +688,7 @@ impl LainCore {
         item_id: String,
         observer: Option<Arc<dyn DownloadObserver>>,
     ) -> Result<OfflineCopy, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let obs = observer.map(|inner| {
                 Arc::new(Observer { item_id: item_id.clone(), inner, last: Mutex::new(None) }) as Arc<dyn FetchObserver>
@@ -712,7 +702,7 @@ impl LainCore {
     /// is unreachable or the store is full; a failed copy is counted and
     /// the run goes on.
     pub async fn offline_run(&self, observer: Option<Arc<dyn DownloadObserver>>) -> Result<DownloadRun, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move {
             let server = b.server();
             let mut run = DownloadRun { done: 0, failed: 0, stopped: None };
@@ -780,7 +770,7 @@ impl LainCore {
 
     /// Marks copies the server says are watched (eviction candidates).
     pub async fn refresh_watched(&self) -> Result<i64, LainError> {
-        let b = self.backend_async().await?;
+        let b = self.backend()?;
         self.run(async move { Ok(b.offline.refresh_watched(&b.client).await? as i64) }).await
     }
 

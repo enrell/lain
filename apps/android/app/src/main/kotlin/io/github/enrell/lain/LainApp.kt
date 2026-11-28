@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import io.github.enrell.lain.core.LainCore
 import io.github.enrell.lain.core.OfflinePolicy
+import io.github.enrell.lain.core.keepCallbackThreadsAttached
 import io.github.enrell.lain.download.DownloadTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +27,10 @@ class AppGraph(context: Context) {
     /** Offline copies live in app-specific external storage when there is some (no permission needed). */
     private val offlineDir: File = context.getExternalFilesDir("offline") ?: File(context.filesDir, "offline")
 
-    val core: LainCore = LainCore(File(context.filesDir, "core").absolutePath, offlineDir.absolutePath).also { core ->
+    val core: LainCore = run {
+        keepCallbackThreadsAttached()
+        LainCore(File(context.filesDir, "core").absolutePath, offlineDir.absolutePath)
+    }.also { core ->
         prefs.offlinePolicy()?.let { runCatching { core.setOfflinePolicy(it) } }
     }
 
