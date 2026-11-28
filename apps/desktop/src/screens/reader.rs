@@ -45,6 +45,13 @@ impl LainApp {
         });
         let (c, want, id_done) = (b.client.clone(), id.to_string(), id.to_string());
         let sync = b.sync.clone();
+        // A downloaded book opens from this device, server or not.
+        let local = crate::local_book::path(&b, id);
+        if local.is_some()
+            && let Some(o) = &b.offline
+        {
+            let _ = o.touch(&b.client.server(), id);
+        }
         self.spawn_ui(
             cx,
             async move {
@@ -55,6 +62,20 @@ impl LainApp {
                 // A book read by chapters has no pages: the book reader
                 // takes it. Anything else (or a server without the book
                 // routes) is a page reader.
+                if let Some(path) = local {
+                    // Parsing a whole book is blocking work: off the
+                    // network runtime's two workers.
+                    let saved = p.clone();
+                    return tokio::task::spawn_blocking(move || match crate::local_book::manifest(&path) {
+                        Ok(_) if crate::local_book::is_pdf(&path) => {
+                            Opened::Pages(crate::local_book::pdf_pages(&path), p)
+                        }
+                        Ok(m) => Opened::Book(m, p),
+                        Err(e) => Opened::Pages(Err(e), p),
+                    })
+                    .await
+                    .unwrap_or_else(|e| Opened::Pages(Err(ClientError::Store { message: e.to_string() }), saved));
+                }
                 if let Ok(b) = c.book(&want).await
                     && b.layout == "reflowable"
                 {

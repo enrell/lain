@@ -19,6 +19,9 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 raw-window-handle = "0.6"
 lain-http = { path = "../../crates/lain-http" }
+# Downloaded books read on the device with the server's own book reader
+# (EPUB, MOBI, AZW3, PDF; D-306). In-tree.
+lain-read = { path = "../../crates/lain-read" }
 # Extensions tier 3 (P6, D-256): the component model runtime with
 # cranelift, no wasmtime defaults (no cache, profiling, GC, threads or
 # parallel compilation); wasmtime-wasi only for its p2 interfaces, which

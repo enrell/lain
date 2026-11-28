@@ -78,6 +78,15 @@ fn decode(bytes: &[u8], w: u32, h: u32, blur: u32) -> Result<Arc<RenderImage>, S
     Ok(Arc::new(RenderImage::new(vec![image::Frame::new(buf)])))
 }
 
+/// Reads a local copy on the blocking pool (drawing a PDF page is
+/// seconds of CPU at worst), shaped like a fetch.
+async fn local<F>(f: F) -> Result<Vec<u8>, ClientError>
+where
+    F: FnOnce() -> Result<Vec<u8>, ClientError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f).await.unwrap_or_else(|e| Err(ClientError::Store { message: e.to_string() }))
+}
+
 impl ImageStore {
     /// Forget everything (server switch, theme reload of local art).
     pub fn reset(&mut self, backend: Option<Arc<Backend>>) {
@@ -123,11 +132,18 @@ impl ImageStore {
             }
             (None, Source::Page(id, n), Some(b)) => {
                 let (c, id, n) = (b.client.clone(), id.clone(), *n);
-                Some(b.spawn(async move { c.comic_page(&id, n).await }))
+                // A downloaded PDF's pages are drawn here, not fetched.
+                match crate::local_book::path(b, &id).filter(|p| crate::local_book::is_pdf(p)) {
+                    Some(file) => Some(b.spawn(local(move || crate::local_book::pdf_page(&file, n)))),
+                    None => Some(b.spawn(async move { c.comic_page(&id, n).await })),
+                }
             }
             (None, Source::BookRes(id, path), Some(b)) => {
                 let (c, id, path) = (b.client.clone(), id.clone(), path.clone());
-                Some(b.spawn(async move { c.book_resource(&id, &path).await }))
+                match crate::local_book::path(b, &id) {
+                    Some(file) => Some(b.spawn(local(move || crate::local_book::resource(&file, &id, &path)))),
+                    None => Some(b.spawn(async move { c.book_resource(&id, &path).await })),
+                }
             }
             (None, Source::Avatar(id, _), Some(b)) => {
                 let (c, id) = (b.client.clone(), id.clone());

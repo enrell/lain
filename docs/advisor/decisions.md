@@ -96,8 +96,10 @@ and amends D-085 (which left `pdf` unread) and D-195 ("no PDF").
   JavaScript, file and content access off (`LainCore::book_chapter`
   gives it absolute, token-carrying resource URLs and
   `lain-chapter://n#anchor` links). Both save the same virtual pages as
-  the web (`book_progress_at`/`book_position_of`). Not done: offline
-  copies of books in the native apps.
+  the web (`book_progress_at`/`book_position_of`). A book downloaded to
+  the device is read from its own file with `lain-read` (Android inlines
+  its pictures as `data:` URIs for the WebView; PDFs are drawn on the
+  device at 1536 px), so both apps read books with no server.
 
 ## D-304 — `lain-pdf`, an in-tree PDF library
 

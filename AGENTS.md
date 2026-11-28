@@ -240,6 +240,8 @@ natively on Windows (`cargo build` in `apps/desktop`; output on C: per
   PrintWindow captures; the version GPUI compiles.
 - `lain-http` (path, P6, D-263) — `net:<host>` GETs of extensions; its
   rustls/ring are already in the desktop tree under GPUI.
+- `lain-read` (path, in-tree) — downloaded books (EPUB, MOBI, AZW3, PDF)
+  read from the offline copy with no server (D-306).
 - `wasmtime` (=50.0.1; `cranelift`, `runtime`, `component-model`, `std`,
   no defaults) and `wasmtime-wasi` (=50.0.1, `p2` only) — tier 3
   extensions (P6, D-256, D-263): the component-model runtime with fuel,

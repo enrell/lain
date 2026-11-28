@@ -11,6 +11,7 @@ mod engine;
 mod ext;
 mod images;
 mod layout;
+mod local_book;
 #[cfg(windows)]
 mod mpv;
 #[cfg(unix)]
