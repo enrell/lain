@@ -27,9 +27,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # streaming all come from the same lain process and origin. TLS roots
 # are compiled in (webpki-roots), so no CA bundle is needed. ffmpeg and
 # ffprobe back probing, thumbnails and transcoding, and degrade only
-# those capabilities when absent.
+# those capabilities when absent. The URW base 35 fonts are the metric
+# clones of the PDF standard 14: a PDF that names Times or Helvetica
+# without embedding it is drawn with them (D-304).
 FROM alpine:3.24
-RUN apk add --no-cache ffmpeg \
+RUN apk add --no-cache ffmpeg font-urw-base35 \
  && adduser -D -H -h /data lain \
  && mkdir -p /data \
  && chown lain:lain /data

@@ -16,6 +16,7 @@ members = [
     "crates/lain-auth",
     "crates/lain-component",
     "crates/lain-read",
+    "crates/lain-pdf",
     "crates/lain-admin",
     "crates/lain-torrent",
     "crates/lain-downloads",
@@ -89,6 +90,7 @@ lain-identify = { path = "crates/lain-identify" }
 lain-ingest = { path = "crates/lain-ingest" }
 lain-metadata = { path = "crates/lain-metadata" }
 lain-subtitle = { path = "crates/lain-subtitle" }
+lain-pdf = { path = "crates/lain-pdf" }
 lain-read = { path = "crates/lain-read" }
 lain-admin = { path = "crates/lain-admin" }
 lain-probe = { path = "crates/lain-probe" }
