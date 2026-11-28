@@ -26,12 +26,17 @@ pub enum Source {
     Avatar(String, i64),
     /// A comic page: item id, page index.
     Page(String, i64),
+    /// An image of a reflowable book: item id, member path.
+    BookRes(String, String),
     File(PathBuf),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ImgKey {
     pub src: Source,
+    /// `h == 0` keeps the image's own aspect: it is drawn at most `w`
+    /// wide and never scaled up (book images, whose size is unknown
+    /// until they load).
     pub w: u32,
     pub h: u32,
     pub blur: u32,
@@ -55,8 +60,12 @@ pub struct ImageStore {
 
 fn decode(bytes: &[u8], w: u32, h: u32, blur: u32) -> Result<Arc<RenderImage>, String> {
     let img = image::load_from_memory(bytes).map_err(|e| e.to_string())?;
-    let (w, h) = (w.max(1), h.max(1));
-    let mut img = img.resize_to_fill(w, h, FilterType::CatmullRom);
+    let mut img = if h == 0 {
+        if img.width() > w.max(1) { img.resize(w.max(1), u32::MAX, FilterType::CatmullRom) } else { img }
+    } else {
+        img.resize_to_fill(w.max(1), h.max(1), FilterType::CatmullRom)
+    };
+    let (w, h) = (img.width().max(1), img.height().max(1));
     if blur > 0 {
         // Blur at quarter size: same look, ~16x cheaper.
         let small = img.resize_exact((w / 4).max(1), (h / 4).max(1), FilterType::Triangle);
@@ -84,6 +93,12 @@ impl ImageStore {
         self.slots.retain(|k, _| &k.src != src);
     }
 
+    /// Whether this image failed to load or decode (a reader shows its
+    /// alt text instead of a placeholder).
+    pub fn failed(&self, key: &ImgKey) -> bool {
+        matches!(self.slots.get(key), Some(Slot::Failed))
+    }
+
     /// The image and when it became ready (for fade-in), or `None` while
     /// it loads or when there is none (the decode starts on first ask).
     pub fn get(&mut self, key: &ImgKey, cx: &mut Context<Self>) -> Option<(Arc<RenderImage>, Instant)> {
@@ -109,6 +124,10 @@ impl ImageStore {
             (None, Source::Page(id, n), Some(b)) => {
                 let (c, id, n) = (b.client.clone(), id.clone(), *n);
                 Some(b.spawn(async move { c.comic_page(&id, n).await }))
+            }
+            (None, Source::BookRes(id, path), Some(b)) => {
+                let (c, id, path) = (b.client.clone(), id.clone(), path.clone());
+                Some(b.spawn(async move { c.book_resource(&id, &path).await }))
             }
             (None, Source::Avatar(id, _), Some(b)) => {
                 let (c, id) = (b.client.clone(), id.clone());

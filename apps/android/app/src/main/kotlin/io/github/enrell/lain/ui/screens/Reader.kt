@@ -109,20 +109,12 @@ fun ReaderScreen(
     val model = remember(itemId) { ReaderModel(core, itemId, scope) }
     val state by model.state.collectAsState()
     val focus = remember { FocusRequester() }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var web by remember(itemId) { mutableStateOf<String?>(null) }
+    var reflowable by remember(itemId) { mutableStateOf<io.github.enrell.lain.core.BookInfo?>(null) }
     LaunchedEffect(itemId) {
-        // A book read by chapters opens in the server's web reader (D-306).
-        val url = runCatching { core.webReaderUrl(itemId) }.getOrNull()
-        if (url != null) {
-            web = url
-            runCatching {
-                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-            }
-            onBack()
-        } else {
-            model.load()
-        }
+        // A book read by chapters (EPUB, MOBI, AZW3) opens in the book reader (D-306); a
+        // PDF, a comic or a manga (whose manifest the server refuses) in the page reader.
+        val info = runCatching { core.book(itemId) }.getOrNull()
+        if (info != null && info.layout == "reflowable") reflowable = info else model.load()
     }
     DisposableEffect(itemId) {
         onDispose {
@@ -130,8 +122,8 @@ fun ReaderScreen(
             if (job == null) scope.cancel() else job.invokeOnCompletion { scope.cancel() }
         }
     }
-    if (web != null) {
-        Centered { Text(stringResource(R.string.reader_web), color = l.muted) }
+    reflowable?.let {
+        BookReaderScreen(core, it, title, onBack)
         return
     }
     val book = state.book

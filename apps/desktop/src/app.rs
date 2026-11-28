@@ -1009,6 +1009,9 @@ impl LainApp {
     }
 
     pub fn navigate(&mut self, s: Screen, cx: &mut Context<Self>) {
+        if matches!(self.screen, Screen::Reader(_)) && self.screen != s {
+            self.book_flush(cx);
+        }
         if self.screen != s {
             let prev = std::mem::replace(&mut self.screen, s.clone());
             self.history.push(prev);
@@ -1022,6 +1025,10 @@ impl LainApp {
     }
 
     pub fn back(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.screen, Screen::Reader(_)) {
+            // A book records its place on the way out.
+            self.book_flush(cx);
+        }
         if let Some(prev) = self.history.pop() {
             self.screen = prev;
             self.focused = None;

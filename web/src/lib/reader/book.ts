@@ -68,7 +68,9 @@ export function positionOf(
 	const chars = (progress.position_sec - 1) * PAGE_CHARS;
 	for (let i = 0; i < chapters.length; i++) {
 		const len = Math.max(0, chapters[i].chars);
-		if (chars < off[i] + len || i === chapters.length - 1) {
+		// A saved place right at a chapter's start, rounded on the way,
+		// must not reopen at the end of the chapter before it.
+		if (chars < off[i] + len - 0.75 || i === chapters.length - 1) {
 			if (len === 0) continue;
 			return { chapter: i, fraction: Math.min(Math.max((chars - off[i]) / len, 0), 1) };
 		}

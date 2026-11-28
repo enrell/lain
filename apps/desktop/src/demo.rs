@@ -11,7 +11,8 @@
 //!   `reader:<n>` (the n-th reading title), `controls` (keep the player
 //!   chrome visible), `seek:<s>`, `sub:<id>`
 //! - `theme:<id>`, `focus:<widget id>`, `tab`, `key:<down|up|right|left>`
-//!   (in-app focus moves, not OS input)
+//!   (in-app focus moves, not OS input; in the reader, any reader key
+//!   such as `key:pagedown`, `key:n` or `key:t`)
 //! - `set:<field>=<text>`, `kind:<library kind>`, `run:<create-library|scan|refresh|set-pin|save-profile|save-pathmap|download>`
 //!   (fill fields and run actions as a user would)
 //! - `ext-install:<path>` (an extension folder or zip), `ext-allow`,
@@ -292,6 +293,10 @@ fn step_now(app: &mut LainApp, cmd: &str, arg: &str, window: &mut gpui::Window, 
                 }
                 Screen::Library { .. } => {
                     app.library_key(&ev, window, cx);
+                }
+                // The reader's own keys (turn, chapters, T contents, +/-).
+                Screen::Reader(_) => {
+                    app.reader_key(&ev, cx);
                 }
                 _ => app.move_focus(if matches!(arg, "down" | "right") { 1 } else { -1 }),
             }

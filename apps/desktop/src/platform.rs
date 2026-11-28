@@ -156,22 +156,6 @@ pub fn capture(_hwnd: isize, _out: &std::path::Path) -> Result<(), String> {
     Err("window capture is only implemented on Windows".into())
 }
 
-/// Opens a web address in the default browser.
-pub fn open_url(url: &str) {
-    let mut cmd = if cfg!(windows) {
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/C", "start", ""]);
-        c
-    } else if cfg!(target_os = "macos") {
-        std::process::Command::new("open")
-    } else {
-        std::process::Command::new("xdg-open")
-    };
-    if let Err(e) = cmd.arg(url).spawn() {
-        eprintln!("open {url}: {e}");
-    }
-}
-
 /// Opens a folder in the system file manager.
 pub fn open_folder(path: &std::path::Path) {
     let prog = if cfg!(windows) { "explorer" } else { "xdg-open" };

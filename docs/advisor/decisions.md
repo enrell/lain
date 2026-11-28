@@ -90,9 +90,14 @@ and amends D-085 (which left `pdf` unread) and D-195 ("no PDF").
   chapters and their resources, or a PDF's pages at 1536 px, which the
   service worker serves at any width asked).
 - The desktop and Android apps read PDF books in their page readers
-  (`/pages`); a reflowable book opens in the server's web reader in the
-  system browser (`LainCore::web_reader_url`, the desktop's
-  `platform::open_url`). Not done: a native EPUB renderer in either app.
+  (`/pages`) and reflowable books natively: the desktop lays the
+  sanitized chapter out in GPUI (its own HTML-to-blocks reader,
+  `apps/desktop/src/book.rs`), Android shows it in a WebView with
+  JavaScript, file and content access off (`LainCore::book_chapter`
+  gives it absolute, token-carrying resource URLs and
+  `lain-chapter://n#anchor` links). Both save the same virtual pages as
+  the web (`book_progress_at`/`book_position_of`). Not done: offline
+  copies of books in the native apps.
 
 ## D-304 — `lain-pdf`, an in-tree PDF library
 

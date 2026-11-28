@@ -35,11 +35,15 @@ lain-api = { path = "../../../crates/lain-api" }
 # module's in-tree ZIP reader.
 lain-read = { path = "../../../crates/lain-read" }
 lain-core = { path = "../../../crates/lain-core" }
+# D-306: chapter text for the native book reader; lain-client has no
+# call for it. Already in the tree under lain-client (no new crate).
 tokio = { version = "=1.54.1", default-features = false, features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 
 [dev-dependencies]
+# The e2e test loads a chapter's resource URL the way a WebView would.
+lain-http = { path = "../../../crates/lain-http" }
 # The end-to-end test runs the real server in-process, through
 # lain-client's own test harness (crates/lain-client/tests/support).
 lain-server = { path = "../../../crates/lain-server" }

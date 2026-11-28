@@ -100,22 +100,6 @@ impl LainCore {
         self.run(book(b, books, item_id)).await
     }
 
-    /// The server's web reader for a book read by chapters (EPUB, MOBI,
-    /// AZW3, D-306), or `None` when the page reader reads the item (a
-    /// comic, manga or PDF book).
-    pub async fn web_reader_url(&self, item_id: String) -> Result<Option<String>, LainError> {
-        let b = self.backend()?;
-        self.run(async move {
-            match b.client.book(&item_id).await {
-                Ok(m) if m.layout == "reflowable" => {
-                    Ok(Some(format!("{}/read/{}", b.server().trim_end_matches('/'), item_id)))
-                }
-                _ => Ok(None),
-            }
-        })
-        .await
-    }
-
     /// One page's image bytes, by its `index`. Call [`LainCore::comic`]
     /// first: it decides whether pages come from the device.
     pub async fn comic_page(&self, item_id: String, index: i64) -> Result<Vec<u8>, LainError> {

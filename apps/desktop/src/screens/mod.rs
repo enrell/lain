@@ -1,6 +1,7 @@
 //! One module per screen; each is `impl LainApp` with its state struct.
 
 pub mod acquire;
+pub mod book;
 pub mod connect;
 pub mod downloads;
 pub mod extensions;

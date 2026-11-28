@@ -319,6 +319,57 @@ pub struct ComicBook {
     pub offline: bool,
 }
 
+/// A book's manifest as the reader needs it (D-306): `layout` is
+/// `reflowable` (read chapter by chapter) or `pages` (a PDF, read by
+/// the page reader).
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct BookInfo {
+    pub item_id: String,
+    /// `epub`, `pdf`, `mobi` or `azw3`.
+    pub format: String,
+    pub layout: String,
+    pub title: String,
+    pub authors: Vec<String>,
+    /// `ltr` or `rtl`.
+    pub direction: String,
+    /// Virtual pages of 1024 characters (reflowable) or real pages.
+    pub pages: i64,
+    /// Each chapter's character count, in reading order: the progress
+    /// mapping's input ([`crate::book_progress_at`]).
+    pub chapters: Vec<i64>,
+    /// The table of contents, depth first.
+    pub toc: Vec<BookTocItem>,
+}
+
+/// One table of contents entry, flattened: `depth` 0 is the top level.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct BookTocItem {
+    pub title: String,
+    /// The chapter index, or -1.
+    pub chapter: i64,
+    /// An anchor in the chapter, or empty.
+    pub anchor: String,
+    /// The page index (a PDF), or -1.
+    pub page: i64,
+    pub depth: i64,
+}
+
+/// A place in a reflowable book: a chapter and how far into it (0..1).
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct BookPlace {
+    pub chapter: i64,
+    pub fraction: f64,
+}
+
+/// The shared progress record of a place (D-307): `position` is the
+/// 1-based virtual page (fractional), `duration` the book's pages.
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct BookProgress {
+    pub position: f64,
+    pub duration: f64,
+    pub completed: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum CopyState {
     Queued,
