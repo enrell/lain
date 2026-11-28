@@ -200,6 +200,7 @@ class FakeCore : LainCoreInterface {
     }
     override suspend fun comic(itemId: String): ComicBook = book
     override suspend fun comicPage(itemId: String, index: Long): ByteArray = byteArrayOf(index.toByte())
+    override suspend fun webReaderUrl(itemId: String): String? = null
 
     private fun copy(id: String, state: CopyState) = OfflineCopy(id, "t", "episode", 0, 1, 100, 0, state, "", "", false)
 }
