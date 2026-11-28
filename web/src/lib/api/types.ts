@@ -679,9 +679,9 @@ export interface ReaderPageInfo {
 	height: number;
 }
 
-/** GET /api/items/{id}/pages: the page index plus the kind's default direction. */
+/** GET /api/items/{id}/pages: the page index plus the kind's default direction. A PDF book (D-306) is read through it too: `format` is `pdf` and page sizes are in points. */
 export interface ReaderView {
-	kind: 'comic' | 'manga';
+	kind: 'comic' | 'manga' | 'book';
 	format: string;
 	direction: 'rtl' | 'ltr';
 	pages: ReaderPageInfo[];
@@ -760,4 +760,42 @@ export interface DownloadCleanup {
 	parts: number;
 	records: number;
 	freed_bytes: number;
+}
+
+/** GET /api/items/{id}/book (D-306): what a book is and how to read it. */
+export interface BookManifest {
+	/** The file's own format. */
+	format: 'epub' | 'pdf' | 'mobi' | 'azw3' | string;
+	/** `reflowable`: chapters (EPUB, MOBI, AZW3); `pages`: a PDF read through /pages. */
+	layout: 'reflowable' | 'pages' | string;
+	title: string;
+	authors?: string[];
+	language?: string;
+	publisher?: string;
+	description?: string;
+	subjects?: string[];
+	published?: string;
+	direction: 'ltr' | 'rtl';
+	chapters?: BookChapter[];
+	toc?: BookTocEntry[];
+	/** Virtual pages of 1024 characters (reflowable) or real pages. */
+	pages: number;
+	count_rule?: string;
+	warnings?: string[];
+}
+
+export interface BookChapter {
+	index: number;
+	chars: number;
+	linear: boolean;
+}
+
+export interface BookTocEntry {
+	title: string;
+	/** Chapter index, or -1. */
+	chapter: number;
+	anchor?: string;
+	/** Page index (PDF), or -1. */
+	page: number;
+	children?: BookTocEntry[];
 }

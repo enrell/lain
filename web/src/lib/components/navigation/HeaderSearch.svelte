@@ -244,7 +244,7 @@
 	function detail(g: SeriesGroup): string {
 		const item = g.items[0];
 		if (g.count === 1) return mediaSubtitle(item);
-		const parts = [t(!isReadable(item.kind) ? 'title.episodes' : item.kind === 'manga' ? 'title.volumes' : 'title.issues', { count: g.count })];
+		const parts = [t(!isReadable(item.kind) ? 'title.episodes' : item.kind === 'manga' ? 'title.volumes' : item.kind === 'book' ? 'title.books' : 'title.issues', { count: g.count })];
 		if (g.year > 0) parts.push(String(g.year));
 		return parts.join(' · ');
 	}

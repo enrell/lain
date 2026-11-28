@@ -83,4 +83,32 @@ node "$root/web/e2e/smoke.mjs" \
 	--downloads "$out/downloads" \
 	--screenshot "$out/failure.png" || status=$?
 echo "smoke: exit $status after $(($(date +%s) - start))s (logs and screenshots in $out)"
+[ "$status" -eq 0 ] || exit "$status"
+
+# The books test (web/e2e/books.mjs) needs a fresh server of its own: a
+# library of the read fixture's EPUB and PDF, first-run setup included.
+kill "$server" 2>/dev/null
+wait "$server" 2>/dev/null || true
+rm -rf "$out/books" && mkdir -p "$out/books/media"
+cp "$root/conformance/fixtures/read/Read/Tiny Book.epub" "$root/conformance/fixtures/read/Read/Tiny Pages.pdf" "$out/books/media/"
+"$lain" serve --data-dir "$out/books/data" --port "$port" --bind 127.0.0.1 >"$out/books/server.log" 2>&1 &
+server=$!
+i=0
+until grep -qF "on http://127.0.0.1:$port (data $out/books/data)" "$out/books/server.log" 2>/dev/null &&
+	curl -fsS "http://127.0.0.1:$port/health" >/dev/null 2>&1; do
+	i=$((i + 1))
+	if ! kill -0 "$server" 2>/dev/null || [ "$i" -gt 150 ]; then
+		echo "the books server did not start" >&2
+		cat "$out/books/server.log" >&2
+		exit 1
+	fi
+	sleep 0.1
+done
+start=$(date +%s)
+node "$root/web/e2e/books.mjs" \
+	--base "http://127.0.0.1:$port" \
+	--media "$out/books/media" \
+	--debug-port "$debug_port" \
+	--shots "$out/books/shots" || status=$?
+echo "books: exit $status after $(($(date +%s) - start))s (screenshots in $out/books/shots)"
 exit "$status"

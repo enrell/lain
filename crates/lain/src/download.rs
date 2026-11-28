@@ -472,6 +472,9 @@ fn play(args: &[String]) -> Result<(), String> {
     if e.kind == "comic" || e.kind == "manga" {
         return Err(format!("{l} is an archive; open {path} in a comic reader (the web reader needs the server)"));
     }
+    if e.kind == "book" {
+        return Err(format!("{l} is a book; open {path} in an ebook reader (the web reader needs the server)"));
+    }
     let player = choose_player(args, cfg.player())?;
     // A short timeout: this runs offline more often than not.
     let client = Client::new(lain_client::ClientConfig { server: e.server.clone(), timeout_ms: 5_000 }, home.tokens())

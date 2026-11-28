@@ -41,9 +41,15 @@ conformance suite it was checked against stays as the API spec.
   - `lain-component` — the component host, `serve` for Rust components
     and the `<data-dir>/plugins/` watcher; the NDJSON wire frozen in
     `conformance/component/`.
-  - `lain-read` — the read module (D-195): comic and manga archives
-    (`lain.comic.pages@1`), the in-tree ZIP reader, image headers and
-    `ComicInfo.xml`.
+  - `lain-read` — the read module (D-195, D-303): comic and manga
+    archives (`lain.comic.pages@1`), the in-tree ZIP reader, image headers
+    and `ComicInfo.xml`; books (`lain.book.manifest@1`, `book/`): EPUB,
+    the chapter sanitizer, MOBI/AZW3 to EPUB conversion (`mobi/`) and the
+    embedded-metadata provider `lain-metadata-book`.
+  - `lain-pdf` — the in-tree PDF library (D-304): parser and repair,
+    security handler, filters and image codecs (JPEG, PNG, CCITT, JBIG2),
+    font programs, the content interpreter and the rasterizer. No crate
+    beyond `miniz_oxide` and `sha2`.
   - `lain-admin` — core administration (D-196..D-199): the theme
     (`lain.ui.theme@1`), backups (`lain.backup.create@1`, tar of a
     consistent store snapshot), integration settings and avatars.
@@ -189,7 +195,8 @@ conformance suite it was checked against stays as the API spec.
     `zeroize` and `ring`, whose build compiles its C and assembly
     (with `getrandom` 0.2, a second version next to 0.4); `ring` is the
     one C-backed crate, accepted for TLS by the coordinator's D-200.
-  - In-tree instead of a crate: the web build embedding
+  - In-tree instead of a crate: the PDF library (`lain-pdf`, D-304: no
+    pdf, font, image or jpeg crate), the EPUB and MOBI readers, the web build embedding
     (`crates/lain/build.rs`, `include_bytes!`; no `rust-embed` or
     `include_dir`), URL-safe base64 for the JWT segments
     (`lain-auth/src/crypto.rs`; no approved crate exposes one), the

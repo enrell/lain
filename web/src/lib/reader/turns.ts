@@ -43,6 +43,12 @@ export class PageTurns {
 		return snap;
 	}
 
+	/** A position reached some other way (a reflowable book) is owed. */
+	owe(id: string, snap: PageSnapshot): void {
+		this.#moved = true;
+		this.#pending = { id, snap };
+	}
+
 	/** A write landed: the turn it carried is no longer owed (a newer one still is). */
 	saved(id: string, snap: PageSnapshot): void {
 		const pending = this.#pending;

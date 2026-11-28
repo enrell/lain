@@ -1,10 +1,13 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
-	import type { CatalogItem, Progress, ReaderView } from '$lib/api/types';
+	import type { BookManifest, CatalogItem, Progress, ReaderView } from '$lib/api/types';
 	import { api, ApiError } from '$lib/api';
 	import ComicReader from '$lib/components/reader/ComicReader.svelte';
 	import MangaReader from '$lib/components/reader/MangaReader.svelte';
+	import BookReader from '$lib/components/reader/BookReader.svelte';
+	import PdfReader from '$lib/components/reader/PdfReader.svelte';
+	import { positionOf, type BookPosition, type BookProgress } from '$lib/reader/book';
 	import ErrorState from '$lib/components/primitives/ErrorState.svelte';
 	import Spinner from '$lib/components/primitives/Spinner.svelte';
 	import { itemCache } from '$lib/stores/media-cache.svelte';
@@ -20,6 +23,8 @@
 
 	let item = $state<CatalogItem | null>(null);
 	let view = $state<ReaderView | null>(null);
+	let book = $state<BookManifest | null>(null);
+	let bookStart = $state<BookPosition>({ chapter: 0, fraction: 0 });
 	let progress = $state<Progress | null>(null);
 	let siblings = $state<CatalogItem[]>([]);
 	let loading = $state(true);
@@ -40,10 +45,32 @@
 		notFound = false;
 		item = null;
 		view = null;
+		book = null;
 		try {
 			const it = await api.catalog.get(id);
 			if (!isReadable(it.kind)) {
 				error = t('reader.notReadable');
+				return;
+			}
+			if (it.kind === 'book') {
+				const [m, prog] = await Promise.all([api.reader.book(id), api.progress.get(id).catch(() => null)]);
+				item = it;
+				itemCache.set(it.id, it);
+				book = m;
+				progress = prog;
+				siblings = [];
+				const target = id;
+				reporter = new ProgressReporter((s) => api.progress.put(target, s).then(() => turns.saved(target, s)), {
+					intervalMs: 2000,
+					minDeltaSec: 0.05
+				});
+				if (m.layout === 'pages') {
+					view = await api.reader.pages(id);
+					opened = startPage(prog, view.pages.length);
+					turns.open(opened);
+				} else {
+					bookStart = positionOf(prog, m.chapters ?? []);
+				}
 				return;
 			}
 			const [v, prog, eps] = await Promise.all([
@@ -86,6 +113,16 @@
 		void reporter?.update(snap, { force: snap.completed || pageIndex === 0 });
 	}
 
+	// A reflowable book reports its virtual page (D-307); the newest one is
+	// owed to the server until it lands, like a page turn.
+	let bookMoved = false;
+	function onBookProgress(p: BookProgress): void {
+		if (!bookMoved && progress && Math.abs(p.position_sec - progress.position_sec) < 0.01) return;
+		bookMoved = true;
+		turns.owe(id, p);
+		void reporter?.update(p, { force: p.completed });
+	}
+
 	onDestroy(() => void reporter?.flush());
 
 	/*
@@ -122,6 +159,14 @@
 	</div>
 {:else if notFound}
 	<div class="p-8"><ErrorState message={t('reader.notFound')} /></div>
+{:else if item && book && book.layout !== 'pages'}
+	{#key item.id}
+		<BookReader {item} {book} start={bookStart} backHref={`/item/${item.id}`} onProgress={onBookProgress} />
+	{/key}
+{:else if item && book && view}
+	{#key item.id}
+		<PdfReader {item} {view} title={book.title} startAt={opened} backHref={`/item/${item.id}`} {onPage} />
+	{/key}
 {:else if error || !item || !view}
 	<div class="p-8"><ErrorState message={error ?? t('reader.unknownError')} retry={() => void load()} /></div>
 {:else}

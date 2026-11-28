@@ -5,8 +5,10 @@
 //! media streams.
 
 pub mod archive;
+pub mod book;
 pub mod comicinfo;
 pub mod image;
+pub mod mobi;
 pub mod zip;
 
 use std::collections::HashMap;

@@ -30,6 +30,7 @@ const KINDS: Record<string, () => string> = {
 	movie: () => t('social.kind.movie'),
 	manga: () => t('social.kind.manga'),
 	comic: () => t('social.kind.comic'),
+	book: () => t('social.kind.book'),
 	// A work named by a catalog item carries the item's kind: an episode's work
 	// is its show ("Harbor Lights · EPISODE" read as one episode), a video a film or clip.
 	episode: () => t('social.kind.series'),

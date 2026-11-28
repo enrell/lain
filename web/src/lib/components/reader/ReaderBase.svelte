@@ -108,6 +108,7 @@
 
 	// A manga is read in volumes, a comic in issues: the words differ, the keys do not.
 	const manga = $derived(profile.kind === 'manga');
+	const single = $derived(profile.kind === 'pdf');
 	// Said beside the page slider on a phone when it can change, or when it runs right to left.
 	const showDirection = $derived(settings.mode === 'paged' && (profile.controls.direction || settings.direction === 'rtl'));
 	const shortcuts = $derived<[string[], string][]>([
@@ -117,8 +118,12 @@
 		[['Space', 'Shift+Space'], t('reader.keys.space')],
 		[['Home', 'End'], t('reader.keys.ends')],
 		[['G'], t('reader.keys.jump')],
-		[['N', ']'], manga ? t('reader.keys.nextVolume') : t('reader.keys.nextIssue')],
-		[['P', '['], manga ? t('reader.keys.previousVolume') : t('reader.keys.previousIssue')],
+		...(single
+			? []
+			: ([
+					[['N', ']'], manga ? t('reader.keys.nextVolume') : t('reader.keys.nextIssue')],
+					[['P', '['], manga ? t('reader.keys.previousVolume') : t('reader.keys.previousIssue')]
+				] as [string[], string][])),
 		[['B', 'Backspace'], t('reader.keys.back')],
 		[['M'], manga ? t('reader.keys.modeManga') : t('reader.keys.modeComic')],
 		...(profile.controls.fit ? [[['W'], t('reader.keys.fit')] as [string[], string]] : []),
@@ -149,7 +154,19 @@
 		if (!ui) options = false;
 	});
 
-	const src = (i: number): string => api.reader.pageUrl(item.id, i, session.token);
+	// A PDF page is drawn by the server at the size it is shown: the width
+	// on screen in device pixels, zoom included, in steps of 256 so turning
+	// back hits the browser's cache.
+	const pdf = $derived(view.format === 'pdf');
+	const pdfWidth = $derived.by(() => {
+		if (!pdf) return undefined;
+		const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+		const across = settings.mode === 'paged' && dualActive ? 2 : 1;
+		const css = settings.mode === 'strip' ? Math.min(innerWidth, 768) : innerWidth / across;
+		const px = css * dpr * (settings.mode === 'paged' ? settings.zoom : 1);
+		return Math.min(4096, Math.max(512, Math.ceil(px / 256) * 256));
+	});
+	const src = (i: number): string => api.reader.pageUrl(item.id, i, session.token, pdfWidth);
 
 	function go(action: NavAction): void {
 		if (!action) return;
@@ -652,7 +669,7 @@
 						class="flex items-center justify-between gap-3 rounded-lg px-4 py-2 text-sm text-muted transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:bg-surface-hover focus-visible:text-foreground"
 						onclick={() => (atEnd = false)}
 					>
-						<span>{manga ? t('reader.end.keepVolume') : t('reader.end.keepIssue')}</span><kbd>Esc</kbd>
+						<span>{single ? t('book.end.stay') : manga ? t('reader.end.keepVolume') : t('reader.end.keepIssue')}</span><kbd>Esc</kbd>
 					</button>
 				</div>
 			</div>

@@ -7,9 +7,9 @@
  * byte budget first (budget.ts) and rolls back a half-saved item.
  */
 import { fetchRaw } from '$lib/api/client';
-import type { CatalogItem, ReaderView } from '$lib/api/types';
+import type { BookManifest, CatalogItem, ReaderView } from '$lib/api/types';
 import { effectiveBudget, fits, loadCap, type Estimate } from './budget';
-import { INDEX_KEY, OFFLINE_CACHE, itemKeys } from './routes';
+import { INDEX_KEY, OFFLINE_CACHE, OFFLINE_PDF_WIDTH, itemKeys } from './routes';
 
 export interface SavedItem {
 	item_id: string;
@@ -20,6 +20,8 @@ export interface SavedItem {
 	pages: number;
 	bytes: number;
 	saved_at: number;
+	/** Every cache key of a saved book (its chapters and resources). */
+	keys?: string[];
 }
 
 export class OfflineError extends Error {
@@ -113,8 +115,9 @@ export function createOfflineStore(deps: Deps = browserDeps()) {
 	 * when the pages cannot fit.
 	 */
 	async function save(item: CatalogItem, onProgress?: (done: number, total: number) => void): Promise<SavedItem> {
+		if (item.kind === 'book') return saveBook(item, onProgress);
 		if (item.kind !== 'comic' && item.kind !== 'manga') {
-			throw new OfflineError('not-readable', 'Only comics and manga can be saved offline for now.');
+			throw new OfflineError('not-readable', 'Only comics, manga and books can be saved offline.');
 		}
 		const cache = await deps.open();
 		const id = encodeURIComponent(item.id);
@@ -167,11 +170,91 @@ export function createOfflineStore(deps: Deps = browserDeps()) {
 		}
 	}
 
+	/**
+	 * Saves a book: its manifest and either every chapter with the
+	 * resources they name (EPUB, MOBI, AZW3) or every page rendered at
+	 * OFFLINE_PDF_WIDTH (PDF). The file's size bounds the estimate.
+	 */
+	async function saveBook(item: CatalogItem, onProgress?: (done: number, total: number) => void): Promise<SavedItem> {
+		const cache = await deps.open();
+		const id = encodeURIComponent(item.id);
+		const manifestRes = await deps.get(`/api/items/${id}/book`);
+		const book = (await manifestRes.clone().json()) as BookManifest;
+		const pdf = book.layout === 'pages';
+		const need = (pdf ? book.pages * 300 * 1024 : Math.max(item.size, 0) * 2) + 64 * 1024;
+		const index = await readIndex(cache);
+		const others = index.filter((s) => s.item_id !== item.id);
+		const ours = others.reduce((n, s) => n + s.bytes, 0);
+		const budget = effectiveBudget(deps.cap(), await deps.estimate(), ours);
+		if (!fits(need, ours, budget)) {
+			throw new OfflineError('quota', 'Not enough offline space in this browser.', need, budget);
+		}
+		await deps.ensureWorker();
+		const keys = [...itemKeys(item.id, 0), `/api/items/${id}/book`];
+		let bytes = 0;
+		const put = async (key: string, res: Response) => {
+			bytes += (await res.clone().blob()).size;
+			await cache.put(key, res);
+			keys.push(key);
+		};
+		try {
+			await cache.put(`/api/items/${id}/book`, manifestRes);
+			for (const path of [`/api/catalog/${id}`, `/api/catalog/${id}/episodes`, `/api/items/${id}/progress`, '/api/setup/status', '/api/me']) {
+				await cache.put(path, await deps.get(path));
+			}
+			if (pdf) {
+				await cache.put(`/api/items/${id}/pages`, await deps.get(`/api/items/${id}/pages`));
+				for (let i = 0; i < book.pages; i++) {
+					const key = `/api/items/${id}/pages/${i}?w=${OFFLINE_PDF_WIDTH}`;
+					await put(key, await deps.get(key));
+					onProgress?.(i + 1, book.pages);
+				}
+			} else {
+				const chapters = book.chapters ?? [];
+				const resources = new Set<string>();
+				const prefix = `/api/items/${item.id}/book/res/`;
+				for (let i = 0; i < chapters.length; i++) {
+					const key = `/api/items/${id}/book/chapters/${i}`;
+					const res = await deps.get(key);
+					const html = await res.clone().text();
+					// Root-relative resource URLs only, as the server writes them.
+					for (const m of html.matchAll(/["'(]\s*(\/api\/items\/[^/"']+\/book\/res\/[^"'()\s<>?]+)/g)) {
+						if (m[1].startsWith(prefix)) resources.add(m[1]);
+					}
+					await put(key, res);
+					onProgress?.(i + 1, chapters.length + resources.size);
+				}
+				let done = chapters.length;
+				for (const r of resources) {
+					await put(r, await deps.get(r));
+					onProgress?.(++done, chapters.length + resources.size);
+				}
+			}
+			const saved: SavedItem = {
+				item_id: item.id,
+				title: book.title || item.title,
+				kind: item.kind,
+				season: item.season,
+				episode: item.episode,
+				pages: book.pages,
+				bytes,
+				saved_at: deps.now(),
+				keys
+			};
+			await writeIndex(cache, [...others, saved]);
+			return saved;
+		} catch (err) {
+			for (const k of keys) await cache.delete(k);
+			if (err instanceof OfflineError) throw err;
+			throw new OfflineError('failed', err instanceof Error ? err.message : 'Saving failed.');
+		}
+	}
+
 	async function remove(itemId: string): Promise<void> {
 		const cache = await deps.open();
 		const index = await readIndex(cache);
 		const entry = index.find((s) => s.item_id === itemId);
-		for (const k of itemKeys(itemId, entry?.pages ?? 0)) await cache.delete(k);
+		for (const k of entry?.keys ?? itemKeys(itemId, entry?.pages ?? 0)) await cache.delete(k);
 		await writeIndex(cache, index.filter((s) => s.item_id !== itemId));
 	}
 

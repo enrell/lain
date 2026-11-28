@@ -602,6 +602,11 @@ impl Client {
         self.call(Method::GET, &format!("/api/items/{}/pages", encode(item_id)), Body::None).await
     }
 
+    /// A book's manifest (D-306): what it is and how it is read.
+    pub async fn book(&self, item_id: &str) -> Result<crate::types::BookManifest, ClientError> {
+        self.call(Method::GET, &format!("/api/items/{}/book", encode(item_id)), Body::None).await
+    }
+
     /// One page's image bytes; `index` is the page's `index`.
     pub async fn comic_page(&self, item_id: &str, index: i64) -> Result<Vec<u8>, ClientError> {
         let path = format!("/api/items/{}/pages/{index}", encode(item_id));

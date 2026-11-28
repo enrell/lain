@@ -813,6 +813,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lain-pdf"
+version = "0.3.1"
+dependencies = [
+ "miniz_oxide",
+ "sha2",
+]
+
+[[package]]
 name = "lain-probe"
 version = "0.3.1"
 dependencies = [
@@ -827,9 +835,11 @@ version = "0.3.1"
 dependencies = [
  "lain-api",
  "lain-core",
+ "lain-pdf",
  "miniz_oxide",
  "serde",
  "serde_json",
+ "sha1",
  "tracing",
 ]
 

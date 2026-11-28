@@ -366,6 +366,7 @@ mod tests {
             kind: "anime".into(),
             limit: 5,
             dir: dir.to_string_lossy().into(),
+            ..Default::default()
         });
         let titles: Vec<_> = hits.iter().map(|h| h.title.as_str()).collect();
         assert_eq!(titles, vec!["Ep 1", "Sousou no Frieren"]);

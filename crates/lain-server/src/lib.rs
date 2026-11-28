@@ -13,6 +13,7 @@
 pub mod acquire;
 pub mod app;
 pub mod art;
+pub mod books;
 pub mod catalog;
 pub mod contracts;
 pub mod datadir;

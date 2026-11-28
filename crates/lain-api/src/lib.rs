@@ -686,6 +686,87 @@ pub struct ComicPages {
     pub info: Option<ComicInfo>,
 }
 
+// ---- books (D-303..D-308) ---------------------------------------------------
+
+/// Characters in one virtual page of a reflowable book: reading
+/// progress is stored in these pages (D-307), so every client shows the
+/// same "page 12 of 340" whatever its screen.
+pub const BOOK_PAGE_CHARS: i64 = 1024;
+
+/// The book module's embedded-metadata provider id (D-308): local, like
+/// `.nfo` files, and never online.
+pub const BOOK_METADATA_ID: &str = "lain-metadata-book";
+
+/// How characters are counted for [`BookChapter::chars`]: the version of
+/// the rule, so a sanitizer change never moves a saved position silently.
+pub const BOOK_COUNT_RULE: &str = "text@1";
+
+/// `GET /api/items/{id}/book` (`lain.book.manifest@1`): what a book is
+/// and how to read it. `layout` is `reflowable` (EPUB, and MOBI/AZW3
+/// converted to EPUB: read chapter by chapter) or `pages` (PDF: read
+/// page by page through `/api/items/{id}/pages`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookManifest {
+    /// `epub`, `pdf`, `mobi` or `azw3`: the file's own format.
+    pub format: String,
+    pub layout: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub language: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub publisher: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subjects: Vec<String>,
+    /// As the book gives it (often `YYYY` or `YYYY-MM-DD`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub published: String,
+    /// `ltr` or `rtl` (the spine's page progression).
+    pub direction: String,
+    /// Reflowable books: the reading order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chapters: Vec<BookChapter>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub toc: Vec<BookTocEntry>,
+    /// Virtual pages of [`BOOK_PAGE_CHARS`] (reflowable) or real pages.
+    pub pages: i64,
+    /// [`BOOK_COUNT_RULE`] for reflowable books.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub count_rule: String,
+    /// Conditions a reader may want to mention: `fonts-missing` (a PDF
+    /// names fonts neither embedded nor installed).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+/// One document of a reflowable book's reading order.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookChapter {
+    pub index: i64,
+    /// Text characters, by [`BOOK_COUNT_RULE`].
+    pub chars: i64,
+    /// `false` for auxiliary documents the spine marks `linear="no"`.
+    pub linear: bool,
+}
+
+/// A table of contents entry: a chapter and an anchor in it
+/// (reflowable), or a page (`pages` layout, 0-based).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookTocEntry {
+    pub title: String,
+    /// The chapter index, or -1.
+    pub chapter: i64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub anchor: String,
+    /// The page index, or -1.
+    pub page: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub children: Vec<BookTocEntry>,
+}
+
 // ---- server administration ------------------------------------------------
 
 /// `GET /api/theme`: the web UI palette (`lain.ui.theme@1`), already

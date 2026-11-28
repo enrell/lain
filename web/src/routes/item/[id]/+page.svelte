@@ -52,6 +52,7 @@
 	import { loadPreferredPlayer, playbackHref, playExternalClick, type PreferredPlayer } from '$lib/player/external-player';
 	import { isReadable } from '$lib/reader/kinds';
 	import ComicInfoPanel from '$lib/components/reader/ComicInfoPanel.svelte';
+	import BookInfoPanel from '$lib/components/reader/BookInfoPanel.svelte';
 	import DownloadFileButton from '$lib/components/media/DownloadFileButton.svelte';
 	import { usePageKeys } from '$lib/stores/page-keys.svelte';
 	let preferredPlayer = $state<PreferredPlayer>('browser');
@@ -386,7 +387,7 @@
 			{#snippet tracking()}<div class="mt-5 max-w-3xl"><TitleTracking itemId={series?.items[0]?.id ?? id} {reading} /></div>{/snippet}
 		</TitleView>
 	{/key}
-	{#if reading && item}<div class="mt-8"><ComicInfoPanel {item} summary={!!enrichment?.synopsis} /></div>{/if}
+	{#if reading && item}<div class="mt-8">{#if item.kind === 'book'}<BookInfoPanel {item} summary={!enrichment?.synopsis} />{:else}<ComicInfoPanel {item} summary={!!enrichment?.synopsis} />{/if}</div>{/if}
 {:else if item}
 	<article class="space-y-6">
 		<!-- The same hero as a series: the art across the top, fading into
@@ -540,7 +541,7 @@
 			</div>
 		{/if}
 
-		{#if reading}<ComicInfoPanel {item} summary={!!enrichment?.synopsis} />{/if}
+		{#if reading}{#if item.kind === 'book'}<BookInfoPanel {item} summary={!enrichment?.synopsis} />{:else}<ComicInfoPanel {item} summary={!!enrichment?.synopsis} />{/if}{/if}
 
 	</article>
 {/if}

@@ -345,6 +345,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/events", axum::routing::get(events))
         .merge(crate::population::routes())
         .merge(crate::watch::routes())
+        .merge(crate::books::routes())
         .merge(crate::lists::routes())
         .merge(crate::social::routes())
         .merge(crate::acquire::routes())
@@ -585,9 +586,34 @@ fn backup_get(app: &App, _: &Req, _: &Verified) -> Reply {
 
 // ---- read (D-085, D-195) ------------------------------------------------------
 
-/// Resolves an item to its page index, or the reply for why not.
+/// Resolves an item to its page index, or the reply for why not. A PDF
+/// book is read page by page through the same routes (D-306), its pages
+/// rendered by `lain-pdf`; its page sizes are in points.
 fn pages_for(app: &App, v: &Verified, id: &str) -> Result<(CatalogItem, lain_read::PageIndex), Reply> {
     let it = app.visible_item(v, id).ok_or_else(|| Reply::err(404, "unknown item"))?;
+    if it.kind == lain_read::book::KIND_BOOK {
+        let it = crate::books::book_item(app, v, id)?;
+        if lain_read::book::format(std::path::Path::new(&it.file_path)) != "pdf" {
+            return Err(Reply::json(400, json!({"error": "this book is read by chapters", "code": "reflowable-book"})));
+        }
+        let sizes = match crate::books::books().page_sizes(std::path::Path::new(&it.file_path)) {
+            Ok(s) => s,
+            Err(e) => return Err(crate::books::book_error(&it, e)),
+        };
+        let pages = sizes
+            .iter()
+            .enumerate()
+            .map(|(i, (w, h))| lain_read::IndexedPage {
+                index: i as i64,
+                name: String::new(),
+                mime: "image/png".into(),
+                size: 0,
+                width: w.round().max(1.0) as u32,
+                height: h.round().max(1.0) as u32,
+            })
+            .collect();
+        return Ok((it, lain_read::PageIndex { format: "pdf".into(), pages, info: None }));
+    }
     if it.kind != lain_read::KIND_COMIC && it.kind != lain_read::KIND_MANGA {
         return Err(Reply::err(400, "item is not readable"));
     }
@@ -624,7 +650,8 @@ fn pages_get(app: &App, req: &Req, v: &Verified) -> Reply {
     }
 }
 
-/// One page's bytes, by index (`<img>` sends `?token=`).
+/// One page's bytes, by index (`<img>` sends `?token=`). A PDF page is
+/// rendered `?w=` pixels wide.
 fn page_get(app: &App, req: &Req, v: &Verified) -> Reply {
     let n = match req.param("n").parse::<i64>() {
         Ok(n) if n >= 0 => n as usize,
@@ -635,6 +662,27 @@ fn page_get(app: &App, req: &Req, v: &Verified) -> Reply {
         Err(r) => return r,
     };
     let Some(pg) = idx.pages.get(n) else { return Reply::err(404, "no such page") };
+    if idx.format == "pdf" {
+        let width = match req.query("w") {
+            "" => lain_read::book::DEFAULT_PAGE_WIDTH,
+            w => match w.parse::<usize>() {
+                Ok(w) if (64..=lain_read::book::MAX_PAGE_WIDTH).contains(&w) => w,
+                _ => return Reply::err(400, "bad width"),
+            },
+        };
+        let etag = format!("\"{}-{}-{n}-{width}\"", it.size, it.updated_at);
+        if req.header(header::IF_NONE_MATCH) == etag {
+            let mut r = Response::new(Body::empty());
+            *r.status_mut() = StatusCode::NOT_MODIFIED;
+            return Reply::response(r).header(header::ETAG, &etag);
+        }
+        return match crate::books::books().page(std::path::Path::new(&it.file_path), n, width) {
+            Ok(p) => Reply::bytes(200, p.1, p.0.clone())
+                .header(header::CACHE_CONTROL, "private, max-age=86400")
+                .header(header::ETAG, &etag),
+            Err(e) => crate::books::book_error(&it, e),
+        };
+    }
     let etag = format!("\"{}-{}-{n}\"", it.size, pg.size);
     if req.header(header::IF_NONE_MATCH) == etag {
         let mut r = Response::new(Body::empty());

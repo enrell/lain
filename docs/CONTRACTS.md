@@ -1017,6 +1017,39 @@ page among the first four — through the thumbnail provider. Reading
 progress uses the shared progress record with `position_sec` as the
 1-based page and `duration_sec` as the page count.
 
+### Books (D-303..D-309)
+
+`lain.book.manifest@1` (provider `lain-book`, input `{path}`) answers a
+`BookManifest`: `format` (`epub`, `pdf`, `mobi`, `azw3`), `layout`
+(`reflowable` or `pages`), `title`, `authors[]`, `language`, `publisher`,
+`description`, `subjects[]`, `published`, `direction`, `chapters[]`
+(`{index, chars, linear}`, reflowable only), `toc[]`
+(`{title, chapter, anchor, page, children[]}`, -1 when not applicable),
+`pages` (virtual pages of 1024 characters, or real pages), `count_rule`
+(`text@1`) and `warnings[]` (`fonts-missing`). Gateway routes, all behind
+the item's visibility (D-156) and the read module:
+
+- `GET /api/items/{id}/book` — the manifest; 400 `not-a-book`, 422
+  `invalid-book` / `drm-protected` / `unsupported-format`.
+- `GET /api/items/{id}/book/chapters/{n}` — chapter `n` of a reflowable
+  book as sanitized HTML (`text/html; charset=utf-8`,
+  `Content-Security-Policy: sandbox …`, `ETag`); resources point at
+  `/api/items/{id}/book/res/<percent-encoded member>`, links to other
+  chapters carry `data-lain-chapter` and `data-lain-anchor`.
+- `GET /api/items/{id}/book/res/{*path}` — a member of the book (bearer or
+  `?token=`), stylesheets with their URLs rewritten, documents as
+  `text/plain`; `META-INF/` is never served.
+- A PDF book is read through `GET /api/items/{id}/pages` (`format: pdf`,
+  page sizes in points) and `GET /api/items/{id}/pages/{n}?w=` (rendered
+  `w` pixels wide, 64..4096, default 1400; PNG or JPEG). A reflowable book
+  answers 400 `reflowable-book` there.
+
+Progress of a reflowable book: `position_sec` is the 1-based virtual page
+(fractional), `duration_sec` the book's `pages` (D-307). The enrich pass
+reads `lain-metadata-book` (`lain.metadata.search@1` with the item's
+`path`, `resolve@1` by path) and never asks a network provider about a
+`book` (D-308).
+
 ## The tracking list (D-078..D-081)
 
 The lain list is a per-user tracking domain next to catalog and

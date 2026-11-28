@@ -14,7 +14,7 @@
  * else pass through untouched.
  */
 import { build, files, version } from '$service-worker';
-import { OFFLINE_CACHE, cacheKey, classify } from '$lib/offline/routes';
+import { OFFLINE_CACHE, cacheKey, classify, fallbackKey } from '$lib/offline/routes';
 
 const sw = self as unknown as ServiceWorkerGlobalScope;
 const SHELL_CACHE = `lain-shell-${version}`;
@@ -39,7 +39,13 @@ sw.addEventListener('activate', (event) => {
 	);
 });
 
-async function networkFirst(request: Request, cacheName: string, key: string, refresh: 'always' | 'if-present'): Promise<Response> {
+async function networkFirst(
+	request: Request,
+	cacheName: string,
+	key: string,
+	refresh: 'always' | 'if-present',
+	fallback: string | null = null
+): Promise<Response> {
 	const cache = await caches.open(cacheName);
 	try {
 		const res = await fetch(request);
@@ -48,7 +54,7 @@ async function networkFirst(request: Request, cacheName: string, key: string, re
 		}
 		return res;
 	} catch (err) {
-		const hit = await cache.match(key);
+		const hit = (await cache.match(key)) ?? (fallback ? await cache.match(fallback) : undefined);
 		if (hit) return hit;
 		throw err;
 	}
@@ -74,7 +80,7 @@ sw.addEventListener('fetch', (event) => {
 			return;
 		case 'saved':
 			// Only items the user saved are cached; others are just fetched.
-			event.respondWith(networkFirst(req, OFFLINE_CACHE, cacheKey(url), 'if-present'));
+			event.respondWith(networkFirst(req, OFFLINE_CACHE, cacheKey(url), 'if-present', fallbackKey(url)));
 			return;
 	}
 });

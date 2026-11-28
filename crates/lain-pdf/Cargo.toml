@@ -1,0 +1,12 @@
+[package]
+name = "lain-pdf"
+description = "Lain's PDF library (D-304): parser, security handler, fonts, content interpreter and rasterizer, written in-tree"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+miniz_oxide.workspace = true
+sha2.workspace = true

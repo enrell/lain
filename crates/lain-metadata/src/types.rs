@@ -45,6 +45,10 @@ pub struct MetadataSearchInput {
     pub limit: i64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub dir: String,
+    /// The file itself, for providers that read its embedded metadata
+    /// (books, D-308); remote providers never see it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub path: String,
 }
 
 /// A resolved entry. Artwork rides as URLs.

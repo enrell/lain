@@ -10,6 +10,11 @@ use crate::text::{base, dir, ext, fields_join, lower, strip_controls, trim_set};
 pub const ANIME_ID: &str = "lain-identify-anime";
 pub const GENERIC_ID: &str = "lain-identify-generic";
 pub const COMIC_ID: &str = "lain-identify-comic";
+pub const BOOK_ID: &str = "lain-identify-book";
+
+/// The extensions of books (D-303); kept here so the scan's library
+/// types and this identifier cannot drift apart.
+pub const BOOK_EXTENSIONS: [&str; 4] = ["epub", "pdf", "mobi", "azw3"];
 
 /// A discovered file handed to identifiers: no interpretation, only
 /// where it is and what library produced it.
@@ -493,7 +498,7 @@ pub fn identify_generic(c: &Candidate) -> Proposal {
     }
     let kind = match lext.as_str() {
         "mp3" | "flac" | "m4a" | "aac" | "ogg" | "opus" | "wav" => "audio",
-        "pdf" | "epub" | "mobi" | "azw3" => "book",
+        e if BOOK_EXTENSIONS.contains(&e) => "book",
         "cbz" | "cbr" | "cb7" => "comic",
         "jpg" | "jpeg" | "png" | "webp" | "gif" | "heic" | "avif" => "photo",
         _ => "video",
@@ -506,6 +511,46 @@ pub fn identify_generic(c: &Candidate) -> Proposal {
         plugin_id: GENERIC_ID.into(),
         ..Proposal::default()
     }
+}
+
+// ---- books (D-303) --------------------------------------------------------
+
+/// Reads book files; `None` declines every other extension, so the
+/// anime parser never sees an ebook and other kinds never change. The
+/// whole cleaned name is the title (books seldom share one, and the
+/// embedded metadata names the book better after the enrich pass);
+/// a year in brackets is kept. The kind is always `book`, whatever the
+/// library type.
+pub fn identify_book(c: &Candidate) -> Option<Proposal> {
+    let b = base(&c.path);
+    let e = ext(b);
+    let lext = lower(e.strip_prefix('.').unwrap_or(e));
+    if !BOOK_EXTENSIONS.contains(&lext.as_str()) {
+        return None;
+    }
+    let stem = &b[..b.len() - e.len()];
+    let (without, groups) = replace_groups(stem, " ");
+    let year = groups.iter().find_map(|g| find_year(g)).unwrap_or(0);
+    let mut name = fields_join(&without).replace('_', " ");
+    if !name.contains(' ') {
+        name = name.replace('.', " ");
+    }
+    let mut title = strip_controls(trim_set(&fields_join(&name), " -–—_.:,"));
+    if title.is_empty() {
+        title = strip_controls(stem.trim());
+    }
+    if title.is_empty() {
+        return None;
+    }
+    Some(Proposal {
+        kind: "book".into(),
+        title,
+        year,
+        confidence: 0.6,
+        evidence: vec!["extension".into()],
+        plugin_id: BOOK_ID.into(),
+        ..Proposal::default()
+    })
 }
 
 // ---- comics and manga (D-085) ----------------------------------------------
@@ -745,5 +790,23 @@ mod tests {
         assert_eq!((p.title.as_str(), p.episode), ("Akira", 45));
         assert!(identify_comic(&cand("a.mkv")).is_none());
         assert_eq!(identify_comic(&cand("v12345.cbz")).unwrap().season, 0);
+    }
+
+    #[test]
+    fn books_keep_their_whole_name() {
+        let p = identify_book(&cand("/m/books/Ursula K. Le Guin - The Dispossessed (1974) [retail].epub")).unwrap();
+        assert_eq!((p.kind.as_str(), p.title.as_str(), p.year), ("book", "Ursula K. Le Guin - The Dispossessed", 1974));
+        assert_eq!(p.plugin_id, BOOK_ID);
+        let p = identify_book(&cand("/m/b/the_left_hand_of_darkness.AZW3")).unwrap();
+        assert_eq!(p.title, "the left hand of darkness");
+        assert_eq!(identify_book(&cand("/m/b/Manual.pdf")).unwrap().title, "Manual");
+        assert_eq!(identify_book(&cand("/m/b/x.mobi")).unwrap().kind, "book");
+        // Everything else is declined, so other kinds never change.
+        for p in ["/m/a/Show - 01.mkv", "/m/c/Saga 054.cbz", "/m/b/notes.txt", "/m/b/.epub"] {
+            assert!(identify_book(&cand(p)).is_none(), "{p}");
+        }
+        // The anime parser would have claimed a release-style name.
+        let p = identify_book(&cand("/m/b/[Group-A] Title - 01 (2020).epub")).unwrap();
+        assert_eq!((p.kind.as_str(), p.year), ("book", 2020));
     }
 }

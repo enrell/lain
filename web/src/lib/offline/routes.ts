@@ -17,8 +17,25 @@ const SAVED = [
 	/^\/api\/items\/[^/]+\/pages\/\d+$/,
 	/^\/api\/items\/[^/]+\/progress$/,
 	/^\/api\/catalog\/[^/]+$/,
-	/^\/api\/catalog\/[^/]+\/episodes$/
+	/^\/api\/catalog\/[^/]+\/episodes$/,
+	// Books (D-306): the manifest, chapters and their resources.
+	/^\/api\/items\/[^/]+\/book$/,
+	/^\/api\/items\/[^/]+\/book\/chapters\/\d+$/,
+	/^\/api\/items\/[^/]+\/book\/res\/.+$/
 ];
+
+/** The width a PDF's pages are saved at for offline reading. */
+export const OFFLINE_PDF_WIDTH = 1536;
+
+/**
+ * Where else a saved request may be: a PDF page is saved at one width,
+ * and asked offline at whatever the screen wants.
+ */
+export function fallbackKey(url: URL): string | null {
+	const m = /^\/api\/items\/[^/]+\/pages\/\d+$/.exec(url.pathname);
+	if (!m || !url.searchParams.has('w')) return null;
+	return `${url.pathname}?w=${OFFLINE_PDF_WIDTH}`;
+}
 const SESSION = new Set(['/api/setup/status', '/api/me']);
 
 /**

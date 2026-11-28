@@ -68,7 +68,7 @@ impl Server {
     }
 
     /// A data dir over the read fixture (`conformance/fixtures/read`,
-    /// root `media`, library `lib-7186ff8c` of comics and manga).
+    /// root `media`, library `lib-7186ff8c` of comics, manga and books).
     pub async fn with_read_fixture(root: &Path) -> Server {
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/fixtures");
         let data = root.join("data");
@@ -77,7 +77,7 @@ impl Server {
         let roots = serde_json::json!({"format": "lain.roots@1", "roots": {"media": media.to_string_lossy()}});
         std::fs::write(data.join("roots.json"), serde_json::to_vec(&roots).unwrap()).unwrap();
         let raw = std::fs::read(fixtures.join("read-catalog.json")).unwrap();
-        assert_eq!(lain_server::import(&data, &serde_json::from_slice(&raw).unwrap()).unwrap(), 5);
+        assert_eq!(lain_server::import(&data, &serde_json::from_slice(&raw).unwrap()).unwrap(), 8);
         // The fixture catalog stays as imported: no watch, no scan.
         Server::start_with(&data, |c| {
             c.watch = false;

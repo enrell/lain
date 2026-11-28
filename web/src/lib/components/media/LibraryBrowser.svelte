@@ -400,7 +400,7 @@
 	const kindCounts = $derived(countBy(all, filters, ctx, 'kind', (g) => [...new Set(g.items.map((i) => i.kind))]));
 	const kinds = $derived([...new Set(items.map((i) => i.kind))].filter(Boolean).sort());
 	// A kind by name; one the catalog adds later shows as stored until it has one.
-	const KIND_NAMES: Record<string, Key> = { video: 'browse.kind.video', episode: 'browse.kind.episode', manga: 'browse.kind.manga', comic: 'browse.kind.comic' };
+	const KIND_NAMES: Record<string, Key> = { video: 'browse.kind.video', episode: 'browse.kind.episode', manga: 'browse.kind.manga', comic: 'browse.kind.comic', book: 'browse.kind.book' };
 	const kindName = (k: string) => (KIND_NAMES[k] ? t(KIND_NAMES[k]) : k);
 	const addedCounts = $derived(
 		new Map(ADDED.map((a) => [a.value, all.filter((g) => apply([g], { ...filters, added: a.value }, ctx).length > 0).length]))

@@ -90,4 +90,46 @@ describe('offline store', () => {
 		const store = createOfflineStore(deps(fakeCache()));
 		await expect(store.save(item({ kind: 'anime' }))).rejects.toMatchObject({ code: 'not-readable' });
 	});
+
+	it('saves a reflowable book: manifest, chapters and the resources they name', async () => {
+		const cache = fakeCache();
+		const manifest = { format: 'epub', layout: 'reflowable', title: 'Tiny Book', direction: 'ltr', pages: 1, chapters: [{ index: 0, chars: 10, linear: true }, { index: 1, chars: 5, linear: true }] };
+		const store = createOfflineStore(
+			deps(cache, {
+				get: async (path) => {
+					if (path.endsWith('/book')) return new Response(JSON.stringify(manifest));
+					if (path.includes('/chapters/0')) return new Response('<img src="/api/items/b1/book/res/OEBPS/a.png"><a href="https://x.example/api/items/b1/book/res/no.png">');
+					if (path.includes('/chapters/1')) return new Response('<p>end</p><img src="/api/items/b1/book/res/OEBPS/a.png">');
+					if (path.includes('/book/res/')) return new Response(new Uint8Array(50));
+					return new Response('{}');
+				}
+			})
+		);
+		const saved = await store.save(item({ id: 'b1', kind: 'book', size: 1000 }));
+		expect(saved).toMatchObject({ item_id: 'b1', title: 'Tiny Book', pages: 1 });
+		for (const k of ['/api/items/b1/book', '/api/items/b1/book/chapters/0', '/api/items/b1/book/chapters/1', '/api/items/b1/book/res/OEBPS/a.png']) {
+			expect(cache.m.has(k), k).toBe(true);
+		}
+		expect([...cache.m.keys()].some((k) => k.includes('no.png'))).toBe(false);
+		await store.remove('b1');
+		expect(cache.m.has('/api/items/b1/book/res/OEBPS/a.png')).toBe(false);
+		expect(await store.isSaved('b1')).toBe(false);
+	});
+
+	it('saves a PDF book at the offline width', async () => {
+		const cache = fakeCache();
+		const store = createOfflineStore(
+			deps(cache, {
+				get: async (path) => {
+					if (path.endsWith('/book')) return new Response(JSON.stringify({ format: 'pdf', layout: 'pages', title: 'P', direction: 'ltr', pages: 2 }));
+					if (/\/pages\/\d+\?w=1536$/.test(path)) return new Response(new Uint8Array(70));
+					return new Response('{}');
+				}
+			})
+		);
+		const saved = await store.save(item({ id: 'p1', kind: 'book' }));
+		expect(saved.bytes).toBe(140);
+		expect(cache.m.has('/api/items/p1/pages/1?w=1536')).toBe(true);
+		expect(cache.m.has('/api/items/p1/pages')).toBe(true);
+	});
 });

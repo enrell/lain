@@ -55,7 +55,7 @@ const MAX_FILES: usize = 1000;
 const MAX_GENRES: usize = 48;
 const MAX_TEXT: usize = 8000;
 const KEY_PREFIX: &str = "lain_";
-const KINDS: &[&str] = &["episode", "video", "movie", "comic", "manga"];
+const KINDS: &[&str] = &["episode", "video", "movie", "comic", "manga", "book"];
 
 pub const SCOPE_LIBRARY: &str = "library";
 pub const SCOPE_INDEXERS: &str = "indexers";

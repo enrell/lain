@@ -106,6 +106,16 @@ fn comic(path: &str) -> bool {
     !lain_read::archive::format(Path::new(path)).is_empty()
 }
 
+fn book(path: &str) -> bool {
+    !lain_read::book::format(Path::new(path)).is_empty()
+}
+
+/// A file whose picture is a still, not a frame: a comic archive's
+/// first page, a book's cover (D-308).
+fn still(path: &str) -> bool {
+    comic(path) || book(path)
+}
+
 /// A still that came with the file, by the conventions downloaders and
 /// media managers use: `<name>-poster.*` or `<name>-thumb.*` next to
 /// it, or `.metadata/thumbs/thumbnail.jpg` (`banner.jpg`) in its
@@ -376,8 +386,9 @@ impl Generator {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        // A comic's cover is its first page whatever is asked.
-        let pick = req.pick && !comic(&req.file_path);
+        // A comic's cover is its first page and a book's its cover,
+        // whatever is asked.
+        let pick = req.pick && !still(&req.file_path);
         let place = if pick { "pick".to_string() } else { format!("{at:.1}") };
         let key = crate::settings::sha256_hex(&format!("{}|{mtime}|{}|{place}|{width}", req.file_path, meta.len()));
         let out = self.dir.join(format!("{key}.jpg"));
@@ -409,7 +420,7 @@ impl Generator {
         if req.file_path.is_empty() {
             return Err(Error::invalid("file_path required"));
         }
-        if comic(&req.file_path) {
+        if still(&req.file_path) {
             return Err(Error::invalid("not a video"));
         }
         let layout =
@@ -539,7 +550,7 @@ fn choose(path: &str, width: i64, out: &Path) -> Result<f64, String> {
 }
 
 /// Seeks before `-i` (keyframe-fast) and writes one JPEG atomically; a
-/// comic archive's cover page is piped in instead. With `measure`, the
+/// comic archive's cover page or a book's cover is piped in instead. With `measure`, the
 /// same frame's [`flatness`] comes back (0 when it could not be read).
 fn extract(path: &str, at: f64, width: i64, out: &Path, measure: bool) -> Result<f64, String> {
     let tmp = out.with_extension("jpg.tmp");
@@ -549,6 +560,10 @@ fn extract(path: &str, at: f64, width: i64, out: &Path, measure: bool) -> Result
         let page = lain_read::archive::first_page(Path::new(path)).map_err(|e| e.to_string())?;
         cmd.args(["-hide_banner", "-loglevel", "error", "-i", "pipe:0"]);
         Some(Box::new(std::io::Cursor::new(page)))
+    } else if book(path) {
+        let (cover, _) = lain_read::book::shared().cover(Path::new(path)).map_err(|e| e.message)?;
+        cmd.args(["-hide_banner", "-loglevel", "error", "-i", "pipe:0"]);
+        Some(Box::new(std::io::Cursor::new(cover)))
     } else {
         cmd.args(["-hide_banner", "-loglevel", "error", "-nostdin", "-ss", &format!("{at:.3}"), "-i", path]);
         None
@@ -754,6 +769,54 @@ mod tests {
                 .unwrap()
                 .cached
         );
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn a_pdf_cover_is_its_first_page() {
+        if lain_probe::exec::look_path("ffmpeg").is_none() {
+            assert!(std::env::var("LAIN_REQUIRE_FFMPEG").is_err(), "LAIN_REQUIRE_FFMPEG is set but ffmpeg is missing");
+            return;
+        }
+        let dir = lain_store::test_dir("thumb-book");
+        std::fs::create_dir_all(&dir).unwrap();
+        let content = b"0 0 1 rg 0 0 100 150 re f";
+        let objs: [Vec<u8>; 3] = [
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 150] /Contents 4 0 R >>".to_vec(),
+        ];
+        let mut pdf = b"%PDF-1.4\n".to_vec();
+        let mut offs = Vec::new();
+        for (i, o) in objs.iter().enumerate() {
+            offs.push(pdf.len());
+            pdf.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
+            pdf.extend_from_slice(o);
+            pdf.extend_from_slice(b"\nendobj\n");
+        }
+        offs.push(pdf.len());
+        pdf.extend_from_slice(format!("4 0 obj\n<< /Length {} >>\nstream\n", content.len()).as_bytes());
+        pdf.extend_from_slice(content);
+        pdf.extend_from_slice(b"\nendstream\nendobj\n");
+        let x = pdf.len();
+        pdf.extend_from_slice(b"xref\n0 5\n0000000000 65535 f \n");
+        for o in offs {
+            pdf.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+        }
+        pdf.extend_from_slice(format!("trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{x}\n%%EOF\n").as_bytes());
+        let path = dir.join("Book.pdf");
+        std::fs::write(&path, pdf).unwrap();
+        let g = Generator::new(&dir.join("cache"));
+        let t = g
+            .generate(&Request {
+                file_path: path.to_string_lossy().into_owned(),
+                width: 40,
+                pick: true,
+                ..Default::default()
+            })
+            .unwrap();
+        let jpg = std::fs::read(&t.path).unwrap();
+        assert_eq!(&jpg[..2], &[0xFF, 0xD8], "a JPEG");
         std::fs::remove_dir_all(dir).ok();
     }
 }

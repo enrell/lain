@@ -1,6 +1,6 @@
 //! The in-tree parsers (identify module, D-155): the release-name
-//! tokenizer behind `lain.release.parse@1` and the three identifiers
-//! behind `lain.media.identify@1` (comic, anime, generic, in that
+//! tokenizer behind `lain.release.parse@1` and the four identifiers
+//! behind `lain.media.identify@1` (book, comic, anime, generic, in that
 //! binding order). They are the default providers; a component (the
 //! lain-parser model, P4) can be bound before them without touching the
 //! scan. Ports of `internal/plugins/{identify,release}`; the shared
@@ -16,7 +16,8 @@ use serde_json::{Value, json};
 use lain_core::{Error, Provider};
 
 pub use identify::{
-    ANIME_ID, COMIC_ID, Candidate, GENERIC_ID, Proposal, identify_anime, identify_comic, identify_generic,
+    ANIME_ID, BOOK_EXTENSIONS, BOOK_ID, COMIC_ID, Candidate, GENERIC_ID, Proposal, identify_anime, identify_book,
+    identify_comic, identify_generic,
 };
 pub use release::{TOKENIZER_ID, tokenize};
 
@@ -29,16 +30,18 @@ pub const MAX_NAME: usize = 1024;
 /// Which identifier a provider runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Identifier {
+    Book,
     Comic,
     Anime,
     Generic,
 }
 
 impl Identifier {
-    pub const ALL: [Identifier; 3] = [Identifier::Comic, Identifier::Anime, Identifier::Generic];
+    pub const ALL: [Identifier; 4] = [Identifier::Book, Identifier::Comic, Identifier::Anime, Identifier::Generic];
 
     fn id(self) -> &'static str {
         match self {
+            Identifier::Book => BOOK_ID,
             Identifier::Comic => COMIC_ID,
             Identifier::Anime => ANIME_ID,
             Identifier::Generic => GENERIC_ID,
@@ -48,6 +51,7 @@ impl Identifier {
     /// The proposal; a decline is the zero proposal (not accepted).
     pub fn identify(self, c: &Candidate) -> Proposal {
         match self {
+            Identifier::Book => identify_book(c).unwrap_or_default(),
             Identifier::Comic => identify_comic(c).unwrap_or_default(),
             Identifier::Anime => identify_anime(c).unwrap_or_default(),
             Identifier::Generic => identify_generic(c),
