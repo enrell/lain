@@ -171,8 +171,12 @@ class BookReaderDeviceTest {
             }
             Thread.sleep(250)
         }
-        fail("timed out waiting for $what" + (last?.let { ": $it" } ?: ""))
+        shot("timeout-" + what.replace(Regex("[^A-Za-z0-9]+"), "-").trim('-'))
+        fail("timed out waiting for $what" + (last?.let { ": $it" } ?: "") + " (WebView: $seen)")
     }
+
+    /** What [matches] last saw of the WebView, for a timeout's message. */
+    private var seen = "not looked at"
 
     /** The reader's WebView, in the activity's views. */
     private fun webView(): WebView? {
@@ -192,11 +196,16 @@ class BookReaderDeviceTest {
      * find-in-page (the reader runs no script); 0 before it is laid out.
      */
     private fun matches(text: String): Int {
-        val web = webView() ?: return 0
+        val web = webView()
+        if (web == null) {
+            seen = "none in the activity"
+            return 0
+        }
         val count = AtomicInteger(-1)
         val done = CountDownLatch(1)
         var laidOut = false
         instrumentation.runOnMainSync {
+            seen = "${web.width}x${web.height}, content height ${web.contentHeight}, shown ${web.isShown}, url ${web.url?.take(60)}"
             if (web.contentHeight > 0) {
                 laidOut = true
                 web.setFindListener { _, n, finished ->
@@ -209,7 +218,8 @@ class BookReaderDeviceTest {
             }
         }
         if (!laidOut) return 0
-        done.await(5, TimeUnit.SECONDS)
+        val answered = done.await(5, TimeUnit.SECONDS)
+        seen += ", find '$text' " + if (answered) "found ${count.get()}" else "never answered"
         instrumentation.runOnMainSync {
             web.setFindListener(null)
             web.clearMatches()
